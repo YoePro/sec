@@ -1,6 +1,6 @@
 # Correction: Semantic IR lifecycle construction
 
-**Target:** `rules/compiler/semantic_ir.txt`  
+**Target:** `rules/compiler/semantic_ir.md`
 **Source rule:** `rules/declarations/impl.md` revision 2.0  
 **Date:** 2026-08-13
 

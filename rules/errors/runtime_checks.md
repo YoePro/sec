@@ -1257,8 +1257,8 @@ allocation.md
 unsafe.md
 platform/ffi.md
 attributes.md
-compiler_pipeline.txt
-semantic_ir.txt
+compiler_pipeline.md
+semantic_ir.md
 formatter.md
 lsp.md
 diagnostics.txt

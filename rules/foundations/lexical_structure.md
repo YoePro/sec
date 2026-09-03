@@ -1908,7 +1908,7 @@ diagnostics.txt
 parser_recovery.md
 core-library.md
 stdlib.md
-compiler_pipeline.txt
+compiler_pipeline.md
 implementation-status.yaml
 VS Code grammar
 LSP token classification

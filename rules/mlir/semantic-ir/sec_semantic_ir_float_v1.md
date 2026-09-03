@@ -6,7 +6,7 @@ Revision: 1
 Sec language version: 0.1  
 ## Status
 
-Normative amendment for `rules/semantic_ir.txt`.
+Normative amendment for `rules/compiler/semantic_ir.md`.
 
 Package: `SEC-MLIR-P20`  
 Repository baseline: `e0af215`

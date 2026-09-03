@@ -25,7 +25,7 @@ normative_updates:
   - rules/library/core-library.md
   - rules/memory/reference_model.md
   supplied_file: sec_slice_sync_package16.md
-- repository_path: rules/compiler/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.md
   supplied_file: sec_semantic_ir_slice_package16.md
 - repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package16.md

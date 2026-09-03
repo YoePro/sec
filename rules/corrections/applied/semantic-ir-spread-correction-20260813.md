@@ -5,7 +5,7 @@
 - **Status:** Applied 2026-08-13
 - **Created:** 2026-08-13
 - **Last updated:** 2026-08-13
-- **Target:** `rules/compiler/semantic_ir.txt`
+- **Target:** `rules/compiler/semantic_ir.md`
 - **Canonical source:** `rules/declarations/spread.md`
 
 ## Required semantic contract

@@ -4081,6 +4081,164 @@ fn Test(running: bool) void {
 	}
 }
 
+func TestParseWhileElseReportsFocusedErrorAndRecovers(t *testing.T) {
+	input := `
+fn Test(running: bool) void {
+	while running {
+		continue
+	} else {
+		return
+	}
+	let result: int := 1
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	want := "while ... else is not part of Sec 0.1; use explicit state after the loop at 5:4"
+	if len(p.Errors()) != 1 || p.Errors()[0] != want {
+		t.Fatalf("errors = %v, want %q", p.Errors(), want)
+	}
+	if len(program.Statements) != 1 {
+		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("function body statements = %d, want while plus recovered declaration", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[0].(*ast.WhileStatement); !ok {
+		t.Fatalf("first statement is not WhileStatement. got=%T", fn.Body.Statements[0])
+	}
+	if declaration, ok := fn.Body.Statements[1].(*ast.LetStatement); !ok || declaration.Name.Value != "result" {
+		t.Fatalf("second statement = %#v, want recovered result declaration", fn.Body.Statements[1])
+	}
+}
+
+func TestParseDoWhileReportsFocusedErrorAndPreservesDoIdentifierCalls(t *testing.T) {
+	input := `
+fn do() void {}
+
+fn Test(running: bool) void {
+	do {
+		continue
+	} while running
+	do()
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	want := "do ... while is not part of Sec 0.1; execute the first iteration explicitly at 5:2"
+	if len(p.Errors()) != 1 || p.Errors()[0] != want {
+		t.Fatalf("errors = %v, want %q", p.Errors(), want)
+	}
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 2 {
+		t.Fatalf("function body statements = %d, want invalid do-while plus do call", len(fn.Body.Statements))
+	}
+	if _, ok := fn.Body.Statements[0].(*ast.InvalidStatement); !ok {
+		t.Fatalf("first statement is not InvalidStatement. got=%T", fn.Body.Statements[0])
+	}
+	call, ok := fn.Body.Statements[1].(*ast.ExpressionStatement)
+	if !ok || call.Expression.String() != "do()" {
+		t.Fatalf("second statement = %#v, want preserved do() call", fn.Body.Statements[1])
+	}
+}
+
+func TestParseLabeledLoopControlReportsFocusedErrors(t *testing.T) {
+	input := `
+fn Test(running: bool) void {
+	while running {
+		break outer
+		continue inner
+		break
+		continue
+	}
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	wants := []string{
+		"labeled break is not part of Sec 0.1; remove label outer at 4:9",
+		"labeled continue is not part of Sec 0.1; remove label inner at 5:12",
+	}
+	if len(p.Errors()) != len(wants) {
+		t.Fatalf("errors = %v, want %v", p.Errors(), wants)
+	}
+	for i, want := range wants {
+		if p.Errors()[i] != want {
+			t.Fatalf("error %d = %q, want %q", i, p.Errors()[i], want)
+		}
+	}
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	loop := fn.Body.Statements[0].(*ast.WhileStatement)
+	if len(loop.Body.Statements) != 4 {
+		t.Fatalf("loop body statements = %d, want 4", len(loop.Body.Statements))
+	}
+	if _, ok := loop.Body.Statements[0].(*ast.InvalidStatement); !ok {
+		t.Fatalf("labeled break = %T, want InvalidStatement", loop.Body.Statements[0])
+	}
+	if _, ok := loop.Body.Statements[1].(*ast.InvalidStatement); !ok {
+		t.Fatalf("labeled continue = %T, want InvalidStatement", loop.Body.Statements[1])
+	}
+	if _, ok := loop.Body.Statements[2].(*ast.BreakStatement); !ok {
+		t.Fatalf("plain break = %T, want BreakStatement", loop.Body.Statements[2])
+	}
+	if _, ok := loop.Body.Statements[3].(*ast.ContinueStatement); !ok {
+		t.Fatalf("plain continue = %T, want ContinueStatement", loop.Body.Statements[3])
+	}
+}
+
+func TestParseWhileDeclarationHeadersReportFocusedErrorsAndRecover(t *testing.T) {
+	input := `
+fn Inferred() void {
+	while let ready := true {
+		return
+	}
+	let first: int := 1
+}
+
+fn Typed() void {
+	while ready: bool := true {
+		return
+	}
+	let second: int := 2
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	wants := []string{
+		"declaration is not allowed in while condition; declare the value before the loop at 3:8",
+		"declaration is not allowed in while condition; declare the value before the loop at 10:8",
+	}
+	if len(p.Errors()) != len(wants) {
+		t.Fatalf("errors = %v, want %v", p.Errors(), wants)
+	}
+	for i, want := range wants {
+		if p.Errors()[i] != want {
+			t.Fatalf("error %d = %q, want %q", i, p.Errors()[i], want)
+		}
+	}
+	if len(program.Statements) != 2 {
+		t.Fatalf("program statements = %d, want two functions", len(program.Statements))
+	}
+	for i, name := range []string{"first", "second"} {
+		fn := program.Statements[i].(*ast.FunctionDeclaration)
+		if len(fn.Body.Statements) != 2 {
+			t.Fatalf("function %d body statements = %d, want while plus following declaration", i, len(fn.Body.Statements))
+		}
+		declaration, ok := fn.Body.Statements[1].(*ast.LetStatement)
+		if !ok || declaration.Name.Value != name {
+			t.Fatalf("function %d following statement = %#v, want declaration %s", i, fn.Body.Statements[1], name)
+		}
+	}
+}
+
 func TestParseWhileRequiresCondition(t *testing.T) {
 	input := `
 fn Test() void {

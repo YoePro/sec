@@ -26,7 +26,7 @@ normative_updates:
   - rules/runtime_checks.md
   - rules/compiler_known_members.md
   supplied_file: sec_float_numeric_sync_package20.md
-- repository_path: rules/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.md
   supplied_file: sec_semantic_ir_float_package20.md
 - repository_path: rules/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package20.md

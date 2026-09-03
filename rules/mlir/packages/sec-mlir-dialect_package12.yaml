@@ -44,7 +44,7 @@ normative_updates:
   - rules/declarations/enums.md
   supplied_file: sec_match_enum_domain_package12.md
   purpose: Resolve enum alias/unnamed-value match-domain inconsistency.
-- repository_path: rules/compiler/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.md
   supplied_file: sec_semantic_ir_match_package12.md
 - repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package12.md

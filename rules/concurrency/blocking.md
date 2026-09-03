@@ -472,8 +472,8 @@ concurrency.md
 concurrency_runtime_model.md
 concurrency_memory_model.txt
 platform/ffi.md
-compiler_analysis.txt
-semantic_ir.txt
+compiler_analysis.md
+semantic_ir.md
 diagnostics.txt
 core/errors.sec
 ```

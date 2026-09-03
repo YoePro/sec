@@ -92,6 +92,11 @@ analysis/isr_analysis.md
 platform/volatile.md
 platform/hardware-register-access.md
 platform/interrupts.md
+platform/inline_assembly.md
+compiler/compiler.md
+compiler/compiler_analysis.md
+compiler/compiler_pipeline.md
+compiler/semantic_ir.md
 ```
 
 These were written after the older temporary checklist was last synchronized.
@@ -453,10 +458,10 @@ OrderedMap[K, V]
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `compiler/compiler.txt` | **Written — sync required** | |
-| `compiler/compiler_analysis.txt` | **Written — sync required** | High-level compiler analysis model. |
-| `compiler/compiler_pipeline.txt` | **Written — sync required** | |
-| `compiler/semantic_ir.txt` | **Written — sync required** | Must include discard, threads, collections, shaped values, panic, and effects. |
+| `compiler/compiler.md` | **Written** | Canonical revision 2.0 compiler responsibilities, Target/Variant and CompilationPlan authority, source selection, compiler-known surfaces, frontend orchestration, backend boundaries, diagnostics, and tooling contracts. Implementation progress is tracked by the `compiler-core` integration family in `implementation-status.yaml`. |
+| `compiler/compiler_analysis.md` | **Written** | Canonical revision 2.0 analysis-coordination and fact-ownership model. Implementation progress is tracked by the `analysis.compiler-analysis` family in `implementation-status.yaml`. |
+| `compiler/compiler_pipeline.md` | **Written** | Canonical revision 2.0 phase-boundary pipeline from CompilationRequest and CompilationPlan through frontend analysis, Semantic IR, Sec MLIR, target artifacts, linking, testing, and publication. Implementation progress is tracked by the `compiler-pipeline` integration family in `implementation-status.yaml`. |
+| `compiler/semantic_ir.md` | **Written** | Canonical revision 2.0 typed Semantic IR model, including ownership, allocation, effects, concurrency, collections, shaped values, panic, checks, and resolved iterator plans. Implementation progress is tracked by the `semantic-ir-v2` integration family in `implementation-status.yaml`. |
 | `compiler/rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
 | `analysis/call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |
 | `analysis/stack_analysis.md` | **Written** | Canonical semantic and machine stack-resource analysis; implementation status is tracked by `sema.stack-analysis` in `implementation-status.yaml`. |
@@ -520,7 +525,7 @@ from the presence of a versioned document.
 | `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
 | `platform/volatile.md` | **Written** | Canonical volatile physical-access semantics, mandatory `@address` region validation, explicit raw volatile operations, physical access contracts, optimizer invariants, representation eligibility, lowering, diagnostics, and tooling. Compiler-known RawPtr volatile methods, unsafe/non-void frontend validation, effect facts, and shared LSP exposure are implemented; target validation and lowering remain under `platform.volatile`. |
 | `platform/hardware-register-access.md` | **Written** | Canonical logical hardware-register access, safe implicit observation, explicit `Read()`/`Write()`, shadow state, resource/endpoint identity, transaction planning, width/alignment/footprints, ordering/completion, access context, runtime mappings, faults, and verified IR/lowering. Implementation is tracked by `platform.hardware-register-access`. |
-| `inline_assembly.md` | **Planned** | Operands, constraints, clobbers, volatility, memory effects, and target restrictions. |
+| `platform/inline_assembly.md` | **Written** | Canonical revision 1.0 inline-assembly operands, constraints, clobbers, effects, control-flow/stack boundaries, symbol dependencies, target restrictions, and lowering contract. Implementation progress is tracked by `platform.inline-assembly-v1`. |
 | `platform/interrupts.md` | **Written** | Canonical interrupt identities/binding, ISR roots, priority/preemption/nesting/masking, classes and lifecycle, configuration capabilities, ISR-safe execution, concurrency/stack integration, startup/linking, diagnostics, tooling, and completion. Implementation is tracked by `platform.interrupts-v1`. |
 | `analysis/isr_analysis.md` | **Written** | Compiler verification for profile-scoped interrupt safety using canonical analysis results; implementation status is tracked by `sema.isr-analysis`. |
 
@@ -588,9 +593,9 @@ memory/borrowing.md
 concurrency/cancellation.md
 analysis/call_graph.md
 concurrency/channels.md
-compiler/compiler.txt
-compiler/compiler_analysis.txt
-compiler/compiler_pipeline.txt
+compiler/compiler.md
+compiler/compiler_analysis.md
+compiler/compiler_pipeline.md
 compiler/compiler_known_members.md
 compiler/linking.md
 concurrency/concurrency.md
@@ -647,11 +652,12 @@ platform/fixed-address-bindings.md
 platform/volatile.md
 platform/hardware-register-access.md
 platform/interrupts.md
+platform/inline_assembly.md
 compiler/rules_implementations.txt
 errors/runtime_checks.md
 concurrency/scheduling.md
 concurrency/select.md
-compiler/semantic_ir.txt
+compiler/semantic_ir.md
 concurrency/spawn.md
 declarations/spread.md
 declarations/static.md
@@ -688,6 +694,7 @@ analysis/data_races.md
 analysis/deadlock_analysis.md
 analysis/isr_analysis.md
 platform/interrupts.md
+platform/inline_assembly.md
 ```
 
 The package-local MLIR documents under `mlir/packages/`, historical dialect and
@@ -706,8 +713,6 @@ fully design-closed, unless a later decision explicitly merges one into another.
 generics_lowering.md
 monomorphization.md
 compile_time_evaluation.md
-
-inline_assembly.md
 
 debug_information.md
 compiler_testing.md
@@ -799,10 +804,11 @@ families, activation, policy, resources, resolution, provenance, and typed
 compiler queries. `platform/volatile.md`, `platform/fixed-address-bindings.md`,
 and `platform/hardware-register-access.md` now define the volatile, MMIO-binding,
 and hardware-register transaction model. `platform/interrupts.md` defines the
-canonical interrupt model and consumes those platform facts without redefining
-hardware access. Still to decide in the remaining platform rulebooks:
+canonical interrupt model, while `platform/inline_assembly.md` defines the
+target-specific machine-operation boundary. These books consume shared platform
+facts without redefining hardware access. Still to decide in the remaining
+platform rulebooks:
 
-- inline assembly;
 - native platform views;
 
 ## Closures

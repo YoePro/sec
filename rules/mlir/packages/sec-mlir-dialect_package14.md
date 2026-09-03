@@ -76,7 +76,7 @@ rules/memory/copy_move.md
 rules/memory/ownership.md
 rules/memory/destruction.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -93,7 +93,7 @@ Before implementation:
 
 1. apply `sec_fixed_array_sync_package14.md`;
 2. apply `sec_semantic_ir_fixed_array_package14.md` to
-   `rules/compiler/semantic_ir.txt`;
+   `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package14.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

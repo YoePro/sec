@@ -3223,10 +3223,10 @@ This rulebook requires synchronization with:
 ```text
 formatter.md
 diagnostics.txt
-compiler.txt
-compiler_pipeline.txt
-compiler_analysis.txt
-semantic_ir.txt
+compiler.md
+compiler_pipeline.md
+compiler_analysis.md
+semantic_ir.md
 projects.txt
 modules.md
 parser_recovery.md

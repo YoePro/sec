@@ -4841,7 +4841,7 @@ select.md
 cancellation.md
 diagnostics.txt
 parser_recovery.md
-semantic_ir.txt
+semantic_ir.md
 language-rulebook-status.md
 rules_implementations.txt
 ```

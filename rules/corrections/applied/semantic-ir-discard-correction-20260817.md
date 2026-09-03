@@ -6,7 +6,7 @@
 - **Last updated:** 2026-08-16
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `56be75d`
-- **Target rulebook:** `rules/compiler/semantic_ir.txt`
+- **Target rulebook:** `rules/compiler/semantic_ir.md`
 
 ---
 

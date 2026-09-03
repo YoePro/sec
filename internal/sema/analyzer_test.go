@@ -3692,6 +3692,21 @@ impl Car implements Vehicle {
 	assertSemaErrors(t, errors, nil)
 }
 
+func TestInterfaceMethodRejectsAdditionalGenericParameters(t *testing.T) {
+	input := `
+module main
+
+interface Mapper[T] {
+	fn Map[U](value: T) U
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"interface method Map cannot declare method-level generic parameters; use interface generic parameters instead at 5:9",
+	})
+}
+
 func TestInterfaceConformancePreservesConsumingParameterContract(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 module main
@@ -8040,6 +8055,30 @@ fn Classify(character: rune) int {
 			t.Fatalf("wrong parser guidance: %s", err)
 		}
 	}
+}
+
+func TestMatchRejectsDirectBoolSubjectWithFocusedGuidance(t *testing.T) {
+	input := `
+module main
+
+fn Choose(ready: bool) int {
+	return match ready {
+		_ => 1
+	}
+}
+
+fn Act(ready: bool) void {
+	match ready {
+		_ => {}
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"match subject cannot be bool; use if and else for boolean control flow at 5:15",
+		"match subject cannot be bool; use if and else for boolean control flow at 11:8",
+	})
 }
 
 // rules/control-flow/flowcontrol_match.md; correction20.md.

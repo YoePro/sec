@@ -79,7 +79,7 @@ rules/compiler_known_members.md
     ↓
 local P2-P19 Semantic IR / Sec MLIR amendments
     ↓
-rules/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/sec_mlir.md
 rules/sec_mlir_dialect.md
 rules/sec_mlir_lowering.md
@@ -92,7 +92,7 @@ implementation
 Before implementation:
 
 1. apply `sec_float_numeric_sync_package20.md`;
-2. apply `sec_semantic_ir_float_package20.md` to `rules/semantic_ir.txt`;
+2. apply `sec_semantic_ir_float_package20.md` to `rules/compiler/semantic_ir.md`;
 3. update `rules/sec_mlir_dialect.md` with `sec_mlir_dialect_package20.md`;
 4. update `rules/sec_mlir_lowering.md` with `sec_mlir_lowering_package20.md`.
 

@@ -16,7 +16,7 @@ Package 2 is a prerequisite package for the Sec MLIR bridge.
 It does **not** add MLIR lowering yet.
 
 The reason is architectural: at repository sync `d48035c`,
-`rules/compiler/semantic_ir.txt` explicitly states that Semantic IR is still a design
+`rules/compiler/semantic_ir.md` explicitly states that Semantic IR is still a design
 target. Sec MLIR is required to consume validated Semantic IR, so implementing
 the bridge before a real Semantic IR exists would recreate the forbidden
 AST-to-backend shortcut.
@@ -33,7 +33,7 @@ Implementation must follow this authority chain:
 ```text
 language/domain rulebooks
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -47,7 +47,7 @@ implementation
 Package 2 must not redefine source-language semantics.
 
 The package implements only a subset of the first Semantic IR milestone
-described by `rules/compiler/semantic_ir.txt`.
+described by `rules/compiler/semantic_ir.md`.
 
 The remainder of that milestone is intentionally deferred to Package 3 so that
 each Codex task remains reviewable.
@@ -66,9 +66,9 @@ At sync `d48035c`:
 - `cmd/compiler/main.go` currently parses and analyzes successfully but discards
   the `Analyzer` object in the normal helper path.
 - `internal/codegen/llvm` and `internal/codegen/mlir` consume the AST directly.
-- `rules/compiler/semantic_ir.txt` requires a dedicated Semantic IR package and explicitly
+- `rules/compiler/semantic_ir.md` requires a dedicated Semantic IR package and explicitly
   says AST nodes must not be reused as Semantic IR nodes.
-- `rules/compiler/semantic_ir.txt` specifies `sec emit-ir <file.sec>` as the initial dump
+- `rules/compiler/semantic_ir.md` specifies `sec emit-ir <file.sec>` as the initial dump
   command and requires it to stop after Semantic IR generation and verification.
 - `rules/mlir/sec_mlir.md` requires the future MLIR layer to consume Semantic IR,
   not AST.
@@ -373,7 +373,7 @@ Core IR structures should depend only on Semantic IR types.
 # 9. Ownership classification
 
 Every Semantic IR value carries an ownership classification field as required by
-`rules/compiler/semantic_ir.txt`.
+`rules/compiler/semantic_ir.md`.
 
 Package 2 defines the complete classification enum, but only emits classifications
 that are semantically known for the supported subset.
@@ -1790,7 +1790,7 @@ question rather than silently implemented.
 # 29. Package 3 boundary
 
 Package 3 should extend the Semantic IR core to complete the first executable
-milestone from `rules/compiler/semantic_ir.txt`.
+milestone from `rules/compiler/semantic_ir.md`.
 
 Intended Package 3 scope:
 

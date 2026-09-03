@@ -1036,7 +1036,7 @@ borrowing.md
 lifetime_analysis.md
 destruction.txt
 errorhandling.md
-semantic_ir.txt
+semantic_ir.md
 core-library.md
 rules_implementations.txt
 core/errors.sec

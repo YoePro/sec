@@ -73,7 +73,7 @@ rules/errors/panic.md
     ↓
 local P13-P18 normative amendments
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/mlir/sec_mlir.md
 rules/mlir/sec_mlir_dialect.md
 rules/mlir/sec_mlir_lowering.md
@@ -88,7 +88,7 @@ implementation
 Before implementation:
 
 1. apply `sec_arena_allocation_sync_package19.md`;
-2. apply `sec_semantic_ir_arena_package19.md` to `rules/compiler/semantic_ir.txt`;
+2. apply `sec_semantic_ir_arena_package19.md` to `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package19.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

@@ -41,7 +41,7 @@ Implementation must follow the existing authority chain:
 ```text
 language/domain rulebooks
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓

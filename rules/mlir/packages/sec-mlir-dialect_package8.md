@@ -46,7 +46,7 @@ rules/errors/runtime_checks.md
 rules/types/types.md
 rules/memory/layout.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓

@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-09-02"
+updated: "2026-09-03"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -35,7 +35,7 @@ integrations:
       - rules/memory/memory_model.md
       - rules/memory/raw_pointers.md
       - rules/declarations/registers.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
     code:
       - internal/sema/compiler_known_members.go
@@ -131,7 +131,7 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/destruction.md
       - rules/memory/raw_pointers.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
     confirmed_existing_foundations:
       - register[N] is already canonical as a nominal fixed-width bit-layout type independent of MMIO
@@ -394,6 +394,7 @@ integrations:
       - mlir/lib/Conversion/SecToCore/SecToCore.cpp
     tests:
       - internal/sema/semantic_facts_test.go
+      - cmd/lsp/main_test.go
       - internal/ir/semantic/package13_test.go
       - internal/lowering/secmlir/emitter_test.go
       - cmd/compiler/emit_sec_mlir_test.go
@@ -540,7 +541,7 @@ integrations:
       - rules/errors/runtime_checks.md
       - rules/errors/errorhandling.md
       - rules/library/core-library.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/analysis/effect_analysis.md
       - rules/memory/ownership.md
       - rules/mlir/packages/sec-mlir-dialect_package15.md
@@ -895,7 +896,7 @@ integrations:
       - rules/errors/errorhandling.md
       - rules/analysis/closure_analysis.md
       - rules/foundations/grammar.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
@@ -1178,6 +1179,7 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
+      - cmd/lsp/main_test.go
       - internal/codegen/mlir/generator_test.go
       - internal/codegen/llvm/generator_test.go
       - testdata/while_valid.sec
@@ -1185,6 +1187,10 @@ integrations:
     implemented:
       - lexer recognition and AST representation of while statements
       - while condition and mandatory block parsing with missing-condition recovery
+      - focused while-else rejection consumes the unsupported else block as one recovery unit and preserves following statements for compiler and LSP analysis
+      - focused do-while rejection consumes the unsupported body and trailing condition as one recovery unit while preserving ordinary identifiers and calls named do
+      - same-line labels after break and continue receive focused parser and LSP diagnostics and are consumed without changing ordinary unlabeled loop-control semantics
+      - inferred, reference-prefixed, static-prefixed, and typed declaration starts in while headers receive focused diagnostics and recover through the loop body without losing following statements
       - bool-only conditions without implicit truthiness
       - ordinary logical, comparison, membership, and try expressions in conditions
       - lexical loop-body scope
@@ -1197,7 +1203,7 @@ integrations:
       - canonical Markdown metadata with implementation governance kept in this ledger
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
-      - add dedicated parser diagnostics and tests for do-while, while-else, labeled loop control, loop values, declarations in headers, and pattern-binding conditions
+      - add dedicated parser diagnostics and tests for loop values and pattern-binding conditions
       - permit non-binding boolean is state tests from owning rulebooks while rejecting payload and structural binding in conditions
       - diagnose bodies and statements proven unreachable by constant conditions and non-continuing flow through the canonical unreachable-code policy
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
@@ -1245,6 +1251,8 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run While -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
+      - command: go test ./internal/parser ./cmd/lsp -run 'TestParseDoWhileReportsFocusedErrorAndPreservesDoIdentifierCalls|TestParseWhileElseReportsFocusedErrorAndRecovers|TestParseLabeledLoopControlReportsFocusedErrors|TestParseWhileDeclarationHeadersReportFocusedErrorsAndRecover|TestAnalyzeReportsFocusedDoWhileDiagnostic|TestAnalyzeReportsFocusedWhileElseDiagnostic|TestAnalyzeReportsFocusedLabeledLoopControlDiagnostics|TestAnalyzeReportsFocusedWhileDeclarationHeaderDiagnostic' -count=1
+        result: passed on 2026-09-03
 
   - id: frontend.switch-statements-v2
     area: frontend-control-flow
@@ -1270,7 +1278,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.txt
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -1387,7 +1395,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/borrowing.md
       - rules/memory/destruction.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/lsp.md
@@ -1465,17 +1473,17 @@ integrations:
       - canonical revision-2 match grammar and contextual arm-block semantics are documented
       - ownership.md now specifies whole-payload actions, borrowed-subject restrictions, guarded move commit, field copy-only behavior, and post-match merging
       - unions.md now explicitly restricts shallow by-value fields to implicitly copyable types
-      - semantic_ir.txt now specifies complete resolved match binding actions, guarded commit ordering, arm results, discard, and availability facts
+      - semantic_ir.md now specifies complete resolved match binding actions, guarded commit ordering, arm results, discard, and availability facts
       - lsp.md now requires compiler-owned match binding, guarded move, availability, coverage, hover, hint, completion, and refactoring facts
       - implementation status was removed from the normative match rulebook and migrated here
       - parser and Sema accept Err(_) as an exhaustive Result error-payload discard in match arms and try handlers
+      - Sema rejects direct bool match subjects once at the subject with focused guidance to use if and else; LSP reports the same shared diagnostic
     remaining:
       - implement compiler-known empty union patterns and include reachable empty state in definite-assignment, coverage, Semantic IR, MLIR, diagnostics, and LSP facts without treating moved-from as empty
       - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
       - derive statement-match termination from ResolvedMatchPlan so exhaustive Option, union, enum-alias, open-bit-enum, and nested matches agree with return and reachability analysis
       - implement shallow named-field union destructuring with partial binding, rename, ref and ref mut modes
       - enforce copy-only shallow by-value fields and reject move-only fields without hidden partial moves
-      - reject direct bool subjects with guidance to use if and else
       - make every whole-payload plain binding action explicitly resolve to copy, legal move, or temporary forwarding without silent borrow or clone
       - reject move-only payload transfer from ref and ref mut subjects unless an explicit permitted pattern borrow is used
       - delay guarded move-only binding commitment until guard success and retain ownership on the guard-false continuation
@@ -1559,6 +1567,8 @@ integrations:
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
       - command: go test ./cmd/lsp ./internal/lsp/...
         result: passed; no dedicated match ownership presentation tests exist yet
+      - command: go test ./internal/sema ./cmd/lsp -run 'TestMatchRejectsDirectBoolSubjectWithFocusedGuidance|TestAnalyzeRejectsDirectBoolMatchWithIfElseGuidance' -count=1
+        result: passed on 2026-09-03
 
   - id: frontend.for-loops-v2
     area: frontend-control-flow-ownership-and-lowering
@@ -1591,7 +1601,7 @@ integrations:
       - rules/memory/destruction.md
       - rules/control-flow/defer.md
       - rules/foundations/grammar.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/formatter.md
     code:
       - internal/ast/ast.go
@@ -1640,6 +1650,7 @@ integrations:
       - Iterator[T] loop inference for one owned value or discard binding, including mutable reusable-source enforcement and fresh-temporary acceptance
       - immutable Sema ResolvedForIteration fact carrying concrete source, element, Next method, compiler-known operation ID, and receiver authority for tooling and lowering
       - StringSplitIterator explicitly implements Iterator[string], enabling direct for iteration over string.Split results in core and HTTP clients
+      - LSP analysis recognizes compiler-known Iterator[T] while the defining core string source is the active document, without suppressing unrelated diagnostics in that file
       - canonical grammar, collections, and copy/move documentation synchronized to explicit value, ref, ref-mut, and discard semantics
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
@@ -1717,7 +1728,7 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'Iterator|TestResolvedForIteration|TestForCompilerKnown' -count=1
         result: passed on 2026-09-03
-      - command: go test ./cmd/lsp -run 'TestAnalyzeUsesCoreStringSplitIteratorInForLoop|TestCompletionIncludesIntrinsicTypesInTypePosition' -count=1
+      - command: go test ./cmd/lsp -run 'TestAnalyzeCoreStringRecognizesCompilerKnownIterator|TestAnalyzeUsesCoreStringSplitIteratorInForLoop|TestCompletionIncludesIntrinsicTypesInTypePosition' -count=1
         result: passed on 2026-09-03
       - command: GOMAXPROCS=2 go test ./...
         result: passed on 2026-09-03
@@ -1761,7 +1772,7 @@ integrations:
       - rules/errors/errorhandling.md
       - rules/errors/panic.md
       - rules/control-flow/discard.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -1869,7 +1880,7 @@ integrations:
       - rules/concurrency/tasks.txt
       - rules/concurrency/threads.md
       - rules/concurrency/spawn.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
@@ -1917,7 +1928,7 @@ integrations:
       - mutable reinitialization semantics were reconciled with ownership.md and copy_move.md
       - types.md now defines must-use and discardability as distinct recursive semantic properties
       - destruction.md now defines discard as terminal ownership with deterministic cleanup cancellation
-      - semantic_ir.txt now specifies canonical DiscardValue provenance and forbids backend inference from unused SSA
+      - semantic_ir.md now specifies canonical DiscardValue provenance and forbids backend inference from unused SSA
       - diagnostics.txt now specifies discard-related mandatory and advisory diagnostic identities
       - formatter.md now preserves explicit discard without policy-driven insertion or removal
     remaining:
@@ -2002,7 +2013,7 @@ integrations:
       - rules/memory/raw_pointers.md
       - rules/declarations/functions.md
       - rules/projects/modules.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
     remaining:
       - add canonical ABIIdentity and ABIModel selection to CompilationPlan and make downstream consumers use that resolved model instead of inferring ABI behavior from OS, architecture, target triple, host, or backend defaults
@@ -2129,8 +2140,8 @@ integrations:
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
       - rules/foundations/lexical_structure.md
-      - rules/compiler/compiler_pipeline.txt
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/semantic_ir.md
       - rules/platform/platform_model.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/lsp.md
@@ -2230,7 +2241,7 @@ integrations:
       - rules/memory/destruction.md
       - rules/concurrency/concurrency.md
       - rules/mlir/sec_mlir.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - cmd/compiler/main.go
       - cmd/compiler/target.go
@@ -2352,7 +2363,7 @@ integrations:
       - rules/platform/interrupts.md
       - rules/platform/abi.md
       - rules/mlir/sec_mlir.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     remaining:
       - introduce canonical ProgramInitializationPlan and ProgramShutdownPlan artifacts for every executable concrete CompilationPlan
       - validate command entry as exactly one concrete non-generic module-level fn main() int in the designated entry module
@@ -2450,7 +2461,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
       - rules/foundations/attributes.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     code:
@@ -2566,7 +2577,7 @@ integrations:
       - rules/declarations/interfaces.md
       - rules/foundations/grammar.md
       - rules/types/types.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -2577,6 +2588,7 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
+      - cmd/lsp/main_test.go
       - testdata/generics_valid.sec
       - testdata/generics_invalid.sec
     implemented:
@@ -2590,6 +2602,7 @@ integrations:
       - generic union template registration, concrete payload substitution, and empty and single-payload construction paths
       - generic impl target correspondence, owning parameter scopes, and concrete nested type and property substitution paths
       - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
+      - focused rejection of method-level generic parameters on interface requirements without follow-on unknown-type diagnostics
       - concrete generic interface method, property, and event type substitution, exercised by compiler-known Iterator[T] conformance
       - rejection of unknown constraints and constraints that do not name interfaces
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
@@ -2599,7 +2612,6 @@ integrations:
       - represent and validate multiple interface constraints joined by & across parser, AST, Sema, formatter, LSP, and diagnostics
       - accept a positional prefix of explicit generic function or method arguments and infer the remainder while rejecting holes
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
-      - reject additional method-level generic parameters on interface requirements while permitting use of the interface's own parameters
       - complete generic named-type semantics for type ID[T] int and valid type Wrapped[T] T forms, including identity, conversions, contracts, and lowering
       - complete generic interface inheritance validation and canonical cross-module specialization identity beyond the implemented concrete requirement substitution
       - require valid explicit interface conformance when satisfying every generic constraint; matching members alone are insufficient
@@ -2622,6 +2634,8 @@ integrations:
     verification:
       - command: go test ./internal/parser ./internal/sema -run 'Generic|Generics' -count=1
         result: passed
+      - command: go test ./cmd/lsp -run TestAnalyzeRejectsMethodGenericInterfaceRequirement -count=1
+        result: passed on 2026-09-03
 
   - id: frontend.functions-v2
     area: frontend-analysis-and-lowering
@@ -2647,7 +2661,7 @@ integrations:
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
       - rules/errors/errorhandling.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -2750,7 +2764,7 @@ integrations:
       - rules/memory/borrowing.md
       - rules/analysis/closure_analysis.md
       - rules/analysis/escape_analysis.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     code:
@@ -3172,7 +3186,7 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/layout.md
       - rules/memory/unsafe.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
@@ -3262,7 +3276,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/types/types.md
       - rules/foundations/operators.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
@@ -3456,7 +3470,7 @@ integrations:
       - rules/declarations/impl.md
       - rules/declarations/static.md
       - rules/foundations/grammar.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -3798,7 +3812,7 @@ integrations:
       - rules/errors/runtime_checks.md
       - rules/compiler/compiler_known_members.md
       - rules/memory/ownership.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
@@ -4167,7 +4181,7 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/storage.md
       - rules/analysis/effect_analysis.md
-      - rules/compiler/compiler_analysis.txt
+      - rules/compiler/compiler_analysis.md
       - rules/tooling/lsp.md
       - rules/projects/projects.txt
     code:
@@ -4249,7 +4263,7 @@ integrations:
       schema 2, and publishes CLI output only after verification by the real
       Sec MLIR toolchain.
     rules:
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
       - rules/mlir/sec_mlir_dialect.md
       - rules/mlir/packages/sec-mlir-dialect_package4.md
@@ -4354,7 +4368,7 @@ integrations:
     rules:
       - rules/memory/layout.md
       - rules/types/types.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
       - rules/mlir/sec_mlir_dialect.md
       - rules/mlir/sec_mlir_lowering.md
@@ -4627,7 +4641,7 @@ integrations:
       normative semantics owned by those analyses.
     rules:
       - rules/analysis/pitfall_analysis.md
-      - rules/compiler/compiler_analysis.txt
+      - rules/compiler/compiler_analysis.md
       - rules/analysis/call_graph.md
       - rules/analysis/effect_analysis.md
       - rules/memory/ownership.md
@@ -4709,7 +4723,7 @@ integrations:
     rules:
       - rules/analysis/stack_analysis.md
       - rules/analysis/call_graph.md
-      - rules/compiler/compiler_analysis.txt
+      - rules/compiler/compiler_analysis.md
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/memory/lifetime_analysis.md
@@ -4954,7 +4968,7 @@ integrations:
       - rules/analysis/isr_analysis.md
       - rules/platform/interrupts.md
       - rules/analysis/call_graph.md
-      - rules/compiler/compiler_analysis.txt
+      - rules/compiler/compiler_analysis.md
       - rules/analysis/effect_analysis.md
       - rules/analysis/stack_analysis.md
       - rules/analysis/data_races.md
@@ -5116,7 +5130,7 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package10.yaml
       - rules/mlir/sec_mlir_dialect.md
       - rules/mlir/sec_mlir_lowering.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/semantic_facts.go
@@ -5396,7 +5410,7 @@ integrations:
       - rules/collections/collections.md
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
       - internal/lexer/lexer.go
@@ -5439,7 +5453,7 @@ integrations:
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package11.md
       - rules/mlir/packages/sec-mlir-dialect_package11.yaml
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
       - rules/mlir/sec_mlir_dialect.md
       - rules/mlir/sec_mlir_lowering.md
@@ -5537,7 +5551,7 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package12.yaml
       - rules/control-flow/flowcontrol_match.md
       - rules/declarations/enums.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/semantic-ir/sec_semantic_ir_match_v1.md
       - rules/mlir/sec_mlir_dialect.md
       - rules/mlir/sec_mlir_lowering.md
@@ -5695,7 +5709,7 @@ integrations:
     rules:
       - "rules/memory/copy_move.md"
       - "rules/memory/ownership.md"
-      - "rules/compiler/semantic_ir.txt"
+      - "rules/compiler/semantic_ir.md"
     implemented:
       - "Current Semantic IR carries selected call argument actions and ownership-adjacent facts, but the root implementation-status still records explicit copy/move/replace/destruction operations as deferred."
     remaining:
@@ -5872,7 +5886,7 @@ integrations:
       - "rules/memory/borrowing.md"
       - "rules/memory/reference_model.md"
       - "rules/memory/ownership.md"
-      - "rules/compiler/semantic_ir.txt"
+      - "rules/compiler/semantic_ir.md"
     implemented:
       - "Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification."
     remaining:
@@ -6063,7 +6077,7 @@ integrations:
       - "rules/memory/destruction.md"
       - "rules/memory/ownership.md"
       - "rules/memory/copy_move.md"
-      - "rules/compiler/semantic_ir.txt"
+      - "rules/compiler/semantic_ir.md"
     implemented:
       - "Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation."
     remaining:
@@ -6338,7 +6352,7 @@ integrations:
       - rules/analysis/data_races.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/analysis/call_graph.md
-      - rules/compiler/compiler_analysis.txt
+      - rules/compiler/compiler_analysis.md
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/memory/lifetime_analysis.md
@@ -6420,7 +6434,7 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package7.yaml
       - rules/foundations/operators.md
       - rules/errors/runtime_checks.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
       - rules/mlir/sec_mlir_dialect.md
       - rules/mlir/sec_mlir_lowering.md
@@ -6771,7 +6785,7 @@ integrations:
       - rules/concurrency/concurrency_memory_model.md
       - rules/analysis/data_races.md
       - rules/analysis/call_graph.md
-      - rules/compiler/compiler_analysis.txt
+      - rules/compiler/compiler_analysis.md
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/memory/lifetime_analysis.md
@@ -6871,8 +6885,8 @@ integrations:
       - rules/platform/target_profiles.md
       - rules/platform/interrupts.md
       - rules/projects/projects.txt
-      - rules/compiler/compiler.txt
-      - rules/compiler/compiler_pipeline.txt
+      - rules/compiler/compiler.md
+      - rules/compiler/compiler_pipeline.md
       - rules/memory/storage.md
       - rules/memory/layout.md
       - rules/platform/ffi.md
@@ -7398,7 +7412,7 @@ integrations:
     - rules/memory/copy_move.md
     - rules/memory/ownership.md
     - rules/memory/destruction.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/types.go
     - internal/sema/analyzer.go
@@ -7634,7 +7648,7 @@ integrations:
     - rules/memory/ownership.md
     - rules/memory/borrowing.md
     - rules/memory/lifetime_analysis.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     - internal/sema/semantic_facts.go
@@ -7705,7 +7719,7 @@ integrations:
     - rules/memory/destruction.md
     - rules/declarations/struct.md
     - rules/declarations/unions.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     - internal/sema/semantic_facts.go
@@ -7770,7 +7784,7 @@ integrations:
     - rules/declarations/enums.md
     - rules/types/types.md
     - rules/errors/errorhandling.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     - rules/mlir/packages/sec-mlir-dialect_package11.md
     - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
     code:
@@ -7850,7 +7864,7 @@ integrations:
     - rules/control-flow/flowcontrol_for.md
     - rules/control-flow/flowcontrol_while.md
     - rules/control-flow/flowcontrol_switch.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     tests:
@@ -7914,7 +7928,7 @@ integrations:
     rules:
     - rules/declarations/functions.md
     - rules/declarations/generics.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     - rules/mlir/sec_mlir_lowering.md
     code:
     - internal/sema/analyzer.go
@@ -8007,7 +8021,7 @@ integrations:
     - rules/declarations/unions.md
     - rules/declarations/struct.md
     - rules/collections/collections.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     - internal/sema/types.go
@@ -8165,7 +8179,7 @@ integrations:
     - rules/foundations/operators.md
     - rules/memory/ownership.md
     - rules/memory/borrowing.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     - internal/sema/call_graph.go
@@ -8405,7 +8419,7 @@ integrations:
     - rules/control-flow/flowcontrol_match.md
     - rules/declarations/unions.md
     - rules/declarations/enums.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     - rules/mlir/packages/sec-mlir-dialect_package12.md
     code:
     - internal/sema/analyzer.go
@@ -8541,7 +8555,7 @@ integrations:
     - rules/memory/copy_move.md
     - rules/memory/ownership.md
     - rules/errors/runtime_checks.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     - rules/mlir/sec_mlir_dialect.md
     - rules/mlir/sec_mlir_lowering.md
     - rules/mlir/packages/sec-mlir-dialect_package7.md
@@ -8808,7 +8822,7 @@ integrations:
     - rules/collections/shaped-types.md
     - rules/types/types.md
     - rules/memory/layout.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     - internal/sema/types.go
@@ -8909,7 +8923,7 @@ integrations:
     - rules/declarations/struct.md
     - rules/memory/copy_move.md
     - rules/memory/ownership.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     tests:
@@ -8970,7 +8984,7 @@ integrations:
     - rules/declarations/impl.md
     - rules/declarations/properties.md
     - rules/foundations/grammar.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/parser/parser.go
     - internal/sema/analyzer.go
@@ -9135,7 +9149,7 @@ integrations:
     - rules/declarations/enums.md
     - rules/memory/ownership.md
     - rules/memory/borrowing.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
     - internal/codegen/mlir/generator.go
@@ -9215,7 +9229,7 @@ integrations:
     rules:
     - rules/types/types.md
     - rules/memory/layout.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     - rules/mlir/sec_mlir_lowering.md
     - rules/mlir/packages/sec-mlir-dialect_package6.md
     - rules/mlir/packages/sec-mlir-dialect_package7.md
@@ -9300,7 +9314,7 @@ integrations:
     - rules/types/types.md
     - rules/memory/copy_move.md
     - rules/memory/ownership.md
-    - rules/compiler/semantic_ir.txt
+    - rules/compiler/semantic_ir.md
     - rules/mlir/packages/sec-mlir-dialect_package11.md
     code:
     - internal/sema/analyzer.go
@@ -9636,7 +9650,7 @@ integrations:
     repository_baseline: "fafd8cb"
     rules:
       - "rules/memory/lifetime_analysis.md"
-      - "rules/compiler/semantic_ir.txt"
+      - "rules/compiler/semantic_ir.md"
       - "rules/memory/ownership.md"
       - "rules/memory/borrowing.md"
       - "rules/memory/destruction.md"
@@ -10447,7 +10461,7 @@ integrations:
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
     implemented:
       - typed arithmetic failure reasons and panic-related effect metadata exist in the maintained checked-arithmetic Semantic IR and Sec MLIR vertical
       - fixed-array ordinary failure is represented by terminating fail.bounds with fixed-array-index provenance while fallible bounds flow remains typed IndexError
@@ -10634,7 +10648,7 @@ integrations:
     repository_baseline: "814a584"
     rules:
       - rules/memory/raw_pointers.md
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/semantic_ir.md
       - rules/platform/volatile.md
     remaining:
       - represent RawPtr distinctly from safe references
@@ -10956,8 +10970,8 @@ integrations:
       - rules/control-flow/defer.md
       - rules/memory/destruction.md
       - rules/declarations/lambda-functions.md
-      - rules/compiler/compiler_pipeline.txt
-      - rules/compiler/semantic_ir.txt
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/semantic_ir.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
@@ -11018,3 +11032,601 @@ integrations:
       - universal portable test-resource embedding
       - explicit source-level per-test timeout syntax
       - testing.Parallel and runner-controlled source-visible parallel scheduling
+  - id: platform.inline-assembly-v1
+    area: platform-inline-assembly
+    status: partial
+    reviewed: '2026-09-03'
+    document_revision: '1.0'
+    repository_baseline: 998d8d1
+    summary: Tracks Sec 0.1 source-level inline assembly as an explicit unsafe, target-specific machine-operation
+      boundary with typed fixed-width operands, RawPtr address operands, explicit clobbers/effects, observable-by-default
+      execution, structured control-flow and stack boundaries, compiler-visible symbol dependencies, target/privilege
+      validation, syscall and execution-environment transition contracts, Semantic IR/Sec MLIR preservation, LLVM/backend
+      materialization, and compiler/LSP diagnostics.
+    rules:
+    - rules/platform/inline_assembly.md
+    - rules/memory/unsafe.md
+    - rules/platform/platform_model.md
+    - rules/platform/target_profiles.md
+    - rules/platform/volatile.md
+    - rules/platform/hardware-register-access.md
+    - rules/platform/interrupts.md
+    - rules/platform/ffi.md
+    - rules/memory/memory_model.md
+    - rules/memory/raw_pointers.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/copy_move.md
+    - rules/memory/destruction.md
+    - rules/analysis/effect_analysis.md
+    - rules/analysis/isr_analysis.md
+    - rules/analysis/stack_analysis.md
+    - rules/compiler/semantic_ir.md
+    - rules/compiler/linking.md
+    - rules/mlir/sec_mlir.md
+    code:
+    - internal/parser/parser.go
+    - internal/sema/analyzer.go
+    - internal/codegen/llvm/statements.go
+    - sec/platform/linux/amd64/raw_syscall.sec
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/codegen/llvm/generator_test.go
+    implemented:
+    - parser recognizes asm statements and the structured asm block form
+    - structured parser retains assembly template plus inputs, outputs, and clobbers
+    - Sema classifies asm as requiring an explicit unsafe context
+    - Sema visits asm input expressions and creates named output bindings in the current partial model
+    - legacy LLVM lowering can emit LLVM inline asm with sideeffect semantics
+    - legacy LLVM lowering can construct fixed-register input constraints, one fixed-register output, and explicit
+      clobber constraints
+    - Linux/amd64 platform syscall source uses structured inline assembly with fixed syscall registers and explicit
+      rcx/r11/memory clobbers
+    - effect-analysis trust provenance already recognizes facts trusted through an inline assembly declaration
+    - unsafe governance already identifies inline assembly as an unsafe trust boundary and requires effect/target
+      analyses to remain active
+    incorrect_or_partial:
+    - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
+    - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary
+      to the exact-width rule
+    - current LLVM lowering permits pointer-to-i64 coercion rather than preserving RawPtr as a target-aware raw-address
+      operand contract
+    - current LLVM lowering supplies rcx and r11 as implicit default clobbers when none are declared; canonical inline
+      asm has no architecture-specific hidden default clobber set
+    - current Sema requires at least one output for structured asm blocks, while canonical instruction-only/side-effect
+      asm must be legal without artificial outputs
+    - current Sema derives asm output type from the enclosing function return or defaults to int64 instead of resolving
+      an explicit low-level output type contract
+    - current source platform syscall functions use target-sized int/uint at the asm boundary and require migration
+      to explicit fixed-width machine ABI values
+    - current platform syscall source places asm directly in unsafe fn bodies and must be synchronized with unsafe.md's
+      rule that unsafe fn bodies are not implicitly unsafe contexts
+    - current frontend does not yet model register width/class compatibility, target register identity, target feature
+      requirements, privilege, or assembler dialect through CompilationPlan
+    - current lowering goes from AST-level asm directly toward LLVM constraint strings rather than preserving a first-class
+      complete Semantic IR/Sec MLIR asm contract
+    - current model does not yet distinguish precise memory effects, unknown memory, external effects, machine-state
+      effects, atomic/order/completion contracts, or stack effects
+    - current model does not yet carry compiler-visible global symbol dependencies/relocations for asm
+    - current model does not yet enforce object-model directive restrictions or general control-flow/stack boundary
+      requirements
+    remaining:
+    - synchronize grammar, unsafe, effects, platform, FFI, ISR, stack, linking, Semantic IR, MLIR, diagnostics, formatter,
+      and LSP references
+    - retain target applicability scope in its owning target rulebook; asm must only consume the already resolved
+      CompilationPlan
+    - define the canonical target assembler dialect per resolved target and reject block-local dialect switching that
+      escapes the target contract
+    - keep real target assembly, multiple instructions, local labels, and target-approved local directives legal
+    - preserve explicit unsafe-context requirement for every inline asm operation, including inside unsafe fn bodies
+    - replace current target-sized/int64 asm coercion model with fixed-width direct integer operands and exact logical
+      width matching
+    - support float32/float64 only for compatible target operand classes
+    - support RawPtr[T] as the canonical raw-address operand without silently converting it into an integer semantic
+      type
+    - reject direct string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, collection,
+      and shaped-type register operands in Sec 0.1
+    - reserve future target-defined SIMD/GPU machine operand categories without making Sec vectors/tensors direct
+      asm operands
+    - resolve fixed registers, register classes, immediates, address/memory operands, and target-defined constraints
+      against target knowledge rather than LLVM spelling
+    - validate immediate width/range and known operand-form restrictions before final backend emission where practical
+    - resolve output types independently from physical register width and make outputs available only after normal
+      asm completion
+    - support same physical register as input and output without conflating Sec value identity or implying in-place
+      mutation
+    - remove implicit architecture-specific default clobbers and require every destroyed undeclared machine resource
+      to be represented explicitly
+    - support target machine resources beyond general registers where the target contract defines them
+    - make ordinary asm observable by default and preserve its occurrence on live execution paths without turning
+      containing declarations into LinkRoots
+    - do not add asm volatile, volatile asm, @volatile asm, or other C-style volatile source forms
+    - represent memory as compiler-visible unknown memory interaction rather than hardware ordering/synchronization/completion
+    - support precise known memory footprints where practical instead of forcing every asm operation to unknown memory
+    - represent external/system effects separately from ordinary memory effects
+    - preserve canonical hardware, atomic, ordering, completion, cache, DMA, and interrupt effects only through explicit
+      owning compiler/platform contracts rather than mnemonic inference
+    - ensure raw atomic instructions do not automatically provide Sec atomic/race-freedom proofs
+    - ensure raw interrupt-mask instructions do not automatically provide Sec critical-section/preemption proofs
+    - enforce one Sec entry and normal fallthrough or explicit no-return semantics for ordinary asm
+    - allow target-local labels and internal branches while rejecting arbitrary jumps into or out of Sec CFG
+    - reject ordinary inline asm as a direct machine return from the enclosing Sec function or canonical ISR/exception
+      return
+    - introduce compiler-visible bounded temporary stack-effect contracts and feed them to canonical stack analysis
+    - reject persistent stack-pointer changes and permanent stack switching as ordinary inline asm
+    - keep naked/manual machine-entry semantics behind a stronger compiler/platform contract rather than implicit
+      asm behavior
+    - represent machine calls to Sec/foreign/platform symbols through compiler-visible canonical symbol dependencies
+      and resolved ABI/effect contracts
+    - treat opaque runtime-address calls conservatively when positive callable/ISR/effect proof is required
+    - permit target relocations derived from compiler-visible symbols while keeping local asm labels assembler-owned
+    - reject ordinary inline asm directives that create sections, global/weak symbols, object placement, hidden file
+      inclusion, or compiler-owned debug/unwind metadata
+    - classify target assembler directives into local-allowed versus object-model-affecting/forbidden categories
+    - permit target-approved raw instruction encodings without treating raw bytes as a waiver of asm effects/clobbers/control-flow
+      contracts
+    - validate ISA, CPU feature/extension, execution mode, privilege, platform authority, and known context requirements
+      against CompilationPlan even when the assembler can encode the instruction
+    - prevent inline assembly directives from silently enabling CPU/ISA capabilities absent from the CompilationPlan
+    - model syscalls, supervisor calls, traps, hypercalls, firmware calls, and other execution-environment transitions
+      through explicit platform contracts
+    - keep raw machine/OS error conventions as low-level scalar outputs and construct Result/domain types outside
+      the asm boundary
+    - keep machine faults/exceptions/traps distinct from ordinary Result error propagation
+    - propagate inline asm effects and trust provenance through canonical effect analysis
+    - introduce a first-class resolved inline-assembly Semantic IR operation carrying all correctness-relevant contracts
+      and source provenance
+    - preserve the complete asm contract through Sec MLIR until dependent analyses consume it or equivalent lower-level
+      facts are frozen
+    - lower Sec constraints to LLVM/backend inline-asm representation without exposing LLVM constraint syntax as the
+      source contract
+    - reject backend materialization that would weaken clobber, width, observability, target, control-flow, ordering,
+      completion, or symbol semantics
+    - make LTO/inlining preserve live asm observability and target/context legality while still permitting unreachable
+      containing code to be removed
+    - export compatible separate-compilation summaries for functions containing asm without requiring consumers to
+      reparse assembly text
+    - make validation/materialization caches sensitive to asm text, semantic contract, relevant CompilationPlan facts,
+      assembler dialect, ABI, and backend/toolchain semantics
+    - map target assembler diagnostics back to exact inline-assembly source lines and contract entries
+    - make LSP use the exact compiler CompilationPlan and target assembler semantics rather than host architecture
+      assumptions
+    - provide hover/navigation for resolved target, operands, outputs, clobbers, effects, validation state, and compiler-visible
+      symbol dependencies
+    - add the complete parser, unsafe, operand-width/type, clobber, observability, memory, control-flow, stack, directive,
+      target-feature, privilege, syscall, embedded, hardware/concurrency, ISR, symbol/linking, LTO, separate-compilation,
+      diagnostics/LSP, incremental, and determinism regression matrix
+    required_tests:
+    - instruction-only asm is accepted without artificial input/output sections
+    - multi-instruction target assembly and local labels are accepted
+    - asm outside explicit unsafe context is rejected
+    - asm inside unsafe fn still requires an explicit unsafe context
+    - uint32/int32 match a 32-bit machine operand and uint64/int64 match a 64-bit machine operand
+    - implicit 32-to-64 and 64-to-32 asm integer conversions are rejected
+    - supported RawPtr target-address operand is accepted without semantic integer conversion
+    - string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, and shaped direct
+      register operands are rejected
+    - fixed-register name resolves against selected target and an architecture-incompatible register is rejected
+    - target operand class and immediate range validation is CompilationPlan-sensitive
+    - same physical register may be both input and output while Sec input/output values remain distinct
+    - asm output is unavailable before the operation and available after normal completion
+    - no hidden target-specific default clobbers are inserted for ordinary asm
+    - declared clobbers preserve surrounding live machine values correctly
+    - ordinary live asm remains after optimization when outputs are unused
+    - unreachable private function containing observable asm may be dead-stripped
+    - interrupt/startup/platform roots retain asm-containing code through their owning LinkRoot semantics
+    - memory clobber forces conservative compiler memory reasoning but does not imply or emit a hardware fence
+    - precise declared memory footprint remains more precise than unknown memory
+    - raw machine atomic asm does not automatically satisfy Sec atomic/race proof
+    - canonical Atomic operation lowered through asm preserves the owning atomic contract
+    - raw interrupt-mask asm does not automatically establish Sec critical-section exclusion
+    - canonical platform masking primitive lowered through asm preserves interrupt masking semantics
+    - internal asm branch/local label is accepted
+    - arbitrary branch from asm into Sec CFG is rejected
+    - ordinary machine ret is rejected as a direct Sec function exit
+    - ordinary interrupt/exception-return instruction is rejected as a source-level ISR return mechanism where target
+      classification is known
+    - temporary stack use with a finite contract contributes to stack analysis
+    - stack-pointer modification without a sufficient stack contract is rejected where known
+    - permanent stack switching is not accepted as ordinary fallthrough asm
+    - compiler-visible Sec/foreign/platform symbol dependency survives into LinkPlan and target relocation
+    - source asm does not require the final mangled symbol spelling
+    - ordinary asm global/weak symbol definition is rejected
+    - ordinary asm section/object placement directives are rejected
+    - ordinary asm hidden include/incbin build dependency is rejected
+    - target-approved local/raw encoding directive is accepted where the target contract permits it
+    - assembler-known instruction requiring absent CPU feature is rejected by CompilationPlan validation
+    - assembler-known privileged instruction is rejected when current execution environment lacks authority
+    - asm directive cannot silently enable an unavailable ISA extension
+    - cross-compilation validates assembly for the target rather than the host
+    - Linux/amd64 raw syscall regression uses fixed-width ABI operands, explicit rcx/r11/memory clobbers, and a raw
+      scalar result
+    - embedded ARM inline-assembly regression compiles through the target assembler path
+    - embedded RISC-V inline-assembly regression compiles through the target assembler path as target support matures
+    - syscall/trap raw error convention remains distinct from Sec Result construction
+    - single-instruction system transition may carry MayBlock/NoReturn/external effects from platform contract
+    - asm effect trust provenance is visible to effect/ISR analysis
+    - Semantic IR retains assembly template, typed operands, constraints, clobbers, effects, control flow, stack,
+      symbols, target requirements, observability, and source provenance
+    - Sec MLIR preserves required asm semantic facts until lowering
+    - LLVM/backend constraints are generated from Sec contracts rather than user-written LLVM constraint strings
+    - backend failure to represent a required asm contract is diagnosed rather than approximated
+    - LTO preserves observable asm on live paths and may eliminate unreachable containing code
+    - separate-compilation summary carries asm effects/dependencies and stale summary cannot serve as positive proof
+    - asm cache invalidates on assembly text, contract, target feature, dialect, ABI, or relevant toolchain change
+    - assembler diagnostic maps to the exact source line within multiline asm
+    - Sec contract diagnostics use Sec register/type/effect terminology rather than LLVM constraint syntax
+    - LSP and compiler resolve identical asm target/register/feature facts
+    - Pending target-assembly validation is not presented as completed Valid
+    - identical source, CompilationPlan, contracts, and toolchain semantics yield deterministic resolved asm semantics
+    excluded:
+    - direct Sec MLIR source injection
+    - direct LLVM IR source injection
+    - LLVM constraint syntax as Sec source syntax
+    - a general volatile keyword, @volatile attribute, asm volatile, or volatile asm form
+    - direct high-level string/aggregate/user-defined/shaped asm operands in Sec 0.1
+    - implicit integer width conversion at the asm boundary
+    - implicit ownership transfer through register operands
+    - general asm goto across Sec CFG boundaries
+    - ordinary inline-asm naked functions
+    - ordinary inline-asm permanent stack switching
+    - a parallel global symbol/section/object-file/link model inside asm
+    - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical
+      semantics from instruction mnemonics
+    - a specific future GPU/SIMD machine-vector operand design
+    - 'target applicability scope syntax such as the exact ownership of #target versus @target'
+  - id: frontend.semantic-ir-v2
+    area: semantic-ir-generation
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - dedicated Semantic IR model, builder, printer, verifier and source-to-Semantic-IR compiler path exist
+    - current struct semantic-value representation and resolved struct plans are implemented for the Package 13 scope
+    - match CFG and match records are implemented for the current Package 12 executable subset
+    - typed Result/errorhandling Semantic IR operations and handler-plan integration exist for represented forms
+    - ownership availability facts and several move/discard/reference-holder transitions are represented
+    - compiler-known static/default/property/unit/FFI facts are represented in existing vertical slices
+    remaining:
+    - integrate one canonical Place/location identity across every Semantic IR operation
+    - complete availability/partial/conditional ownership representation across all source forms
+    - complete iterator resolved-plan bridge for compiler-known Iterator[T]
+    - complete collection and shaped-value Semantic IR generation
+    - complete Arena and allocation-context Semantic IR generation
+    - complete task/thread/channel/synchronization Semantic IR generation
+    - complete panic/assert/runtime-check semantic operations
+    - complete reference/storage invalidation/domain facts
+    - complete platform/interrupt/volatile/hardware operation generation across maintained targets
+    required_tests:
+    - source-to-Semantic-IR coverage for every canonical source category
+    - Iterator[T] user conformance and static Next target
+    - Arena create/alloc/reset/release
+    - task/thread transfer
+    - panic/assert/check representation
+    - collection/shaped representation
+  - id: analysis.semantic-ir-v2
+    area: semantic-fact-bridge
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - make all builders consume immutable resolved Sema/analysis plans rather than rerun AST resolution
+    - bridge canonical Place/storage/reference identities into Semantic IR
+    - bridge complete effect summaries and verified guarantees
+    - bridge transferability/task/thread lifecycle facts
+    - bridge allocation-context/Arena demand and epoch facts
+    - bridge Iterator[T] conformance, Next target, yield/binding/effect/cleanup facts
+    - bridge hardware/interrupt selected-plan facts
+    - preserve cause/provenance needed for mentor diagnostics
+    required_tests:
+    - Semantic IR generation does not mutate/re-resolve AST
+    - compiler/LSP and Semantic IR share Iterator target
+    - effect cause chains survive
+    - ownership/lifetime/storage provenance survives
+    - target plan edits invalidate affected semantic plans
+  - id: semantic-ir.core-v2
+    area: canonical-semantic-ir-model-and-verifier
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - canonical TypeID/SymbolID/ValueID-oriented model exists
+    - dedicated verifier exists
+    - deterministic printer exists
+    - Package 13 struct operations and current match/errorhandling operations are implemented
+    remaining:
+    - add/normalize canonical Place identity and state records
+    - add explicit ArenaDomain/state/epoch operations
+    - add reference/storage invalidation operations
+    - add Iterator[T] resolved-iteration records/operations
+    - add collection/shaped records/operations
+    - add concurrency transfer and task/thread lifecycle operations
+    - add panic/assert/check operation records
+    - add complete effect/trust/target plan fields
+    - extend verifier with cross-operation ownership/storage/effect/concurrency invariants
+    - remove historical package-amendment dependency from the normative conceptual model
+    required_tests:
+    - malformed Place/ownership state rejected
+    - duplicate Arena owner state rejected
+    - invalid iterator target/conformance rejected
+    - panic versus Result contradiction rejected
+    - invalid transfer/concurrency state rejected
+    - invalid target operation rejected
+  - id: lowering.semantic-ir-v2
+    area: semantic-ir-to-sec-mlir
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - multiple Semantic IR packages lower into versioned Sec MLIR schemas
+    - struct semantic values and current checked arithmetic/errorhandling slices have end-to-end lowering coverage
+    remaining:
+    - lower canonical iterator semantics without runtime-dispatch or closed-whitelist assumptions
+    - lower collection/shaped semantic operations
+    - lower Arena state/domain/epoch and allocation-context operations
+    - lower task/thread/channel/synchronization operations
+    - lower reference/storage invalidation and profile-selected checks
+    - lower panic/assert/check semantics without inventing exception unwinding
+    - lower complete effect/volatile/hardware/interrupt contracts
+    - prevent backend metadata assumptions stronger than Semantic IR proof
+    - ensure lowering never re-runs source semantic resolution
+    required_tests:
+    - Iterator[T] static target reaches Sec MLIR
+    - Arena epoch semantics preserved
+    - panic and Result remain distinct
+    - task/thread ownership transfer preserved
+    - hardware transaction plan preserved
+    - no hidden allocation introduced
+  - id: tooling.semantic-ir-v2
+    area: semantic-ir-debugging-lsp-diagnostics
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - textual Semantic IR printer exists
+    - existing compiler/LSP paths consume several shared compiler-known and semantic facts
+    remaining:
+    - expose Iterator[T] resolution and concrete Next target
+    - expose ownership/availability/Place provenance
+    - expose Arena domain/epoch/allocation context
+    - expose effect and panic/check cause chains
+    - expose task/thread transfer provenance
+    - expose collection/shaped semantic metadata
+    - ensure LSP never implements a parallel iterator/interface model
+    - add stable machine-readable serialization/version validation where required
+    required_tests:
+    - compiler and LSP show same Iterator conformance/Next target
+    - IR printer deterministic
+    - ownership/Arena/effect provenance visible
+    - stale cached Semantic IR rejected
+    - source locations survive lowering
+  - id: governance.semantic-ir-v2
+    area: semantic-ir-governance-and-versioning
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - map package-local Semantic IR amendments to the canonical v2 sections without deleting implementation-history
+      reports
+    - define canonical internal Semantic IR schema/version ownership
+    - ensure future SEC-MLIR packages amend implementation status rather than append normative semantic fragments
+      to the canonical book
+    required_tests:
+    - governance has one canonical Semantic IR rulebook path
+    - package reports link to canonical semantic sections
+    - schema changes update version metadata deterministically
+  - id: analysis.compiler-analysis
+    area: analysis-coordination-and-fact-ownership
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - formalize a shared analysis fact/provenance API across existing analyzers
+    - establish canonical semantic IDs for every shared Place/storage/execution fact
+    - make Invalid/Valid/Unproven coordination explicit across cross-analysis validators
+    - document/implement deterministic dependency and fixed-point scheduling
+    - prevent duplicated fact derivation between older Sema paths and newer analysis modules
+    - integrate all analysis summaries with CompilationPlan dependency identity
+  - id: analysis.iterator
+    area: iterator-conformance-analysis
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - expose compiler-known Iterator[T] through the canonical interface/conformance engine
+    - produce one resolved iteration plan with concrete conformance, Next target, yield type, binding modes, effects
+      and cleanup
+    - remove/reject legacy closed-whitelist or naming-convention iterator discovery where present
+    - share exact Iterator resolution with Semantic IR and LSP
+  - id: analysis.interprocedural-coordination
+    area: call-effect-escape-closure-resource-coordination
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - coordinate call graph, closure target sets, effects, escape, transferability, stack, races, deadlocks and ISR
+      using one execution-edge model
+    - support open versus closed target-set summaries conservatively
+    - support deterministic recursive fixed points
+    - propagate trust provenance from FFI/platform/unsafe contracts
+    - support execution-root-specific summaries for task/thread/ISR/callback contexts
+  - id: analysis.incremental-coordination
+    area: snapshot-plan-cache-invalidation
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - attach semantic dependency fingerprints to reusable analysis facts
+    - prevent reuse across incompatible CompilationPlans
+    - provide narrow invalidation for types, conformances, call target sets, Iterator targets, effects, FFI/platform
+      and target changes
+    - keep progressive LSP snapshots internally consistent
+    - make parallel analysis deterministic
+  - id: tooling.compiler-analysis
+    area: analysis-diagnostics-lsp-reports
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - standardize cause/provenance chains across analyzers
+    - surface Invalid versus Unproven distinctly
+    - support configurable progressive analysis budgets in LSP
+    - ensure sec analyse reports canonical compiler facts rather than independent calculations
+    - show Iterator[T] conformance/Next target from the shared analysis engine
+    - preserve mentor-style primary diagnostic ownership and pitfall suppression
+  - id: governance.compiler-analysis
+    area: compiler-analysis-rulebook-governance
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - map existing implementation-status entries for individual analysis rulebooks under the common coordination model
+      without duplicating them
+    - keep P1-P14 documents as implementation history rather than treating them as competing current analysis semantics
+  - id: compiler.platform-resolution
+    area: target-variant-platform-compilation-plan
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - implement canonical Target and Variant identities instead of treating os-arch as Target identity
+    - resolve one immutable verified CompilationPlan per selected Target x Variant
+    - introduce typed resolved Architecture/CPU/TuneCPU/Device/ABI/TargetProfile/BuildProfile/runtime/execution/memory/link
+      facts
+    - separate platform semantic capability from CompilerTargetSupport and toolchain availability
+    - remove downstream host-dependent target guessing
+    - add deterministic resolution provenance and fingerprints
+    - support multi-Variant plan isolation and safe target-independent reuse
+  - id: frontend.compiler-source-selection
+    area: target-and-config-source-selection
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - 'legacy file-level #target(os, arch) parsing/validation exists'
+    - target-aware platform file filtering exists in current frontend/LSP bootstrap paths
+    - project/platform imports and target-aware source assembly exist in partial bootstrap form
+    remaining:
+    - implement canonical @target file and statement forms with os, arch, cpu, device and board selectors
+    - implement overlap/public-shape validation for target variants
+    - implement @when with typed config.<name> compile-time parameters
+    - 'migrate legacy #target/#if/compiler.target_os/compiler.target_arch paths to compatibility-only or retire them'
+    - ensure excluded source is parsed/tool-visible but absent from active symbols/Sema/Semantic IR
+    - route platform source selection from canonical CompilationPlan identities rather than directory heuristics
+  - id: compiler.backend-architecture
+    area: semantic-ir-sec-mlir-backend-orchestration
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - Semantic IR and dedicated verifier exist
+    - P1-P14 provide versioned Sec MLIR schemas and executable verified vertical lowering slices
+    - real sec-mlir-opt / MLIR verification participates in represented package paths
+    - legacy direct LLVM and legacy AST-to-LLVM-dialect paths remain for represented subsets
+    remaining:
+    - make the Semantic IR -> Sec MLIR path cover all maintained Sec 0.1 features
+    - retire or explicitly isolate semantic duplication in legacy direct LLVM/legacy MLIR emitters
+    - make every maintained legacy backend consume canonical CompilationPlan layout/type facts or reject unsupported
+      lowering
+    - centralize implementation-capability diagnostics distinct from source/target errors
+    - preserve verified target/profile/reference/ownership/effect facts through object/link generation
+  - id: compiler.compiler-known-surfaces
+    area: compiler-known-types-members-interfaces-platform-identities
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - expose compiler-known Iterator[T] through one canonical interface registry/conformance path
+    - share compiler-known member/interface identities between compiler and LSP
+    - route compiler-known platform/resource identities from the frozen CompilationPlan
+    - prevent user-defined arbitrary compiler-known extension
+    - keep generated helpers/resource identities deterministic and traceable
+  - id: tooling.compiler-core
+    area: compiler-cli-lsp-target-info-and-diagnostics
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - developer lex/token/parse/ast/sema/diagnostics/emit/build commands exist in partial form
+    - LSP shares several target-aware bootstrap/frontend services
+    - diagnostics registry exposes machine-readable data in the current implementation
+    remaining:
+    - remove mutable command/flag capability lists from normative compiler governance
+    - provide one shared compiler workspace/CompilationPlan model to CLI and LSP
+    - add resolved-plan/target-info inspection from immutable canonical facts
+    - distinguish configuration/source/target/compiler-capability/toolchain/link/ICE diagnostics
+    - support @target/@when/config completion/hover/diagnostics from canonical compiler services
+    - invalidate plan-dependent LSP facts on project/registry/config changes
+  - id: governance.compiler-core
+    area: compiler-rulebook-governance-migration
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - migrate still-relevant target registry statuses, CLI implementation details, bootstrap import state, direct-LLVM
+      divergence and toolchain-path notes into implementation-status.yaml rather than the normative book
+    - keep P1-P14 historical completion records while adding remaining synchronization work caused by newer canonical
+      Target/Variant, @target/@when, Iterator[T] and compiler architecture rules
+    - ensure compiler.platform-model governance remains the canonical implementation plan for Target/Variant/CompilationPlan
+      resolution
+  - id: frontend.compiler-pipeline
+    area: workspace-plan-source-and-frontend-boundaries
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - project/target-aware source assembly exists for current CLI/LSP paths
+    - target filtering occurs before target-aware Sema for represented platform sources
+    - frontend parsing/Sema stop lowering on mandatory semantic failures
+    - compiler-owned test plan model is specified and partially integrated through testing governance
+    - current Iterator[T] frontend governance has explicit conformance/Next lowering requirements
+    remaining:
+    - formalize one canonical CompilationRequest/CompilationPlan construction path for CLI, LSP, build, emit and test
+      commands
+    - move all target-dependent source selection/platform routing to canonical plan facts
+    - eliminate duplicated bootstrap module/platform source-resolution paths
+    - integrate compile-time evaluation as a query service at every consuming frontend phase
+    - integrate compiler_analysis.md graph scheduling rather than relying on one hard-coded semantic pass ordering
+    - implement explicit lowering-readiness/implementation-capability classification
+  - id: analysis.compiler-pipeline
+    area: frontend-analysis-and-target-gates
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - establish a single per-snapshot/per-CompilationPlan analysis completion gate
+    - require every mandatory proof before Semantic IR while permitting advisory analysis to remain non-blocking
+    - integrate target/platform validation progressively instead of a single late conceptual stage
+    - make Iterator[T] resolved plan a lowering-readiness requirement
+    - make test roots, task/thread/ISR roots and reachability plan-aware
+    - preserve Invalid versus Unproven proof classification through pipeline diagnostics
+  - id: semantic-ir.compiler-pipeline
+    area: semantic-ir-boundary-and-capability-gating
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - dedicated Semantic IR exists with verification
+    - current P1-P14 vertical slices intentionally reject unsupported dependency-bounded source paths at Semantic
+      IR/lowering boundaries rather than emit partial invalid IR
+    - Sec MLIR emitter consumes canonical Semantic IR for implemented package paths
+    remaining:
+    - complete Semantic IR coverage for all canonical Sec constructs
+    - centralize UnsupportedLowering/implementation-capability diagnostics and ensure they are not reported as language
+      errors
+    - consume compiler_analysis/Iterator/Arena/reference/effect/transfer facts from one canonical lowering-readiness
+      plan
+  - id: lowering.compiler-pipeline
+    area: sec-mlir-to-target-pipeline
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+    - P1-P14 establish versioned Sec MLIR schemas and verified vertical lowering slices
+    - real sec-mlir-opt/MLIR verification is used for represented package paths
+    - target-plan scalar/layout support exists for 32-bit and 64-bit plans
+    - legacy direct LLVM paths remain for represented compatibility subsets
+    remaining:
+    - make Sec MLIR the canonical complete lowering path for all maintained language features
+    - retire or clearly isolate legacy direct LLVM semantic duplication
+    - ensure every emitted Sec MLIR artifact is verified before publication
+    - complete lower-dialect/LLVM/object/link coverage for currently frontend-valid unsupported features
+    - ensure backend attributes never exceed Semantic IR proof
+    - integrate inline assembly through the canonical resolved contract once its rulebook is finalized
+  - id: tooling.compiler-pipeline
+    area: cli-lsp-inspection-test-pipeline
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - define/document inspection boundaries so emit-mlir cannot ambiguously mean multiple MLIR levels without labeling
+    - share CompilationPlan/workspace/source/module/test facts between CLI and LSP
+    - expose implementation-capability diagnostics separately from source/target errors
+    - make sec check independent of backend tools wherever backend verification is not a semantic prerequisite
+    - keep stable TestIdentity and test selection compiler-owned through LSP/editor integrations
+    - preserve deterministic source/provenance metadata across emitted artifacts
+  - id: governance.compiler-pipeline
+    area: pipeline-rulebook-and-package-sync
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - map P1-P14 package records to the new pipeline boundaries without changing their historical completion claims
+    - add remaining work when newer canonical rules such as Iterator[T] extend a previously implemented package assumption

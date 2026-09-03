@@ -10,7 +10,7 @@ This rulebook is subordinate to:
 
 ```text
 rules/mlir/sec_mlir.md
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 all applicable Sec language/domain rulebooks
 ```
 

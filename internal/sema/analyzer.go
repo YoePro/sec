@@ -7859,6 +7859,18 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 		if method == nil || method.Name == nil {
 			continue
 		}
+		// rules/declarations/interfaces.md section 9 and
+		// rules/declarations/generics.md section 10 keep an interface's
+		// dispatch surface finite: requirements may use the interface's generic
+		// parameters, but may not introduce method-level parameters of their own.
+		if len(method.GenericParameters) > 0 {
+			token := method.Name.Token
+			if parameter := method.GenericParameters[0]; parameter != nil && parameter.Name != nil {
+				token = parameter.Name.Token
+			}
+			a.addErrorAtToken(token, "interface method %s cannot declare method-level generic parameters; use interface generic parameters instead", method.Name.Value)
+			continue
+		}
 		requirement := a.interfaceMethodRequirement(stmt.Name.Value, method)
 		conflict := false
 		for _, previous := range methodGroups[requirement.Name] {
@@ -17863,6 +17875,13 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	}
 	if len(expr.Arms) == 0 {
 		a.addErrorAtToken(expr.Token, "match requires at least one branch")
+		return Type{Kind: InvalidType}
+	}
+	// rules/control-flow/flowcontrol_match.md section 30 reserves match for
+	// structural and variant domains. Diagnose the subject once instead of
+	// cascading into one non-structural-pattern error per true/false arm.
+	if subjectType.Kind == BoolType {
+		a.addErrorAtToken(expressionToken(expr.Subject), "match subject cannot be bool; use if and else for boolean control flow")
 		return Type{Kind: InvalidType}
 	}
 

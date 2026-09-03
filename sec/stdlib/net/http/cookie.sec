@@ -91,7 +91,7 @@ fn ParseHeaders(header_value: string) list[Cookie] {
     let mut cookies := list[Cookie]
 
     // Vi splittar upp alla kakor (separerade med semikolon)
-    let pairs := header_value.Split(";")
+    let mut pairs := header_value.Split(";")
 
     for pair in pairs {
         let trimmed := pair.Trim()

@@ -79,7 +79,7 @@ rules/memory/copy_move.md
 rules/memory/ownership.md
 rules/memory/raw_pointers.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -96,7 +96,7 @@ Before implementation:
 
 1. apply `sec_slice_sync_package16.md`;
 2. apply `sec_semantic_ir_slice_package16.md` to
-   `rules/compiler/semantic_ir.txt`;
+   `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package16.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

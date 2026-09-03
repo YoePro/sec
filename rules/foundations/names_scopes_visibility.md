@@ -1214,7 +1214,7 @@ projects/modules.md
 compiler/linking.md
 diagnostics.txt
 formatter.md
-semantic_ir.txt
+semantic_ir.md
 core-library.md
 stdlib.md
 VS Code grammar

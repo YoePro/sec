@@ -92,7 +92,7 @@ It does not own those semantics.
 Relevant normative sources include, among others:
 
 ```text
-semantic_ir.txt
+semantic_ir.md
 storage.md
 layout.md
 ownership.md
@@ -131,7 +131,7 @@ Normative authority flows in this order:
 ```text
 language/domain rulebook
         ↓
-semantic_ir.txt
+semantic_ir.md
         ↓
 sec_mlir.md
         ↓

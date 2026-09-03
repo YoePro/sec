@@ -20,7 +20,7 @@ belongs in `implementation-status.yaml`.
 | `analysis/` | Compiler analyses and their shared semantic contracts. |
 | `compiler/` | Compiler architecture, pipeline, parser recovery, canonical Semantic IR, linking, and final artifacts. |
 | `mlir/` | Sec MLIR governance, dialect, lowering, version history, amendments, and implementation packages. |
-| `platform/` | Target profiles, platform resolution, interrupts, FFI, fixed-address and volatile access, hardware-register access, and ABI rules. |
+| `platform/` | Target profiles, platform resolution, interrupts, inline assembly, FFI, fixed-address and volatile access, hardware-register access, and ABI rules. |
 | `projects/` | Project and build organization. |
 | `tooling/` | Diagnostics, formatter, source-level testing/toolchain integration, and LSP/editor integration. |
 | `library/` | Core-library and standard-library contracts. |

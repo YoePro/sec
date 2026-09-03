@@ -36,7 +36,7 @@ All normative compiler-known-member semantics belong to this document.
 
 `types.md`, `collections.md`, `reference_model.md`, `unsafe.md`,
 `allocation.md`, `arena.md`, `layout.md`, `effect_analysis.md`, and
-`semantic_ir.txt` own their respective semantic domains.
+`semantic_ir.md` own their respective semantic domains.
 
 This document consumes those rules and determines when the compiler must know a
 member independently of an ordinary source declaration.
@@ -3303,8 +3303,8 @@ arena.md
 collections.md
 attributes.md
 call_graph.md
-compiler_analysis.txt
-compiler_pipeline.txt
+compiler_analysis.md
+compiler_pipeline.md
 core-library.md
 default_values.md
 diagnostics.txt
@@ -3318,7 +3318,7 @@ lsp.md
 ownership.md
 properties.md
 reference_model.md
-semantic_ir.txt
+semantic_ir.md
 stdlib.md
 string memory rules
 rules/platform/target_profiles.md
@@ -3365,7 +3365,7 @@ allocation.md and arena.md
 effect_analysis.md
     owns inferred and declared effects
 
-semantic_ir.txt
+semantic_ir.md
     owns the general IR framework
 
 lsp.md

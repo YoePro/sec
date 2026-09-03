@@ -5,7 +5,7 @@
 Normative amendment for:
 
 ```text
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 ```
 
 Package:

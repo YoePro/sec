@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,24 +22,34 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
+
         <div class="sidebar-section">This page</div>
         <a href="#basic-syntax">Basic Syntax</a>
+        <a href="#source-text">Source Text</a>
         <a href="#source-files">Source Files</a>
         <a href="#modules">Modules</a>
         <a href="#imports">Imports</a>
-        <a href="#blocks">Blocks</a>
+        <a href="#identifiers">Identifiers</a>
         <a href="#comments">Comments</a>
+        <a href="#literals">Literals</a>
         <a href="#declarations">Declarations</a>
+        <a href="#variables">Variables</a>
+        <a href="#assignment">Assignment</a>
+        <a href="#blocks">Blocks and Statements</a>
+        <a href="#expressions">Expressions</a>
+        <a href="#ranges">Ranges</a>
         <a href="#punctuation">Punctuation</a>
         <a href="#formatting">Formatting</a>
-                        <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html" class="active">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -79,12 +89,15 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
@@ -92,189 +105,762 @@
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Basic Syntax</div>
+
         <h1 id="basic-syntax">Basic Syntax</h1>
+
+        <p>
+            Sec source is deliberately regular: declarations use explicit keywords,
+            blocks use braces, ordinary statements do not use semicolons, and punctuation
+            is assigned narrow, consistent meanings.
+        </p>
+
+        <p>
+            This chapter introduces the surface syntax used throughout the rest of the
+            manual. Detailed semantics belong to the chapters for types, functions,
+            control flow, ownership, error handling and other language features.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> Syntax determines the structure of source code.
+            Semantic analysis determines what names mean, which types are compatible,
+            whether ownership operations are valid, and whether a program is safe.
+        </div>
+
+        <div class="section" id="source-text">
+            <h2>Source Text</h2>
+
+            <p>Sec source files are UTF-8 text.</p>
+
+            <ul>
+                <li>Invalid UTF-8 is rejected.</li>
+                <li>An initial UTF-8 byte-order mark is accepted and ignored.</li>
+                <li>A byte-order mark anywhere else in the file is invalid.</li>
+                <li>LF, CRLF and CR are recognized as line endings.</li>
+                <li>The formatter writes LF by default.</li>
+            </ul>
+
+            <p>
+                Outside literals and comments, ordinary lexical whitespace consists of
+                space, tab and line-ending characters. Other Unicode spacing characters
+                are rejected rather than silently treated as whitespace.
+            </p>
+
+            <pre><code>let value := 10
+let    other    :=    20</code></pre>
+
+            <p>These declarations have the same meaning. Formatting is canonicalized by the formatter.</p>
+
+            <h3>No statement semicolons</h3>
+
+            <p>Ordinary statements are not terminated with semicolons:</p>
+
+            <pre><code>let value := 10
+value += 1
+return value</code></pre>
+
+            <p>This is not canonical Sec:</p>
+
+            <pre><code>let value := 10;</code></pre>
+
+            <p>The compiler diagnoses a semicolon used as an ordinary statement terminator.</p>
+        </div>
 
         <div class="section" id="source-files">
             <h2>Source Files</h2>
+
+            <p>Ordinary Sec source files use the <code>.sec</code> extension.</p>
+
+            <p>A canonical source file has this high-level order:</p>
+
+            <pre><code>#target(os: "linux", arch: "amd64")   // optional
+
+module server
+
+import (
+    "fmt"
+    "net/http"
+)
+
+type Server struct {
+    port: uint16,
+}
+
+fn main() void {
+}</code></pre>
+
             <p>
-                Sec source files use the <code>.sec</code> extension. A source file belongs to exactly one module,
-                and the module declaration appears at the top of the file.
+                The optional <code>#target</code> directive, when present, comes first.
+                The module declaration follows, then imports, then top-level declarations.
             </p>
-            <pre><code>module internal.storage</code></pre>
+
             <p>
-                Multiple files may belong to the same module when they are placed in the same module directory.
-                The module name must match the directory structure used by the project.
+                Ordinary executable statements are not permitted directly at module scope.
             </p>
         </div>
 
         <div class="section" id="modules">
             <h2>Modules</h2>
-            <p>
-                A <code>module</code> declaration defines the namespace seen by the compiler. It does not define a
-                project. Project-level metadata belongs in <code>sec.module</code>, not in ordinary source files.
-            </p>
-            <pre><code>module cmd.server</code></pre>
-            <p>
-                Executable entry points normally live under <code>cmd</code>. Unlike Go, executables do not all share
-                a generic <code>main</code> package name. The module name reflects the executable's logical location.
-            </p>
-            <pre><code>module cmd.server
 
-fn main() void {
-}</code></pre>
+            <p>Every ordinary Sec source file declares exactly one source module:</p>
+
+            <pre><code>module orders</code></pre>
+
+            <p>The source-level module declaration contains one identifier only.</p>
+
+            <p>Dotted module declarations are invalid:</p>
+
+            <pre><code>module domain.orders
+module internal.storage</code></pre>
+
+            <p>
+                Directory hierarchy belongs to the canonical import path, not to the source
+                module name.
+            </p>
+
+            <pre><code>domain/orders/
+    create.sec
+    order.sec
+    validation.sec</code></pre>
+
+            <p>Each file in that directory normally declares:</p>
+
+            <pre><code>module orders</code></pre>
+
+            <p>
+                All applicable <code>.sec</code> files in one source directory contribute to
+                one shared module declaration namespace. Source-file order has no semantic
+                meaning.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A module name is an identifier. An import path is a path.
+                They are related, but they are not the same thing.
+            </div>
         </div>
 
         <div class="section" id="imports">
             <h2>Imports</h2>
-            <p>
-                Imports are explicit and only make symbols available. Importing a module must not execute code,
-                initialize subsystems, register handlers, or change program state.
-            </p>
+
+            <p>Imports use canonical logical paths written with <code>/</code> separators:</p>
+
+            <pre><code>import "fmt"
+import "domain/orders"
+import sys "platform/linux"</code></pre>
+
+            <p>Imports may also be grouped:</p>
+
             <pre><code>import (
     "fmt"
-    "internal/storage"
-    "modules/database"
+    "domain/orders"
+    sys "platform/linux"
 )</code></pre>
-            <p>The last path component becomes the default module name.</p>
-            <pre><code>storage.Load(...)
-database.Open(...)</code></pre>
-            <p>Aliases are supported when two imports would otherwise have the same visible name.</p>
-            <pre><code>import (
-    db "modules/database"
-    extdb "github/foo/database"
-)</code></pre>
-            <div class="rule">
-                <strong>Rule:</strong> Dot-imports and blank imports are not supported. Imports never execute code.
-            </div>
+
+            <p>
+                The imported module's declared module name becomes the default qualifier.
+                The import path itself does not become a dotted source name.
+            </p>
+
+            <pre><code>import "customer/order"
+
+let value := order.CreateCustomerOrder()</code></pre>
+
+            <p>An alias changes only the local qualifier:</p>
+
+            <pre><code>import customerOrder "customer/order"
+
+let value := customerOrder.CreateCustomerOrder()</code></pre>
+
+            <p>Import bindings are local to the source file that declares them.</p>
+
+            <p>Imports do not inject declarations as unqualified names:</p>
+
+            <pre><code>import "storage"
+
+let file := storage.Open()</code></pre>
+
+            <p>The following is not made valid merely by the import:</p>
+
+            <pre><code>let file := Open()</code></pre>
+
+            <p>
+                Selective imports, wildcard imports and implicit re-exports are not part
+                of Sec 0.1.
+            </p>
         </div>
 
-        <div class="section" id="blocks">
-            <h2>Blocks</h2>
+        <div class="section" id="identifiers">
+            <h2>Identifiers</h2>
+
+            <p>An identifier begins with a Unicode letter or underscore.</p>
+
+            <p>Following characters may be Unicode letters, ASCII digits or underscores.</p>
+
+            <pre><code>value
+currentValue
+HTTPServer
+_speed
+__state
+Ω
+Σ
+μs
+Meter2</code></pre>
+
+            <p>Identifiers are:</p>
+
+            <ul>
+                <li>case-sensitive;</li>
+                <li>required to already be in Unicode NFC form;</li>
+                <li>not locale-sensitive;</li>
+                <li>not escapable when they collide with a reserved word.</li>
+            </ul>
+
+            <pre><code>Value
+value</code></pre>
+
+            <p>These are different identifiers.</p>
+
+            <h3>Underscore has special forms</h3>
+
+            <p>The bare spelling <code>_</code> is contextual and is not an ordinary binding name.</p>
+
+            <pre><code>_
+_name
+__name</code></pre>
+
             <p>
-                Braces define blocks. Blocks are used for functions, control flow, unsafe regions, match bodies,
-                struct literals, and other grouped constructs.
+                <code>_name</code> and <code>__name</code> are ordinary identifiers.
+                Their prefixes participate in Sec visibility rules:
             </p>
-            <pre><code>if ready {
-    run()
-}</code></pre>
-            <p>
-                Parentheses are not required around normal conditions. The formatter removes redundant parentheses
-                where the syntax is already clear.
-            </p>
-            <pre><code>if value in 1..10 {
-    print(value)
-}</code></pre>
-        </div>
 
-        <div class="section" id="comments">
-            <h2>Comments</h2>
-            <h3 id="single-line-comments">Single-Line Comments</h3>
-            <pre><code>// This is a single-line comment.</code></pre>
-            <p>Everything after <code>//</code> until the end of the line is ignored.</p>
-
-            <h3 id="block-comments">Block Comments</h3>
-            <pre><code>/*
-    This is a block comment.
-    It may span multiple lines.
-*/</code></pre>
-            <p>Block comments may be nested.</p>
-            <pre><code>/*
-    Outer comment
-
-    /*
-        Inner comment
-    */
-
-    Still inside outer comment.
-*/</code></pre>
-
-            <h3 id="documentation-comments">Documentation Comments</h3>
-            <p>
-                Documentation uses normal comments. There is no separate documentation-comment syntax in the
-                initial language design.
-            </p>
-            <pre><code>// Calculates the average speed.
-fn CalculateSpeed(...) decimal&lt;m/s&gt; {
-}</code></pre>
-            <div class="rule">
-                <strong>Rule:</strong> Comments are not language semantics. Compiler directives are not hidden in comments.
-            </div>
-        </div>
-
-        <div class="section" id="declarations">
-            <h2>Declarations</h2>
-            <p>Sec uses short, explicit declaration keywords.</p>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
-                            <th>Keyword</th>
-                            <th>Meaning</th>
+                            <th>Form</th>
+                            <th>General visibility meaning</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td><code>module</code></td><td>Declares the source file's module.</td></tr>
-                        <tr><td><code>import</code></td><td>Imports symbols from another module.</td></tr>
-                        <tr><td><code>type</code></td><td>Declares a named type.</td></tr>
-                        <tr><td><code>fn</code></td><td>Declares a function or method.</td></tr>
-                        <tr><td><code>let</code></td><td>Declares an immutable binding.</td></tr>
-                        <tr><td><code>let mut</code></td><td>Declares a mutable binding.</td></tr>
-                        <tr><td><code>impl</code></td><td>Declares behavior for a type or an interface implementation.</td></tr>
+                        <tr><td><code>Name</code></td><td>Public</td></tr>
+                        <tr><td><code>_name</code></td><td>Module-internal</td></tr>
+                        <tr><td><code>__name</code></td><td>Source-file-private</td></tr>
                     </tbody>
                 </table>
             </div>
+
+            <p>
+                The bare <code>_</code> is used only where another grammar rule assigns it a
+                meaning, such as discard positions, wildcard patterns or reserved register bits.
+            </p>
         </div>
 
-        <div class="section" id="punctuation">
-            <h2>Punctuation</h2>
-            <p>Sec reserves punctuation for narrow meanings.</p>
+        <div class="section" id="comments">
+            <h2>Comments</h2>
+
+            <h3>Line comments</h3>
+
+            <pre><code>// Calculate the next value.
+let next := value + 1</code></pre>
+
+            <p>A line comment begins with <code>//</code> and continues to the end of the line.</p>
+
+            <h3>Block comments</h3>
+
+            <pre><code>/*
+ * This is a block comment.
+ */</code></pre>
+
+            <p>Block comments may span multiple lines and may nest:</p>
+
+            <pre><code>/*
+ * Outer comment.
+ *
+ * /*
+ *  * Inner comment.
+ *  */
+ *
+ * Outer comment continues.
+ */</code></pre>
+
+            <h3>Documentation comments</h3>
+
+            <p>A block comment beginning with <code>/**</code> is a documentation comment:</p>
+
+            <pre><code>/**
+ * Returns the current temperature.
+ */
+fn CurrentTemperature() Temperature {
+    return temperature
+}</code></pre>
+
+            <p>
+                Documentation comments remain lexically comments, but tooling may attach them
+                to declarations for generated documentation, hover information and editor support.
+            </p>
+
+            <p><code>///</code> is currently an ordinary line comment.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Comments do not secretly change program semantics.
+                Compiler directives use explicit directive syntax instead.
+            </div>
+        </div>
+
+        <div class="section" id="literals">
+            <h2>Literals</h2>
+
+            <h3>Boolean literals</h3>
+
+            <pre><code>true
+false</code></pre>
+
+            <p>Sec has no ordinary <code>nil</code> keyword.</p>
+
+            <h3>Integer literals</h3>
+
+            <pre><code>0
+42
+1_000_000
+
+0b1111_0000
+0o755
+0xFFFF_FFFF</code></pre>
+
+            <p>
+                Binary, octal and hexadecimal forms use explicit prefixes. Leading zeroes on
+                decimal literals do not imply octal.
+            </p>
+
+            <h3>Fractional and exponent literals</h3>
+
+            <pre><code>3.14
+.5
+1.25e-3
+1E6</code></pre>
+
+            <p>
+                A decimal point uses <code>.</code>, never a locale-specific comma.
+                <code>1.</code> is not a fractional literal; write <code>1.0</code>.
+            </p>
+
+            <p>
+                Unsuffixed fractional and exponent forms follow Sec's exact-decimal inference.
+                A numeric family suffix may request another family.
+            </p>
+
+            <pre><code>8i
+8u
+8g
+8m
+65t
+65r
+1.5g
+1.5m</code></pre>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Suffix</th>
+                            <th>Numeric family</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>i</code></td><td>Signed integer</td></tr>
+                        <tr><td><code>u</code></td><td>Unsigned integer</td></tr>
+                        <tr><td><code>g</code></td><td>Binary floating point</td></tr>
+                        <tr><td><code>m</code></td><td>Exact decimal</td></tr>
+                        <tr><td><code>t</code></td><td><code>char</code> scalar</td></tr>
+                        <tr><td><code>r</code></td><td><code>rune</code> scalar</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>The suffix selects a family, not a fixed bit width.</p>
+
+            <h3>Character literals</h3>
+
+            <pre><code>'A'
+'\n'
+'Ω'</code></pre>
+
+            <p>
+                After escape processing, a character literal contains exactly one Unicode scalar value.
+            </p>
+
+            <h3>Strings</h3>
+
+            <p>Ordinary strings use double quotes:</p>
+
+            <pre><code>"hello"
+"hello\nworld"</code></pre>
+
+            <p>Raw strings use backticks and do not process backslash escapes:</p>
+
+            <pre><code>let text := `first line
+second line`</code></pre>
+
+            <p>Interpolated strings begin with <code>$"</code>:</p>
+
+            <pre><code>let message := $"Hello {name}"</code></pre>
+
+            <p>Literal braces in an interpolated string are doubled:</p>
+
+            <pre><code>let text := $"{{value}}"</code></pre>
+
+            <p>This produces the text <code>{value}</code>.</p>
+        </div>
+
+        <div class="section" id="declarations">
+            <h2>Declarations</h2>
+
+            <p>Sec uses explicit declaration forms rather than deriving declaration kind from context.</p>
+
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th>Syntax</th>
-                            <th>Meaning</th>
+                            <th>Purpose</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td><code>()</code></td><td>Function parameters and calls.</td></tr>
-                        <tr><td><code>{}</code></td><td>Blocks, struct bodies, enum bodies, union bodies, and literals.</td></tr>
-                        <tr><td><code>[]</code></td><td>Generics and collection forms.</td></tr>
-                        <tr><td><code>&lt;&gt;</code></td><td>Units of measure.</td></tr>
-                        <tr><td><code>@</code></td><td>Attributes.</td></tr>
-                        <tr><td><code>#</code></td><td>Compiler directives.</td></tr>
-                        <tr><td><code>...</code></td><td>Expansion or spread.</td></tr>
+                        <tr><td><code>module</code></td><td>Declares the source module.</td></tr>
+                        <tr><td><code>import</code></td><td>Creates a source-file-local module binding.</td></tr>
+                        <tr><td><code>type</code></td><td>Declares a named type.</td></tr>
+                        <tr><td><code>enum</code></td><td>Declares an enum.</td></tr>
+                        <tr><td><code>unit</code></td><td>Declares a semantic unit.</td></tr>
+                        <tr><td><code>interface</code></td><td>Declares an interface contract.</td></tr>
+                        <tr><td><code>fn</code></td><td>Declares a function or method.</td></tr>
+                        <tr><td><code>impl</code></td><td>Declares behavior and associated members for a type.</td></tr>
+                        <tr><td><code>let</code></td><td>Declares a binding.</td></tr>
+                        <tr><td><code>static</code></td><td>Declares type-level or static storage/behavior where permitted.</td></tr>
+                        <tr><td><code>extern</code></td><td>Declares an external function boundary.</td></tr>
+                        <tr><td><code>test</code></td><td>Declares a test in an applicable <code>*_test.sec</code> file.</td></tr>
                     </tbody>
                 </table>
             </div>
+
+            <h3>Named types</h3>
+
+            <pre><code>type Percent int range 0..100
+type Speed decimal&lt;m/s&gt;</code></pre>
+
+            <h3>Structs</h3>
+
+            <pre><code>type Point struct {
+    x: int,
+    y: int,
+}</code></pre>
+
+            <h3>Functions</h3>
+
+            <pre><code>fn Add(left: int, right: int) int {
+    return left + right
+}</code></pre>
+
+            <h3>Impl blocks</h3>
+
+            <pre><code>impl Point {
+    fn IsOrigin() bool {
+        return self.x == 0 &amp;&amp; self.y == 0
+    }
+}</code></pre>
+
             <p>
-                The spread operator <code>...</code> always belongs to the expansion meaning family. It is used for
-                variadic parameters, argument expansion, and struct copy/update syntax.
+                Ordinary impl methods receive compiler-provided implicit <code>self</code>.
+                Only static methods omit instance binding entirely.
+            </p>
+        </div>
+
+        <div class="section" id="variables">
+            <h2>Variables</h2>
+
+            <p><code>let</code> declarations are immutable by default:</p>
+
+            <pre><code>let count := 10
+let name: string := "Sec"</code></pre>
+
+            <p>Mutability is explicit:</p>
+
+            <pre><code>let mut count := 10
+count = 11</code></pre>
+
+            <p>Multiple declarators may share one <code>let</code> statement:</p>
+
+            <pre><code>let width := 10, height := 20</code></pre>
+
+            <p>Type-first declarations are also part of the language:</p>
+
+            <pre><code>int mut: x, y, z
+float: width := 5.4, pi := 3.14</code></pre>
+
+            <p>
+                Immutable declarations require initialization. Mutable typed declarations may
+                omit an initializer only when the declared type is defaultable.
+            </p>
+
+            <h3>Explicit move initialization</h3>
+
+            <p>Move intent has dedicated declaration syntax:</p>
+
+            <pre><code>let buffer :&lt;- source
+let buffer: Buffer &lt;- source</code></pre>
+
+            <p>
+                The first form infers the type. The second names the destination type explicitly.
+                Copy/direct construction uses <code>:=</code>.
+            </p>
+        </div>
+
+        <div class="section" id="assignment">
+            <h2>Assignment</h2>
+
+            <p>Assignment is statement syntax, not an expression that produces a value.</p>
+
+            <pre><code>count = 10
+buffer &lt;- replacement</code></pre>
+
+            <p>
+                <code>=</code> is ordinary assignment. <code>&lt;-</code> is explicit move assignment.
+                Which transfers are copies, moves or invalid is determined by ownership semantics.
+            </p>
+
+            <p>Compound assignment is supported:</p>
+
+            <pre><code>count += 1
+flags |= mask
+value &lt;&lt;= 2</code></pre>
+
+            <p>
+                A compound assignment evaluates the destination once and the source once.
+                It is not defined as naïve textual rewriting.
+            </p>
+        </div>
+
+        <div class="section" id="blocks">
+            <h2>Blocks and Statements</h2>
+
+            <p>Braces define blocks:</p>
+
+            <pre><code>{
+    let value := 10
+    Use(value)
+}</code></pre>
+
+            <p>Sec does not use indentation as block syntax.</p>
+
+            <p>Control-flow blocks require braces:</p>
+
+            <pre><code>if ready {
+    Start()
+} else {
+    Wait()
+}</code></pre>
+
+            <p>Normal conditions do not require parentheses:</p>
+
+            <pre><code>while connected {
+    Poll()
+}</code></pre>
+
+            <p>The condition must still have type <code>bool</code>.</p>
+
+            <p>A simple infinite loop uses:</p>
+
+            <pre><code>for {
+    Tick()
+}</code></pre>
+
+            <p>Iteration uses <code>in</code>:</p>
+
+            <pre><code>for value in values {
+    Use(value)
+}</code></pre>
+
+            <p>
+                C-style semicolon-separated loop headers are not part of Sec.
+            </p>
+        </div>
+
+        <div class="section" id="expressions">
+            <h2>Expressions and Operators</h2>
+
+            <p>Common operator families include:</p>
+
+            <pre><code>// arithmetic
++  -  *  /  %
+
+// comparison
+&lt;  &lt;=  &gt;  &gt;=  ==  !=
+
+// logical
+!  &amp;&amp;  ||
+
+// bitwise
+~  &amp;  |  ^  &lt;&lt;  &gt;&gt;
+
+// membership
+in</code></pre>
+
+            <p>
+                Logical <code>&amp;&amp;</code> and <code>||</code> short-circuit.
+                Ordered comparison and equality operators do not form comparison chains.
+            </p>
+
+            <h3>Precedence</h3>
+
+            <p>From higher to lower precedence:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Level</th>
+                            <th>Forms</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Member</td><td><code>.</code></td></tr>
+                        <tr><td>Postfix</td><td>calls, indexing/slicing, struct literals, spread</td></tr>
+                        <tr><td>Prefix</td><td><code>+</code>, <code>-</code>, <code>!</code>, <code>~</code></td></tr>
+                        <tr><td>Multiplicative</td><td><code>*</code>, <code>/</code>, <code>%</code>, contextual <code>x</code></td></tr>
+                        <tr><td>Additive</td><td><code>+</code>, <code>-</code></td></tr>
+                        <tr><td>Shift</td><td><code>&lt;&lt;</code>, <code>&gt;&gt;</code></td></tr>
+                        <tr><td>Comparison</td><td><code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>in</code></td></tr>
+                        <tr><td>Equality</td><td><code>==</code>, <code>!=</code></td></tr>
+                        <tr><td>Bitwise</td><td><code>&amp;</code>, then <code>^</code>, then <code>|</code></td></tr>
+                        <tr><td>Logical</td><td><code>&amp;&amp;</code>, then <code>||</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>Assignment is not part of expression precedence because assignment is a statement.</p>
+
+            <pre><code>let value := a + b * c</code></pre>
+
+            <p>is interpreted as:</p>
+
+            <pre><code>let value := a + (b * c)</code></pre>
+
+            <p>Parentheses may override precedence or document intent.</p>
+        </div>
+
+        <div class="section" id="ranges">
+            <h2>Ranges</h2>
+
+            <p>Sec has two range operators:</p>
+
+            <pre><code>..     // inclusive upper bound
+..&lt;    // exclusive upper bound</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>1..10
+0..&lt;10
+..100
+0..</code></pre>
+
+            <p>
+                Range syntax is contextual in Sec 0.1. It is accepted where the surrounding
+                grammar defines a range, such as iteration, membership, contracts, slicing or
+                switch cases.
+            </p>
+
+            <pre><code>if value in 0..&lt;10 {
+    Use(value)
+}</code></pre>
+
+            <p>A standalone range is not automatically a first-class <code>Range</code> value.</p>
+        </div>
+
+        <div class="section" id="punctuation">
+            <h2>Punctuation</h2>
+
+            <p>Several punctuation families carry stable language-wide meaning:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Syntax</th>
+                            <th>Meaning family</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>()</code></td><td>Parameters, arguments, grouping and selected construction forms</td></tr>
+                        <tr><td><code>{}</code></td><td>Blocks, declaration bodies and literals</td></tr>
+                        <tr><td><code>[]</code></td><td>Generic parameters/arguments, arrays, sequences, indexing and slicing</td></tr>
+                        <tr><td><code>&lt;&gt;</code></td><td>Unit expressions in numeric type syntax</td></tr>
+                        <tr><td><code>:</code></td><td>Typed identifiers and grammar-specific separators</td></tr>
+                        <tr><td><code>:=</code></td><td>Declaration initialization</td></tr>
+                        <tr><td><code>=</code></td><td>Ordinary assignment</td></tr>
+                        <tr><td><code>&lt;-</code></td><td>Explicit move assignment or transfer where defined</td></tr>
+                        <tr><td><code>:&lt;-</code></td><td>Inferred declaration with explicit move initialization</td></tr>
+                        <tr><td><code>=&gt;</code></td><td>Match/handler arm mapping</td></tr>
+                        <tr><td><code>@</code></td><td>Attributes and special annotations</td></tr>
+                        <tr><td><code>#</code></td><td>Compiler directives</td></tr>
+                        <tr><td><code>...</code></td><td>Expansion/spread family</td></tr>
+                        <tr><td><code>..</code></td><td>Inclusive range</td></tr>
+                        <tr><td><code>..&lt;</code></td><td>Exclusive-upper range</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The lexer uses longest-token matching, so punctuation such as
+                <code>:&lt;-</code>, <code>..&lt;</code>, <code>&lt;&lt;=</code> and
+                <code>=&gt;</code> is recognized as the longest valid token at that position.
             </p>
         </div>
 
         <div class="section" id="formatting">
             <h2>Formatting</h2>
+
             <p>
-                Sec is intended to have an official formatter. The formatter should make formatting decisions
-                boring and consistent, similar to the philosophy behind gofmt.
+                Sec has a canonical formatter. Formatting choices should not become a second
+                language layered on top of the grammar.
             </p>
+
+            <p>The formatter is expected to:</p>
+
+            <ul>
+                <li>preserve comments;</li>
+                <li>preserve literal values;</li>
+                <li>preserve raw-string content;</li>
+                <li>write canonical spaces around operators;</li>
+                <li>remove trailing whitespace;</li>
+                <li>write one final newline;</li>
+                <li>avoid semicolon insertion;</li>
+                <li>preserve valid identifier spelling after NFC validation;</li>
+                <li>keep declaration metadata attached to the declaration it describes.</li>
+            </ul>
+
             <p>
-                The language should not require programmers to argue about alignment, brace placement, or
-                redundant parentheses. The canonical formatted output is the style of the language.
+                Canonical formatting may remove syntax that is provably redundant, but it must
+                not change program meaning.
             </p>
+
+            <div class="rule">
+                <strong>Practical rule:</strong> Write clear Sec. Let the formatter settle
+                spacing, indentation and other mechanical layout choices.
+            </div>
         </div>
 
-                <div class="page-navigation">
-                <a href="01-introduction.html">Previous: Introduction</a>
+        <div class="page-navigation">
+            <a href="01-introduction.html">Previous: Introduction</a>
             <a href="03-types.html">Next: Types</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.1 &middot; 2026-09-03</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

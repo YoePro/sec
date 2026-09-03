@@ -1066,7 +1066,7 @@ type builtValue struct {
 // and stops deferred ownership/view operations at their explicit package gate.
 //
 // Rules:
-//   - rules/compiler/semantic_ir.txt — "Unsupported lowerings"
+//   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 44, 89, 103
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
 	if okExpr, ok := expr.(*ast.OkExpression); ok {
@@ -2568,7 +2568,7 @@ func (fb *functionBuilder) buildResultPropagation(expr *ast.TryExpression, resol
 // Sema-resolved operator into the current Semantic IR vocabulary.
 //
 // Rules:
-//   - rules/compiler/semantic_ir.txt — "Unsupported lowerings"
+//   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 82-83, 103
 func (fb *functionBuilder) buildResolvedOperator(expr ast.Expression) (builtValue, error) {
 	if feature, deferred := fb.package14DeferredArrayOperator(expr); deferred {

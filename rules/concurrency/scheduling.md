@@ -587,8 +587,8 @@ select.md
 thread_local.md
 data_races.md
 deadlock_analysis.md
-compiler_analysis.txt
-semantic_ir.txt
+compiler_analysis.md
+semantic_ir.md
 core-library.md
 core/errors.sec
 ```

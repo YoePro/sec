@@ -462,8 +462,8 @@ Runtime test failure records are structured test results and must not be misclas
 Synchronize:
 
 ```text
-rules/compiler/compiler_pipeline.txt
-rules/compiler/semantic_ir.txt
+rules/compiler/compiler_pipeline.md
+rules/compiler/semantic_ir.md
 ```
 
 ### 14.2 Required concepts

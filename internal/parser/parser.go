@@ -322,10 +322,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		return &ast.FallthroughStatement{Token: p.curToken}
 
 	case lexer.BREAK:
-		return &ast.BreakStatement{Token: p.curToken}
+		return p.parseLoopControlStatement(false)
 
 	case lexer.CONTINUE:
-		return &ast.ContinueStatement{Token: p.curToken}
+		return p.parseLoopControlStatement(true)
 
 	case lexer.UNSAFE:
 		if p.peekToken.Type == lexer.FN || p.peekToken.Type == lexer.EXTERN {
@@ -361,6 +361,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
+		if p.curToken.Lexeme == "do" && p.peekToken.Type == lexer.LBRACE {
+			return p.parseUnsupportedDoWhileStatement()
+		}
 		if p.curToken.Lexeme == "detach" {
 			return p.parseDetachStatement()
 		}
@@ -402,6 +405,46 @@ func (p *Parser) parseStatement() ast.Statement {
 		)
 		return nil
 	}
+}
+
+func (p *Parser) parseLoopControlStatement(continuing bool) ast.Statement {
+	token := p.curToken
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Line == token.Line {
+		label := p.peekToken
+		keyword := "break"
+		if continuing {
+			keyword = "continue"
+		}
+		p.addError("labeled %s is not part of Sec 0.1; remove label %s at %d:%d", keyword, label.Lexeme, label.Line, label.Column)
+		p.nextToken()
+		return &ast.InvalidStatement{Token: token}
+	}
+	if continuing {
+		return &ast.ContinueStatement{Token: token}
+	}
+	return &ast.BreakStatement{Token: token}
+}
+
+func (p *Parser) parseUnsupportedDoWhileStatement() ast.Statement {
+	stmt := &ast.InvalidStatement{Token: p.curToken}
+	p.addError("do ... while is not part of Sec 0.1; execute the first iteration explicitly at %d:%d", p.curToken.Line, p.curToken.Column)
+
+	// The caller has established that the contextual `do` is followed by a
+	// block. Consume both the unsupported body and its trailing condition so
+	// later statements remain available to parser recovery and LSP analysis.
+	p.nextToken()
+	p.parseStatementBlock("unsupported do-while body")
+	if p.peekToken.Type != lexer.WHILE {
+		return stmt
+	}
+	p.nextToken()
+	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF ||
+		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminator(p.peekToken.Type)) {
+		return stmt
+	}
+	p.nextToken()
+	p.parseExpression(LOWEST)
+	return stmt
 }
 
 func (p *Parser) parseUnsupportedFreeStatement() ast.Statement {
@@ -756,6 +799,24 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	}
 
 	p.nextToken()
+	if p.curToken.Type == lexer.LET || p.curToken.Type == lexer.REF || p.curToken.Type == lexer.STATIC ||
+		(p.curToken.Type == lexer.IDENT && (p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.looksLikeTypedVariableDeclaration())) {
+		declaration := p.curToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserSyntaxError,
+			declaration,
+			nil,
+			&declaration,
+			"declaration is not allowed in while condition; declare the value before the loop at %d:%d",
+			declaration.Line,
+			declaration.Column,
+		)
+		p.skipUntilBlockStart()
+		if p.curToken.Type == lexer.LBRACE {
+			stmt.Body = p.parseStatementBlock("while body")
+		}
+		return stmt
+	}
 	previousStopBeforeBrace := p.stopBeforeBrace
 	p.stopBeforeBrace = true
 	stmt.Condition = p.parseExpression(LOWEST)
@@ -790,6 +851,17 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	stmt.Body = p.parseStatementBlock("while body")
 	if stmt.Body == nil {
 		return nil
+	}
+	if p.peekToken.Type == lexer.ELSE {
+		unsupported := p.peekToken
+		p.addError("while ... else is not part of Sec 0.1; use explicit state after the loop at %d:%d", unsupported.Line, unsupported.Column)
+		p.nextToken()
+		if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
+			// Consume the unsupported branch so one invalid construct does not
+			// turn its body into unrelated statements in the enclosing scope.
+			p.parseStatementBlock("unsupported while else body")
+		}
 	}
 
 	return stmt

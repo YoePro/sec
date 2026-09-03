@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Named Types - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#named-types">Named Types</a>
+        <a href="#declaration">Declaration</a>
+        <a href="#identity">Nominal Identity</a>
+        <a href="#why-named-types">Why Named Types Matter</a>
+        <a href="#generic-named-types">Generic Named Types</a>
+        <a href="#literal-shaping">Literal Shaping</a>
+        <a href="#conversion">Explicit Conversion</a>
+        <a href="#assignment">Assignment</a>
+        <a href="#contracts">Type Contracts</a>
+        <a href="#composition">Contract Composition</a>
+        <a href="#range">Range</a>
+        <a href="#membership">Ordered Membership</a>
+        <a href="#integer-contracts">Integer Contracts</a>
+        <a href="#finite">Finite</a>
+        <a href="#string-contracts">String Contracts</a>
+        <a href="#collection-contracts">Collection Contracts</a>
+        <a href="#defaults">Defaults</a>
+        <a href="#runtime-validation">Runtime Validation</a>
+        <a href="#compound-assignment">Compound Assignment</a>
+        <a href="#common-errors">Common Errors</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html" class="active">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Named Types</div>
+
+        <h1 id="named-types">Named Types &amp; Contracts</h1>
+
+        <p>
+            Named types let a program express semantic meaning directly in the type system.
+            A named type is a new nominal type, not an alternate spelling for another type.
+        </p>
+
+        <pre><code>type CustomerID uint64
+type ProductID uint64
+
+type Percentage int range 0..100
+type Role string in ["admin", "user", "guest"]</code></pre>
+
+        <p>
+            These declarations let the compiler distinguish values that may share a representation
+            but represent different concepts.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> A named type has its own type identity. Equal storage,
+            equal underlying type, or equal contracts do not make two named types interchangeable.
+        </div>
+
+        <section id="declaration">
+            <h2>Declaring a Named Type</h2>
+
+            <p>The basic declaration form is:</p>
+
+            <pre><code>type Name BaseType</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>type CustomerID uint64
+type Temperature float64
+type Price decimal
+type UserName string
+type StatusCode int32</code></pre>
+
+            <p>
+                The type name describes the semantic role of the value. The base type provides
+                the underlying value domain on which the named type is defined.
+            </p>
+
+            <p>Named and nominal user-defined types use uppercase names:</p>
+
+            <pre><code>CustomerID
+Temperature
+UserName</code></pre>
+        </section>
+
+        <section id="identity">
+            <h2>Nominal Identity</h2>
+
+            <p>Every named type has its own identity.</p>
+
+            <pre><code>type CustomerID uint64
+type ProductID uint64
+
+let customer: CustomerID := 42
+let product: ProductID := customer    // invalid</code></pre>
+
+            <p>
+                <code>CustomerID</code> and <code>ProductID</code> remain different types even
+                though both are based on <code>uint64</code>.
+            </p>
+
+            <p>The same rule applies when contracts are identical:</p>
+
+            <pre><code>type Percentage int range 0..100
+type BatteryLevel int range 0..100
+
+let charge: BatteryLevel := 85
+let discount: Percentage := charge    // invalid</code></pre>
+
+            <p>
+                Contract compatibility is not type identity. The compiler does not infer that
+                two concepts are interchangeable merely because their valid value sets happen to overlap.
+            </p>
+        </section>
+
+        <section id="why-named-types">
+            <h2>Why Named Types Matter</h2>
+
+            <p>
+                Many programming errors are category errors: the value has the right machine
+                representation but the wrong meaning.
+            </p>
+
+            <pre><code>fn Transfer(from: uint64, to: uint64, amount: decimal) void {
+}</code></pre>
+
+            <p>
+                The compiler cannot tell whether a caller accidentally swaps two unrelated
+                <code>uint64</code> values.
+            </p>
+
+            <p>A semantic signature can make those mistakes visible:</p>
+
+            <pre><code>type AccountID uint64
+type Money decimal
+
+fn Transfer(from: AccountID, to: AccountID, amount: Money) void {
+}</code></pre>
+
+            <p>
+                Named types turn domain knowledge into compile-time information. They are useful
+                even when no additional contract is needed.
+            </p>
+        </section>
+
+        <section id="generic-named-types">
+            <h2>Generic Named Types</h2>
+
+            <p>Named types may be generic:</p>
+
+            <pre><code>type ID[T] int
+type Wrapped[T] T</code></pre>
+
+            <p>Concrete instantiations preserve nominal identity:</p>
+
+            <pre><code>ID[User]
+ID[Product]</code></pre>
+
+            <p>
+                These are different concrete types even if their substituted representation is identical.
+            </p>
+
+            <p>
+                After substitution, ordinary named-type rules apply to the concrete type, including
+                contracts, conversions, defaultability, copy and move behavior, layout and interface conformance.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Generic substitution does not erase nominal identity.
+            </div>
+        </section>
+
+        <section id="literal-shaping">
+            <h2>Declaration with Untyped Literals</h2>
+
+            <p>
+                An untyped literal may be shaped directly by a named-type context.
+            </p>
+
+            <pre><code>type Percentage int range 0..100
+type Money decimal
+
+let percentage: Percentage := 90
+let price: Money := 49.90</code></pre>
+
+            <p>
+                The literal is checked directly as a possible value of the target type.
+                It does not first become <code>int</code> or <code>decimal</code> and then undergo
+                an implicit conversion.
+            </p>
+
+            <p>A literal that violates a contract is rejected at compile time:</p>
+
+            <pre><code>let invalid: Percentage := 125</code></pre>
+
+            <p>
+                This behavior applies to untyped literals. An already typed value follows
+                the normal conversion rules.
+            </p>
+
+            <pre><code>let raw: int := 90
+let percentage: Percentage := raw    // invalid</code></pre>
+        </section>
+
+        <section id="conversion">
+            <h2>Explicit Conversion</h2>
+
+            <p>
+                Converting an already typed value into a named type is explicit:
+            </p>
+
+            <pre><code>TargetType(value)</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>let raw: int := 90
+let percentage := try Percentage(raw)</code></pre>
+
+            <p>
+                The conversion is checked. It must not silently truncate, wrap, discard precision
+                or create a value that violates the target type's contracts.
+            </p>
+
+            <p>
+                When the compiler can prove the conversion valid from compile-time information,
+                no runtime validation is needed.
+            </p>
+
+            <pre><code>let percentage := Percentage(50)</code></pre>
+
+            <p>
+                When the source value is known only at runtime and the conversion can fail,
+                <code>try</code> is required.
+            </p>
+
+            <pre><code>let percentage := try Percentage(ReadPercentage())</code></pre>
+
+            <div class="rule">
+                <strong>Important:</strong> Literal shaping and conversion are different operations.
+                Literal shaping resolves an untyped literal in context. Conversion changes an already typed value.
+            </div>
+        </section>
+
+        <section id="assignment">
+            <h2>Assignment</h2>
+
+            <p>
+                An already valid value of a named type may be assigned to another location
+                of the same exact type.
+            </p>
+
+            <pre><code>let source: Percentage := 91
+let mut target: Percentage := 10
+
+target = source</code></pre>
+
+            <p>
+                The compiler does not revalidate the <code>Percentage</code> contract merely
+                because the value moves to another storage location. <code>source</code> is
+                already known to be a valid <code>Percentage</code>.
+            </p>
+
+            <p>
+                Assignment still follows normal mutability, ownership, copy and borrow rules.
+            </p>
+
+            <p>A differently typed runtime value is not implicitly converted:</p>
+
+            <pre><code>let raw: int := 50
+target = raw    // invalid</code></pre>
+        </section>
+
+        <section id="contracts">
+            <h2>Type Contracts</h2>
+
+            <p>
+                A contract restricts the set of semantic values that may exist as a named type.
+                Contracts belong to the type declaration.
+            </p>
+
+            <pre><code>type Percentage int range 0..100
+type Role string in ["admin", "user", "guest"]
+type FiniteTemperature float finite</code></pre>
+
+            <p>Every value of the type must satisfy its contracts.</p>
+
+            <pre><code>let mut percentage: Percentage := 50
+let mut role: Role := "user"
+let mut temperature: FiniteTemperature := 20.0</code></pre>
+
+            <h3>Contracts do not belong to variables</h3>
+
+            <p>These forms are not Sec:</p>
+
+            <pre><code>let mut percentage: int range 0..100 := 50
+let mut role: string in ["admin", "user"] := "user"</code></pre>
+
+            <p>
+                Struct fields also use named constrained types rather than attaching
+                contracts directly to the field:
+            </p>
+
+            <pre><code>type Age int range 0..130
+
+type User struct {
+    age: Age,
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Contracts are properties of named types, not individual bindings,
+                fields or storage locations.
+            </div>
+        </section>
+
+        <section id="composition">
+            <h2>Contract Composition</h2>
+
+            <p>Multiple contracts are written sequentially:</p>
+
+            <pre><code>type PositiveEven int range 1..100 even
+type SmallStep int range 0..100 multipleOf 5</code></pre>
+
+            <p>
+                Sequential contracts form an implicit conjunction. Every contract must pass,
+                in source order.
+            </p>
+
+            <p>Sec does not add separate contract-composition keywords such as:</p>
+
+            <pre><code>and
+or
+not</code></pre>
+
+            <p>
+                The compiler rejects contract combinations that are provably unsatisfiable.
+            </p>
+
+            <pre><code>type Impossible int odd even</code></pre>
+
+            <p>This type has no valid integer values and is therefore invalid.</p>
+        </section>
+
+        <section id="range">
+            <h2>Range Contracts</h2>
+
+            <p><code>range</code> restricts a numeric named type to a compile-time-known interval.</p>
+
+            <pre><code>type Percentage int range 0..100
+type Port int range 1..&lt;65536</code></pre>
+
+            <p>The normal range operators determine inclusivity:</p>
+
+            <pre><code>0..100      // includes 100
+1..&lt;65536   // excludes 65536</code></pre>
+
+            <p>
+                Range bounds must be compile-time constants compatible with the named type's base value domain.
+            </p>
+
+            <p>Valid:</p>
+
+            <pre><code>let complete: Percentage := 100
+let port: Port := 443</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>let percentage: Percentage := 101
+let port: Port := 65536</code></pre>
+        </section>
+
+        <section id="membership">
+            <h2>Ordered Membership</h2>
+
+            <p>
+                <code>in [...]</code> defines an ordered finite set of permitted values:
+            </p>
+
+            <pre><code>type Role string in ["admin", "user", "guest"]
+type RetryCount int in [1, 3, 5]</code></pre>
+
+            <p>The member list:</p>
+
+            <ul>
+                <li>must contain at least one value;</li>
+                <li>contains compile-time constants;</li>
+                <li>preserves source order;</li>
+                <li>must not contain duplicates;</li>
+                <li>must contain values compatible with the base type;</li>
+                <li>must satisfy every other contract on the named type.</li>
+            </ul>
+
+            <p>Invalid:</p>
+
+            <pre><code>type EmptyRole string in []
+type DuplicateRole string in ["admin", "admin"]
+type InvalidEven int in [1, 2, 3] even</code></pre>
+
+            <p>
+                Invalid members are declaration errors. The compiler does not silently remove them.
+            </p>
+
+            <p>
+                Membership uses normal Sec semantic equality. It does not perform case folding,
+                text coercion or numeric narrowing.
+            </p>
+        </section>
+
+        <section id="integer-contracts">
+            <h2>Integer Contracts</h2>
+
+            <h3><code>odd</code> and <code>even</code></h3>
+
+            <pre><code>type OddNumber int odd
+type EvenNumber int even
+type PositiveEven int range 1..100 even</code></pre>
+
+            <p>
+                <code>odd</code> and <code>even</code> apply to integer-like named types.
+                They cannot both appear on the same type.
+            </p>
+
+            <h3><code>multipleOf</code></h3>
+
+            <pre><code>type PageOffset int multipleOf 4096
+type SmallStep int range 0..100 multipleOf 5</code></pre>
+
+            <p>
+                The divisor must be a non-zero compile-time integer.
+            </p>
+
+            <p>
+                Integer contracts participate together in consistency checking and default resolution.
+            </p>
+        </section>
+
+        <section id="finite">
+            <h2>Finite Values</h2>
+
+            <p>
+                <code>finite</code> applies to floating-point and decimal named types.
+            </p>
+
+            <pre><code>type FiniteTemperature float finite
+type FiniteAmount decimal finite</code></pre>
+
+            <p>
+                The contract excludes NaN and infinity where the representation supports them.
+            </p>
+
+            <p>
+                A range contract does not replace <code>finite</code>. Code must not depend on
+                special NaN comparison behavior as a substitute for validation.
+            </p>
+        </section>
+
+        <section id="string-contracts">
+            <h2>String Contracts</h2>
+
+            <p>String-like named types may use text and length contracts.</p>
+
+            <h3><code>regex</code></h3>
+
+            <pre><code>type Identifier string regex "^[A-Z][A-Z0-9_]*$"</code></pre>
+
+            <p>
+                The pattern is a compile-time string. The regular-expression syntax used by
+                the language is defined by the contract implementation rules.
+            </p>
+
+            <h3>Length contracts</h3>
+
+            <pre><code>type UserName string minLen 3 maxLen 32
+type CountryCode string exactLen 2
+type NonEmptyText string notEmpty</code></pre>
+
+            <p>
+                <code>minLen</code>, <code>maxLen</code> and <code>exactLen</code> take
+                non-negative compile-time integer values.
+            </p>
+
+            <p><code>notEmpty</code> requires a length greater than zero.</p>
+        </section>
+
+        <section id="collection-contracts">
+            <h2>Collection Contracts</h2>
+
+            <p>
+                Supported collection-shaped named types may use the same length contracts:
+            </p>
+
+            <pre><code>type Labels list[string] minLen 1 maxLen 16
+type RequiredValues int[] notEmpty</code></pre>
+
+            <h3><code>unique</code></h3>
+
+            <pre><code>type UniqueIDs list[CustomerID] unique</code></pre>
+
+            <p>
+                <code>unique</code> requires direct elements to be semantically unequal.
+                It does not recursively inspect nested elements.
+            </p>
+
+            <p>The element type must support equality.</p>
+        </section>
+
+        <section id="defaults">
+            <h2>Default Values</h2>
+
+            <p>
+                A named type may be defaultable. A default is always a valid semantic value
+                of the named type.
+            </p>
+
+            <h3>Inherited primitive defaults</h3>
+
+            <p>
+                An unconstrained named type based on a defaultable primitive normally inherits
+                the primitive default:
+            </p>
+
+            <pre><code>type UserName string
+type Counter uint64</code></pre>
+
+            <p>The corresponding defaults are conceptually:</p>
+
+            <pre><code>UserName("")
+Counter(0)</code></pre>
+
+            <p>Nominal identity is preserved.</p>
+
+            <h3>Constraint-derived defaults</h3>
+
+            <p>A constrained numeric type chooses a valid default according to its complete contract set.</p>
+
+            <pre><code>type Percentage int range 0..100       // default: Percentage(0)
+type Port int range 1..65535           // default: Port(1)
+type PositiveEven int range 1..100 even // default: PositiveEven(2)</code></pre>
+
+            <p>
+                For an ordered <code>in [...]</code> contract, the first listed value is the
+                implicit default:
+            </p>
+
+            <pre><code>type Role string in ["admin", "user", "guest"]</code></pre>
+
+            <p>The default is <code>Role("admin")</code>.</p>
+
+            <p>
+                If the rules cannot select one unique valid default, the type is non-defaultable
+                unless an explicit default is declared.
+            </p>
+
+            <h3>Explicit default</h3>
+
+            <p>The canonical syntax is:</p>
+
+            <pre><code>type Port int range 1..65535 default 8080
+type Role string in ["admin", "user", "guest"] default "user"</code></pre>
+
+            <p>The explicit default:</p>
+
+            <ul>
+                <li>is written after all contracts;</li>
+                <li>must be a compile-time constant;</li>
+                <li>must be representable by the named type;</li>
+                <li>must satisfy every contract;</li>
+                <li>must not depend on runtime state or allocation.</li>
+            </ul>
+
+            <p>An invalid default makes the type declaration invalid:</p>
+
+            <pre><code>type Port int range 1..65535 default 0</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Undefined storage is never a default value.
+                Every default is a valid semantic value chosen by the language rules.
+            </div>
+        </section>
+
+        <section id="runtime-validation">
+            <h2>Runtime Validation</h2>
+
+            <p>
+                A compile-time-known value can be validated when the source is compiled:
+            </p>
+
+            <pre><code>let percentage: Percentage := 50</code></pre>
+
+            <p>
+                A runtime value may require a fallible conversion:
+            </p>
+
+            <pre><code>let raw := ReadPercentage()
+let percentage := try Percentage(raw)</code></pre>
+
+            <p>
+                The conversion establishes the named-type invariant. Once the value is known to
+                be a valid <code>Percentage</code>, ordinary same-type use does not repeatedly
+                recreate the validation obligation.
+            </p>
+
+            <p>
+                When static analysis proves that failure is impossible, the compiler may remove
+                the runtime check while preserving the same language semantics.
+            </p>
+        </section>
+
+        <section id="compound-assignment">
+            <h2>Value-Producing Mutation</h2>
+
+            <p>
+                A plain same-type assignment transfers an already valid value. A compound
+                assignment is different because it computes a new value.
+            </p>
+
+            <pre><code>let mut percentage: Percentage := 91
+let additional: Percentage := 10</code></pre>
+
+            <p>The mathematical result of:</p>
+
+            <pre><code>percentage += additional</code></pre>
+
+            <p>would be <code>101</code>, which violates the type's contract.</p>
+
+            <p>
+                Value-producing mutation of constrained storage is therefore fallible and uses
+                <code>try</code> assignment:
+            </p>
+
+            <pre><code>try percentage += additional {
+    Err(error) => {
+        Handle(error)
+    }
+}</code></pre>
+
+            <p>
+                The same principle applies to other operations that compute a new constrained
+                value for the destination.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A value that is already valid does not need contract
+                revalidation merely because it is assigned elsewhere. An operation that creates
+                a new constrained value must establish the invariant for that new value.
+            </div>
+        </section>
+
+        <section id="common-errors">
+            <h2>Common Errors</h2>
+
+            <h3>Treating equal representation as equal type</h3>
+
+            <pre><code>type CustomerID uint64
+type ProductID uint64
+
+let customer: CustomerID := 42
+let product: ProductID := customer</code></pre>
+
+            <p><code>CustomerID</code> is not <code>ProductID</code>.</p>
+
+            <h3>Attaching a contract to a variable</h3>
+
+            <pre><code>let mut percentage: int range 0..100 := 50</code></pre>
+
+            <p>Declare a named type instead.</p>
+
+            <h3>Implicit conversion from a typed value</h3>
+
+            <pre><code>let raw: int := 90
+let percentage: Percentage := raw</code></pre>
+
+            <p>Use an explicit checked conversion.</p>
+
+            <h3>Empty membership set</h3>
+
+            <pre><code>type Role string in []</code></pre>
+
+            <p>A type contract must permit at least one value.</p>
+
+            <h3>Duplicate membership value</h3>
+
+            <pre><code>type Role string in ["admin", "admin"]</code></pre>
+
+            <h3>Contradictory contracts</h3>
+
+            <pre><code>type Impossible int odd even</code></pre>
+
+            <h3>Invalid explicit default</h3>
+
+            <pre><code>type Port int range 1..65535 default 0</code></pre>
+
+            <h3>Unchecked value-producing mutation</h3>
+
+            <pre><code>let mut percentage: Percentage := 91
+let additional: Percentage := 10
+
+percentage += additional</code></pre>
+
+            <p>
+                When the resulting value may violate the contract, the mutation requires
+                the canonical fallible assignment form.
+            </p>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A named type is a new nominal type.</li>
+                <li>Equal representation does not imply type compatibility.</li>
+                <li>Named types may be generic.</li>
+                <li>Concrete generic named-type instantiations preserve nominal identity.</li>
+                <li>Untyped literals may be shaped directly by a named-type context.</li>
+                <li>Already typed values require explicit conversion into a different named type.</li>
+                <li>Fallible conversion uses <code>try</code>.</li>
+                <li>Contracts belong only to named types.</li>
+                <li>Multiple contracts form an implicit conjunction.</li>
+                <li><code>range</code> restricts a numeric value interval.</li>
+                <li><code>in [...]</code> defines an ordered finite value set.</li>
+                <li><code>odd</code>, <code>even</code> and <code>multipleOf</code> constrain integer-like named types.</li>
+                <li><code>finite</code> constrains floating-point and decimal values.</li>
+                <li><code>regex</code> and length contracts constrain string-like named types.</li>
+                <li>Length and <code>unique</code> contracts may apply to supported collection-shaped named types.</li>
+                <li>Provably contradictory contracts make the type declaration invalid.</li>
+                <li>A named type may have an explicit compile-time default.</li>
+                <li>Every default must satisfy every contract.</li>
+                <li>Same-type assignment does not revalidate an already valid value.</li>
+                <li>Value-producing mutation of a constrained type is fallible when the new value may violate the contract.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="03-types.html">Previous: Types</a>
+            <a href="05-structs-properties-and-impl.html">Next: Structs, Properties &amp; Impl</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-03</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

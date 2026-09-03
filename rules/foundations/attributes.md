@@ -2660,8 +2660,8 @@ generics rulebook
 registers rulebook
 addressed-variable rulebook
 interrupt and ISR rulebooks
-compiler_pipeline.txt
-semantic_ir.txt
+compiler_pipeline.md
+semantic_ir.md
 formatter.md
 lsp.md
 diagnostics.txt

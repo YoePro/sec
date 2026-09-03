@@ -802,7 +802,7 @@ func TestPackage14RejectsNonTrivialFixedArrayDefaultWithoutPartialModule(t *test
 //
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 88-89, 103
-//   - rules/compiler/semantic_ir.txt — "Unsupported lowerings"
+//   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
 func TestPackage14RejectsDeferredArraySourcePathsWithoutPartialIR(t *testing.T) {
 	type rejectionStage string
 	const (

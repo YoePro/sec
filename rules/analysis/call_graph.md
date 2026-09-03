@@ -3141,9 +3141,9 @@ allocation.md
 ownership.md
 borrowing.md
 lifetime_analysis.md
-semantic_ir.txt
-compiler_analysis.txt
-compiler_pipeline.txt
+semantic_ir.md
+compiler_analysis.md
+compiler_pipeline.md
 projects.txt
 attributes.md
 diagnostics.txt

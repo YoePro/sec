@@ -679,10 +679,10 @@ concurrency_memory_model.txt
 allocation.md
 static.md
 platform/ffi.md
-compiler.txt
-compiler_analysis.txt
-compiler_pipeline.txt
-semantic_ir.txt
+compiler.md
+compiler_analysis.md
+compiler_pipeline.md
+semantic_ir.md
 mlir.txt
 rules_implementations.txt
 core-library.md

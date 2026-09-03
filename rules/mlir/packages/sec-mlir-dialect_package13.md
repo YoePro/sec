@@ -58,7 +58,7 @@ rules/memory/ownership.md
 rules/memory/destruction.md
 rules/declarations/properties.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -74,7 +74,7 @@ implementation
 Before implementation:
 
 1. apply `sec_semantic_ir_struct_package13.md` to
-   `rules/compiler/semantic_ir.txt`;
+   `rules/compiler/semantic_ir.md`;
 2. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package13.md`;
 3. update `rules/mlir/sec_mlir_lowering.md` with

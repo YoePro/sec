@@ -1995,8 +1995,8 @@ formatter.md
 operators.md
 grammar.md
 parser_recovery.md
-semantic_ir.txt
-compiler_pipeline.txt
+semantic_ir.md
+compiler_pipeline.md
 lsp.md
 diagnostics.txt
 language-rulebook-status.md

@@ -512,8 +512,8 @@ references.md
 lifetime_analysis.md
 destruction.txt
 platform/ffi.md
-compiler_analysis.txt
-semantic_ir.txt
+compiler_analysis.md
+semantic_ir.md
 core-library.md
 core/errors.sec
 ```

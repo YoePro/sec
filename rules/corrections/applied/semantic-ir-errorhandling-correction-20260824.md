@@ -6,7 +6,7 @@
 - **Last updated:** 2026-08-24
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `b3315f6` (semantic parent `45e5cd4`)
-- **Target rulebook:** `rules/compiler/semantic_ir.txt`
+- **Target rulebook:** `rules/compiler/semantic_ir.md`
 
 ---
 

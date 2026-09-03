@@ -62,7 +62,7 @@ rules/control-flow/defer.md
 rules/control-flow/discard.md
 rules/memory/borrowing.md
 rules/errors/errorhandling.md
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 local P13-P16 normative amendments
     ↓
@@ -79,7 +79,7 @@ Before implementation:
 
 1. apply `sec_ownership_destruction_sync_package17.md`;
 2. apply `sec_semantic_ir_ownership_destruction_package17.md` to
-   `rules/compiler/semantic_ir.txt`;
+   `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package17.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

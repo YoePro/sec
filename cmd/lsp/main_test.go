@@ -615,6 +615,130 @@ fn VisitParts(value: string) void {
 	}
 }
 
+// Iterator[T] is compiler-known in the shared frontend, including while the
+// defining core source itself is the active LSP document. Keep this regression
+// deliberately focused: string.sec may contain unrelated work in progress and
+// this test must neither bless nor require fixes for those diagnostics.
+func TestAnalyzeCoreStringRecognizesCompilerKnownIterator(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", "sec", "core", "string.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reported := analyze("file://"+filepath.ToSlash(path), string(source))
+	for _, diagnostic := range reported {
+		if strings.Contains(diagnostic.Message, "unknown type Iterator") {
+			t.Fatalf("compiler-known Iterator[T] was unknown in core string source: %+v", reported)
+		}
+	}
+}
+
+func TestAnalyzeRejectsMethodGenericInterfaceRequirement(t *testing.T) {
+	source := `module main
+
+interface Mapper[T] {
+	fn Map[U](value: T) U
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-interface-method-generics/main.sec", source)
+	if len(reported) != 1 || !strings.Contains(reported[0].Message, "interface method Map cannot declare method-level generic parameters") {
+		t.Fatalf("analyze returned wrong interface method generic diagnostics: %+v", reported)
+	}
+}
+
+func TestAnalyzeRejectsDirectBoolMatchWithIfElseGuidance(t *testing.T) {
+	source := `module main
+
+fn Choose(ready: bool) int {
+	return match ready {
+		_ => 1
+	}
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-bool-match/main.sec", source)
+	if len(reported) != 1 || !strings.Contains(reported[0].Message, "match subject cannot be bool; use if and else") {
+		t.Fatalf("analyze returned wrong direct bool match diagnostics: %+v", reported)
+	}
+}
+
+func TestAnalyzeReportsFocusedWhileElseDiagnostic(t *testing.T) {
+	source := `module main
+
+fn Poll(running: bool) void {
+	while running {
+		continue
+	} else {
+		return
+	}
+	let result: int := 1
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-while-else/main.sec", source)
+	if len(reported) != 1 || !strings.Contains(reported[0].Message, "while ... else is not part of Sec 0.1; use explicit state after the loop") {
+		t.Fatalf("analyze returned wrong while-else diagnostics: %+v", reported)
+	}
+}
+
+func TestAnalyzeReportsFocusedDoWhileDiagnostic(t *testing.T) {
+	source := `module main
+
+fn Poll(running: bool) void {
+	do {
+		continue
+	} while running
+	let result: int := 1
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-do-while/main.sec", source)
+	if len(reported) != 1 || !strings.Contains(reported[0].Message, "do ... while is not part of Sec 0.1; execute the first iteration explicitly") {
+		t.Fatalf("analyze returned wrong do-while diagnostics: %+v", reported)
+	}
+}
+
+func TestAnalyzeReportsFocusedLabeledLoopControlDiagnostics(t *testing.T) {
+	source := `module main
+
+fn Poll(running: bool) void {
+	while running {
+		break outer
+		continue inner
+	}
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-labeled-loop-control/main.sec", source)
+	if len(reported) != 2 ||
+		!strings.Contains(reported[0].Message, "labeled break is not part of Sec 0.1; remove label outer") ||
+		!strings.Contains(reported[1].Message, "labeled continue is not part of Sec 0.1; remove label inner") {
+		t.Fatalf("analyze returned wrong labeled loop-control diagnostics: %+v", reported)
+	}
+}
+
+func TestAnalyzeReportsFocusedWhileDeclarationHeaderDiagnostic(t *testing.T) {
+	source := `module main
+
+fn Poll() void {
+	while let ready := true {
+		return
+	}
+	let result: int := 1
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-while-declaration/main.sec", source)
+	if len(reported) != 1 || !strings.Contains(reported[0].Message, "declaration is not allowed in while condition; declare the value before the loop") {
+		t.Fatalf("analyze returned wrong while declaration diagnostics: %+v", reported)
+	}
+}
+
 func TestLSPSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".sec"), 0755); err != nil {

@@ -14,7 +14,7 @@ package:
   package_boundary: Buildable and testable Sec dialect foundation; no compiler migration.
 authority:
 - rules/<applicable-domain-rulebooks>
-- rules/compiler/semantic_ir.txt
+- rules/compiler/semantic_ir.md
 - rules/mlir/sec_mlir.md
 - rules/mlir/sec_mlir_dialect.md
 - implementation

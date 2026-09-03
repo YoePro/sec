@@ -4086,8 +4086,8 @@ raw_pointers.md
 allocation.md
 destruction.txt
 concurrency_memory_model.txt
-semantic_ir.txt
-compiler_pipeline.txt
+semantic_ir.md
+compiler_pipeline.md
 diagnostics.txt
 lsp.md
 language-rulebook-status.md

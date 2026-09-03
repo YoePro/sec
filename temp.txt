@@ -3,9 +3,9 @@ rules/
 allocation.txt
 arrays-slices.txt
 borrowing.txt
-compiler.txt
-compiler_analysis.txt
-compiler_pipeline.txt
+compiler.md
+compiler_analysis.md
+compiler_pipeline.md
 copy_move.md
 defer.txt
 destruction.txt
@@ -38,7 +38,7 @@ references.txt
 declarations/registers.md
 platform/fixed-address-bindings.md
 rules_implementations.txt
-semantic_ir.txt
+semantic_ir.md
 declarations/spread.md
 struct.md
 types.md

@@ -1300,10 +1300,10 @@ rules/platform/target_profiles.md
 rules/platform/hardware-register-access.md
 platform_model.md
 platform/abi.md
-semantic_ir.txt
+semantic_ir.md
 mlir.txt
 mlir-optimize.txt
-compiler_pipeline.txt
+compiler_pipeline.md
 diagnostics.txt
 formatter.md
 compiler_testing.md

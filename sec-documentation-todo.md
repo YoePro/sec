@@ -327,7 +327,7 @@ rules/memory/raw_pointers.md
 rules/memory/unsafe.md
 rules/platform/ffi.txt
 rules/memory/layout.md
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/analysis/effect_analysis.md
 rules/tooling/lsp.md
 ```

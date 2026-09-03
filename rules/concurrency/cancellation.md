@@ -539,7 +539,7 @@ platform/ffi.md
 defer.md
 destruction.txt
 errorhandling.md
-semantic_ir.txt
+semantic_ir.md
 diagnostics.txt
 core-library.md
 core/errors.sec

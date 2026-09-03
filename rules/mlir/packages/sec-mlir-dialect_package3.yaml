@@ -13,7 +13,7 @@ package:
   next_package: First Semantic IR to Sec MLIR bridge
 authority:
 - rules/<applicable-language-and-domain-rulebooks>
-- rules/compiler/semantic_ir.txt
+- rules/compiler/semantic_ir.md
 - rules/mlir/sec_mlir.md
 - rules/mlir/sec_mlir_dialect.md
 - implementation package

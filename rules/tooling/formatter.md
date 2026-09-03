@@ -2433,7 +2433,7 @@ register rules
 comments and documentation rules
 imports and modules rules
 diagnostics.txt
-compiler_pipeline.txt
+compiler_pipeline.md
 parser recovery rules
 language-rulebook-status.md
 rules_implementations.txt

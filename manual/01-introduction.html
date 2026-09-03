@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,23 +22,30 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
+
         <div class="sidebar-section">This page</div>
         <a href="#introduction">Introduction</a>
         <a href="#what-sec-is">What Sec Is</a>
-        <a href="#design-goals">Design Goals</a>
-        <a href="#safety-model">Safety Model</a>
-        <a href="#explicitness">Explicitness</a>
-        <a href="#runtime-model">Runtime Model</a>
+        <a href="#intent-and-proof">Intent and Proof</a>
+        <a href="#type-system">Type System</a>
+        <a href="#error-handling">Error Handling</a>
+        <a href="#memory-model">Memory Model</a>
+        <a href="#abstraction-and-control">Abstraction and Control</a>
+        <a href="#targets">Targets and Runtime</a>
+        <a href="#compiler-responsibility">Compiler Responsibility</a>
         <a href="#example-program">Example Program</a>
+        <a href="#language-status">Language Status</a>
         <a href="#non-goals">Non-Goals</a>
-                        <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html" class="active">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts-and-units.html">Named Types, Contracts &amp; Units</a>
+        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -78,12 +85,15 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
@@ -91,145 +101,585 @@
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Introduction</div>
+
         <h1 id="introduction">Introduction</h1>
+
+        <p>
+            Sec is a statically typed, compiled programming language for native software.
+            It is designed to cover ordinary application development and low-level systems
+            programming with one coherent language model.
+        </p>
+
+        <p>
+            The central design idea is simple: the programmer should express semantic intent,
+            while the compiler performs the bookkeeping and analysis required to prove that
+            the program is valid. Sec deliberately accepts a sophisticated compiler in order
+            to keep ordinary source code understandable.
+        </p>
+
+        <div class="rule">
+            <strong>Sec 0.1:</strong> This manual describes the language model. Compiler
+            implementation progress is tracked separately in
+            <a href="test-status.html">Implementation Status</a>.
+        </div>
 
         <div class="section" id="what-sec-is">
             <h2>What Sec Is</h2>
+
             <p>
-                Sec is a compiled programming language designed for high-performance native programs.
-                The intended backend is LLVM, and the language is designed so the compiler can generate
-                efficient machine code without relying on a large runtime by default.
+                Sec is designed for predictable native programs without requiring garbage
+                collection, hidden reference counting, implicit exceptions, or a mandatory
+                general-purpose runtime.
             </p>
+
             <p>
-                Sec is statically typed. Types are not only storage descriptions; they can also describe
-                domain meaning. A value of type <code>CustomerID</code> and a value of type <code>ProductID</code>
-                may both be represented as integers internally, but they are not the same type in the
-                program model.
+                It combines high-level language features with low-level control. A program may
+                use nominal types, contracts, units, generics, tagged unions, interfaces,
+                properties, collections and structured error handling while still targeting
+                operating systems, embedded systems, microcontrollers and bare-metal hardware.
             </p>
+
             <p>
-                The language is designed around the idea that safe and correct code should be the easy
-                path. Unsafe operations are allowed when needed, but they must be visible in the source code.
+                Sec is influenced by many language traditions, including C, C++, C#, F#, Go,
+                Rust, Zig, Ada, Vale and Odin. Those languages are sources of experience, not
+                normative definitions for Sec. Familiar syntax may therefore have different
+                semantics when Sec's own consistency or safety model requires it.
             </p>
         </div>
 
-        <div class="section" id="design-goals">
-            <h2>Design Goals</h2>
-            <p>The following goals guide the language design:</p>
+        <div class="section" id="intent-and-proof">
+            <h2>Intent and Proof</h2>
+
+            <p>
+                Sec tries to make syntax explicit when the programmer is making a real semantic
+                choice, and implicit when the compiler can safely derive the bookkeeping.
+            </p>
+
+            <p>Source code is expected to make choices such as these visible:</p>
+
             <ul>
-                <li><strong>Compiled by default.</strong> Sec programs are compiled before execution.</li>
-                <li><strong>High performance.</strong> The language should allow predictable native performance.</li>
-                <li><strong>Strong static typing.</strong> Type errors should be caught at compile time whenever possible.</li>
-                <li><strong>Semantic typing.</strong> Types should express domain intent, not only memory layout.</li>
-                <li><strong>Safe by default.</strong> Safe code should not allow null references, dangling references, or unchecked pointer arithmetic.</li>
-                <li><strong>Explicit unsafe code.</strong> Code that escapes the safe model must be marked with <code>unsafe</code>.</li>
-                <li><strong>No hidden magic.</strong> Imports do not execute code, allocations should be visible, and initialization is explicit.</li>
-                <li><strong>One concept, one syntax.</strong> Syntax should not have several unrelated meanings.</li>
-                <li><strong>One symbol, one meaning.</strong> Symbols are reserved for narrow, consistent meaning families.</li>
-                <li><strong>Official formatting.</strong> Sec should have a standard formatter with a gofmt-like philosophy.</li>
-                <li><strong>Minimal runtime by default.</strong> Runtime services are opt-in rather than assumed.</li>
+                <li>mutability;</li>
+                <li>fallible operations;</li>
+                <li>unsafe operations;</li>
+                <li>borrowing mode;</li>
+                <li>ownership-sensitive transfer when intent would otherwise be ambiguous;</li>
+                <li>external storage and hardware semantics;</li>
+                <li>units and contracts that carry domain meaning.</li>
             </ul>
+
+            <p>
+                By contrast, Sec avoids requiring annotations whose only purpose is to repeat
+                information the compiler already knows or can prove.
+            </p>
+
+            <div class="rule">
+                <strong>Design principle:</strong> Explicit intent, implicit bookkeeping.
+            </div>
+
+            <p>
+                The same principle applies to safety checks. Sec prefers to prove a condition at
+                compile time. When proof is impossible but the language guarantee can be checked
+                at runtime, the compiler may emit a check. When neither proof nor checking can
+                provide the required guarantee, the program is rejected.
+            </p>
+
+            <pre><code>prove when possible
+check when necessary
+reject when neither can provide the required guarantee</code></pre>
         </div>
 
-        <div class="section" id="safety-model">
-            <h2>Safety Model</h2>
+        <div class="section" id="type-system">
+            <h2>Type System</h2>
+
             <p>
-                Sec aims to make safe code the normal form of code. The language uses ownership and borrow
-                checking concepts inspired by Rust, but with a preference for simpler rules where possible.
+                Type identity in Sec is semantic, not merely representational. Two values may
+                use the same machine representation and still be different types.
             </p>
+
+            <pre><code>type CustomerID uint64
+type ProductID uint64
+
+let customer: CustomerID := 42
+let product: ProductID := customer    // invalid</code></pre>
+
             <p>
-                Safe Sec code should prevent common classes of memory errors. References cannot outlive the
-                value they refer to. Mutable references require exclusive access. Null is not part of safe
-                reference handling; absence is represented explicitly with <code>Option[T]</code>.
+                Named types remain nominal. The compiler does not implicitly convert a typed
+                runtime value merely because another type has a compatible underlying
+                representation.
             </p>
+
+            <h3>Contracts belong to types</h3>
+
+            <p>
+                Contracts describe valid values of a named type rather than ad-hoc restrictions
+                on individual variables.
+            </p>
+
+            <pre><code>type Percent int range 0..100
+
+let complete: Percent := 100
+let invalid: Percent := 101            // compile-time error</code></pre>
+
+            <p>
+                Untyped literals may be shaped by context. Converting an already typed runtime
+                value is a different operation and remains explicit.
+            </p>
+
+            <pre><code>let raw: int := ReadPercentage()
+let value := try Percent(raw)</code></pre>
+
+            <p>
+                A checked conversion that the compiler can prove valid does not need a runtime
+                check. The language semantics remain checked either way.
+            </p>
+
+            <h3>Units are semantic identity</h3>
+
+            <p>
+                Units are independent of their numeric carrier. The same unit may be represented
+                by an exact decimal, a floating-point value or an integer where the declaration
+                permits it.
+            </p>
+
+            <pre><code>let exactDistance: decimal&lt;m&gt; := 10
+let measuredDistance: float64&lt;m&gt; := 10
+let counterDistance: int64&lt;m&gt; := 10</code></pre>
+
+            <p>
+                Unit algebra is checked semantically. Numeric representation does not define unit
+                meaning, and unit compatibility does not erase named-type identity.
+            </p>
+
+            <h3>Parameterized types</h3>
+
+            <p>
+                Generic arguments and compile-time shape information participate in type
+                identity.
+            </p>
+
+            <pre><code>list[int]
+Result[Data, IOError]
+
+int[4]
+byte[256]
+
+vector[float64, 3]
+matrix[float32, 4, 4]</code></pre>
+
+            <p>
+                Fixed arrays and owning unsized sequences use postfix sequence syntax:
+                <code>T[N]</code> and <code>T[]</code>. Borrowed sequence views use
+                <code>ref T[]</code> or <code>ref mut T[]</code>.
+            </p>
+        </div>
+
+        <div class="section" id="error-handling">
+            <h2>Error Handling</h2>
+
+            <p>
+                Errors are explicit typed values. Sec does not use hidden exception propagation
+                as its ordinary error model.
+            </p>
+
+            <p>
+                The compiler-known lowercase type <code>error</code> is the common root of Sec
+                error types. It is specific to the error system; it is not a general object base
+                class and does not introduce ordinary inheritance.
+            </p>
+
+            <pre><code>enum IOError error {
+    OpenError
+    ReadError
+    WriteError
+}</code></pre>
+
+            <p>
+                A precise operation should normally expose its concrete error type:
+            </p>
+
+            <pre><code>fn Read() Result[Data, IOError]</code></pre>
+
+            <p>
+                An API that intentionally forwards heterogeneous Sec errors may instead use the
+                open error channel:
+            </p>
+
+            <pre><code>fn RunPipeline() Result[Data, error]</code></pre>
+
+            <p>
+                <code>Result[T, E]</code> is must-use. Failure cannot silently disappear.
+                <code>try</code> unwraps successful values and either handles or propagates the
+                failure according to the surrounding context.
+            </p>
+
+            <pre><code>fn Load() Result[Config, IOError] {
+    let data := try Read()
+    let config := try Parse(data) {
+        Err(error) => return Err(error)
+    }
+
+    return Ok(config)
+}</code></pre>
+
+            <p>
+                <code>match</code> remains the general exhaustive pattern-matching construct.
+                <code>try</code> is the concise path when successful execution should continue
+                normally and only failure needs special handling.
+            </p>
+        </div>
+
+        <div class="section" id="memory-model">
+            <h2>Memory Model</h2>
+
+            <p>
+                Sec uses deterministic ownership and compile-time analysis as the foundation for
+                memory and resource safety. The language separates several concepts that are often
+                conflated in lower-level programming:
+            </p>
+
+            <ul>
+                <li>a value;</li>
+                <li>a materialized object;</li>
+                <li>a binding;</li>
+                <li>a Place that identifies a usable program location;</li>
+                <li>storage and storage lifetime;</li>
+                <li>ownership responsibility;</li>
+                <li>borrowing authority;</li>
+                <li>reference validity and provenance;</li>
+                <li>destruction and storage reclamation.</li>
+            </ul>
+
+            <p>
+                Ownership is semantic responsibility, not possession of an address. Moving a value
+                transfers ownership; it does not inherently mean that bytes are relocated.
+                Borrowing grants temporary authority without transferring ownership.
+            </p>
+
+            <pre><code>fn Inspect(value: ref Buffer) void {
+    // shared access
+}
+
+fn Modify(value: ref mut Buffer) void {
+    // exclusive mutable access
+}</code></pre>
+
+            <p>
+                Safe references do not own their target. <code>ref T</code> provides shared access
+                and <code>ref mut T</code> provides exclusive mutable access. Ordinary Sec source
+                does not expose lifetime parameters.
+            </p>
+
+            <p>
+                Allocation, initialization, destruction and storage reclamation are separate
+                operations. In particular, allocation provides storage; it does not by itself
+                create a valid object. Destruction ends lifecycle responsibility; reclamation
+                concerns storage.
+            </p>
+
             <div class="rule">
-                <strong>Rule:</strong> Safe code may use values, references, slices, collections, and owned heap
-                values, but it may not use raw pointer arithmetic or null references.
+                <strong>Rule:</strong> Unsafe code transfers specific proof obligations to the
+                programmer. It does not disable type checking, ownership, error handling,
+                visibility, control-flow validation or other Sec semantics.
             </div>
         </div>
 
-        <div class="section" id="explicitness">
-            <h2>Explicitness</h2>
+        <div class="section" id="abstraction-and-control">
+            <h2>Abstraction Without Losing Control</h2>
+
             <p>
-                Sec prefers visible operations over implicit behavior. This affects several parts of the language:
+                Sec does not treat high-level abstraction and low-level programming as opposites.
+                A source-level abstraction is useful when it removes repetitive error-prone work
+                while preserving semantically important behavior.
             </p>
-            <ul>
-                <li>Mutation requires a mutable binding.</li>
-                <li>Fallible operations must be handled with <code>try</code>, <code>match</code>, or explicit error handling.</li>
-                <li>Imports make symbols available, but they do not initialize systems or change program state.</li>
-                <li>Unsafe operations require an <code>unsafe</code> context.</li>
-                <li>Absence is represented with <code>Option[T]</code>, not with implicit null values.</li>
-            </ul>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Language feature</th>
+                            <th>What it replaces or makes explicit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Register fields</td>
+                            <td>Manual masks, shifts and repeated bit-layout arithmetic</td>
+                        </tr>
+                        <tr>
+                            <td>Units</td>
+                            <td>Unchecked numeric conventions for domain quantities</td>
+                        </tr>
+                        <tr>
+                            <td><code>Result</code> and <code>try</code></td>
+                            <td>Hidden error channels and implicit exception propagation</td>
+                        </tr>
+                        <tr>
+                            <td>Properties</td>
+                            <td>Repeated controlled-access and validation plumbing</td>
+                        </tr>
+                        <tr>
+                            <td>Safe references</td>
+                            <td>Ordinary unchecked raw-pointer access</td>
+                        </tr>
+                        <tr>
+                            <td>Deterministic destruction</td>
+                            <td>Repeated manual cleanup on every control-flow path</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>Behavior lives in impl</h3>
+
+            <p>
+                Stored representation belongs to the type declaration. Behavior and associated
+                definitions belong to <code>impl</code>.
+            </p>
+
+            <pre><code>type Counter struct {
+    value: int,
+}
+
+impl Counter {
+    fn Increment() void {
+        self.value += 1
+    }
+
+    fn Value() int {
+        return self.value
+    }
+}</code></pre>
+
+            <p>
+                Instance methods receive compiler-provided implicit <code>self</code>. Canonical
+                Sec methods do not declare <code>ref self</code> or <code>ref mut self</code> in
+                their parameter lists.
+            </p>
+
+            <p>
+                A type has one primary implementation entry point. Additional same-module behavior
+                may be organized in <code>impl extends Type</code> fragments. All fragments form
+                one combined member surface.
+            </p>
+
+            <pre><code>impl extends Counter {
+    fn IsZero() bool {
+        return self.value == 0
+    }
+}</code></pre>
+
+            <h3>Explicit lifecycle construction</h3>
+
+            <p>
+                <code>new</code> selects lifecycle construction through <code>init</code>. It does
+                not mean heap allocation.
+            </p>
+
+            <pre><code>impl Connection {
+    init(address: Address) ConnectError {
+        // establish a valid Connection
+    }
+}
+
+let connection := try new Connection(address)</code></pre>
+
+            <p>
+                Conversion and lifecycle construction are separate operations:
+                <code>Type(value)</code> is conversion; <code>new Type(args...)</code> is
+                construction.
+            </p>
         </div>
 
-        <div class="section" id="runtime-model">
-            <h2>Runtime Model</h2>
+        <div class="section" id="targets">
+            <h2>One Language Across Targets</h2>
+
             <p>
-                Sec does not assume a garbage collector by default. It should be possible to write programs
-                with predictable memory behavior and no hidden allocation. Heap allocation, shared ownership,
-                task scheduling, channels, and other runtime services may exist, but the language design keeps
-                them explicit.
+                Sec is intended for both hosted and freestanding environments. Core language
+                semantics remain the same across desktop and server operating systems, embedded
+                operating systems, microcontrollers and bare-metal targets.
             </p>
+
             <p>
-                This does not mean the standard library must be small. It means the core language should not
-                hide major runtime behavior behind syntax that appears simple but performs complex work.
+                A target profile may legitimately lack facilities such as heap allocation,
+                threads, operating-system services, a particular ABI feature or runtime support.
+                That may restrict which programs or libraries are available, but it must not
+                silently redefine the meaning of the language.
+            </p>
+
+            <p>
+                The language avoids requiring a runtime whenever practical. Runtime validation
+                does not automatically imply a general-purpose runtime; a check may lower directly
+                to ordinary machine instructions or target-specific support.
+            </p>
+
+            <div class="rule">
+                <strong>Design principle:</strong> Target differences may change available
+                facilities, not the meaning of core Sec constructs.
+            </div>
+        </div>
+
+        <div class="section" id="compiler-responsibility">
+            <h2>Compiler Responsibility</h2>
+
+            <p>
+                Sec intentionally places substantial responsibility in the compiler. The programmer
+                should not have to reproduce compiler-internal reasoning in source code.
+            </p>
+
+            <p>The compiler model includes analyses such as:</p>
+
+            <ul>
+                <li>type and contract analysis;</li>
+                <li>ownership, copy and move analysis;</li>
+                <li>borrowing, lifetime and reference validation;</li>
+                <li>escape and closure analysis;</li>
+                <li>effect and control-flow analysis;</li>
+                <li>definite assignment;</li>
+                <li>destruction and cleanup planning;</li>
+                <li>stack and recursion analysis;</li>
+                <li>concurrency, data-race and deadlock analysis;</li>
+                <li>ISR and platform validation;</li>
+                <li>compile-time evaluation;</li>
+                <li>unit analysis;</li>
+                <li>ABI and FFI validation;</li>
+                <li>optimization-legality analysis.</li>
+            </ul>
+
+            <p>
+                Diagnostics are part of that model. A compiler error should explain not only that
+                a program is invalid, but which rule was violated, where the relevant values or
+                declarations came from, why the conflict exists and, when useful, how it can be
+                resolved.
+            </p>
+
+            <p>
+                Semantic analysis establishes Sec semantics. Later compiler stages preserve and
+                lower those facts; the backend does not invent ownership, unit, lifetime,
+                allocation or safety meaning from machine representation.
             </p>
         </div>
 
         <div class="section" id="example-program">
             <h2>Example Program</h2>
-            <p>The following example shows several core ideas in a small Sec-style program.</p>
+
+            <p>
+                This small example combines nominal typing, contracts, a struct, implicit
+                <code>self</code>, typed errors and checked conversion.
+            </p>
+
             <pre><code>module cmd.demo
 
-import (
-    "fmt"
-)
+import "fmt"
 
 type Percent int range 0..100
+
+enum InputError error {
+    InvalidCompletion
+}
 
 type User struct {
     Name: string,
     Completion: Percent,
 }
 
-fn main() void {
-    completion := try Percent(90)
+impl User {
+    fn IsComplete() bool {
+        return self.Completion == Percent(100)
+    }
+}
 
-    user := User{
-        Name: "Anna",
-        Completion: completion,
+fn MakeUser(name: string, rawCompletion: int) Result[User, InputError] {
+    let completion := try Percent(rawCompletion) {
+        Err(_) => return Err(InputError.InvalidCompletion)
     }
 
-    fmt.Println($"{user.Name}: {user.Completion}")
+    return Ok(User {
+        Name: name,
+        Completion: completion,
+    })
+}
+
+fn main() Result[void, error] {
+    let user := try MakeUser("Anna", 90)
+
+    if user.IsComplete() {
+        fmt.Println($"{user.Name}: complete")
+    } else {
+        fmt.Println($"{user.Name}: {user.Completion}")
+    }
+
+    return Ok()
 }</code></pre>
+
             <p>
-                The type <code>Percent</code> is not just an integer. It is a constrained semantic type.
-                The conversion <code>try Percent(90)</code> is explicit because a runtime value may fail validation.
+                <code>Percent</code> is a distinct named type whose contract belongs to the type.
+                The runtime integer is converted explicitly because the conversion may fail.
+                <code>MakeUser</code> exposes a precise error channel, while <code>main</code>
+                deliberately accepts the open <code>error</code> channel and can propagate the
+                concrete error without erasing its identity.
+            </p>
+        </div>
+
+        <div class="section" id="language-status">
+            <h2>Language Status</h2>
+
+            <p>
+                Sec is currently being specified and implemented as version 0.1. The language
+                manual describes the intended programmer-facing semantics. The normative
+                rulebooks define the detailed language and compiler contracts, while
+                implementation progress is tracked separately.
+            </p>
+
+            <p>
+                This separation matters. A feature may be fully specified before every compiler
+                stage or target backend has implemented it. Conversely, compatibility syntax may
+                still be accepted by the parser even when it is no longer canonical Sec source.
+            </p>
+
+            <p>
+                Use the <a href="test-status.html">Implementation Status</a> page when you need
+                to know what the current compiler can execute end-to-end.
             </p>
         </div>
 
         <div class="section" id="non-goals">
             <h2>Non-Goals</h2>
-            <p>Some features are intentionally not part of the initial language direction:</p>
+
+            <p>Sec deliberately avoids several common language directions:</p>
+
             <ul>
-                <li>No classical inheritance model.</li>
-                <li>No implicit package initialization.</li>
-                <li>No hidden compiler directives inside comments.</li>
-                <li>No C-style <code>for(init; condition; increment)</code> loop.</li>
-                <li>No <code>++</code> or <code>--</code> operators.</li>
-                <li>No separate primitive <code>any</code> type.</li>
-                <li>No <code>nil</code> value in safe code.</li>
+                <li>no general class inheritance hierarchy;</li>
+                <li>no ordinary hidden exception mechanism;</li>
+                <li>no mandatory garbage collector;</li>
+                <li>no hidden reference counting requirement;</li>
+                <li>no automatic heap promotion merely to repair escaping values;</li>
+                <li>no implicit expensive copying or resource acquisition;</li>
+                <li>no assumption that <code>new</code> means heap allocation;</li>
+                <li>no null safe references;</li>
+                <li>no programmer-written lifetime parameters in ordinary source code;</li>
+                <li>no globally implicit interface conformance;</li>
+                <li>no backend-dependent reinterpretation of source-language safety rules.</li>
             </ul>
+
+            <p>
+                The goal is not minimal language power. The goal is a language whose important
+                semantics remain visible, predictable and explainable.
+            </p>
         </div>
 
-                <div class="page-navigation">
-                <a href="02-basic-syntax.html">Next: Basic Syntax</a>
+        <div class="page-navigation">
+            <a href="02-basic-syntax.html">Next: Basic Syntax</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.1 &middot; 2026-09-03</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

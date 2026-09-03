@@ -77,7 +77,7 @@ Arena behavior out of this document.
 | Allocation, storage, initialization, and layout | `rules/memory/allocation.md`, `rules/memory/storage.md`, `rules/memory/layout.md`, `rules/types/default_values.md` |
 | Ownership, transfer, cleanup, and unsafe boundaries | `rules/memory/ownership.md`, `rules/memory/copy_move.md`, `rules/memory/destruction.md`, `rules/memory/unsafe.md` |
 | References, borrowing, provenance, and lifetime | `rules/memory/references.md`, `rules/memory/reference_model.md`, `rules/memory/borrowing.md`, `rules/memory/lifetime_analysis.md` |
-| Compiler-known surface and compiler pipeline | `rules/compiler/compiler_known_members.md`, `rules/compiler/compiler_analysis.txt`, `rules/compiler/compiler_pipeline.txt`, `rules/compiler/semantic_ir.txt`, `rules/foundations/attributes.md` |
+| Compiler-known surface and compiler pipeline | `rules/compiler/compiler_known_members.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/foundations/attributes.md` |
 | Effects, reachability, escape, panic, and runtime checks | `rules/analysis/effect_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/escape_analysis.md`, `rules/errors/panic.md`, `rules/errors/runtime_checks.md` |
 | Tasks, threads, cancellation, and concurrency memory semantics | `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.txt`, `rules/concurrency/spawn.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/structured_concurrency.md` |
 | FFI, targets, and interrupt restrictions | `rules/platform/ffi.md`, `rules/platform/target_profiles.md`, `rules/analysis/isr_analysis.md` |

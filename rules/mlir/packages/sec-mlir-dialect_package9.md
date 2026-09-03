@@ -48,7 +48,7 @@ rules/library/core-library.md
 rules/analysis/effect_analysis.md
 rules/types/types.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -100,7 +100,7 @@ errorhandling.md
 panic.md
 core-library.md
 types.md
-semantic_ir.txt
+semantic_ir.md
 ```
 
 as its normative basis.

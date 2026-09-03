@@ -95,7 +95,7 @@ rules/memory/copy_move.md
 rules/memory/borrowing.md
 rules/memory/ownership.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -111,7 +111,7 @@ implementation
 Before implementation:
 
 1. apply `sec_match_enum_domain_package12.md` to the normative match/enum rules;
-2. apply `sec_semantic_ir_match_package12.md` to `rules/compiler/semantic_ir.txt`;
+2. apply `sec_semantic_ir_match_package12.md` to `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package12.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

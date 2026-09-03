@@ -26,9 +26,9 @@ normative_updates:
   - rules/memory/destruction.md
   - rules/control-flow/defer.md
   - rules/control-flow/discard.md
-  - rules/compiler/semantic_ir.txt
+  - rules/compiler/semantic_ir.md
   supplied_file: sec_ownership_destruction_sync_package17.md
-- repository_path: rules/compiler/semantic_ir.txt
+- repository_path: rules/compiler/semantic_ir.md
   supplied_file: sec_semantic_ir_ownership_destruction_package17.md
 - repository_path: rules/mlir/sec_mlir_dialect.md
   supplied_file: sec_mlir_dialect_package17.md

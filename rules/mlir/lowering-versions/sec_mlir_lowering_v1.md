@@ -11,7 +11,7 @@ This document is subordinate to:
 
 ```text
 all applicable Sec language/domain rulebooks
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/mlir/sec_mlir.md
 rules/mlir/sec_mlir_dialect.md
 ```

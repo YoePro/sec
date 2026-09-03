@@ -14,7 +14,7 @@ rules/errors/errorhandling.md
 rules/foundations/operators.md
 rules/errors/panic.md
 rules/library/core-library.md
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/mlir/sec_mlir.md
 rules/mlir/sec_mlir_dialect.md
 ```

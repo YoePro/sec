@@ -42,7 +42,7 @@ rules/errors/panic.md
 rules/library/core-library.md
 rules/analysis/effect_analysis.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓

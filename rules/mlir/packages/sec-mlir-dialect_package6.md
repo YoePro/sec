@@ -34,7 +34,7 @@ language/domain rulebooks
 rules/memory/layout.md
 rules/types/types.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓

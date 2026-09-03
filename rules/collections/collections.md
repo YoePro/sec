@@ -2325,7 +2325,7 @@ destruction.txt
 errorhandling.md
 platform/ffi.md
 shaped-types.md
-semantic_ir.txt
+semantic_ir.md
 sec_mlir.md
 sec_mlir_dialect.md
 sec_mlir_lowering.md

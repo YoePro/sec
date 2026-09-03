@@ -65,7 +65,7 @@ rules/collections/collections.md
 rules/declarations/struct.md
 rules/declarations/unions.md
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
     ↓
 rules/mlir/sec_mlir.md
     ↓
@@ -82,7 +82,7 @@ Before implementation:
 
 1. apply `sec_reference_sync_package15.md`;
 2. apply `sec_semantic_ir_place_reference_package15.md` to
-   `rules/compiler/semantic_ir.txt`;
+   `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package15.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

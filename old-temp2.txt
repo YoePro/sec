@@ -64,12 +64,12 @@ interfaces.txt - Written
 properties.txt - Written
 
 Kategori: Kompilatorarkitektur & IR
-compiler.txt - Written
-compiler_analysis.txt - Written
-compiler_pipeline.txt - Written
+compiler.md - Written
+compiler_analysis.md - Written
+compiler_pipeline.md - Written
 mlir.txt - Written
 mlir-optimize.txt - Written < is being updated by Codex as implementation proceeds
-semantic_ir.txt - Written
+semantic_ir.md - Written
 call_graph.txt - To be done
 stack_analysis.txt - To be done
 escape_analysis.txt - To be done

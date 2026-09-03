@@ -71,7 +71,7 @@ rules/memory/destruction.md
     ↓
 local P13-P17 normative amendments
     ↓
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/mlir/sec_mlir.md
 rules/mlir/sec_mlir_dialect.md
 rules/mlir/sec_mlir_lowering.md
@@ -85,7 +85,7 @@ Before implementation:
 
 1. apply `sec_dynamic_array_sync_package18.md`;
 2. apply `sec_semantic_ir_dynamic_array_package18.md` to
-   `rules/compiler/semantic_ir.txt`;
+   `rules/compiler/semantic_ir.md`;
 3. update `rules/mlir/sec_mlir_dialect.md` with
    `sec_mlir_dialect_package18.md`;
 4. update `rules/mlir/sec_mlir_lowering.md` with

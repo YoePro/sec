@@ -973,8 +973,8 @@ rules/declarations/generics.md
 rules/declarations/interfaces.md
 rules/declarations/impl.md
 rules/declarations/properties.md
-rules/compiler/compiler_pipeline.txt
-rules/compiler/semantic_ir.txt
+rules/compiler/compiler_pipeline.md
+rules/compiler/semantic_ir.md
 rules/platform/platform_model.md
 rules/tooling/diagnostics.txt
 rules/tooling/lsp.md

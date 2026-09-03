@@ -3509,8 +3509,8 @@ operators.md
 diagnostics.txt
 lsp.md
 formatter.md
-semantic_ir.txt
-compiler_pipeline.txt
+semantic_ir.md
+compiler_pipeline.md
 types.md
 functions.md
 struct.md

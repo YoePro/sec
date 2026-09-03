@@ -1117,7 +1117,7 @@ rules/memory/borrowing.md
 rules/memory/references.md
 rules/memory/destruction.md
 rules/errors/errorhandling.md
-rules/compiler/semantic_ir.txt
+rules/compiler/semantic_ir.md
 rules/tooling/diagnostics.txt
 rules/tooling/formatter.md
 ```

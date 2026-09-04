@@ -460,7 +460,7 @@ Cross-check and update:
 ```text
 await.md
 threads.md
-tasks.txt
+tasks.md
 channels.md
 select.md
 mutex.md

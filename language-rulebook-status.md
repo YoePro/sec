@@ -59,6 +59,7 @@ concurrency/thread_local.md
 control-flow/discard.md
 declarations/generics.md
 compiler/generics_lowering.md
+compiler/monomorphization.md
 declarations/static.md
 memory/ownership.md
 memory/borrowing.md
@@ -370,7 +371,7 @@ implementation remains tracked separately.
 | `concurrency/concurrency.md` | **Written — sync required** | Overview must be synchronized with the complete concurrency set. |
 | `concurrency/concurrency_memory_model.md` | **Written — sync required** | Must remain aligned with tasks, threads, channels, atomics, and events. |
 | `concurrency/concurrency_runtime_model.md` | **Written — sync required** | Must include core errors and no-required-runtime profiles. |
-| `concurrency/tasks.txt` | **Written — sync required** | Must be synchronized with fallible spawn and discard. |
+| `concurrency/tasks.md` | **Written** | Canonical revision 2.0 task semantics: fallible task spawn, move-only lifecycle ownership, `TaskOutcome[T]`, cancellation, panic/execution-failure separation, observers, transferability, Semantic IR, and runtime-independent lowering. Implementation is tracked by `concurrency.tasks-v2`. |
 | `concurrency/spawn.md` | **Written — sync required** | All spawn forms are fallible; process spawn is deferred. |
 | `concurrency/await.md` | **Written — sync required** | Must be synchronized with task outcome and cancellation. |
 | `concurrency/threads.md` | **Written — sync required** | Thread design is closed for Sec 0.1; implementation remains. |
@@ -412,7 +413,7 @@ Process spawning and IPC do not block the immediate language closure.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `types/types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `implementation-status.yaml`. |
-| `declarations/generics.md` | **Written** | Type-generic parameters and concrete monomorphization. Compile-time value parameters require separate normative semantics and are not inferred from type-generic syntax. |
+| `declarations/generics.md` | **Written** | Type-generic declarations, parameters, constraints, inference, generic enums/interfaces/named types/methods, and template-level validity. Canonical concrete specialization is owned by `compiler/monomorphization.md`; compile-time value parameters still require separate normative semantics. |
 | `declarations/interfaces.md` | **Written** | Interface declarations, generic constraints, and compiler-known `Iterator[T]`; implementation progress is tracked by `frontend.interfaces` and `frontend.for-loops-v2`. |
 | `declarations/impl.md` | **Written** | Frontend lifecycle construction is partially implemented and tracked canonically in `implementation-status.yaml`. |
 | `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties`. |
@@ -473,8 +474,8 @@ OrderedMap[K, V]
 | `analysis/effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model, including the distinction between logical shaped operations and storage-producing shaped operations. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
 | `analysis/isr_analysis.md` | **Written** | Canonical cross-analysis ISR constraint verifier: resolved profiles, reusable requirement summaries, execution-context propagation, stack/race/deadlock/FFI composition, Valid/Invalid/Unproven proof states, incremental dependencies, and progressive LSP refinement. Implementation status is tracked by `sema.isr-analysis`. |
 | `compiler/parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
-| `compiler/generics_lowering.md` | **Written** | Canonical concrete-specialization boundary, identity, substitution, determinism, and generic enum lowering requirements. Implementation remains partial under `frontend.generics-v2`. |
-| `monomorphization.md` | **Planned** | Specialization, symbol identity, code size, and cross-module behavior. |
+| `compiler/generics_lowering.md` | **Written** | Verified concrete-generic closure and representation-dependent lowering boundary. Canonical specialization identity and demand are owned by `compiler/monomorphization.md`; implementation remains partial under `compiler.generics-lowering`. |
+| `compiler/monomorphization.md` | **Written** | Canonical demand-driven specialization model: `InstantiationIdentity`, dependency graph, simultaneous substitution, semantic-versus-physical realization, implementation sharing, cross-module artifacts, ABI/FFI, incremental fingerprints, termination/resource limits, diagnostics, cost policy, and determinism. Implementation is tracked by `compiler.monomorphization`. |
 | `compiler/linking.md` | **Written** | Canonical CompilationPlan-specific LinkPlan, binary symbol identity, native/foreign resolution, archives, reachability, dead stripping/LTO, deterministic toolchain materialization, and artifact verification. The existing direct clang-driver build path is a legacy partial slice; canonical work is tracked by `compiler.linking`. |
 | `compile_time_evaluation.md` | **Planned** | User-visible compile-time evaluation semantics. |
 
@@ -625,6 +626,7 @@ declarations/functions.md
 declarations/lambda-functions.md
 declarations/generics.md
 compiler/generics_lowering.md
+compiler/monomorphization.md
 declarations/impl.md
 declarations/interfaces.md
 analysis/isr_analysis.md
@@ -666,7 +668,7 @@ declarations/static.md
 memory/storage.md
 declarations/struct.md
 concurrency/structured_concurrency.md
-concurrency/tasks.txt
+concurrency/tasks.md
 concurrency/threads.md
 memory/transferability.md
 types/types.md
@@ -712,7 +714,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-monomorphization.md
 compile_time_evaluation.md
 
 debug_information.md
@@ -833,9 +834,6 @@ Still to decide:
 - allocation and I/O restrictions;
 - compile-time panic;
 - recursion and loop limits;
-- generic specialization;
-- monomorphization guarantees;
-- cross-module generic ABI.
 
 ## Collections and shaped types
 

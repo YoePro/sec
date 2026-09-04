@@ -494,7 +494,7 @@ Cross-check and update:
 
 ```text
 threads.md
-tasks.txt
+tasks.md
 scheduling.md
 blocking.md
 transferability.md

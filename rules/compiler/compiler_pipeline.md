@@ -889,7 +889,22 @@ reference-check elimination after proof.
 
 § 37(4) Unresolved generic parameters must not leak into a backend that cannot represent them.
 
-§ 37(5) Detailed specialization/deduplication scheduling belongs to dedicated generic-lowering rulebooks.
+§ 37(5) Canonical specialization identity, demand, dependency graphs,
+deduplication, termination, and physical implementation sharing belong to
+`rules/compiler/monomorphization.md`; verified concrete closure and
+representation-dependent lowering belong to
+`rules/compiler/generics_lowering.md`.
+
+§ 37(6) `rules/compiler/generics_lowering.md` owns the semantic concretization
+boundary. Dependency-equivalent staging must validate templates, form concrete
+substitutions, revalidate concrete-dependent semantics, discharge constraints,
+concretize ownership/destruction, verify concrete Semantic IR, and verify
+generic concreteness before representation-dependent lowering.
+
+§ 37(7) A valid generic construct without current lowering support is an
+implementation gap. An unresolved generic parameter after successful frontend
+validation is a compiler invariant failure, not a language error repaired by a
+backend fallback.
 
 ---
 

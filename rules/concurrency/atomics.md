@@ -1193,7 +1193,7 @@ concurrency.txt
 concurrency_memory_model.txt
 static.txt
 mutex.txt
-tasks.txt
+tasks.md
 declarations/registers.md
 platform/fixed-address-bindings.md
 numeric_types.txt

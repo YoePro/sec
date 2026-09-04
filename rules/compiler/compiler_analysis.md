@@ -894,7 +894,10 @@ reference/storage semantics.
 
 § 36(4) Recursive/cyclic generic analysis uses deterministic cycle handling/fixed points.
 
-§ 36(5) Detailed monomorphization/lowering behavior belongs to their planned canonical rulebooks.
+§ 36(5) Canonical monomorphization behavior belongs to
+`rules/compiler/monomorphization.md`; verified concrete generic closure and
+representation-dependent lowering belong to
+`rules/compiler/generics_lowering.md`.
 
 ---
 

@@ -59,6 +59,25 @@ fn IsLetter(ch: rune) bool {
 	t.Fatalf("analyze returned diagnostics for unicode import:\n%s", strings.Join(messages, "\n"))
 }
 
+// rules/tooling/lsp.md requires the LSP to consume shared frontend facts.
+// Repeated discard is therefore accepted here by Sema's canonical Place
+// analysis rather than by an LSP-specific diagnostic exception.
+func TestAnalyzeAcceptsRepeatedDiscardOfUnavailablePlace(t *testing.T) {
+	source := `module main
+
+fn Test() void {
+	let value := 1
+	discard value
+	discard value
+}
+`
+
+	reported := analyze("file:///tmp/sec-lsp-repeated-discard/main.sec", source)
+	if len(reported) != 0 {
+		t.Fatalf("analyze returned diagnostics for repeated discard: %+v", reported)
+	}
+}
+
 // rules/tooling/lsp.md requires semantic diagnostics to come from the shared
 // frontend. Keep qualified Option constructors contextual in both assignments
 // and match patterns instead of letting the LSP infer an open Option type.

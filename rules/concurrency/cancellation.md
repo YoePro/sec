@@ -281,7 +281,17 @@ Cancellation and business errors must remain distinguishable.
 
 ## Await and outcome
 
-Awaiting a cancellable task must preserve cancellation in its outcome model.
+Awaiting any `Task[T]` produces the canonical `TaskOutcome[T]`; cancellation is
+one of its four terminal categories.
+
+```sec
+type TaskOutcome[T] union {
+    Completed(T)
+    Cancelled
+    Panicked(PanicInfo)
+    Failed(TaskError)
+}
+```
 
 Conceptually:
 
@@ -294,7 +304,10 @@ match await worker {
 }
 ```
 
-The exact outcome type is task-specific.
+The static await type remains `TaskOutcome[T]` even when normal completion is
+proven. `Completed(Err(E))` is normal completion, not cancellation and not
+`Failed(TaskError)`. A cancellation request is not itself terminal completion,
+and `Cancelled` carries no fabricated `T`.
 
 Thread completion is inspected after `join` through `ThreadStatus` and terminal
 payload members.
@@ -520,7 +533,7 @@ Diagnostics must use stable IDs distinct for task, thread and process rules.
 Cross-check and update:
 
 ```text
-tasks.txt
+tasks.md
 threads.md
 spawn.md
 await.md

@@ -722,6 +722,11 @@ impl Package {
 
 **§ 21(5)** Borrowed interface references follow ordinary reference rules and do not transfer referent ownership.
 
+**§ 21(6)** `rules/compiler/generics_lowering.md` requires concrete copy/move
+classification before ownership-sensitive executable lowering. Missing
+move-aware lowering must fail as an implementation gap and must never silently
+lower a move-only specialization as copy-trivial.
+
 ---
 
 ## § 22 Performance analysis and reverse escape guidance

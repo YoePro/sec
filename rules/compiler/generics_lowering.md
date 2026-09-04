@@ -3,21 +3,33 @@
 - **Status:** Canonical normative rulebook
 - **Created:** 2026-09-04
 - **Last updated:** 2026-09-04
-- **Document revision:** 1.0
+- **Document revision:** 1.1
 - **Language version:** Sec 0.1
 - **Canonical path:** `rules/compiler/generics_lowering.md`
 
 ## 1. Purpose
 
-This rulebook defines the compiler boundary between generic templates and
-concrete representation-dependent lowering. It complements
-`rules/declarations/generics.md`; source declaration, constraint, inference,
-and substitution semantics remain owned there.
+This rulebook defines the verified compiler boundary from canonical concrete
+generic specializations into representation-dependent lowering.
+
+Source generic declaration, constraint, and inference semantics are owned by
+`rules/declarations/generics.md`.
+
+Canonical specialization identity, demand, the instantiation dependency graph,
+application of canonical substitutions, specialization termination, and
+semantic-versus-physical realization are owned by
+`rules/compiler/monomorphization.md`.
+
+This rulebook consumes those canonical specialization facts and defines the
+requirements that must hold before and during concrete
+representation-dependent lowering.
 
 ## 2. Compile-time specialization
 
-Sec generics are compile-time templates. Every reachable complete generic
-argument list produces or reuses a canonical concrete specialization.
+Sec generics are compile-time templates. Lowering consumes the canonical
+demanded concrete specializations supplied by
+`rules/compiler/monomorphization.md`; it does not create a competing demand or
+specialization identity model.
 
 Lowering must not introduce:
 
@@ -28,45 +40,49 @@ Lowering must not introduce:
 - implicit boxing;
 - runtime values for generic type parameters.
 
-## 3. Concrete identity
+## 3. Preserved concrete identity
 
-A concrete generic nominal identity includes at least:
+Concrete generic nominal identity is defined by
+`rules/compiler/monomorphization.md` and the owning type rulebooks. Lowering
+preserves, where applicable:
 
 ```text
-GenericDeclarationIdentity
+InstantiationIdentity
 OrderedConcreteGenericArguments
 CanonicalConcreteTypeIdentity
 ```
 
-The same declaration and argument list canonicalize to the same Sec type.
-Different argument lists identify different Sec types even when their physical
-representations are identical.
+Lowering must not define a second identity formula or merge semantically
+distinct specializations merely because representations match. Concrete
+callable and storage binary identities remain governed by linking, ABI, static,
+and monomorphization rules as applicable.
 
-Concrete callable and static-storage symbols must include sufficient canonical
-generic identity to avoid collisions between specializations.
-
-## 4. Substitution boundary
+## 4. Concrete closure boundary
 
 Before representation-dependent Semantic IR, Sec MLIR, ABI, FFI, or backend
-lowering, the compiler must:
+lowering consumes a runtime-relevant concrete specialization, the compiler must
+verify that the specialization is canonical and that every generic-dependent
+semantic choice required at that boundary is resolved.
 
-1. resolve the source generic declaration;
-2. validate arity and constraints;
-3. form the ordered substitution;
-4. validate the concrete substituted declaration;
-5. canonicalize or reuse its concrete identity;
-6. reject unresolved or non-converging specialization;
-7. lower the resulting concrete type or callable through its ordinary rules.
+The canonical specialization, including its substitution and
+`InstantiationIdentity`, is supplied by
+`rules/compiler/monomorphization.md`.
 
-No unresolved generic parameter may reach executable representation-dependent
-IR.
+The closure verifier rejects unresolved generic parameters or unresolved
+generic-dependent semantic choices in runtime-relevant concrete IR.
+
+The closure verifier does not require physical size, alignment, field offsets,
+ABI classification, target-sized representation, or machine symbols before the
+owning plan-realization stage requires them.
 
 ## 5. Generic nominal types
 
 Generic structs, unions, enums, named types, and interfaces preserve their
 source declaration identity together with their ordered concrete arguments.
-Their concrete layout, copy/move behavior, destruction, defaults, and ABI facts
-are recomputed after substitution where those facts depend on an argument.
+Semantic generic-dependent properties are resolved from their owning rulebooks
+after substitution. Plan-specific physical layout and ABI facts may remain
+unresolved until their owning lowering stages require them. Nominal identity
+and ordered concrete arguments remain preserved throughout lowering.
 
 ## 6. Generic enums
 
@@ -120,18 +136,17 @@ executable concrete IR.
 
 ## 8. Failure and diagnostics
 
-Specialization must fail before backend lowering for:
+Failures retain concrete specialization provenance but remain classified by
+their owning phase:
 
-- wrong generic arity;
-- unknown or unsatisfied constraints;
-- unresolved generic parameters;
-- non-converging recursive instantiation;
-- invalid concrete layout or representation;
-- symbol identity collisions;
-- concrete enum representations rejected by the ordinary enum rules.
+- invalid substitution or unresolved generic semantics: generic/Sema failure;
+- proven non-converging specialization: monomorphization failure;
+- recursive by-value semantic layout: layout failure;
+- unsupported or invalid plan-specific representation or ABI: lowering/ABI/plan failure;
+- symbol collision: linking/binary-identity failure;
+- invalid concrete enum representation: enum/layout failure.
 
-Concrete-dependent diagnostics should identify both the generic declaration and
-the concrete substitution that caused the failure.
+Lowering must not collapse these into one generic-specialization diagnostic.
 
 ## 9. Determinism
 
@@ -141,8 +156,10 @@ for the same concrete specialization must reuse the same semantic identity.
 
 ## 10. Cross-rulebook ownership
 
-- source generics, constraints, inference, and substitution:
-  `rules/declarations/generics.md`;
+- source generics, constraints, and inference: `rules/declarations/generics.md`;
+- canonical specialization identity, demand, substitution application,
+  specialization termination, implementation sharing, and generic cross-module
+  behavior: `rules/compiler/monomorphization.md`;
 - enum domains, members, and representation: `rules/declarations/enums.md`;
 - Semantic IR ownership and identity: `rules/compiler/semantic_ir.md`;
 - compilation phases and plan boundaries:

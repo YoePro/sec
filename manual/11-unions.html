@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,109 +22,102 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">Unions</div>
-        <ul>
-            <li><a href="#unions">Overview</a></li>
-            <li><a href="#basic-syntax">Basic Syntax</a></li>
-            <li><a href="#variant-kinds">Variant Kinds</a></li>
-            <li><a href="#construction">Construction</a></li>
-            <li><a href="#namespaces">Namespaces</a></li>
-        </ul>
+        <div class="sidebar-section">This page</div>
+        <a href="#unions">Unions</a>
+        <a href="#core-model">Core Model</a>
+        <a href="#declaration">Declaration</a>
+        <a href="#variant-kinds">Variant Kinds</a>
+        <a href="#namespace">Variant Namespace</a>
+        <a href="#construction">Construction</a>
+        <a href="#payload-defaults">Payload Field Defaults</a>
+        <a href="#payload-ownership">Payload Ownership</a>
+        <a href="#defaults">Union Defaults</a>
+        <a href="#empty">The empty State</a>
+        <a href="#empty-restrictions">Restrictions on empty</a>
+        <a href="#moved-vs-empty">Moved vs empty</a>
+        <a href="#state-tests">State Tests with is</a>
+        <a href="#match">Matching Unions</a>
+        <a href="#whole-payload">Whole-Payload Binding</a>
+        <a href="#field-destructuring">Field Destructuring</a>
+        <a href="#borrowed-patterns">Borrowed Pattern Fields</a>
+        <a href="#partial-moves">No Hidden Partial Moves</a>
+        <a href="#guards">Guards</a>
+        <a href="#result-option">Result and Option</a>
+        <a href="#error-unions">Error Unions</a>
+        <a href="#assignment">Assignment and Conversion</a>
+        <a href="#equality">Equality</a>
+        <a href="#copy-move">Copy and Move</a>
+        <a href="#generic-unions">Generic Unions</a>
+        <a href="#nested-unions">Nested Unions</a>
+        <a href="#recursive-unions">Recursive Unions</a>
+        <a href="#impl">Behavior with impl</a>
+        <a href="#representation">Representation</a>
+        <a href="#ffi-unions">Foreign C Unions</a>
+        <a href="#visibility">Visibility</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Type Rules</div>
-        <ul>
-            <li><a href="#distinct-types">Distinct Types</a></li>
-            <li><a href="#payload-rules">Payload Rules</a></li>
-            <li><a href="#assignment">Assignment</a></li>
-            <li><a href="#variables">Variables</a></li>
-            <li><a href="#equality">Equality</a></li>
-            <li><a href="#copy-and-move">Copy and Move</a></li>
-        </ul>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html" class="active">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
 
-        <div class="sidebar-section">Inspection</div>
-        <ul>
-            <li><a href="#match">Matching Unions</a></li>
-            <li><a href="#exhaustiveness">Exhaustiveness</a></li>
-            <li><a href="#payload-bindings">Payload Bindings</a></li>
-            <li><a href="#guards">Guards</a></li>
-        </ul>
-
-        <div class="sidebar-section">Advanced</div>
-        <ul>
-            <li><a href="#generic-unions">Generic Unions</a></li>
-            <li><a href="#nested-unions">Nested Unions</a></li>
-            <li><a href="#recursive-unions">Recursive Unions</a></li>
-            <li><a href="#memory-layout">Memory Layout</a></li>
-            <li><a href="#unsupported">Not Supported Initially</a></li>
-            <li><a href="#common-errors">Common Errors</a></li>
-            <li><a href="#summary-rules">Summary of Rules</a></li>
-        </ul>
-
-                                <div class="sidebar-section">Language</div>
-        <ul>
-            <li><a href="01-introduction.html">Introduction</a></li>
-            <li><a href="02-basic-syntax.html">Basic Syntax</a></li>
-            <li><a href="03-types.html">Types</a></li>
-            <li><a href="04-named-types-contracts.html">Named Types &amp; Contracts </a></li>
-            <li><a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a></li>
-            <li><a href="06-functions.html">Functions</a></li>
-            <li><a href="07-if.html">If Statements</a></li>
-            <li><a href="08-switch.html">Switch Statements</a></li>
-            <li><a href="09-match.html">Match Expressions</a></li>
-            <li><a href="10-enums.html">Enums</a></li>
-            <li><a href="11-unions.html" class="active">Unions</a></li>
-            <li><a href="12-registers.html">Registers</a></li>
-            <li><a href="13-units.html">Units</a></li>
-            <li><a href="14-generics.html">Generics</a></li>
-            <li><a href="15-structs.html">Structs</a></li>
-            <li><a href="16-impl.html">Impl Blocks</a></li>
-            <li><a href="17-properties.html">Properties</a></li>
-            <li><a href="18-interfaces.html">Interfaces</a></li>
-            <li><a href="19-arrays.html">Arrays</a></li>
-            <li><a href="20-slices.html">Slices</a></li>
-            <li><a href="21-indexing.html">Indexing</a></li>
-            <li><a href="22-constants.html">Constants</a></li>
-            <li><a href="23-references.html">References</a></li>
-            <li><a href="24-ownership.html">Ownership</a></li>
-            <li><a href="25-borrowing.html">Borrowing</a></li>
-            <li><a href="26-unsafe.html">Unsafe</a></li>
-            <li><a href="27-spread.html">Spread</a></li>
-            <li><a href="30-modules.html">Modules and Imports</a></li>
-            <li><a href="31-projects.html">Projects and sec.module</a></li>
-            <li><a href="32-visibility.html">Visibility</a></li>
-            <li><a href="33-result-and-option.html">Result and Option</a></li>
-            <li><a href="34-try.html">Error Propagation</a></li>
-            <li><a href="35-defer.html">Deferred Cleanup</a></li>
-            <li><a href="36-attributes.html">Attributes</a></li>
-            <li><a href="37-build-directives.html">Build Directives</a></li>
-            <li><a href="38-ffi.html">Foreign Function Interfaces</a></li>
-            <li><a href="39-tasks.html">Tasks</a></li>
-            <li><a href="40-spawn.html">Spawning Work</a></li>
-            <li><a href="41-await.html">Awaiting Tasks</a></li>
-            <li><a href="42-channels.html">Channels and Coordination</a></li>
-            <li><a href="43-testing.html">Tests and Benchmarks</a></li>
-            <li><a href="44-formatting.html">Formatting</a></li>
-            <li><a href="45-diagnostics.html">Understanding Compiler Diagnostics</a></li>
-        </ul>
         <div class="sidebar-section">Reference</div>
-        <ul>
-            <li><a href="stdlib.html">Standard Library</a></li>
-            <li><a href="syntax-reference.html">Syntax Reference</a></li>
-            <li><a href="best-practices.html">Best Practices</a></li>
-        </ul>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
-        <ul>
-            <li><a href="test-status.html">Implementation Status</a></li>
-        </ul>
+        <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
-        <ul>
-            <li><a href="bug-report.html">Report a Bug</a></li>
-            <li><a href="join.html">Join</a></li>
-        </ul>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
@@ -133,679 +126,1493 @@
         <h1 id="unions">Unions</h1>
 
         <p>
-            A union represents one active variant selected from a finite set. A variant may carry no data,
-            one unnamed payload value, or a struct-like payload with named fields.
+            A Sec union is a closed nominal type whose initialized value contains exactly one
+            active declared variant. Variants may carry no data, one unnamed payload, or a
+            struct-like payload with named fields.
         </p>
 
         <pre><code>type Message union {
     Quit
     Text(string)
+
     Move {
-        x: int,
-        y: int,
+        x: int
+        y: int
     }
 }</code></pre>
 
         <p>
-            Every value of <code>Message</code> contains exactly one active variant. The active variant and its
-            payload are inspected with <code>match</code>.
+            Unions are used when one value may be one of several explicitly declared alternatives
+            and variant-specific data must remain statically typed.
         </p>
 
         <div class="rule">
-            <strong>Rule:</strong> A union is a closed, distinct named type. Its complete variant set is known at
-            compile time.
+            <strong>Core rule:</strong> A union is closed over its declared variants.
+            The active variant is semantic state, not a source-visible integer tag.
         </div>
 
-        <section id="basic-syntax">
-            <h2>Basic Syntax</h2>
+        <section id="core-model">
+            <h2>Core Model</h2>
 
-            <p>A union is declared with <code>type Name union</code>:</p>
+            <p>An initialized union value contains:</p>
 
-            <pre><code>type State union {
-    idle
-    running
-    stopped
-}</code></pre>
+            <ol>
+                <li>one active declared variant;</li>
+                <li>the payload required by that variant, if any.</li>
+            </ol>
 
-            <p>Variants are written inside the union body. Commas are optional after variants, and a trailing comma is allowed.</p>
+            <p>A union is distinct from several related concepts:</p>
 
-            <pre><code>type State union {
-    idle,
-    running,
-    stopped,
-}</code></pre>
-
-            <p>A union must have at least one variant.</p>
-
-            <pre><code>type Empty union {
-}</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> Empty unions are not allowed.
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Construct</th>
+                            <th>Difference from a union</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Enum</td>
+                            <td>Represents a named value from a value domain; enum members do not carry variant payload data</td>
+                        </tr>
+                        <tr>
+                            <td>Struct</td>
+                            <td>All declared fields exist together</td>
+                        </tr>
+                        <tr>
+                            <td>Interface</td>
+                            <td>Describes behavior rather than one-of-many stored variants</td>
+                        </tr>
+                        <tr>
+                            <td><code>Option[T]</code></td>
+                            <td><code>None</code> is an actual value of the option type</td>
+                        </tr>
+                        <tr>
+                            <td><code>empty</code></td>
+                            <td>Compiler-known initialization state, not a union value or variant</td>
+                        </tr>
+                        <tr>
+                            <td><code>null</code></td>
+                            <td>Not Sec's union model</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
+
+            <p>Every union has these properties:</p>
+
+            <ul>
+                <li>it is named;</li>
+                <li>it is nominal;</li>
+                <li>it contains at least one variant;</li>
+                <li>variant names are unique within the union;</li>
+                <li>different unions may reuse variant names;</li>
+                <li>duplicate payload types are allowed;</li>
+                <li>variants cannot be added outside the declaration;</li>
+                <li>variants are constructors, not independent runtime types;</li>
+                <li>distinct union types are never implicitly interchangeable.</li>
+            </ul>
+        </section>
+
+        <section id="declaration">
+            <h2>Declaration</h2>
+
+            <p>The declaration form is:</p>
+
+            <pre><code>type Name union {
+    variants
+}</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>type State union {
+    Idle
+    Running
+    Stopped
+}</code></pre>
+
+            <p>A union must be named and must contain at least one variant.</p>
+
+            <p>Anonymous union types are not part of the Sec union model.</p>
         </section>
 
         <section id="variant-kinds">
             <h2>Variant Kinds</h2>
 
-            <h3>Payload-less variants</h3>
+            <p>
+                One union may freely mix all three variant forms.
+            </p>
 
-            <p>A payload-less variant carries no additional data:</p>
+            <h3>Payload-less variant</h3>
 
             <pre><code>type State union {
-    idle
-    running
-    stopped
+    Idle
+    Running
+    Stopped
 }</code></pre>
 
-            <h3>Single-payload variants</h3>
+            <p>
+                A payload-less variant represents only its variant identity.
+            </p>
 
-            <p>A variant may carry exactly one unnamed payload value:</p>
+            <h3>Single unnamed payload</h3>
 
             <pre><code>type Number union {
     Integer(int)
     Decimal(decimal)
 }</code></pre>
 
-            <h3>Struct-like variants</h3>
+            <p>
+                A single-payload variant carries exactly one value.
+            </p>
 
-            <p>A variant may carry a payload with named fields:</p>
+            <p>
+                Multiple unnamed payload parameters are not supported:
+            </p>
+
+            <pre><code>type Invalid union {
+    Pair(int, int)    // invalid
+}</code></pre>
+
+            <p>
+                Use a struct-like payload when several values belong to one variant.
+            </p>
+
+            <h3>Struct-like payload</h3>
 
             <pre><code>type Shape union {
     Circle {
-        radius: decimal,
+        radius: decimal
     }
 
     Rectangle {
-        width: decimal,
-        height: decimal,
+        width: decimal
+        height: decimal
     }
 }</code></pre>
 
-            <div class="rule">
-                <strong>Rule:</strong> A variant may use either one unnamed payload or a struct-like named payload,
-                but not both.
-            </div>
+            <p>
+                The struct-like payload belongs to the variant. It is not a separate nominal
+                source-level type.
+            </p>
+
+            <h3>Mixed union</h3>
+
+            <pre><code>type Message union {
+    Quit
+    Text(string)
+
+    Move {
+        x: int
+        y: int
+    }
+}</code></pre>
+        </section>
+
+        <section id="namespace">
+            <h2>Variant Namespace</h2>
+
+            <p>
+                Union variants belong to the union namespace.
+            </p>
+
+            <pre><code>type State union {
+    Idle
+    Running
+}</code></pre>
+
+            <p>Construction uses qualified names:</p>
+
+            <pre><code>let state := State.Idle</code></pre>
+
+            <p>
+                Declaring <code>State.Idle</code> does not inject an ordinary module-level
+                symbol named <code>Idle</code>.
+            </p>
+
+            <p>
+                Pattern contexts may resolve an unqualified variant name from the known
+                subject union type:
+            </p>
+
+            <pre><code>match state {
+    Idle =&gt; HandleIdle()
+    Running =&gt; HandleRunning()
+}</code></pre>
+
+            <p>
+                Qualification remains available when required for clarity or disambiguation.
+            </p>
         </section>
 
         <section id="construction">
             <h2>Construction</h2>
 
-            <h3>Payload-less construction</h3>
+            <h3>Payload-less variant</h3>
 
-            <pre><code>let state: State := State.idle</code></pre>
+            <pre><code>let state := State.Idle</code></pre>
 
-            <p>A payload-less variant does not accept arguments:</p>
+            <p>A payload-less variant accepts no arguments.</p>
 
-            <pre><code>State.idle(1)</code></pre>
+            <pre><code>let state := State.Idle(1)    // invalid</code></pre>
 
-            <div class="rule">
-                <strong>Invalid:</strong> <code>State.idle</code> does not accept a payload.
-            </div>
+            <h3>Single-payload variant</h3>
 
-            <h3>Single-payload construction</h3>
+            <pre><code>let number := Number.Integer(42)</code></pre>
 
-            <pre><code>let number: Number := Number.Integer(42)</code></pre>
+            <p>
+                Exactly one value assignable to the declared payload type is required.
+            </p>
 
-            <p>The constructor requires exactly one value of the declared payload type.</p>
+            <pre><code>Number.Integer()       // invalid
+Number.Integer(1, 2)   // invalid</code></pre>
 
-            <pre><code>Number.Integer()
-Number.Integer(1, 2)
-Number.Integer("hello")</code></pre>
+            <h3>Struct-like variant</h3>
 
-            <p>All three forms are invalid.</p>
-
-            <h3>Struct-like construction</h3>
-
-            <pre><code>let rectangle: Shape := Shape.Rectangle {
-    width: 10,
-    height: 20,
+            <pre><code>let shape := Shape.Rectangle {
+    width: 10
+    height: 20
 }</code></pre>
 
-            <p>All payload fields must be provided explicitly.</p>
+            <p>
+                Struct-like payload construction uses named fields.
+            </p>
 
-            <pre><code>let rectangle: Shape := Shape.Rectangle {
-    width: 10,
-}</code></pre>
+            <p>Positional construction is invalid:</p>
+
+            <pre><code>Shape.Rectangle(10, 20)    // invalid</code></pre>
 
             <div class="rule">
-                <strong>Invalid:</strong> The required field <code>height</code> is missing.
+                <strong>Rule:</strong> The selected variant is always explicit in union construction.
+                There is no implicit payload-to-union conversion.
             </div>
-
-            <p>Unknown fields, duplicate fields and incompatible field values are rejected.</p>
-
-            <h3>Construction result type</h3>
-
-            <p>Every variant constructor produces the containing union type:</p>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                    <tr>
-                        <th>Expression</th>
-                        <th>Type</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr><td><code>State.idle</code></td><td><code>State</code></td></tr>
-                    <tr><td><code>Number.Integer(42)</code></td><td><code>Number</code></td></tr>
-                    <tr><td><code>Shape.Circle { radius: 12 }</code></td><td><code>Shape</code></td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <p>A union variant does not create a separate source-level runtime type.</p>
         </section>
 
-        <section id="namespaces">
-            <h2>Variant Namespaces</h2>
+        <section id="payload-defaults">
+            <h2>Omitted Struct-Like Payload Fields</h2>
 
-            <p>Union variants belong to the union namespace.</p>
+            <p>
+                A struct-like payload field may be omitted when its declared field type is
+                <code>Defaultable</code>.
+            </p>
 
-            <pre><code>type State union {
-    idle
-    running
-}</code></pre>
-
-            <pre><code>State.idle
-State.running</code></pre>
-
-            <p>The names <code>idle</code> and <code>running</code> are not ordinary module symbols.</p>
-
-            <p>Variant names must be unique within one union:</p>
-
-            <pre><code>type Invalid union {
-    value
-    value
-}</code></pre>
-
-            <p>Different unions may reuse the same variant name:</p>
-
-            <pre><code>type State union {
-    idle
-    running
+            <pre><code>type MoveCommand union {
+    Move {
+        x: int
+        y: int
+    }
 }
 
-type Connection union {
-    idle
-    connected
-}</code></pre>
-        </section>
-
-        <section id="distinct-types">
-            <h2>Unions Are Distinct Types</h2>
-
-            <p>Each union declaration creates a distinct named type.</p>
-
-            <pre><code>type State union {
-    idle
-}
-
-type Connection union {
-    idle
+let command := MoveCommand.Move {
+    x: 10
 }</code></pre>
 
-            <p><code>State.idle</code> and <code>Connection.idle</code> have different types.</p>
+            <p>The constructed payload is semantically equivalent to:</p>
 
-            <pre><code>let state: State := Connection.idle</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> No implicit conversion exists between different union types.
-            </div>
-
-            <p>Payload values also do not convert implicitly to or from the union:</p>
-
-            <pre><code>let number: Number := 42
-let value: int := Number.Integer(42)</code></pre>
-
-            <p>Both declarations are invalid.</p>
-
-            <p>Explicit casts between unions and payload types are not supported.</p>
-        </section>
-
-        <section id="payload-rules">
-            <h2>Payload Rules</h2>
-
-            <p>Every payload type must resolve to a valid type.</p>
-
-            <pre><code>type Value union {
-    Missing(UnknownType)
+            <pre><code>MoveCommand.Move {
+    x: 10
+    y: 0
 }</code></pre>
 
-            <p>A struct-like payload field must have a unique name and a valid type.</p>
+            <p>
+                A field whose type is <code>NonDefaultable</code> must be supplied explicitly.
+            </p>
 
-            <pre><code>type InvalidShape union {
-    Rectangle {
-        width: decimal,
-        width: decimal,
-    }
-}</code></pre>
-
-            <p>Duplicate payload types are allowed because the variants remain distinct:</p>
-
-            <pre><code>type Value union {
-    First(int)
-    Second(int)
-}</code></pre>
-
-            <p><code>Value.First(1)</code> and <code>Value.Second(1)</code> are different union values.</p>
-
-            <p>Multiple unnamed payload values are not supported initially. Use a struct-like payload instead:</p>
-
-            <pre><code>type PairValue union {
-    Pair {
-        first: int,
-        second: string,
-    }
-}</code></pre>
-        </section>
-
-        <section id="assignment">
-            <h2>Assignment</h2>
-
-            <p>A union value may be assigned only to the same union type.</p>
-
-            <pre><code>let value: Number := Number.Integer(42)</code></pre>
-
-            <p>Different generic instantiations are also distinct types:</p>
-
-            <pre><code>let source: Option[string] := Option.Some("hello")
-let target: Option[int] := source</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> <code>Option[string]</code> cannot be assigned to <code>Option[int]</code>.
-            </div>
-        </section>
-
-        <section id="variables">
-            <h2>Variables and Definite Assignment</h2>
-
-            <p>A union has no implicit default variant.</p>
-
-            <pre><code>let state: State</code></pre>
-
-            <p>An immutable variable must be initialized when declared, so this is invalid.</p>
-
-            <p>A mutable union variable may be declared without an initializer:</p>
-
-            <pre><code>let mut state: State
-state = State.running</code></pre>
-
-            <p>The variable must be definitely assigned before it is read.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> The first declared variant is not selected automatically.
-            </div>
-        </section>
-
-        <section id="equality">
-            <h2>Equality</h2>
-
-            <p>A payload-less union is comparable for equality.</p>
-
-            <pre><code>if state == State.running {
-    Start()
-}</code></pre>
-
-            <p>A union with payloads is comparable only when every possible payload type is comparable.</p>
-
-            <p>Variant identity is part of equality:</p>
-
-            <pre><code>type Value union {
-    First(int)
-    Second(int)
-}</code></pre>
-
-            <pre><code>Value.First(1) != Value.Second(1)</code></pre>
-
-            <p>Different union types and different generic instantiations are never directly comparable.</p>
-        </section>
-
-        <section id="copy-and-move">
-            <h2>Copy and Move Behavior</h2>
-
-            <p>A union is copyable only when every possible payload is copyable.</p>
+            <p>The compiler also rejects:</p>
 
             <ul>
-                <li>A payload-less union is copyable.</li>
-                <li>A union containing only copyable payloads is copyable.</li>
-                <li>A union containing a non-copyable payload is not copyable.</li>
+                <li>unknown construction fields;</li>
+                <li>duplicate fields;</li>
+                <li>values incompatible with the declared field type.</li>
             </ul>
 
-            <p>Assignment follows the normal Sec copy and move rules. The compiler never silently clones a payload.</p>
+            <p>
+                These are real semantic defaults. Omission never creates undefined payload storage.
+            </p>
+        </section>
+
+        <section id="payload-ownership">
+            <h2>Payload Ownership During Construction</h2>
+
+            <p>
+                Constructing a union follows ordinary Sec copy and move rules.
+                Union construction never silently consumes a reusable source Place.
+            </p>
+
+            <h3>Copyable payload</h3>
+
+            <pre><code>let value: int := 42
+let number := Number.Integer(value)</code></pre>
+
+            <p>
+                A copyable source may be copied according to normal value semantics.
+            </p>
+
+            <h3>Move-only payload</h3>
+
+            <pre><code>type Choice[T] union {
+    Some(T)
+    None
+}
+
+let resource := OpenResource()
+let choice := Choice[Resource].Some(&lt;-resource)</code></pre>
+
+            <p>
+                When a reusable source is non-copyable, ownership transfer is explicit.
+            </p>
+
+            <p>The same rule applies to struct-like payload fields:</p>
+
+            <pre><code>type Work union {
+    Pending {
+        Resource: Resource
+    }
+
+    Done
+}
+
+let resource := OpenResource()
+
+let work := Work.Pending {
+    Resource: &lt;-resource
+}</code></pre>
+
+            <p>
+                Fresh temporaries need no redundant move marker:
+            </p>
+
+            <pre><code>let choice := Choice[Resource].Some(OpenResource())</code></pre>
+        </section>
+
+        <section id="defaults">
+            <h2>Union Defaults</h2>
+
+            <p>
+                A union does not automatically use its first declared variant as a default.
+            </p>
+
+            <p>
+                This differs intentionally from enum default semantics.
+            </p>
+
+            <pre><code>type State union {
+    Idle
+    Running
+}</code></pre>
+
+            <p>
+                <code>State</code> is not defaultable merely because <code>Idle</code> appears first.
+            </p>
+
+            <h3>Explicit default variant</h3>
+
+            <p>At most one variant may be marked <code>default</code>.</p>
+
+            <h4>Payload-less default</h4>
+
+            <pre><code>type State union {
+    Idle default
+    Running
+}</code></pre>
+
+            <h4>Single-payload default</h4>
+
+            <pre><code>type Value union {
+    Number(int) default
+    Text(string)
+}</code></pre>
+
+            <p>
+                The payload type must itself be defaultable.
+            </p>
+
+            <h4>Struct-like default</h4>
+
+            <pre><code>type Position union {
+    Unknown
+
+    Known {
+        x: int
+        y: int
+    } default
+}</code></pre>
+
+            <p>
+                Every required payload field must be resolvable through the ordinary
+                struct-like payload default rules.
+            </p>
+
+            <h3>Defaultability</h3>
+
+            <p>
+                A union is <code>Defaultable</code> exactly when it declares one valid explicit
+                default variant.
+            </p>
+
+            <pre><code>type State union {
+    Idle default
+    Running
+}
+
+let mut state: State</code></pre>
+
+            <p>is semantically equivalent to:</p>
+
+            <pre><code>let mut state: State := State.Idle</code></pre>
+
+            <p>
+                Immutable declarations still require an initializer:
+            </p>
+
+            <pre><code>let state: State    // invalid</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Union defaultability is explicit intent.
+                Declaration order alone never chooses a union default.
+            </div>
+        </section>
+
+        <section id="empty">
+            <h2>The <code>empty</code> Initialization State</h2>
+
+            <p>
+                A mutable binding of a <code>NonDefaultable</code> union type may omit its
+                initializer as a union-specific definite-assignment form.
+            </p>
+
+            <pre><code>type State union {
+    Idle
+    Running
+}
+
+let mut state: State</code></pre>
+
+            <p>
+                Immediately after the declaration, <code>state</code> is <code>empty</code>.
+            </p>
+
+            <p>
+                This means that storage exists for the binding, but no union value has yet
+                been constructed there.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> <code>empty</code> is compiler-known initialization
+                state. It is not a hidden union variant and is not part of the union's closed value domain.
+            </div>
+
+            <p><code>empty</code> is not:</p>
+
+            <ul>
+                <li><code>null</code>;</li>
+                <li><code>None</code>;</li>
+                <li><code>Nothing</code>;</li>
+                <li>a source-visible numeric tag;</li>
+                <li>a value that can be passed as an ordinary union value.</li>
+            </ul>
+        </section>
+
+        <section id="empty-restrictions">
+            <h2>Restrictions on Empty Bindings</h2>
+
+            <p>
+                An empty union binding does not contain a union value and therefore cannot be
+                used where an actual union value is required.
+            </p>
+
+            <p>Before initialization, it may not be:</p>
+
+            <ul>
+                <li>read as a value;</li>
+                <li>passed to a function as a union value;</li>
+                <li>returned;</li>
+                <li>copied;</li>
+                <li>moved;</li>
+                <li>borrowed as a union value;</li>
+                <li>stored into another value.</li>
+            </ul>
+
+            <p>Assigning a valid variant activates the union:</p>
+
+            <pre><code>let mut state: State
+state = State.Running
+
+UseState(state)</code></pre>
+
+            <p>
+                After the assignment, <code>state</code> contains an initialized
+                <code>State.Running</code> value.
+            </p>
+
+            <h3>Destruction of still-empty storage</h3>
+
+            <p>
+                If local union storage remains empty until its storage lifetime ends, no union
+                payload is destroyed because no payload was ever constructed.
+            </p>
+
+            <h3>Runtime-dependent empty state</h3>
+
+            <pre><code>let mut state: State
+
+if condition {
+    state = State.Idle
+}</code></pre>
+
+            <p>
+                Later code may need to distinguish the initialized and empty paths.
+                The compiler may internally carry an initialization flag or equivalent
+                state when runtime control flow requires it.
+            </p>
+
+            <p>
+                That implementation state never becomes a source-visible union variant.
+            </p>
+        </section>
+
+        <section id="moved-vs-empty">
+            <h2>Moved-From Is Not Empty</h2>
+
+            <p>
+                A moved-from union binding follows ordinary ownership rules.
+                It does not become a union-specific <code>empty</code> binding.
+            </p>
+
+            <pre><code>let mut source := State.Idle
+let target :&lt;- source
+
+if source is empty {
+    ...
+}</code></pre>
+
+            <p>
+                This is invalid. <code>source</code> is moved-from and unavailable,
+                not empty.
+            </p>
+
+            <p>
+                The distinction matters because <code>empty</code> is an initialization state
+                defined only for applicable union storage. A move is an ownership event.
+            </p>
+        </section>
+
+        <section id="state-tests">
+            <h2>State Tests with <code>is</code></h2>
+
+            <h3>Active variant test</h3>
+
+            <p>
+                <code>is</code> may test the active variant without destructuring or binding
+                its payload:
+            </p>
+
+            <pre><code>if state is Idle {
+    HandleIdle()
+}</code></pre>
+
+            <p>The same form applies to a payload-carrying variant:</p>
+
+            <pre><code>if result is Ok {
+    HandleSuccessState()
+}</code></pre>
+
+            <p>
+                No payload binding is introduced by <code>is Variant</code>.
+                Use <code>match</code> when payload extraction is required.
+            </p>
+
+            <h3>Empty-state test</h3>
+
+            <pre><code>if state is empty {
+    state = State.Idle
+}</code></pre>
+
+            <p>
+                <code>is empty</code> observes definite-initialization state rather than
+                a union variant.
+            </p>
+
+            <h3>Data-flow refinement</h3>
+
+            <pre><code>let mut state: State
+
+if state is empty {
+    state = State.Idle
+}
+
+UseState(state)</code></pre>
+
+            <p>
+                After the <code>if</code>, the compiler can prove <code>state</code> initialized:
+            </p>
+
+            <ul>
+                <li>the true path initializes it;</li>
+                <li>the false path proves it was already non-empty.</li>
+            </ul>
+
+            <p>
+                Similarly, within:
+            </p>
+
+            <pre><code>if state is Running {
+    ...
+}</code></pre>
+
+            <p>
+                the compiler knows the subject is initialized and has active variant
+                <code>Running</code>.
+            </p>
+
+            <p>
+                An <code>is empty</code> test is meaningless in a context that guarantees an
+                actual initialized value, such as an ordinary by-value function parameter.
+            </p>
         </section>
 
         <section id="match">
             <h2>Matching Unions</h2>
 
-            <p><code>match</code> is the primary operation for inspecting a union value.</p>
+            <p>
+                <code>match</code> is the primary operation for exhaustive union inspection
+                and payload binding.
+            </p>
 
             <h3>Payload-less variants</h3>
 
             <pre><code>match state {
-    idle => HandleIdle()
-    running => HandleRunning()
-    stopped => HandleStopped()
+    Idle =&gt; HandleIdle()
+    Running =&gt; HandleRunning()
+    Stopped =&gt; HandleStopped()
 }</code></pre>
 
             <h3>Single-payload variants</h3>
 
             <pre><code>match number {
-    Integer(value) => UseInt(value)
-    Decimal(value) => UseDecimal(value)
+    Integer(value) =&gt; UseInt(value)
+    Decimal(value) =&gt; UseDecimal(value)
 }</code></pre>
 
-            <h3>Struct-like variants</h3>
+            <h3>Possible empty state</h3>
 
-            <pre><code>area := match shape {
-    Circle(circle) => circle.radius * circle.radius
-    Rectangle(rectangle) => rectangle.width * rectangle.height
-}</code></pre>
-
-            <p>The complete struct-like payload is initially bound as one value. Field-level pattern destructuring is not supported yet.</p>
-
-            <pre><code>// Not supported initially
-Rectangle { width, height } => width * height</code></pre>
-        </section>
-
-        <section id="exhaustiveness">
-            <h2>Exhaustiveness</h2>
-
-            <p>A union is closed, so the compiler knows every possible variant.</p>
-
-            <pre><code>type State union {
-    idle
-    running
-    stopped
-}</code></pre>
+            <p>
+                If control-flow analysis says a union binding may still be empty,
+                exhaustive matching must include that state:
+            </p>
 
             <pre><code>match state {
-    idle => HandleIdle()
+    empty =&gt; Initialize()
+    Idle =&gt; Wait()
+    Running =&gt; Work()
 }</code></pre>
+
+            <p>
+                When the subject is known to contain an actual union value, <code>empty</code>
+                is not part of exhaustiveness.
+            </p>
+
+            <p>
+                An unguarded catch-all <code>_</code> covers every remaining reachable state,
+                including <code>empty</code> when it is reachable.
+            </p>
+
+            <p>
+                Tooling may warn when a general catch-all hides a reachable empty state,
+                because accidental handling of uninitialized storage can obscure a logic error.
+            </p>
+        </section>
+
+        <section id="whole-payload">
+            <h2>Whole-Payload Binding</h2>
+
+            <p>
+                A complete single payload may be bound in the normal variant pattern:
+            </p>
+
+            <pre><code>match number {
+    Integer(value) =&gt; UseInt(value)
+    Decimal(value) =&gt; UseDecimal(value)
+}</code></pre>
+
+            <p>
+                A complete struct-like payload may also be bound as one value:
+            </p>
+
+            <pre><code>match shape {
+    Circle(circle) =&gt; circle.radius
+    Rectangle(rectangle) =&gt; rectangle.width * rectangle.height
+}</code></pre>
+
+            <p>
+                This form is useful when the payload should be passed around as one coherent
+                value inside the selected arm.
+            </p>
+        </section>
+
+        <section id="field-destructuring">
+            <h2>Shallow Named-Field Destructuring</h2>
+
+            <p>
+                A struct-like variant may bind named payload fields directly:
+            </p>
+
+            <pre><code>match shape {
+    Circle { radius } =&gt; radius * radius
+    Rectangle { width, height } =&gt; width * height
+}</code></pre>
+
+            <p>
+                Field destructuring is shallow. A field that itself contains structured or
+                variant data is handled through ordinary field access or another <code>match</code>.
+            </p>
+
+            <h3>Partial binding</h3>
+
+            <pre><code>match shape {
+    Rectangle { width } =&gt; Use(width)
+    _ =&gt; Other()
+}</code></pre>
+
+            <p>
+                Omitted fields are not bound. Their omission does not add a value restriction
+                and does not apply defaults.
+            </p>
+
+            <p>
+                No <code>..</code> marker is needed merely to ignore unbound fields.
+            </p>
+
+            <h3>Binding rename</h3>
+
+            <pre><code>match shape {
+    Rectangle {
+        width: w
+        height: h
+    } =&gt; w * h
+
+    _ =&gt; 0
+}</code></pre>
+
+            <p>
+                <code>Rectangle { width }</code> is shorthand for binding the field
+                <code>width</code> locally as <code>width</code>.
+            </p>
+
+            <h3>No recursive nested patterns</h3>
+
+            <p>
+                Sec 0.1 union destructuring does not create a recursive nested pattern language.
+            </p>
+
+            <pre><code>Some(Ok(value)) =&gt; Process(value)</code></pre>
+
+            <p>
+                is not the canonical form. Match the nested value separately.
+            </p>
+        </section>
+
+        <section id="borrowed-patterns">
+            <h2>Borrowed Pattern Fields</h2>
+
+            <p>
+                Struct-like payload destructuring follows ordinary borrowing rules.
+            </p>
+
+            <h3>Shared borrow</h3>
+
+            <pre><code>match shape {
+    Rectangle {
+        width: ref w
+        height: ref h
+    } =&gt; Inspect(w, h)
+
+    _ =&gt; Other()
+}</code></pre>
+
+            <h3>Mutable borrow</h3>
+
+            <pre><code>match shape {
+    Rectangle {
+        width: ref mut w
+    } =&gt; Modify(w)
+
+    _ =&gt; Other()
+}</code></pre>
+
+            <p>
+                Mutable borrowing requires that the match subject and surrounding borrow state
+                provide the necessary authority.
+            </p>
+
+            <p>
+                Pattern borrows are scoped to the applicable arm and follow the ordinary lifetime
+                and overlap rules.
+            </p>
+        </section>
+
+        <section id="partial-moves">
+            <h2>No Hidden Partial Moves</h2>
+
+            <p>
+                Field destructuring must never silently leave a reusable union value in a
+                partially moved state.
+            </p>
+
+            <p>
+                A plain by-value field binding is valid only when the field type is implicitly
+                copyable:
+            </p>
+
+            <pre><code>Packet { count } =&gt; Use(count)</code></pre>
+
+            <p>
+                If a field is move-only, borrow it:
+            </p>
+
+            <pre><code>Packet { payload: ref data } =&gt; Inspect(data)</code></pre>
+
+            <p>or:</p>
+
+            <pre><code>Packet { payload: ref mut data } =&gt; Modify(data)</code></pre>
+
+            <p>
+                When ownership of move-only variant content is required, bind the complete
+                variant payload by value and perform ownership operations on that complete payload.
+            </p>
 
             <div class="rule">
-                <strong>Invalid:</strong> The match is non-exhaustive because <code>running</code> and
-                <code>stopped</code> are not handled.
+                <strong>Rule:</strong> Union patterns never silently clone payload data,
+                silently borrow instead of moving, or introduce hidden partial ownership state.
             </div>
-
-            <p>A catch-all branch may cover all remaining variants:</p>
-
-            <pre><code>match state {
-    idle => HandleIdle()
-    _ => HandleOther()
-}</code></pre>
-
-            <p>Duplicate variants, unknown variants and unreachable branches are rejected.</p>
-        </section>
-
-        <section id="payload-bindings">
-            <h2>Payload Bindings</h2>
-
-            <p>The type of a binding is derived from the matched variant.</p>
-
-            <pre><code>type Number union {
-    Integer(int)
-    Decimal(decimal)
-}</code></pre>
-
-            <pre><code>match number {
-    Integer(value) => {
-        // value has type int
-        UseInt(value)
-    }
-
-    Decimal(value) => {
-        // value has type decimal
-        UseDecimal(value)
-    }
-}</code></pre>
-
-            <p>Pattern bindings are immutable and exist only inside their branch.</p>
-
-            <p>A payload may be discarded explicitly:</p>
-
-            <pre><code>match number {
-    Integer(_) => HandleInteger()
-    Decimal(value) => UseDecimal(value)
-}</code></pre>
         </section>
 
         <section id="guards">
             <h2>Match Guards</h2>
 
-            <p>Union patterns may use normal <code>where</code> guards.</p>
+            <p>
+                Union patterns use the normal <code>match</code> guard syntax:
+            </p>
 
-            <pre><code>match number {
-    Integer(value) where value &gt; 0 => Positive(value)
-    Integer(value) => OtherInteger(value)
-    Decimal(value) => UseDecimal(value)
+            <pre><code>match message {
+    Move { x, y } where x == y =&gt; HandleDiagonal(x)
+    Move { x, y } =&gt; HandleMove(x, y)
+    _ =&gt; Other()
 }</code></pre>
 
-            <p>A guarded branch does not fully cover a variant. An unguarded branch or catch-all must handle the remaining values.</p>
+            <p>
+                Bindings introduced by the pattern are visible in the guard.
+            </p>
+
+            <p>
+                A guarded arm does not by itself exhaust the underlying union variant because
+                the guard may evaluate to <code>false</code>.
+            </p>
+
+            <p>
+                Guard evaluation and ownership commit follow the general match ownership rules.
+            </p>
+        </section>
+
+        <section id="result-option">
+            <h2>Result and Option</h2>
+
+            <p>
+                <code>Result[T, E]</code> and <code>Option[T]</code> use the same union-style
+                matching model where their own compiler-known rules define it.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Use(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <pre><code>match option {
+    Some(value) =&gt; Use(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                <code>None</code> is an actual <code>Option[T]</code> value.
+                <code>Err(error)</code> is an actual <code>Result[T, E]</code> variant.
+            </p>
+
+            <p>
+                Neither is the union initialization state <code>empty</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Do not use union <code>empty</code> as a substitute for
+                optionality or failure. Use <code>Option</code>, <code>Result</code> and
+                the error model for those semantics.
+            </div>
+        </section>
+
+        <section id="error-unions">
+            <h2>Error Unions</h2>
+
+            <p>
+                A tagged union may be declared as a concrete Sec error type when variants need
+                payload data.
+            </p>
+
+            <pre><code>type DetailedError union error {
+    OpenError {
+        Path: string
+        Code: int
+    }
+
+    ReadError {
+        Path: string
+        Offset: uint64
+        Code: int
+    }
+}</code></pre>
+
+            <p>
+                The final <code>error</code> marker declares the complete union as a concrete
+                error type.
+            </p>
+
+            <p>
+                The union remains an ordinary closed nominal tagged union. The error marker does
+                not alter:
+            </p>
+
+            <ul>
+                <li>its variant set;</li>
+                <li>payload types;</li>
+                <li>layout semantics;</li>
+                <li>ownership;</li>
+                <li>borrowing;</li>
+                <li>destruction;</li>
+                <li>defaultability;</li>
+                <li>match behavior.</li>
+            </ul>
+
+            <p>
+                Its additional property is that the complete concrete error value may widen
+                implicitly to the compiler-known root <code>error</code>.
+            </p>
+
+            <pre><code>fn Read() Result[Data, DetailedError] {
+    ...
+}
+
+fn Run() Result[Data, error] {
+    let data := try Read()
+    return Ok(data)
+}</code></pre>
+
+            <p>
+                Widening preserves concrete error identity, active variant, payload,
+                ownership state and destruction behavior.
+            </p>
+
+            <p>
+                The root <code>error</code> domain is open even though
+                <code>DetailedError</code> itself remains closed.
+            </p>
+
+            <p>
+                Error payloads may own ordinary Sec values, including move-only resources.
+                There is no hidden clone merely because a union is an error type.
+            </p>
+        </section>
+
+        <section id="assignment">
+            <h2>Assignment and Conversion</h2>
+
+            <p>
+                A union value is assignable only where its exact union type is compatible.
+            </p>
+
+            <pre><code>let value: Number := Number.Integer(42)</code></pre>
+
+            <p>
+                A payload does not implicitly become a union:
+            </p>
+
+            <pre><code>let value: Number := 42    // invalid</code></pre>
+
+            <p>
+                A union does not implicitly become its active payload:
+            </p>
+
+            <pre><code>let value: int := Number.Integer(42)    // invalid</code></pre>
+
+            <p>
+                Distinct union types remain different even when they contain identical-looking
+                variants and payload types.
+            </p>
+
+            <pre><code>type Left union {
+    Value(int)
+}
+
+type Right union {
+    Value(int)
+}
+
+let left := Left.Value(10)
+let right: Right := left    // invalid</code></pre>
+
+            <p>
+                The union rule does not define direct casts between a union and one of its
+                payload types, nor between unrelated union types.
+            </p>
+        </section>
+
+        <section id="equality">
+            <h2>Equality</h2>
+
+            <p>
+                Two union values may use ordinary equality when:
+            </p>
+
+            <ol>
+                <li>both values have the same union type;</li>
+                <li>all payload possibilities required for equality are equality-comparable.</li>
+            </ol>
+
+            <p>
+                Payload-less unions are equality-comparable.
+            </p>
+
+            <p>
+                Variant identity is part of equality:
+            </p>
+
+            <pre><code>type Value union {
+    First(int)
+    Second(int)
+}
+
+let first := Value.First(1)
+let second := Value.Second(1)
+
+if first != second {
+    ...
+}</code></pre>
+
+            <p>
+                The values are unequal even though both payloads contain integer <code>1</code>.
+            </p>
+
+            <p>
+                <code>empty</code> does not participate in union equality because it is not a
+                union value.
+            </p>
+        </section>
+
+        <section id="copy-move">
+            <h2>Copy and Move Behavior</h2>
+
+            <p>
+                A union is copyable only when all possible variant payloads satisfy the ordinary
+                copy rules.
+            </p>
+
+            <p>A payload-less union is copyable:</p>
+
+            <pre><code>type State union {
+    Idle
+    Running
+}</code></pre>
+
+            <p>
+                A union containing any non-copyable possible payload is not generally copyable
+                as a complete value.
+            </p>
+
+            <pre><code>type ResourceState union {
+    Empty
+    Owned(Resource)
+}</code></pre>
+
+            <p>
+                If <code>Resource</code> is move-only, <code>ResourceState</code> must preserve
+                that ownership restriction.
+            </p>
+
+            <p>
+                Assignment, parameter passing, returns and pattern binding use the ordinary Sec
+                copy/move/borrow model. The union construct does not add hidden copying.
+            </p>
+
+            <p>
+                Destruction runs only for the currently active payload and follows that payload's
+                ordinary destruction semantics.
+            </p>
         </section>
 
         <section id="generic-unions">
             <h2>Generic Unions</h2>
 
-            <p>Union declarations may use normal generic parameters.</p>
+            <p>
+                A union may use ordinary generic parameter syntax:
+            </p>
 
             <pre><code>type Option[T] union {
     Some(T)
     None
-}
+}</code></pre>
 
-type Result[T, E] union {
+            <pre><code>type Result[T, E] union {
     Ok(T)
     Err(E)
 }</code></pre>
 
-            <p>A concrete generic instantiation is a distinct union type.</p>
+            <p>Generic parameters may appear in:</p>
 
-            <pre><code>let count: Option[int] := Option.Some(10)
-let name: Option[string] := Option.Some("Sec")
-let missing: Option[int] := Option.None</code></pre>
+            <ul>
+                <li>single payload types;</li>
+                <li>struct-like payload fields;</li>
+                <li>nested generic types;</li>
+                <li>references;</li>
+                <li>arrays and sequences;</li>
+                <li>other valid type forms.</li>
+            </ul>
 
             <p>
-                The shorter constructor form may be used when the concrete type can be inferred from the expected
-                type or payload.
+                Every complete generic instantiation is a distinct concrete nominal union type.
             </p>
 
-            <pre><code>let value: Option[int] := Option.Some(10)</code></pre>
+            <pre><code>Choice[int]
+Choice[string]</code></pre>
 
-            <p>The preferred fully explicit form is:</p>
-
-            <pre><code>Option[int].Some(10)</code></pre>
-
-            <p>This explicit constructor syntax may depend on compiler version support.</p>
+            <p>
+                These remain different types even if an optimization could use the same physical
+                representation.
+            </p>
         </section>
 
         <section id="nested-unions">
             <h2>Nested Unions</h2>
 
-            <p>A union may be declared inside an <code>impl</code> block.</p>
+            <p>
+                A union may be declared as an associated nested type where nested type declarations
+                are otherwise permitted.
+            </p>
 
             <pre><code>type Token struct {
 }
 
 impl Token {
     type Kind union {
-        identifier
-        number
-        symbol
+        Identifier
+        Number
+        Symbol
     }
 }</code></pre>
 
-            <p>Outside the owner implementation, use the complete qualified name:</p>
+            <p>Outside the owner implementation, use the qualified name:</p>
 
-            <pre><code>let kind: Token.Kind := Token.Kind.identifier</code></pre>
+            <pre><code>Token.Kind.Identifier</code></pre>
 
-            <p>Inside <code>impl Token</code>, the owner name is omitted:</p>
-
-            <pre><code>Kind.identifier</code></pre>
-
-            <p>The complete nested names are:</p>
-
-            <pre><code>Token.Kind
-Token.Kind.identifier</code></pre>
+            <p>
+                Nesting changes naming and lookup. It does not change the underlying union semantics.
+            </p>
         </section>
 
         <section id="recursive-unions">
             <h2>Recursive Unions</h2>
 
-            <p>Direct recursive payload storage is invalid because it would have infinite size.</p>
+            <p>
+                Direct recursive storage is invalid because it would require infinite size.
+            </p>
 
             <pre><code>type List[T] union {
     Node {
-        value: T,
-        next: List[T],
+        value: T
+        next: List[T]
     }
 
     End
 }</code></pre>
 
-            <div class="rule">
-                <strong>Invalid:</strong> <code>List[T]</code> directly contains another <code>List[T]</code>.
-            </div>
+            <p>
+                This is invalid because <code>List[T]</code> would contain itself directly.
+            </p>
 
-            <p>Recursion through a finite-size indirection is valid:</p>
+            <p>
+                Recursion is valid through an indirection form whose own storage and ownership
+                rules make the complete representation finite.
+            </p>
 
-            <pre><code>type List[T] union {
+            <pre><code>type NodeList[T] union {
     Node {
-        value: T,
-        next: Box[List[T]],
+        value: T
+        next: Box[NodeList[T]]
     }
 
     End
 }</code></pre>
 
-            <p>Other valid indirections may include references or unsafe pointers where their normal rules permit them.</p>
-        </section>
-
-        <section id="memory-layout">
-            <h2>Memory Layout</h2>
-
-            <p>A concrete union value conceptually contains:</p>
-
-            <ul>
-                <li>an active-variant tag,</li>
-                <li>storage large enough for the largest possible payload,</li>
-                <li>alignment sufficient for every possible payload.</li>
-            </ul>
-
-            <pre><code>struct UnionValue {
-    tag
-    payload_storage
-}</code></pre>
-
-            <p>Each variant receives an internal declaration-order index. These indices are compiler metadata.</p>
+            <p>
+                The exact legality and semantics of the indirection are defined by the corresponding
+                type, allocation, ownership and storage rules.
+            </p>
 
             <div class="rule">
-                <strong>Rule:</strong> Internal variant tags are not source-level integer values. Union values cannot
-                be cast to or from integers.
+                <strong>Rule:</strong> Recursive type graphs are permitted when the stored
+                representation remains finite. Direct recursive storage is not.
             </div>
         </section>
 
-        <section id="unsupported">
-            <h2>Not Supported Initially</h2>
+        <section id="impl">
+            <h2>Behavior with Impl</h2>
+
+            <p>
+                A union is a nominal Sec type and may participate in ordinary
+                <code>impl</code> declarations.
+            </p>
+
+            <pre><code>type Number union {
+    Integer(int)
+    Decimal(decimal)
+}
+
+impl Number {
+    fn IsInteger() bool {
+        return self is Integer
+    }
+}</code></pre>
+
+            <p>
+                Methods, properties, associated declarations and interface conformance follow
+                the normal <code>impl</code> rules.
+            </p>
+
+            <p>
+                A variant is not a separate nominal type and cannot receive its own unrelated
+                implementation block:
+            </p>
+
+            <pre><code>impl Number.Integer {
+    ...
+}</code></pre>
+
+            <p>
+                This is invalid. <code>Integer</code> is a constructor and pattern alternative
+                belonging to <code>Number</code>.
+            </p>
+
+            <p>
+                An <code>impl</code> cannot add variants to the closed union declaration.
+            </p>
+        </section>
+
+        <section id="representation">
+            <h2>Memory Representation</h2>
+
+            <p>
+                Conceptually, an initialized union value requires:
+            </p>
 
             <ul>
-                <li>Anonymous unions</li>
-                <li>Open or extensible unions</li>
-                <li>Adding variants from an <code>impl</code> block</li>
-                <li>Multiple unnamed payload values</li>
-                <li>Field-level match destructuring</li>
-                <li>Variant-specific methods</li>
-                <li>Implicit payload-to-union conversion</li>
-                <li>Implicit union-to-payload conversion</li>
-                <li>Casts between unions and integers</li>
-                <li>Explicit numeric variant tags</li>
-                <li>Untagged or C-compatible unions</li>
-                <li>User-controlled union layout</li>
-                <li>Implicit default variants</li>
-                <li>Runtime reflection over variants</li>
+                <li>an active-variant discriminator;</li>
+                <li>storage large and aligned enough for the active payload.</li>
+            </ul>
+
+            <p>
+                Every variant has a stable compiler-internal identity used for semantic analysis
+                and lowering.
+            </p>
+
+            <p>
+                Those identities are not source-level integer tags.
+            </p>
+
+            <p>
+                The compiler may optimize physical representation when all observable union
+                semantics are preserved.
+            </p>
+
+            <h3>Representation of empty state</h3>
+
+            <p>
+                <code>empty</code> is not a declared discriminator value.
+            </p>
+
+            <p>
+                When runtime flow requires empty-state observation, the compiler may represent
+                initialization through:
+            </p>
+
+            <ul>
+                <li>SSA state;</li>
+                <li>an initialization bit;</li>
+                <li>control-flow facts;</li>
+                <li>another internal mechanism.</li>
+            </ul>
+
+            <p>That mechanism must not:</p>
+
+            <ul>
+                <li>become a source-visible variant;</li>
+                <li>change union equality;</li>
+                <li>change the declared variant set;</li>
+                <li>escape through ordinary union value passing.</li>
             </ul>
         </section>
 
-        <section id="common-errors">
-            <h2>Common Errors</h2>
+        <section id="ffi-unions">
+            <h2>Foreign C Unions</h2>
 
-            <h3>Constructing without the union namespace</h3>
+            <p>
+                An <code>extern "C"</code> union is not an ordinary tagged Sec union.
+            </p>
 
-            <pre><code>let state: State := idle</code></pre>
-
-            <p>Use:</p>
-
-            <pre><code>let state: State := State.idle</code></pre>
-
-            <h3>Using a payload directly</h3>
-
-            <pre><code>let number: Number := 42</code></pre>
-
-            <p>Use the variant constructor:</p>
-
-            <pre><code>let number: Number := Number.Integer(42)</code></pre>
-
-            <h3>Reading payload data without matching</h3>
-
-            <pre><code>number.value</code></pre>
-
-            <p>Use <code>match</code> to establish the active variant and bind its payload.</p>
-
-            <h3>Incomplete match</h3>
-
-            <pre><code>match number {
-    Integer(value) => UseInt(value)
+            <pre><code>extern "C" type NativeValue union {
+    ...
 }</code></pre>
 
-            <p>Every possible variant must be handled.</p>
+            <p>
+                A foreign C union follows the active C ABI representation:
+            </p>
 
-            <h3>Wrong construction style</h3>
+            <ul>
+                <li>its members physically overlap;</li>
+                <li>it has no hidden Sec variant discriminator;</li>
+                <li>the compiler does not track one active Sec variant in the ordinary union sense;</li>
+                <li>direct member access is classified as foreign-unsafe.</li>
+            </ul>
 
-            <pre><code>Shape.Rectangle(10, 20)</code></pre>
+            <p>
+                Ordinary Sec unions remain tagged, closed and governed by the semantics described
+                throughout this chapter.
+            </p>
 
-            <p>Struct-like variants require named fields:</p>
+            <div class="rule">
+                <strong>Do not conflate them:</strong> a Sec union and a C union are different
+                language constructs even if both use the word <code>union</code>.
+            </div>
+        </section>
 
-            <pre><code>Shape.Rectangle {
-    width: 10,
-    height: 20,
+        <section id="visibility">
+            <h2>Visibility</h2>
+
+            <p>
+                Union type visibility follows the ordinary named-type visibility rules.
+            </p>
+
+            <p>
+                Variant visibility is governed by the variant declaration and its owning union.
+            </p>
+
+            <p>
+                A public union may not expose payload types that violate ordinary public API
+                visibility rules.
+            </p>
+
+            <pre><code>type PublicMessage union {
+    Data(PrivateType)    // invalid if PrivateType cannot appear in this public API
 }</code></pre>
         </section>
 
-        <section id="summary-rules">
-            <h2>Summary of Rules</h2>
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important union diagnostics include:</p>
 
             <ul>
-                <li>A union represents exactly one active variant.</li>
-                <li>A union must be named and contain at least one variant.</li>
-                <li>Variants may be payload-less, single-payload or struct-like.</li>
-                <li>Variant names are unique within their union namespace.</li>
-                <li>Every constructor produces the containing union type.</li>
-                <li>No implicit conversion exists between a union and its payloads.</li>
-                <li>No implicit conversion exists between different union types.</li>
-                <li>Union payloads are inspected through <code>match</code>.</li>
-                <li>Union matches must be exhaustive.</li>
-                <li>Pattern bindings are immutable and branch-local.</li>
-                <li>A union has no implicit default variant.</li>
-                <li>Definite-assignment rules apply to uninitialized mutable union variables.</li>
-                <li>Generic union instantiations are distinct types.</li>
-                <li>Direct recursive storage is invalid.</li>
-                <li>Recursion through a defined finite-size indirection is allowed.</li>
-                <li>Copyability and comparability depend on every possible payload.</li>
-                <li>Internal variant tags are not exposed as integers.</li>
+                <li>anonymous union declaration;</li>
+                <li>union with no variants;</li>
+                <li>duplicate variant name;</li>
+                <li>unknown payload type;</li>
+                <li>duplicate struct-like payload field;</li>
+                <li>invalid direct recursive storage;</li>
+                <li>wrong single-payload construction arity;</li>
+                <li>invalid payload value type;</li>
+                <li>missing non-defaultable struct-like payload field;</li>
+                <li>unknown or duplicate construction field;</li>
+                <li>multiple default variants;</li>
+                <li>default variant that cannot be default-constructed;</li>
+                <li>read, pass, return, move or borrow of an empty binding as a union value;</li>
+                <li><code>empty</code> used where the type or flow state cannot be empty;</li>
+                <li>impossible <code>is</code> state test;</li>
+                <li>unknown variant in <code>is</code> or <code>match</code>;</li>
+                <li>duplicate or unreachable match coverage;</li>
+                <li>non-exhaustive union match, including reachable <code>empty</code> state;</li>
+                <li>invalid destructuring field name;</li>
+                <li>duplicate destructured field;</li>
+                <li>illegal <code>ref</code> or <code>ref mut</code> pattern binding;</li>
+                <li>hidden or illegal partial move;</li>
+                <li>visibility violation.</li>
+            </ul>
+
+            <p>
+                Ownership diagnostics should identify the union Place, the active or possible
+                variant involved, the transfer or borrow operation, and the later invalid use
+                whenever those locations are available.
+            </p>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A Sec union is a closed nominal tagged type.</li>
+                <li>An initialized union value has exactly one active declared variant.</li>
+                <li>A variant may be payload-less, carry one unnamed payload, or carry a struct-like named payload.</li>
+                <li>Different variant kinds may be mixed within one union.</li>
+                <li>Variants belong to the union namespace and are constructors, not independent nominal types.</li>
+                <li>Struct-like variants use named-field construction.</li>
+                <li>Omitted struct-like payload fields receive semantic defaults only when their field types are defaultable.</li>
+                <li>Union construction obeys normal copy and move rules.</li>
+                <li>A reusable move-only payload requires explicit <code>&lt;-</code> transfer.</li>
+                <li>A union does not acquire a default merely because one variant is declared first.</li>
+                <li>A union is defaultable exactly when it declares one valid explicit <code>default</code> variant.</li>
+                <li>A mutable non-defaultable union binding may begin in the compiler-known <code>empty</code> initialization state.</li>
+                <li><code>empty</code> is not a union variant or union value.</li>
+                <li>An empty binding cannot escape or be used as an initialized union value.</li>
+                <li>Assigning a valid variant transitions empty storage to an initialized union value.</li>
+                <li>A moved-from union is unavailable; it does not become <code>empty</code>.</li>
+                <li><code>is Variant</code> tests the active variant without payload binding.</li>
+                <li><code>is empty</code> observes definite-initialization state.</li>
+                <li><code>is</code> tests refine compiler flow state where possible.</li>
+                <li><code>match</code> is the primary exhaustive union inspection and payload-binding construct.</li>
+                <li>Reachable <code>empty</code> state participates in match exhaustiveness.</li>
+                <li>Complete struct-like payloads may be bound as one value.</li>
+                <li>Struct-like payloads support shallow named-field destructuring, partial binding and rename.</li>
+                <li>Pattern fields may be borrowed with <code>ref</code> or <code>ref mut</code>.</li>
+                <li>Shallow destructuring never introduces hidden move-only partial moves.</li>
+                <li>Nested recursive pattern syntax is not part of the current Sec 0.1 union pattern model.</li>
+                <li>Match guards use <code>where</code> and do not by themselves exhaust a variant.</li>
+                <li><code>Option.None</code> and <code>Result.Err</code> are actual values and are not union <code>empty</code>.</li>
+                <li><code>type Name union error</code> declares a payload-bearing concrete Sec error type.</li>
+                <li>Concrete union errors widen to <code>error</code> while preserving concrete identity and payload.</li>
+                <li>There is no implicit payload-to-union or union-to-payload conversion.</li>
+                <li>Distinct union types remain nominally distinct.</li>
+                <li>Union equality requires the same union type and equality-comparable payload possibilities.</li>
+                <li>Variant identity participates in equality.</li>
+                <li>A union is copyable only when every possible payload satisfies the copy rules.</li>
+                <li>Generic unions are supported and each concrete instantiation is a distinct nominal type.</li>
+                <li>Nested unions follow ordinary nested-type naming and lookup rules.</li>
+                <li>Direct recursive union storage is invalid; finite recursion through valid indirection is permitted.</li>
+                <li>A union may have ordinary behavior through <code>impl</code>.</li>
+                <li>The internal active-variant discriminator is not exposed as a source-level integer.</li>
+                <li><code>extern "C" union</code> is a separate overlapping foreign representation, not an ordinary tagged Sec union.</li>
             </ul>
         </section>
 
         <div class="page-navigation">
-                <a href="10-enums.html">Previous: Enums</a>
+            <a href="10-enums.html">Previous: Enums</a>
             <a href="12-registers.html">Next: Registers</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
-  <div class="site-footer-inner">
-      <p>&copy; 2026 Sec Language</p>
-      <a href="https://github.com/YoePro/sec">GitHub</a>
-  </div>
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
 </footer>
 </body>
 </html>

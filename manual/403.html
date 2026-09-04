@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>403 - Access Denied</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Arial Black', Arial, sans-serif;
+  }
+
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at 50% 100%, #102a43 0%, #0b1d30 50%, #050d18 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  /* ===== FLASHING POLICE LIGHTS ===== */
+  .lights {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .lights::before,
+  .lights::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 100%;
+    opacity: 0;
+  }
+
+  .lights::before {
+    left: 0;
+    background: linear-gradient(180deg, rgba(255, 0, 0, 0.25) 0%, transparent 60%);
+    animation: flashRed 1s steps(2) infinite;
+  }
+
+  .lights::after {
+    right: 0;
+    background: linear-gradient(180deg, rgba(0, 100, 255, 0.25) 0%, transparent 60%);
+    animation: flashBlue 1s steps(2) infinite;
+  }
+
+  @keyframes flashRed {
+    0%, 49%  { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  @keyframes flashBlue {
+    0%, 49%  { opacity: 0; }
+    50%, 100% { opacity: 1; }
+  }
+
+  /* ===== POLICE TAPE ===== */
+  .tape {
+    position: absolute;
+    left: -15%;
+    width: 130%;
+    height: 52px;
+    background: repeating-linear-gradient(
+      45deg,
+      #f9d71c 0px,
+      #f9d71c 30px,
+      #111 30px,
+      #111 60px
+    );
+    box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+    z-index: 6;
+    animation: tapeSlide 6s linear infinite;
+  }
+
+  .tape::before {
+    content: "POLICE LINE  •  DO NOT CROSS  •  POLICE LINE  •  DO NOT CROSS  •  POLICE LINE  •  DO NOT CROSS";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    font-size: 20px;
+    font-weight: 900;
+    color: #f9d71c;
+    background: #111;
+    white-space: nowrap;
+    letter-spacing: 2px;
+  }
+
+  .tape-1 {
+    top: 18%;
+    transform: rotate(-4deg);
+  }
+
+  .tape-2 {
+    bottom: 16%;
+    transform: rotate(3deg);
+    animation-direction: reverse;
+  }
+
+  @keyframes tapeSlide {
+    0%   { background-position: 0 0; }
+    100% { background-position: 85px 0; }
+  }
+
+  /* ===== GLOVED HAND (raised, stop!) ===== */
+  .hand-wrap {
+    position: relative;
+    z-index: 10;
+    margin-bottom: 10%;
+    animation: handShake 2.2s ease-in-out infinite;
+  }
+
+  /* Arm / sleeve coming in from bottom-right */
+  .sleeve {
+    position: absolute;
+    bottom: -40px;
+    left: 40px;
+    width: 90px;
+    height: 220px;
+    background: linear-gradient(90deg, #1d3a63, #2c5282 60%, #1a3255);
+    border-radius: 20px 20px 0 0;
+    transform: rotate(18deg);
+    box-shadow: inset -12px 0 20px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Glove cuff */
+  .cuff {
+    position: absolute;
+    bottom: 150px;
+    left: 30px;
+    width: 115px;
+    height: 45px;
+    background: linear-gradient(180deg, #2f5da8, #1d3a63);
+    border-radius: 14px;
+    transform: rotate(18deg);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Palm */
+  .palm {
+    position: absolute;
+    bottom: 175px;
+    left: 35px;
+    width: 115px;
+    height: 130px;
+    background: linear-gradient(180deg, #e8edf5 0%, #c9d4e5 70%, #b0bdd4 100%);
+    border-radius: 18px 18px 12px 12px;
+    transform: rotate(18deg);
+    box-shadow: inset -15px -10px 25px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Fingers */
+  .finger {
+    position: absolute;
+    width: 24px;
+    background: linear-gradient(180deg, #f2f5fa, #c9d4e5 80%);
+    border-radius: 12px;
+    box-shadow: inset -6px 0 10px rgba(0, 0, 0, 0.2);
+  }
+
+  .finger-1 { bottom: 285px; left: 38px;  height: 95px;  transform: rotate(18deg); }
+  .finger-2 { bottom: 300px; left: 64px;  height: 115px; transform: rotate(18deg); }
+  .finger-3 { bottom: 298px; left: 90px;  height: 118px; transform: rotate(18deg); }
+  .finger-4 { bottom: 284px; left: 116px; height: 100px; transform: rotate(18deg); }
+
+  /* Thumb */
+  .thumb {
+    position: absolute;
+    bottom: 200px;
+    left: 2px;
+    width: 32px;
+    height: 75px;
+    background: linear-gradient(90deg, #d8e0ee, #c0ccde);
+    border-radius: 16px;
+    transform: rotate(-25deg);
+    box-shadow: inset -6px 0 10px rgba(0, 0, 0, 0.2);
+  }
+
+  /* The hand wobbles firmly — "NO, stop" */
+  @keyframes handShake {
+    0%   { transform: translateX(0) rotate(0deg); }
+    15%  { transform: translateX(-12px) rotate(-2deg); }
+    30%  { transform: translateX(10px) rotate(2deg); }
+    45%  { transform: translateX(-14px) rotate(-3deg); }
+    60%  { transform: translateX(8px) rotate(1.5deg); }
+    75%  { transform: translateX(-6px) rotate(-1deg); }
+    100% { transform: translateX(0) rotate(0deg); }
+  }
+
+  /* ===== WHISTLE ===== */
+  .whistle {
+    position: absolute;
+    bottom: -15px;
+    right: -75px;
+    z-index: 12;
+    width: 90px;
+    height: 48px;
+    animation: whistleBuzz 2.2s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  /* Whistle body */
+  .whistle-body {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 55px;
+    height: 48px;
+    background: radial-gradient(circle at 30% 30%, #e8edf5, #8a99b5 70%, #5c6d8c);
+    border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset -8px -6px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Whistle mouthpiece */
+  .whistle-mouth {
+    position: absolute;
+    bottom: 8px;
+    left: 45px;
+    width: 45px;
+    height: 20px;
+    background: linear-gradient(180deg, #b8c4d9, #6e7f9e);
+    border-radius: 4px 10px 10px 4px;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Whistle hole */
+  .whistle-hole {
+    position: absolute;
+    bottom: 22px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #0a1420;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.9);
+  }
+
+  /* Air waves when the whistle "blows" */
+  .whistle::before,
+  .whistle::after {
+    content: "";
+    position: absolute;
+    right: -14px;
+    bottom: 10px;
+    width: 12px;
+    height: 12px;
+    border: 3px solid rgba(200, 220, 255, 0.8);
+    border-left: none;
+    border-bottom: none;
+    border-radius: 0 100% 0 0;
+    opacity: 0;
+  }
+
+  .whistle::before {
+    animation: wave1 0.8s ease-out infinite 1.8s;
+  }
+
+  .whistle::after {
+    animation: wave2 0.8s ease-out infinite 1.8s;
+  }
+
+  @keyframes wave1 {
+    0%   { transform: scale(0.5) translateX(0); opacity: 0; }
+    20%  { opacity: 0.9; }
+    100% { transform: scale(1.6) translateX(18px); opacity: 0; }
+  }
+
+  @keyframes wave2 {
+    0%   { transform: scale(0.5) translateX(0); opacity: 0; }
+    20%  { opacity: 0.6; }
+    100% { transform: scale(2.2) translateX(28px); opacity: 0; }
+  }
+
+  /* The whole hand+whistle group buzzes when the whistle blows */
+  @keyframes whistleBuzz {
+    0%, 70%, 100% { transform: rotate(0deg); }
+    75% { transform: rotate(-8deg); }
+    80% { transform: rotate(6deg); }
+    85% { transform: rotate(-5deg); }
+    90% { transform: rotate(3deg); }
+    95% { transform: rotate(0deg); }
+  }
+
+  /* ===== TEXT ===== */
+  .content {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+  }
+
+  .content h1 {
+    font-size: clamp(5rem, 20vw, 12rem);
+    line-height: 1;
+    color: #f9d71c;
+    text-shadow:
+      0 0 20px rgba(249, 215, 28, 0.6),
+      0 0 60px rgba(249, 215, 28, 0.3);
+    /* Subtle "stern officer" wobble matching the hand */
+    animation: handShake 2.2s ease-in-out infinite;
+  }
+
+  .content p {
+    font-size: clamp(1rem, 4vw, 2rem);
+    letter-spacing: 0.5em;
+    margin-top: 1rem;
+    color: #9fb8d9;
+    text-shadow: 0 0 12px rgba(50, 100, 180, 0.5);
+  }
+
+  .content a {
+    display: inline-block;
+    margin-top: 2.5rem;
+    padding: 14px 36px;
+    font-size: 1rem;
+    font-weight: bold;
+    letter-spacing: 0.15em;
+    color: #111;
+    text-decoration: none;
+    background: linear-gradient(90deg, #f9d71c, #ffd95e, #f9d71c);
+    background-size: 200% 100%;
+    border: 3px solid #111;
+    border-radius: 10px;
+    animation: tapeGlow 2.5s linear infinite;
+    transition: transform 0.2s;
+  }
+
+  @keyframes tapeGlow {
+    0%   { background-position: 0% 0; box-shadow: 0 0 15px rgba(249, 215, 28, 0.4); }
+    50%  { background-position: 100% 0; box-shadow: 0 0 35px rgba(249, 215, 28, 0.8); }
+    100% { background-position: 0% 0; box-shadow: 0 0 15px rgba(249, 215, 28, 0.4); }
+  }
+
+  .content a:hover {
+    transform: scale(1.1) rotate(-2deg);
+  }
+</style>
+</head>
+<body>
+  <div class="scene">
+    <div class="lights"></div>
+
+    <div class="tape tape-1"></div>
+    <div class="tape tape-2"></div>
+
+    <!-- Gloved hand + whistle -->
+    <div class="hand-wrap">
+      <div class="sleeve"></div>
+      <div class="cuff"></div>
+      <div class="palm"></div>
+      <div class="finger finger-1"></div>
+      <div class="finger finger-2"></div>
+      <div class="finger finger-3"></div>
+      <div class="finger finger-4"></div>
+      <div class="thumb"></div>
+      <div class="whistle">
+        <div class="whistle-body"></div>
+        <div class="whistle-mouth"></div>
+        <div class="whistle-hole"></div>
+      </div>
+    </div>
+
+    <div class="content">
+      <h1>403</h1>
+      <p>ACCESS DENIED</p>
+      <a href="/">BACK TO HOMEPAGE</a>
+    </div>
+  </div>
+</body>
+</html>

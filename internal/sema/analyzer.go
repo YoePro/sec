@@ -2350,22 +2350,38 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 		return
 	}
 
+	// rules/control-flow/discard.md section 5 and destruction.md section 12:
+	// discard is an ownership-state convergence operation, not an ordinary
+	// read. Resolve an already unavailable Place without calling
+	// inferExpression, which would incorrectly report use-after-move/discard.
+	// Legality and outstanding borrow/defer obligations are still checked
+	// before accepting the no-op or conditionally required destruction.
+	if place, ok := a.resolvePlace(stmt.Value); ok {
+		if _, _, partial, unavailable := a.unavailablePlace(place); unavailable && !partial {
+			if !a.validateExplicitDiscardType(place.Type, expressionToken(stmt.Value)) {
+				return
+			}
+			if a.checkDeferredUse(place.Root, expressionToken(stmt.Value), "discard") || a.checkBorrowedMovePlace(place, expressionToken(stmt.Value)) {
+				return
+			}
+			// Preserve the resolved type and definition facts normally recorded by
+			// expression inference so CLI and LSP consumers observe the same valid
+			// operand even though availability checking is intentionally skipped.
+			a.expressionTypes[stmt.Value] = place.Type
+			if ident, isIdentifier := stmt.Value.(*ast.Identifier); isIdentifier {
+				if symbol, exists := a.symbols[ident.Value]; exists {
+					a.bindDefinition(ident.Token, symbol.Token)
+				}
+			}
+			return
+		}
+	}
+
 	valueType, _ := a.inferExpression(stmt.Value)
 	if valueType.Kind == InvalidType {
 		return
 	}
-	if isTaskType(valueType) || isThreadType(valueType) {
-		a.addErrorAtToken(expressionToken(stmt.Value), "cannot discard unresolved %s; await, join or detach it explicitly", typeDisplayName(valueType))
-		return
-	}
-	if !isDiscardableType(valueType) {
-		a.addErrorAtTokenWithMetadata(
-			expressionToken(stmt.Value),
-			diagnostics.NonDiscardableValue,
-			"handle the value and resolve every contained task or thread lifecycle",
-			"cannot discard %s because it may contain an unresolved lifecycle handle",
-			typeDisplayName(valueType),
-		)
+	if !a.validateExplicitDiscardType(valueType, expressionToken(stmt.Value)) {
 		return
 	}
 
@@ -2393,6 +2409,29 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if symbol.Type.Kind == ReferenceType {
 		delete(a.localRefContainers, ident.Value)
 	}
+}
+
+// validateExplicitDiscardType implements the type-level part of explicit
+// discard from rules/control-flow/discard.md section 5 and
+// rules/memory/destruction.md section 12. It keeps discardability independent
+// from current availability: an unavailable lifecycle handle does not become
+// discardable merely because consuming it would perform no second destruction.
+func (a *Analyzer) validateExplicitDiscardType(valueType Type, token lexer.Token) bool {
+	if isTaskType(valueType) || isThreadType(valueType) {
+		a.addErrorAtToken(token, "cannot discard unresolved %s; await, join or detach it explicitly", typeDisplayName(valueType))
+		return false
+	}
+	if isDiscardableType(valueType) {
+		return true
+	}
+	a.addErrorAtTokenWithMetadata(
+		token,
+		diagnostics.NonDiscardableValue,
+		"handle the value and resolve every contained task or thread lifecycle",
+		"cannot discard %s because it may contain an unresolved lifecycle handle",
+		typeDisplayName(valueType),
+	)
+	return false
 }
 
 // analyzeAssertStatement enforces exact bool typing for assertion conditions;

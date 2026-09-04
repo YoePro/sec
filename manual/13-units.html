@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,90 +22,106 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">Units</div>
-        <ul>
-            <li><a href="#units">Overview</a></li>
-            <li><a href="#declaration">Unit Declaration</a></li>
-            <li><a href="#physical-units">Physical Units</a></li>
-            <li><a href="#domain-units">Domain Units</a></li>
-            <li><a href="#identity">Unit Identity</a></li>
-        </ul>
+        <div class="sidebar-section">This page</div>
+        <a href="#units">Units</a>
+        <a href="#why-units">Why Units Are Types</a>
+        <a href="#standard-library">The Standard Unit Library</a>
+        <a href="#import-units">Importing units</a>
+        <a href="#catalog">What the Catalog Contains</a>
+        <a href="#stdlib-design">Why the Catalog Is Stdlib</a>
+        <a href="#declaration">Declaring a Unit</a>
+        <a href="#numeric-type">Optional Numeric Type</a>
+        <a href="#unit-types">Using Units in Types</a>
+        <a href="#structural-units">Structural Unit Expressions</a>
+        <a href="#named-vs-structural">Named vs Structural Units</a>
+        <a href="#categories">Categories</a>
+        <a href="#semantic-model">Semantic Model</a>
+        <a href="#dimensions">Dimensions</a>
+        <a href="#kind">Kind</a>
+        <a href="#system">System</a>
+        <a href="#metadata">Unit Metadata</a>
+        <a href="#scale">Scale</a>
+        <a href="#transforms">Transforms</a>
+        <a href="#point-difference">Points and Differences</a>
+        <a href="#ratios">Ratios</a>
+        <a href="#currency">Currency</a>
+        <a href="#information">Information Units</a>
+        <a href="#arithmetic">Arithmetic</a>
+        <a href="#addition">Addition and Subtraction</a>
+        <a href="#multiply-divide">Multiplication and Division</a>
+        <a href="#comparison">Comparison</a>
+        <a href="#conversions">Conversions</a>
+        <a href="#explicit-conversion">Explicit Conversion Functions</a>
+        <a href="#runtime-conversion">Runtime Conversion Factors</a>
+        <a href="#precision">Precision and Fallibility</a>
+        <a href="#named-types">Units and Named Types</a>
+        <a href="#contracts">Units and Contracts</a>
+        <a href="#registers-ffi">Registers and FFI</a>
+        <a href="#custom-catalogs">Domain Unit Catalogs</a>
+        <a href="#diagnostics">Diagnostics and Tooling</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Operations</div>
-        <ul>
-            <li><a href="#assignment">Assignment</a></li>
-            <li><a href="#conversion">Explicit Conversion</a></li>
-            <li><a href="#addition">Addition and Subtraction</a></li>
-            <li><a href="#algebra">Multiplication and Division</a></li>
-            <li><a href="#derived-units">Derived Units</a></li>
-        </ul>
-
-        <div class="sidebar-section">Definitions</div>
-        <ul>
-            <li><a href="#dimension">Dimensions</a></li>
-            <li><a href="#scale">Scale</a></li>
-            <li><a href="#systems">Unit Systems</a></li>
-            <li><a href="#currency">Currencies</a></li>
-            <li><a href="#register-fields">Register Fields</a></li>
-        </ul>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html" class="active">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
 
         <div class="sidebar-section">Reference</div>
-        <ul>
-            <li><a href="#inference">Type Inference</a></li>
-            <li><a href="#common-errors">Common Errors</a></li>
-            <li><a href="#summary-rules">Summary of Rules</a></li>
-        </ul>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
 
-                                <div class="sidebar-section">Language</div>
-        <ul>
-            <li><a href="01-introduction.html">Introduction</a></li>
-            <li><a href="02-basic-syntax.html">Basic Syntax</a></li>
-            <li><a href="03-types.html">Types</a></li>
-            <li><a href="04-named-types-contracts.html">Named Types &amp; Contracts </a></li>
-            <li><a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a></li>
-            <li><a href="06-functions.html">Functions</a></li>
-            <li><a href="07-if.html">If Statements</a></li>
-            <li><a href="08-switch.html">Switch Statements</a></li>
-            <li><a href="09-match.html">Match Expressions</a></li>
-            <li><a href="10-enums.html">Enums</a></li>
-            <li><a href="11-unions.html">Unions</a></li>
-            <li><a href="12-registers.html">Registers</a></li>
-            <li><a href="13-units.html" class="active">Units</a></li>
-            <li><a href="14-generics.html">Generics</a></li>
-            <li><a href="15-structs.html">Structs</a></li>
-            <li><a href="16-impl.html">Impl Blocks</a></li>
-            <li><a href="17-properties.html">Properties</a></li>
-            <li><a href="18-interfaces.html">Interfaces</a></li>
-            <li><a href="19-arrays.html">Arrays</a></li>
-            <li><a href="20-slices.html">Slices</a></li>
-            <li><a href="21-indexing.html">Indexing</a></li>
-            <li><a href="22-constants.html">Constants</a></li>
-            <li><a href="23-references.html">References</a></li>
-            <li><a href="24-ownership.html">Ownership</a></li>
-            <li><a href="25-borrowing.html">Borrowing</a></li>
-            <li><a href="26-unsafe.html">Unsafe</a></li>
-            <li><a href="27-spread.html">Spread</a></li>
-            <li><a href="30-modules.html">Modules and Imports</a></li>
-            <li><a href="31-projects.html">Projects and sec.module</a></li>
-            <li><a href="32-visibility.html">Visibility</a></li>
-            <li><a href="33-result-and-option.html">Result and Option</a></li>
-            <li><a href="34-try.html">Error Propagation</a></li>
-            <li><a href="35-defer.html">Deferred Cleanup</a></li>
-            <li><a href="36-attributes.html">Attributes</a></li>
-            <li><a href="37-build-directives.html">Build Directives</a></li>
-            <li><a href="38-ffi.html">Foreign Function Interfaces</a></li>
-            <li><a href="39-tasks.html">Tasks</a></li>
-            <li><a href="40-spawn.html">Spawning Work</a></li>
-            <li><a href="41-await.html">Awaiting Tasks</a></li>
-            <li><a href="42-channels.html">Channels and Coordination</a></li>
-            <li><a href="43-testing.html">Tests and Benchmarks</a></li>
-            <li><a href="44-formatting.html">Formatting</a></li>
-            <li><a href="45-diagnostics.html">Understanding Compiler Diagnostics</a></li>
-        </ul>
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
@@ -114,464 +130,1442 @@
         <h1 id="units">Units</h1>
 
         <p>
-            Units are semantic numeric types. They allow the compiler to distinguish values that use the same
-            numeric representation but describe different quantities.
+            Sec can make the unit of a numeric quantity part of its static type.
+            This lets the compiler reject code that is numerically legal but semantically wrong.
         </p>
 
-        <pre><code>unit m decimal physical
-unit s decimal physical
-unit SEK decimal other</code></pre>
+        <pre><code>unit m physical
+unit s physical
+
+let distance: &lt;m&gt; := 120
+let duration: &lt;s&gt; := 10
+let speed := distance / duration</code></pre>
 
         <p>
-            A value measured in metres is not interchangeable with a value measured in seconds or Swedish kronor.
-            Unit information remains part of the type and participates in assignment, arithmetic and conversion.
+            The result carries structural unit semantics equivalent to <code>&lt;m/s&gt;</code>.
+            No runtime unit object is required for ordinary unit checking.
+        </p>
+
+        <p>
+            Most programs do not need to declare common physical units themselves.
+            Sec's standard library contains a substantial ready-made unit catalog that can be
+            imported as the <code>units</code> module.
         </p>
 
         <div class="rule">
-            <strong>Rule:</strong> A unit describes meaning, while its numeric base type describes representation.
+            <strong>Practical rule:</strong> Use the standard <code>units</code> catalog when it
+            already contains the quantity you need. Declare a new unit when your application or
+            domain needs a semantic quantity that is not already represented.
         </div>
 
-        <section id="declaration">
-            <h2>Unit Declaration</h2>
+        <section id="why-units">
+            <h2>Why Units Are Types</h2>
 
-            <p>A unit is declared with a name, numeric base type and category:</p>
+            <p>Without units, these values may all have the same numeric representation:</p>
 
-            <pre><code>unit m decimal physical
-unit Item uint other</code></pre>
-
-            <p>The general form is:</p>
-
-            <pre><code>unit Name NumericType Category</code></pre>
-
-            <p>The numeric base type must be numeric. Current forms include:</p>
-
-            <pre><code>unit Count int other
-unit Packet uint other
-unit Temperature float physical
-unit Distance decimal physical</code></pre>
-
-            <p>The category is either <code>physical</code> or <code>other</code>.</p>
-        </section>
-
-        <section id="physical-units">
-            <h2>Physical Units</h2>
+            <pre><code>let distance: decimal := 10
+let duration: decimal := 10
+let price: decimal := 10</code></pre>
 
             <p>
-                Physical units participate in dimensional analysis. Their dimensions may represent length, time,
-                mass, frequency or combinations of these quantities.
+                The compiler cannot know whether adding them is meaningful.
             </p>
 
-            <pre><code>unit m decimal physical
-unit s decimal physical
-unit kg decimal physical
-unit Hz decimal physical</code></pre>
+            <p>With units:</p>
 
-            <p>A physical unit may define its dimension, scale and system:</p>
-
-            <pre><code>impl m {
-    dimension: [length * 1]
-    scale: 1
-    system: SI
-}</code></pre>
-
-            <p>A derived physical unit may use several dimensions:</p>
-
-            <pre><code>unit mps decimal physical
-
-impl mps {
-    dimension: [length * 1, time * -1]
-    scale: 1
-    system: SI
-}</code></pre>
-        </section>
-
-        <section id="domain-units">
-            <h2>Domain Units</h2>
+            <pre><code>let distance: &lt;m&gt; := 10
+let duration: &lt;s&gt; := 10
+let price: &lt;EUR&gt; := 10</code></pre>
 
             <p>
-                Units in the <code>other</code> category describe domain-specific quantities that are not part of a
-                physical SI dimension.
+                the quantities have distinct semantic meaning.
             </p>
 
-            <pre><code>unit Item uint other
-unit Packet uint other
-unit Batch uint other</code></pre>
+            <p>
+                Unit checking can therefore detect mistakes such as:
+            </p>
 
-            <p>Each semantic quantity should use its own dimension:</p>
+            <ul>
+                <li>adding metres to seconds;</li>
+                <li>mixing unrelated semantic quantities with identical machine representation;</li>
+                <li>confusing frequency with rotational frequency;</li>
+                <li>using one currency where another is required;</li>
+                <li>silently applying an unknown conversion relationship;</li>
+                <li>silently truncating a unit conversion to make it fit a numeric carrier.</li>
+            </ul>
+        </section>
 
-            <pre><code>impl Item {
-    dimension: [item * 1]
-    system: Domain
-}
+        <section id="standard-library">
+            <h2>The Standard Unit Library</h2>
 
-impl Packet {
-    dimension: [packet * 1]
-    system: Domain
-}</code></pre>
+            <p>
+                Sec ships a standard unit catalog in:
+            </p>
 
-            <p><code>Item</code> and <code>Packet</code> may have the same storage type, but they remain incompatible units.</p>
+            <pre><code>sec/stdlib/units/</code></pre>
 
-            <pre><code>let items: Item := 10
-let packets: Packet := 10
-let total := items + packets</code></pre>
+            <p>
+                The catalog is ordinary Sec source code. It is not a hard-coded compiler table.
+            </p>
+
+            <p>
+                Every source file in that directory declares the same module:
+            </p>
+
+            <pre><code>module units</code></pre>
+
+            <p>
+                Because one source directory forms one Sec module, all of those files contribute
+                declarations to one shared <code>units</code> module.
+            </p>
 
             <div class="rule">
-                <strong>Invalid:</strong> Values with different semantic dimensions cannot be added.
+                <strong>Design idea:</strong> The compiler knows how units work.
+                The standard library supplies a rich catalog of which units exist.
+                This keeps the language general without forcing every application to redefine
+                metre, second, Hertz, Newton, Volt, foot, mile and similar units.
             </div>
         </section>
 
-        <section id="identity">
-            <h2>Unit Identity</h2>
-
-            <p>Every declared unit is a distinct semantic type.</p>
-
-            <pre><code>unit m decimal physical
-unit inch decimal physical</code></pre>
+        <section id="import-units">
+            <h2>Importing the Unit Catalog</h2>
 
             <p>
-                Both may describe length and use <code>decimal</code> storage, but they are not the same type. A value is
-                not implicitly converted merely because the dimensions are compatible.
+                The standard catalog is imported through the normal standard-library import path:
             </p>
 
-            <pre><code>let metric: m := 1
-let imperial: inch := metric</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> Unit conversions must be explicit.
-            </div>
-        </section>
-
-        <section id="assignment">
-            <h2>Assignment</h2>
-
-            <p>An untyped literal may initialize a unit when the literal fits its numeric base type.</p>
-
-            <pre><code>let distance: m := 100
-let duration: s := 10
-let price: SEK := 5.90</code></pre>
-
-            <p>Variables are not implicitly converted into another unit type.</p>
-
-            <pre><code>let raw := 100
-let distance: m := raw</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> Values that already have a type require explicit conversion.
-            </div>
-
-            <p>Normal assignment preserves exact unit identity:</p>
-
-            <pre><code>let mut distance: m := 10
-distance = m(20)</code></pre>
-        </section>
-
-        <section id="conversion">
-            <h2>Explicit Conversion</h2>
-
-            <p>Conversion into a unit uses normal explicit conversion syntax:</p>
-
-            <pre><code>let raw := 100
-let distance: m := m(raw)</code></pre>
+            <pre><code>import "units"</code></pre>
 
             <p>
-                Numeric casts and unit conversions are separate concepts. A numeric cast changes representation.
-                A unit conversion changes semantic meaning while preserving dimensional correctness.
+                That imports the complete <code>units</code> module, not one physical file such as
+                <code>base.sec</code>.
             </p>
-
-            <p>Compatible physical units may be converted when an exact scale relationship is known:</p>
-
-            <pre><code>unit mm decimal physical
-
-impl mm {
-    dimension: [length * 1]
-    scale: 0.001
-    system: SI
-}</code></pre>
-
-            <p>Runtime or configured relationships require explicit conversion logic.</p>
-        </section>
-
-        <section id="addition">
-            <h2>Addition and Subtraction</h2>
-
-            <p>Addition and subtraction require compatible unit types.</p>
-
-            <pre><code>let first: m := 10
-let second: m := 20
-let total := first + second</code></pre>
-
-            <p>Different units cannot be added directly:</p>
-
-            <pre><code>let distance: m := 10
-let duration: s := 2
-let invalid := distance + duration</code></pre>
-
-            <p>Different named units normally remain distinct even when their dimensional vectors match.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Addition and subtraction preserve the original unit.
-            </div>
-        </section>
-
-        <section id="algebra">
-            <h2>Multiplication and Division</h2>
-
-            <p>Multiplication adds dimensional exponents. Division subtracts them.</p>
-
-            <pre><code>m / s       // length * time^-1
-m * m       // length^2
-m / m       // dimensionless decimal</code></pre>
-
-            <p>Equal dimensions cancel:</p>
-
-            <pre><code>let first: m := 20
-let second: m := 5
-let ratio := first / second</code></pre>
-
-            <p><code>ratio</code> is dimensionless.</p>
-
-            <p>Multiplication or division by a plain scalar preserves the unit:</p>
-
-            <pre><code>let price: SEK := 100
-let doubled := price * 2
-let half := price / 2</code></pre>
-
-            <p>Some algebraic results may be rejected when they have no supported semantic meaning.</p>
-
-            <pre><code>let invalid := price * price</code></pre>
-
-            <div class="rule">
-                <strong>Current rule:</strong> Squared currency values are rejected unless a valid use is defined explicitly.
-            </div>
-        </section>
-
-        <section id="derived-units">
-            <h2>Derived Units</h2>
 
             <p>
-                When an expression produces a known dimension, the compiler may resolve the result to a declared
-                unit with the same dimension and scale.
+                Internally the catalog is split across several files for maintainability, but the
+                file boundaries do not create separate source modules.
             </p>
 
-            <pre><code>unit m decimal physical
-unit s decimal physical
-unit mps decimal physical
+            <p>
+                The imported unit declarations follow the normal Sec module and name-resolution rules.
+                For example, a standard-library unit can be referred to through the imported module:
+            </p>
 
-impl mps {
-    dimension: [length * 1, time * -1]
-    scale: 1
-    system: SI
-}
+            <pre><code>import "units"
 
-let distance: m := 100
-let duration: s := 10
+let distance: &lt;units.m&gt; := 125
+let duration: &lt;units.s&gt; := 10
 let speed := distance / duration</code></pre>
 
-            <p><code>speed</code> may infer as <code>mps</code>.</p>
+            <p>
+                A unit expression may therefore combine catalog units just like locally declared units:
+            </p>
+
+            <pre><code>let throughput: decimal&lt;units.KiB/units.s&gt; := 512
+let acceleration: decimal&lt;units.m/units.s^2&gt; := 9.81</code></pre>
 
             <p>
-                When no declared unit matches, the result may remain an anonymous dimensioned numeric type such as
-                <code>decimal&lt;m/s&gt;</code>.
+                Importing <code>units</code> does not create a runtime unit registry.
+                Unit identity and metadata are primarily compile-time semantic information.
             </p>
         </section>
 
-        <section id="dimension">
-            <h2>Dimensions</h2>
+        <section id="catalog">
+            <h2>What the Standard Catalog Contains</h2>
 
-            <p>A dimension is a vector of named bases and integer exponents.</p>
+            <p>
+                The standard module is intentionally broader than the seven SI base units.
+            </p>
 
-            <pre><code>[length * 1]
-[time * 1]
-[length * 1, time * -1]
-[packet * 1, time * -1]</code></pre>
-
-            <p>Dimensions determine algebraic compatibility.</p>
+            <p>Its source is currently organized into these catalog files:</p>
 
             <div class="table-wrap">
                 <table>
                     <thead>
-                    <tr><th>Expression</th><th>Resulting dimension</th></tr>
+                        <tr>
+                            <th>File</th>
+                            <th>Examples of what it covers</th>
+                        </tr>
                     </thead>
                     <tbody>
-                    <tr><td><code>m / s</code></td><td><code>[length * 1, time * -1]</code></td></tr>
-                    <tr><td><code>Hz</code></td><td><code>[time * -1]</code></td></tr>
-                    <tr><td><code>Packet / s</code></td><td><code>[packet * 1, time * -1]</code></td></tr>
-                    <tr><td><code>m / m</code></td><td>dimensionless</td></tr>
+                        <tr>
+                            <td><code>base.sec</code></td>
+                            <td>SI base units and common scaled base units</td>
+                        </tr>
+                        <tr>
+                            <td><code>core_derived.sec</code></td>
+                            <td>Core derived SI quantities such as Hertz, Newton and Pascal</td>
+                        </tr>
+                        <tr>
+                            <td><code>mechanics.sec</code></td>
+                            <td>Velocity, acceleration, pressure, density, viscosity and related mechanics units</td>
+                        </tr>
+                        <tr>
+                            <td><code>power_energy.sec</code></td>
+                            <td>Joule, Watt, Watt-hour and related energy/power units</td>
+                        </tr>
+                        <tr>
+                            <td><code>electricity.sec</code></td>
+                            <td>Electrical quantities such as Coulomb, Volt and other electrical SI-derived units</td>
+                        </tr>
+                        <tr>
+                            <td><code>scaled_derived.sec</code></td>
+                            <td>Scaled forms such as kW, kWh, mV, kV, kΩ, µF and similar units</td>
+                        </tr>
+                        <tr>
+                            <td><code>time_frequency.sec</code></td>
+                            <td>Minute, hour, day, week, scaled frequency and rotational/time-related quantities</td>
+                        </tr>
+                        <tr>
+                            <td><code>light.sec</code></td>
+                            <td>Photometric quantities such as luminance and illuminance units</td>
+                        </tr>
+                        <tr>
+                            <td><code>science.sec</code></td>
+                            <td>Scientific derived quantities such as sievert, katal, concentrations and thermal quantities</td>
+                        </tr>
+                        <tr>
+                            <td><code>imperial_us.sec</code></td>
+                            <td>Imperial, US customary and nautical units such as inch, foot and yard</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The catalog includes both base units and convenient named derived units.
+                For example, <code>base.sec</code> contains the seven SI base units:
+            </p>
+
+            <pre><code>m
+kg
+s
+A
+K
+mol
+cd</code></pre>
+
+            <p>and common scaled forms such as:</p>
+
+            <pre><code>nm
+um
+mm
+cm
+dm
+km
+
+g
+mg
+t
+
+ms
+us
+ns
+ps
+fs
+
+mA
+uA
+nA
+pA</code></pre>
+
+            <p>
+                Other files add named derived quantities such as:
+            </p>
+
+            <pre><code>Hz
+N
+Pa
+J
+W
+Wh
+kWh
+V
+kV
+kph
+mps2
+bar
+atm
+inch
+ft
+yd</code></pre>
+
+            <p>
+                The purpose is not to require programs to use named catalog units for every
+                derived expression. Structural units remain available whenever they are clearer.
+            </p>
+        </section>
+
+        <section id="stdlib-design">
+            <h2>Why Units Live in the Standard Library</h2>
+
+            <p>
+                Sec separates the language mechanism from the catalog.
+            </p>
+
+            <p>The compiler owns concepts such as:</p>
+
+            <ul>
+                <li>unit identity;</li>
+                <li>unit-bearing numeric types;</li>
+                <li>structural unit algebra;</li>
+                <li>dimensions;</li>
+                <li>Kind compatibility;</li>
+                <li>scale and transform checking;</li>
+                <li>point/difference semantics;</li>
+                <li>conversion validation;</li>
+                <li>unit diagnostics.</li>
+            </ul>
+
+            <p>The standard library owns declarations such as:</p>
+
+            <pre><code>unit m physical
+unit kg physical
+unit s physical
+unit N physical
+unit V physical
+unit ft physical</code></pre>
+
+            <p>
+                This separation has several advantages:
+            </p>
+
+            <ul>
+                <li>the compiler does not need a hard-coded list of every real-world unit;</li>
+                <li>the standard catalog can grow without extending language syntax;</li>
+                <li>domain libraries can define their own equally strong unit catalogs;</li>
+                <li>projects can use structural units even when no named catalog unit exists;</li>
+                <li>unit metadata stays inspectable as ordinary Sec declarations;</li>
+                <li>unused unit declarations do not require runtime unit objects.</li>
+            </ul>
+
+            <p>
+                In practice, <code>import "units"</code> gives a project a broad vocabulary
+                immediately, while the language remains open to application-specific quantities.
+            </p>
+        </section>
+
+        <section id="declaration">
+            <h2>Declaring a Unit</h2>
+
+            <p>The declaration model is:</p>
+
+            <pre><code>unit Name [NumericType] Category</code></pre>
+
+            <p>
+                The normal form omits the numeric type:
+            </p>
+
+            <pre><code>unit m physical
+unit EUR currency
+unit percent ratio
+unit Packet other</code></pre>
+
+            <p>
+                Unless there is a specific reason to choose another default carrier, this is the
+                form users should prefer.
+            </p>
+
+            <h3>Why the short form is normal</h3>
+
+            <p>
+                A unit is semantic identity, not a storage type. Writing a numeric type in every
+                declaration would make the declaration look more representation-bound than it is.
+            </p>
+
+            <p>
+                When the numeric type is omitted, the unit's default numeric representation is
+                <code>decimal</code>.
+            </p>
+
+            <p>
+                That default controls shorthand only. The same unit may still be used with
+                another compatible numeric carrier explicitly.
+            </p>
+        </section>
+
+        <section id="numeric-type">
+            <h2>Optional Numeric Type</h2>
+
+            <p>
+                Specify a numeric type only when the unit should have a different preferred/default
+                carrier.
+            </p>
+
+            <pre><code>unit Item uint other
+unit PacketCount uint64 other
+unit KiB uint information</code></pre>
+
+            <p>Then:</p>
+
+            <pre><code>let items: &lt;Item&gt; := 5</code></pre>
+
+            <p>
+                uses the declared <code>uint</code> default.
+            </p>
+
+            <p>The same unit may still be used with another explicit carrier:</p>
+
+            <pre><code>let exactItems: decimal&lt;Item&gt; := 5</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> The optional numeric type chooses the default carrier.
+                It does not become part of the unit's semantic identity and does not prevent
+                explicit use of another compatible carrier.
+            </div>
+        </section>
+
+        <section id="unit-types">
+            <h2>Using Units in Types</h2>
+
+            <p>The full form is:</p>
+
+            <pre><code>NumericType&lt;Unit&gt;</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>let distance: decimal&lt;m&gt; := 10
+let measuredDistance: float64&lt;m&gt; := 10
+let ticks: uint64&lt;ns&gt; := 25</code></pre>
+
+            <p>
+                These quantities use the same unit mechanism with different numeric carriers.
+            </p>
+
+            <p>A single named unit also has a shorthand:</p>
+
+            <pre><code>&lt;m&gt;</code></pre>
+
+            <p>For:</p>
+
+            <pre><code>unit m physical</code></pre>
+
+            <p>the shorthand is equivalent in carrier selection to:</p>
+
+            <pre><code>decimal&lt;m&gt;</code></pre>
+
+            <p>
+                For a unit with an explicit default numeric type:
+            </p>
+
+            <pre><code>unit Item uint other</code></pre>
+
+            <p>the shorthand:</p>
+
+            <pre><code>&lt;Item&gt;</code></pre>
+
+            <p>selects:</p>
+
+            <pre><code>uint&lt;Item&gt;</code></pre>
+        </section>
+
+        <section id="structural-units">
+            <h2>Structural Unit Expressions</h2>
+
+            <p>
+                A quantity does not need a named unit declaration for every meaningful derived form.
+            </p>
+
+            <p>Structural unit expressions can be written directly:</p>
+
+            <pre><code>&lt;m/s&gt;
+&lt;m/s^2&gt;
+&lt;kg*m/s^2&gt;
+&lt;KiB/s&gt;
+&lt;EUR/s&gt;
+&lt;EUR/SEK&gt;
+&lt;m^2&gt;
+&lt;1&gt;</code></pre>
+
+            <p>Structural expressions support:</p>
+
+            <ul>
+                <li>named unit factors;</li>
+                <li>multiplication with <code>*</code>;</li>
+                <li>division with <code>/</code>;</li>
+                <li>signed integer exponents with <code>^</code>;</li>
+                <li>parentheses for grouping;</li>
+                <li>the dimensionless identity <code>1</code>.</li>
+            </ul>
+
+            <p>For example:</p>
+
+            <pre><code>let distance: &lt;m&gt; := 100
+let duration: &lt;s&gt; := 5
+let speed := distance / duration</code></pre>
+
+            <p>
+                <code>speed</code> has structural unit semantics equivalent to
+                <code>&lt;m/s&gt;</code>.
+            </p>
+
+            <p>
+                Compound structural shorthand uses <code>decimal</code> as its default carrier
+                unless an explicit carrier is written:
+            </p>
+
+            <pre><code>&lt;m/s&gt;          // decimal carrier
+float64&lt;m/s&gt;   // explicit float64 carrier</code></pre>
+        </section>
+
+        <section id="named-vs-structural">
+            <h2>Named Units and Structural Units Are Different</h2>
+
+            <p>Suppose a catalog declares:</p>
+
+            <pre><code>unit mps physical</code></pre>
+
+            <p>Then these two forms are not identical source-level identities:</p>
+
+            <pre><code>&lt;mps&gt;
+&lt;m/s&gt;</code></pre>
+
+            <p>
+                The first is a named unit. The second is a structural expression.
+            </p>
+
+            <p>
+                They may describe compatible mathematical quantities, but the compiler does not
+                arbitrarily replace one with the other.
+            </p>
+
+            <p>
+                This matters because several named units can share the same dimension and even the
+                same scale while representing different semantic Kinds.
+            </p>
+        </section>
+
+        <section id="categories">
+            <h2>Categories</h2>
+
+            <p>Sec defines five unit categories:</p>
+
+            <pre><code>physical
+currency
+information
+ratio
+other</code></pre>
+
+            <p>
+                Category establishes high-level semantic and diagnostic policy.
+                It is not the same thing as dimension, Kind or System.
+            </p>
+
+            <h3><code>physical</code></h3>
+
+            <pre><code>unit m physical
+unit s physical
+unit Hz physical</code></pre>
+
+            <p>
+                Physical units normally participate in dimensional analysis.
+            </p>
+
+            <h3><code>currency</code></h3>
+
+            <pre><code>unit EUR currency
+unit SEK currency</code></pre>
+
+            <p>
+                Distinct currencies remain semantically distinct. The compiler never invents
+                an exchange rate.
+            </p>
+
+            <h3><code>information</code></h3>
+
+            <pre><code>unit KiB uint information</code></pre>
+
+            <p>
+                Information quantities use the compiler-known information dimension axis.
+            </p>
+
+            <h3><code>ratio</code></h3>
+
+            <pre><code>unit percent ratio</code></pre>
+
+            <p>
+                Named ratios are mathematically dimensionless but retain semantic identity.
+            </p>
+
+            <h3><code>other</code></h3>
+
+            <pre><code>unit Packet other
+unit Request other</code></pre>
+
+            <p>
+                Application-defined units remain statically checked even when they need no
+                specialized compiler category policy.
+            </p>
+        </section>
+
+        <section id="semantic-model">
+            <h2>The Complete Semantic Model</h2>
+
+            <p>
+                A unit has more semantic structure than a name plus a conversion factor.
+            </p>
+
+            <p>Sec keeps these concepts separate:</p>
+
+            <pre><code>unit identity
+numeric carrier
+category
+dimension
+Kind
+System
+transform
+scale and transform metadata</code></pre>
+
+            <p>
+                This is what lets the compiler distinguish quantities that simple
+                dimension-vector systems often collapse together.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Concept</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Unit identity</td><td>The named semantic unit</td></tr>
+                        <tr><td>Numeric carrier</td><td>The representation used for the number</td></tr>
+                        <tr><td>Category</td><td>High-level semantic policy</td></tr>
+                        <tr><td>Dimension</td><td>Mathematical dimensional structure</td></tr>
+                        <tr><td>Kind</td><td>The semantic quantity represented</td></tr>
+                        <tr><td>System</td><td>The named measurement/catalog system</td></tr>
+                        <tr><td>Transform</td><td>How numeric coordinates map to canonical quantity coordinates</td></tr>
                     </tbody>
                 </table>
             </div>
         </section>
 
-        <section id="scale">
-            <h2>Scale</h2>
-
-            <p>Scale defines a unit relative to the canonical unit of its dimension.</p>
-
-            <pre><code>unit mm decimal physical
-
-impl mm {
-    dimension: [length * 1]
-    scale: 0.001
-    system: SI
-}</code></pre>
-
-            <pre><code>unit inch decimal physical
-
-impl inch {
-    dimension: [length * 1]
-    scale: 0.0254
-    system: Imperial
-}</code></pre>
+        <section id="dimensions">
+            <h2>Dimensions</h2>
 
             <p>
-                Because both units use the length dimension and have fixed scales, the compiler can validate an
-                explicit conversion between them.
+                A dimension is a normalized mapping from semantic axes to integer exponents.
+            </p>
+
+            <pre><code>impl m {
+    Dimension: [length^1]
+}
+
+impl Hz {
+    Dimension: [time^-1]
+}</code></pre>
+
+            <p>The seven SI base axes are:</p>
+
+            <pre><code>length
+mass
+time
+electric_current
+thermodynamic_temperature
+amount_of_substance
+luminous_intensity</code></pre>
+
+            <p>Additional semantic axes may be used by other categories and domain units.</p>
+
+            <p>Dimension algebra follows ordinary exponent rules:</p>
+
+            <pre><code>[length^1] / [time^1]
+    -&gt; [length^1, time^-1]</code></pre>
+
+            <p>Multiplication adds exponents; division subtracts them.</p>
+
+            <h3>Dimensionless identity</h3>
+
+            <p>The canonical structural dimensionless unit is:</p>
+
+            <pre><code>&lt;1&gt;</code></pre>
+
+            <p>For example:</p>
+
+            <pre><code>&lt;m/m&gt; -&gt; &lt;1&gt;</code></pre>
+
+            <p>
+                A named ratio such as <code>percent</code> does not lose its named identity merely
+                because its normalized dimension is dimensionless.
             </p>
         </section>
 
-        <section id="systems">
-            <h2>Unit Systems</h2>
+        <section id="kind">
+            <h2>Kind</h2>
 
-            <p>The system name groups units but does not determine compatibility.</p>
+            <p>Dimension answers:</p>
 
-            <pre><code>system: SI
-system: Imperial
-system: Currency
-system: Domain
-system: Other</code></pre>
+            <pre><code>What mathematical dimension does this quantity have?</code></pre>
+
+            <p><code>Kind</code> answers:</p>
+
+            <pre><code>What semantic quantity does this value represent?</code></pre>
 
             <p>
-                Compatibility is determined by dimensions. Conversion is determined by scale and, for future offset
-                units, by offset rules.
+                Two quantities may have the same dimension but different Kinds.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>energy
+    [mass^1, length^2, time^-2]
+
+torque
+    [mass^1, length^2, time^-2]</code></pre>
+
+            <p>
+                Equal dimension does not make energy and torque interchangeable.
+            </p>
+
+            <p>Similarly:</p>
+
+            <pre><code>Hz
+    Dimension: [time^-1]
+    Kind: frequency
+
+rpm
+    Dimension: [time^-1]
+    Kind: rotational_frequency</code></pre>
+
+            <p>
+                A fixed mathematical relationship can exist while implicit semantic compatibility
+                is still intentionally rejected.
+            </p>
+
+            <p>
+                Kind may be unknown. Unknown Kind is not evidence that two named units are compatible.
+            </p>
+
+            <p>
+                The compiler does not invent Kind solely from dimension.
+            </p>
+
+            <pre><code>&lt;N*m&gt;</code></pre>
+
+            <p>
+                does not automatically become energy or torque.
+            </p>
+        </section>
+
+        <section id="system">
+            <h2>System</h2>
+
+            <p>
+                <code>System</code> records the named unit system or catalog context.
+            </p>
+
+            <p>Examples include:</p>
+
+            <pre><code>SI
+Imperial
+USCustomary
+IEC
+Currency
+Domain
+Other</code></pre>
+
+            <p>
+                System is descriptive and conversion metadata.
+                It does not by itself determine whether two quantities are compatible.
+            </p>
+        </section>
+
+        <section id="metadata">
+            <h2>Unit Metadata</h2>
+
+            <p>
+                Metadata is declared in the unit's ordinary <code>impl</code> block.
+            </p>
+
+            <p>The standard catalog demonstrates the pattern directly:</p>
+
+            <pre><code>unit m physical
+
+impl m {
+    LongName: "Meter"
+    Symbol: "m"
+    BaseUnit: true
+    Status: active
+    Dimension: [length^1]
+    Scale: 1
+    System: SI
+}</code></pre>
+
+            <p>Compiler-known metadata fields include:</p>
+
+            <pre><code>LongName
+Symbol
+BaseUnit
+Status
+Dimension
+Kind
+Scale
+System
+Transform
+Offset
+Origin
+LogBase
+LogFactor
+Reference</code></pre>
+
+            <p>
+                <code>Symbol</code> is for human-facing display and documentation.
+                It does not define source identity.
+            </p>
+
+            <p>
+                This allows source identifiers to remain valid Sec names even when the conventional
+                printed symbol contains characters that would not be appropriate as an identifier.
+            </p>
+        </section>
+
+        <section id="scale">
+            <h2>Scale</h2>
+
+            <p>
+                Linear units declare their relationship to the canonical quantity using
+                <code>Scale</code>.
+            </p>
+
+            <pre><code>unit mm physical
+
+impl mm {
+    LongName: "Millimeter"
+    Symbol: "mm"
+    Dimension: [length^1]
+    Scale: 1 / 1000
+    System: SI
+}</code></pre>
+
+            <p>Conceptually:</p>
+
+            <pre><code>canonical = value * Scale</code></pre>
+
+            <p>
+                Exact rational scales are particularly useful because they let the compiler reason
+                about conversions without introducing unnecessary binary floating-point approximation.
+            </p>
+
+            <p>
+                The stdlib makes extensive use of exact rational scales, including Imperial
+                conversions such as inch and foot.
+            </p>
+        </section>
+
+        <section id="transforms">
+            <h2>Transforms</h2>
+
+            <p>
+                Scale-only units are not sufficient to model every real measurement system.
+            </p>
+
+            <p>Sec defines these transform modes:</p>
+
+            <pre><code>linear
+affine
+logarithmic</code></pre>
+
+            <h3>Linear</h3>
+
+            <pre><code>canonical = value * Scale</code></pre>
+
+            <p>
+                Linear is the default transform.
+            </p>
+
+            <h3>Affine</h3>
+
+            <pre><code>canonical = value * Scale + Offset</code></pre>
+
+            <p>
+                Affine transforms model coordinate systems where zero is offset from the canonical
+                origin.
+            </p>
+
+            <h3>Logarithmic</h3>
+
+            <p>Logarithmic units use metadata such as:</p>
+
+            <pre><code>Transform: logarithmic
+LogBase
+LogFactor
+Reference</code></pre>
+
+            <p>
+                Ordinary linear arithmetic is not silently applied to logarithmic quantities.
+            </p>
+        </section>
+
+        <section id="point-difference">
+            <h2>Points and Differences</h2>
+
+            <p>
+                Some quantities represent positions relative to an origin rather than free vectors.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>absolute temperature;</li>
+                <li>timestamps;</li>
+                <li>altitude relative to a datum.</li>
+            </ul>
+
+            <p>
+                <code>Origin</code> describes the semantic point space.
+            </p>
+
+            <p>For compatible point <code>P</code> and difference <code>D</code> quantities:</p>
+
+            <pre><code>P - P -&gt; D
+P + D -&gt; P
+P - D -&gt; P
+D + D -&gt; D
+D - D -&gt; D</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>P + P</code></pre>
+
+            <p>
+                Affine offsets cancel when two compatible points are subtracted.
+            </p>
+        </section>
+
+        <section id="ratios">
+            <h2>Ratios</h2>
+
+            <p>
+                Ratio units are dimensionless but remain semantically named.
+            </p>
+
+            <pre><code>unit percent ratio
+
+impl percent {
+    LongName: "Percent"
+    Symbol: "%"
+    Dimension: []
+    Kind: ratio
+    Scale: 1 / 100
+    System: Other
+}</code></pre>
+
+            <p>
+                A ratio may behave dimensionally like a scalar in an appropriate operation without
+                losing its identity prematurely.
             </p>
         </section>
 
         <section id="currency">
-            <h2>Currencies</h2>
+            <h2>Currency</h2>
 
-            <p>Currencies are semantic domain units with separate dimensions.</p>
+            <p>Currencies are nominal units:</p>
 
-            <pre><code>unit SEK decimal other
-unit EUR decimal other
-
-impl SEK {
-    dimension: [currency.SEK * 1]
-    system: Currency
-}
-
-impl EUR {
-    dimension: [currency.EUR * 1]
-    system: Currency
-}</code></pre>
+            <pre><code>unit EUR currency
+unit SEK currency</code></pre>
 
             <p>
-                <code>SEK</code> and <code>EUR</code> are not fixed-scale units. Their relationship depends on a runtime or
-                configured exchange rate.
+                A <code>SEK</code> quantity is not implicitly converted to <code>EUR</code>.
+                The compiler does not query or invent a market exchange rate.
+            </p>
+
+            <p>Derived currency expressions remain valid:</p>
+
+            <pre><code>&lt;EUR/s&gt;
+&lt;SEK/EUR&gt;
+&lt;EUR/SEK&gt;</code></pre>
+
+            <p>
+                Tooling may warn about anonymous currency multiplication or division because the
+                expression can easily be mistaken for a compiler-known exchange relationship.
+                The expression is still valid.
+            </p>
+        </section>
+
+        <section id="information">
+            <h2>Information Units</h2>
+
+            <p>
+                Information quantities use the <code>information</code> category.
+            </p>
+
+            <pre><code>unit KiB uint information</code></pre>
+
+            <p>
+                The default dimension is based on the compiler-known information axis.
+            </p>
+
+            <p>
+                Structural information rates work naturally:
+            </p>
+
+            <pre><code>&lt;KiB/s&gt;</code></pre>
+
+            <p>
+                The names <code>bit</code> and <code>byte</code> cannot be unit identifiers because
+                they already have compiler-known language meanings.
+            </p>
+        </section>
+
+        <section id="arithmetic">
+            <h2>Arithmetic</h2>
+
+            <p>
+                Unit algebra applies after the underlying numeric operator has been validated.
             </p>
 
             <div class="rule">
-                <strong>Rule:</strong> The compiler never invents a currency conversion rate.
+                <strong>Rule:</strong> Unit semantics do not make an invalid numeric operation valid.
             </div>
         </section>
 
-        <section id="register-fields">
-            <h2>Units on Register Fields</h2>
+        <section id="addition">
+            <h2>Addition and Subtraction</h2>
 
-            <p>A multi-bit register field may use a unit annotation:</p>
+            <p>
+                Addition and subtraction require semantically compatible quantities.
+            </p>
 
-            <pre><code>type MotorProtocol register[8] {
-    Speed: bit[4]&lt;rpm&gt;
-    Enabled: bit
-    _: bit[3]
+            <p>The compiler may consider:</p>
+
+            <ul>
+                <li>dimension;</li>
+                <li>named identity;</li>
+                <li>known Kind;</li>
+                <li>transform;</li>
+                <li>point/difference role;</li>
+                <li>origin;</li>
+                <li>numeric representability.</li>
+            </ul>
+
+            <p>
+                Compatible fixed-scale quantities may use a safe exact conversion when permitted.
+            </p>
+
+            <p>
+                Different known Kinds do not become implicitly compatible merely because their
+                dimensions and scales match.
+            </p>
+        </section>
+
+        <section id="multiply-divide">
+            <h2>Multiplication and Division</h2>
+
+            <p>
+                Linear quantities normally combine into structural unit expressions.
+            </p>
+
+            <pre><code>&lt;m&gt; / &lt;s&gt;      -&gt; &lt;m/s&gt;
+&lt;KiB&gt; / &lt;s&gt;    -&gt; &lt;KiB/s&gt;
+&lt;Packet&gt; / &lt;s&gt; -&gt; &lt;Packet/s&gt;</code></pre>
+
+            <p>
+                The result is not silently renamed just because a catalog contains a named unit
+                with compatible dimensions.
+            </p>
+
+            <p>
+                This preserves semantic honesty when several named Kinds can share one dimension.
+            </p>
+        </section>
+
+        <section id="comparison">
+            <h2>Comparison</h2>
+
+            <p>
+                Equality and ordering require compatible quantity semantics and a valid conversion path.
+            </p>
+
+            <pre><code>if distanceA &lt; distanceB {
+    ...
 }</code></pre>
 
             <p>
-                The field width defines the stored representation. The unit defines the semantic meaning of the
-                decoded value.
+                The compiler does not compare different currencies by inventing an exchange rate.
             </p>
 
-            <pre><code>let speed: rpm := motorProtocol.Speed</code></pre>
-
-            <p>An incompatible unit is rejected:</p>
-
-            <pre><code>let distance: m := motorProtocol.Speed</code></pre>
+            <p>
+                Point comparisons additionally require compatible origins and point semantics.
+            </p>
         </section>
 
-        <section id="inference">
-            <h2>Type Inference</h2>
+        <section id="conversions">
+            <h2>Conversions</h2>
 
-            <p>Untyped integer literals infer as <code>int</code> by default:</p>
+            <p>
+                Unit conversion and numeric conversion are separate operations.
+            </p>
 
-            <pre><code>let count := 10</code></pre>
+            <p>
+                The compiler may use a fixed unit conversion when the complete relationship is
+                known and the destination numeric carrier can represent the result without hidden loss.
+            </p>
 
-            <p>Untyped decimal literals infer as <code>decimal</code> by default:</p>
+            <p>
+                For example, the stdlib metadata establishes exact relationships between units such as:
+            </p>
 
-            <pre><code>let value := 3.14</code></pre>
+            <pre><code>m
+mm
+cm
+km
 
-            <p>Floating-point storage must be selected explicitly:</p>
+s
+ms
+us
+ns
 
-            <pre><code>let value: float64 := 3.14</code></pre>
+m
+ft
+inch</code></pre>
 
-            <p>A declared unit type provides context for an untyped literal:</p>
+            <p>
+                Equal dimension is not enough when semantic Kinds differ.
+            </p>
 
-            <pre><code>let distance: m := 3.14</code></pre>
+            <pre><code>Hz
+rpm</code></pre>
+
+            <p>
+                may have a fixed conversion relationship while still requiring explicit conversion
+                because frequency and rotational frequency are different Kinds.
+            </p>
         </section>
 
-        <section id="common-errors">
-            <h2>Common Errors</h2>
+        <section id="explicit-conversion">
+            <h2>Explicit Conversion Functions</h2>
 
-            <h3>Implicit conversion from a variable</h3>
-            <pre><code>let raw := 10
-let distance: m := raw</code></pre>
+            <p>
+                A unit can define conversion functions inside its ordinary <code>impl</code>.
+            </p>
 
-            <h3>Adding incompatible units</h3>
-            <pre><code>let distance: m := 10
-let duration: s := 2
-let value := distance + duration</code></pre>
+            <pre><code>unit Hz physical
+unit rpm physical
 
-            <h3>Assigning a unit to another semantic unit</h3>
-            <pre><code>let items: Item := 10
-let packets: Packet := items</code></pre>
+impl rpm {
+    fn rpm(hz: &lt;Hz&gt;) &lt;rpm&gt; {
+        return decimal&lt;rpm&gt;(hz * 60)
+    }
+}</code></pre>
 
-            <h3>Assuming currencies convert automatically</h3>
-            <pre><code>let sek: SEK := 100
-let eur: EUR := sek</code></pre>
+            <p>
+                A conversion function named like the target unit participates in constructor-style
+                conversion resolution.
+            </p>
+
+            <p>
+                Explicit conversion is especially useful across semantic Kind boundaries or when
+                application-specific policy is involved.
+            </p>
+
+            <p>
+                Ordinary assignment does not silently call user-defined conversion functions.
+            </p>
         </section>
 
-        <section id="summary-rules">
-            <h2>Summary of Rules</h2>
+        <section id="runtime-conversion">
+            <h2>Runtime Conversion Factors</h2>
+
+            <p>
+                Some relationships cannot be known statically.
+            </p>
+
+            <p>Currency conversion is the clearest example:</p>
+
+            <pre><code>let eur := EUR(sek, factor)</code></pre>
+
+            <p>
+                For conversion from <code>SEK</code> to <code>EUR</code>, the factor must carry
+                compatible unit algebra equivalent to:
+            </p>
+
+            <pre><code>&lt;EUR/SEK&gt;</code></pre>
+
+            <p>The compiler validates the dimensional relationship:</p>
+
+            <pre><code>SEK * EUR/SEK -&gt; EUR</code></pre>
+
+            <p>
+                It does not validate or invent the actual market value of the factor.
+            </p>
+        </section>
+
+        <section id="precision">
+            <h2>Precision and Fallibility</h2>
+
+            <p>
+                Sec never silently rounds, truncates or overflows merely to make a unit conversion
+                fit the destination numeric carrier.
+            </p>
+
+            <p>
+                A mathematically valid conversion can still be invalid as an implicit conversion
+                when the chosen numeric representation cannot express the result exactly.
+            </p>
+
+            <p>
+                In that case, choose an explicit policy:
+            </p>
 
             <ul>
-                <li>A unit is a distinct semantic numeric type.</li>
-                <li>The numeric base type defines representation.</li>
-                <li>The unit category is <code>physical</code> or <code>other</code>.</li>
-                <li>Physical units may define dimensions, scale and system.</li>
-                <li>Domain units use independent semantic dimensions.</li>
-                <li>Untyped literals may initialize unit values in declaration context.</li>
-                <li>Variables require explicit conversion into another unit type.</li>
-                <li>Addition and subtraction require compatible units.</li>
-                <li>Multiplication and division perform dimensional algebra.</li>
-                <li>Equal dimensions cancel to a dimensionless numeric value.</li>
-                <li>Derived dimensions may resolve to declared unit types.</li>
-                <li>Unit systems do not determine dimensional compatibility.</li>
-                <li>Fixed exact scales may support explicit compile-time-verified conversion.</li>
-                <li>Runtime relationships such as currency rates remain explicit.</li>
-                <li>Units may be attached to multi-bit register fields.</li>
-                <li>No hidden unit conversion is performed.</li>
+                <li>use another numeric carrier;</li>
+                <li>perform an explicit numeric conversion;</li>
+                <li>apply an explicit rounding policy;</li>
+                <li>use a fallible conversion function.</li>
+            </ul>
+
+            <p>
+                Merely changing a unit is not automatically fallible.
+                A conversion uses <code>Result</code> and <code>try</code> only when the actual
+                conversion operation can fail.
+            </p>
+        </section>
+
+        <section id="named-types">
+            <h2>Units and Named Types</h2>
+
+            <p>
+                Unit identity and named-type identity are separate layers.
+            </p>
+
+            <pre><code>type Distance decimal&lt;m&gt;
+type Altitude decimal&lt;m&gt;</code></pre>
+
+            <p>
+                <code>Distance</code> and <code>Altitude</code> remain different nominal types
+                even though both use metre as their unit.
+            </p>
+
+            <p>
+                Unit compatibility never erases ordinary named-type identity.
+            </p>
+        </section>
+
+        <section id="contracts">
+            <h2>Units and Contracts</h2>
+
+            <p>
+                A named unit-bearing type may use ordinary contracts where applicable.
+            </p>
+
+            <pre><code>type PositiveDistance decimal&lt;m&gt; range 0..</code></pre>
+
+            <p>
+                The contract belongs to <code>PositiveDistance</code>, not to unit
+                <code>m</code>.
+            </p>
+
+            <p>
+                Converting a quantity to the target named type cannot bypass its contracts.
+            </p>
+        </section>
+
+        <section id="registers-ffi">
+            <h2>Units with Registers and FFI</h2>
+
+            <p>
+                Unit meaning is separate from hardware layout and foreign ABI representation.
+            </p>
+
+            <p>A unit annotation does not by itself change:</p>
+
+            <ul>
+                <li>register field width;</li>
+                <li>hardware access semantics;</li>
+                <li>foreign calling convention;</li>
+                <li>wire encoding;</li>
+                <li>ABI storage width.</li>
+            </ul>
+
+            <p>
+                A wrapper may attach Sec unit semantics to an otherwise raw hardware or foreign
+                numeric quantity while keeping the physical interface unchanged.
+            </p>
+        </section>
+
+        <section id="custom-catalogs">
+            <h2>Application and Domain Unit Catalogs</h2>
+
+            <p>
+                The standard <code>units</code> module is an example of a broader design pattern.
+            </p>
+
+            <p>
+                Applications and libraries can define their own unit modules:
+            </p>
+
+            <pre><code>module logistics
+
+unit Pallet uint other
+unit Container uint other
+unit Shipment uint other</code></pre>
+
+            <p>
+                Another domain might define:
+            </p>
+
+            <pre><code>module astronomy
+
+unit parsec physical
+unit lightyear physical</code></pre>
+
+            <p>
+                These units use the same compiler semantics as standard-library units.
+                There is no privileged "built-in unit declaration" mechanism that application
+                code cannot use.
+            </p>
+
+            <p>
+                This makes units useful beyond physics:
+            </p>
+
+            <ul>
+                <li>packets per second;</li>
+                <li>requests per minute;</li>
+                <li>items per pallet;</li>
+                <li>frames per sample window;</li>
+                <li>domain-specific counters;</li>
+                <li>financial quantities;</li>
+                <li>scientific quantities;</li>
+                <li>hardware calibration values.</li>
+            </ul>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>Unit diagnostics should explain the semantic problem rather than only the numeric types.</p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>unknown unit;</li>
+                <li>invalid unit declaration;</li>
+                <li>invalid numeric default carrier;</li>
+                <li>incompatible dimension;</li>
+                <li>incompatible known Kind;</li>
+                <li>invalid point/difference operation;</li>
+                <li>incompatible origin;</li>
+                <li>invalid affine or logarithmic operation;</li>
+                <li>lossy implicit conversion;</li>
+                <li>missing explicit runtime conversion;</li>
+                <li>deprecated or obsolete catalog unit;</li>
+                <li>suspicious anonymous derived currency expression.</li>
+            </ul>
+
+            <p>A useful diagnostic is semantic:</p>
+
+            <pre><code>cannot implicitly convert frequency Hz to rotational_frequency rpm
+
+help: use an explicit unit conversion</code></pre>
+
+            <h3>LSP and hover</h3>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>unit identity;</li>
+                <li>symbol and long name;</li>
+                <li>default numeric carrier;</li>
+                <li>category;</li>
+                <li>dimension;</li>
+                <li>Kind;</li>
+                <li>System;</li>
+                <li>Scale;</li>
+                <li>Transform;</li>
+                <li>Offset and Origin;</li>
+                <li>logarithmic metadata;</li>
+                <li>canonical structural form;</li>
+                <li>conversion exactness.</li>
+            </ul>
+
+            <p>
+                Completion for an imported <code>units</code> module can expose the standard
+                catalog without requiring users to memorize every available unit name.
+            </p>
+
+            <h3>Formatting</h3>
+
+            <p>Structural unit expressions remain compact:</p>
+
+            <pre><code>&lt;kg*m/s^2&gt;</code></pre>
+
+            <p>The formatter does not:</p>
+
+            <ul>
+                <li>replace a structural expression with a named catalog unit;</li>
+                <li>replace a named unit with its structural expansion;</li>
+                <li>reorder factors merely because internal canonicalization does;</li>
+                <li>invent unit conversions.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Units make semantic quantity identity part of Sec's static type system.</li>
+                <li>Most programs should reuse the standard <code>units</code> catalog rather than redeclare common units.</li>
+                <li>The standard catalog lives in <code>sec/stdlib/units/</code> and is ordinary Sec source code.</li>
+                <li>All files in that directory declare one shared module named <code>units</code>.</li>
+                <li><code>import "units"</code> imports the complete standard unit module, not one physical source file.</li>
+                <li>The catalog includes SI base units, scaled units, derived SI units, mechanics, electricity, power, time/frequency, light, science and Imperial/US units.</li>
+                <li>The compiler owns unit semantics; the standard library owns the reusable catalog.</li>
+                <li>Unit metadata does not require a runtime unit registry.</li>
+                <li>The declaration model is <code>unit Name [NumericType] Category</code>.</li>
+                <li>The normal declaration form omits the numeric type, for example <code>unit m physical</code>.</li>
+                <li>When omitted, the default numeric carrier is <code>decimal</code>.</li>
+                <li>Specify a numeric type only when a different preferred/default carrier is useful.</li>
+                <li>The default carrier does not become part of the unit's semantic identity.</li>
+                <li>A unit may be used with another compatible explicit numeric carrier.</li>
+                <li>Unit-only shorthand uses <code>&lt;Unit&gt;</code>.</li>
+                <li>Structural unit expressions support multiplication, division, signed integer exponents and <code>&lt;1&gt;</code>.</li>
+                <li>Compound structural unit shorthand defaults to <code>decimal</code>.</li>
+                <li>Named and structural units remain distinct source-level identities.</li>
+                <li>Sec unit categories are <code>physical</code>, <code>currency</code>, <code>information</code>, <code>ratio</code> and <code>other</code>.</li>
+                <li>Unit identity, carrier, category, Dimension, Kind, System and Transform are separate concepts.</li>
+                <li>Dimension models mathematical dimensional structure.</li>
+                <li>Kind preserves semantic distinctions such as energy versus torque.</li>
+                <li>The compiler does not infer Kind solely from dimension.</li>
+                <li>System identifies the measurement/catalog system but does not determine compatibility by itself.</li>
+                <li>Unit metadata is declared in the unit's ordinary <code>impl</code>.</li>
+                <li>Linear units use <code>Scale</code>; affine units additionally use <code>Offset</code>; logarithmic units use explicit log metadata.</li>
+                <li>Point quantities and differences have distinct algebra.</li>
+                <li>Named ratios remain semantically meaningful even though dimensionless.</li>
+                <li>Currencies remain nominal and exchange rates are never invented by the compiler.</li>
+                <li>Information quantities use their own compiler-known dimension axis.</li>
+                <li>Addition and subtraction require compatible quantity semantics.</li>
+                <li>Multiplication and division normally produce structural unit results.</li>
+                <li>Equal dimensions do not imply compatibility when known Kinds differ.</li>
+                <li>Fixed unit conversions are allowed only when the relationship and numeric result are safe.</li>
+                <li>Sec never silently rounds, truncates or overflows to make a unit conversion fit.</li>
+                <li>Units may define explicit conversion functions in their <code>impl</code> blocks.</li>
+                <li>Runtime relationships such as currency exchange use explicit factors or explicit conversion code.</li>
+                <li>Changing units is not automatically fallible; fallible conversion implementations use ordinary <code>Result</code> and <code>try</code>.</li>
+                <li>Units and named types provide independent layers of semantic identity.</li>
+                <li>Contracts on unit-bearing named types belong to the named type.</li>
+                <li>Unit semantics do not by themselves change hardware layout or foreign ABI representation.</li>
+                <li>Projects can define their own unit modules using exactly the same language feature as the standard catalog.</li>
             </ul>
         </section>
 
         <div class="page-navigation">
-                <a href="12-registers.html">Previous: Registers</a>
+            <a href="12-registers.html">Previous: Registers</a>
             <a href="14-generics.html">Next: Generics</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
-  <div class="site-footer-inner">
-      <p>&copy; 2026 Sec Language</p>
-      <a href="https://github.com/YoePro/sec">GitHub</a>
-  </div>
-</footer>  
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.1 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
 </body>
 </html>

@@ -822,8 +822,8 @@ Inlining does not remove the semantic relationship from analysis.
 They are equivalent at the language level.
 
 ```sec
-let worker := spawn Work()
-let explicitWorker := spawn task Work()
+let worker := try spawn Work()
+let explicitWorker := try spawn task Work()
 ```
 
 The spawned function remains an ordinary synchronous callable declaration.
@@ -924,7 +924,7 @@ They do not automatically become synchronous effects of the spawner.
 # New thread execution
 
 ```sec
-let worker := spawn thread Work()
+let worker := try spawn thread Work()
 ```
 
 creates a `Thread[T]` execution context according to the canonical thread rules.
@@ -946,7 +946,7 @@ The thread entry target remains reachable from the spawning root.
 # New process execution
 
 ```sec
-let child := spawn process Program()
+let child := try spawn process Program()
 ```
 
 creates or launches a process according to the process rulebook.
@@ -976,7 +976,7 @@ callees.
 `await` is task-specific in Sec 0.1.
 
 ```sec
-let value := await task
+let outcome := await task
 ```
 
 `await`:
@@ -1007,7 +1007,8 @@ the awaiting callable;
 the Task[T] value;
 its origin spawn site or transferred task origin where known;
 the continuation after completion;
-the result and cancellation/failure paths;
+the `Completed(T)`, `Cancelled`, `Panicked(PanicInfo)`, and
+`Failed(TaskError)` outcome paths;
 the borrow-release boundary.
 ```
 
@@ -1036,14 +1037,14 @@ It receives a stable identity when represented as a separate callable node.
 # Direct await
 
 ```sec
-let value := await spawn Calculate()
+let outcome := await (try spawn Calculate())
 ```
 
 has the same semantic execution relationships as:
 
 ```sec
-let task := spawn Calculate()
-let value := await task
+let task := try spawn Calculate()
+let outcome := await task
 ```
 
 The compiler may optimize the physical implementation.
@@ -3123,7 +3124,7 @@ reference_model.md
 unsafe.md
 spawn.md
 await.md
-tasks.txt
+tasks.md
 threads.md
 processes.txt
 structured_concurrency.md

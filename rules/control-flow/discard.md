@@ -643,6 +643,12 @@ Conceptually, a thread spawn may produce:
 Result[Thread[T], SpawnError]
 ```
 
+Task spawn analogously produces
+`Result[Task[T], TaskSpawnError]`. Detach or detach-with-discard applies only to
+the successful `Task[T]` after creation failure has been handled; it never
+discards `TaskSpawnError`. `TaskOutcome[T]` receives no special implicit-discard
+exemption.
+
 Therefore both of these are invalid:
 
 ```sec

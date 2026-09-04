@@ -281,6 +281,14 @@ Runtime union ops require concrete substituted payload types.
 
 Do not lower unresolved generic union template values.
 
+The same boundary applies to every compiler-generated executable
+generic-dependent Sec MLIR type and operation, as specified by
+`rules/compiler/generics_lowering.md`. Unresolved parameters, partially
+specialized nominal types, and unresolved constraint operations must not cross
+this boundary. A valid concrete specialization uses the ordinary concrete
+function, method, struct, named-type, union, enum, interface, impl-member, and
+associated-state lowering paths; missing coverage is an implementation gap.
+
 ---
 
 # 18. Struct-like source evaluation order

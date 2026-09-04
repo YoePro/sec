@@ -1012,7 +1012,7 @@ This rule must be merged with and cross-checked against:
 
 ```text
 spawn.md
-tasks.txt
+tasks.md
 await.md
 processes.txt
 concurrency.md

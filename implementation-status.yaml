@@ -1856,7 +1856,7 @@ integrations:
   - id: frontend.discard-v2
     area: frontend-ownership-and-lowering
     status: partial
-    integrated: "2026-08-17"
+    integrated: "2026-09-04"
     document_revision: "2.0"
     repository_baseline: "56be75d"
     summary: >-
@@ -1877,7 +1877,7 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/destruction.md
       - rules/control-flow/defer.md
-      - rules/concurrency/tasks.txt
+      - rules/concurrency/tasks.md
       - rules/concurrency/threads.md
       - rules/concurrency/spawn.md
       - rules/compiler/semantic_ir.md
@@ -1899,6 +1899,7 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
       - internal/sema/concurrency_test.go
       - internal/sema/parameter_usage_test.go
       - internal/formatter/formatter_test.go
@@ -1931,18 +1932,21 @@ integrations:
       - semantic_ir.md now specifies canonical DiscardValue provenance and forbids backend inference from unused SSA
       - diagnostics.txt now specifies discard-related mandatory and advisory diagnostic identities
       - formatter.md now preserves explicit discard without policy-driven insertion or removal
+      - repeated discard of an already unavailable discardable local or tracked field Place is a legal no-op rather than an ordinary use-after-terminal-action read
+      - repeated discard preserves compiler-owned operand type and definition facts for shared CLI and LSP consumers and never restores availability
     remaining:
       - implement configurable ownership.implicit-discarded-result advisories with off, info, warning, and error severities while preserving mandatory must-use errors
       - register stable IDs, symbolic names, structured notes and help, and related locations for implicit discard, unhandled must-use, non-discardable values, use-after-discard, borrow conflicts, useless discard, and redundant void discard
       - complete path-sensitive active-payload reasoning for wrapper and union discardability without weakening conservative defaults
       - generalize explicit discard from simple local identifiers to supported Places, including field-sensitive partial discard and exact availability state
       - separate canonical Availability from moved/discarded/detached reason provenance across joins
-      - make discard of an already-Unavailable place a legal no-op and implement conditional discard convergence
+      - complete conditional discard convergence with an explicit availability lattice and path-specific destruction responsibility
       - lower explicit and implicit discard through the resolved deterministic destruction plan, cancel consumed cleanup responsibility, prevent double destruction, and register cleanup after legal reinitialization
       - introduce canonical Semantic IR DiscardValue ownership operations with explicit, implicit-call-result, and compiler-temporary provenance
       - ensure backend stages never infer semantic discard from unused SSA values
       - add non-discardable unresolved Process handling when Process becomes a complete compiler-known lifecycle type
       - complete recursive Result of lifecycle-handle spawn modelling for every supported spawn kind
+      - account for fallible task spawn before a Task[T] exists and the TaskOutcome[T] observation layer after successful creation when validating detach and discard
       - implement configurable advisories for useless literal or constant discard and redundant explicit discard of void
       - complete parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, MLIR, and backend regression coverage
     required_tests:
@@ -2564,9 +2568,9 @@ integrations:
     status: partial
     integrated: "2026-08-14"
     revised: "2026-09-04"
-    document_revision: "2.1"
+    document_revision: "2.2"
     summary: >-
-      Tracks revision-2.1 compile-time type generics and demand-driven
+      Tracks revision-2.2 compile-time type generics and demand-driven
       monomorphization. Generic structs, functions, unions, enums, interfaces, impl
       scopes, inference, substitution, nominal instance caching, and basic
       constraint declaration validation have substantial frontend support;
@@ -2582,6 +2586,7 @@ integrations:
       - rules/types/types.md
       - rules/compiler/semantic_ir.md
       - rules/compiler/generics_lowering.md
+      - rules/compiler/monomorphization.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -2628,7 +2633,7 @@ integrations:
       - specialize static storage independently for every concrete generic instantiation
       - complete generic-union layout, match, ownership, destruction, Semantic IR, and backend lowering after substitution
       - complete generic-enum constraint revalidation, representation-dependent substitution, match and switch provenance, Semantic IR identity, deterministic symbols, Sec MLIR, ABI, FFI, and backend lowering
-      - detect every non-converging recursive instantiation and report the complete concrete instantiation path
+      - implement the canonical InstantiationGraph termination model, distinguishing finite canonical cycles, recursive by-value layout, proven distinct-key non-convergence, and compiler resource limits; current recursive-storage diagnostics cover only represented subsets
       - assign deterministic cross-module symbol identities to concrete types, functions, methods, and static storage
       - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
       - prevent unresolved generic parameters or constraints from reaching ABI, FFI, Sec MLIR, LLVM, or any representation-dependent lowering
@@ -2645,6 +2650,187 @@ integrations:
         result: passed on 2026-09-03
       - command: go test ./internal/parser ./internal/sema ./cmd/lsp -run 'Generic|Generics|Enum' -count=1
         result: passed on 2026-09-04 with generic enum parsing, concrete member resolution, impl scope, arity checking, and nominal identity coverage
+
+  - id: compiler.generics-lowering
+    area: compiler-semantic-ir-and-mlir
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "1.1"
+    repository_baseline: "69d8b57"
+    summary: >-
+      Tracks the verified Sec 0.1 closure and lowering boundary from canonical
+      concrete specializations supplied by compiler.monomorphization into
+      representation-dependent Semantic IR and executable Sec MLIR. Concrete
+      struct/union identities already reach selected IR paths, while complete
+      generic enum, method, named-type, ownership/destruction, ABI, and
+      generic-concreteness verification remain incomplete.
+    rules:
+      - rules/compiler/generics_lowering.md
+      - rules/compiler/monomorphization.md
+      - rules/declarations/generics.md
+      - rules/declarations/enums.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/impl.md
+      - rules/declarations/properties.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/projects/modules.md
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/platform/abi.md
+    implemented:
+      - generic declaration arity, parameter scopes, and concrete type-argument parsing exist for major frontend generic categories
+      - generic struct template instantiation recursively substitutes concrete field types and preserves nominal identity
+      - repeated concrete generic struct and function instances are cached canonically within current frontend analysis scopes
+      - generic union templates substitute concrete payload types for implemented construction paths
+      - generic interface requirement types can be concretely substituted in implemented compiler-known Iterator-style paths
+      - current Semantic IR enum/union work retains concrete generic type arguments and nominal identities where represented
+      - current Sec MLIR !sec.struct and !sec.union forms retain nominal identity plus concrete type arguments
+      - current union lowering explicitly rejects unresolved generic union template values
+      - canonical rulebooks now cross-reference the concrete generic-lowering boundary without claiming complete implementation
+    remaining:
+      - consume canonical InstantiationIdentity and concrete specialization facts from compiler.monomorphization without recreating demand, identity, or substitution semantics
+      - implement method-level generic lowering for already canonical concrete method specializations
+      - complete generic named-type lowering and preserve nominal identity independently of physical representation
+      - implement canonical Sec 0.1 generic enum Semantic IR, Sec MLIR, lowering, diagnostics, and backend tests beyond the implemented parser and Sema subset
+      - ensure generic constraint lowering never introduces hidden runtime dictionaries, type descriptors, type erasure, implicit boxing, or runtime reflection
+      - lower concrete generic impl properties, methods, nested declarations, associated immutable values, and static storage while preserving canonical owner identity
+      - concretize copy/move classification, ownership actions, partial-move eligibility, destruction obligations, and cleanup requirements before ownership-sensitive executable lowering
+      - complete generic union ownership, destruction, match, layout-readiness, Semantic IR, and backend paths
+      - make concrete generic callable signatures the exclusive input to ABI classification and executable call lowering
+      - prevent unresolved generic parameters, partially specialized nominal types, and unresolved generic constraint operations from entering canonical compiler-generated executable Sec MLIR
+      - add generic-concreteness verification before representation-dependent lowering
+      - preserve generic declaration, substitution, request-site, and origin-module provenance through Semantic IR and diagnostic-capable Sec MLIR metadata
+      - preserve ordinary volatile, hardware, atomic, barrier, error, panic, ownership, and destruction effects while lowering concrete specializations
+      - distinguish TemplateError, InstantiationError, ImplementationGap, artifact compatibility failure, and CompilerInvariantFailure in diagnostics
+      - suppress duplicate downstream generic diagnostic cascades while preserving nested instantiation context
+      - ensure valid-but-unimplemented generic lowering paths fail as implementation gaps instead of language errors or weakened fallback semantics
+    required_tests:
+      - local generic function lowers with fully concrete parameter and result types
+      - nested generic function call reaches executable IR with a concrete callee specialization identity
+      - generic struct concrete field substitution preserves nominal identity
+      - two generic struct instances with identical representation but different arguments remain distinct Sec types
+      - generic union payloads are fully concrete before union executable operations
+      - generic enum instances with different arguments remain distinct nominal enum types while using ordinary enum operations
+      - generic interface requirement signatures substitute concrete arguments and explicit conformance selects the concrete requirement implementation
+      - constraint-based generic calls lower without hidden runtime dictionary or type-descriptor operands
+      - runtime interface values inside specialized generic functions retain ordinary interface dispatch semantics
+      - generic owner and method-level generic environments compose without parameter-name aliasing
+      - generic impl methods, properties, nested declarations, associated values, and static storage bind to concrete owner identity
+      - move-only generic arguments never use copy-trivial lowering
+      - non-trivially-destructible generic arguments retain required cleanup semantics
+      - compile-time generic facts do not appear as runtime generic checks
+      - runtime argument values are not constant-folded merely because their containing function is specialized
+      - volatile, hardware, atomic, and barrier effects survive generic concretization unchanged except for valid concrete refinement
+      - imported public generic template can depend on a private origin-module helper without exposing that helper to importing source
+      - generic body fingerprint change invalidates dependent imported specialization state
+      - incompatible generic semantic artifact is rejected or rebuilt rather than interpreted best-effort
+      - unresolved generic type parameter in compiler-generated executable Sec MLIR is rejected as a compiler invariant failure
+      - unresolved generic constraint operation in compiler-generated executable Sec MLIR is rejected as a compiler invariant failure
+      - generic concreteness verification does not require physical layout or LLVM representation
+      - template error is reported once at the generic declaration rather than once per concrete request
+      - invalid concrete constraint substitution reports declaration, concrete arguments, required capability, and request site
+      - valid Sec generic construct lacking current lowering coverage reports an implementation gap
+      - same canonical template, substitution, and compatible CompilationPlan produce deterministic semantic output independent of request order
+    excluded:
+      - specialization discovery, worklists, deduplication, InstantiationIdentity, physical sharing, symbol policy, code-size policy, and specialization caching owned by rules/compiler/monomorphization.md
+      - user-visible compile-time execution semantics owned by compile_time_evaluation.md
+      - runtime generic dispatch as the ordinary Sec generic implementation model
+      - type erasure, implicit generic boxing, hidden generic dictionaries, and reflection-based runtime specialization
+      - physical layout, ABI machine classification, linker symbol coalescing, LTO, and general optimizer policy
+
+  - id: compiler.monomorphization
+    area: generic-specialization-and-realization
+    status: partial
+    integrated: "2026-09-04"
+    reviewed: "2026-09-04"
+    document_revision: "1.0"
+    repository_baseline: "777beb8"
+    summary: >-
+      Tracks canonical demand-driven monomorphization from validated generic
+      templates through concrete semantic instantiation, specialization identity,
+      recursive demand, analysis integration, generic closure, physical
+      implementation sharing, separate compilation, ABI/FFI boundaries,
+      incremental reuse, diagnostics, and deterministic termination/resource
+      behavior. Existing frontend generic parsing, inference, substitution,
+      nominal instance caching, generic enums, and selected recursion diagnostics
+      provide a partial foundation; the complete cross-module specialization and
+      realization model remains incomplete.
+    rules:
+      - rules/compiler/monomorphization.md
+      - rules/declarations/generics.md
+      - rules/compiler/generics_lowering.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/linking.md
+      - rules/platform/abi.md
+      - rules/platform/ffi.md
+      - rules/analysis/call_graph.md
+      - rules/analysis/effect_analysis.md
+      - rules/analysis/stack_analysis.md
+      - rules/declarations/static.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+    implemented:
+      - generic declarations are registered as compile-time templates in the frontend
+      - repeated concrete generic type and function requests are cached canonically within current analysis scopes
+      - generic struct, union, enum, interface, impl, and function substitution has substantial frontend coverage
+      - generic enum specialization preserves distinct nominal identity by ordered argument list
+      - selected direct and changing-argument recursive generic storage cases are diagnosed
+      - unresolved generic parameters are rejected by represented concrete lowering paths where current checks exist
+    remaining:
+      - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
+      - separate generic resolution and inference ownership from canonical specialization application
+      - implement one canonical demand/provenance graph for nested concrete specialization requests
+      - guarantee template-level semantic validation from declared constraints without concrete duck typing
+      - complete method-level generic specialization and generic named-type specialization
+      - complete explicit-conformance-driven generic constraint resolution
+      - preserve distinct per-specialization static storage through all shared and separate-compilation paths
+      - carry concrete specialization identity and provenance through Semantic IR and every Sec MLIR lowering path
+      - add an explicit generic-closure verifier before representation-dependent lowering
+      - prevent unresolved generic semantics from reaching ABI, FFI, Sec MLIR, LLVM, or direct backend paths
+      - separate generic closure from CompilationPlan-dependent size, alignment, layout, and ABI realization
+      - implement canonical specialization demand across module and package boundaries
+      - serialize compiler-consumable typed generic template artifacts for later separate-compilation specialization
+      - implement semantic, template, dependency, and provenance fingerprints for generic incremental reuse
+      - distinguish semantic specialization caches from plan-realization and implementation-sharing caches
+      - implement deterministic physical implementation sharing after complete semantic specialization
+      - support shared internal generic bodies using only minimal already-resolved realization parameters
+      - prevent implementation sharing from merging type, static, ownership, effect, analysis, diagnostic, debug, or callable identity
+      - support distinct plan entries or ABI adapters converging on shared internal implementations
+      - preserve exact native ABI compatibility metadata for separately compiled concrete specializations
+      - enforce that unresolved generic extern declarations never acquire runtime ABI
+      - independently validate concrete generic types and callables for FFI compatibility
+      - implement sound non-converging specialization detection over canonical InstantiationKeys
+      - distinguish finite canonical cycles, recursive by-value layout, semantic non-convergence, and compiler resource limits
+      - ensure compiler resource thresholds never serve as proof of semantic non-convergence
+      - make structural instantiation accounting independent of cache state, duplicate requests, physical sharing, and worker scheduling
+      - implement deterministic generic instantiation traces and representative diagnostic selection
+      - expose canonical generic template and specialization facts to LSP and compiler inspection without creating build reachability
+      - add size, performance, debug, and profiling realization policies without changing semantic specialization identity
+      - add the complete identity, demand, substitution, ownership, analysis, closure, sharing, linking, ABI/FFI, incremental, termination, cost, diagnostic, and determinism regression matrix required by rules/compiler/monomorphization.md
+    required_tests:
+      - identical canonical generic requests reuse one semantic instantiation
+      - explicit and inferred arguments converge on one canonical instantiation
+      - nominal representation-equivalent arguments remain distinct semantic specializations
+      - generic method specialization preserves enclosing and method argument roles
+      - invalid unconstrained generic operations fail at template analysis
+      - cache and tooling queries do not create active program demand or LinkRoots
+      - finite recursive specialization cycles are accepted when ordinary owning rules allow the program
+      - unbounded distinct-key specialization is diagnosed independently from recursive layout and resource limits
+      - generic closure rejects unresolved runtime-relevant generic semantics before representation-dependent lowering
+      - target-dependent layout and ABI may remain unresolved at generic closure
+      - shared physical implementations preserve per-instantiation statics and semantic analysis identity
+      - realization-only parameters never perform runtime generic semantic lookup
+      - separate-compilation requests reuse canonical specialization identity across modules
+      - stale semantic and ABI generic artifacts are rejected at their correct compatibility layer
+      - unresolved generic extern declarations are rejected and concrete generic FFI compatibility is checked independently
+      - size and performance policies may select different physical sharing without changing semantic instantiation identity
+      - cold and warm cache plus parallel and sequential compilation produce equivalent canonical generic results
 
   - id: frontend.functions-v2
     area: frontend-analysis-and-lowering
@@ -5993,7 +6179,7 @@ integrations:
   - id: "frontend.destruction"
     area: "frontend-destruction-and-cleanup-analysis"
     status: "partial"
-    integrated: "2026-08-28"
+    integrated: "2026-09-04"
     document_revision: "2.0"
     repository_baseline: "069c111"
     rules:
@@ -6023,13 +6209,14 @@ integrations:
       - "Initial defer delayed-use analysis preventing conflicting move/discard before deferred reads."
       - "Initial destruction tests and conservative resolved-type destruction classification used by current compiler code."
       - "Current frontend already distinguishes several moved, returned, discarded, and detached reasons for related diagnostics."
+      - "Discard of an already unavailable discardable local or tracked field Place is accepted as a frontend no-op without a second read or destruction action; later ordinary use remains unavailable."
     remaining:
       - "destruction-classification: make TriviallyDestructible/NonTriviallyDestructible a complete compiler-derived property for every resolved supported type and generic instantiation, independent of copy classification"
       - "general-cleanup-responsibility: replace narrow File/Directory must-closed tracking with general exact-once destruction responsibility for every non-trivial owned value"
       - "availability-integration: consume ownership-v2 Available/PartiallyAvailable/Unavailable/ConditionallyAvailable plus separate UnavailableReason/provenance when computing cleanup"
       - "partial-aggregate-destruction: recursively destroy exactly still-owned Available sub-Places and skip moved/discarded/uninitialized sub-Places"
       - "conditional-destruction: preserve branch/path-specific ownership and statically eliminate conditional cleanup whenever possible"
-      - "discard-convergence: implement legal no-op second discard, conditional discard convergence, no-double-destruction, and new cleanup registration after reinitialization; remove stale double-discard-rejected expectations"
+      - "discard-convergence: implement explicit conditional availability/destruction plans, backend no-double-destruction, and new cleanup registration after reinitialization"
       - "replacement-reinitialization: distinguish Available replacement from Unavailable reinitialization and ConditionallyAvailable mixed replacement/reinitialization with pre-commit semantic validation"
       - "custom-free-frontend: implement free AST/parser/member registration/Sema body rules, non-callability, no Result/value return, no defer, no self escape/resurrection, no whole-self transfer, and no owned-field move-out in Sec 0.1"
       - "custom-free-partial-move-ban: reject partial field moves for types defining custom free and identify the free declaration in diagnostics"
@@ -6194,7 +6381,7 @@ integrations:
   - id: "tooling.destruction"
     area: "diagnostics-lsp-formatter-traceability-destruction"
     status: "partial"
-    integrated: "2026-08-28"
+    integrated: "2026-09-04"
     document_revision: "2.0"
     repository_baseline: "069c111"
     rules:
@@ -6205,11 +6392,12 @@ integrations:
     implemented:
       - "Current frontend already emits selected move/resource/defer diagnostics with related source locations."
       - "Formatter/LSP already preserve several ownership/move constructs and expose initial ownership facts."
+      - "Shared Sema accepts repeated discard of already unavailable discardable Places and retains resolved operand facts, so LSP diagnostics do not duplicate stale use-after-discard logic."
     remaining:
       - "mentor diagnostics must explain which value is affected, where ownership/destruction responsibility originated, what earlier move/discard/replacement changed it, and how to fix the source safely"
       - "diagnose custom-free partial move by pointing to the free declaration and explaining the complete-self invariant"
       - "diagnose conditional cleanup requiring forbidden runtime bookkeeping and suggest static restructuring or explicit discard convergence"
-      - "treat second discard of already unavailable Place as legal; optionally surface only the configured redundancy advisory"
+      - "optionally surface the configured low-priority redundancy advisory for a statically redundant discard without changing semantic validity"
       - "surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful"
       - "add navigation from destruction/use-after-move diagnostics to move/discard/return/transfer origin"
       - "preserve source-level discard/defer/free/move syntax in formatter and never insert/remove semantic cleanup operations purely as formatting"
@@ -8033,13 +8221,16 @@ integrations:
     document_last_updated: '2026-08-14'
     summary: Generic struct and union inline-storage edges are checked before type resolution for direct, fixed-array-mediated,
       and changing-argument recursion. Concrete generic union payloads are checked again after substitution. Complete
-      cross-template forward-reference finalization and cycle-path reporting remain partial.
+      cross-template forward-reference finalization and storage-cycle reporting remain partial. This entry covers
+      represented recursive storage, not the canonical InstantiationGraph or general monomorphization termination model.
     rules:
     - rules/declarations/generics.md
     - rules/declarations/unions.md
     - rules/declarations/struct.md
     - rules/collections/collections.md
     - rules/compiler/semantic_ir.md
+    - rules/compiler/monomorphization.md
+    - rules/memory/layout.md
     code:
     - internal/sema/analyzer.go
     - internal/sema/types.go
@@ -8069,20 +8260,15 @@ integrations:
       metadata
     - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete
       predeclaration skeletons
-    - evolve recursive generic diagnostics from the current local cases to complete canonical instantiation-cycle
-      path reporting
+    - evolve recursive storage diagnostics from the current local cases to complete layout/storage dependency paths
+      without conflating them with canonical InstantiationKey non-convergence
     - preserve finite reference/slice/container boundaries according to their owning representation rules
     bug_reference:
     - correction8.md
     governance_reconciliation:
-    - In frontend.generics-v2, narrow the current implemented statement "direct, array-mediated, and changing-argument
-      recursive generic storage diagnostics with indirection cases retained" to explicitly say "generic struct storage"
-      until union payload storage receives the same analysis.
-    - Keep generic union template registration, payload substitution, and the existing ordinary generic union frontend
-      tests as implemented within their current scope.
-    - The existing remaining item requiring detection of every non-converging recursive generic instantiation and
-      complete cycle-path diagnostics remains valid, but it does not by itself document that even the direct generic-union
-      storage case is currently missed.
+    - Keep generic struct/union storage-cycle checks and represented payload substitution scoped to this entry.
+    - General canonical specialization demand, finite-key cycles, proven non-convergence, and compiler resource limits
+      are owned by compiler.monomorphization and must not be inferred complete from these storage checks.
     required_tests:
     - direct recursive generic union payload rejected
     - recursive generic union named payload field rejected
@@ -9765,6 +9951,89 @@ integrations:
       - "defer diagnostic identifies delayed use"
       - "LSP and compiler report the same lifetime cause chain"
 
+  - id: concurrency.tasks-v2
+    area: concurrency
+    feature: task-language-semantics
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "2.0"
+    repository_baseline: 777beb8
+    summary: >-
+      Tracks revision-2 task creation, move-only lifecycle ownership,
+      TaskOutcome terminal semantics, observers, transferability, Semantic IR,
+      lowering, and runtime-independent target behavior. Current frontend
+      support models Task[T] and several lifecycle operations, but spawn and
+      await typing still use the older direct-handle/direct-value model.
+    rules:
+      - rules/concurrency/tasks.md
+      - rules/concurrency/spawn.md
+      - rules/concurrency/await.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/concurrency_runtime_model.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/memory/ownership.md
+      - rules/memory/transferability.md
+      - rules/errors/panic.md
+      - rules/compiler/semantic_ir.md
+      - rules/control-flow/discard.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
+      - sec/core/error.sec
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/concurrency_test.go
+      - internal/sema/analyzer_test.go
+    normative:
+      - "Task[T] is a move-only owning lifecycle handle."
+      - "spawn Work() and spawn task Work() have raw type Result[Task[T], TaskSpawnError]."
+      - "TaskSpawnError is distinct from failures of an already-created task."
+      - "await Task[T] always yields TaskOutcome[T]."
+      - "TaskOutcome[T] has Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError)."
+      - "A task function returning Result[V,E] completes normally as Completed(Result[V,E]); Err(E) is not task execution failure."
+      - "TaskError is the umbrella error type for execution failure of an already-created task; its complete variant set is not frozen here."
+      - "Task lifecycle ownership must be resolved through await, join, detach, or ownership transfer."
+      - "Observers are non-owning and must not duplicate lifecycle responsibility."
+      - "Task boundary ownership and borrowing are constrained by transferability analysis."
+    implemented:
+      - "Task[T] is represented as a compiler-known generic task type in the frontend model."
+      - "Task handles are treated as non-copyable and move-only in existing semantic checks."
+      - "Frontend lifecycle checking rejects unresolved local task handles on supported control-flow paths."
+      - "Detach syntax and explicit discard forms have frontend support."
+      - "Spawned callable and lambda task forms have parser and frontend support."
+      - "Current-task context has partial frontend support for spawned lambda analysis."
+    remaining:
+      - "synchronize parser and Sema typing of every task-spawn form to Result[Task[T], TaskSpawnError] instead of the current direct Task[T] paths"
+      - "implement TaskOutcome[T] as the invariant static result of await instead of the current direct T paths"
+      - "implement terminal outcome production for Completed, Cancelled, Panicked, and Failed"
+      - "add the specified TaskSpawnError core error declaration and a TaskOutcome[T] core surface"
+      - "provide a named TaskError core error declaration without inventing its still-open variant inventory"
+      - "synchronize join semantics and terminal-value extraction with move-only payload rules"
+      - "complete TaskObserver semantics and non-owning restrictions"
+      - "complete path-sensitive task lifecycle analysis across every control-flow construct"
+      - "complete transferability checks for owned values, borrows, captures, detach, and migration"
+      - "represent task creation, lifecycle, outcome, cancellation, panic, failure, await, join, and detach explicitly in Semantic IR"
+      - "lower task operations through the selected target/runtime model without host leakage or a mandatory universal runtime"
+      - "add diagnostics that distinguish spawn failure, cancellation, panic, task execution failure, and Completed(Err(E))"
+    required_tests:
+      - "all task spawn expressions type as Result[Task[T], TaskSpawnError]"
+      - "try spawn Work() unwraps successful creation and propagates TaskSpawnError under ordinary Result rules"
+      - "await Task[T] types exactly as TaskOutcome[T], including when normal completion is statically proven"
+      - "normal return produces Completed(T)"
+      - "Task[Result[T,E]] returning Err(E) produces Completed(Err(E)), not Failed(TaskError)"
+      - "cooperative cancellation produces Cancelled without fabricating T"
+      - "recoverable task-boundary panic produces Panicked(PanicInfo) under the selected panic policy"
+      - "execution failure after successful creation produces Failed(TaskError)"
+      - "Task[T] cannot be copied for any T and reusable-source transfer uses canonical explicit move syntax"
+      - "owning task handles cannot silently leave scope unresolved"
+      - "observers cannot await, join as owner, detach, or take a move-only completion value"
+      - "value-returning detached tasks require the canonical explicit discard form when applicable"
+
   - id: frontend.transferability
     area: boundary-transfer-validation
     status: planned
@@ -9782,6 +10051,7 @@ integrations:
     - rules/concurrency/threads.md
     - rules/concurrency/channels.md
     - rules/concurrency/thread_local.md
+    - rules/concurrency/tasks.md
     - rules/platform/interrupts.md
     remaining:
     - introduce one canonical boundary-transfer validation path instead of ad-hoc per-feature checks
@@ -9793,6 +10063,7 @@ integrations:
     - validate closures from capture facts without hiding them behind callable representation
     - validate Method receiver transfer exactly like explicit arguments
     - validate RawPtr/FFI handles conservatively from explicit contracts rather than machine-value copyability
+    - enforce ownership-v2 explicit moves for reusable move-only task transfers and retain capture, migration, detach-lifetime, terminal-payload, and borrow restrictions
     required_tests:
     - move-only task transfer consumes source
     - copyable but thread-affine value rejected
@@ -9805,6 +10076,9 @@ integrations:
     area: transfer-capability-and-boundary-analysis
     status: planned
     repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
     remaining:
     - derive TaskTransferable, ThreadTransferable, ProcessTransferable, ISRTransferable and ThreadSafeShared as conditional
       compiler facts
@@ -9816,6 +10090,7 @@ integrations:
     - consume process adapter/serialization/shared-memory contracts
     - consume ISR synchronization/noPanic/noAlloc/noBlock/bounded-work facts
     - persist and validate separate-compilation transfer summaries
+    - account for task migration, detach lifetime, task captures, and terminal payload ownership
     required_tests:
     - recursive type analysis terminates deterministically
     - conditional summary depends on destination context
@@ -9827,6 +10102,10 @@ integrations:
     area: semantic-ir-boundary-transfer
     status: planned
     repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/compiler/semantic_ir.md
     remaining:
     - represent task/thread owned and borrowed transfers explicitly where semantically relevant
     - represent observer/lifecycle-handle transfer distinctly
@@ -9835,6 +10114,7 @@ integrations:
     - represent foreign callback-context transfer where required
     - preserve source/destination owner, copied/moved state, retained borrow, transfer proof and affinity/destruction restrictions
     - verify contradictory transfer/sharing facts before lowering
+    - preserve task-boundary ownership and the complete TaskOutcome[T] terminal distinction
     required_tests:
     - owned and borrowed task transfer remain distinct
     - thread transfer retains destination destruction restriction
@@ -9845,6 +10125,9 @@ integrations:
     area: boundary-transfer-lowering
     status: planned
     repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
     remaining:
     - preserve consuming transfer commit/failure ownership semantics
     - avoid hidden copying of move-only lifecycle/resources
@@ -9853,6 +10136,7 @@ integrations:
     - lower process transfer through selected serialization/IPC/shared-memory/handle adapter
     - lower ISR handoff with bounded/noalloc/noblock/nopanic requirements
     - preserve task/thread affinity and pinning requirements
+    - preserve fallible task creation and await Task[T] to TaskOutcome[T] without changing source ownership or outcome semantics
     required_tests:
     - failed consuming send preserves owner when API contract says not committed
     - committed consuming send leaves source unavailable
@@ -9864,6 +10148,9 @@ integrations:
     area: thread-process-isr-ffi-platform-boundaries
     status: planned
     repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
     remaining:
     - resolve target/runtime thread affinity and destruction restrictions
     - resolve scheduler migration/pinning guarantees
@@ -9872,6 +10159,7 @@ integrations:
     - integrate ISR access-context and handoff capabilities
     - integrate foreign callback thread/reentrancy/retention restrictions
     - ensure unsafe does not waive platform boundary constraints
+    - reject unsupported task capability at compile time and validate migration and address-stability restrictions for the selected platform
     required_tests:
     - thread-affine platform handle rejected on wrong thread
     - native process handle follows duplication/transfer contract
@@ -9882,6 +10170,10 @@ integrations:
     area: transfer-diagnostics-lsp-tooling
     status: planned
     repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/tooling/lsp.md
     remaining:
     - expose boundary-specific transferability/shareability conditions from canonical analysis
     - show nested blocking field/capture/reference/foreign contract in diagnostics
@@ -9890,6 +10182,7 @@ integrations:
     - show ISR direction/context for interrupt handoff failures
     - ensure compiler/LSP/sec analyse parity
     - invalidate transfer summaries incrementally when ownership/type/concurrency/FFI/platform facts change
+    - distinguish task-spawn failure, cancellation, panic, execution failure, and normal Completed(Err(E)) in shared compiler and LSP diagnostics
     required_tests:
     - diagnostic names concrete task/thread/process/ISR boundary
     - diagnostic traces nested non-transferable field
@@ -11331,6 +11624,7 @@ integrations:
     - bridge canonical Place/storage/reference identities into Semantic IR
     - bridge complete effect summaries and verified guarantees
     - bridge transferability/task/thread lifecycle facts
+    - represent task await semantically as TaskOutcome[T] and never as a flow-sensitive direct T result
     - bridge allocation-context/Arena demand and epoch facts
     - bridge Iterator[T] conformance, Next target, yield/binding/effect/cleanup facts
     - bridge hardware/interrupt selected-plan facts

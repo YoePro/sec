@@ -16,13 +16,13 @@ let value := Calculate()
 A spawned function call creates a task by default.
 
 ```sec
-let task := spawn Calculate()
+let task := try spawn Calculate()
 ```
 
 This is shorthand for:
 
 ```sec
-let task := spawn task Calculate()
+let task := try spawn task Calculate()
 ```
 
 ## Syntax
@@ -38,10 +38,10 @@ spawn-expression:
 Typical use:
 
 ```sec
-let worker := spawn Work()
-let taskWorker := spawn task Work()
-let threadWorker := spawn thread Work()
-let childProcess := spawn process Program()
+let worker := try spawn Work()
+let taskWorker := try spawn task Work()
+let threadWorker := try spawn thread Work()
+let childProcess := try spawn process Program()
 ```
 
 The initial implementation requires the operand of `spawn` to be a callable expression.
@@ -77,10 +77,10 @@ If the spawned operation returns `T`, these forms have the following conceptual
 result types:
 
 ```sec
-spawn Work()          // Task[T]
-spawn task Work()     // Task[T]
-spawn thread Work()   // Thread[T]
-spawn process Work()  // process handle type defined by processes.txt
+spawn Work()          // Result[Task[T], TaskSpawnError]
+spawn task Work()     // Result[Task[T], TaskSpawnError]
+spawn thread Work()   // Result[Thread[T], ThreadSpawnError]
+spawn process Work()  // fallible process result defined by processes.txt
 ```
 
 `spawn expression` is exactly equivalent to `spawn task expression`.
@@ -94,13 +94,14 @@ fn Calculate() int {
     return 42
 }
 
-let calculation := spawn Calculate()
+let calculation := try spawn Calculate()
 ```
 
-`calculation` has type `Task[int]`.
+`calculation` has type `Task[int]`; the raw spawn expression has type
+`Result[Task[int], TaskSpawnError]`.
 
 A function returning `void` through `spawn` or `spawn task` produces
-`Task[void]`.
+`Result[Task[void], TaskSpawnError]`.
 
 A fallible function preserves its complete return type:
 
@@ -108,16 +109,19 @@ A fallible function preserves its complete return type:
 fn Load() Result[Image, IOError] {
 }
 
-let loading := spawn Load()
+let loading := try spawn Load()
 ```
 
-The task type is:
+The successfully created task type is:
 
 ```sec
 Task[Result[Image, IOError]]
 ```
 
 `spawn` does not unwrap or alter the function return type.
+
+Task creation failure occurs before a `Task[T]` exists and remains distinct
+from every outcome of the successfully created task.
 
 `Task[T]`, `Thread[T]` and the process handle type are distinct handle types.
 
@@ -208,7 +212,7 @@ The suffix `Async` has no language meaning.
 Only `spawn` creates a new task:
 
 ```sec
-let task := spawn CalculateAsync()
+let task := try spawn CalculateAsync()
 ```
 
 Sec does not require `async fn` for functions that may be spawned.
@@ -237,8 +241,9 @@ The currently executing task becomes the parent of a newly spawned task.
 
 ```sec
 fn Parent() void {
-    let child := spawn Child()
-    await child
+    let child := try spawn Child()
+    let outcome := await child
+    Handle(outcome)
 }
 ```
 
@@ -267,7 +272,7 @@ fn Process(data: Data) void {
 }
 
 let data := Data.Create()
-let worker := spawn Process(data)
+let worker := try spawn Process(<-data)
 ```
 
 If `Data` is move-only:
@@ -290,8 +295,9 @@ fn Inspect(data: ref Data) void {
 
 fn Run() void {
     let data := Data.Create()
-    let worker := spawn Inspect(ref data)
-    await worker
+    let worker := try spawn Inspect(ref data)
+    let outcome := await worker
+    Handle(outcome)
 }
 ```
 
@@ -308,7 +314,7 @@ fn Update(data: ref mut Data) void {
 }
 
 let mut data := Data.Create()
-let worker := spawn Update(ref mut data)
+let worker := try spawn Update(ref mut data)
 ```
 
 While the task may use the mutable borrow, the parent task must not access `data` directly or create another overlapping borrow.
@@ -324,7 +330,7 @@ Invalid:
 ```sec
 fn Invalid() Task[void] {
     let data := Data.Create()
-    let worker := spawn Inspect(ref data)
+    let worker := try spawn Inspect(ref data)
     return worker
 }
 ```
@@ -346,7 +352,7 @@ Invalid:
 ```sec
 fn Invalid() void {
     let data := Data.Create()
-    let worker := spawn Inspect(ref data)
+    let worker := try spawn Inspect(ref data)
     detach worker
 }
 ```
@@ -362,7 +368,7 @@ A detached task should normally own its required data:
 ```sec
 fn Valid() void {
     let data := Data.Create()
-    let worker := spawn Process(data)
+    let worker := try spawn Process(<-data)
     detach worker
 }
 ```
@@ -386,7 +392,7 @@ A `MutexGuard[T]` must not be captured, moved or borrowed into another task.
 Methods may be spawned.
 
 ```sec
-let worker := spawn service.Run()
+let worker := try spawn service.Run()
 ```
 
 Receiver handling follows the method signature.
@@ -401,7 +407,9 @@ The receiver must remain valid for the complete task use.
 
 ## Task handle ownership
 
-The result of `spawn` is a move-only `Task[T]`.
+The raw result of task `spawn` is
+`Result[Task[T], TaskSpawnError]`. Its successful payload is a move-only
+`Task[T]` lifecycle owner.
 
 The task handle must be stored, returned, passed to another owner, awaited, joined or detached explicitly.
 
@@ -421,18 +429,20 @@ This prevents implicit fire-and-forget execution.
 
 ## Spawn in expressions
 
-The initial implementation should permit `spawn` in typed expression contexts.
+`spawn` is valid in typed expression contexts when its fallible creation result
+is handled by the surrounding expression or return contract.
 
 ```sec
-let first := spawn First()
-let second: Task[int] := spawn Second()
-return spawn Worker()
+let first := try spawn First()
+let second: Task[int] := try spawn Second()
+return spawn Worker() // enclosing return type includes TaskSpawnError
 ```
 
 Directly awaiting a newly spawned task is valid:
 
 ```sec
-let value := await spawn Calculate()
+let task := try spawn Calculate()
+let outcome := await task
 ```
 
 The compiler may optimize the implementation but must preserve task semantics.
@@ -460,8 +470,8 @@ Example of statically unbounded creation:
 
 ```sec
 fn Bomb() void {
-    let first := spawn Bomb()
-    let second := spawn Bomb()
+    let first := try spawn Bomb()
+    let second := try spawn Bomb()
 
     await first
     await second
@@ -532,6 +542,8 @@ callable
 arguments
 receiver
 result type
+fallible task-creation result
+TaskSpawnError before handle existence
 Task[T] type
 copied values
 moved values
@@ -595,7 +607,7 @@ unbounded recursive task creation detected: Bomb -> spawn Bomb
 Detailed behavior is defined in:
 
 ```text
-tasks.txt
+tasks.md
 await.txt
 concurrency.txt
 threads.md
@@ -604,35 +616,3 @@ mutex.txt
 static.txt
 concurrency_memory_model.txt
 ```
-
-## Current implementation status
-
-Implemented:
-
-- parser accepts `spawn CallExpression`
-- parser and AST preserve contextual execution modifiers for `spawn task`,
-  `spawn thread` and `spawn process`
-- parser accepts `spawn` with a lambda operand
-- sema requires the operand to be a callable call expression or lambda
-  expression
-- sema returns `Task[T]` where `T` is the spawned call return type
-- sema returns `Thread[T]` for `spawn thread` in the current front-end model
-- sema returns `Task[T]` where `T` is the spawned lambda return type
-- spawned lambda bodies are analyzed in current task cancellation context
-- function argument copy/move checks reuse ordinary call analysis
-- parser and Sema support `detach handle` and `detach handle discard` for
-  local `Task[T]` and `Thread[T]` handles
-- standalone `spawn` expression statements are rejected
-- legacy `spawn { ... }` is now a semantic error
-
-Not implemented yet:
-
-- finalized fallible `spawn thread` result model from `threads.md`
-- process handle/result type model for `spawn process`
-- general current-task context propagation through named functions called by a
-  spawned operation
-- spawn backend/profile validation
-- task borrow extension until completion
-- escaping-task borrow checks
-- recursive spawn-cycle diagnostics
-- Semantic IR/MLIR lowering for recorded spawn execution kind

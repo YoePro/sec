@@ -130,7 +130,7 @@ Example:
 
 ```sec
 let data := BuildData()
-let worker := spawn Process(data)
+let worker := try spawn Process(<-data)
 ```
 
 All writes that initialize `data` before `spawn` happen-before the child task's
@@ -169,7 +169,7 @@ Example:
 
 ```sec
 let data := BuildData()
-let worker := spawn Inspect(ref data)
+let worker := try spawn Inspect(ref data)
 ```
 
 The child may observe the initialized `data`.
@@ -189,12 +189,13 @@ a successful join or await that observes that completion.
 Example:
 
 ```sec
-let worker := spawn BuildResult()
-let result := await worker
+let worker := try spawn BuildResult()
+let outcome := await worker
 ```
 
-The awaiting task must observe the fully initialized result and all memory effects
-that the task validly published through owned result transfer.
+The awaiting task must observe the fully initialized `TaskOutcome[T]` and all
+memory effects that the task validly published through owned terminal-payload
+transfer.
 
 ---
 
@@ -561,8 +562,8 @@ Example:
 ```sec
 let mut state := State.Create()
 
-let first := spawn Update(ref mut state)
-let second := spawn Update(ref mut state)
+let first := try spawn Update(ref mut state)
+let second := try spawn Update(ref mut state)
 ```
 
 This is invalid before backend lowering.
@@ -1054,7 +1055,7 @@ The memory model must not:
 Detailed behavior is defined in:
 
 ```text
-tasks.txt
+tasks.md
 spawn.txt
 await.txt
 concurrency.txt

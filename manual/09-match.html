@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Match Expressions and Statements - Sec Language Manual</title>
+    <title>Match Expressions - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,54 +22,49 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">Match</div>
-        <a href="#match">Overview</a>
-        <a href="#when-to-use-match">When to Use match</a>
-        <a href="#basic-syntax">Basic Syntax</a>
-        <a href="#subject-evaluation">Subject Evaluation</a>
-        <a href="#branch-order">Branch Order</a>
-
-        <div class="sidebar-section">Patterns</div>
-        <a href="#variant-patterns">Variant Patterns</a>
-        <a href="#payload-binding">Payload Binding</a>
-        <a href="#discarded-payloads">Discarded Payloads</a>
-        <a href="#catch-all">Catch-all Pattern</a>
-        <a href="#guards">Guards</a>
-        <a href="#binding-scope">Binding Scope</a>
-
-        <div class="sidebar-section">Supported Types</div>
-        <a href="#matching-result">Matching Result</a>
-        <a href="#matching-option">Matching Option</a>
-        <a href="#matching-enums">Matching Enums</a>
-        <a href="#matching-unions">Matching Union Variants</a>
-
-        <div class="sidebar-section">Control Flow</div>
+        <div class="sidebar-section">This page</div>
+        <a href="#match">Match</a>
+        <a href="#when-to-use">When to Use Match</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#subject">Subject Evaluation</a>
+        <a href="#arm-order">Arm Order</a>
         <a href="#exhaustiveness">Exhaustiveness</a>
-        <a href="#statement-match">match as a Statement</a>
-        <a href="#expression-match">match as an Expression</a>
-        <a href="#branch-types">Branch Result Types</a>
-        <a href="#terminating-branches">Terminating Branches</a>
-        <a href="#return-analysis">Return Analysis</a>
-        <a href="#definite-assignment">Definite Assignment</a>
+        <a href="#catch-all">Catch-All</a>
+        <a href="#variants">Variant Patterns</a>
+        <a href="#payload-binding">Payload Binding</a>
+        <a href="#field-destructuring">Field Destructuring</a>
+        <a href="#empty">The empty State</a>
+        <a href="#binding-scope">Binding Scope</a>
+        <a href="#ownership">Ownership in Patterns</a>
+        <a href="#borrowed-subjects">Borrowed Subjects</a>
+        <a href="#field-ownership">Field Ownership</a>
+        <a href="#guards">Guards</a>
+        <a href="#guarded-moves">Guards and Moves</a>
+        <a href="#statement-match">Statement Match</a>
+        <a href="#expression-match">Expression Match</a>
+        <a href="#value-blocks">Value-Producing Arm Blocks</a>
+        <a href="#result-types">Result Type Compatibility</a>
+        <a href="#result">Matching Result</a>
+        <a href="#option">Matching Option</a>
+        <a href="#error-narrowing">Open Error Narrowing</a>
+        <a href="#enums">Enums</a>
+        <a href="#bit-enums">Open Bit Enums</a>
+        <a href="#unsupported">Unsupported Pattern Forms</a>
+        <a href="#switch-vs-match">Switch vs Match</a>
+        <a href="#flow-analysis">Flow Analysis</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Rules and Limits</div>
-        <a href="#duplicates-and-reachability">Duplicates and Reachability</a>
-        <a href="#no-fallthrough">No Fallthrough</a>
-        <a href="#ownership">Ownership and Borrowing</a>
-        <a href="#match-switch-if">match, switch and if</a>
-        <a href="#not-supported">Not Supported Initially</a>
-        <a href="#common-errors">Common Errors</a>
-        <a href="#summary-rules">Summary of Rules</a>
-
-                        <div class="sidebar-section">Language</div>
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -109,111 +104,145 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
-        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Match Expressions and Statements</div>
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Match Expressions</div>
 
-        <h1 id="match">Match Expressions and Statements</h1>
-
-        <p>
-            <code>match</code> selects one branch by inspecting the variant, shape or finite value represented by
-            its subject. It is primarily used with union types, <code>Result[T, E]</code>, <code>Option[T]</code>
-            and enums.
-        </p>
+        <h1 id="match">Match</h1>
 
         <p>
-            Unlike <code>switch</code>, <code>match</code> does not merely compare a subject with values. A match
-            branch may identify a variant, bind the value carried by that variant and make the binding available
-            inside the selected branch.
+            <code>match</code> performs exhaustive structural and variant-based branching.
+            It is the Sec construct for selecting among the semantic states of unions,
+            <code>Result</code>, <code>Option</code>, enums and related closed or explicitly
+            open variant domains.
         </p>
 
-        <p>
-            A match must be exhaustive. Every possible value represented by the subject type must be handled by
-            an explicit branch or by an allowed catch-all pattern.
-        </p>
-
-        <div class="rule">
-            <strong>Rule:</strong> Use <code>match</code> for variants, payload binding and exhaustive branching.
-            Use <code>switch</code> for values, ranges and relational comparisons. Use <code>if</code> for one
-            boolean condition.
-        </div>
-
-        <div class="section" id="when-to-use-match">
-            <h2>When to Use match</h2>
-
-            <p><code>match</code> is the normal choice when code must inspect:</p>
-
-            <ul>
-                <li>a <code>Result[T, E]</code> success or error variant,</li>
-                <li>an <code>Option[T]</code> value or absence,</li>
-                <li>a tagged union variant,</li>
-                <li>an enum value that must be handled exhaustively,</li>
-                <li>or a variant payload that must be bound to a local name.</li>
-            </ul>
-
-            <pre><code>match ReadFile(path) {
-    Ok(data) =&gt; Process(data)
-    Err(error) =&gt; Handle(error)
-}</code></pre>
-
-            <p>
-                In this example, <code>match</code> identifies whether the result contains <code>Ok</code> or
-                <code>Err</code> and binds the associated payload.
-            </p>
-        </div>
-
-        <div class="section" id="basic-syntax">
-            <h2>Basic Syntax</h2>
-
-            <p>A match contains a subject expression followed by one or more branches:</p>
-
-            <pre><code>match expression {
-    Pattern =&gt; branch
-    Pattern =&gt; branch
-}</code></pre>
-
-            <p>A branch may contain a single expression:</p>
-
-            <pre><code>let message := match status {
-    Status.ready =&gt; "ready"
-    Status.waiting =&gt; "waiting"
-    Status.failed =&gt; "failed"
-}</code></pre>
-
-            <p>Or a statement block:</p>
-
-            <pre><code>match result {
+        <pre><code>match result {
     Ok(value) =&gt; {
-        LogSuccess(value)
         Process(value)
     }
 
     Err(error) =&gt; {
-        LogError(error)
         Handle(error)
     }
 }</code></pre>
 
-            <p>
-                The arrow <code>=&gt;</code> separates the pattern from the branch body. Switch-style
-                <code>case</code> and <code>default</code> clauses are not used in a match.
-            </p>
+        <p>
+            Unlike <code>switch</code>, <code>match</code> can bind variant payloads and
+            participate directly in ownership and borrowing. Unlike <code>if</code>, it
+            does not require the subject itself to be a boolean condition.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>match</code> is exhaustive. Every reachable
+            semantic state of the subject must be covered by the arm set or by a valid
+            unguarded catch-all.
         </div>
 
-        <div class="section" id="subject-evaluation">
+        <section id="when-to-use">
+            <h2>When to Use Match</h2>
+
+            <p>Use <code>match</code> when the branching decision is structural:</p>
+
+            <ul>
+                <li>a union variant must be distinguished;</li>
+                <li>a <code>Result[T, E]</code> must handle both success and failure explicitly;</li>
+                <li>an <code>Option[T]</code> must distinguish <code>Some</code> from <code>None</code>;</li>
+                <li>an enum domain should be exhaustively handled;</li>
+                <li>a variant payload must be bound or borrowed;</li>
+                <li>a struct-like union payload needs shallow named-field destructuring;</li>
+                <li>a reachable union <code>empty</code> initialization state must be handled;</li>
+                <li>branch selection itself should produce a value.</li>
+            </ul>
+
+            <p>Use other constructs when the problem is not structural:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Construct</th>
+                            <th>Use it for</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>if</code></td>
+                            <td>A boolean condition</td>
+                        </tr>
+                        <tr>
+                            <td><code>switch</code></td>
+                            <td>Literal, range, relational or ordinary value selection</td>
+                        </tr>
+                        <tr>
+                            <td><code>match</code></td>
+                            <td>Structural, variant and exhaustive branch selection</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+
+            <h3>Statement form</h3>
+
+            <pre><code>match result {
+    Ok(value) =&gt; {
+        Process(value)
+    }
+
+    Err(error) =&gt; {
+        Handle(error)
+    }
+}</code></pre>
+
+            <h3>Expression form</h3>
+
+            <pre><code>let message := match status {
+    Status.Ready =&gt; "ready"
+    Status.Waiting =&gt; "waiting"
+    Status.Failed =&gt; "failed"
+}</code></pre>
+
+            <h3>Guarded arm</h3>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 100 =&gt; Large(value)
+    Some(value) =&gt; Normal(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                A <code>match</code> must contain at least one arm.
+            </p>
+
+            <p>
+                Each arm consists of a pattern, an optional <code>where</code> guard,
+                <code>=&gt;</code>, and an arm body.
+            </p>
+        </section>
+
+        <section id="subject">
             <h2>Subject Evaluation</h2>
 
-            <p>The match subject is evaluated exactly once.</p>
+            <p>
+                The subject expression is evaluated exactly once.
+            </p>
 
             <pre><code>match ReadResult() {
     Ok(value) =&gt; Process(value)
@@ -221,342 +250,69 @@
 }</code></pre>
 
             <p>
-                <code>ReadResult()</code> is called once. The returned value is then inspected by the match.
-                This remains true even when the subject expression performs work or has visible side effects.
-            </p>
-        </div>
-
-        <div class="section" id="branch-order">
-            <h2>Branch Order</h2>
-
-            <p>
-                Patterns are considered from top to bottom. The first pattern whose variant and optional guard
-                match is selected. Exactly one branch executes.
+                <code>ReadResult()</code> executes once. The resulting subject value or
+                subject Place is then used for all arm tests, guards, bindings, ownership
+                operations and final flow-state merging.
             </p>
 
             <p>
-                After a branch has been selected, no later pattern or guard is evaluated. Branch order therefore
-                matters when several guarded branches refer to the same variant.
+                Backend lowering must not reevaluate the source expression separately
+                for different arms.
             </p>
+        </section>
 
-            <pre><code>match option {
-    Some(value) where value &gt; 100 =&gt; Large(value)
-    Some(value) =&gt; Normal(value)
-    None =&gt; Missing()
-}</code></pre>
-        </div>
-
-        <div class="section" id="variant-patterns">
-            <h2>Variant Patterns</h2>
+        <section id="arm-order">
+            <h2>Arm Order</h2>
 
             <p>
-                A variant without a payload is matched by its variant name. A variant that carries data uses
-                parentheses to bind or discard that payload.
+                Arms are considered in source order.
             </p>
 
-            <pre><code>match direction {
-    Direction.north =&gt; MoveNorth()
-    Direction.east =&gt; MoveEast()
-    Direction.south =&gt; MoveSouth()
-    Direction.west =&gt; MoveWest()
-}</code></pre>
+            <p>For each arm:</p>
 
-            <pre><code>match result {
-    Ok(value) =&gt; Process(value)
-    Err(error) =&gt; Handle(error)
-}</code></pre>
+            <ol>
+                <li>the pattern is tested;</li>
+                <li>candidate bindings become visible to the guard;</li>
+                <li>the guard, when present, is evaluated;</li>
+                <li>if the guard is false, matching continues with the next arm;</li>
+                <li>if the guard succeeds, the arm is selected;</li>
+                <li>ownership effects for the selected arm are committed;</li>
+                <li>the arm body executes.</li>
+            </ol>
 
             <p>
-                The pattern must refer to a valid variant of the subject type. Unknown variants are compile-time
-                errors.
+                Exactly one arm executes. No later pattern or guard is evaluated after
+                an arm has been selected.
             </p>
-        </div>
-
-        <div class="section" id="payload-binding">
-            <h2>Payload Binding</h2>
-
-            <p>
-                A variant carrying data may bind that data to a new immutable local symbol.
-            </p>
-
-            <pre><code>match result {
-    Ok(value) =&gt; Use(value)
-    Err(error) =&gt; Report(error)
-}</code></pre>
-
-            <p>
-                For <code>Result[int, IOError]</code>, <code>value</code> has type <code>int</code> and
-                <code>error</code> has type <code>IOError</code>. Their types are inferred from the matched variant.
-            </p>
-
-            <p>
-                Tagged union payloads are initially bound as one value rather than destructured field by field.
-            </p>
-
-            <pre><code>type Shape union {
-    Circle {
-        Radius: decimal,
-    }
-
-    Rectangle {
-        Width: decimal,
-        Height: decimal,
-    }
-}</code></pre>
-
-            <pre><code>let area := match shape {
-    Circle(circle) =&gt; circle.Radius * circle.Radius
-    Rectangle(rectangle) =&gt; rectangle.Width * rectangle.Height
-}</code></pre>
-        </div>
-
-        <div class="section" id="discarded-payloads">
-            <h2>Discarded Payloads</h2>
-
-            <p>
-                Use <code>_</code> inside a variant pattern when the variant matters but its payload does not.
-            </p>
-
-            <pre><code>match result {
-    Ok(_) =&gt; Success()
-    Err(error) =&gt; Handle(error)
-}</code></pre>
-
-            <p>
-                A discarded payload does not declare a variable and cannot be referenced in the branch.
-            </p>
-        </div>
-
-        <div class="section" id="catch-all">
-            <h2>Catch-all Pattern</h2>
-
-            <p>
-                A standalone <code>_</code> pattern matches every value not handled by an earlier branch.
-            </p>
-
-            <pre><code>match direction {
-    Direction.north =&gt; MoveNorth()
-    _ =&gt; MoveOtherDirection()
-}</code></pre>
-
-            <p>The catch-all pattern must be the final branch.</p>
-
-            <pre><code>match direction {
-    _ =&gt; MoveOtherDirection()
-    Direction.north =&gt; MoveNorth()
-} // Error: unreachable match branch after catch-all pattern.</code></pre>
-
-            <p>
-                A catch-all may not silently hide the <code>Err</code> variant of a <code>Result</code>.
-            </p>
-
-            <pre><code>match result {
-    Ok(value) =&gt; Process(value)
-    _ =&gt; Ignore()
-} // Error: catch-all pattern may not hide Err.</code></pre>
-
-            <p>
-                Result errors must be handled explicitly. This prevents error paths from disappearing behind a
-                general fallback branch.
-            </p>
-        </div>
-
-        <div class="section" id="guards">
-            <h2>Guards</h2>
-
-            <p>
-                A branch may add a boolean condition using <code>where</code>.
-            </p>
-
-            <pre><code>match option {
-    Some(value) where value &gt; 100 =&gt; Large(value)
-    Some(value) =&gt; Normal(value)
-    None =&gt; Missing()
-}</code></pre>
-
-            <p>
-                The pattern is checked first. The guard is evaluated only when the pattern matches. The branch is
-                selected only when both the pattern and guard match.
-            </p>
-
-            <p>The guard expression must have type <code>bool</code>.</p>
-
-            <pre><code>match option {
-    Some(value) where value =&gt; Process(value)
-    None =&gt; Missing()
-} // Error when value has type int: match guard must be bool, got int.</code></pre>
-
-            <p>Pattern bindings are visible inside the guard:</p>
-
-            <pre><code>match result {
-    Ok(value) where value &gt; 0 =&gt; Positive(value)
-    Ok(value) =&gt; Other(value)
-    Err(error) =&gt; Handle(error)
-}</code></pre>
 
             <div class="rule">
-                <strong>Rule:</strong> A guarded branch does not fully cover its variant because the guard may
-                evaluate to <code>false</code>. An unguarded fallback for that variant is still required.
+                <strong>Rule:</strong> Guarded matching is ordered. A guard that rejects
+                one candidate arm does not prevent a later arm from matching the same variant.
             </div>
-        </div>
+        </section>
 
-        <div class="section" id="binding-scope">
-            <h2>Binding Scope</h2>
-
-            <p>
-                Pattern bindings exist only inside the branch in which they are declared.
-            </p>
-
-            <pre><code>match result {
-    Ok(value) =&gt; {
-        Process(value)
-    }
-
-    Err(error) =&gt; {
-        Handle(error)
-    }
-}</code></pre>
-
-            <p>
-                <code>value</code> is not visible in the <code>Err</code> branch or after the match. Likewise,
-                <code>error</code> is not visible in the <code>Ok</code> branch or after the match.
-            </p>
-
-            <p>Normal Sec no-shadowing rules apply:</p>
-
-            <pre><code>let value: int := 10
-
-match result {
-    Ok(value) =&gt; Process(value)
-    Err(error) =&gt; Handle(error)
-} // Error: variable "value" already declared.</code></pre>
-        </div>
-
-        <div class="section" id="matching-result">
-            <h2>Matching Result</h2>
-
-            <p>
-                <code>match</code> is the general explicit mechanism for inspecting <code>Result[T, E]</code>.
-                Both <code>Ok</code> and <code>Err</code> must be handled.
-            </p>
-
-            <pre><code>match ReadFile(path) {
-    Ok(data) =&gt; Process(data)
-    Err(error) =&gt; Handle(error)
-}</code></pre>
-
-            <p>An incomplete Result match is invalid:</p>
-
-            <pre><code>match ReadFile(path) {
-    Ok(data) =&gt; Process(data)
-} // Error: non-exhaustive match: missing Err.</code></pre>
-
-            <p>
-                Use <code>try</code> when success should continue normally and errors should propagate. Use
-                <code>match</code> when both success and error paths should be handled explicitly at the current
-                location.
-            </p>
-        </div>
-
-        <div class="section" id="matching-option">
-            <h2>Matching Option</h2>
-
-            <p>
-                <code>Option[T]</code> distinguishes between a present value and absence.
-            </p>
-
-            <pre><code>let name := match optionalName {
-    Some(value) =&gt; value
-    None =&gt; "unknown"
-}</code></pre>
-
-            <p>
-                Both <code>Some</code> and <code>None</code> must be handled unless a valid catch-all branch covers
-                the remaining variants.
-            </p>
-
-            <pre><code>match optionalName {
-    Some(value) =&gt; Print(value)
-} // Error: non-exhaustive match: missing None.</code></pre>
-        </div>
-
-        <div class="section" id="matching-enums">
-            <h2>Matching Enums</h2>
-
-            <p>
-                Enum matching is useful when every declared enum value must be handled explicitly.
-            </p>
-
-            <pre><code>match direction {
-    Direction.north =&gt; MoveNorth()
-    Direction.east =&gt; MoveEast()
-    Direction.south =&gt; MoveSouth()
-    Direction.west =&gt; MoveWest()
-}</code></pre>
-
-            <p>
-                Omitting an enum value without a catch-all branch makes the match non-exhaustive.
-            </p>
-
-            <p>
-                Use <code>switch</code> instead when the intent is ordinary value comparison and exhaustive enum
-                handling is not required.
-            </p>
-        </div>
-
-        <div class="section" id="matching-unions">
-            <h2>Matching Union Variants</h2>
-
-            <p>
-                A tagged union may represent several alternatives with different payloads. A match handles each
-                variant and binds the selected payload.
-            </p>
-
-            <pre><code>type Shape union {
-    Circle {
-        Radius: decimal,
-    }
-
-    Rectangle {
-        Width: decimal,
-        Height: decimal,
-    }
-}</code></pre>
-
-            <pre><code>let area := match shape {
-    Circle(circle) =&gt; circle.Radius * circle.Radius
-    Rectangle(rectangle) =&gt; rectangle.Width * rectangle.Height
-}</code></pre>
-
-            <p>
-                Every union variant must be handled unless an allowed catch-all branch covers the remaining
-                variants.
-            </p>
-        </div>
-
-        <div class="section" id="exhaustiveness">
+        <section id="exhaustiveness">
             <h2>Exhaustiveness</h2>
 
             <p>
-                A match must cover every possible value of its subject type. Exhaustiveness is checked at compile
-                time.
+                Every reachable semantic state of the subject must be handled.
             </p>
 
             <pre><code>match option {
-    Some(value) =&gt; Process(value)
+    Some(value) =&gt; Use(value)
     None =&gt; Missing()
 }</code></pre>
 
             <p>
-                Guarded branches are tracked separately from unguarded coverage. The following is not exhaustive:
+                This is exhaustive for <code>Option[T]</code>.
             </p>
 
-            <pre><code>match option {
-    Some(value) where value &gt; 0 =&gt; Positive(value)
-    None =&gt; Missing()
-} // Error: Some values where value &lt;= 0 are not handled.</code></pre>
+            <p>
+                Coverage is based on the resolved subject type and proven control-flow state,
+                not merely on the textual patterns that happen to appear in the source.
+            </p>
 
-            <p>Add an unguarded fallback for the same variant:</p>
+            <h3>Guards do not provide complete coverage by themselves</h3>
 
             <pre><code>match option {
     Some(value) where value &gt; 0 =&gt; Positive(value)
@@ -564,105 +320,884 @@ match result {
     None =&gt; Missing()
 }</code></pre>
 
+            <p>This is exhaustive.</p>
+
+            <p>This is not:</p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 0 =&gt; Positive(value)
+    None =&gt; Missing()
+}</code></pre>
+
             <p>
-                Exhaustiveness allows later compiler analysis to know that a valid subject always reaches one
-                branch.
+                A <code>Some</code> value for which the guard is false remains uncovered.
             </p>
-        </div>
+        </section>
 
-        <div class="section" id="statement-match">
-            <h2>match as a Statement</h2>
+        <section id="catch-all">
+            <h2>Catch-All Pattern</h2>
+
+            <p>The catch-all pattern is:</p>
+
+            <pre><code>_</code></pre>
 
             <p>
-                A match may be used only to control execution. In that form, branch expression values are ignored.
+                It matches every remaining reachable state not handled by an earlier selected arm.
+            </p>
+
+            <pre><code>match direction {
+    Direction.North =&gt; North()
+    _ =&gt; Other()
+}</code></pre>
+
+            <p>
+                An unguarded catch-all must be the final reachable arm.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>match direction {
+    _ =&gt; Other()
+    Direction.North =&gt; North()
+}</code></pre>
+
+            <p>
+                The second arm is unreachable.
+            </p>
+
+            <h3>Guarded catch-all</h3>
+
+            <pre><code>match value {
+    _ where condition =&gt; Handle()
+    _ =&gt; Fallback()
+}</code></pre>
+
+            <p>
+                A guarded catch-all is not exhaustive by itself because its guard may fail.
+            </p>
+        </section>
+
+        <section id="variants">
+            <h2>Variant Patterns</h2>
+
+            <p>
+                A payload-less variant is matched by its resolved variant name.
+            </p>
+
+            <pre><code>match direction {
+    Direction.North =&gt; North()
+    Direction.South =&gt; South()
+    _ =&gt; Other()
+}</code></pre>
+
+            <p>
+                Normal namespace and name-resolution rules apply.
+            </p>
+
+            <p>
+                Variant identity is semantic. The compiler does not infer that two variant
+                spellings are related merely because their text or physical representation is similar.
+            </p>
+        </section>
+
+        <section id="payload-binding">
+            <h2>Whole-Payload Binding</h2>
+
+            <p>
+                A variant carrying one payload may bind the complete payload:
             </p>
 
             <pre><code>match result {
-    Ok(value) =&gt; {
-        Process(value)
-    }
-
-    Err(error) =&gt; {
-        Handle(error)
-    }
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
 }</code></pre>
 
             <p>
-                Statement match is appropriate when each branch performs actions rather than producing one shared
-                value.
+                Struct-like union variants may likewise bind their complete payload objects
+                when the union defines that form:
             </p>
-        </div>
 
-        <div class="section" id="expression-match">
-            <h2>match as an Expression</h2>
+            <pre><code>match shape {
+    Circle(circle) =&gt; Process(circle.Radius)
+    Rectangle(rectangle) =&gt; Process(rectangle.Width, rectangle.Height)
+}</code></pre>
 
             <p>
-                A match may produce a value. The selected branch becomes the value of the entire match expression.
+                The binding exists only inside the selected arm and its guard.
+            </p>
+        </section>
+
+        <section id="field-destructuring">
+            <h2>Shallow Named-Field Destructuring</h2>
+
+            <p>
+                Struct-like union payloads support shallow named-field destructuring.
+            </p>
+
+            <pre><code>match shape {
+    Rectangle { width, height } =&gt; Use(width, height)
+    Circle { radius } =&gt; UseRadius(radius)
+}</code></pre>
+
+            <p>
+                Partial field binding requires no additional marker:
+            </p>
+
+            <pre><code>Rectangle { width } =&gt; Use(width)</code></pre>
+
+            <p>Omitted fields:</p>
+
+            <ul>
+                <li>are not bound;</li>
+                <li>do not constrain the match beyond variant selection;</li>
+                <li>are not copied or moved merely because they were omitted.</li>
+            </ul>
+
+            <h3>Renaming</h3>
+
+            <pre><code>Rectangle { width: w, height: h } =&gt; Use(w, h)</code></pre>
+
+            <h3>Borrowing fields</h3>
+
+            <pre><code>Rectangle { width: ref w, height: ref h } =&gt; Inspect(w, h)
+
+Rectangle { width: ref mut w } =&gt; Modify(w)</code></pre>
+
+            <p>
+                Field destructuring is shallow in Sec 0.1.
+            </p>
+
+            <p>This nested recursive pattern is not part of the current pattern model:</p>
+
+            <pre><code>Some(Ok(value)) =&gt; Use(value)</code></pre>
+
+            <p>
+                Use another <code>match</code> for the nested value.
+            </p>
+        </section>
+
+        <section id="empty">
+            <h2>The <code>empty</code> Union State</h2>
+
+            <p>
+                A mutable non-defaultable union binding may have the compiler-known
+                initialization state <code>empty</code> according to the union rules.
+            </p>
+
+            <pre><code>match state {
+    empty =&gt; Initialize()
+    Idle =&gt; Wait()
+    Running =&gt; Work()
+}</code></pre>
+
+            <p><code>empty</code> is not:</p>
+
+            <ul>
+                <li>a union variant;</li>
+                <li>a value of the union type;</li>
+                <li><code>None</code>;</li>
+                <li><code>Err</code>;</li>
+                <li><code>null</code>;</li>
+                <li>a source-visible numeric tag.</li>
+            </ul>
+
+            <p>
+                If control-flow analysis proves that the subject is initialized,
+                <code>empty</code> is not part of exhaustiveness.
+            </p>
+
+            <p>
+                If <code>empty</code> remains reachable, exhaustive coverage must include it
+                or a valid unguarded catch-all.
+            </p>
+
+            <p>
+                A moved-from union is not the same state as <code>empty</code>.
+            </p>
+        </section>
+
+        <section id="binding-scope">
+            <h2>Pattern Binding Scope</h2>
+
+            <p>
+                Pattern bindings exist only inside their own arm.
+            </p>
+
+            <p>They are visible:</p>
+
+            <ul>
+                <li>in that arm's guard;</li>
+                <li>in that arm's body.</li>
+            </ul>
+
+            <p>They are not visible:</p>
+
+            <ul>
+                <li>in another arm;</li>
+                <li>after the <code>match</code>.</li>
+            </ul>
+
+            <p>
+                Normal Sec no-shadowing rules apply.
+            </p>
+
+            <pre><code>let value := 10
+
+match result {
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                This is invalid because the pattern binding would shadow the existing
+                <code>value</code>.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership in Whole-Payload Patterns</h2>
+
+            <p>
+                Pattern bindings follow the ordinary Sec ownership and borrowing model.
+            </p>
+
+            <h3>Plain binding</h3>
+
+            <pre><code>Some(value)</code></pre>
+
+            <p>For payload type <code>T</code>:</p>
+
+            <ul>
+                <li>if <code>T</code> is implicitly copyable, <code>value</code> receives a copy;</li>
+                <li>if <code>T</code> is move-only and the subject is an owned reusable Place that may transfer ownership, <code>value</code> receives the payload by move;</li>
+                <li>if the subject is a fresh temporary, the payload may be forwarded directly into the binding;</li>
+                <li>the compiler never silently clones a payload;</li>
+                <li>the compiler never silently changes a by-value binding into a borrow.</li>
+            </ul>
+
+            <h3>Shared borrow</h3>
+
+            <pre><code>Some(ref value)</code></pre>
+
+            <p>
+                <code>value</code> has type <code>ref T</code>.
+            </p>
+
+            <h3>Mutable borrow</h3>
+
+            <pre><code>Some(ref mut value)</code></pre>
+
+            <p>
+                <code>value</code> has type <code>ref mut T</code>, and the subject must
+                provide mutable borrowing authority.
+            </p>
+
+            <p>
+                Pattern borrows are arm-scoped and follow normal overlap and escape rules.
+            </p>
+        </section>
+
+        <section id="borrowed-subjects">
+            <h2>Borrowed Subjects Cannot Transfer Ownership</h2>
+
+            <p>
+                A subject available only through <code>ref UnionType</code> does not own
+                the union and cannot transfer a move-only payload out of it.
+            </p>
+
+            <p>
+                A plain by-value binding from a shared borrowed subject is valid only when
+                the payload can be copied.
+            </p>
+
+            <p>
+                For move-only payload access, borrow explicitly:
+            </p>
+
+            <pre><code>Some(ref value)</code></pre>
+
+            <p>
+                A <code>ref mut UnionType</code> subject may provide:
+            </p>
+
+            <pre><code>Some(ref value)
+Some(ref mut value)</code></pre>
+
+            <p>
+                Mutable borrowing authority still does not grant ownership authority.
+                A move-only payload cannot be moved out merely because the subject is
+                mutably borrowed.
+            </p>
+        </section>
+
+        <section id="field-ownership">
+            <h2>Ownership in Field Destructuring</h2>
+
+            <p>
+                Shallow named-field destructuring does not create hidden partial moves.
+            </p>
+
+            <pre><code>Packet { header, payload }</code></pre>
+
+            <p>
+                A plain field binding is by-value copy only. It is valid only when that
+                field's type is implicitly copyable.
+            </p>
+
+            <p>
+                If a field is move-only, borrow it:
+            </p>
+
+            <pre><code>Packet { payload: ref p }</code></pre>
+
+            <p>or:</p>
+
+            <pre><code>Packet { payload: ref mut p }</code></pre>
+
+            <p>
+                If ownership of move-only content is required, bind the complete payload
+                by value and perform ownership operations on that complete payload value.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Shallow field destructuring never leaves a reusable
+                union subject in a hidden partially moved state.
+            </div>
+        </section>
+
+        <section id="guards">
+            <h2>Guards</h2>
+
+            <p>
+                An arm may add a boolean guard with <code>where</code>:
+            </p>
+
+            <pre><code>match option {
+    Some(value) where value &gt; 100 =&gt; Large(value)
+    Some(value) =&gt; Normal(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>The guard:</p>
+
+            <ul>
+                <li>is evaluated only after the pattern matches;</li>
+                <li>must have type <code>bool</code>;</li>
+                <li>may use bindings introduced by the pattern;</li>
+                <li>continues matching with the next arm when it evaluates to <code>false</code>.</li>
+            </ul>
+
+            <p>
+                <code>where</code> is the guard syntax for <code>match</code>.
+            </p>
+        </section>
+
+        <section id="guarded-moves">
+            <h2>Guards and Move-Only Payloads</h2>
+
+            <p>
+                A move-only by-value payload is not considered moved merely because its
+                pattern matched.
+            </p>
+
+            <pre><code>match option {
+    Some(value) where IsUsable(ref value) =&gt; Consume(value)
+    Some(value) =&gt; HandleOther(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                For the first arm, ownership transfer commits only after:
+            </p>
+
+            <ol>
+                <li>the pattern matches;</li>
+                <li>the guard evaluates to <code>true</code>;</li>
+                <li>the arm is selected.</li>
+            </ol>
+
+            <p>
+                Before selection, the guard may inspect or borrow the prospective binding.
+                It may not consume that prospective move-only value.
+            </p>
+
+            <p>
+                If the guard is false, no payload move has been committed by that arm.
+                Later arms continue with the ownership state that actually exists after
+                guard evaluation.
+            </p>
+
+            <p>
+                Candidate <code>ref</code> and <code>ref mut</code> borrows from a rejected
+                guarded arm end before the next arm is tested, subject to ordinary side effects.
+            </p>
+        </section>
+
+        <section id="statement-match">
+            <h2>Statement Match</h2>
+
+            <p>
+                A <code>match</code> may be used only for control flow and side effects:
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                Expression-shaped arm bodies in statement context are evaluated under normal
+                statement/discard rules.
+            </p>
+
+            <p>
+                <code>match</code> does not create a special rule that allows must-use values
+                to disappear.
+            </p>
+
+            <pre><code>match option {
+    Some(value) =&gt; {
+        discard Calculate(value)
+    }
+
+    None =&gt; {}
+}</code></pre>
+
+            <p>
+                Explicit discard remains subject to the ordinary discardability, ownership
+                and destruction rules.
+            </p>
+        </section>
+
+        <section id="expression-match">
+            <h2>Expression Match</h2>
+
+            <p>
+                A <code>match</code> may produce a value.
             </p>
 
             <pre><code>let message := match status {
-    Status.ready =&gt; "ready"
-    Status.waiting =&gt; "waiting"
-    Status.failed =&gt; "failed"
+    Status.Ready =&gt; "ready"
+    Status.Waiting =&gt; "waiting"
+    Status.Failed =&gt; "failed"
 }</code></pre>
 
             <p>
-                Every branch that can continue must produce a compatible value. A branch that returns or otherwise
-                terminates the surrounding control flow does not need to produce the match result.
-            </p>
-        </div>
-
-        <div class="section" id="branch-types">
-            <h2>Branch Result Types</h2>
-
-            <p>
-                When match is used as an expression, the compiler determines one common result type from all
-                continuing branches.
+                Every continuing arm must produce a value assignable to one common result type.
             </p>
 
-            <pre><code>let number := match option {
-    Some(value) =&gt; value
-    None =&gt; 0
-}</code></pre>
-
-            <p>Incompatible branch types are rejected:</p>
-
-            <pre><code>let value := match option {
-    Some(number) =&gt; number
-    None =&gt; "missing"
-} // Error: match branches have incompatible types int and string.</code></pre>
-
             <p>
-                Named semantic types retain their identity. For example, <code>Speed</code> and <code>Distance</code>
-                do not become compatible merely because both use the same underlying numeric representation.
-            </p>
-        </div>
-
-        <div class="section" id="terminating-branches">
-            <h2>Terminating Branches</h2>
-
-            <p>
-                A branch that returns, propagates an error or otherwise terminates does not have to produce the
-                value of an expression match.
+                An arm that returns, propagates an error or otherwise terminates does not need
+                to produce the match result:
             </p>
 
             <pre><code>let value := match result {
     Ok(value) =&gt; value
-    Err(error) =&gt; return Handle(error)
+    Err(error) =&gt; return Err(error)
 }</code></pre>
 
             <p>
-                Only the <code>Ok</code> branch contributes to the match result. The <code>Err</code> branch exits the
-                surrounding function.
+                Ownership of the resulting expression follows the resolved result type and the
+                ownership action that produced each continuing arm result.
             </p>
-        </div>
+        </section>
 
-        <div class="section" id="return-analysis">
-            <h2>Return Analysis</h2>
+        <section id="value-blocks">
+            <h2>Value-Producing Arm Blocks</h2>
 
             <p>
-                An exhaustive statement match participates in function return analysis.
+                Expression-match arms may use a contextual value-producing block.
             </p>
+
+            <pre><code>let price := match product {
+    Book(book) =&gt; {
+        LogBook(book)
+        CalculateBookPrice(book)
+    }
+
+    Service(service) =&gt; service.Price
+}</code></pre>
+
+            <p>
+                The final expression on every continuing path through the block is the
+                arm's result.
+            </p>
+
+            <p>
+                This is contextual syntax specifically for an expression-match arm.
+                It does not make arbitrary Sec blocks into general block expressions.
+            </p>
+
+            <h3>Terminating paths</h3>
+
+            <pre><code>let result := match value {
+    A(data) =&gt; {
+        if Invalid(data) {
+            return Err(Error.InvalidData)
+        }
+
+        Transform(data)
+    }
+
+    B =&gt; DefaultValue()
+}</code></pre>
+
+            <p>
+                The <code>return</code> path terminates. The continuing path produces
+                <code>Transform(data)</code>.
+            </p>
+
+            <p>This is invalid when <code>Log(data)</code> returns <code>void</code>:</p>
+
+            <pre><code>let result := match value {
+    A(data) =&gt; {
+        Log(data)
+    }
+
+    B =&gt; DefaultValue()
+}</code></pre>
+
+            <p>
+                The continuing <code>A</code> arm does not produce the required result value.
+            </p>
+        </section>
+
+        <section id="result-types">
+            <h2>Match Result Type Compatibility</h2>
+
+            <p>
+                All continuing value-producing arms must have compatible result types under
+                the normal Sec type system.
+            </p>
+
+            <p>
+                <code>match</code> does not introduce its own implicit conversion rules.
+            </p>
+
+            <pre><code>let value := match option {
+    Some(number) =&gt; number
+    None =&gt; "missing"
+}</code></pre>
+
+            <p>
+                This is invalid when <code>number</code> has type <code>int</code>.
+            </p>
+
+            <p>
+                Named type identity remains significant:
+            </p>
+
+            <pre><code>type CustomerID uint64
+type ProductID uint64</code></pre>
+
+            <p>
+                A match expression cannot merge <code>CustomerID</code> and
+                <code>ProductID</code> results merely because their representation is compatible.
+            </p>
+        </section>
+
+        <section id="result">
+            <h2>Matching Result</h2>
+
+            <p>
+                <code>Result[T, E]</code> uses compiler-known <code>Ok</code> and
+                <code>Err</code> variants.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Success(value)
+    Err(error) =&gt; Failure(error)
+}</code></pre>
+
+            <p>
+                General <code>match</code> does not propagate <code>Err</code> implicitly.
+                Both success and error states belong to the explicit branch structure.
+            </p>
+
+            <p>
+                Use <code>try</code> when the normal successful path should continue and
+                failure should be propagated or handled through try semantics.
+            </p>
+
+            <p>
+                Use <code>match</code> when both <code>Ok</code> and <code>Err</code> are
+                explicit branches of the program's logic.
+            </p>
+
+            <h3>Catch-all cannot hide an error</h3>
+
+            <p>This is invalid when <code>_</code> would absorb an unhandled <code>Err</code>:</p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Process(value)
+    _ =&gt; Ignore()
+}</code></pre>
+
+            <p>Handle the error variant explicitly:</p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Process(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                An explicit <code>Err(_)</code> handles the error variant while discarding
+                its payload:
+            </p>
+
+            <pre><code>match result {
+    Err(_) =&gt; Fallback()
+    Ok(value) =&gt; Process(value)
+}</code></pre>
+
+            <p>
+                This is different from the general catch-all <code>_</code>.
+            </p>
+        </section>
+
+        <section id="option">
+            <h2>Matching Option</h2>
+
+            <p>
+                <code>Option[T]</code> uses compiler-known <code>Some</code> and
+                <code>None</code> variants.
+            </p>
+
+            <pre><code>match option {
+    Some(value) =&gt; Use(value)
+    None =&gt; Missing()
+}</code></pre>
+
+            <p>
+                <code>None</code> is a real <code>Option[T]</code> value.
+                It is not the union initialization state <code>empty</code>.
+            </p>
+
+            <p>
+                Whole-payload binding of <code>Some</code> follows the copy, move and
+                borrow rules described earlier in this chapter.
+            </p>
+        </section>
+
+        <section id="error-narrowing">
+            <h2>Open Error Narrowing</h2>
+
+            <p>
+                <code>Result[T, error]</code> preserves the concrete identity and payload
+                of widened Sec errors.
+            </p>
+
+            <p>
+                Its <code>Err</code> branch may therefore use error-specific concrete patterns:
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Use(value)
+    Err(IOError.NotFound) =&gt; UseDefault()
+    Err(errorValue) =&gt; Handle(errorValue)
+}</code></pre>
+
+            <p>
+                The root <code>error</code> domain is open. Concrete error-specific arms
+                alone are not exhaustive.
+            </p>
+
+            <p>
+                An <code>Err(errorValue)</code> or <code>Err(_)</code> fallback is required
+                unless control-flow facts prove a narrower closed state.
+            </p>
+
+            <p>
+                The generic catch-all <code>_</code> still may not silently hide an unhandled
+                <code>Err</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Boundary:</strong> Error-specific narrowing is part of the Sec error
+                model. It is not a general runtime type-pattern facility.
+            </div>
+        </section>
+
+        <section id="enums">
+            <h2>Ordinary Enums</h2>
+
+            <p>
+                Ordinary enums are closed over their distinct declared underlying value classes.
+            </p>
+
+            <pre><code>match status {
+    Status.Ready =&gt; Ready()
+    Status.Waiting =&gt; Wait()
+    Status.Failed =&gt; Fail()
+}</code></pre>
+
+            <p>
+                Exhaustiveness is based on semantic enum values, not merely on the number
+                of member spellings.
+            </p>
+
+            <p>
+                If two enum members are aliases for the same underlying value, they represent
+                one runtime value class for coverage and duplicate/unreachable analysis.
+            </p>
+
+            <p>
+                A match therefore does not need one arm for every alias spelling.
+            </p>
+        </section>
+
+        <section id="bit-enums">
+            <h2>Open Bit-Backed Enums</h2>
+
+            <p>
+                A <code>bit</code> or <code>bit[N]</code> hardware enum is open over the
+                complete representable bit domain.
+            </p>
+
+            <p>
+                Declared members do not necessarily cover every representable encoding.
+            </p>
+
+            <pre><code>match status {
+    Status.Ready =&gt; Ready()
+    Status.Error =&gt; Error()
+    _ =&gt; UnknownEncoding()
+}</code></pre>
+
+            <p>
+                A catch-all is required unless the declared members provably cover the
+                complete bit domain.
+            </p>
+
+            <p>
+                Exhaustiveness is based on the actual bit width and normalized numeric value classes.
+            </p>
+        </section>
+
+        <section id="unsupported">
+            <h2>Pattern Forms Not Used by Match</h2>
+
+            <p>
+                Sec's <code>match</code> deliberately has a focused pattern model.
+                The following are not match forms in Sec 0.1:
+            </p>
+
+            <ul>
+                <li>pattern alternatives such as <code>A | B</code>;</li>
+                <li>general literal patterns;</li>
+                <li>range patterns;</li>
+                <li>direct <code>true</code> / <code>false</code> patterns;</li>
+                <li>runtime type patterns;</li>
+                <li>ordinary struct-subject destructuring;</li>
+                <li>recursive nested patterns;</li>
+                <li>arbitrary user-defined pattern protocols;</li>
+                <li>regex patterns;</li>
+                <li>guard syntax other than <code>where</code>.</li>
+            </ul>
+
+            <h3>No direct boolean matching</h3>
+
+            <p>This is not the Sec form for a plain boolean:</p>
+
+            <pre><code>match ready {
+    true =&gt; Start()
+    false =&gt; Wait()
+}</code></pre>
+
+            <p>Use:</p>
+
+            <pre><code>if ready {
+    Start()
+} else {
+    Wait()
+}</code></pre>
+
+            <h3>No literal or range matching</h3>
+
+            <p>Do not use <code>match</code> for this:</p>
+
+            <pre><code>match value {
+    1 =&gt; One()
+    2 =&gt; Two()
+    _ =&gt; Other()
+}</code></pre>
+
+            <p>Use <code>switch</code>.</p>
+
+            <p>Likewise, use switch ranges rather than range patterns:</p>
+
+            <pre><code>switch value {
+case 0..&lt;10:
+    Small()
+
+default:
+    Other()
+}</code></pre>
+        </section>
+
+        <section id="switch-vs-match">
+            <h2>Switch vs Match</h2>
+
+            <p>
+                <code>switch</code> and <code>match</code> solve different problems.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Need</th>
+                            <th>Use</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Compare one value with literals or runtime expressions</td>
+                            <td><code>switch</code></td>
+                        </tr>
+                        <tr>
+                            <td>Test ranges or relational conditions</td>
+                            <td><code>switch</code></td>
+                        </tr>
+                        <tr>
+                            <td>Branch on a union or variant</td>
+                            <td><code>match</code></td>
+                        </tr>
+                        <tr>
+                            <td>Bind a variant payload</td>
+                            <td><code>match</code></td>
+                        </tr>
+                        <tr>
+                            <td>Require exhaustive handling</td>
+                            <td><code>match</code></td>
+                        </tr>
+                        <tr>
+                            <td>Produce a value from the branch construct</td>
+                            <td><code>match</code></td>
+                        </tr>
+                        <tr>
+                            <td>Inspect one boolean condition</td>
+                            <td><code>if</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="rule">
+                <strong>Rule of thumb:</strong> If you are asking "which value or interval?",
+                use <code>switch</code>. If you are asking "which semantic variant or state?",
+                use <code>match</code>.
+            </div>
+        </section>
+
+        <section id="flow-analysis">
+            <h2>Flow and Ownership Analysis</h2>
+
+            <p>
+                <code>match</code> participates in ordinary path-sensitive flow analysis.
+            </p>
+
+            <h3>Return analysis</h3>
 
             <pre><code>fn Convert(result: Result[int, IOError]) int {
     match result {
@@ -671,34 +1206,17 @@ match result {
         }
 
         Err(error) =&gt; {
+            discard error
             return 0
         }
     }
 }</code></pre>
 
             <p>
-                The function is valid because the match is exhaustive and every branch returns.
+                An exhaustive match whose every arm terminates is itself non-continuing.
             </p>
 
-            <pre><code>fn Convert(result: Result[int, IOError]) int {
-    match result {
-        Ok(value) =&gt; {
-            return value
-        }
-
-        Err(error) =&gt; {
-            Log(error)
-        }
-    }
-} // Error: the function may reach its end without returning int.</code></pre>
-        </div>
-
-        <div class="section" id="definite-assignment">
-            <h2>Definite Assignment</h2>
-
-            <p>
-                An exhaustive match may establish that a mutable variable has been assigned before later use.
-            </p>
+            <h3>Definite assignment</h3>
 
             <pre><code>fn Convert(option: Option[int]) int {
     let mut result: int
@@ -717,31 +1235,35 @@ match result {
 }</code></pre>
 
             <p>
-                Every continuing branch assigns <code>result</code>, so it is definitely initialized after the
-                match.
+                Because every continuing arm assigns <code>result</code>, it is definitely
+                initialized after the match.
             </p>
 
-            <p>Branches that terminate do not need to assign it:</p>
+            <h3>Ownership after match</h3>
 
-            <pre><code>fn Convert(result: Result[int, IOError]) int {
-    let mut value: int
+            <pre><code>match value {
+    Some(resource) =&gt; Consume(&lt;-resource)
+    None =&gt; Nothing()
+}
 
-    match result {
-        Ok(resultValue) =&gt; {
-            value = resultValue
-        }
+Use(value)</code></pre>
 
-        Err(error) =&gt; {
-            return 0
-        }
-    }
+            <p>
+                If <code>resource</code> is move-only and the <code>Some</code> path
+                continues after consuming it, the original union subject is not definitely
+                available after the match.
+            </p>
 
-    return value
-}</code></pre>
-        </div>
+            <p>
+                Post-match ownership state is merged conservatively across all continuing arms.
+            </p>
 
-        <div class="section" id="duplicates-and-reachability">
-            <h2>Duplicate and Unreachable Branches</h2>
+            <p>
+                A terminating arm does not contribute a state to a later merge point because
+                that path does not continue.
+            </p>
+
+            <h3>Duplicate and unreachable arms</h3>
 
             <p>Duplicate unguarded patterns are invalid:</p>
 
@@ -749,237 +1271,136 @@ match result {
     None =&gt; A()
     None =&gt; B()
     Some(value) =&gt; C(value)
-} // Error: duplicate match pattern None.</code></pre>
+}</code></pre>
 
             <p>
-                A branch fully covered by an earlier unguarded branch is unreachable.
+                A pattern fully covered by an earlier unguarded arm is also unreachable:
             </p>
 
             <pre><code>match option {
     Some(value) =&gt; A(value)
     Some(value) where value &gt; 10 =&gt; B(value)
     None =&gt; C()
-} // Error: Some is already fully covered.</code></pre>
+}</code></pre>
 
-            <p>The correct order places guarded special cases first:</p>
+            <p>
+                The guarded <code>Some</code> arm can never be reached.
+            </p>
+
+            <p>The guarded-specific-first ordering is valid:</p>
 
             <pre><code>match option {
-    Some(value) where value &gt; 10 =&gt; B(value)
-    Some(value) =&gt; A(value)
-    None =&gt; C()
-}</code></pre>
-        </div>
-
-        <div class="section" id="no-fallthrough">
-            <h2>No Fallthrough</h2>
-
-            <p>
-                Match branches never fall through into later branches. There is no <code>fallthrough</code>
-                statement for match.
-            </p>
-
-            <pre><code>match result {
-    Ok(value) =&gt; {
-        Process(value)
-        fallthrough
-    }
-
-    Err(error) =&gt; Handle(error)
-} // Error: fallthrough is not valid in match.</code></pre>
-
-            <p>
-                A branch ends naturally when its expression or block completes. <code>break</code> does not end a
-                match branch; it remains loop control.
-            </p>
-
-            <p>
-                <code>continue</code> may appear inside a match branch when the match itself is inside a loop. It
-                affects the nearest enclosing loop.
-            </p>
-
-            <pre><code>for result in results {
-    match result {
-        Ok(value) =&gt; Process(value)
-        Err(error) =&gt; continue
-    }
-}</code></pre>
-        </div>
-
-        <div class="section" id="ownership">
-            <h2>Ownership and Borrowing</h2>
-
-            <p>
-                Pattern bindings follow the normal Sec ownership and borrowing rules. Matching must not silently
-                clone, allocate or copy values that are not normally copyable.
-            </p>
-
-            <p>
-                Copyable enum values and copyable union payloads may be bound by value. Non-copyable payloads must
-                eventually be rejected or bound through explicit borrowing rules once the ownership model for such
-                patterns is finalized.
-            </p>
-
-            <div class="rule">
-                <strong>Rule:</strong> <code>match</code> never introduces hidden cloning or allocation.
-            </div>
-        </div>
-
-        <div class="section" id="match-switch-if">
-            <h2>match, switch and if</h2>
-
-            <h3>Use if for one boolean decision</h3>
-
-            <pre><code>if rawResult &lt; 0 {
-    return Err(_decodeError(-rawResult))
+    Some(value) where value &gt; 10 =&gt; Large(value)
+    Some(value) =&gt; Other(value)
+    None =&gt; Missing()
 }</code></pre>
 
-            <h3>Use switch for values, ranges and relations</h3>
-
-            <pre><code>switch statusCode {
-case 200:
-    Success()
-
-case 400..&lt;500:
-    ClientError()
-
-default:
-    Other()
-}</code></pre>
-
-            <h3>Use match for variants and payloads</h3>
-
-            <pre><code>match result {
-    Ok(value) =&gt; Success(value)
-    Err(error) =&gt; Failure(error)
-}</code></pre>
+            <h3>No fallthrough</h3>
 
             <p>
-                Literal and range matching belongs primarily to <code>switch</code>. Variant inspection and
-                exhaustive payload handling belongs to <code>match</code>.
+                Match arms never fall through. There is no <code>fallthrough</code> statement
+                for <code>match</code>.
             </p>
-        </div>
 
-        <div class="section" id="not-supported">
-            <h2>Not Supported Initially</h2>
+            <p>
+                <code>match</code> is also not a <code>break</code> or <code>continue</code> target.
+                Those statements retain their enclosing-loop semantics when used legally inside an arm.
+            </p>
+        </section>
 
-            <p>The initial match design does not include:</p>
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Match diagnostics should describe the semantic problem rather than merely report
+                that parsing or lowering failed.
+            </p>
+
+            <p>Important diagnostic categories include:</p>
 
             <ul>
-                <li>pattern alternatives such as <code>A | B</code>,</li>
-                <li>literal and range patterns as a replacement for <code>switch</code>,</li>
-                <li>runtime type patterns,</li>
-                <li>direct struct-field destructuring,</li>
-                <li>nested patterns such as <code>Some(Ok(value))</code>,</li>
-                <li>or hidden copying of non-copyable payloads.</li>
+                <li>empty match;</li>
+                <li>invalid subject type;</li>
+                <li>unknown variant;</li>
+                <li>invalid pattern for the subject type;</li>
+                <li>duplicate pattern;</li>
+                <li>unreachable arm;</li>
+                <li>non-exhaustive match;</li>
+                <li>uncovered reachable <code>empty</code> state;</li>
+                <li>uncovered open bit-enum encodings;</li>
+                <li>non-boolean guard;</li>
+                <li>shadowing pattern binding;</li>
+                <li>catch-all hiding an unhandled <code>Err</code>;</li>
+                <li>invalid <code>ref</code> or <code>ref mut</code> binding;</li>
+                <li>attempted move from a borrowed subject;</li>
+                <li>move-only field bound by value through shallow destructuring;</li>
+                <li>consuming use of a prospective move-only guard binding;</li>
+                <li>post-match use of a moved or conditionally unavailable subject;</li>
+                <li>incompatible expression-arm result types;</li>
+                <li>an expression arm that fails to produce a value on a continuing path;</li>
+                <li>a must-use arm result that would be implicitly discarded.</li>
             </ul>
 
-            <p>Write separate branches instead of pattern alternatives:</p>
+            <p>
+                Ownership diagnostics should identify the source Place, the arm that moved or
+                borrowed it, and the later invalid use when those locations are available.
+            </p>
+        </section>
 
-            <pre><code>match direction {
-    Direction.north =&gt; Vertical()
-    Direction.south =&gt; Vertical()
-    Direction.east =&gt; Horizontal()
-    Direction.west =&gt; Horizontal()
-}</code></pre>
-
-            <p>Use a nested match instead of a nested pattern:</p>
-
-            <pre><code>match option {
-    Some(result) =&gt; {
-        match result {
-            Ok(value) =&gt; Process(value)
-            Err(error) =&gt; Handle(error)
-        }
-    }
-
-    None =&gt; Missing()
-}</code></pre>
-        </div>
-
-        <div class="section" id="common-errors">
-            <h2>Common Errors</h2>
-
-            <h3>Missing a variant</h3>
-
-            <pre><code>match result {
-    Ok(value) =&gt; Process(value)
-}</code></pre>
-
-            <p>Result matches must explicitly handle <code>Err</code>.</p>
-
-            <h3>Using a non-boolean guard</h3>
-
-            <pre><code>match option {
-    Some(value) where value =&gt; Process(value)
-    None =&gt; Missing()
-}</code></pre>
-
-            <p>A guard must produce <code>bool</code>.</p>
-
-            <h3>Putting a branch after catch-all</h3>
-
-            <pre><code>match direction {
-    _ =&gt; Other()
-    Direction.north =&gt; North()
-}</code></pre>
-
-            <p>Every branch after an unguarded catch-all is unreachable.</p>
-
-            <h3>Mixing incompatible expression types</h3>
-
-            <pre><code>let value := match option {
-    Some(number) =&gt; number
-    None =&gt; "missing"
-}</code></pre>
-
-            <p>All continuing branches of an expression match must produce compatible types.</p>
-
-            <h3>Using switch syntax inside match</h3>
-
-            <pre><code>match result {
-case Ok(value):
-    Process(value)
-}</code></pre>
-
-            <p>Match branches use patterns followed by <code>=&gt;</code>, not <code>case</code> and a colon.</p>
-        </div>
-
-        <div class="section" id="summary-rules">
-            <h2>Summary of Rules</h2>
+        <section id="summary">
+            <h2>Summary</h2>
 
             <ul>
-                <li><code>match</code> inspects variants, finite values and variant payloads.</li>
-                <li>The subject expression is evaluated exactly once.</li>
-                <li>Branches are considered from top to bottom.</li>
-                <li>The first matching pattern with a true guard executes.</li>
-                <li>Exactly one branch executes.</li>
-                <li>A match must be exhaustive.</li>
-                <li><code>Result</code> errors may not be hidden by a catch-all pattern.</li>
-                <li>Payload bindings are immutable and local to their branch.</li>
-                <li>Normal Sec no-shadowing rules apply.</li>
+                <li><code>match</code> performs structural and variant-based branching.</li>
+                <li>The subject is evaluated exactly once.</li>
+                <li>Arms and guards are considered in source order.</li>
+                <li>Exactly one arm executes.</li>
+                <li><code>match</code> is exhaustive.</li>
+                <li>A guarded arm does not by itself exhaust its underlying pattern.</li>
+                <li><code>_</code> is the catch-all pattern.</li>
+                <li>An unguarded catch-all must be the final reachable arm.</li>
+                <li>A generic catch-all may not silently hide an unhandled <code>Err</code>.</li>
+                <li><code>Err(_)</code> explicitly handles and discards an error payload.</li>
+                <li>Variant payloads may be bound as complete values.</li>
+                <li>Struct-like union payloads support shallow named-field destructuring.</li>
+                <li>Field bindings may be renamed or explicitly borrowed.</li>
+                <li>Recursive nested patterns are not part of the current Sec 0.1 pattern model.</li>
+                <li><code>empty</code> is a compiler-known union initialization state, not a variant.</li>
+                <li>Pattern bindings are visible only in their arm guard and body.</li>
+                <li>Plain whole-payload binding copies copyable payloads and may move owned move-only payloads.</li>
+                <li><code>ref</code> and <code>ref mut</code> provide explicit pattern borrowing.</li>
+                <li>Borrowed subjects cannot transfer ownership they do not possess.</li>
+                <li>Shallow field destructuring never performs hidden move-only partial moves.</li>
                 <li>Guards use <code>where</code> and must produce <code>bool</code>.</li>
-                <li>A guarded pattern does not fully cover its variant.</li>
-                <li>Duplicate and unreachable branches are compile-time errors.</li>
-                <li>There is no implicit or explicit fallthrough between match branches.</li>
-                <li><code>match</code> may be used as a statement or as an expression.</li>
-                <li>Expression branches must produce compatible result types.</li>
-                <li>Terminating branches do not need to produce an expression value.</li>
-                <li>Literal and range comparisons belong primarily to <code>switch</code>.</li>
-                <li>Matching follows normal ownership and borrowing rules.</li>
-                <li>Matching does not introduce hidden copying, cloning or allocation.</li>
+                <li>Move-only transfer from a guarded arm commits only after the guard succeeds and the arm is selected.</li>
+                <li>Statement matches obey ordinary discard and must-use rules.</li>
+                <li>Expression matches require one common result type across continuing arms.</li>
+                <li>An expression-match arm block may produce its value from its final expression.</li>
+                <li>Ordinary enums are exhaustive over distinct declared semantic value classes.</li>
+                <li>Open bit-backed enums may require a catch-all for undeclared encodings.</li>
+                <li><code>Result</code> and <code>Option</code> use the same match machinery with compiler-known variants.</li>
+                <li><code>Result[T, error]</code> supports error-specific narrowing while preserving the open error domain.</li>
+                <li>Plain booleans, literals and ranges belong to <code>if</code> or <code>switch</code>, not <code>match</code>.</li>
+                <li><code>match</code> has no fallthrough.</li>
+                <li>Duplicate and unreachable arms are compile-time errors.</li>
+                <li>Ownership, borrowing, definite assignment and availability are merged path-sensitively after the match.</li>
             </ul>
-        </div>
+        </section>
 
-                <div class="page-navigation">
-                <a href="08-switch.html">Previous: Switch Statements</a>
+        <div class="page-navigation">
+            <a href="08-switch.html">Previous: Switch Statements</a>
             <a href="10-enums.html">Next: Enums</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

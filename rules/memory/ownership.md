@@ -38,6 +38,12 @@ optimization, or deep-analysis feature.
 Detailed copy classification belongs to `rules/memory/copy_move.md`.
 Detailed borrowing belongs to `rules/memory/borrowing.md`.
 Detailed destruction belongs to `rules/memory/destruction.md`.
+
+For generic instances, `rules/compiler/generics_lowering.md` requires concrete
+ownership, copy/move, partial-move, and destruction facts after substitution
+and before ownership-sensitive executable lowering. A backend must not infer a
+weaker ownership contract from physical representation or incomplete lowering
+coverage.
 The abstract value/place/storage model is anchored by
 `rules/memory/memory_model.md`.
 

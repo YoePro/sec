@@ -919,7 +919,7 @@ cross-process adapters
 ## Related rules
 
 ```text
-tasks.txt
+tasks.md
 spawn.txt
 await.txt
 concurrency.txt

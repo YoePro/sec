@@ -3887,14 +3887,13 @@ fn Owned(value: Resource) void {
 	discard value
 }
 `)
-	if len(errors) != 4 {
-		t.Fatalf("errors = %v, want four receiver diagnostics", errors)
+	if len(errors) != 3 {
+		t.Fatalf("errors = %v, want three receiver diagnostics", errors)
 	}
 	want := []string{
 		"method Update requires mutable receiver",
 		"consuming method Detach requires an owned receiver; ref Resource does not transfer ownership",
 		"consuming method Detach requires an owned receiver; ref mut Resource does not transfer ownership",
-		"use of moved value value",
 	}
 	for index, fragment := range want {
 		if !strings.Contains(errors[index].Message, fragment) {
@@ -5611,7 +5610,7 @@ fn RebindMutable(value: ref mut int) void {
 	})
 }
 
-func TestConsumingParameterConsumesCopyableArgument(t *testing.T) {
+func TestDiscardConvergesAfterConsumingCopyableArgument(t *testing.T) {
 	input := `
 module main
 
@@ -5625,9 +5624,7 @@ fn Use() void {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	if len(errors) != 1 || !strings.Contains(errors[0].Message, "consumed by call") || !strings.Contains(errors[0].Message, "no longer available") {
-		t.Fatalf("wrong consuming-call errors: %v", errors)
-	}
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestConsumingParameterRejectsReferencesAndOwnershipOnlyOverload(t *testing.T) {

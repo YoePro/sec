@@ -1896,6 +1896,13 @@ callers
 callees
 ```
 
+Generic declarations, concrete specialization identity, substitution context,
+and generic diagnostics come from the compiler workspace and the canonical
+boundary in `rules/compiler/generics_lowering.md`. The LSP must not implement an
+independent generic-lowering engine. Navigation from a concrete use resolves to
+its source generic declaration; concrete-specialization inspection may be
+presented separately, with origin-module provenance retained when available.
+
 Call-graph lenses use the compiler-owned graph for the active
 `CompilationPlan`. They may show direct and possible counts separately, mark an
 open callable contract, identify roots, and expose same-stack recursion, spawn

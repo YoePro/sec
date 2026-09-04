@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,528 +22,1347 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Generics</div>
-        <ul>
-            <li><a href="#generics">Overview</a></li>
-            <li><a href="#parameters">Generic Parameters</a></li>
-            <li><a href="#arguments">Generic Arguments</a></li>
-            <li><a href="#identity">Concrete Type Identity</a></li>
-            <li><a href="#scope">Parameter Scope</a></li>
-        </ul>
-        <div class="sidebar-section">Generic Declarations</div>
-        <ul>
-            <li><a href="#structs">Generic Structs</a></li>
-            <li><a href="#unions">Generic Unions</a></li>
-            <li><a href="#enums">Generic Enums</a></li>
-            <li><a href="#functions">Generic Functions</a></li>
-            <li><a href="#impl">Generic Impl Blocks</a></li>
-            <li><a href="#constraints">Constraints</a></li>
-        </ul>
-        <div class="sidebar-section">Calls and Inference</div>
-        <ul>
-            <li><a href="#inferred-calls">Inferred Calls</a></li>
-            <li><a href="#explicit-calls">Explicit Calls</a></li>
-            <li><a href="#nested-inference">Nested Inference</a></li>
-            <li><a href="#result-inference">Expected Result Inference</a></li>
-            <li><a href="#inference-errors">Inference Errors</a></li>
-        </ul>
-        <div class="sidebar-section">Semantics</div>
-        <ul>
-            <li><a href="#monomorphization">Monomorphization</a></li>
-            <li><a href="#ownership">Ownership and Copying</a></li>
-            <li><a href="#default-values">Default Values</a></li>
-            <li><a href="#recursion">Recursive Generic Types</a></li>
-            <li><a href="#limitations">Current Limitations</a></li>
-            <li><a href="#summary-rules">Summary of Rules</a></li>
-        </ul>
-                                <div class="sidebar-section">Language</div>
-        <ul>
-            <li><a href="01-introduction.html">Introduction</a></li>
-            <li><a href="02-basic-syntax.html">Basic Syntax</a></li>
-            <li><a href="03-types.html">Types</a></li>
-            <li><a href="04-named-types-contracts.html">Named Types &amp; Contracts </a></li>
-            <li><a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a></li>
-            <li><a href="06-functions.html">Functions</a></li>
-            <li><a href="07-if.html">If Statements</a></li>
-            <li><a href="08-switch.html">Switch Statements</a></li>
-            <li><a href="09-match.html">Match Expressions</a></li>
-            <li><a href="10-enums.html">Enums</a></li>
-            <li><a href="11-unions.html">Unions</a></li>
-            <li><a href="12-registers.html">Registers</a></li>
-            <li><a href="13-units.html">Units</a></li>
-            <li><a href="14-generics.html" class="active">Generics</a></li>
-            <li><a href="15-structs.html">Structs</a></li>
-            <li><a href="16-impl.html">Impl Blocks</a></li>
-            <li><a href="17-properties.html">Properties</a></li>
-            <li><a href="18-interfaces.html">Interfaces</a></li>
-            <li><a href="19-arrays.html">Arrays</a></li>
-            <li><a href="20-slices.html">Slices</a></li>
-            <li><a href="21-indexing.html">Indexing</a></li>
-            <li><a href="22-constants.html">Constants</a></li>
-            <li><a href="23-references.html">References</a></li>
-            <li><a href="24-ownership.html">Ownership</a></li>
-            <li><a href="25-borrowing.html">Borrowing</a></li>
-            <li><a href="26-unsafe.html">Unsafe</a></li>
-            <li><a href="27-spread.html">Spread</a></li>
-            <li><a href="30-modules.html">Modules and Imports</a></li>
-            <li><a href="31-projects.html">Projects and sec.module</a></li>
-            <li><a href="32-visibility.html">Visibility</a></li>
-            <li><a href="33-result-and-option.html">Result and Option</a></li>
-            <li><a href="34-try.html">Error Propagation</a></li>
-            <li><a href="35-defer.html">Deferred Cleanup</a></li>
-            <li><a href="36-attributes.html">Attributes</a></li>
-            <li><a href="37-build-directives.html">Build Directives</a></li>
-            <li><a href="38-ffi.html">Foreign Function Interfaces</a></li>
-            <li><a href="39-tasks.html">Tasks</a></li>
-            <li><a href="40-spawn.html">Spawning Work</a></li>
-            <li><a href="41-await.html">Awaiting Tasks</a></li>
-            <li><a href="42-channels.html">Channels and Coordination</a></li>
-            <li><a href="43-testing.html">Tests and Benchmarks</a></li>
-            <li><a href="44-formatting.html">Formatting</a></li>
-            <li><a href="45-diagnostics.html">Understanding Compiler Diagnostics</a></li>
-        </ul>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#generics">Generics</a>
+        <a href="#model">Compile-Time Model</a>
+        <a href="#parameters">Generic Parameters</a>
+        <a href="#arguments">Generic Arguments</a>
+        <a href="#identity">Concrete Type Identity</a>
+        <a href="#families">Supported Declarations</a>
+        <a href="#structs">Generic Structs</a>
+        <a href="#unions">Generic Unions</a>
+        <a href="#enums">Generic Enums</a>
+        <a href="#named-types">Generic Named Types</a>
+        <a href="#interfaces">Generic Interfaces</a>
+        <a href="#functions">Generic Functions</a>
+        <a href="#impl">Generic Impl</a>
+        <a href="#methods">Method-Level Generics</a>
+        <a href="#interface-methods">Generic Interface Methods</a>
+        <a href="#constraints">Constraints</a>
+        <a href="#multiple-constraints">Multiple Constraints</a>
+        <a href="#constraint-satisfaction">Constraint Satisfaction</a>
+        <a href="#capabilities">Available Operations</a>
+        <a href="#ownership">Ownership and Borrowing</a>
+        <a href="#defaultability">Defaultability</a>
+        <a href="#inference">Type Inference</a>
+        <a href="#explicit-arguments">Explicit Arguments</a>
+        <a href="#partial-arguments">Partial Explicit Arguments</a>
+        <a href="#static-members">Static Members</a>
+        <a href="#registers">Generic Registers</a>
+        <a href="#recursion">Recursive Generic Types</a>
+        <a href="#specialization">Monomorphization</a>
+        <a href="#lazy">Demand-Driven Instantiation</a>
+        <a href="#abi">ABI Boundary</a>
+        <a href="#function-values">Function Values</a>
+        <a href="#overloads">Overload Resolution</a>
+        <a href="#scope">Generic Scope</a>
+        <a href="#unsupported">Not in Sec 0.1</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html" class="active">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
-        <ul>
-            <li><a href="stdlib.html">Standard Library</a></li>
-            <li><a href="syntax-reference.html">Syntax Reference</a></li>
-            <li><a href="best-practices.html">Best Practices</a></li>
-        </ul>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
-        <ul>
-            <li><a href="test-status.html">Implementation Status</a></li>
-        </ul>
+        <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
-        <ul>
-            <li><a href="bug-report.html">Report a Bug</a></li>
-            <li><a href="join.html">Join</a></li>
-        </ul>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
+
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Generics</div>
+
         <h1 id="generics">Generics</h1>
-        <p>Generics allow types and functions to be written once and instantiated with concrete types during compilation.</p>
-        <pre><code>type Stack[T] struct {
-    items: Vec[T],
+
+        <p>
+            Generics let one declaration describe a family of concrete types or callables.
+            Generic parameters are compile-time type parameters; they are not runtime values.
+        </p>
+
+        <pre><code>type Pair[A, B] struct {
+    first: A,
+    second: B,
 }
 
 fn Identity[T](value: T) T {
     return value
 }</code></pre>
-        <p>Generic parameters exist only during compilation. Every concrete use becomes an ordinary concrete type or function.</p>
-        <div class="rule"><strong>Rule:</strong> Generics introduce no runtime type erasure, implicit boxing or runtime generic dispatch.</div>
+
+        <p>
+            Sec specializes generics for the concrete type arguments that are actually used.
+            A specialization is then type-checked and lowered as ordinary concrete Sec code.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Sec generics are compile-time templates.
+            They do not use runtime type erasure, generic dictionaries, implicit boxing or
+            runtime generic dispatch.
+        </div>
+
+        <section id="model">
+            <h2>Compile-Time Model</h2>
+
+            <p>Given:</p>
+
+            <pre><code>fn Identity[T](value: T) T {
+    return value
+}</code></pre>
+
+            <p>these calls request different concrete specializations:</p>
+
+            <pre><code>let number := Identity(10)
+let text := Identity("Sec")</code></pre>
+
+            <p>Conceptually, the compiler obtains concrete callable instances equivalent to:</p>
+
+            <pre><code>Identity[int]
+Identity[string]</code></pre>
+
+            <p>
+                The generic parameter <code>T</code> does not survive into executable code
+                as a runtime type variable.
+            </p>
+
+            <p>The model preserves:</p>
+
+            <ul>
+                <li>static typing;</li>
+                <li>nominal type identity;</li>
+                <li>explicit interface constraints;</li>
+                <li>concrete layout;</li>
+                <li>normal ownership and borrowing;</li>
+                <li>deterministic concrete symbol identity;</li>
+                <li>ordinary backend optimization over concrete code.</li>
+            </ul>
+        </section>
 
         <section id="parameters">
             <h2>Generic Parameters</h2>
-            <p>Generic parameters are declared in square brackets after a type or function name:</p>
-            <pre><code>type Holder[T] struct {
-    value: T,
-}
 
-type Pair[A, B] struct {
+            <p>
+                Generic parameters use square brackets after the declaration name:
+            </p>
+
+            <pre><code>type Pair[A, B] struct {
     first: A,
     second: B,
-}
+}</code></pre>
 
-fn Convert[From, To](value: From) To {
-    return To(value)
+            <pre><code>fn Convert[From, To](value: From) To {
+    ...
 }</code></pre>
-            <p>A generic parameter is a type symbol and may be used anywhere a type reference is allowed inside its declaration.</p>
-            <pre><code>fn First[T](values: []T) T {
-    return values[0]
-}</code></pre>
-            <p>A generic parameter cannot be used as a runtime value:</p>
-            <pre><code>fn Invalid[T]() void {
-    let value := T
-}</code></pre>
-            <div class="rule"><strong>Invalid:</strong> A generic type parameter is a type, not a value.</div>
-            <p>Parameter names must be unique within the same declaration:</p>
-            <pre><code>type Invalid[T, T] struct {
-}</code></pre>
+
+            <p>
+                Generic parameter names are type symbols inside the declaration's generic scope.
+            </p>
+
+            <p>Rules include:</p>
+
+            <ul>
+                <li>parameter names must be unique within the generic parameter list;</li>
+                <li>parameter order is semantically significant;</li>
+                <li>parameters are types, not runtime values;</li>
+                <li>trailing commas are permitted where the ordinary generic-list grammar permits them.</li>
+            </ul>
         </section>
 
         <section id="arguments">
             <h2>Generic Arguments</h2>
-            <p>Concrete types are supplied using square brackets:</p>
-            <pre><code>Stack[int]
-Pair[string, int]
-Option[User]
-Result[Data, IOError]</code></pre>
-            <p>Generic arguments must be types:</p>
-            <pre><code>Stack[10]
-Stack[value]</code></pre>
-            <div class="rule"><strong>Invalid:</strong> Runtime values cannot be used as generic type arguments.</div>
-            <p>The number of arguments must match the generic declaration:</p>
-            <pre><code>type Pair[A, B] struct {
-}
 
-let value: Pair[int]</code></pre>
-            <p>Generic arguments on non-generic types are invalid:</p>
-            <pre><code>User[int]
-int[string]</code></pre>
+            <p>Concrete type arguments also use square brackets:</p>
+
+            <pre><code>Pair[string, int]
+Option[User]
+Identity[int](10)</code></pre>
+
+            <p>
+                Generic arguments are types.
+            </p>
+
+            <p>This is not a generic type argument:</p>
+
+            <pre><code>Container[10]    // invalid as type-generic syntax</code></pre>
+
+            <p>
+                A generic type reference requires a complete generic argument list:
+            </p>
+
+            <pre><code>Pair[string, int]</code></pre>
+
+            <p>
+                Generic function and method calls may infer arguments when the call provides
+                enough type information.
+            </p>
         </section>
 
         <section id="identity">
             <h2>Concrete Type Identity</h2>
-            <p>Different generic argument lists produce different concrete types:</p>
-            <pre><code>Stack[int]
-Stack[uint]
 
-Pair[int, string]
+            <p>
+                A concrete generic type is identified by the source generic declaration and
+                its ordered concrete argument list.
+            </p>
+
+            <p>These are the same type:</p>
+
+            <pre><code>Pair[string, int]
 Pair[string, int]</code></pre>
-            <p>Identical instantiations refer to the same concrete type:</p>
-            <pre><code>Stack[int]
-Stack[int]</code></pre>
-            <p>Named type identity is preserved:</p>
-            <pre><code>type CustomerID int
-type ProductID int
 
-let customers: Stack[CustomerID]
-let products: Stack[ProductID]</code></pre>
-            <p><code>Stack[CustomerID]</code> and <code>Stack[ProductID]</code> are different types.</p>
-            <div class="rule"><strong>Rule:</strong> Generic substitution never erases named types, units, enums or other semantic type identity.</div>
+            <p>These are different types:</p>
+
+            <pre><code>Pair[string, int]
+Pair[int, string]</code></pre>
+
+            <p>
+                Different generic declarations remain nominally distinct even when their
+                substituted physical representations happen to be identical.
+            </p>
+
+            <p>
+                Generic arguments also preserve their own normal identity. Named types,
+                units, structs, unions, enums, interfaces and other concrete Sec types do
+                not lose identity merely because they appear inside a generic instantiation.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Physical layout equality never merges distinct generic
+                nominal types.
+            </div>
         </section>
 
-        <section id="scope">
-            <h2>Generic Parameter Scope</h2>
-            <p>A generic parameter is visible only inside the declaration that introduces it:</p>
-            <pre><code>type Container[T] struct {
-    value: T,
-}
+        <section id="families">
+            <h2>Supported Generic Declarations</h2>
 
-type Other[T] struct {
-    value: T,
-}</code></pre>
-            <p>The two parameters named <code>T</code> are different symbols.</p>
-            <pre><code>type T struct {
-}
+            <p>Sec 0.1 supports type generics on:</p>
 
-fn Identity[T](value: T) T {
-    return value
-}</code></pre>
-            <p>Inside <code>Identity</code>, <code>T</code> refers to the generic parameter.</p>
+            <ul>
+                <li>structs;</li>
+                <li>unions;</li>
+                <li>enums;</li>
+                <li>named types;</li>
+                <li>interfaces;</li>
+                <li>functions;</li>
+                <li>methods;</li>
+                <li>eligible implementation targets through their generic type;</li>
+                <li>nested declarations where ordinary scope rules permit them.</li>
+            </ul>
+
+            <p>
+                Register representation has stricter requirements and is discussed separately later
+                in this chapter.
+            </p>
         </section>
 
         <section id="structs">
             <h2>Generic Structs</h2>
-            <p>A generic struct is a type template:</p>
-            <pre><code>type Pair[A, B] struct {
-    first: A,
-    second: B,
+
+            <pre><code>type Stack[T] struct {
+    items: list[T],
 }</code></pre>
-            <p>A concrete struct type is created when all arguments are supplied:</p>
-            <pre><code>let pair := Pair[int, string] {
-    first: 10,
-    second: "ten",
-}</code></pre>
-            <p>Nested generic types are supported:</p>
-            <pre><code>type Cache[K, V] struct {
-    values: Map[K, Option[V]],
-}</code></pre>
-            <p>Size, alignment, copyability and defaultability are calculated for each concrete instantiation.</p>
+
+            <p>Concrete uses include:</p>
+
+            <pre><code>Stack[int]
+Stack[string]
+Stack[User]</code></pre>
+
+            <p>
+                Each concrete specialization has its own concrete field types, layout,
+                copy/move classification, defaultability and destruction behavior.
+            </p>
         </section>
 
         <section id="unions">
             <h2>Generic Unions</h2>
-            <pre><code>type Option[T] union {
-    Some(T)
-    None
-}
 
-type Result[T, E] union {
+            <p>
+                Generic union payloads are substituted before construction, matching,
+                layout and destruction.
+            </p>
+
+            <pre><code>type Result[T, E] union {
     Ok(T)
     Err(E)
 }</code></pre>
-            <p>Concrete instantiations substitute the payload types:</p>
-            <pre><code>Option[int]
-Result[string, IOError]</code></pre>
-            <pre><code>let value: Option[int] := Option.Some(10)
-let result: Result[string, IOError] := Result.Ok("ready")</code></pre>
-            <p>Construction may use the expected target type or payload type to infer concrete arguments when the result is unambiguous.</p>
+
+            <p>For:</p>
+
+            <pre><code>Result[int, IOError]</code></pre>
+
+            <p>
+                the compiler operates on a concrete closed union whose payloads are
+                concretely <code>int</code> and <code>IOError</code>.
+            </p>
+
+            <p>
+                Exhaustiveness, payload ownership and destruction are checked using that
+                concrete union.
+            </p>
         </section>
 
         <section id="enums">
             <h2>Generic Enums</h2>
-            <p>A generic enum parameterizes nominal identity and associated behavior:</p>
-            <pre><code>enum SortOrder[T] {
-    Ascending
-    Descending
+
+            <p>
+                Enums may have ordinary type parameters:
+            </p>
+
+            <pre><code>enum State[T] {
+    Ready
+    Busy
 }</code></pre>
-            <p><code>SortOrder[User]</code> and <code>SortOrder[Product]</code> are distinct Sec types even when they have identical runtime representations.</p>
-            <pre><code>let order: SortOrder[User] := SortOrder[User].Ascending</code></pre>
-            <p>The parameter may be absent from physical storage; it still contributes to the concrete type identity. Generic enum members remain payload-less. Use a union when alternatives carry different payload values.</p>
+
+            <p>
+                <code>State[Connection]</code> and <code>State[Socket]</code> are different
+                nominal enum types even if both lower to the same physical representation.
+            </p>
+
+            <h3>Phantom storage parameters are valid</h3>
+
+            <pre><code>enum Permission[T] {
+    Read
+    Write
+}</code></pre>
+
+            <p>
+                <code>T</code> contributes to the concrete enum's type identity even though
+                it does not occupy runtime storage.
+            </p>
+
+            <p>This is useful when the enum identity itself should be associated with a type:</p>
+
+            <pre><code>Permission[File]
+Permission[Socket]</code></pre>
+
+            <p>
+                These remain distinct Sec types.
+            </p>
+
+            <h3>Behavior may use the generic parameter</h3>
+
+            <pre><code>impl Permission[T] {
+    fn Check(value: T) void {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                Generic enum members themselves remain payload-less.
+                Use a union when alternatives need to carry data.
+            </p>
+
+            <p>
+                After specialization, ordinary enum rules determine defaults, representation,
+                conversions, comparison, <code>switch</code>, <code>match</code> and exhaustiveness.
+            </p>
+        </section>
+
+        <section id="named-types">
+            <h2>Generic Named Types</h2>
+
+            <p>A named type may be parameterized:</p>
+
+            <pre><code>type ID[T] int</code></pre>
+
+            <p>Then:</p>
+
+            <pre><code>ID[User]
+ID[Product]</code></pre>
+
+            <p>
+                are different concrete nominal types.
+            </p>
+
+            <p>
+                A generic named type may also use the parameter as its represented type when
+                the ordinary named-type rules permit it:
+            </p>
+
+            <pre><code>type Wrapped[T] T</code></pre>
+
+            <p>
+                Named-type contracts, conversions, copy/move rules and representation are applied
+                after substitution.
+            </p>
+        </section>
+
+        <section id="interfaces">
+            <h2>Generic Interfaces</h2>
+
+            <pre><code>interface Repository[T] {
+    fn Get(id: ID[T]) Option[T]
+}</code></pre>
+
+            <p>These are distinct interface types:</p>
+
+            <pre><code>Repository[User]
+Repository[Product]</code></pre>
+
+            <p>
+                Conformance is checked against the concrete instantiated interface contract.
+            </p>
+
+            <p>A generic interface may also be used as a constraint:</p>
+
+            <pre><code>fn Compare[T: Comparable[T]](left: T, right: T) int {
+    ...
+}</code></pre>
         </section>
 
         <section id="functions">
             <h2>Generic Functions</h2>
+
             <pre><code>fn Identity[T](value: T) T {
     return value
 }</code></pre>
-            <p>Multiple generic parameters are allowed:</p>
-            <pre><code>fn MakePair[A, B](first: A, second: B) Pair[A, B] {
-    return Pair[A, B] {
-        first: first,
-        second: second,
-    }
+
+            <p>Multiple generic parameters are separated with commas:</p>
+
+            <pre><code>fn Convert[From, To](value: From) To {
+    ...
 }</code></pre>
-            <p>Function generic parameters are visible in parameter types, return types and the function body.</p>
+
+            <p>
+                A generic function is a compile-time template, not one runtime polymorphic
+                callable accepting arbitrary types.
+            </p>
         </section>
 
         <section id="impl">
             <h2>Generic Impl Blocks</h2>
+
+            <p>
+                The implementation target repeats the generic parameters belonging to the
+                generic nominal type:
+            </p>
+
             <pre><code>type Stack[T] struct {
-    items: Vec[T],
+    items: list[T],
 }
 
 impl Stack[T] {
     fn Push(value: T) void {
-        items.Add(value)
+        self.items.Append(value)
     }
+}</code></pre>
 
-    fn Pop() Option[T] {
-        return items.Pop()
+            <p>
+                The <code>T</code> in <code>impl Stack[T]</code> corresponds to the
+                <code>T</code> declared by <code>Stack</code>.
+            </p>
+
+            <p>This is not an unrelated new parameter:</p>
+
+            <pre><code>impl Stack[U] {
+    ...
+}</code></pre>
+
+            <p>
+                when <code>U</code> is not the corresponding declared target parameter.
+            </p>
+
+            <p>
+                Generic types may also use same-module extension implementations:
+            </p>
+
+            <pre><code>impl extends Stack[T] {
+    fn IsEmpty() bool {
+        return self.items.IsEmpty
     }
 }</code></pre>
-            <p>The parameters in the impl target correspond to the parameters of the generic type.</p>
-            <p>Additional method-level generic parameters are not part of the initial implementation:</p>
-            <pre><code>impl Stack[T] {
-    fn Map[U](mapper: fn(T) U) Stack[U] {
+
+            <p>
+                Primary and extended implementation fragments form one concrete member surface
+                after substitution.
+            </p>
+        </section>
+
+        <section id="methods">
+            <h2>Method-Level Generics</h2>
+
+            <p>
+                A method may introduce type parameters that vary independently of the owning type.
+            </p>
+
+            <pre><code>impl Converter {
+    fn Convert[T, U](value: T) U {
+        ...
     }
 }</code></pre>
+
+            <p>
+                A method inside a generic type sees both the owner's parameters and its own:
+            </p>
+
+            <pre><code>impl Box[T] {
+    fn Transform[U](transform: fn(T) U) Box[U] {
+        ...
+    }
+}</code></pre>
+
+            <p>Here:</p>
+
+            <ul>
+                <li><code>T</code> belongs to <code>Box</code>;</li>
+                <li><code>U</code> belongs to <code>Transform</code>.</li>
+            </ul>
+
+            <p>
+                A method-level parameter may not redeclare a visible generic parameter from the
+                enclosing generic scope.
+            </p>
+
+            <p>
+                Static methods may also declare method-level generic parameters.
+            </p>
+        </section>
+
+        <section id="interface-methods">
+            <h2>Generic Methods in Interface Contracts</h2>
+
+            <p>
+                A generic interface may use its own generic parameters in method requirements:
+            </p>
+
+            <pre><code>interface Sink[T] {
+    mut fn Write(value: T) void
+}</code></pre>
+
+            <p>
+                An interface method requirement does not introduce an additional method-level
+                generic parameter list:
+            </p>
+
+            <pre><code>interface Mapper[T] {
+    fn Map[U](value: T) U    // invalid
+}</code></pre>
+
+            <p>
+                Interface values may require runtime dispatch, while Sec has no runtime generic
+                dispatch. Once a generic interface itself is concretely instantiated, its
+                dispatch surface must therefore be finite.
+            </p>
+
+            <p>
+                Put the variation on the interface type itself, use another interface, or use
+                a generic concrete helper when another operation-level type must vary.
+            </p>
         </section>
 
         <section id="constraints">
-            <h2>Constraints</h2>
-            <p>Generic constraints use interfaces:</p>
+            <h2>Generic Constraints</h2>
+
+            <p>
+                Constraints state which interface capabilities a concrete generic argument must provide.
+            </p>
+
             <pre><code>fn Save[T: Serializable](value: T) Result[void, IOError] {
     return value.Serialize()
 }</code></pre>
-            <p>The concrete type used for <code>T</code> must explicitly implement <code>Serializable</code>.</p>
-            <pre><code>type Serializable interface {
-    fn Serialize() bytes
-}
 
-type User struct {
-}
+            <p>
+                <code>T: Serializable</code> does not implement <code>Serializable</code>.
+                It requires the substituted concrete type to already satisfy that interface contract.
+            </p>
 
-impl Serializable for User {
-    fn Serialize() bytes {
-        return EncodeUser(self)
+            <p>
+                Interface conformance remains explicit on the concrete type:
+            </p>
+
+            <pre><code>impl User implements Serializable {
+    fn Serialize() byte[] {
+        ...
     }
 }</code></pre>
-            <p>Inside generic code, an unconstrained parameter cannot assume that methods or operators exist.</p>
-            <pre><code>fn Invalid[T](value: T) bytes {
+
+            <p>
+                A type does not satisfy the constraint merely because it happens to contain
+                similarly named methods.
+            </p>
+        </section>
+
+        <section id="multiple-constraints">
+            <h2>Multiple Constraints</h2>
+
+            <p>
+                Multiple requirements on one type parameter use <code>&amp;</code>:
+            </p>
+
+            <pre><code>fn Save[T: Serializable &amp; Comparable](value: T) void {
+    ...
+}</code></pre>
+
+            <p>More constraints compose the same way:</p>
+
+            <pre><code>fn Process[T: Serializable &amp; Comparable &amp; Printable](value: T) void {
+    ...
+}</code></pre>
+
+            <p>
+                <code>&amp;</code> means logical conjunction of compile-time constraints.
+                It does not create a runtime intersection value type.
+            </p>
+
+            <p>
+                Commas separate generic parameters:
+            </p>
+
+            <pre><code>fn Convert[
+    T: Serializable &amp; Comparable,
+    U: Printable,
+](value: T) U {
+    ...
+}</code></pre>
+        </section>
+
+        <section id="constraint-satisfaction">
+            <h2>Constraint Satisfaction</h2>
+
+            <p>
+                Every constraint must resolve to an interface type or a concrete generic
+                interface instantiation.
+            </p>
+
+            <p>Valid:</p>
+
+            <pre><code>fn Save[T: Serializable](value: T) void {
+    ...
+}</code></pre>
+
+            <p>Valid:</p>
+
+            <pre><code>fn Compare[T: Comparable[T]](left: T, right: T) int {
+    ...
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>fn Save[T: int](value: T) void {
+    ...
+}</code></pre>
+
+            <p>
+                <code>int</code> is a type, but it is not an interface constraint.
+            </p>
+
+            <p>Constraints do not:</p>
+
+            <ul>
+                <li>create runtime interface values;</li>
+                <li>imply dynamic generic dispatch;</li>
+                <li>automatically implement interfaces;</li>
+                <li>infer structural conformance from matching names.</li>
+            </ul>
+        </section>
+
+        <section id="capabilities">
+            <h2>Operations Available on a Generic Parameter</h2>
+
+            <p>
+                A generic body may use only capabilities guaranteed by the generic declaration.
+            </p>
+
+            <p>
+                An unconstrained <code>T</code> cannot be assumed to have an arbitrary method:
+            </p>
+
+            <pre><code>fn Encode[T](value: T) byte[] {
+    return value.Serialize()    // invalid without a guarantee
+}</code></pre>
+
+            <p>Constrain the operation:</p>
+
+            <pre><code>fn Encode[T: Serializable](value: T) byte[] {
     return value.Serialize()
 }</code></pre>
-            <div class="rule"><strong>Invalid:</strong> Members may only be used when a constraint guarantees that they exist.</div>
-            <p>The initial constraint model supports one interface constraint per generic parameter.</p>
-        </section>
 
-        <section id="inferred-calls">
-            <h2>Inferred Generic Function Calls</h2>
-            <pre><code>fn Identity[T](value: T) T {
-    return value
-}
+            <p>
+                The generic body is checked against the contract, not against accidental features
+                of one concrete call site.
+            </p>
 
-let number := Identity(10)
-let text := Identity("hello")</code></pre>
-            <p>The compiler infers <code>T = int</code> and <code>T = string</code> for the two calls.</p>
-            <pre><code>fn MakePair[A, B](first: A, second: B) Pair[A, B] {
-}
-
-let pair := MakePair(10, "ten")</code></pre>
-            <p>The compiler infers <code>A = int</code> and <code>B = string</code>.</p>
-        </section>
-
-        <section id="explicit-calls">
-            <h2>Explicit Generic Function Calls</h2>
-            <pre><code>let value := Identity[int](10)</code></pre>
-            <p>The explicit argument fixes <code>T</code> before normal argument checking.</p>
-            <pre><code>Identity[int]("hello")</code></pre>
-            <p>This is invalid because the argument does not match the selected concrete signature.</p>
-            <p>Partial explicit argument lists are not supported:</p>
-            <pre><code>fn Convert[From, To](value: From) To {
-}
-
-Convert[int](value)</code></pre>
-        </section>
-
-        <section id="nested-inference">
-            <h2>Nested Inference</h2>
-            <pre><code>fn First[T](values: []T) T {
-    return values[0]
-}
-
-let names: []string := LoadNames()
-let first := First(names)</code></pre>
-            <p>The compiler recursively matches the slice type and infers <code>T = string</code>.</p>
-            <pre><code>fn GetOr[T](value: Option[T], fallback: T) T {
-}
-
-let result := GetOr(optionalName, "unknown")</code></pre>
-            <p>All occurrences of the same generic parameter must resolve to one consistent type.</p>
-        </section>
-
-        <section id="result-inference">
-            <h2>Expected Result Inference</h2>
-            <pre><code>fn Empty[T]() Option[T] {
-    return Option.None
-}
-
-let value: Option[int] := Empty()</code></pre>
-            <p>The expected result type supplies <code>T = int</code>.</p>
-            <p>Expected-result inference may complete information in typed declarations, assignments and returns, but cannot override contradictory argument inference.</p>
-        </section>
-
-        <section id="inference-errors">
-            <h2>Inference Errors</h2>
-            <h3>Inconsistent inference</h3>
-            <pre><code>fn Equal[T](left: T, right: T) bool {
-    return left == right
-}
-
-Equal(10, "ten")</code></pre>
-            <p>One generic parameter cannot resolve to both <code>int</code> and <code>string</code>.</p>
-            <h3>Insufficient information</h3>
-            <pre><code>fn Empty[T]() Option[T] {
-    return Option.None
-}
-
-let value := Empty()</code></pre>
-            <p>Use an explicit argument or a typed expected result.</p>
-            <h3>Wrong arity</h3>
-            <pre><code>Pair[int]
-Pair[int, string, bool]</code></pre>
-            <h3>Argument is not a type</h3>
-            <pre><code>Stack[10]</code></pre>
-        </section>
-
-        <section id="monomorphization">
-            <h2>Monomorphization</h2>
-            <p>Sec specializes generic code for each concrete argument list used by the program.</p>
-            <pre><code>fn Identity[T](value: T) T {
-    return value
-}
-
-let number := Identity(10)
-let text := Identity("hello")</code></pre>
-            <p>Conceptually, the compiler produces concrete functions equivalent to:</p>
-            <pre><code>fn Identity_int(value: int) int {
-    return value
-}
-
-fn Identity_string(value: string) string {
-    return value
-}</code></pre>
-            <p>Generated names are internal. Identical instantiations are reused.</p>
-            <div class="rule"><strong>Rule:</strong> Code generation receives only fully resolved concrete types and functions.</div>
+            <p>
+                Some properties depend on the final concrete type and are recomputed after
+                substitution, including layout, defaultability and copy/move/destruction classification.
+            </p>
         </section>
 
         <section id="ownership">
-            <h2>Ownership and Copying</h2>
-            <p>A generic parameter does not automatically imply copyability.</p>
+            <h2>Ownership, Copying and Borrowing</h2>
+
+            <p>
+                A generic parameter does not imply copyability.
+            </p>
+
             <pre><code>fn Duplicate[T](value: T) Pair[T, T] {
     return Pair[T, T] {
         first: value,
         second: value,
     }
 }</code></pre>
-            <p>This is invalid for a non-copyable concrete <code>T</code>. Generic code follows the normal copy, move, borrow and lifetime rules.</p>
-            <div class="rule"><strong>Rule:</strong> Generics introduce no hidden copying, cloning, allocation or ownership transfer.</div>
+
+            <p>
+                This is not generally valid unless the generic contract guarantees that using
+                <code>value</code> twice is legal.
+            </p>
+
+            <p>Generic code follows normal Sec:</p>
+
+            <ul>
+                <li>ownership;</li>
+                <li>moves;</li>
+                <li>copies;</li>
+                <li>borrowing;</li>
+                <li>mutability;</li>
+                <li>destruction.</li>
+            </ul>
+
+            <p>
+                Concrete specializations receive their final ownership classification after substitution.
+            </p>
+
+            <h3>Consuming generic parameters</h3>
+
+            <pre><code>fn Store[T](-&gt; value: T) void {
+    ...
+}</code></pre>
+
+            <p>
+                The consuming contract remains consuming for every concrete <code>T</code>,
+                including a type that would otherwise be copyable.
+            </p>
+
+            <h3>Typed variadics</h3>
+
+            <pre><code>fn Count[T](values: ...T) int {
+    return values.Len
+}</code></pre>
+
+            <p>
+                Every concrete specialization has one concrete variadic element type.
+                Consuming variadics such as <code>-&gt; values: ...T</code> are invalid.
+            </p>
         </section>
 
-        <section id="default-values">
-            <h2>Default Values</h2>
-            <p>An unconstrained generic parameter has no assumed default value:</p>
+        <section id="defaultability">
+            <h2>Defaultability</h2>
+
+            <p>
+                An unconstrained generic parameter is not assumed to be defaultable.
+            </p>
+
             <pre><code>fn Make[T]() T {
     let mut value: T
     return value
 }</code></pre>
-            <p>This is invalid because <code>T</code> is not known to support default construction.</p>
-            <pre><code>type Holder[T] struct {
-    value: T,
+
+            <p>
+                This is invalid unless the generic contract provides the required defaultability guarantee.
+            </p>
+
+            <p>
+                A later call with one particular defaultable type does not retroactively make an
+                otherwise invalid generic declaration valid.
+            </p>
+        </section>
+
+        <section id="inference">
+            <h2>Generic Type Inference</h2>
+
+            <p>
+                Function and method generic arguments may be inferred from:
+            </p>
+
+            <ul>
+                <li>ordinary call arguments;</li>
+                <li>the receiver and owning generic type;</li>
+                <li>an expected result type supplied by surrounding context;</li>
+                <li>generic arguments already supplied explicitly.</li>
+            </ul>
+
+            <p>For example:</p>
+
+            <pre><code>let value := Identity(10)</code></pre>
+
+            <p>
+                may infer <code>T</code> as <code>int</code>.
+            </p>
+
+            <p>Expected-result context can also contribute:</p>
+
+            <pre><code>let result: Target := Convert(source)</code></pre>
+
+            <p>
+                when the generic signature relates one unresolved type parameter to the result.
+            </p>
+
+            <p>
+                Inference must resolve one consistent concrete type for every unresolved parameter.
+            </p>
+
+            <p>
+                If the compiler cannot infer a parameter uniquely, the programmer must provide
+                more generic arguments or stronger ordinary type context.
+            </p>
+        </section>
+
+        <section id="explicit-arguments">
+            <h2>Explicit Generic Arguments</h2>
+
+            <p>
+                All generic function arguments may be supplied explicitly:
+            </p>
+
+            <pre><code>let value := Identity[int](10)</code></pre>
+
+            <p>
+                Explicit arguments are applied before inference and must satisfy:
+            </p>
+
+            <ul>
+                <li>generic arity rules;</li>
+                <li>type validity;</li>
+                <li>constraints;</li>
+                <li>ordinary function argument compatibility.</li>
+            </ul>
+        </section>
+
+        <section id="partial-arguments">
+            <h2>Partial Explicit Generic Arguments</h2>
+
+            <p>
+                A generic function or method call may provide a positional prefix of its
+                generic arguments and infer the remainder.
+            </p>
+
+            <pre><code>fn Convert[From, To](value: From) To {
+    ...
 }</code></pre>
-            <p>Defaultability is calculated for each concrete instantiation.</p>
+
+            <p>Then:</p>
+
+            <pre><code>let result: string := Convert[int](value)</code></pre>
+
+            <p>means:</p>
+
+            <ul>
+                <li><code>From</code> is explicitly <code>int</code>;</li>
+                <li><code>To</code> is inferred from the remaining context.</li>
+            </ul>
+
+            <p>
+                Explicit generic arguments always bind left-to-right.
+            </p>
+
+            <p>Generic argument holes are not supported:</p>
+
+            <pre><code>Foo[, B](...)     // invalid
+Foo[_, B](...)    // invalid</code></pre>
+
+            <p>
+                Partial inference applies to function and method calls.
+                Generic type references still require the complete argument list.
+            </p>
+        </section>
+
+        <section id="static-members">
+            <h2>Static Members of Generic Types</h2>
+
+            <p>
+                Static storage is specialized per concrete generic type.
+            </p>
+
+            <pre><code>impl Cache[T] {
+    static let mut Count: int := 0
+}</code></pre>
+
+            <p>These are different storage locations:</p>
+
+            <pre><code>Cache[int].Count
+Cache[string].Count</code></pre>
+
+            <p>
+                A generic source template does not create one hidden global storage location
+                shared by every specialization.
+            </p>
+
+            <p>
+                Static methods and static properties are likewise resolved on the concrete
+                specialized type.
+            </p>
+        </section>
+
+        <section id="registers">
+            <h2>Generic Registers</h2>
+
+            <p>
+                The generic language feature does not by itself authorize arbitrary generic
+                register declarations.
+            </p>
+
+            <p>
+                Every concrete register representation must still have a compile-time-known,
+                valid fixed width and field layout.
+            </p>
+
+            <p>
+                A generic register form is valid only where the register-specific rules can prove
+                every concrete specialization has a valid representation.
+            </p>
+
+            <p>
+                Generic parameters may never leave register width, field boundaries, bit allocation
+                or byte representation unresolved at layout time.
+            </p>
         </section>
 
         <section id="recursion">
             <h2>Recursive Generic Types</h2>
-            <p>Direct recursive storage is invalid:</p>
+
+            <p>
+                Generic recursion must resolve to a finite concrete representation.
+            </p>
+
+            <p>This direct recursive storage is invalid:</p>
+
             <pre><code>type Node[T] struct {
     next: Node[T],
 }</code></pre>
-            <p>Recursion must pass through a defined indirection:</p>
-            <pre><code>type Node[T] struct {
-    next: Option[Box[Node[T]]],
-}</code></pre>
-            <p>Changing generic arguments may create non-converging recursion:</p>
-            <pre><code>type Infinite[T] struct {
-    next: Infinite[Option[T]],
-}</code></pre>
-            <p>The compiler rejects instantiation chains that cannot converge to a finite concrete layout.</p>
+
+            <p>
+                Recursive structure requires a valid indirection or container whose own storage
+                rules make the concrete representation finite.
+            </p>
+
+            <p>
+                The compiler also rejects generic instantiation chains that keep changing type
+                arguments without converging to a finite concrete type.
+            </p>
+
+            <p>
+                Diagnostics should show the specialization path responsible for a recursive
+                instantiation failure.
+            </p>
         </section>
 
-        <section id="limitations">
-            <h2>Current Limitations</h2>
+        <section id="specialization">
+            <h2>Monomorphization</h2>
+
+            <p>
+                Before representation-dependent lowering, every reachable generic use is fully
+                specialized to concrete Sec types.
+            </p>
+
+            <p>For a concrete generic type, the compiler resolves facts such as:</p>
+
             <ul>
-                <li>const generics</li>
-                <li>default generic arguments</li>
-                <li>partial explicit generic argument lists</li>
-                <li>variadic generic parameter lists</li>
-                <li>generic lifetime parameters</li>
-                <li>higher-kinded types</li>
-                <li>specialization</li>
-                <li>operator constraints</li>
-                <li>multiple constraints on one parameter</li>
-                <li>automatic interface implementation</li>
-                <li>runtime generic dispatch</li>
-                <li>type erasure</li>
-                <li>implicit boxing</li>
-                <li>additional method-level generic parameters</li>
+                <li>concrete field and variant types;</li>
+                <li>size and alignment;</li>
+                <li>defaultability;</li>
+                <li>copy/move behavior;</li>
+                <li>destruction behavior;</li>
+                <li>implemented interfaces;</li>
+                <li>concrete methods;</li>
+                <li>concrete static storage identity.</li>
+            </ul>
+
+            <p>For a concrete generic function or method, it resolves:</p>
+
+            <ul>
+                <li>concrete parameter types;</li>
+                <li>concrete result type;</li>
+                <li>satisfied constraints;</li>
+                <li>concrete called symbols;</li>
+                <li>concrete ownership behavior;</li>
+                <li>parameter consuming modes and variadic shape.</li>
+            </ul>
+
+            <p>
+                No unresolved generic type parameter may reach executable representation-dependent IR,
+                ABI lowering or backend code generation.
+            </p>
+
+            <h3>Phantom generic identity remains real</h3>
+
+            <pre><code>enum State[T] {
+    Ready
+    Busy
+}</code></pre>
+
+            <p>
+                Even if <code>T</code> occupies no runtime storage,
+                <code>State[Connection]</code> and <code>State[Socket]</code> remain different
+                concrete Sec types.
+            </p>
+
+            <p>
+                No hidden runtime descriptor is added merely to preserve that distinction.
+            </p>
+        </section>
+
+        <section id="lazy">
+            <h2>Demand-Driven Instantiation</h2>
+
+            <p>
+                Sec uses demand-driven specialization.
+            </p>
+
+            <p>
+                Unused generic functions and methods do not need backend code merely because
+                their templates exist.
+            </p>
+
+            <p>
+                Repeated requests for the same generic declaration with the same ordered concrete
+                arguments reuse one canonical concrete specialization.
+            </p>
+
+            <p>
+                For example, repeated use of:
+            </p>
+
+            <pre><code>Pair[string, int]</code></pre>
+
+            <p>
+                refers to the same concrete type identity rather than producing a new type on
+                every occurrence.
+            </p>
+        </section>
+
+        <section id="abi">
+            <h2>ABI Boundary</h2>
+
+            <p>
+                A generic template does not itself define one unresolved runtime ABI.
+            </p>
+
+            <pre><code>fn Encode[T](value: T) byte[] {
+    ...
+}</code></pre>
+
+            <p>
+                There is no runtime ABI for abstract <code>Encode[T]</code>.
+            </p>
+
+            <p>A concrete specialization can have an ABI:</p>
+
+            <pre><code>Encode[Packet]</code></pre>
+
+            <p>
+                because the complete parameter and result representation is known.
+            </p>
+
+            <p>
+                Foreign and exported interfaces may impose additional restrictions on which
+                concrete generic specializations may cross ABI boundaries.
+            </p>
+        </section>
+
+        <section id="function-values">
+            <h2>Generic Functions as Function Values</h2>
+
+            <p>
+                A generic function declaration is a compile-time template, not a runtime
+                polymorphic function object.
+            </p>
+
+            <p>
+                A function value must refer to one concrete specialized callable:
+            </p>
+
+            <pre><code>let transform: fn(int) string := Convert[int, string]</code></pre>
+
+            <p>
+                Sec does not place an unresolved generic function template into a runtime function value.
+            </p>
+
+            <h3>No generic lambda templates</h3>
+
+            <p>
+                Generic anonymous function templates are not part of Sec 0.1:
+            </p>
+
+            <pre><code>fn[T](value: T) T {
+    return value
+}</code></pre>
+
+            <p>
+                Use a named generic function and specialize it before converting it to a function value.
+            </p>
+        </section>
+
+        <section id="overloads">
+            <h2>Generics and Overload Resolution</h2>
+
+            <p>
+                Generic candidates participate in ordinary function overload resolution.
+            </p>
+
+            <p>The compiler considers:</p>
+
+            <ul>
+                <li>ordinary parameter compatibility;</li>
+                <li>explicit generic prefix arguments;</li>
+                <li>inferred generic arguments;</li>
+                <li>constraint satisfaction;</li>
+                <li>expected result context where permitted.</li>
+            </ul>
+
+            <p>
+                Inference does not invent conversions merely to make one generic candidate win.
+            </p>
+
+            <p>
+                Return type alone still does not distinguish otherwise duplicate overload declarations.
+            </p>
+        </section>
+
+        <section id="scope">
+            <h2>Generic Parameter Scope</h2>
+
+            <p>
+                Generic parameters are type symbols visible only inside the scopes that own them.
+            </p>
+
+            <pre><code>type Box[T] struct {
+    value: T,
+}</code></pre>
+
+            <p>
+                <code>T</code> is visible in the generic type and its matching generic
+                implementation scopes.
+            </p>
+
+            <p>
+                A method-level generic parameter is visible only inside that method and its
+                nested scopes.
+            </p>
+
+            <p>
+                Nested generic parameters may not redeclare an active enclosing generic parameter
+                when doing so would make substitution ambiguous.
+            </p>
+        </section>
+
+        <section id="unsupported">
+            <h2>Generic Mechanisms Not in Sec 0.1</h2>
+
+            <p>Sec 0.1 does not use:</p>
+
+            <ul>
+                <li>runtime generic dispatch;</li>
+                <li>type erasure;</li>
+                <li>implicit boxing;</li>
+                <li>higher-kinded types;</li>
+                <li>generic parameter packs;</li>
+                <li>variadic type-parameter lists;</li>
+                <li>generic argument holes;</li>
+                <li>automatic structural constraints inferred from member names;</li>
+                <li>automatic interface implementation;</li>
+                <li>negative constraints;</li>
+                <li>union-of-types constraints;</li>
+                <li>arbitrary compile-time reflection as a generic mechanism;</li>
+                <li>default generic type arguments;</li>
+                <li>generic lambda templates.</li>
+            </ul>
+
+            <h3>Type generics are not value generics</h3>
+
+            <p>
+                The generic syntax described in this chapter parameterizes declarations by types.
+            </p>
+
+            <pre><code>Container[T]</code></pre>
+
+            <p>
+                It does not imply general const/value generic syntax such as:
+            </p>
+
+            <pre><code>Container[10]</code></pre>
+
+            <p>
+                Compile-time value parameterization, where defined by another Sec feature,
+                has separate semantics.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important generic diagnostics include:</p>
+
+            <ul>
+                <li>duplicate generic parameter;</li>
+                <li>unknown generic constraint;</li>
+                <li>constraint that is not an interface;</li>
+                <li>concrete type does not satisfy a constraint;</li>
+                <li>generic operation requires an undeclared capability;</li>
+                <li>cannot infer a generic parameter;</li>
+                <li>too many explicit generic arguments;</li>
+                <li>generic argument hole;</li>
+                <li>method-level parameter conflicts with an enclosing generic parameter;</li>
+                <li>recursive generic instantiation does not produce a finite type;</li>
+                <li>invalid concrete layout after substitution;</li>
+                <li>unresolved generic parameter reaching a representation-dependent boundary.</li>
+            </ul>
+
+            <p>
+                A concrete-dependent failure should identify both the generic declaration and
+                the concrete substitution that caused the failure.
+            </p>
+
+            <pre><code>error: concrete specialization Box[Resource] requires an operation not valid for Resource
+
+generic declaration:
+    Box[T]
+
+substitution:
+    T = Resource</code></pre>
+
+            <p>
+                Tooling should preserve the distinction between the source template and its
+                concrete specialization so diagnostics remain understandable.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Keep generic parameter lists small and semantically meaningful.</li>
+                <li>Use constraints only for capabilities the implementation actually requires.</li>
+                <li>Prefer <code>T: Interface</code> over manual runtime capability tests.</li>
+                <li>Use <code>&amp;</code> when one parameter requires several independent interfaces.</li>
+                <li>Let inference handle obvious call-site type arguments.</li>
+                <li>Use a partial explicit prefix when it improves clarity or resolves ambiguity.</li>
+                <li>Use method-level generics when the variation belongs to one operation rather than the whole type.</li>
+                <li>Use generic enums when parameterized enum identity or associated behavior is useful.</li>
+                <li>Use unions when alternatives carry payload values.</li>
+                <li>Do not assume an unconstrained <code>T</code> is copyable or defaultable.</li>
+                <li>Keep per-specialization static state intentional.</li>
+                <li>Avoid exposing generic complexity across ABI and FFI boundaries unless it provides real value.</li>
             </ul>
         </section>
 
-        <section id="summary-rules">
-            <h2>Summary of Rules</h2>
+        <section id="summary">
+            <h2>Summary</h2>
+
             <ul>
+                <li>Sec generics are compile-time type templates.</li>
                 <li>Generic parameters and arguments use square brackets.</li>
-                <li>Generic parameters are compile-time type symbols.</li>
-                <li>Generic parameters do not exist at runtime.</li>
-                <li>Generic argument order and arity are significant.</li>
-                <li>Generic type arguments must be types.</li>
-                <li>Generic types require all generic arguments.</li>
-                <li>Generic function arguments may be inferred.</li>
-                <li>Explicit generic calls must supply the full argument list.</li>
-                <li>One parameter must infer to one consistent concrete type.</li>
-                <li>Expected result types may complete inference in typed contexts.</li>
-                <li>Different argument lists create different concrete types.</li>
-                <li>Identical instantiations share one canonical concrete identity.</li>
-                <li>Named types, units, enums and unions preserve their identity.</li>
-                <li>Generic structs and unions are specialized after substitution.</li>
-                <li>Generic enums parameterize nominal identity and associated behavior without adding member payloads.</li>
-                <li>Generic impl blocks use the parameters of their target type.</li>
-                <li>Interfaces provide compile-time generic constraints.</li>
-                <li>Unconstrained parameters cannot assume methods, arithmetic, equality or defaults.</li>
-                <li>Generics follow normal ownership, copy, move and borrowing rules.</li>
-                <li>Direct recursive generic storage is invalid.</li>
-                <li>Generic code is monomorphized into concrete code.</li>
-                <li>No runtime generic dispatch, hidden boxing or type erasure is introduced.</li>
+                <li>Generic arguments are types, not arbitrary runtime expressions.</li>
+                <li>Generic type references require complete argument lists.</li>
+                <li>Generic function and method calls may infer missing arguments.</li>
+                <li>A concrete generic identity includes the source declaration and ordered concrete type arguments.</li>
+                <li>Different concrete argument lists produce different concrete nominal types.</li>
+                <li>Identical physical representation does not merge distinct generic types.</li>
+                <li>Sec 0.1 supports generic structs, unions, enums, named types, interfaces, functions and methods.</li>
+                <li>Generic enums are valid even when a generic parameter contributes only to type identity.</li>
+                <li>Generic enum members remain payload-less.</li>
+                <li>Generic named types preserve ordinary named-type identity after substitution.</li>
+                <li>Generic interfaces become distinct concrete interface types after specialization.</li>
+                <li>Generic impl targets reuse the generic parameters declared by their owning type.</li>
+                <li>Methods may introduce additional method-level type parameters.</li>
+                <li>Interface method requirements do not introduce additional method-level generic parameters.</li>
+                <li>Generic constraints use <code>:</code> and must resolve to interfaces.</li>
+                <li>Multiple constraints on one parameter use <code>&amp;</code>.</li>
+                <li>Constraint satisfaction requires real explicit interface conformance.</li>
+                <li>A generic body may use only capabilities guaranteed by its generic contract.</li>
+                <li>An unconstrained generic parameter is not assumed copyable.</li>
+                <li>An unconstrained generic parameter is not assumed defaultable.</li>
+                <li>Generic code follows normal Sec ownership, borrowing, move, copy and destruction rules.</li>
+                <li>Forced-consuming generic parameters remain consuming for every concrete specialization.</li>
+                <li>Generic functions may use typed variadic parameters.</li>
+                <li>Inference may use arguments, receiver context, expected result type and already explicit generic arguments.</li>
+                <li>Calls may provide a left-to-right explicit generic prefix and infer the rest.</li>
+                <li>Generic argument holes are not supported.</li>
+                <li>Static storage in a generic type is distinct per concrete specialization.</li>
+                <li>Generic registers are valid only when register-specific rules can prove every concrete layout.</li>
+                <li>Recursive generic types must resolve to finite concrete representations.</li>
+                <li>Sec monomorphizes reachable generic uses before representation-dependent lowering.</li>
+                <li>No unresolved generic parameter reaches executable backend-facing IR.</li>
+                <li>Repeated requests for the same specialization reuse one canonical concrete identity.</li>
+                <li>Unused generic callables need not produce backend code.</li>
+                <li>Generic templates have no unresolved runtime ABI.</li>
+                <li>A generic function must be concretely specialized before becoming a function value.</li>
+                <li>Generic lambda templates are not part of Sec 0.1.</li>
+                <li>Generic resolution participates in ordinary overload resolution.</li>
+                <li>Sec generics use no runtime type erasure, dictionaries, generic dispatch or implicit boxing.</li>
+                <li>Higher-kinded types, generic parameter packs, default type arguments and generic argument holes are not part of Sec 0.1.</li>
+                <li>Type-generic syntax does not imply general const/value generics.</li>
             </ul>
         </section>
 
         <div class="page-navigation">
-                <a href="13-units.html">Previous: Units</a>
+            <a href="13-units.html">Previous: Units</a>
             <a href="15-structs.html">Next: Structs</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
-  <div class="site-footer-inner">
-      <p>&copy; 2026 Sec Language</p>
-      <a href="https://github.com/YoePro/sec">GitHub</a>
-  </div>
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
 </footer>
 </body>
 </html>

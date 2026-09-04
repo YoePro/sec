@@ -31,7 +31,7 @@ Task[T]
 then a successful completion produces a value of type:
 
 ```sec
-T
+TaskOutcome[T]
 ```
 
 Example:
@@ -41,11 +41,13 @@ fn Calculate() int {
     return 42
 }
 
-let calculation := spawn Calculate()
-let value := await calculation
+let calculation := try spawn Calculate()
+let outcome := await calculation
 ```
 
-After `await`, `value` has type `int`.
+After `await`, `outcome` has type `TaskOutcome[int]`. Normal completion is
+represented by `Completed(42)`; the same expression retains this static type
+even when analysis proves normal completion.
 
 The binding `calculation` has been consumed and may not be used again.
 
@@ -53,14 +55,16 @@ The binding `calculation` has been consumed and may not be used again.
 
 ## Task[void]
 
-Awaiting a `Task[void]` waits for completion and produces no value.
+Awaiting a `Task[void]` waits for completion and produces
+`TaskOutcome[void]`.
 
 ```sec
-let worker := spawn Work()
-await worker
+let worker := try spawn Work()
+let outcome := await worker
 ```
 
-This is valid when `Work()` returns `void`.
+This is valid when `Work()` returns `void`; there is no special direct-`void`
+await rule.
 
 ---
 
@@ -72,17 +76,19 @@ This is valid when `Work()` returns `void`.
 fn Load() Result[Image, IOError] {
 }
 
-let loading := spawn Load()
-let result := await loading
+let loading := try spawn Load()
+let outcome := await loading
 ```
 
-`result` has type:
+`outcome` has type:
 
 ```sec
-Result[Image, IOError]
+TaskOutcome[Result[Image, IOError]]
 ```
 
-`await` does not automatically unwrap `Result`.
+`Completed(Err(IOError.InvalidValue))` is normal task completion. It is neither
+`Failed(TaskError)` nor cancellation. `await` does not automatically unwrap
+either `TaskOutcome` or the nested `Result`.
 
 Typed program errors remain ordinary values.
 
@@ -93,8 +99,8 @@ Typed program errors remain ordinary values.
 `await` consumes the owning task handle.
 
 ```sec
-let task := spawn Calculate()
-let value := await task
+let task := try spawn Calculate()
+let outcome := await task
 ```
 
 Afterward:
@@ -135,7 +141,7 @@ The source-level task handle is still consumed.
 Invalid:
 
 ```sec
-let worker := spawn thread Work()
+let worker := try spawn thread Work()
 await worker
 ```
 
@@ -148,7 +154,7 @@ await requires Task[T]; got Thread[T]
 Invalid:
 
 ```sec
-let process := spawn process Program()
+let process := try spawn process Program()
 await process
 ```
 
@@ -168,14 +174,14 @@ explicit awaitable adapter.
 A newly spawned task may be awaited directly.
 
 ```sec
-let value := await spawn Calculate()
+let outcome := await (try spawn Calculate())
 ```
 
 This is equivalent in semantics to:
 
 ```sec
-let task := spawn Calculate()
-let value := await task
+let task := try spawn Calculate()
+let outcome := await task
 ```
 
 The compiler may optimize the physical scheduling when observable task semantics
@@ -216,7 +222,7 @@ value extraction.
 Example:
 
 ```sec
-let worker := spawn Calculate()
+let worker := try spawn Calculate()
 
 join worker
 
@@ -254,7 +260,7 @@ let value := task.value
 Invalid:
 
 ```sec
-let task := spawn Calculate()
+let task := try spawn Calculate()
 let value := task.value
 ```
 
@@ -309,9 +315,7 @@ A task may become cancelled because:
 
 A cancelled `Task[T]` has no normal value of type `T`.
 
-Therefore awaiting a cancellable task must account for cancellation.
-
-The exact surface syntax may use a compiler-known outcome type:
+Therefore awaiting a task always produces the compiler-known outcome type:
 
 ```sec
 TaskOutcome[T]
@@ -323,6 +327,7 @@ Conceptually:
 type TaskOutcome[T] union {
     Completed(T)
     Cancelled
+    Panicked(PanicInfo)
     Failed(TaskError)
 }
 ```
@@ -339,21 +344,19 @@ uses `Completed` without a payload.
 
 ## Await outcome
 
-The initial semantic model should treat:
+The canonical semantic model treats:
 
 ```sec
 await task
 ```
 
-as resolving the complete task outcome.
-
-When the compiler can prove normal completion, the expression may produce `T`
-directly.
-
-In the general cancellable case, the result must preserve:
+as resolving the complete task outcome with the static type `TaskOutcome[T]`.
+Proof of normal completion may optimize representation or unreachable branches,
+but it does not change that type to `T`. The result preserves:
 
 - completed value
 - cancellation
+- panic with `PanicInfo`
 - task execution failure
 
 Example form:
@@ -362,12 +365,10 @@ Example form:
 match await task {
     Completed(value) => Use(value)
     Cancelled => HandleCancellation()
+    Panicked(info) => HandlePanic(info)
     Failed(error) => HandleTaskFailure(error)
 }
 ```
-
-The exact spelling of the outcome variants may be finalized with the task error
-model.
 
 `await` must never invent a default `T` for cancelled or failed tasks.
 
@@ -381,20 +382,13 @@ For a void task:
 match await task {
     Completed => Continue()
     Cancelled => HandleCancellation()
+    Panicked(info) => HandlePanic(info)
     Failed(error) => HandleTaskFailure(error)
 }
 ```
 
-A plain:
-
-```sec
-await task
-```
-
-may be permitted when the surrounding context propagates or handles cancellation
-and failure through a defined rule.
-
-Such behavior must remain explicit in semantic analysis.
+Discarding or otherwise handling this outcome follows the ordinary union,
+must-use, and discard rules; await does not silently erase abnormal outcomes.
 
 ---
 
@@ -518,7 +512,7 @@ An owning task may be awaited only once.
 Invalid:
 
 ```sec
-let task := spawn Calculate()
+let task := try spawn Calculate()
 
 let first := await task
 let second := await task
@@ -540,12 +534,12 @@ or resolves it.
 A function may return a task to its caller.
 
 ```sec
-fn StartWorker() Task[int] {
+fn StartWorker() Result[Task[int], TaskSpawnError] {
     return spawn Calculate()
 }
 
-let worker := StartWorker()
-let value := await worker
+let worker := try StartWorker()
+let outcome := await worker
 ```
 
 Ownership moves through the return value.
@@ -557,12 +551,12 @@ the move.
 
 ## Await in expressions
 
-`await` is an expression when the resolved outcome produces a value.
+`await` is an expression whose task operand produces `TaskOutcome[T]`.
 
 Examples:
 
 ```sec
-let value := await task
+let outcome := await task
 return await task
 Use(await task)
 ```
@@ -652,26 +646,6 @@ The compiler must validate at least:
 
 ## Semantic IR
 
-## Current implementation status
-
-Implemented:
-
-- parser accepts `await expression`
-- sema requires the operand to be `Task[T]`
-- sema returns `T`
-- awaiting a local task handle consumes it through existing move-only tracking
-- `await` inside `defer` is rejected
-
-Not implemented yet:
-
-- `join`
-- `TaskOutcome[T]`
-- cancellation/failure outcome typing
-- `task.value` completion-state checks
-- live `MutexGuard[T]` across-await validation
-- retained task-borrow validation
-- Semantic IR/MLIR lowering for await
-
 Semantic IR must represent await and join explicitly.
 
 At minimum:
@@ -691,6 +665,7 @@ The IR must record:
 - owner being consumed
 - result ownership transfer
 - cancellation path
+- panic path carrying `PanicInfo`
 - task failure path
 - cleanup before suspension
 - borrows live across suspension
@@ -762,7 +737,7 @@ task failure must be handled before using the completed value
 Detailed behavior is defined in:
 
 ```text
-tasks.txt
+tasks.md
 spawn.txt
 concurrency.txt
 mutex.txt

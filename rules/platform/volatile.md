@@ -902,6 +902,11 @@ volatile access.
 The compiler may prove eligibility after monomorphization or through another
 canonical generic contract defined elsewhere.
 
+Generic concretization follows `rules/compiler/generics_lowering.md`. A
+specialization may refine type-dependent volatile eligibility, but it must
+preserve every observable access and ordering effect and may not use missing
+generic-lowering coverage to weaken volatile semantics.
+
 ---
 
 ## 39. Binding declarations perform no physical access

@@ -80,6 +80,11 @@ The selected task profile may use:
 
 The implementation choice must not change task semantics.
 
+In particular, scheduling, migration, and proof of normal completion must not
+change the source-level types `Result[Task[T], TaskSpawnError]` for creation or
+`TaskOutcome[T]` for await. Exact task semantics are owned by
+`rules/concurrency/tasks.md`.
+
 A task may resume on a different physical thread after suspension.
 
 ---
@@ -574,7 +579,7 @@ Cross-check and update:
 
 ```text
 spawn.md
-tasks.txt
+tasks.md
 threads.md
 await.md
 blocking.md

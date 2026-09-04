@@ -778,6 +778,13 @@ diagnostics, verification, and debug information.
 
 ## 30. Call-plan construction algorithm
 
+ABI planning consumes only concrete generic callable and data instances.
+Generic source templates have no unresolved runtime ABI, and ABI lowering must
+not introduce hidden generic dictionaries or type descriptors. The required
+concretization boundary is defined by `rules/compiler/generics_lowering.md`;
+FFI/export legality of a resulting concrete instance remains owned by this
+rulebook and the FFI rulebook.
+
 A conforming implementation should follow staging equivalent to:
 
 ```text

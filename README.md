@@ -581,13 +581,13 @@ Target profiles may restrict facilities such as heap allocation, threads or oper
 Important repository areas include:
 
 ```text
-cmd/          compiler commands
-internal/     compiler implementation
-rules/        normative language and compiler specifications
-stdlib/       standard library
-platform/     target-specific platform support
-runtime/      minimal runtime facilities where required
-testdata/     language and compiler test programs
+cmd/              compiler commands
+internal/         compiler implementation
+rules/            normative language and compiler specifications
+sec/core          core library
+sec/stdlib/       standard library
+sec/platform/     target-specific platform support
+testdata/         language and compiler test programs
 ```
 
 The files under `rules/` are the normative specification.

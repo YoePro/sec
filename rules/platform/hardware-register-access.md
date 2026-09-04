@@ -1604,6 +1604,12 @@ Semantic IR must represent hardware operations explicitly before target lowering
 
 It must not infer hardware semantics from generic integer load/store patterns in LLVM.
 
+When such an operation appears in a generic specialization,
+`rules/compiler/generics_lowering.md` requires complete concretization before
+executable lowering. Specialization may refine type-dependent facts but must not
+weaken, duplicate, eliminate, or reorder hardware, atomic, barrier, fault, or
+completion effects defined by this rulebook.
+
 ### 30.2 Required operation information
 
 Semantic IR or an equivalent verified lowering plan must preserve, where applicable:

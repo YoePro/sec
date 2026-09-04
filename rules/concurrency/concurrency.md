@@ -53,6 +53,18 @@ spawn
 
 Processes use the same spawn family when the process rulebook permits it.
 
+Task creation is fallible and awaiting a successfully created task always
+preserves the execution outcome layer:
+
+```text
+spawn Work()       -> Result[Task[T], TaskSpawnError]
+await Task[T]      -> TaskOutcome[T]
+```
+
+`TaskOutcome[T]` distinguishes `Completed(T)`, `Cancelled`,
+`Panicked(PanicInfo)`, and `Failed(TaskError)`. A task function returning
+`Err(E)` completes normally as `Completed(Err(E))`.
+
 Execution entities may execute:
 
 - concurrently
@@ -131,7 +143,7 @@ fn Worker(data: Data) void {
 }
 
 let data := Data.Create()
-let worker := spawn Worker(data)
+let worker := try spawn Worker(<-data)
 ```
 
 If `Data` is move-only, ownership moves into the task.
@@ -158,8 +170,8 @@ Example:
 ```sec
 let configuration := LoadConfiguration()
 
-let first := spawn ReadConfiguration(ref configuration)
-let second := spawn ReadConfiguration(ref configuration)
+let first := try spawn ReadConfiguration(ref configuration)
+let second := try spawn ReadConfiguration(ref configuration)
 
 await first
 await second
@@ -179,8 +191,8 @@ Invalid:
 ```sec
 let mut state := State.Create()
 
-let first := spawn Update(ref mut state)
-let second := spawn Update(ref mut state)
+let first := try spawn Update(ref mut state)
+let second := try spawn Update(ref mut state)
 ```
 
 The two mutable borrows overlap.
@@ -212,11 +224,18 @@ fn Produce() Data {
     return Data.Create()
 }
 
-let producer := spawn Produce()
-let data := await producer
+let producer := try spawn Produce()
+let produced := await producer
+let data := match produced {
+    Completed(value) => value
+    Cancelled => return
+    Panicked(info) => return
+    Failed(error) => return
+}
 
-let consumer := spawn Consume(data)
-await consumer
+let consumer := try spawn Consume(<-data)
+let consumed := await consumer
+Handle(consumed)
 ```
 
 Ownership transfer must remain explicit in Semantic IR.
@@ -572,8 +591,8 @@ Example:
 
 ```sec
 fn Bomb() void {
-    let first := spawn Bomb()
-    let second := spawn Bomb()
+    let first := try spawn Bomb()
+    let second := try spawn Bomb()
 
     await first
     await second
@@ -863,7 +882,7 @@ Concurrency must not:
 Detailed behavior is defined in:
 
 ```text
-tasks.txt
+tasks.md
 spawn.txt
 await.txt
 mutex.txt

@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,46 +22,46 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">Switch Statements</div>
-        <a href="#switch-statements">Overview</a>
-        <a href="#switch-with-subject">Switch with a Subject</a>
+        <div class="sidebar-section">This page</div>
+        <a href="#switch-statements">Switch Statements</a>
+        <a href="#subject-switch">Subject Switch</a>
+        <a href="#subjectless-switch">Subjectless Switch</a>
         <a href="#subject-evaluation">Subject Evaluation</a>
         <a href="#case-order">Case Order</a>
         <a href="#value-cases">Value Cases</a>
-        <a href="#case-expressions">Case Expressions</a>
-
-        <div class="sidebar-section">Case Forms</div>
-        <a href="#multiple-values">Multiple Values</a>
+        <a href="#dynamic-cases">Dynamic Case Expressions</a>
         <a href="#range-cases">Range Cases</a>
         <a href="#relational-cases">Relational Cases</a>
-        <a href="#subjectless-switch">Subjectless Switch</a>
-        <a href="#default-clause">default</a>
-
-        <div class="sidebar-section">Control Flow</div>
-        <a href="#no-implicit-fallthrough">No Implicit Fallthrough</a>
-        <a href="#explicit-fallthrough">Explicit fallthrough</a>
+        <a href="#mixed-cases">Mixed Alternatives</a>
+        <a href="#subjectless-alternatives">Subjectless Alternatives</a>
+        <a href="#default">Default</a>
+        <a href="#fallthrough">Fallthrough</a>
         <a href="#empty-cases">Empty Cases</a>
-        <a href="#case-scope">Case Scope</a>
-        <a href="#termination">Termination</a>
-        <a href="#definite-assignment">Definite Assignment</a>
+        <a href="#scope">Case Scope</a>
+        <a href="#duplicates">Duplicate and Overlapping Cases</a>
+        <a href="#enums">Enum Subjects</a>
+        <a href="#strings">String Subjects</a>
+        <a href="#semantic-types">Semantic Types and Units</a>
+        <a href="#booleans">Boolean Subjects</a>
+        <a href="#no-patterns">Switch Is Not Match</a>
+        <a href="#no-guards">No Case Guards</a>
+        <a href="#statement-only">Switch Is a Statement</a>
+        <a href="#loop-control">Break and Continue</a>
+        <a href="#flow-analysis">Flow Analysis</a>
+        <a href="#lowering">Lowering Semantics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Type Rules</div>
-        <a href="#duplicate-and-overlap">Duplicates and Overlap</a>
-        <a href="#enums-and-strings">Enums and Strings</a>
-        <a href="#semantic-types-and-units">Semantic Types and Units</a>
-        <a href="#switch-versus-match">switch versus match</a>
-        <a href="#common-errors">Common Errors</a>
-        <a href="#summary-rules">Summary of Rules</a>
-
-                        <div class="sidebar-section">Language</div>
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -101,12 +101,15 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
@@ -118,290 +121,69 @@
         <h1 id="switch-statements">Switch Statements</h1>
 
         <p>
-            A <code>switch</code> statement selects one branch from an ordered set of cases. It is intended for
-            value-based branching and may either compare one subject expression against several cases or evaluate
-            boolean conditions directly when no subject is present.
+            <code>switch</code> provides ordered branching over either one subject value
+            or a sequence of boolean conditions.
         </p>
 
+        <pre><code>switch status {
+case Status.Ready:
+    Start()
+
+case Status.Waiting:
+    Wait()
+
+default:
+    Stop()
+}</code></pre>
+
         <p>
-            Cases are tested from top to bottom, and the first matching case is selected. After the selected case
-            finishes, execution continues after the switch unless the case returns, otherwise terminates, or uses
-            an explicit <code>fallthrough</code> statement.
+            Sec supports both subject-based and subjectless switches. In both forms,
+            cases are considered in source order and the first matching case wins.
         </p>
 
         <div class="rule">
-            <strong>Rule:</strong> <code>switch</code> is for value-based branching. Structural matching,
-            destructuring, union variants, <code>Result</code> and <code>Option</code> belong to <code>match</code>.
+            <strong>Rule:</strong> <code>switch</code> is ordered branching, not structural
+            pattern matching. Use <code>match</code> when variants must be destructured,
+            payloads bound, exhaustiveness required, or a branch expression must produce a value.
         </div>
 
-        <div class="section" id="switch-with-subject">
-            <h2>Switch with a Subject</h2>
+        <section id="subject-switch">
+            <h2>Subject Switch</h2>
 
-            <p>
-                The most common form evaluates one subject expression and compares it with one or more case items.
-            </p>
+            <p>A subject switch evaluates one expression and compares cases against it:</p>
 
             <pre><code>switch expression {
 case value:
     statements
 
-case otherValue:
+case value1, value2:
+    statements
+
+case range:
+    statements
+
+case &lt; limit:
     statements
 
 default:
     statements
 }</code></pre>
 
-            <p>Example:</p>
-
-            <pre><code>switch status {
-case Status.ready:
-    Start()
-
-case Status.waiting:
-    Wait()
-
-case Status.failed:
-    Stop()
-
-default:
-    Reset()
-}</code></pre>
-
             <p>
-                The switch body is enclosed by braces. Each case begins with <code>case</code>, followed by one or
-                more case items and a colon. The optional <code>default</code> clause handles every value that did
-                not match an earlier case.
-            </p>
-        </div>
-
-        <div class="section" id="subject-evaluation">
-            <h2>Subject Evaluation</h2>
-
-            <p>The subject expression is evaluated exactly once.</p>
-
-            <pre><code>switch ReadStatus() {
-case Status.ready:
-    Start()
-
-default:
-    Stop()
-}</code></pre>
-
-            <p>
-                In this example, <code>ReadStatus()</code> is called once. Its result is then used for all case
-                comparisons. This rule is important when the subject expression performs work, reads mutable state
-                or has visible side effects.
-            </p>
-        </div>
-
-        <div class="section" id="case-order">
-            <h2>Case Order</h2>
-
-            <p>
-                Cases are tested in source order. The first matching case wins. Once a case has matched, later case
-                expressions are not evaluated.
+                The body may contain zero or more <code>case</code> clauses and one optional
+                final <code>default</code> clause.
             </p>
 
-            <pre><code>switch value {
-case minimum:
-    AtMinimum()
-
-case CalculateTarget():
-    AtTarget()
-
-default:
-    Other()
-}</code></pre>
-
             <p>
-                <code>CalculateTarget()</code> is only called when the first case does not match. Case order may
-                therefore affect both program behavior and performance.
+                Case items may be ordinary compatible values, ranges or relational forms.
             </p>
-        </div>
+        </section>
 
-        <div class="section" id="value-cases">
-            <h2>Value Cases</h2>
-
-            <p>A value case compares the switch subject with a compatible case expression.</p>
-
-            <pre><code>switch value {
-case 1:
-    One()
-
-case 2:
-    Two()
-
-default:
-    Other()
-}</code></pre>
-
-            <p>
-                Each case value must be equality-compatible with the subject type. Sec does not perform unrelated
-                implicit conversions merely to make a case compile.
-            </p>
-
-            <pre><code>let value: int := 1
-
-switch value {
-case "one":
-    One()
-} // Error: switch case must be compatible with subject type int, got string.</code></pre>
-        </div>
-
-        <div class="section" id="case-expressions">
-            <h2>Case Expressions</h2>
-
-            <p>Case items are not limited to literals. A case expression may be a:</p>
-
-            <ul>
-                <li>literal,</li>
-                <li>constant,</li>
-                <li>variable,</li>
-                <li>field or property,</li>
-                <li>function call,</li>
-                <li>method call,</li>
-                <li>or another expression compatible with the subject.</li>
-            </ul>
-
-            <pre><code>switch value {
-case minimum:
-    AtMinimum()
-
-case limits.Maximum:
-    AtMaximum()
-
-case CalculateTarget():
-    AtTarget()
-}</code></pre>
-
-            <p>
-                Case expressions are evaluated only if execution reaches their case. Expressions in one case are
-                evaluated from left to right.
-            </p>
-        </div>
-
-        <div class="section" id="multiple-values">
-            <h2>Multiple Values in One Case</h2>
-
-            <p>Several alternatives may share one case body by separating them with commas.</p>
-
-            <pre><code>switch value {
-case 2, 3, 5, 7:
-    Prime()
-
-default:
-    Other()
-}</code></pre>
-
-            <p>The case above is equivalent to testing:</p>
-
-            <pre><code>value == 2 || value == 3 || value == 5 || value == 7</code></pre>
-
-            <p>
-                Alternatives are tested from left to right. The body runs once when any alternative matches.
-            </p>
-        </div>
-
-        <div class="section" id="range-cases">
-            <h2>Range Cases</h2>
-
-            <p>Ranges may be used directly as case items.</p>
-
-            <pre><code>switch score {
-case 0..&lt;50:
-    Failed()
-
-case 50..&lt;80:
-    Passed()
-
-case 80..100:
-    Excellent()
-}</code></pre>
-
-            <p>Normal Sec range forms are supported:</p>
-
-            <pre><code>start..end
-start..&lt;end
-start..
-..end
-..&lt;end</code></pre>
-
-            <p>
-                The subject and the range bounds must have compatible ordered types. Inclusive and exclusive range
-                boundaries retain their normal meaning.
-            </p>
-
-            <pre><code>switch temperature {
-case ..&lt;0:
-    Frozen()
-
-case 0..&lt;100:
-    Liquid()
-
-case 100..:
-    BoilingOrAbove()
-}</code></pre>
-
-            <p>Values and ranges may be combined in the same case:</p>
-
-            <pre><code>switch value {
-case 1, 3, 5, 10..&lt;20:
-    Selected()
-
-default:
-    Other()
-}</code></pre>
-        </div>
-
-        <div class="section" id="relational-cases">
-            <h2>Relational Cases</h2>
-
-            <p>
-                A relational case compares the switch subject without repeating it. The supported operators are
-                <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> and <code>&gt;=</code>.
-            </p>
-
-            <pre><code>switch value {
-case &lt; 0:
-    Negative()
-
-case 0:
-    Zero()
-
-case &gt; 0:
-    Positive()
-}</code></pre>
-
-            <p>The following case:</p>
-
-            <pre><code>case &lt; limit:</code></pre>
-
-            <p>means:</p>
-
-            <pre><code>subject &lt; limit</code></pre>
-
-            <p>Several relational alternatives may share one body:</p>
-
-            <pre><code>switch value {
-case &lt; minimum, &gt; maximum:
-    Outside()
-
-default:
-    Inside()
-}</code></pre>
-
-            <p>
-                Relational cases require an ordered subject type and an operand compatible with that type.
-            </p>
-        </div>
-
-        <div class="section" id="subjectless-switch">
+        <section id="subjectless-switch">
             <h2>Subjectless Switch</h2>
 
             <p>
-                A switch without a subject evaluates boolean conditions. It is useful when several peer conditions
-                should be tested in order.
+                Omitting the subject creates an ordered chain of boolean conditions:
             </p>
 
             <pre><code>switch {
@@ -419,16 +201,281 @@ default:
 }</code></pre>
 
             <p>
-                Every case item in a subjectless switch must have type <code>bool</code>. No implicit truthiness is
-                applied.
+                Every case item in a subjectless switch must have type <code>bool</code>.
+                There is no implicit truthiness.
             </p>
 
-            <pre><code>switch {
-case 10:
-    Invalid()
-} // Error: subjectless switch case must be bool, got int.</code></pre>
+            <p>
+                A subjectless switch is useful when several peer conditions are clearer
+                than a long <code>if</code> / <code>else if</code> chain.
+            </p>
+        </section>
 
-            <p>Comma-separated conditions use short-circuit logical OR:</p>
+        <section id="subject-evaluation">
+            <h2>Subject Evaluation</h2>
+
+            <p>The subject expression is evaluated exactly once.</p>
+
+            <pre><code>switch ReadStatus() {
+case Status.Ready:
+    Start()
+
+default:
+    Stop()
+}</code></pre>
+
+            <p>
+                <code>ReadStatus()</code> is called once. The resulting value is then used
+                for all case tests.
+            </p>
+
+            <p>
+                The compiler may keep that value in an SSA value, machine register or temporary
+                storage, but lowering must preserve the one-evaluation source semantics.
+            </p>
+        </section>
+
+        <section id="case-order">
+            <h2>Case Evaluation Order</h2>
+
+            <p>Cases are considered from top to bottom in source order.</p>
+
+            <p>
+                Within one case, comma-separated alternatives are considered left to right.
+            </p>
+
+            <pre><code>switch value {
+case first, second, third:
+    Selected()
+
+case other:
+    Other()
+}</code></pre>
+
+            <p>The first matching case body executes.</p>
+
+            <p>After a case matches:</p>
+
+            <ul>
+                <li>later case tests are not evaluated;</li>
+                <li>the selected case body executes once;</li>
+                <li>normal completion continues after the switch;</li>
+                <li>explicit <code>fallthrough</code> may instead enter the next case body.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Source order is semantically observable when case
+                expressions have side effects or use runtime values.
+            </div>
+        </section>
+
+        <section id="value-cases">
+            <h2>Value Cases</h2>
+
+            <p>
+                A value case compares the subject using ordinary Sec equality semantics.
+            </p>
+
+            <pre><code>switch value {
+case 1:
+    One()
+
+case 2, 3, 5, 7:
+    Prime()
+
+default:
+    Other()
+}</code></pre>
+
+            <p>
+                Comma-separated values are alternatives. The body executes when the subject
+                equals any one of them.
+            </p>
+
+            <p>
+                Every case item must be equality-compatible with the subject. A switch does
+                not introduce implicit conversions or relaxed type identity.
+            </p>
+
+            <pre><code>type CustomerID uint64
+type ProductID uint64
+
+let customer: CustomerID := 42
+let product: ProductID := 42
+
+switch customer {
+case product:
+    ...             // invalid
+}</code></pre>
+        </section>
+
+        <section id="dynamic-cases">
+            <h2>Dynamic Case Expressions</h2>
+
+            <p>
+                Case values are not restricted to compile-time constants.
+            </p>
+
+            <pre><code>switch value {
+case minimum:
+    AtMinimum()
+
+case CalculateTarget():
+    AtTarget()
+}</code></pre>
+
+            <p>Case expressions may include:</p>
+
+            <ul>
+                <li>literals;</li>
+                <li>constants;</li>
+                <li>variables;</li>
+                <li>fields;</li>
+                <li>properties;</li>
+                <li>function calls;</li>
+                <li>method calls;</li>
+                <li>other expressions valid for equality comparison with the subject.</li>
+            </ul>
+
+            <p>
+                Dynamic case expressions are evaluated lazily only when execution reaches them.
+            </p>
+
+            <pre><code>switch value {
+case KnownValue:
+    HandleKnown()
+
+case ExpensiveCheckValue():
+    HandleExpensive()
+}</code></pre>
+
+            <p>
+                If <code>KnownValue</code> matches, <code>ExpensiveCheckValue()</code> is not called.
+            </p>
+        </section>
+
+        <section id="range-cases">
+            <h2>Range Cases</h2>
+
+            <p>A subject switch may test range membership directly:</p>
+
+            <pre><code>switch score {
+case 0..&lt;50:
+    Failed()
+
+case 50..&lt;80:
+    Passed()
+
+case 80..100:
+    Excellent()
+}</code></pre>
+
+            <p>Range cases use the ordinary Sec range forms:</p>
+
+            <pre><code>start..end
+start..&lt;end
+start..
+..end
+..&lt;end</code></pre>
+
+            <p>
+                The subject and the range bounds must have compatible ordered types.
+            </p>
+
+            <p>
+                A range case is a membership test. It does not construct a sequence, iterate
+                over the range or reevaluate the subject.
+            </p>
+        </section>
+
+        <section id="relational-cases">
+            <h2>Relational Cases</h2>
+
+            <p>
+                A subject switch may use an ordered comparison without repeating the subject:
+            </p>
+
+            <pre><code>switch value {
+case &lt; 0:
+    Negative()
+
+case 0:
+    Zero()
+
+case &gt; 0:
+    Positive()
+}</code></pre>
+
+            <p>Supported forms are:</p>
+
+            <pre><code>case &lt; expression:
+case &lt;= expression:
+case &gt; expression:
+case &gt;= expression:</code></pre>
+
+            <p>This:</p>
+
+            <pre><code>switch value {
+case &lt; limit:
+    Below()
+}</code></pre>
+
+            <p>uses the same ordered-comparison semantics as:</p>
+
+            <pre><code>if value &lt; limit {
+    Below()
+}</code></pre>
+
+            <p>
+                The subject and the relational operand must support the requested ordered comparison.
+            </p>
+
+            <h3>Several relational alternatives</h3>
+
+            <pre><code>switch value {
+case &lt; minimum, &gt; maximum:
+    Outside()
+
+default:
+    Inside()
+}</code></pre>
+
+            <p>
+                These alternatives mean OR, not conjunction. They are evaluated left to right.
+            </p>
+        </section>
+
+        <section id="mixed-cases">
+            <h2>Mixed Alternatives</h2>
+
+            <p>
+                A subject case may combine compatible values, ranges and relational items:
+            </p>
+
+            <pre><code>switch value {
+case 1, 3, 5, 10..&lt;20:
+    Selected()
+
+default:
+    Other()
+}</code></pre>
+
+            <p>
+                Each item is tested left to right. The body executes once when any item matches.
+            </p>
+
+            <p>
+                Every alternative must independently satisfy the type rules required by its form.
+            </p>
+        </section>
+
+        <section id="subjectless-alternatives">
+            <h2>Subjectless Comma Alternatives</h2>
+
+            <p>
+                In a subjectless switch, comma-separated conditions behave like boolean OR
+                with left-to-right short-circuit evaluation:
+            </p>
 
             <pre><code>switch {
 case user.IsAdmin(), user.IsOwner():
@@ -442,17 +489,25 @@ default:
 }</code></pre>
 
             <p>
-                A subjectless switch behaves similarly to an <code>if</code>/<code>else if</code> chain. The switch
-                form is often clearer when all branches are conceptually equal cases of one decision.
+                Once one condition in a case becomes <code>true</code>, later alternatives in
+                that case are skipped.
             </p>
-        </div>
-
-        <div class="section" id="default-clause">
-            <h2><code>default</code></h2>
 
             <p>
-                The optional <code>default</code> clause runs when no case matches. A switch may contain at most one
-                <code>default</code>, and it must be the final clause.
+                Once a case matches, every later case is skipped.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Subjectless comma alternatives are ordered, short-circuiting
+                alternatives. They are not a set whose evaluation order may be rearranged.
+            </div>
+        </section>
+
+        <section id="default">
+            <h2>Default</h2>
+
+            <p>
+                <code>default</code> executes only when no preceding case matches.
             </p>
 
             <pre><code>switch value {
@@ -467,25 +522,25 @@ default:
 }</code></pre>
 
             <p>
-                If no case matches and no <code>default</code> exists, the switch performs no branch body and
-                execution continues after the switch.
+                <code>default</code> is optional.
             </p>
 
-            <pre><code>switch value {
-default:
-    Other()
+            <p>
+                If no case matches and no <code>default</code> exists, execution continues
+                after the switch.
+            </p>
 
-case 1:
-    One()
-} // Error: default must be the final switch clause.</code></pre>
-        </div>
+            <p>
+                A switch may contain at most one <code>default</code>, and it must be the final
+                clause.
+            </p>
+        </section>
 
-        <div class="section" id="no-implicit-fallthrough">
+        <section id="fallthrough">
             <h2>No Implicit Fallthrough</h2>
 
             <p>
-                A case ends automatically. Sec does not require <code>break</code> at the end of each case and does
-                not continue into the next case implicitly.
+                Ordinary cases do not continue into the following case.
             </p>
 
             <pre><code>switch value {
@@ -496,15 +551,20 @@ case 2:
     Two()
 }</code></pre>
 
-            <p>When <code>value</code> is <code>1</code>, only <code>One()</code> runs.</p>
-        </div>
-
-        <div class="section" id="explicit-fallthrough">
-            <h2>Explicit <code>fallthrough</code></h2>
+            <p>
+                When <code>value</code> is <code>1</code>, only <code>One()</code> executes.
+                Normal completion then continues after the switch.
+            </p>
 
             <p>
-                <code>fallthrough</code> transfers control directly to the body of the next case. The next case's
-                condition is not tested.
+                There is no required <code>break</code> at the end of a normal case.
+            </p>
+
+            <h3>Explicit fallthrough</h3>
+
+            <p>
+                Use <code>fallthrough</code> when execution must continue directly into the
+                next case body:
             </p>
 
             <pre><code>switch value {
@@ -522,26 +582,31 @@ default:
             <p>When <code>value</code> is <code>1</code>:</p>
 
             <ol>
-                <li><code>One()</code> executes.</li>
-                <li>Control enters the next case body.</li>
-                <li>The <code>case 2</code> condition is not evaluated.</li>
+                <li><code>One()</code> executes;</li>
+                <li><code>fallthrough</code> transfers directly to the next case body;</li>
+                <li>the next case's tests are not evaluated;</li>
                 <li><code>OneOrTwo()</code> executes.</li>
             </ol>
 
+            <p><code>fallthrough</code> must:</p>
+
+            <ul>
+                <li>be the final non-empty statement in its case;</li>
+                <li>have a following case;</li>
+                <li>appear directly in the case body;</li>
+                <li>not appear in <code>default</code>.</li>
+            </ul>
+
             <p>
-                <code>fallthrough</code> must be the final non-empty statement in a case. It is not allowed in the
-                final case or in <code>default</code>. It is only valid directly inside a switch case body.
+                A nested <code>if</code>, loop, lambda or other nested block cannot use
+                <code>fallthrough</code> to target an enclosing switch case.
             </p>
+        </section>
 
-            <pre><code>case 1:
-    fallthrough
-    MoreWork() // Error: fallthrough must be the final statement.</code></pre>
-        </div>
-
-        <div class="section" id="empty-cases">
+        <section id="empty-cases">
             <h2>Empty Cases</h2>
 
-            <p>An empty case is legal and does not fall through implicitly.</p>
+            <p>An empty case is legal:</p>
 
             <pre><code>switch value {
 case 1:
@@ -551,67 +616,390 @@ case 2:
 }</code></pre>
 
             <p>
-                When <code>value</code> is <code>1</code>, no statements execute and control continues after the switch.
-                Use explicit <code>fallthrough</code> when entering the next case body is intended.
+                An empty case does not implicitly fall through. When <code>value</code> is
+                <code>1</code>, no statements execute and control continues after the switch.
             </p>
-        </div>
 
-        <div class="section" id="case-scope">
+            <p>
+                Use explicit <code>fallthrough</code> if the next case body should execute.
+            </p>
+        </section>
+
+        <section id="scope">
             <h2>Case Scope</h2>
 
-            <p>Each case body creates an independent lexical scope.</p>
+            <p>Every case body has its own lexical scope.</p>
 
             <pre><code>switch value {
 case 1:
-    let message: string := "one"
+    let message := "one"
     Print(message)
 
 case 2:
-    let message: string := "two"
+    let message := "two"
     Print(message)
 }</code></pre>
 
             <p>
-                The two variables named <code>message</code> are legal because the sibling case scopes do not overlap.
-                A variable declared in one case is not visible in another case or after the switch.
+                The two <code>message</code> bindings belong to independent sibling scopes.
+            </p>
+
+            <p>
+                A binding declared in one case is not visible in another case or after the switch.
+            </p>
+
+            <p>
+                <code>fallthrough</code> transfers control into the next body, but it does not
+                merge the lexical scopes:
             </p>
 
             <pre><code>switch value {
 case 1:
-    let local: int := 10
-}
+    let local := 10
+    fallthrough
 
-Print(local) // Error: local is outside its scope.</code></pre>
+case 2:
+    Use(local)    // invalid
+}</code></pre>
 
             <p>
-                Variables declared before the switch are visible in all cases, and normal mutability rules apply.
+                Ownership, destruction and borrow analysis still account for the control-flow
+                edge created by <code>fallthrough</code>.
+            </p>
+        </section>
+
+        <section id="duplicates">
+            <h2>Duplicate and Overlapping Cases</h2>
+
+            <p>
+                Sec diagnoses case selections that are provably duplicated or unreachable.
             </p>
 
-            <pre><code>let mut result: int := 0
+            <h3>Duplicate compile-time values</h3>
+
+            <pre><code>switch value {
+case 1:
+    First()
+
+case 1:
+    Second()
+}</code></pre>
+
+            <p>
+                This is invalid. The compiler does not silently rely on source order when two
+                compile-time values are known to be equal.
+            </p>
+
+            <h3>Overlapping compile-time ranges</h3>
+
+            <pre><code>switch score {
+case 0..50:
+    First()
+
+case 40..100:
+    Second()
+}</code></pre>
+
+            <p>
+                The ranges overlap and are invalid when the overlap is statically known.
+            </p>
+
+            <p>A later exact value cannot be hidden inside an earlier compile-time range:</p>
+
+            <pre><code>switch score {
+case 0..100:
+    InRange()
+
+case 50:
+    Exact()
+}</code></pre>
+
+            <h3>Relational reachability</h3>
+
+            <p>Partial overlap is valid when later values remain reachable:</p>
+
+            <pre><code>switch value {
+case &lt;= -10:
+    VeryLow()
+
+case &lt; 0:
+    Low()
+}</code></pre>
+
+            <p>
+                The second case still handles values from <code>-9</code> through <code>-1</code>.
+            </p>
+
+            <p>A fully covered later relational case is invalid:</p>
+
+            <pre><code>switch value {
+case &gt;= 0:
+    NonNegative()
+
+case &gt; 10:
+    Large()
+}</code></pre>
+
+            <h3>Dynamic overlap</h3>
+
+            <p>
+                If values or bounds are dynamic and the compiler cannot prove complete coverage,
+                the cases remain valid. Runtime source order determines which matching case wins.
+            </p>
+        </section>
+
+        <section id="enums">
+            <h2>Enum Subjects</h2>
+
+            <p>An enum may be used as a switch subject:</p>
+
+            <pre><code>switch direction {
+case Direction.North:
+    North()
+
+case Direction.South:
+    South()
+
+default:
+    Other()
+}</code></pre>
+
+            <p>
+                A switch over an enum is not required to be exhaustive.
+            </p>
+
+            <p>
+                Use <code>match</code> when exhaustive handling of the enum domain is part
+                of the intended semantics.
+            </p>
+
+            <p>
+                For open foreign or hardware enum domains, the owning enum or FFI rules may
+                require handling unknown values, often through <code>default</code>.
+            </p>
+        </section>
+
+        <section id="strings">
+            <h2>String Subjects</h2>
+
+            <p>Strings may be switched on using ordinary string equality:</p>
+
+            <pre><code>switch command {
+case "start":
+    Start()
+
+case "stop":
+    Stop()
+
+default:
+    Unknown()
+}</code></pre>
+
+            <p>
+                <code>switch</code> does not introduce a special case-insensitive, locale-sensitive
+                or otherwise altered string comparison.
+            </p>
+        </section>
+
+        <section id="semantic-types">
+            <h2>Named Semantic Types and Units</h2>
+
+            <p>
+                Named types retain their ordinary compatibility rules inside a switch.
+            </p>
+
+            <pre><code>switch speed {
+case minimumSpeed..maximumSpeed:
+    Normal()
+}</code></pre>
+
+            <p>
+                An unrelated primitive value does not become compatible merely because it is
+                written in a case.
+            </p>
+
+            <p>Unit-bearing values retain normal unit compatibility:</p>
+
+            <pre><code>switch distance {
+case 0&lt;m&gt;..&lt;100&lt;m&gt;:
+    Near()
+
+case 100&lt;m&gt;..:
+    Far()
+}</code></pre>
+
+            <p>
+                Incompatible units cannot participate in the same equality, range or ordered
+                comparison merely because the operation occurs inside <code>switch</code>.
+            </p>
+        </section>
+
+        <section id="booleans">
+            <h2>Boolean Subjects</h2>
+
+            <p>A boolean value may be used as an explicit subject:</p>
+
+            <pre><code>switch ready {
+case true:
+    Start()
+
+case false:
+    Wait()
+}</code></pre>
+
+            <p>
+                This is valid Sec. An <code>if</code> / <code>else</code> is often simpler
+                when there is only one boolean distinction, but the language does not prohibit
+                a boolean subject switch.
+            </p>
+        </section>
+
+        <section id="no-patterns">
+            <h2>Switch Is Not Pattern Matching</h2>
+
+            <p>
+                <code>switch</code> does not destructure union, enum, <code>Result</code> or
+                <code>Option</code> payloads.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>switch result {
+case Ok(value):
+    Use(value)
+}</code></pre>
+
+            <p>Use <code>match</code>:</p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Use(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p><code>switch</code> does not add:</p>
+
+            <ul>
+                <li>wildcard patterns;</li>
+                <li>variant payload bindings;</li>
+                <li>property patterns;</li>
+                <li>list patterns;</li>
+                <li>type-binding patterns;</li>
+                <li>structural destructuring.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Boundary:</strong> Use <code>switch</code> for ordered tests.
+                Use <code>match</code> for structural patterns, payloads and exhaustiveness.
+            </div>
+        </section>
+
+        <section id="no-guards">
+            <h2>No Switch Case Guards</h2>
+
+            <p>
+                Sec 0.1 does not add a separate <code>where</code> guard to switch cases.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>switch value {
+case 10..20 where user.Active:
+    Handle()
+}</code></pre>
+
+            <p>Use a subjectless switch when the complete boolean condition should select the case:</p>
+
+            <pre><code>switch {
+case value in 10..20 &amp;&amp; user.Active:
+    Handle()
+}</code></pre>
+
+            <p>or place an <code>if</code> inside the selected case body.</p>
+
+            <p>
+                <code>where</code> belongs to the guarded-pattern model of <code>match</code>,
+                not to <code>switch</code>.
+            </p>
+        </section>
+
+        <section id="statement-only">
+            <h2>Switch Is a Statement</h2>
+
+            <p>
+                <code>switch</code> does not produce a value.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>let result := switch value {
+case 1:
+    10
+
+default:
+    20
+}</code></pre>
+
+            <p>
+                Use <code>match</code> when the branch construct itself should produce a value,
+                or assign to an outer mutable binding:
+            </p>
+
+            <pre><code>let mut result: int
 
 switch value {
 case 1:
     result = 10
 
-case 2:
-    result = 20
-
 default:
-    result = 30
+    result = 20
 }</code></pre>
-        </div>
 
-        <div class="section" id="termination">
-            <h2>Switch Termination</h2>
+            <p>
+                Definite-assignment analysis verifies that every continuing path has assigned
+                the value before it is read.
+            </p>
+        </section>
 
-            <p>A switch is considered terminating when:</p>
+        <section id="loop-control">
+            <h2>Break and Continue</h2>
 
-            <ul>
-                <li>it has a <code>default</code> clause,</li>
-                <li>every reachable case body terminates,</li>
-                <li>every fallthrough chain eventually reaches a terminating case,</li>
-                <li>and no reachable path continues after the switch.</li>
-            </ul>
+            <p>
+                A switch does not create a <code>break</code> or <code>continue</code> target.
+            </p>
+
+            <p>
+                Those statements retain their loop-only meaning.
+            </p>
+
+            <pre><code>switch value {
+case 1:
+    break    // invalid unless this statement belongs to an applicable enclosing loop context
+}</code></pre>
+
+            <p>
+                Ordinary switch cases do not need <code>break</code> because there is no
+                implicit fallthrough.
+            </p>
+
+            <p>
+                <code>fallthrough</code> is the only switch-specific case-to-case transfer statement.
+            </p>
+        </section>
+
+        <section id="flow-analysis">
+            <h2>Flow Analysis</h2>
+
+            <p>
+                Switch cases participate in ordinary path-sensitive control-flow, ownership,
+                borrowing, cleanup and definite-assignment analysis.
+            </p>
+
+            <h3>Terminating switch</h3>
+
+            <p>
+                A switch terminates when every reachable execution path through it terminates
+                rather than reaching the continuation after the statement.
+            </p>
 
             <pre><code>fn Classify(value: int) int {
     switch value {
@@ -627,23 +1015,16 @@ default:
 }</code></pre>
 
             <p>
-                This function satisfies the return requirement because every possible switch path returns.
+                This satisfies the function return requirement because every possible switch
+                path returns.
             </p>
-
-            <pre><code>fn Invalid(value: int) int {
-    switch value {
-    case 0:
-        return 0
-    }
-} // Error: value may not match any case.</code></pre>
-        </div>
-
-        <div class="section" id="definite-assignment">
-            <h2>Definite Assignment</h2>
 
             <p>
-                Assignment analysis merges only the paths that can continue after the switch.
+                A switch without complete coverage normally retains an unmatched path that
+                continues after the statement.
             </p>
+
+            <h3>Definite assignment</h3>
 
             <pre><code>fn Select(value: int) int {
     let mut result: int
@@ -663,282 +1044,173 @@ default:
 }</code></pre>
 
             <p>
-                This is valid because every possible continuing path assigns <code>result</code> before it is used.
+                This is valid because every continuing path assigns <code>result</code>.
             </p>
-
-            <pre><code>fn Invalid(value: int) int {
-    let mut result: int
-
-    switch value {
-    case 1:
-        result = 10
-    }
-
-    return result
-} // Error: value may not match case 1.</code></pre>
-        </div>
-
-        <div class="section" id="duplicate-and-overlap">
-            <h2>Duplicate and Overlapping Cases</h2>
-
-            <p>Compile-time duplicate case values are invalid.</p>
-
-            <pre><code>switch value {
-case 1:
-    A()
-
-case 1:
-    B()
-} // Error: duplicate switch case value 1.</code></pre>
-
-            <p>Compile-time ranges must not overlap.</p>
-
-            <pre><code>switch score {
-case 0..50:
-    A()
-
-case 40..100:
-    B()
-} // Error: switch case range overlaps previous case.</code></pre>
-
-            <p>A value may not be covered by an earlier compile-time range.</p>
-
-            <pre><code>switch score {
-case 0..100:
-    InRange()
-
-case 50:
-    Exact()
-} // Error: switch case value 50 is already covered by previous case.</code></pre>
-
-            <p>Clearly unreachable relational cases are also rejected.</p>
-
-            <pre><code>switch value {
-case &gt;= 0:
-    NonNegative()
-
-case &gt; 10:
-    Large()
-} // Error: previous case already covers this condition.</code></pre>
 
             <p>
-                When case expressions or range bounds are dynamic, overlap may not be provable at compile time. Such
-                cases are legal, and the first runtime match wins.
+                Without complete coverage, the possible unmatched path must also be included
+                in definite-assignment analysis.
             </p>
-        </div>
 
-        <div class="section" id="enums-and-strings">
-            <h2>Enums and Strings</h2>
-
-            <p>Enum values may be used as switch subjects.</p>
-
-            <pre><code>switch direction {
-case Direction.north:
-    North()
-
-case Direction.south:
-    South()
-
-default:
-    Other()
-}</code></pre>
+            <h3>Fallthrough chains</h3>
 
             <p>
-                An enum switch is not required to be exhaustive. Use <code>match</code> when every enum value must be
-                handled explicitly.
+                A <code>fallthrough</code> edge participates in the same flow merge, ownership,
+                destruction and cleanup reasoning as other explicit control-flow edges.
             </p>
 
-            <p>Strings may be used when normal string equality is available:</p>
+            <h3>Unreachable cases</h3>
 
-            <pre><code>switch command {
-case "start":
-    Start()
+            <p>
+                When earlier cases provably cover every value that could reach a later case,
+                the later case is unreachable and the compiler diagnoses it.
+            </p>
+        </section>
 
-case "stop":
-    Stop()
+        <section id="lowering">
+            <h2>Lowering Semantics</h2>
 
-default:
-    Unknown()
-}</code></pre>
+            <p>
+                The backend may choose different low-level representations for different switches.
+                A constant integer switch may become a jump table, while another switch may become
+                a decision tree or ordinary branches.
+            </p>
 
-            <p>A boolean subject is legal, although <code>if</code>/<code>else</code> is often clearer:</p>
-
-            <pre><code>switch ready {
-case true:
-    Start()
-
-case false:
-    Wait()
-}</code></pre>
-        </div>
-
-        <div class="section" id="semantic-types-and-units">
-            <h2>Semantic Types and Units</h2>
-
-            <p>Named types retain their normal identity inside switch statements.</p>
-
-            <pre><code>type Speed int
-
-let speed: Speed := 50
-let minimumSpeed: Speed := 10
-let maximumSpeed: Speed := 100
-
-switch speed {
-case minimumSpeed..maximumSpeed:
-    Normal()
-}</code></pre>
-
-            <p>Plain values of an unrelated type are not accepted implicitly:</p>
-
-            <pre><code>switch speed {
-case 0..100:
-    Normal()
-} // Error when int is not implicitly compatible with Speed.</code></pre>
-
-            <p>Unit values also retain unit compatibility rules.</p>
-
-            <pre><code>switch distance {
-case 0&lt;m&gt;..&lt;100&lt;m&gt;:
-    Near()
-
-case 100&lt;m&gt;..:
-    Far()
-}</code></pre>
-
-            <p>Values with incompatible units cannot be compared in the same switch.</p>
-        </div>
-
-        <div class="section" id="switch-versus-match">
-            <h2><code>switch</code> versus <code>match</code></h2>
-
-            <p><code>switch</code> performs ordered value-based branching. It does not perform structural matching.</p>
-
-            <p>Use <code>switch</code> for:</p>
+            <p>Every lowering strategy must preserve:</p>
 
             <ul>
-                <li>values,</li>
-                <li>ranges,</li>
-                <li>relational comparisons,</li>
-                <li>ordered boolean conditions.</li>
+                <li>one evaluation of the subject;</li>
+                <li>source-order case testing where evaluation is observable;</li>
+                <li>left-to-right comma-alternative evaluation;</li>
+                <li>short-circuiting for subjectless comma alternatives;</li>
+                <li>first-match-wins semantics;</li>
+                <li>no implicit fallthrough;</li>
+                <li>direct body transfer for explicit <code>fallthrough</code>;</li>
+                <li><code>default</code> only after all earlier tests fail;</li>
+                <li>case lexical scopes, destruction and cleanup edges.</li>
             </ul>
-
-            <p>Use <code>match</code> for:</p>
-
-            <ul>
-                <li>union variants,</li>
-                <li><code>Result</code>,</li>
-                <li><code>Option</code>,</li>
-                <li>destructuring,</li>
-                <li>type patterns,</li>
-                <li>exhaustive structural branching.</li>
-            </ul>
-
-            <pre><code>match result {
-    Ok(value) =&gt; Use(value)
-    Err(error) =&gt; Handle(error)
-}</code></pre>
-
-            <p>The following is not switch syntax:</p>
-
-            <pre><code>switch result {
-case Ok(value):
-}</code></pre>
 
             <div class="rule">
-                <strong>Rule:</strong> <code>switch</code> is initially a statement, not an expression. Use
-                <code>match</code> for exhaustive value-producing branching or assign explicitly inside a switch.
+                <strong>Rule:</strong> Optimization may change the shape of generated control flow.
+                It may not change observable switch evaluation semantics.
             </div>
-        </div>
+        </section>
 
-        <div class="section" id="common-errors">
-            <h2>Common Errors</h2>
+        <section id="best-practices">
+            <h2>Best Practices</h2>
 
-            <h3>Incompatible case type</h3>
+            <h3>Use switch for ordered peer tests</h3>
 
-            <pre><code>let value: int := 10
+            <p>
+                A switch is useful when several comparisons against one subject or several
+                peer boolean conditions read more clearly than nested conditional code.
+            </p>
 
-switch value {
-case "10":
-    Handle()
-}</code></pre>
+            <h3>Prefer ranges for interval meaning</h3>
 
-            <p><code>string</code> is not compatible with an <code>int</code> subject.</p>
+            <pre><code>switch score {
+case 0..&lt;50:
+    Failed()
 
-            <h3>Non-boolean subjectless case</h3>
-
-            <pre><code>switch {
-case 10:
-    Handle()
-}</code></pre>
-
-            <p>Every subjectless case expression must be <code>bool</code>.</p>
-
-            <h3>Multiple defaults</h3>
-
-            <pre><code>switch value {
-default:
-    A()
+case 50..&lt;80:
+    Passed()
 
 default:
-    B()
-}</code></pre>
-
-            <p>A switch may contain only one <code>default</code>.</p>
-
-            <h3>Implicit fallthrough assumption</h3>
-
-            <pre><code>switch value {
-case 1:
-
-case 2:
-    Handle()
+    Excellent()
 }</code></pre>
 
             <p>
-                Case <code>1</code> is empty. It does not continue into case <code>2</code>. Add
-                <code>fallthrough</code> explicitly when that is intended.
+                This usually communicates interval intent more directly than repeating
+                lower and upper comparisons.
             </p>
 
-            <h3>Using <code>continue</code> for cases</h3>
+            <h3>Prefer relational cases when they avoid repeated subject syntax</h3>
+
+            <pre><code>switch value {
+case &lt; 0:
+    Negative()
+
+case 0:
+    Zero()
+
+case &gt; 0:
+    Positive()
+}</code></pre>
+
+            <h3>Use fallthrough sparingly</h3>
 
             <p>
-                <code>continue</code> belongs to loops. It does not advance to the next switch case. Use
-                <code>fallthrough</code> to enter the next case body.
+                Use <code>fallthrough</code> only when the next case body must execute
+                without reevaluating the next case's tests.
             </p>
-        </div>
 
-        <div class="section" id="summary-rules">
-            <h2>Summary of Rules</h2>
+            <p>
+                Do not use it to recreate C-style switch behavior.
+            </p>
+
+            <h3>Use match when structure matters</h3>
+
+            <p>Prefer <code>match</code> when:</p>
 
             <ul>
-                <li>A switch may have a subject expression or no subject.</li>
-                <li>The subject is evaluated exactly once.</li>
-                <li>Cases are tested from top to bottom.</li>
-                <li>The first matching case wins.</li>
-                <li>Comma-separated case items mean logical OR.</li>
-                <li>Value, range and relational cases must be compatible with the subject type.</li>
-                <li>Every case in a subjectless switch must be <code>bool</code>.</li>
-                <li><code>default</code> is optional, unique and always final.</li>
-                <li>Cases do not fall through implicitly.</li>
-                <li><code>fallthrough</code> enters only the next case body and must be the final statement.</li>
-                <li>Each case body has its own lexical scope.</li>
-                <li>Duplicate and provably overlapping compile-time cases are errors.</li>
-                <li><code>switch</code> is value-based and non-structural.</li>
-                <li><code>match</code> owns variants, destructuring and exhaustive structural branching.</li>
-                <li><code>switch</code> is a statement, not an expression.</li>
+                <li>exhaustiveness is part of the intended contract;</li>
+                <li>variants or payloads must be bound;</li>
+                <li>structural patterns are required;</li>
+                <li>guards belong to patterns;</li>
+                <li>the branch construct should produce a value.</li>
             </ul>
-        </div>
+        </section>
 
-                <div class="page-navigation">
-                <a href="07-if.html">Previous: If Statements</a>
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>switch</code> supports subject-based and subjectless forms.</li>
+                <li>A subject expression is evaluated exactly once.</li>
+                <li>Cases are tested from top to bottom in source order.</li>
+                <li>Comma-separated alternatives are tested left to right.</li>
+                <li>The first matching case wins.</li>
+                <li>Value cases use ordinary equality compatibility.</li>
+                <li>Case expressions may be dynamic and are evaluated lazily when reached.</li>
+                <li>Range cases use ordinary Sec range and ordered-type semantics.</li>
+                <li>Relational cases use <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> and <code>&gt;=</code> without repeating the subject.</li>
+                <li>Value, range and relational alternatives may be combined when compatible.</li>
+                <li>Every subjectless case item must have type <code>bool</code>.</li>
+                <li>Subjectless comma alternatives short-circuit like ordered OR alternatives.</li>
+                <li><code>default</code> is optional, unique and final.</li>
+                <li>There is no implicit case fallthrough.</li>
+                <li>Explicit <code>fallthrough</code> enters the immediately following case body without testing that case.</li>
+                <li>An empty case does not imply fallthrough.</li>
+                <li>Every case body has its own lexical scope.</li>
+                <li>Fallthrough does not merge case scopes.</li>
+                <li>Duplicate compile-time values are invalid.</li>
+                <li>Provably overlapping compile-time ranges are invalid.</li>
+                <li>Fully covered later cases are unreachable and diagnosed.</li>
+                <li>Dynamic overlap remains valid when complete coverage cannot be proven.</li>
+                <li>Enums, strings, booleans, named semantic types and unit-bearing values may be switch subjects when their ordinary operations permit it.</li>
+                <li><code>switch</code> does not provide general pattern matching.</li>
+                <li>Switch case <code>where</code> guards are not part of Sec 0.1.</li>
+                <li><code>switch</code> is a statement and does not produce a value.</li>
+                <li><code>break</code> and <code>continue</code> remain loop-control statements.</li>
+                <li>Switch termination and definite assignment are path-sensitive.</li>
+                <li>Backend optimizations must preserve source-order and first-match semantics where observable.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="07-if.html">Previous: If Statements</a>
             <a href="09-match.html">Next: Match Expressions</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

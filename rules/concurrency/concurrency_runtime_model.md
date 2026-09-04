@@ -136,6 +136,28 @@ spawn error.
 
 ---
 
+## Task terminal outcome
+
+An already-created task publishes exactly one canonical terminal outcome:
+
+```sec
+type TaskOutcome[T] union {
+    Completed(T)
+    Cancelled
+    Panicked(PanicInfo)
+    Failed(TaskError)
+}
+```
+
+Runtime task state preserves the complete declared return type `T` separately
+from cancellation, panic, and execution failure. In particular,
+`Completed(Err(E))` is normal completion data and must not be rewritten as
+`Failed(TaskError)`. `TaskSpawnError` remains exclusive to failure before a task
+exists; `TaskError` names execution failure after successful creation. The
+complete `TaskError` variant inventory is intentionally not fixed here.
+
+---
+
 ## Core execution control block
 
 The compiler may model task, thread and process owners through a shared internal
@@ -537,7 +559,7 @@ core/errors.sec
 At minimum:
 
 ```sec
-enum TaskSpawnError {
+enum TaskSpawnError error {
     OutOfMemory
     ResourceLimit
     ExecutorUnavailable
@@ -545,7 +567,7 @@ enum TaskSpawnError {
     NativeFailure
 }
 
-enum ThreadSpawnError {
+enum ThreadSpawnError error {
     OutOfMemory
     ResourceLimit
     StackAllocationFailed
@@ -555,7 +577,7 @@ enum ThreadSpawnError {
     NativeFailure
 }
 
-enum ProcessSpawnError {
+enum ProcessSpawnError error {
     OutOfMemory
     ResourceLimit
     ExecutableNotFound
@@ -564,28 +586,28 @@ enum ProcessSpawnError {
     NativeFailure
 }
 
-enum ThreadStartError {
+enum ThreadStartError error {
     InvalidState
     ResourceUnavailable
     PermissionDenied
     NativeFailure
 }
 
-enum ThreadSchedulingError {
+enum ThreadSchedulingError error {
     Unsupported
     InvalidValue
     PermissionDenied
     NativeFailure
 }
 
-enum ThreadTerminationError {
+enum ThreadTerminationError error {
     Unsupported
     PermissionDenied
     InvalidState
     NativeFailure
 }
 
-enum ThreadContextError {
+enum ThreadContextError error {
     NotAttached
     AlreadyAttached
     ResourceUnavailable
@@ -593,8 +615,14 @@ enum ThreadContextError {
 }
 ```
 
-If task or process rulebooks define additional execution failure types, they must
-also be placed in `core/errors.sec`.
+The core surface must additionally provide the generic `TaskOutcome[T]` shape
+above and a named Sec error type `TaskError`. No implementation may invent a
+complete `TaskError` variant list merely to make the declaration concrete; if
+the current grammar cannot represent the still-open inventory, governance must
+record that explicit dependency.
+
+If task or process rulebooks define additional execution failure types, they
+must also be placed in `core/errors.sec` using canonical Sec error-type syntax.
 
 Compiler diagnostics are not runtime error values.
 
@@ -660,7 +688,7 @@ Cross-check and update:
 
 ```text
 spawn.md
-tasks.txt
+tasks.md
 threads.md
 processes.txt
 await.md

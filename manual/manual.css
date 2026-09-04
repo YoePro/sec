@@ -1,15 +1,21 @@
 :root {
+  --blue: #2B6CB0;
+  --grapefruit: #FF6B6B;
+  --celadon: #8CC7A1;
+  --shadowgrey: #34252F;
+  --goldenapricot: #D8973C;
+
   --bg: #ffffff;
-  --surface: #f8f9fb;
-  --border: #e4e7eb;
-  --text: #1a1d21;
-  --text-muted: #5a6470;
-  --accent: #2b6cb0;
+  --surface: #f5f2f4;
+  --border: #e0d8dd;
+  --text: var(--shadowgrey);
+  --text-muted: #6b5f68;
+  --accent: var(--blue);
   --accent-hover: #1e4f8a;
-  --code-bg: #f3f5f7;
-  --code-text: #1a1d21;
-  --rule-bg: #eef5fb;
-  --rule-border: #b8d4f0;
+  --code-bg: #f3f1f2;
+  --code-text: var(--shadowgrey);
+  --rule-bg: #fdf6ec;
+  --rule-border: var(--goldenapricot);
 
   --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "SFMono-Regular", "Consolas", "Menlo", monospace;
@@ -178,6 +184,7 @@ body {
   font-weight: 700;
   margin: 0 0 0.5rem;
   letter-spacing: -0.02em;
+  color: var(--blue);
 }
 
 .content h2 {
@@ -247,7 +254,7 @@ body {
   font-size: 0.95rem;
 }
 
-.rule strong { color: var(--accent); }
+.rule strong { color: var(--goldenapricot); }
 
 /* Tables */
 .table-wrap {
@@ -356,7 +363,7 @@ body {
 
 /* Hero */
 .hero {
-  background: linear-gradient(180deg, #f8f9fb 0%, #ffffff 100%);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
   border-bottom: 1px solid var(--border);
   padding: 5rem 1.5rem 4rem;
   text-align: center;
@@ -399,6 +406,7 @@ body {
   background: var(--accent);
   color: #fff;
   border-radius: 100px;
+  /* --blue on white */
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -513,7 +521,15 @@ body {
 
 .timeline-item.current .timeline-dot {
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px rgba(43, 108, 176, 0.15);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px rgba(43, 108, 176, 0.2);
+}
+
+.timeline-item.current .timeline-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-left: -0.25rem;
 }
 
 .timeline-content {
@@ -632,8 +648,8 @@ body {
   justify-content: space-between;
   gap: 1.5rem;
   flex-wrap: wrap;
-  background: var(--rule-bg);
-  border: 1px solid var(--rule-border);
+  background: var(--shadowgrey);
+  border: 1px solid var(--shadowgrey);
   border-radius: 10px;
   padding: 2rem 2.5rem;
 }
@@ -644,11 +660,81 @@ body {
   margin: 0 0 0.3rem;
   border: none;
   padding: 0;
+  color: #fff;
 }
 
 .status-banner-text p {
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.75);
   margin: 0;
+}
+
+/* Help Wanted banner */
+.help-wanted-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 760px;
+  margin: 2rem auto 0;
+  padding: 0.9rem 1.25rem;
+  background: var(--goldenapricot);
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.help-wanted-banner:hover {
+  background: #c0832f;
+  transform: translateY(-1px);
+}
+
+.help-wanted-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.help-wanted-text {
+  flex: 1;
+}
+
+.help-wanted-text strong {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.help-wanted-arrow {
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Help Wanted card variant */
+.card-help-wanted {
+  border-color: var(--goldenapricot);
+}
+
+.card-help-wanted:hover {
+  border-color: #c0832f;
+}
+
+.card-help-wanted .card-icon {
+  color: var(--goldenapricot);
+}
+
+.card-help-wanted .card-link {
+  color: var(--goldenapricot);
+}
+
+/* Nav help-wanted link */
+.header-nav a.nav-help-wanted {
+  color: var(--goldenapricot);
+  font-weight: 600;
+}
+
+.header-nav a.nav-help-wanted:hover {
+  color: #c0832f;
 }
 
 /* Responsive landing */

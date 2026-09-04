@@ -700,12 +700,13 @@ multiple target outputs.
 
 Recommended order:
 
-1. `compile_time_evaluation.md`
+1. `compile_time_evaluation.md` (still to write)
 2. `rules/compiler/generics_lowering.md` (written; implementation remains)
-3. `monomorphization.md`
+3. `rules/compiler/monomorphization.md` (written; implementation remains)
 
-Compile-time values and evaluation must be stable before final generic lowering
-and specialization identity are frozen.
+The type-generic specialization identity and lowering boundary are now
+normatively frozen. User-visible compile-time evaluation remains a separate
+open rulebook and must not silently broaden the type-generic model.
 
 This group must synchronize with:
 

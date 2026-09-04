@@ -413,14 +413,14 @@ Invalid:
 
 ```sec
 let state := State.lock()
-let worker := spawn UseState(state)
+let worker := try spawn UseState(state)
 ```
 
 Invalid:
 
 ```sec
 let state := State.lock()
-let worker := spawn UseState(ref state)
+let worker := try spawn UseState(ref state)
 ```
 
 Expected diagnostic:
@@ -1140,7 +1140,7 @@ waiting while guards remain forbidden across suspension points.
 Detailed behavior is defined in:
 
 ```text
-tasks.txt
+tasks.md
 spawn.txt
 await.txt
 concurrency.txt

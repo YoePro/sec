@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,40 +22,44 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">If Statements</div>
-        <a href="#if-statements">Overview</a>
-        <a href="#basic-syntax">Basic Syntax</a>
-        <a href="#conditions">Conditions</a>
-        <a href="#no-truthiness">No Implicit Truthiness</a>
-        <a href="#comparison-conditions">Comparison Conditions</a>
-        <a href="#logical-conditions">Logical Conditions</a>
+        <div class="sidebar-section">This page</div>
+        <a href="#if-statements">If Statements</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#conditions">Boolean Conditions</a>
+        <a href="#truthiness">No Truthiness</a>
+        <a href="#logical-operators">Logical Operators</a>
+        <a href="#short-circuit">Short-Circuit Evaluation</a>
+        <a href="#evaluation-order">Condition Evaluation Order</a>
+        <a href="#comparison">Comparison and Equality</a>
+        <a href="#membership">Membership</a>
+        <a href="#calls-properties">Calls and Properties</a>
+        <a href="#option-result">Option and Result</a>
+        <a href="#try-condition">Try in Conditions</a>
+        <a href="#state-tests">State Tests with is</a>
+        <a href="#option-binding">Option Presence Binding</a>
+        <a href="#no-patterns">No General Pattern Binding</a>
+        <a href="#headers">No Declarations or Assignment</a>
+        <a href="#branches">Else and Else If</a>
+        <a href="#scope">Branch Scope</a>
+        <a href="#flow-analysis">Flow Analysis</a>
+        <a href="#constant-conditions">Constant Conditions</a>
+        <a href="#side-effects">Side Effects</a>
+        <a href="#if-statement">If Is a Statement</a>
+        <a href="#match-condition">Match as a Condition</a>
+        <a href="#formatting">Formatting</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Branches</div>
-        <a href="#else-branch">else</a>
-        <a href="#else-if-chains">else if</a>
-        <a href="#nested-if">Nested if Statements</a>
-        <a href="#branch-scope">Branch Scope</a>
-
-        <div class="sidebar-section">Control Flow</div>
-        <a href="#returning-from-branches">Returning from Branches</a>
-        <a href="#required-return-analysis">Required Return Analysis</a>
-        <a href="#unreachable-code">Unreachable Code</a>
-        <a href="#if-is-a-statement">if Is a Statement</a>
-
-        <div class="sidebar-section">Examples</div>
-        <a href="#result-example">Result-returning Function</a>
-        <a href="#common-errors">Common Errors</a>
-        <a href="#summary-rules">Summary of Rules</a>
-
-                        <div class="sidebar-section">Language</div>
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html" class="active">If Statements</a>
@@ -95,12 +99,15 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
@@ -112,133 +119,319 @@
         <h1 id="if-statements">If Statements</h1>
 
         <p>
-            An <code>if</code> statement conditionally executes a block of code. The condition is evaluated
-            once. If it evaluates to <code>true</code>, the first branch is executed. If it evaluates to
-            <code>false</code>, execution continues with an optional <code>else if</code> or <code>else</code>
-            branch.
+            <code>if</code> selects control flow using a boolean condition.
+            It is Sec's direct conditional statement for choosing whether one of
+            several blocks should execute.
         </p>
+
+        <pre><code>if ready {
+    Start()
+} else {
+    Wait()
+}</code></pre>
 
         <p>
-            Sec requires conditions to have type <code>bool</code>. Numbers, strings, references and other
-            values are never interpreted as true or false implicitly.
+            Conditions are always explicit boolean expressions. <code>if</code> does not
+            introduce truthiness, hidden conversions, declaration syntax, assignment
+            expressions or general pattern destructuring.
         </p>
 
-        <div class="section" id="basic-syntax">
-            <h2>Basic Syntax</h2>
+        <div class="rule">
+            <strong>Rule:</strong> Every <code>if</code> condition has type <code>bool</code>.
+            Sec never interprets an unrelated value as true or false merely because it appears
+            in a conditional position.
+        </div>
 
-            <p>The simplest form contains one condition and one block:</p>
+        <section id="syntax">
+            <h2>Syntax</h2>
+
+            <p>The simplest form is:</p>
 
             <pre><code>if condition {
     statements
 }</code></pre>
 
-            <p>Example:</p>
+            <p>An alternative branch uses <code>else</code>:</p>
 
-            <pre><code>if rawResult &lt; 0 {
-    return Err(_decodeError(-rawResult))
+            <pre><code>if condition {
+    statements
+} else {
+    statements
+}</code></pre>
+
+            <p>Several conditions may be chained with <code>else if</code>:</p>
+
+            <pre><code>if firstCondition {
+    ...
+} else if secondCondition {
+    ...
+} else if thirdCondition {
+    ...
+} else {
+    ...
 }</code></pre>
 
             <p>
-                Parentheses are not required around the condition. Braces are required around the branch
-                body, including when the body contains only one statement.
+                Braces are mandatory for every branch, including branches containing one statement.
             </p>
 
             <pre><code>if ready {
     Start()
 }</code></pre>
 
-            <p>The following form is not valid Sec syntax:</p>
+            <p>This form is invalid:</p>
 
-            <pre><code>if (ready)
+            <pre><code>if ready
     Start()</code></pre>
 
-            <div class="rule">
-                <strong>Rule:</strong> An <code>if</code> condition is written without mandatory parentheses,
-                and every branch body is enclosed by braces.
-            </div>
-        </div>
+            <h3>Parentheses</h3>
 
-        <div class="section" id="conditions">
-            <h2>Conditions</h2>
+            <p>Outer parentheses around a condition are permitted:</p>
 
-            <p>
-                The expression following <code>if</code> must produce a <code>bool</code>. A boolean variable may
-                be used directly:
-            </p>
-
-            <pre><code>let connected := IsConnected()
-
-if connected {
-    SendData()
-}</code></pre>
-
-            <p>A function call returning <code>bool</code> may also be used directly:</p>
-
-            <pre><code>if IsConnected() {
-    SendData()
+            <pre><code>if (ready) {
+    Start()
 }</code></pre>
 
             <p>
-                More commonly, the condition is produced by a comparison or a logical expression.
+                They are normally unnecessary. The formatter removes redundant outer
+                parentheses while preserving parentheses required to express grouping.
             </p>
-        </div>
 
-        <div class="section" id="no-truthiness">
+            <pre><code>if connected &amp;&amp; (isAdmin || isOwner) {
+    AllowEdit()
+}</code></pre>
+
+            <h3>Canonical chain keyword</h3>
+
+            <p>
+                Sec uses <code>else if</code>. There are no separate
+                <code>elseif</code> or <code>elif</code> keywords.
+            </p>
+        </section>
+
+        <section id="conditions">
+            <h2>Boolean Conditions</h2>
+
+            <p>The condition expression must produce <code>bool</code>.</p>
+
+            <pre><code>let ready: bool := IsReady()
+
+if ready {
+    Start()
+}</code></pre>
+
+            <p>A call returning <code>bool</code> may be used directly:</p>
+
+            <pre><code>if IsReady() {
+    Start()
+}</code></pre>
+
+            <p>Comparison, equality, membership and state-test expressions may also produce boolean values:</p>
+
+            <pre><code>if count &gt; 0 {
+    Process()
+}
+
+if role == Role.Admin {
+    Allow()
+}
+
+if value in 0..&lt;100 {
+    Process(value)
+}</code></pre>
+
+            <p>
+                Appearing inside an <code>if</code> does not change the ordinary type rules
+                of the expression.
+            </p>
+        </section>
+
+        <section id="truthiness">
             <h2>No Implicit Truthiness</h2>
 
             <p>
-                Sec has no truthy or falsy values. An integer is not false when it is zero, a string is not
-                false when it is empty, and a reference is not true merely because it exists.
+                Sec has no general truthy or falsy values.
             </p>
+
+            <p>These are not valid conditions merely because they are non-zero, non-empty or present:</p>
+
+            <ul>
+                <li>integers and other numeric values;</li>
+                <li>strings;</li>
+                <li>collections;</li>
+                <li>enums;</li>
+                <li>structs;</li>
+                <li><code>Option[T]</code>;</li>
+                <li><code>Result[T, E]</code>;</li>
+                <li>safe references;</li>
+                <li><code>RawPtr[T]</code>.</li>
+            </ul>
+
+            <p>Invalid:</p>
 
             <pre><code>let count := 3
 
 if count {
     Process()
-} // Error: if condition must be bool, got int.</code></pre>
+}</code></pre>
 
-            <p>The intended test must be written explicitly:</p>
+            <p>Write the actual condition:</p>
 
             <pre><code>if count &gt; 0 {
     Process()
 }</code></pre>
 
-            <p>Similarly, strings must be compared or inspected explicitly:</p>
+            <p>Similarly, an empty string is not implicitly false:</p>
 
-            <pre><code>let name := "Anna"
-
-if name != "" {
+            <pre><code>if !name.IsEmpty {
     PrintName(name)
 }</code></pre>
 
             <p>
-                Explicit conditions make the programmer's intent visible and prevent values from acquiring
-                unrelated boolean meanings.
+                Explicit boolean intent avoids assigning unrelated boolean meanings to
+                otherwise well-typed values.
             </p>
-        </div>
+        </section>
 
-        <div class="section" id="comparison-conditions">
-            <h2>Comparison Conditions</h2>
+        <section id="logical-operators">
+            <h2>Logical Operators</h2>
 
-            <p>Comparison operators produce <code>bool</code> values and may therefore be used as conditions:</p>
+            <p>Boolean expressions use:</p>
 
-            <pre><code>==
-!=
-&lt;
-&lt;=
-&gt;
-&gt;=</code></pre>
+            <pre><code>!condition
+left &amp;&amp; right
+left || right</code></pre>
 
-            <p>Example:</p>
+            <p><code>!</code> requires one <code>bool</code> operand:</p>
 
-            <pre><code>if rawResult &lt; 0 {
-    return Err(_decodeError(-rawResult))
+            <pre><code>if !finished {
+    ContinueWork()
 }</code></pre>
 
             <p>
-                The operands must support the selected comparison. Named types retain their distinct type
-                identity, so unrelated named types cannot be compared merely because they share the same
-                underlying representation.
+                Both operands of <code>&amp;&amp;</code> and <code>||</code> must have type
+                <code>bool</code>:
+            </p>
+
+            <pre><code>if connected &amp;&amp; authenticated {
+    SendPrivateData()
+}
+
+if isAdmin || isOwner {
+    AllowEdit()
+}</code></pre>
+
+            <p>Relevant precedence, from tighter to looser, is:</p>
+
+            <pre><code>!
+comparison / equality / membership
+&amp;&amp;
+||</code></pre>
+
+            <p>Parentheses may make grouping explicit:</p>
+
+            <pre><code>if connected &amp;&amp; (isAdmin || isOwner) {
+    AllowEdit()
+}</code></pre>
+        </section>
+
+        <section id="short-circuit">
+            <h2>Short-Circuit Evaluation</h2>
+
+            <p>
+                <code>&amp;&amp;</code> and <code>||</code> use guaranteed left-to-right
+                short-circuit evaluation.
+            </p>
+
+            <p>For:</p>
+
+            <pre><code>left &amp;&amp; right</code></pre>
+
+            <p>
+                <code>right</code> is evaluated only when <code>left</code> evaluates to
+                <code>true</code>.
+            </p>
+
+            <p>For:</p>
+
+            <pre><code>left || right</code></pre>
+
+            <p>
+                <code>right</code> is evaluated only when <code>left</code> evaluates to
+                <code>false</code>.
+            </p>
+
+            <p>
+                This is language semantics, not merely an optimization. Code may rely on
+                short-circuiting for safety:
+            </p>
+
+            <pre><code>if index &lt; items.Len &amp;&amp; items[index].Ready {
+    Process(items[index])
+}</code></pre>
+
+            <p>
+                When <code>index &gt;= items.Len</code>, the indexed access is not evaluated.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Short-circuit operators may guard later operations
+                whose safety or meaning depends on an earlier condition.
+            </div>
+        </section>
+
+        <section id="evaluation-order">
+            <h2>Condition Evaluation Order</h2>
+
+            <p>
+                A condition is evaluated exactly once whenever execution reaches its
+                <code>if</code> statement.
+            </p>
+
+            <p>Normal Sec expression evaluation order applies inside the condition.</p>
+
+            <p>For an <code>if</code> / <code>else if</code> chain:</p>
+
+            <ol>
+                <li>conditions are evaluated in source order;</li>
+                <li>a later condition is evaluated only when every earlier condition was false;</li>
+                <li>the first true condition selects its branch;</li>
+                <li>later conditions are skipped after a branch has been selected;</li>
+                <li><code>else</code> executes only when every preceding condition was false.</li>
+            </ol>
+
+            <pre><code>if IsPrimaryAvailable() {
+    UsePrimary()
+} else if IsSecondaryAvailable() {
+    UseSecondary()
+} else {
+    ReportUnavailable()
+}</code></pre>
+
+            <p>
+                If <code>IsPrimaryAvailable()</code> returns <code>true</code>,
+                <code>IsSecondaryAvailable()</code> is not called.
+            </p>
+        </section>
+
+        <section id="comparison">
+            <h2>Comparison and Equality</h2>
+
+            <p>
+                Normal Sec comparison and equality rules apply inside conditions.
+            </p>
+
+            <pre><code>if value == expected {
+    ...
+}
+
+if temperature &lt; maximum {
+    ...
+}</code></pre>
+
+            <p>
+                An <code>if</code> condition does not create implicit numeric, named-type,
+                unit or enum conversions.
             </p>
 
             <pre><code>type Speed int
@@ -248,47 +441,336 @@ let speed: Speed := 50
 let money: Money := 50
 
 if speed == money {
-} // Error: Speed and Money are different types.</code></pre>
-        </div>
-
-        <div class="section" id="logical-conditions">
-            <h2>Logical Conditions</h2>
-
-            <p>Boolean expressions may be combined with the logical operators:</p>
-
-            <pre><code>!condition
-left &amp;&amp; right
-left || right</code></pre>
-
-            <p>Both operands of <code>&amp;&amp;</code> and <code>||</code> must be <code>bool</code>.</p>
-
-            <pre><code>if connected &amp;&amp; authenticated {
-    SendPrivateData()
-}</code></pre>
-
-            <pre><code>if isAdmin || isOwner {
-    AllowEdit()
-}</code></pre>
-
-            <pre><code>if !finished {
-    ContinueWork()
+    ...
 }</code></pre>
 
             <p>
-                Logical expressions may be grouped with parentheses when grouping is needed for clarity or
-                precedence:
+                This is invalid because <code>Speed</code> and <code>Money</code> are
+                different named types.
             </p>
 
-            <pre><code>if connected &amp;&amp; (isAdmin || isOwner) {
-    AllowEdit()
-}</code></pre>
-        </div>
+            <h3>No comparison chaining</h3>
 
-        <div class="section" id="else-branch">
-            <h2><code>else</code></h2>
+            <p>Comparison chains are not Sec syntax:</p>
+
+            <pre><code>if 0 &lt;= value &lt; 100 {
+    ...
+}</code></pre>
+
+            <p>Use logical composition:</p>
+
+            <pre><code>if value &gt;= 0 &amp;&amp; value &lt; 100 {
+    ...
+}</code></pre>
+
+            <p>or, when it expresses the intent more directly, membership:</p>
+
+            <pre><code>if value in 0..&lt;100 {
+    ...
+}</code></pre>
+        </section>
+
+        <section id="membership">
+            <h2>Membership</h2>
 
             <p>
-                An <code>else</code> branch runs when the preceding <code>if</code> condition is false.
+                A membership expression may be used as an <code>if</code> condition when
+                the membership operation is valid and produces <code>bool</code>.
+            </p>
+
+            <pre><code>if value in minimum..maximum {
+    Process(value)
+}
+
+if key in values {
+    Use(key)
+}</code></pre>
+
+            <p>
+                Range and collection membership follow their own type and compatibility rules.
+            </p>
+
+            <p>
+                Iterability and membership are separate concepts. A type being iterable does
+                not automatically make <code>value in container</code> a valid operation.
+            </p>
+        </section>
+
+        <section id="calls-properties">
+            <h2>Calls, Fields and Properties</h2>
+
+            <p>
+                Any legal expression whose result type is <code>bool</code> may be used
+                as a condition.
+            </p>
+
+            <pre><code>if IsReady() {
+    ...
+}
+
+if connection.Ready {
+    ...
+}
+
+if !items.IsEmpty {
+    ...
+}</code></pre>
+
+            <p>
+                A non-boolean property or field must participate in an operation that
+                produces <code>bool</code>:
+            </p>
+
+            <pre><code>if items.Len &gt; 0 {
+    ...
+}</code></pre>
+
+            <p>
+                Calls and property accesses retain their ordinary effect, ownership,
+                borrowing and fallibility rules when used in a condition.
+            </p>
+        </section>
+
+        <section id="option-result">
+            <h2>Option and Result</h2>
+
+            <p>
+                <code>Option[T]</code> and <code>Result[T, E]</code> are not boolean types.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>if optionalValue {
+    ...
+}
+
+if result {
+    ...
+}</code></pre>
+
+            <p>
+                Use the explicit state tests, operations, <code>match</code> or Error Handling
+                constructs defined for those types.
+            </p>
+
+            <p>
+                An <code>if</code> statement does not automatically unwrap an
+                <code>Option</code> or a <code>Result</code>.
+            </p>
+        </section>
+
+        <section id="try-condition">
+            <h2>Try in Conditions</h2>
+
+            <p>
+                A <code>try</code> expression may appear inside a condition when its
+                successful value has type <code>bool</code>.
+            </p>
+
+            <pre><code>if try HasPermission(user, resource) {
+    Allow()
+}</code></pre>
+
+            <p>
+                Normal <code>try</code> propagation and local-handling rules still apply.
+            </p>
+
+            <p>
+                The successful value must actually be boolean.
+            </p>
+
+            <pre><code>if try LoadConfiguration() {
+    ...
+}</code></pre>
+
+            <p>
+                This is invalid when <code>LoadConfiguration()</code> succeeds with a
+                <code>Configuration</code> value.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>try</code> may remove fallibility from the
+                condition expression; it does not relax the requirement that the resulting
+                condition be <code>bool</code>.
+            </div>
+        </section>
+
+        <section id="state-tests">
+            <h2>State Tests with <code>is</code></h2>
+
+            <p>
+                <code>if</code> may use an <code>is</code> expression when the owning
+                type rule defines that state test as boolean.
+            </p>
+
+            <pre><code>if value is Active {
+    ...
+}
+
+if value is empty {
+    ...
+}</code></pre>
+
+            <p>
+                <code>if</code> itself does not invent states or define what an
+                <code>is</code> test means. Those semantics belong to the relevant type
+                or feature rule.
+            </p>
+
+            <p>
+                Foreign nullable raw pointers have a deliberately narrow form inside
+                the required unsafe FFI context:
+            </p>
+
+            <pre><code>unsafe {
+    if raw is null {
+        HandleMissingForeignPointer()
+    }
+}</code></pre>
+
+            <p>
+                A raw pointer is still not implicitly boolean, and <code>if</code> does not
+                create an unsafe context.
+            </p>
+        </section>
+
+        <section id="option-binding">
+            <h2>Option Presence Binding</h2>
+
+            <p>
+                Sec 0.1 has one narrow payload-binding form for <code>if</code>:
+                positive <code>Option</code> presence testing.
+            </p>
+
+            <pre><code>if option is Some(value) {
+    Use(value)
+}</code></pre>
+
+            <p>
+                The binding exists only on the positive true path.
+                Its ownership behavior follows the ordinary <code>Option</code>, copy,
+                move and branch-merging rules.
+            </p>
+
+            <p>Non-binding state tests remain valid:</p>
+
+            <pre><code>if option is None {
+    HandleMissing()
+}
+
+if option is not None {
+    Continue()
+}</code></pre>
+
+            <p>Negative payload binding is invalid:</p>
+
+            <pre><code>if option is not Some(value) {
+    Use(value)
+}</code></pre>
+
+            <p>
+                On the true path, there is no <code>Some</code> payload that could define
+                <code>value</code>.
+            </p>
+        </section>
+
+        <section id="no-patterns">
+            <h2>No General Pattern Binding in If</h2>
+
+            <p>
+                The <code>Option.Some(binding)</code> presence form is a narrow exception.
+                It does not turn <code>if</code> into a general destructuring construct.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>if Some(user) := optionalUser {
+    ...
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>if result is Ok(value) {
+    ...
+}</code></pre>
+
+            <p>
+                Use <code>match</code> when a <code>Result</code>, union or other structural
+                value must be destructured.
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Use(value)
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <div class="rule">
+                <strong>Boundary:</strong> <code>if</code> chooses control flow from a boolean
+                condition. <code>match</code> owns general structural and payload pattern matching.
+            </div>
+        </section>
+
+        <section id="headers">
+            <h2>No Declarations or Assignment in the Header</h2>
+
+            <p>
+                Sec 0.1 does not place declarations or initializer clauses inside an
+                <code>if</code> header.
+            </p>
+
+            <p>Invalid:</p>
+
+            <pre><code>if let user := FindUser(id); user.Active {
+    ...
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>if user := FindUser(id) {
+    ...
+}</code></pre>
+
+            <p>Declare the value first:</p>
+
+            <pre><code>let user := FindUser(id)
+
+if user.Active {
+    ...
+}</code></pre>
+
+            <h3>Assignment is not an expression</h3>
+
+            <p>Assignment cannot be used as a condition:</p>
+
+            <pre><code>if ready = true {
+    ...
+}</code></pre>
+
+            <p>
+                <code>=</code> is an assignment statement, not a boolean expression.
+            </p>
+
+            <p>Equality remains legal:</p>
+
+            <pre><code>if ready == true {
+    ...
+}</code></pre>
+
+            <p>but the direct boolean form is normally clearer:</p>
+
+            <pre><code>if ready {
+    ...
+}</code></pre>
+        </section>
+
+        <section id="branches">
+            <h2>Else and Else If</h2>
+
+            <h3><code>else</code></h3>
+
+            <p>
+                An <code>else</code> branch executes only when every preceding condition
+                in its chain is false.
             </p>
 
             <pre><code>if temperature &lt; FreezingPoint {
@@ -297,19 +779,10 @@ left || right</code></pre>
     StopHeater()
 }</code></pre>
 
-            <p>
-                Exactly one of the two branches is executed. After the selected branch finishes, execution
-                continues after the complete <code>if</code> statement unless the branch has already returned or
-                otherwise terminated control flow.
-            </p>
-        </div>
-
-        <div class="section" id="else-if-chains">
-            <h2><code>else if</code> Chains</h2>
+            <h3><code>else if</code></h3>
 
             <p>
-                Several conditions may be tested in order by using <code>else if</code>. Conditions are evaluated
-                from top to bottom. The first condition that evaluates to <code>true</code> selects its branch.
+                <code>else if</code> tests additional conditions in source order:
             </p>
 
             <pre><code>if score &gt;= 90 {
@@ -323,19 +796,15 @@ left || right</code></pre>
 }</code></pre>
 
             <p>
-                Once a branch has been selected, later conditions in the chain are not evaluated.
+                Exactly one branch of this chain executes.
             </p>
 
             <p>
-                A final <code>else</code> is optional. Without it, execution simply continues after the chain
-                when no condition matches.
+                A final <code>else</code> is optional. Without one, execution simply
+                continues after the statement when no condition is true.
             </p>
-        </div>
 
-        <div class="section" id="nested-if">
-            <h2>Nested <code>if</code> Statements</h2>
-
-            <p>An <code>if</code> statement may appear inside any branch:</p>
+            <h3>Nested if statements</h3>
 
             <pre><code>if connected {
     if authenticated {
@@ -346,22 +815,16 @@ left || right</code></pre>
 }</code></pre>
 
             <p>
-                Nesting is useful when the second condition is meaningful only after the first condition has
-                succeeded. When several conditions belong to one decision, a combined boolean expression may
-                be clearer.
+                Because braces are mandatory, nested <code>if</code> statements do not
+                have an ambiguous dangling-<code>else</code> form.
             </p>
+        </section>
 
-            <pre><code>if connected &amp;&amp; authenticated {
-    SendPrivateData()
-}</code></pre>
-        </div>
-
-        <div class="section" id="branch-scope">
+        <section id="scope">
             <h2>Branch Scope</h2>
 
             <p>
-                Every branch body is a block and therefore creates a child scope. Variables declared inside a
-                branch are visible only inside that branch and its nested scopes.
+                Every branch body creates its own lexical block scope.
             </p>
 
             <pre><code>if hasInput {
@@ -369,10 +832,10 @@ left || right</code></pre>
     Process(value)
 }
 
-Process(value) // Error: unknown symbol value.</code></pre>
+// value is not visible here</code></pre>
 
             <p>
-                Separate branches may use the same local variable name because each branch has its own scope:
+                A declaration in one branch is not visible in another branch:
             </p>
 
             <pre><code>if usePrimary {
@@ -384,24 +847,24 @@ Process(value) // Error: unknown symbol value.</code></pre>
 }</code></pre>
 
             <p>
-                Variables declared before the <code>if</code> statement remain visible inside its branches.
-                Mutating such a variable requires that it was declared with <code>let mut</code>.
+                These are separate local bindings in separate branch scopes.
             </p>
-
-            <pre><code>let mut result := 0
-
-if useAlternative {
-    result = 10
-}</code></pre>
-        </div>
-
-        <div class="section" id="returning-from-branches">
-            <h2>Returning from Branches</h2>
 
             <p>
-                A branch may return from the enclosing function. Once <code>return</code> is executed, no later
-                statement in that function invocation is reached.
+                Outer bindings remain visible inside branches according to ordinary scope rules.
+                Mutation still requires the appropriate mutability and borrow authority.
             </p>
+        </section>
+
+        <section id="flow-analysis">
+            <h2>Flow Analysis</h2>
+
+            <p>
+                Branches participate in Sec's ordinary path-sensitive flow analysis.
+                The compiler tracks which paths continue and which paths terminate.
+            </p>
+
+            <h3>Returning from a branch</h3>
 
             <pre><code>fn Normalize(value: int) int {
     if value &lt; 0 {
@@ -412,21 +875,15 @@ if useAlternative {
 }</code></pre>
 
             <p>
-                This form is often clearer than wrapping the remainder of the function in an
-                <code>else</code> block. The early-return branch handles the exceptional or special case, while
-                the normal path continues without additional nesting.
+                The true branch terminates by returning. The false path continues to the
+                final return statement.
             </p>
-        </div>
 
-        <div class="section" id="required-return-analysis">
-            <h2>Required Return Analysis</h2>
+            <h3>Required return analysis</h3>
 
             <p>
-                A non-<code>void</code> function must return a value on every reachable path. An
-                <code>if</code> statement satisfies this requirement only when every possible branch returns.
+                A non-<code>void</code> function must return on every reachable path.
             </p>
-
-            <p>Valid:</p>
 
             <pre><code>fn Pick(value: int) int {
     if value &gt;= 10 {
@@ -437,90 +894,123 @@ if useAlternative {
 }</code></pre>
 
             <p>
-                Both possible paths return an <code>int</code>, so no additional return statement is required.
+                Both branches return, so the complete <code>if</code> statement terminates
+                every reachable path through the function.
             </p>
 
-            <p>Also valid:</p>
+            <h3>Continuing-path merge</h3>
+
+            <p>
+                After an <code>if</code>, definite-assignment, ownership, borrowing and
+                availability states are merged across the branches that can actually continue.
+            </p>
+
+            <p>
+                A branch that always returns, propagates an error or otherwise terminates
+                does not contribute a continuing state after the statement.
+            </p>
+
+            <p>
+                Without an <code>else</code>, the false path remains possible unless the
+                compiler can prove otherwise.
+            </p>
+
+            <h3>Unreachable code</h3>
 
             <pre><code>fn Pick(value: int) int {
     if value &gt;= 10 {
         return 5
+        Log("unreachable")
     }
 
     return 6
 }</code></pre>
 
             <p>
-                When the condition is false, execution continues to the final return statement.
-            </p>
-
-            <p>Invalid:</p>
-
-            <pre><code>fn Pick(value: int) int {
-    if value &gt;= 10 {
-        return 5
-    }
-} // Error: function Pick must return int.</code></pre>
-
-            <p>
-                The condition may be false, leaving a reachable path that does not return a value.
+                <code>Log(...)</code> is unreachable on that path and is diagnosed by
+                the general unreachable-code policy.
             </p>
 
             <p>
-                In an <code>else if</code> chain, every branch must return and the chain must end with
-                <code>else</code> before the chain alone can satisfy the function's required return.
+                When every branch of a complete chain terminates, code following the
+                chain is likewise unreachable.
             </p>
-        </div>
+        </section>
 
-        <div class="section" id="unreachable-code">
-            <h2>Unreachable Code</h2>
+        <section id="constant-conditions">
+            <h2>Constant Conditions</h2>
 
             <p>
-                Statements following an unconditional <code>return</code> in the same control-flow path are
-                unreachable and are rejected.
+                Compile-time boolean constants are valid conditions:
             </p>
 
-            <pre><code>fn Pick(value: int) int {
-    if value &gt;= 10 {
-        return 5
-        Log("unreachable") // Error: unreachable statement.
-    }
+            <pre><code>if true {
+    EnableFeature()
+}
 
-    return 6
+if false {
 }</code></pre>
 
             <p>
-                When every branch of an <code>if</code> statement returns, statements following the complete
-                statement are also unreachable:
+                Constant evaluation does not change the requirement that the condition
+                have type <code>bool</code>.
             </p>
 
-            <pre><code>fn Pick(value: int) int {
-    if value &gt;= 10 {
-        return 5
-    } else {
-        return 6
-    }
+            <p>
+                When a compile-time condition proves statements unreachable, the ordinary
+                unreachable-code rules apply. An empty unreachable branch is not itself an
+                error merely because the condition is constant.
+            </p>
 
-    return 7 // Error: unreachable statement.
+            <p>
+                Optimization may remove unreachable branches after semantic analysis.
+            </p>
+        </section>
+
+        <section id="side-effects">
+            <h2>Side Effects in Conditions</h2>
+
+            <p>
+                A condition may contain side effects when those operations are otherwise
+                legal Sec expressions.
+            </p>
+
+            <pre><code>if cached || LoadCache() {
+    UseCache()
 }</code></pre>
 
             <p>
-                An <code>if</code> statement without an <code>else</code> does not by itself make following code
-                unreachable, because its condition may be false.
+                <code>LoadCache()</code> is called only when <code>cached</code> is false,
+                because <code>||</code> short-circuits.
             </p>
-        </div>
-
-        <div class="section" id="if-is-a-statement">
-            <h2><code>if</code> Is a Statement</h2>
 
             <p>
-                In the current language model, <code>if</code> controls which statements execute. It does not
-                itself produce a value.
+                Whether side effects inside a condition are good style is a tooling and
+                readability question, not a special semantic prohibition of <code>if</code>.
+            </p>
+        </section>
+
+        <section id="if-statement">
+            <h2>If Is a Statement</h2>
+
+            <p>
+                <code>if</code> controls which statements execute. It does not itself
+                produce a value.
             </p>
 
-            <p>Use assignment to a mutable variable when a branch must select a later value:</p>
+            <p>This is not Sec expression syntax:</p>
 
-            <pre><code>let mut label := "normal"
+            <pre><code>let label := if value &lt; 0 {
+    "negative"
+} else {
+    "positive"
+}</code></pre>
+
+            <p>
+                Use ordinary control flow when branches update later state:
+            </p>
+
+            <pre><code>let mut label := "zero"
 
 if value &lt; 0 {
     label = "negative"
@@ -529,130 +1019,169 @@ if value &lt; 0 {
 }</code></pre>
 
             <p>
-                Use a function with explicit returns when the decision naturally computes a value:
+                When the decision naturally computes a value, an explicit function or a
+                value-producing <code>match</code> may be more appropriate.
             </p>
+        </section>
 
-            <pre><code>fn Describe(value: int) string {
-    if value &lt; 0 {
-        return "negative"
-    } else if value &gt; 0 {
-        return "positive"
-    }
-
-    return "zero"
-}</code></pre>
-        </div>
-
-        <div class="section" id="result-example">
-            <h2>Result-returning Function</h2>
+        <section id="match-condition">
+            <h2>Match as an If Condition</h2>
 
             <p>
-                The following function combines unsafe system interaction, an <code>if</code> statement and a
-                typed <code>Result</code> return value:
+                A value-producing <code>match</code> expression may itself be used as an
+                <code>if</code> condition when the complete expression has type <code>bool</code>.
             </p>
 
-            <pre><code>fn Write(fd: int, data: []byte) Result[uint, LinuxError] {
-    let rawResult: int
-
-    unsafe {
-        rawResult = _rawSyscall3(
-            _sysWrite,
-            uint(fd),
-            uint(data.ptr),
-            data.len,
-        )
-    }
-
-    if rawResult &lt; 0 {
-        return Err(_decodeError(-rawResult))
-    }
-
-    return Ok(uint(rawResult))
+            <pre><code>if match state {
+    State.Ready =&gt; true
+    State.Waiting =&gt; false
+    State.Failed =&gt; false
+} {
+    Start()
 }</code></pre>
 
-            <p>The function has two reachable outcomes:</p>
+            <p>
+                The <code>match</code> expression still follows its own exhaustiveness and
+                arm-typing rules.
+            </p>
+
+            <p>
+                A statement-only <code>match</code> does not produce a boolean value and
+                therefore cannot serve as an <code>if</code> condition.
+            </p>
+        </section>
+
+        <section id="formatting">
+            <h2>Formatting</h2>
+
+            <p>Canonical formatting keeps the complete chain visually connected:</p>
+
+            <pre><code>if condition {
+    ...
+} else if otherCondition {
+    ...
+} else {
+    ...
+}</code></pre>
+
+            <p>The formatter:</p>
 
             <ul>
-                <li>A negative system-call result is converted into <code>LinuxError</code> and returned as <code>Err(...)</code>.</li>
-                <li>A non-negative result is converted to <code>uint</code> and returned as <code>Ok(...)</code>.</li>
+                <li>keeps braces around every branch;</li>
+                <li>places <code>else</code> on the same line as the preceding closing brace;</li>
+                <li>removes redundant outer condition parentheses;</li>
+                <li>preserves parentheses required for grouping.</li>
             </ul>
 
             <p>
-                The error path returns early. The normal path therefore continues without an
-                <code>else</code> branch. This keeps the successful path visually direct and avoids unnecessary
-                nesting.
+                The formatter does not rewrite one valid control-flow strategy into a
+                semantically different one.
             </p>
-        </div>
+        </section>
 
-        <div class="section" id="common-errors">
-            <h2>Common Errors</h2>
+        <section id="best-practices">
+            <h2>Best Practices</h2>
 
-            <h3>Using a non-boolean condition</h3>
-
-            <pre><code>let count := 10
-
-if count {
-} // Error: if condition must be bool, got int.</code></pre>
-
-            <h3>Omitting braces</h3>
-
-            <pre><code>if ready
-    Start()</code></pre>
-
-            <h3>Reading a branch-local variable outside its scope</h3>
+            <h3>Prefer direct boolean expressions</h3>
 
             <pre><code>if ready {
-    let value := Load()
-}
-
-Use(value) // Error: unknown symbol value.</code></pre>
-
-            <h3>Failing to return from every path</h3>
-
-            <pre><code>fn Value(valid: bool) int {
-    if valid {
-        return 1
-    }
-} // Error: function Value must return int.</code></pre>
-
-            <h3>Writing code after an unconditional return</h3>
-
-            <pre><code>if failed {
-    return Err(error)
-    Log(error) // Error: unreachable statement.
+    Start()
 }</code></pre>
-        </div>
 
-        <div class="section" id="summary-rules">
-            <h2>Summary of Rules</h2>
+            <p>rather than:</p>
+
+            <pre><code>if ready == true {
+    Start()
+}</code></pre>
+
+            <h3>Prefer membership when it states the intent directly</h3>
+
+            <pre><code>if value in 0..&lt;100 {
+    Process(value)
+}</code></pre>
+
+            <p>rather than:</p>
+
+            <pre><code>if value &gt;= 0 &amp;&amp; value &lt; 100 {
+    Process(value)
+}</code></pre>
+
+            <h3>Use match for destructuring</h3>
+
+            <p>
+                Use <code>match</code> when variant payloads or structural patterns must be
+                bound. Do not turn an <code>if</code> condition into a second pattern language.
+            </p>
+
+            <h3>Use short-circuiting deliberately</h3>
+
+            <p>
+                Put prerequisite safety or state checks before operations that depend on them:
+            </p>
+
+            <pre><code>if index &lt; items.Len &amp;&amp; items[index].Ready {
+    Process(items[index])
+}</code></pre>
+
+            <h3>Prefer early returns when they simplify the normal path</h3>
+
+            <pre><code>fn Process(value: int) Result[void, ProcessError] {
+    if value &lt; 0 {
+        return Err(ProcessError.InvalidValue)
+    }
+
+    DoWork(value)
+    return Ok()
+}</code></pre>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
 
             <ul>
-                <li>An <code>if</code> condition must have type <code>bool</code>.</li>
-                <li>Sec does not implicitly convert other values to <code>bool</code>.</li>
-                <li>Parentheses around the condition are optional and normally unnecessary.</li>
-                <li>Every branch body requires braces.</li>
-                <li><code>else if</code> conditions are evaluated from top to bottom.</li>
-                <li>Only the first matching branch is executed.</li>
-                <li>Every branch creates its own local scope.</li>
-                <li>Variables declared inside a branch are not visible outside that branch.</li>
-                <li>An <code>if</code> statement may return from the enclosing function.</li>
-                <li>A non-<code>void</code> function must return on every reachable path.</li>
-                <li>An <code>if</code> chain guarantees a return only when all possible branches return.</li>
-                <li>Code after an unconditional return path is unreachable.</li>
-                <li><code>if</code> is currently a control-flow statement and does not produce a value.</li>
+                <li><code>if</code> selects control flow from a boolean condition.</li>
+                <li>Every branch body uses braces.</li>
+                <li>Outer condition parentheses are permitted but normally removed by the formatter.</li>
+                <li>The chained form is <code>else if</code>; Sec has no <code>elseif</code> or <code>elif</code>.</li>
+                <li>Every condition must have type <code>bool</code>.</li>
+                <li>Sec has no implicit truthiness.</li>
+                <li><code>!</code>, <code>&amp;&amp;</code> and <code>||</code> operate on boolean values.</li>
+                <li><code>&amp;&amp;</code> and <code>||</code> guarantee left-to-right short-circuit evaluation.</li>
+                <li>An <code>if</code> condition is evaluated exactly once when execution reaches it.</li>
+                <li><code>else if</code> conditions are evaluated in source order until one matches.</li>
+                <li>Normal comparison, equality and membership rules remain in force.</li>
+                <li>Comparison chaining is not supported.</li>
+                <li><code>Option</code> and <code>Result</code> are not implicitly boolean.</li>
+                <li><code>try</code> may appear in a condition only when its successful value is <code>bool</code>.</li>
+                <li>Boolean <code>is</code> state tests may be used where another rule defines them.</li>
+                <li>Positive <code>Option</code> testing supports the narrow <code>is Some(binding)</code> form.</li>
+                <li>General payload and structural pattern binding belongs to <code>match</code>.</li>
+                <li>Declarations are not part of Sec 0.1 <code>if</code> headers.</li>
+                <li>Assignment is a statement and cannot be used as a condition.</li>
+                <li>Each branch has its own lexical scope.</li>
+                <li>Flow analysis merges assignment, ownership and borrow state across continuing branches.</li>
+                <li>Branches that terminate do not contribute a continuation state.</li>
+                <li>Constant boolean conditions are valid and participate in unreachable-code analysis.</li>
+                <li>Legal side effects may appear in conditions and still obey evaluation-order guarantees.</li>
+                <li><code>if</code> is a statement and does not itself produce a value.</li>
+                <li>A value-producing <code>match</code> may be an <code>if</code> condition when its type is <code>bool</code>.</li>
             </ul>
-        </div>
+        </section>
 
-                <div class="page-navigation">
-                <a href="06-functions.html">Previous: Functions</a>
+        <div class="page-navigation">
+            <a href="06-functions.html">Previous: Functions</a>
             <a href="08-switch.html">Next: Switch Statements</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

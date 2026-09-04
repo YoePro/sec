@@ -2975,6 +2975,11 @@ Unknown indirect, foreign, assembly, and target behavior is conservative.
 Effect analysis includes defer, destructors, implicit operations, generics,
 closures, callbacks, interfaces, and target-selected implementations.
 
+Concrete generic specialization may refine type-dependent effect facts but must
+not weaken, duplicate, eliminate, or reorder observable effects. The
+concretization boundary is owned by `rules/compiler/generics_lowering.md`; this
+rulebook remains authoritative for effect meaning and compatibility.
+
 Effect analysis is performed per concrete compilation plan.
 
 Effect analysis introduces no mandatory runtime.

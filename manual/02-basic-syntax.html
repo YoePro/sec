@@ -394,11 +394,11 @@ fn CurrentTemperature() Temperature {
 }</code></pre>
 
             <p>
-                Documentation comments remain lexically comments, but tooling may attach them
+                Documentation comments are lexically comments, but tooling may attach them
                 to declarations for generated documentation, hover information and editor support.
             </p>
 
-            <p><code>///</code> is currently an ordinary line comment.</p>
+            <p><code>///</code> is an ordinary line comment.</p>
 
             <div class="rule">
                 <strong>Rule:</strong> Comments do not secretly change program semantics.
@@ -516,6 +516,7 @@ second line`</code></pre>
 
             <p>Sec uses explicit declaration forms rather than deriving declaration kind from context.</p>
 
+            <p>Common declaration forms include:</p>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -534,7 +535,7 @@ second line`</code></pre>
                         <tr><td><code>fn</code></td><td>Declares a function or method.</td></tr>
                         <tr><td><code>impl</code></td><td>Declares behavior and associated members for a type.</td></tr>
                         <tr><td><code>let</code></td><td>Declares a binding.</td></tr>
-                        <tr><td><code>static</code></td><td>Declares type-level or static storage/behavior where permitted.</td></tr>
+                        <tr><td><code>static</code></td><td>Modifies a declaration to give it static storage or type-associated semantics where permitted.</td></tr>
                         <tr><td><code>extern</code></td><td>Declares an external function boundary.</td></tr>
                         <tr><td><code>test</code></td><td>Declares a test in an applicable <code>*_test.sec</code> file.</td></tr>
                     </tbody>

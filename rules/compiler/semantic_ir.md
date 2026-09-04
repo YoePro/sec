@@ -1798,7 +1798,19 @@ specialized callable/type identity
 
 § 75(4) Generic specialization must not erase ownership, effect, interface, layout, storage, or target constraints.
 
-§ 75(5) Exact monomorphization/lowering policy is owned by the corresponding generic compiler rulebooks.
+§ 75(5) Template-to-concrete Semantic IR lowering is owned by
+`rules/compiler/generics_lowering.md`; specialization discovery, worklists, and
+deduplication scheduling remain owned by
+`rules/compiler/monomorphization.md`.
+
+§ 75(6) Semantic IR may retain generic templates and concrete specialization
+views, including compatible imported lowering-ready templates. Every
+specialization passed to executable Sec MLIR must nevertheless have complete
+concrete substitution and concrete targets for all constraint-dependent
+operations.
+
+§ 75(7) Generic template provenance may remain in executable IR metadata, but
+unresolved generic semantics may not.
 
 ---
 
@@ -1829,13 +1841,28 @@ TaskOutcome
 TaskDetach where canonical
 ```
 
-§ 77(3) Task creation is fallible where canonical concurrency rules define it.
+§ 77(3) Task creation preserves the canonical fallible result
+`Result[Task[T], TaskSpawnError]`; creation failure occurs before a task handle
+exists.
 
 § 77(4) Spawn captures/arguments retain copy/move/borrow transfer actions and commit behavior.
 
 § 77(5) Task completion occurs only at the canonical semantic completion point after required result transfer and cleanup.
 
-§ 77(6) Await/join result/dependency transfer remains explicit.
+§ 77(6) Await consumes the owning handle and produces exactly
+`TaskOutcome[T]`, while join preserves the terminal handle for inspection.
+Flow proof may optimize representation but must not change the static await type
+to `T`.
+
+§ 77(7) Semantic IR preserves distinct terminal categories for
+`Completed(T)`, `Cancelled`, `Panicked(PanicInfo)`, and `Failed(TaskError)`,
+including ownership transfer of the active payload.
+
+§ 77(8) `Completed(Err(E))` remains normal completion of
+`Task[Result[V, E]]` and must not be represented as `Failed(TaskError)`.
+
+§ 77(9) Task-boundary argument/capture transferability and ownership facts
+remain explicit through lowering.
 
 ---
 
@@ -2349,6 +2376,11 @@ weaken reference/storage safety
 ```
 
 § 102(3) Lowering may select physical representation from plan-resolved facts.
+
+§ 102(4) Generic lowering readiness includes complete concrete substitution,
+constraint discharge, and concrete ownership/destruction facts as required by
+`rules/compiler/generics_lowering.md`. This check precedes
+representation-dependent executable lowering.
 
 ---
 

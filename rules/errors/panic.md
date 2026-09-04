@@ -159,10 +159,15 @@ type TaskOutcome[T] union {
     Completed(T)
     Cancelled
     Panicked(PanicInfo)
+    Failed(TaskError)
 }
 ```
 
-**§ 7(7)** Exact standard-library naming belongs to the concurrency rulebooks.
+**§ 7(7)** Exact task outcome naming and await semantics belong to
+`rules/concurrency/tasks.md`. `Panicked(PanicInfo)` remains distinct from
+`Failed(TaskError)` and from a normally returned Sec `Err(E)`. A selected
+hard-termination panic policy need not recover a task-local panic into an
+outcome when the panic rulebook says the execution domain cannot contain it.
 
 ---
 

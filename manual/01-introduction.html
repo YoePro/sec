@@ -162,7 +162,7 @@
                 <li>fallible operations;</li>
                 <li>unsafe operations;</li>
                 <li>borrowing mode;</li>
-                <li>ownership-sensitive transfer when intent would otherwise be ambiguous;</li>
+                <li>ownership transfer from reusable values at consuming boundaries;</li>
                 <li>external storage and hardware semantics;</li>
                 <li>units and contracts that carry domain meaning.</li>
             </ul>
@@ -203,7 +203,7 @@ let customer: CustomerID := 42
 let product: ProductID := customer    // invalid</code></pre>
 
             <p>
-                Named types remain nominal. The compiler does not implicitly convert a typed
+                Named types are nominal. The compiler does not implicitly convert a typed
                 runtime value merely because another type has a compatible underlying
                 representation.
             </p>
@@ -221,8 +221,8 @@ let complete: Percent := 100
 let invalid: Percent := 101            // compile-time error</code></pre>
 
             <p>
-                Untyped literals may be shaped by context. Converting an already typed runtime
-                value is a different operation and remains explicit.
+                Untyped literals may take their type from context. Converting an already typed runtime
+                value is a different operation and is explicit.
             </p>
 
             <pre><code>let raw: int := ReadPercentage()
@@ -267,7 +267,7 @@ vector[float64, 3]
 matrix[float32, 4, 4]</code></pre>
 
             <p>
-                Fixed arrays and owning unsized sequences use postfix sequence syntax:
+                Fixed arrays and dynamic owning sequences use postfix sequence syntax:
                 <code>T[N]</code> and <code>T[]</code>. Borrowed sequence views use
                 <code>ref T[]</code> or <code>ref mut T[]</code>.
             </p>
@@ -322,7 +322,7 @@ matrix[float32, 4, 4]</code></pre>
 }</code></pre>
 
             <p>
-                <code>match</code> remains the general exhaustive pattern-matching construct.
+                <code>match</code> is the general exhaustive pattern-matching construct.
                 <code>try</code> is the concise path when successful execution should continue
                 normally and only failure needs special handling.
             </p>
@@ -567,7 +567,7 @@ let connection := try new Connection(address)</code></pre>
                 <code>self</code>, typed errors and checked conversion.
             </p>
 
-            <pre><code>module cmd.demo
+            <pre><code>module demo
 
 import "fmt"
 
@@ -632,8 +632,7 @@ fn main() Result[void, error] {
 
             <p>
                 This separation matters. A feature may be fully specified before every compiler
-                stage or target backend has implemented it. Conversely, compatibility syntax may
-                still be accepted by the parser even when it is no longer canonical Sec source.
+                stage or target backend has implemented it.
             </p>
 
             <p>

@@ -1285,7 +1285,7 @@ shaped-types.md
 types/units.md
 concurrency.md
 threads.md
-tasks.txt
+tasks.md
 channels.md
 select.md
 mutex.md

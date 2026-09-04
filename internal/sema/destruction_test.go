@@ -111,6 +111,71 @@ fn Read() Result[Point, IOError] {
 	}
 }
 
+// rules/control-flow/discard.md section 5 and destruction.md section 12 make
+// repeated discard a convergence operation. It must not be analyzed as a read
+// of the value that the first terminal action made unavailable.
+func TestDiscardAlreadyUnavailablePlaceIsLegalNoOp(t *testing.T) {
+	input := `
+module main
+
+@noCopy
+type Resource struct {
+	value: int,
+}
+
+type Holder struct {
+	payload: Resource,
+}
+
+fn Direct() void {
+	let value := 1
+	discard value
+	discard value
+}
+
+fn AfterMove() void {
+	let resource := Resource { value: 1 }
+	let moved :<- resource
+	discard resource
+	discard moved
+}
+
+fn Projected() void {
+	let holder := Holder { payload: Resource { value: 1 } }
+	discard holder.payload
+	discard holder.payload
+}
+
+fn Conditional(condition: bool) void {
+	let resource := Resource { value: 1 }
+	if condition {
+		discard resource
+	}
+	discard resource
+}
+`
+
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+}
+
+func TestRepeatedDiscardDoesNotRestoreAvailability(t *testing.T) {
+	input := `
+module main
+
+fn Test() void {
+	let value := 1
+	discard value
+	discard value
+	let copy := value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"value value was discarded here and is no longer available at 8:14, previous declaration at 6:10",
+	})
+}
+
 func TestFreeOperationIsReservedUntilDestructionRulesAreImplemented(t *testing.T) {
 	input := `
 module main

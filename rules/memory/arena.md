@@ -79,7 +79,7 @@ Arena behavior out of this document.
 | References, borrowing, provenance, and lifetime | `rules/memory/references.md`, `rules/memory/reference_model.md`, `rules/memory/borrowing.md`, `rules/memory/lifetime_analysis.md` |
 | Compiler-known surface and compiler pipeline | `rules/compiler/compiler_known_members.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/foundations/attributes.md` |
 | Effects, reachability, escape, panic, and runtime checks | `rules/analysis/effect_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/escape_analysis.md`, `rules/errors/panic.md`, `rules/errors/runtime_checks.md` |
-| Tasks, threads, cancellation, and concurrency memory semantics | `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.txt`, `rules/concurrency/spawn.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/structured_concurrency.md` |
+| Tasks, threads, cancellation, and concurrency memory semantics | `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.md`, `rules/concurrency/spawn.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/structured_concurrency.md` |
 | FFI, targets, and interrupt restrictions | `rules/platform/ffi.md`, `rules/platform/target_profiles.md`, `rules/analysis/isr_analysis.md` |
 | Diagnostics and language tooling | `rules/tooling/diagnostics.txt`, `rules/tooling/lsp.md` |
 
@@ -1401,7 +1401,7 @@ another compiler-proven completion event.
 Example:
 
 ```sec
-let task := spawn Process(values)
+let task := try spawn Process(values)
 discard await task
 
 arena.Reset()
@@ -1430,15 +1430,17 @@ arena.Reset()
 Example concept:
 
 ```sec
-let task := spawn Find(values)
-let found := await task
+let task := try spawn Find(values)
+let outcome := await task
 
-Use(found)
+Use(outcome)
 
 arena.Reset()
 ```
 
-§ 59(3) Reset is valid only after final use of `found` if it references the Arena.
+§ 59(3) Reset is valid only after final use of `outcome` if its active
+`Completed` payload references the Arena. The `TaskOutcome[T]` wrapper follows
+ordinary union/payload ownership and does not erase that dependency.
 
 § 59(4) Completion alone does not erase result-borne dependency.
 
@@ -1451,7 +1453,7 @@ arena.Reset()
 Example:
 
 ```sec
-let task := spawn Worker(<-arena)
+let task := try spawn Worker(<-arena)
 ```
 
 § 60(2) After committed spawn transfer, parent no longer owns Arena.

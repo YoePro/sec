@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,43 +22,43 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">Enums</div>
-        <a href="#enums">Overview</a>
-        <a href="#basic-syntax">Basic Syntax</a>
-        <a href="#variants-and-values">Variants and Values</a>
+        <div class="sidebar-section">This page</div>
+        <a href="#enums">Enums</a>
+        <a href="#core-model">Core Model</a>
+        <a href="#declaration">Declaration Forms</a>
         <a href="#underlying-types">Underlying Types</a>
-        <a href="#automatic-values">Automatic Values</a>
-        <a href="#explicit-values">Explicit Values</a>
+        <a href="#members">Members and Namespace</a>
+        <a href="#integer-initializers">Integer Initializers</a>
         <a href="#iota">iota</a>
-        <a href="#aliases">Aliases</a>
-
-        <div class="sidebar-section">Names and Scope</div>
-        <a href="#enum-namespaces">Enum Namespaces</a>
+        <a href="#repetition">Initializer Repetition</a>
+        <a href="#string-enums">String-Backed Enums</a>
+        <a href="#aliases">Value Aliases</a>
+        <a href="#defaults">Defaults</a>
+        <a href="#closed-domain">Closed Ordinary Enums</a>
+        <a href="#error-enums">Error Enums</a>
+        <a href="#generic-enums">Generic Enums</a>
         <a href="#nested-enums">Nested Enums</a>
-        <a href="#variant-uniqueness">Variant Name Uniqueness</a>
+        <a href="#enum-impl">Behavior and Associated Values</a>
+        <a href="#bit-enums">Bit-Backed Enums</a>
+        <a href="#register-fields">Register Fields</a>
+        <a href="#conversions">Conversions</a>
+        <a href="#equality">Assignment and Equality</a>
+        <a href="#match">Match and Exhaustiveness</a>
+        <a href="#switch">Switch</a>
+        <a href="#ffi-enums">Foreign C Enums</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Type Rules</div>
-        <a href="#enum-types">Enums Are Distinct Types</a>
-        <a href="#conversions">Explicit Conversions</a>
-        <a href="#comparisons">Comparisons</a>
-        <a href="#arithmetic">Arithmetic</a>
-        <a href="#variables">Variables and Assignment</a>
-        <a href="#definite-assignment">Definite Assignment</a>
-
-        <div class="sidebar-section">Use</div>
-        <a href="#switch-and-match">switch and match</a>
-        <a href="#common-errors">Common Errors</a>
-        <a href="#summary-rules">Summary of Rules</a>
-
-                <div class="sidebar-section">Language</div>
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -98,12 +98,15 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
@@ -115,657 +118,1209 @@
         <h1 id="enums">Enums</h1>
 
         <p>
-            An enum defines a finite set of named values. Each enum is a distinct type, even when two enums use
-            the same underlying integer representation.
+            An enum is a nominal value type whose members give names to a defined set of
+            underlying values. Sec enums may use integer or string representations, may
+            participate in the typed error system, may be generic, and may also describe
+            exact-width hardware encodings.
         </p>
 
         <pre><code>enum Direction {
-    north,
-    east,
-    south,
-    west,
+    North
+    East
+    South
+    West
 }</code></pre>
 
         <p>
-            The variants <code>Direction.north</code>, <code>Direction.east</code>,
-            <code>Direction.south</code> and <code>Direction.west</code> are values of type
-            <code>Direction</code>. They are not plain integers.
+            Enum members are values of the enum type itself. They are not untyped constants
+            and do not implicitly become their underlying integer or string representation.
         </p>
 
         <div class="rule">
-            <strong>Rule:</strong> Enum values retain their enum type. Conversion to or from an integer is always
-            explicit.
+            <strong>Core distinction:</strong> Ordinary enums are closed over their declared
+            value classes. <code>bit</code>-backed hardware enums are open over every bit
+            pattern representable by their declared width.
         </div>
 
-        <div class="section" id="basic-syntax">
-            <h2>Basic Syntax</h2>
+        <section id="core-model">
+            <h2>Core Model</h2>
 
-            <p>An enum declaration contains a name and a comma-separated list of variants:</p>
+            <p>Sec has two semantic enum domains:</p>
 
-            <pre><code>enum Color {
-    red,
-    green,
-    blue,
-}</code></pre>
-
-            <p>A trailing comma is allowed and is the normal formatted style.</p>
-
-            <p>An enum may specify an underlying integer type after its name:</p>
-
-            <pre><code>enum Status int {
-    unknown = 0,
-    active = 10,
-    paused,
-    disabled = 99,
-}</code></pre>
-
-            <p>If no underlying type is written, <code>int</code> is used.</p>
-        </div>
-
-        <div class="section" id="variants-and-values">
-            <h2>Variants and Values</h2>
-
-            <p>The enum name identifies the type:</p>
-
-            <pre><code>Direction</code></pre>
-
-            <p>A qualified variant name identifies a value of that type:</p>
-
-            <pre><code>Direction.north</code></pre>
-
-            <pre><code>let direction: Direction := Direction.north</code></pre>
-
-            <p>
-                The numeric representation belongs to the variant, but it does not replace the enum type. For
-                example, <code>Direction.north</code> may store the numeric value <code>0</code>, while still having
-                type <code>Direction</code>.
-            </p>
-        </div>
-
-        <div class="section" id="underlying-types">
-            <h2>Underlying Types</h2>
-
-            <p>The optional underlying type must be an integer type.</p>
-
-            <pre><code>enum SmallCode uint8 {
-    none,
-    ready,
-    failed,
-}</code></pre>
-
-            <p>Examples of valid underlying types include:</p>
-
-            <pre><code>int
-int8
-int16
-int32
-int64
-int128
-int256
-uint
-uint8
-uint16
-uint32
-uint64</code></pre>
-
-            <p>The exact set depends on the integer types supported by the target compiler version.</p>
-
-            <p>A non-integer underlying type is invalid:</p>
-
-            <pre><code>enum Invalid string {
-    value,
-}</code></pre>
-
-            <div class="error">
-                The underlying type of an enum must be an integer type.
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Enum kind</th>
+                            <th>Domain</th>
+                            <th>Typical purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Ordinary enum</td>
+                            <td>Closed over declared underlying value classes</td>
+                            <td>Application states, identifiers, protocols, errors</td>
+                        </tr>
+                        <tr>
+                            <td>Bit-backed enum</td>
+                            <td>Open over every value representable by <code>bit[N]</code></td>
+                            <td>Hardware register fields and raw device encodings</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
             <p>
-                Every resolved variant value must be representable by the underlying type. Overflow is a
-                compile-time error.
+                This distinction is semantic. It does not depend merely on the machine
+                representation chosen by the backend.
             </p>
-        </div>
 
-        <div class="section" id="automatic-values">
-            <h2>Automatic Values</h2>
+            <p>
+                An ordinary enum backed by <code>uint8</code> is still closed. A
+                <code>bit[8]</code> enum is open even if both eventually occupy eight bits.
+            </p>
+        </section>
 
-            <p>The first variant receives numeric value <code>0</code> unless it has an explicit initializer.</p>
+        <section id="declaration">
+            <h2>Declaration Forms</h2>
 
-            <p>Each later variant without an initializer receives the previous numeric value plus one.</p>
+            <p>The ordinary form is:</p>
+
+            <pre><code>enum Color {
+    Red
+    Green
+    Blue
+}</code></pre>
+
+            <p>The equivalent explicit type-declaration form is also valid:</p>
+
+            <pre><code>type Color enum {
+    Red
+    Green
+    Blue
+}</code></pre>
+
+            <p>An enum must contain at least one member.</p>
+
+            <p>
+                Members may be separated by line breaks or commas where the grammar permits it,
+                and a trailing comma is allowed:
+            </p>
 
             <pre><code>enum Direction {
-    north,
-    east,
-    south,
-    west,
+    North,
+    East,
+    South,
+    West,
+}</code></pre>
+        </section>
+
+        <section id="underlying-types">
+            <h2>Underlying Types</h2>
+
+            <p>
+                An ordinary enum without an explicit underlying type uses <code>int</code>.
+            </p>
+
+            <pre><code>enum Status {
+    Unknown
+    Active
+    Disabled
 }</code></pre>
 
-            <table>
-                <thead>
-                <tr>
-                    <th>Variant</th>
-                    <th>Numeric value</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr><td><code>Direction.north</code></td><td><code>0</code></td></tr>
-                <tr><td><code>Direction.east</code></td><td><code>1</code></td></tr>
-                <tr><td><code>Direction.south</code></td><td><code>2</code></td></tr>
-                <tr><td><code>Direction.west</code></td><td><code>3</code></td></tr>
-                </tbody>
-            </table>
+            <p>is an ordinary <code>int</code>-backed enum.</p>
 
-            <p>Automatic continuation follows the previous resolved numeric value:</p>
+            <h3>Explicit integer representation</h3>
 
-            <pre><code>enum Status int {
-    unknown = 0,
-    active = 10,
-    paused,
-    disabled = 99,
+            <pre><code>enum HttpStatus uint16 {
+    Ok = 200
+    NotFound = 404
 }</code></pre>
 
-            <table>
-                <thead>
-                <tr>
-                    <th>Variant</th>
-                    <th>Numeric value</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr><td><code>Status.unknown</code></td><td><code>0</code></td></tr>
-                <tr><td><code>Status.active</code></td><td><code>10</code></td></tr>
-                <tr><td><code>Status.paused</code></td><td><code>11</code></td></tr>
-                <tr><td><code>Status.disabled</code></td><td><code>99</code></td></tr>
-                </tbody>
-            </table>
-        </div>
+            <p>
+                An ordinary enum may use any valid integer type as its underlying representation.
+                The selected type is part of the enum declaration and constrains the values
+                representable by its member initializers.
+            </p>
 
-        <div class="section" id="explicit-values">
-            <h2>Explicit Values</h2>
+            <pre><code>enum SmallState uint8 {
+    Off = 0
+    On = 1
+}
 
-            <p>A variant initializer must be an integer constant expression.</p>
+enum LargeCode uint128 {
+    First = 1
+    Second = 2
+}</code></pre>
+
+            <h3>String representation</h3>
+
+            <pre><code>enum Program string {
+    OneCare = "Zebra OneCare"
+    VIQ = "Z1C+VIQ"
+    AdvancedExchange = "Advanced Exchange"
+}</code></pre>
+
+            <p>
+                A string-backed enum remains a nominal enum. Its members are values of
+                <code>Program</code>, not ordinary <code>string</code> values.
+            </p>
+
+            <h3>Hardware bit representation</h3>
+
+            <pre><code>enum DeviceMode bit[2] {
+    Off = 0b00
+    Active = 0b01
+    Sleep = 0b10
+}</code></pre>
+
+            <p>
+                <code>bit</code> is shorthand for <code>bit[1]</code> in enum underlying
+                position. Bit-backed enum widths are language-defined from 1 through 256 bits.
+            </p>
+        </section>
+
+        <section id="members">
+            <h2>Members and Namespace</h2>
+
+            <p>
+                Enum members are named typed constants in the enum's namespace.
+            </p>
+
+            <pre><code>enum Direction {
+    North
+    East
+    South
+    West
+}
+
+let direction: Direction := Direction.North</code></pre>
+
+            <p>
+                Member names must be unique within one enum. Different enum types may reuse
+                the same member names.
+            </p>
+
+            <pre><code>enum Direction {
+    North
+    South
+}
+
+enum Pole {
+    North
+    South
+}
+
+let direction := Direction.North
+let pole := Pole.North</code></pre>
+
+            <p>
+                An enum member has the nominal enum type, not its underlying representation:
+            </p>
+
+            <pre><code>let value: int := Direction.North    // invalid implicit conversion</code></pre>
+
+            <p>Convert explicitly when the underlying value is required.</p>
+        </section>
+
+        <section id="integer-initializers">
+            <h2>Integer Member Initializers</h2>
+
+            <p>An explicit enum member initializer uses <code>=</code>:</p>
 
             <pre><code>enum HttpStatus int {
-    ok = 200,
-    notFound = 404,
-    internalError = 500,
+    Ok = 200
+    NotFound = 404
 }</code></pre>
-
-            <p>Integer constant operators may be used:</p>
-
-            <pre><code>enum Flags uint {
-    read = 1 &lt;&lt; 0,
-    write = 1 &lt;&lt; 1,
-    execute = 1 &lt;&lt; 2,
-}</code></pre>
-
-            <p>A runtime value, function call or non-integer expression cannot initialize an enum variant.</p>
-
-            <pre><code>enum InvalidInitializer {
-    value = "invalid",
-}</code></pre>
-        </div>
-
-        <div class="section" id="iota">
-            <h2>iota</h2>
 
             <p>
-                <code>iota</code> is a compile-time integer constant available only while an enum variant
-                initializer is being evaluated.
+                The initializer must be a compile-time integer constant expression representable
+                by the enum's underlying integer type.
+            </p>
+
+            <p>This is not canonical initializer syntax:</p>
+
+            <pre><code>enum Status int {
+    Ready: 1
+}</code></pre>
+
+            <p>Use:</p>
+
+            <pre><code>enum Status int {
+    Ready = 1
+}</code></pre>
+
+            <p>
+                Integer-backed enums have an additional compile-time mechanism,
+                <code>iota</code>, for concise value sequences.
+            </p>
+        </section>
+
+        <section id="iota">
+            <h2><code>iota</code></h2>
+
+            <p>
+                <code>iota</code> is a compile-time integer constant available only while
+                evaluating integer-backed enum member initializers.
             </p>
 
             <p>
-                It starts at <code>0</code> for the first variant and increases by one for each following variant.
-                Its value is based on the variant position, not on the previous numeric result.
+                Its value is the zero-based declaration position of the current member.
             </p>
+
+            <pre><code>enum Direction {
+    North
+    East
+    South
+    West
+}</code></pre>
+
+            <p>is equivalent to beginning the sequence with:</p>
+
+            <pre><code>enum Direction {
+    North = iota
+    East
+    South
+    West
+}</code></pre>
+
+            <p>and resolves to:</p>
+
+            <pre><code>North = 0
+East  = 1
+South = 2
+West  = 3</code></pre>
+
+            <p>
+                Explicit numeric values do not reset <code>iota</code>. Each enum has its
+                own independent <code>iota</code> sequence.
+            </p>
+
+            <p>
+                <code>iota</code> is not a general language constant and is not available
+                in string-backed enums.
+            </p>
+        </section>
+
+        <section id="repetition">
+            <h2>Initializer Repetition</h2>
+
+            <p>
+                After the first integer-backed member, omitting an initializer repeats the
+                preceding initializer expression and evaluates that expression using the
+                current member's <code>iota</code>.
+            </p>
+
+            <pre><code>enum Code int {
+    A = iota    // 0
+    B           // 1
+    C           // 2
+    D = 10      // 10
+    E           // 10
+}</code></pre>
+
+            <p>
+                <code>E</code> becomes <code>10</code> because the expression
+                <code>10</code> is repeated. Sec does not interpret omission as
+                "previous resolved value plus one".
+            </p>
+
+            <p>
+                To jump and continue a sequence from the new position, express the jump
+                in terms of <code>iota</code>:
+            </p>
+
+            <pre><code>enum Code int {
+    A = iota        // 0
+    B               // 1
+    C               // 2
+    D = iota + 7    // 10
+    E               // 11
+    F               // 12
+}</code></pre>
+
+            <h3>Bit-mask style sequences</h3>
 
             <pre><code>enum Permission uint {
-    none = 0,
-    read = 1 &lt;&lt; iota,
-    write = 1 &lt;&lt; iota,
-    execute = 1 &lt;&lt; iota,
+    None = 0
+    Read = 1 &lt;&lt; iota
+    Write
+    Execute
 }</code></pre>
 
-            <table>
-                <thead>
-                <tr>
-                    <th>Variant</th>
-                    <th>iota</th>
-                    <th>Numeric value</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr><td><code>Permission.none</code></td><td><code>0</code></td><td><code>0</code></td></tr>
-                <tr><td><code>Permission.read</code></td><td><code>1</code></td><td><code>2</code></td></tr>
-                <tr><td><code>Permission.write</code></td><td><code>2</code></td><td><code>4</code></td></tr>
-                <tr><td><code>Permission.execute</code></td><td><code>3</code></td><td><code>8</code></td></tr>
-                </tbody>
-            </table>
+            <p>resolves to:</p>
 
-            <p>Explicit values do not reset <code>iota</code>:</p>
-
-            <pre><code>enum Example int {
-    first = iota,
-    second = 100,
-    third = iota,
-    fourth,
-}</code></pre>
-
-            <table>
-                <thead>
-                <tr>
-                    <th>Variant</th>
-                    <th>iota</th>
-                    <th>Numeric value</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr><td><code>Example.first</code></td><td><code>0</code></td><td><code>0</code></td></tr>
-                <tr><td><code>Example.second</code></td><td><code>1</code></td><td><code>100</code></td></tr>
-                <tr><td><code>Example.third</code></td><td><code>2</code></td><td><code>2</code></td></tr>
-                <tr><td><code>Example.fourth</code></td><td><code>3</code></td><td><code>3</code></td></tr>
-                </tbody>
-            </table>
+            <pre><code>None    = 0
+Read    = 2
+Write   = 4
+Execute = 8</code></pre>
 
             <p>
-                <code>Example.fourth</code> uses the previous numeric value plus one. It does not repeat the
-                initializer expression from <code>Example.third</code>.
+                Every repeated expression is checked again for overflow and representability
+                after substituting the current <code>iota</code>.
+            </p>
+        </section>
+
+        <section id="string-enums">
+            <h2>String-Backed Enums</h2>
+
+            <p>
+                A string-backed enum uses <code>string</code> as its explicit underlying type.
             </p>
 
-            <p>Each enum has its own independent <code>iota</code> sequence.</p>
+            <pre><code>enum Program string {
+    OneCare = "Zebra OneCare"
+    VIQ = "Z1C+VIQ"
+    AdvancedExchange = "Advanced Exchange"
+}</code></pre>
 
-            <pre><code>let value: int := iota</code></pre>
+            <p>
+                Every member must have an explicit compile-time string initializer.
+            </p>
 
-            <div class="error"><code>iota</code> is not visible outside enum variant initializers.</div>
-        </div>
+            <p>This is invalid:</p>
 
-        <div class="section" id="aliases">
-            <h2>Aliases</h2>
+            <pre><code>enum Program string {
+    OneCare = "Zebra OneCare"
+    VIQ
+}</code></pre>
 
-            <p>Several variant names may have the same numeric value.</p>
+            <p>
+                String enums have no implicit sequence and no initializer-repetition rule.
+                <code>iota</code> is not available.
+            </p>
+
+            <p>
+                String-backed enums are closed ordinary enums. Only the declared underlying
+                string value classes are valid enum values.
+            </p>
+
+            <pre><code>let program := Program("Zebra OneCare")</code></pre>
+
+            <p>
+                This constant conversion is valid because the string names a declared value class.
+            </p>
+
+            <pre><code>let program := Program("Unknown")</code></pre>
+
+            <p>
+                This is a compile-time error when no member declares <code>"Unknown"</code>.
+            </p>
+
+            <p>
+                Runtime conversion from <code>string</code> is checked:
+            </p>
+
+            <pre><code>let program := try Program(input)</code></pre>
+
+            <p>
+                Failure reports <code>EnumValueError.UndeclaredValue</code>.
+            </p>
+
+            <p>Conversion back to the underlying string is explicit and infallible:</p>
+
+            <pre><code>let text := string(Program.OneCare)</code></pre>
+        </section>
+
+        <section id="aliases">
+            <h2>Value Aliases</h2>
+
+            <p>
+                More than one enum member name may have the same underlying value.
+            </p>
 
             <pre><code>enum ResultCode int {
-    success = 0,
-    ok = 0,
-    notFound = 404,
-    missing = 404,
+    Success = 0
+    Ok = 0
+    NotFound = 404
+    Missing = 404
 }</code></pre>
 
             <p>
-                <code>ResultCode.success</code> and <code>ResultCode.ok</code> are both valid variant names. They
-                have the same numeric representation. The same applies to <code>notFound</code> and
-                <code>missing</code>.
+                Duplicate underlying values are valid aliases. The member names remain
+                distinct declared names, but values with the same underlying representation
+                belong to one runtime value class.
             </p>
 
-            <div class="rule">
-                <strong>Rule:</strong> Duplicate numeric values are valid aliases. Duplicate variant names are
-                invalid.
-            </div>
+            <p>The same applies to string-backed enums:</p>
+
+            <pre><code>enum Program string {
+    OneCare = "Zebra OneCare"
+    LegacyOneCare = "Zebra OneCare"
+}</code></pre>
 
             <p>
-                Alias names remain separate declared variants even though equality compares their shared enum
-                value.
+                Aliases compare equal:
             </p>
-        </div>
 
-        <div class="section" id="enum-namespaces">
-            <h2>Enum Namespaces</h2>
-
-            <p>Module-level enum variants are accessed through the enum name:</p>
-
-            <pre><code>let color := Color.red
-let state := Status.active</code></pre>
+            <pre><code>if ResultCode.Success == ResultCode.Ok {
+    ...
+}</code></pre>
 
             <p>
-                Variant names do not enter the surrounding module namespace directly. This allows different enums
-                to reuse clear names such as <code>none</code>, <code>ready</code> or <code>failed</code>.
+                They also represent one coverage class for exhaustive <code>match</code>.
+                Matching one alias covers that underlying runtime value.
             </p>
+        </section>
+
+        <section id="defaults">
+            <h2>Enum Defaults</h2>
+
+            <p>
+                Every valid non-empty enum is defaultable.
+            </p>
+
+            <h3>Implicit default</h3>
+
+            <p>
+                Unless another member is explicitly marked <code>default</code>, the first
+                declared member is the enum's semantic default.
+            </p>
+
+            <pre><code>enum Status int {
+    Unknown = 10
+    Active = 20
+}</code></pre>
+
+            <p>The default is:</p>
+
+            <pre><code>Status.Unknown</code></pre>
+
+            <p>
+                Numeric zero has no special priority.
+            </p>
+
+            <h3>Explicit default member</h3>
 
             <pre><code>enum ConnectionState {
-    ready,
-    failed,
-}
-
-enum JobState {
-    ready,
-    failed,
+    Connecting
+    Connected
+    Disconnected default
 }</code></pre>
-
-            <pre><code>let connection := ConnectionState.ready
-let job := JobState.ready</code></pre>
-        </div>
-
-        <div class="section" id="nested-enums">
-            <h2>Nested Enums</h2>
-
-            <p>An enum may be declared inside an <code>impl</code> block:</p>
-
-            <pre><code>type Vehicle struct {
-    Name: string
-}
-
-impl Vehicle {
-    enum FuelType {
-        petrol,
-        diesel,
-        electric,
-    }
-
-    fn IsElectric(fuel: FuelType) bool {
-        return fuel == FuelType.electric
-    }
-}</code></pre>
-
-            <p>Outside the owner implementation, the enum type is qualified with the owner type:</p>
-
-            <pre><code>let fuel: Vehicle.FuelType := Vehicle.FuelType.electric</code></pre>
-
-            <p>Inside <code>impl Vehicle</code>, the owner prefix is omitted:</p>
-
-            <pre><code>FuelType
-FuelType.petrol</code></pre>
 
             <p>
-                The full nested enum name is <code>Vehicle.FuelType</code>. Its variants belong to the nested enum
-                namespace.
+                Exactly one member may be marked <code>default</code>.
             </p>
-        </div>
 
-        <div class="section" id="variant-uniqueness">
-            <h2>Variant Name Uniqueness</h2>
+            <p>
+                The marker appears after the member name and before an optional initializer:
+            </p>
 
-            <p>Variant names must be unique inside one enum.</p>
-
-            <pre><code>enum Invalid {
-    value,
-    value,
+            <pre><code>enum ConnectionState int {
+    Connecting = 10
+    Connected = 20
+    Disconnected default = 30
 }</code></pre>
 
-            <div class="error">Duplicate enum variant name <code>value</code>.</div>
+            <p>
+                The <code>default</code> marker changes default selection only.
+                It does not alter the initializer expression, <code>iota</code>, repetition
+                rules or alias semantics.
+            </p>
 
-            <p>Different enums may use the same variant names because each enum provides its own namespace.</p>
-        </div>
+            <h3>Default initialization</h3>
 
-        <div class="section" id="enum-types">
-            <h2>Enums Are Distinct Types</h2>
+            <pre><code>let mut state: ConnectionState</code></pre>
 
-            <p>An enum does not implicitly become its underlying integer type.</p>
+            <p>
+                initializes <code>state</code> to the enum's semantic default.
+                This is not uninitialized storage.
+            </p>
+
+            <p>
+                The ordinary immutable-binding rule still requires an initializer:
+            </p>
+
+            <pre><code>let state: ConnectionState    // invalid</code></pre>
+        </section>
+
+        <section id="closed-domain">
+            <h2>Ordinary Enums Are Closed</h2>
+
+            <p>
+                An ordinary enum's semantic domain contains only the unique underlying values
+                declared by its members.
+            </p>
 
             <pre><code>enum Color int {
-    red,
-    green,
-    blue,
-}
+    Red = 1
+    Green = 2
+    Blue = 3
+}</code></pre>
 
-let color: Color := Color.red</code></pre>
+            <p>Valid <code>Color</code> values are the declared value classes:</p>
 
-            <p>The following assignments are invalid:</p>
+            <pre><code>1
+2
+3</code></pre>
 
-            <pre><code>let color: Color := 1
-let number: int := Color.red</code></pre>
+            <p>
+                The fact that <code>int</code> can represent many other values does not make
+                those values valid <code>Color</code> values.
+            </p>
 
-            <p>Different enum types are also incompatible:</p>
-
-            <pre><code>enum Color {
-    red,
-}
-
-enum Status {
-    active,
-}
-
-let color: Color := Status.active</code></pre>
+            <p>
+                The same closed-domain rule applies to string-backed enums.
+            </p>
 
             <div class="rule">
-                <strong>Rule:</strong> Sharing an underlying type does not make two enum types compatible.
+                <strong>Rule:</strong> Safe Sec semantics cannot produce an ordinary enum value
+                outside its declared value domain.
             </div>
-        </div>
+        </section>
 
-        <div class="section" id="conversions">
-            <h2>Explicit Conversions</h2>
-
-            <h3>Enum to Integer</h3>
-
-            <p>Use normal cast syntax to obtain the numeric representation:</p>
-
-            <pre><code>let numeric: int := int(Color.red)</code></pre>
-
-            <h3>Integer to Enum</h3>
-
-            <p>Use the enum type as an explicit conversion:</p>
-
-            <pre><code>let color: Color := Color(2)</code></pre>
+        <section id="error-enums">
+            <h2>Error Enums</h2>
 
             <p>
-                Integer-to-enum conversion may produce a valid value of the enum type even when no declared
-                variant has that numeric representation.
+                A closed enum may be declared as a concrete Sec error type by adding
+                the <code>error</code> marker.
             </p>
 
-            <pre><code>let unknownColor: Color := Color(200)</code></pre>
+            <pre><code>enum IOError error {
+    OpenError
+    ReadError
+    WriteError
+}</code></pre>
 
             <p>
-                This value has type <code>Color</code>, but it does not correspond to a declared variant name. Code
-                that accepts externally supplied enum numbers should account for this possibility.
+                When an explicit enum representation is needed, the <code>error</code>
+                marker follows the ordinary representation information:
             </p>
 
-            <h3>Between Enum Types</h3>
+            <pre><code>enum ProtocolError uint16 error {
+    InvalidFrame = 1
+    UnsupportedVersion = 2
+}</code></pre>
 
-            <p>Conversion between different enum types must go through an integer type:</p>
+            <p>
+                The enum remains a closed nominal enum. Its additional semantic property is
+                that values of the enum are assignable to the compiler-known root
+                <code>error</code> type.
+            </p>
 
-            <pre><code>let status: Status := Status(int(color))</code></pre>
+            <pre><code>fn Read() Result[Data, IOError] {
+    return Err(IOError.ReadError)
+}</code></pre>
 
-            <p>There is no implicit conversion between enums.</p>
-        </div>
+            <p>A concrete enum error may widen to <code>error</code>:</p>
 
-        <div class="section" id="comparisons">
-            <h2>Comparisons</h2>
+            <pre><code>fn ReadOpen() Result[Data, error] {
+    return Err(IOError.ReadError)
+}</code></pre>
 
-            <p>Equality and inequality are supported between values of the same enum type:</p>
+            <p>
+                Widening preserves the concrete error type and member identity.
+            </p>
 
-            <pre><code>if color == Color.red {
-    PaintRed()
+            <p>The reverse conversion is not implicit:</p>
+
+            <pre><code>IOError -&gt; error      // valid widening
+error -&gt; IOError      // not implicit
+IOError -&gt; ParseError // not implicit</code></pre>
+
+            <p>
+                Declaring an enum as an error type does not introduce general inheritance,
+                exceptions or a mandatory error-object layout.
+            </p>
+
+            <p>
+                Error variants that need payload data belong to a union error rather than
+                an enum error:
+            </p>
+
+            <pre><code>type DetailedError union error {
+    OpenError {
+        Path: string
+        Code: int
+    }
+
+    ReadError {
+        Path: string
+        Offset: uint64
+    }
+}</code></pre>
+        </section>
+
+        <section id="generic-enums">
+            <h2>Generic Enums</h2>
+
+            <p>
+                Enums may declare ordinary Sec generic type parameters.
+            </p>
+
+            <pre><code>enum SortOrder[T] {
+    Ascending
+    Descending
+}</code></pre>
+
+            <p>
+                Every complete concrete argument list produces a distinct nominal enum type:
+            </p>
+
+            <pre><code>SortOrder[User]
+SortOrder[Product]</code></pre>
+
+            <p>
+                These types remain distinct even when the generic parameter contributes no
+                runtime storage and the physical representation is identical.
+            </p>
+
+            <p>
+                Once concretized, ordinary enum rules apply to members, defaults, conversions,
+                equality, <code>switch</code>, <code>match</code> and representation.
+            </p>
+
+            <p>
+                Generic enum parameters may participate in type identity and associated behavior
+                without becoming runtime generic parameters.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Generic enum instantiation does not introduce runtime
+                type erasure, hidden dictionaries, generic dispatch or implicit boxing.
+            </div>
+
+            <p>
+                Enum members remain payload-less. If each alternative needs to carry different
+                data, use a union.
+            </p>
+        </section>
+
+        <section id="nested-enums">
+            <h2>Nested Enums</h2>
+
+            <p>
+                An enum may be declared as an associated nested type inside an owning
+                <code>impl</code>.
+            </p>
+
+            <pre><code>impl Vehicle {
+    enum FuelType {
+        Petrol
+        Diesel
+        Electric
+    }
+}</code></pre>
+
+            <p>Outside the implementation, use the qualified type and member names:</p>
+
+            <pre><code>Vehicle.FuelType
+Vehicle.FuelType.Diesel</code></pre>
+
+            <p>
+                Inside <code>impl Vehicle</code>, the shorter nested name may be used when
+                normal scope resolution makes it unambiguous:
+            </p>
+
+            <pre><code>FuelType
+FuelType.Diesel</code></pre>
+        </section>
+
+        <section id="enum-impl">
+            <h2>Behavior and Associated Values</h2>
+
+            <p>
+                An enum is a nominal type and may have ordinary Sec behavior through
+                <code>impl</code>.
+            </p>
+
+            <pre><code>enum Status {
+    Ready
+    Waiting
+    Failed
 }
 
-if color != Color.blue {
-    Continue()
+impl Status {
+    fn IsTerminal() bool {
+        return self == Status.Failed
+    }
+
+    let DefaultFailure: Status := Status.Failed
 }</code></pre>
-
-            <p>Comparing different enum types is invalid:</p>
-
-            <pre><code>let same := Color.red == Status.active</code></pre>
-
-            <p>Comparing an enum directly with an integer is also invalid:</p>
-
-            <pre><code>let same := Color.red == 0</code></pre>
-
-            <p>Use an explicit conversion when comparing numeric representations:</p>
-
-            <pre><code>let same := int(Color.red) == 0</code></pre>
-        </div>
-
-        <div class="section" id="arithmetic">
-            <h2>Arithmetic</h2>
-
-            <p>Arithmetic is not directly defined for enum values.</p>
-
-            <pre><code>let next := Color.red + 1</code></pre>
-
-            <div class="error">Arithmetic operands cannot use an enum value directly.</div>
-
-            <p>Convert explicitly when numeric arithmetic is intended:</p>
-
-            <pre><code>let nextNumeric: int := int(Color.red) + 1
-let nextColor: Color := Color(nextNumeric)</code></pre>
 
             <p>
-                The explicit conversions make it clear that the program is operating on the numeric
-                representation rather than on enum variants as semantic values.
+                Instance methods receive implicit <code>self</code>. Immutable associated values
+                declared directly with <code>let</code> are type-associated members:
             </p>
-        </div>
 
-        <div class="section" id="variables">
-            <h2>Variables and Assignment</h2>
+            <pre><code>let failure := Status.DefaultFailure</code></pre>
 
-            <p>An immutable enum variable must be initialized when declared:</p>
+            <p>
+                Associated values are not enum members. They do not alter the enum's underlying
+                value domain, member initialization, aliases, <code>iota</code>, default-member
+                selection or exhaustive match coverage.
+            </p>
 
-            <pre><code>let color: Color := Color.red</code></pre>
+            <p>
+                An implementation may also provide static methods, properties and other
+                implementation members permitted by the general <code>impl</code> rules.
+            </p>
 
-            <p>An immutable declaration without an initializer is invalid:</p>
+            <p>
+                <code>impl</code> cannot add new enum members to an already declared enum.
+            </p>
+        </section>
 
-            <pre><code>let color: Color</code></pre>
+        <section id="bit-enums">
+            <h2>Bit-Backed Hardware Enums</h2>
 
-            <p>A mutable variable may be declared before it is assigned:</p>
+            <p>
+                A hardware enum may use <code>bit</code> or <code>bit[N]</code> as its
+                underlying representation.
+            </p>
 
-            <pre><code>let mut color: Color
-color = Color.green</code></pre>
-
-            <p>Every assignment must still use a compatible value of the same enum type.</p>
-        </div>
-
-        <div class="section" id="definite-assignment">
-            <h2>Definite Assignment</h2>
-
-            <p>An uninitialized mutable enum variable may not be read before every continuing path assigns it.</p>
-
-            <pre><code>fn SelectColor(useRed: bool) Color {
-    let mut color: Color
-
-    if useRed {
-        color = Color.red
-    } else {
-        color = Color.blue
-    }
-
-    return color
+            <pre><code>enum AlertPinMode bit[2] {
+    AlertDisabled = 0b00
+    Comparator = 0b01
+    Interrupt = 0b10
 }</code></pre>
 
-            <p>This is valid because both branches assign <code>color</code>.</p>
+            <p>
+                Unlike ordinary enums, a bit-backed enum is open over the complete domain
+                representable by its bit width.
+            </p>
 
-            <pre><code>fn Invalid(useRed: bool) Color {
-    let mut color: Color
+            <p>
+                For <code>bit[2]</code>, all four bit patterns are valid:
+            </p>
 
-    if useRed {
-        color = Color.red
-    }
+            <pre><code>0b00
+0b01
+0b10
+0b11</code></pre>
 
-    return color
+            <p>
+                The first three have declared names in the example. <code>0b11</code> is
+                still a valid <code>AlertPinMode</code> value even though it is unnamed.
+            </p>
+
+            <p>
+                This is necessary because hardware can expose reserved, undocumented,
+                device-specific or future encodings. Sec preserves those values rather than
+                trapping or inventing a member name.
+            </p>
+
+            <div class="rule">
+                <strong>Hardware rule:</strong> A <code>bit[N]</code> enum does not need
+                to enumerate all <code>2^N</code> possible values.
+            </div>
+
+            <h3>Unknown values in match</h3>
+
+            <pre><code>match mode {
+    AlertPinMode.AlertDisabled =&gt; HandleDisabled()
+    AlertPinMode.Comparator =&gt; HandleComparator()
+    AlertPinMode.Interrupt =&gt; HandleInterrupt()
+    _ =&gt; HandleUnknownMode()
 }</code></pre>
 
-            <p>This is invalid because the condition may be false and leave <code>color</code> unassigned.</p>
-        </div>
+            <p>
+                When undeclared bit patterns remain possible, listing only named members
+                is not exhaustive.
+            </p>
+        </section>
 
-        <div class="section" id="switch-and-match">
-            <h2>switch and match</h2>
+        <section id="register-fields">
+            <h2>Bit Enums in Register Fields</h2>
 
-            <p>Enums may be used with both <code>switch</code> and <code>match</code>.</p>
+            <p>
+                A named register field may use a bit-backed enum when the enum width exactly
+                matches the field width.
+            </p>
 
-            <h3>switch</h3>
+            <pre><code>enum AlertPinMode bit[2] {
+    AlertDisabled = 0b00
+    Comparator = 0b01
+    Interrupt = 0b10
+}
 
-            <p>Use <code>switch</code> for ordinary value-based branching:</p>
+type AlertControl register[8] {
+    Mode: AlertPinMode
+    _: bit[6]
+}</code></pre>
 
-            <pre><code>switch direction {
-case Direction.north:
-    MoveNorth()
+            <p>
+                Reading <code>Mode</code> preserves the complete raw two-bit pattern.
+                If the hardware returns <code>0b11</code>, the read still produces a valid
+                <code>AlertPinMode</code> value.
+            </p>
 
-case Direction.south:
-    MoveSouth()
+            <p>
+                Ordinary closed enums are not interchangeable with bit-backed register-field
+                types merely because their numeric representation could fit.
+            </p>
+        </section>
+
+        <section id="conversions">
+            <h2>Conversions</h2>
+
+            <p>
+                Enums do not implicitly convert to or from their underlying representation.
+                Different enum types do not implicitly convert to each other.
+            </p>
+
+            <h3>Enum to integer</h3>
+
+            <pre><code>let raw := int(Color.Red)</code></pre>
+
+            <p>
+                Normal checked integer conversion rules apply to the target integer type.
+            </p>
+
+            <h3>Enum to string</h3>
+
+            <pre><code>let raw := string(Program.OneCare)</code></pre>
+
+            <p>
+                For a valid string-backed enum, conversion to <code>string</code> is infallible.
+            </p>
+
+            <h3>Constant integer to closed enum</h3>
+
+            <pre><code>enum Color int {
+    Red = 1
+    Green = 2
+    Blue = 3
+}
+
+let color := Color(2)</code></pre>
+
+            <p>
+                This is valid because <code>2</code> is a declared <code>Color</code> value class.
+            </p>
+
+            <pre><code>let color := Color(9)</code></pre>
+
+            <p>
+                This is a compile-time error because <code>9</code> is not a declared
+                value of the closed enum.
+            </p>
+
+            <h3>Runtime integer to closed enum</h3>
+
+            <pre><code>let color := try Color(raw)</code></pre>
+
+            <p>
+                When the compiler cannot prove that the runtime integer names a valid enum value,
+                the conversion is fallible.
+            </p>
+
+            <p>Possible failures are:</p>
+
+            <pre><code>EnumValueError.UndeclaredValue
+EnumValueError.OutOfRange</code></pre>
+
+            <p>
+                <code>OutOfRange</code> means the value cannot be represented by the enum's
+                underlying representation. <code>UndeclaredValue</code> means the value fits
+                the representation but does not belong to the closed enum domain.
+            </p>
+
+            <h3>Integer to open bit enum</h3>
+
+            <pre><code>enum DeviceMode bit[2] {
+    Off = 0b00
+    Active = 0b01
+    Sleep = 0b10
+}
+
+let mode := DeviceMode(0b11)</code></pre>
+
+            <p>
+                This is valid because <code>0b11</code> fits the two-bit domain.
+                It is a valid unnamed value.
+            </p>
+
+            <p>A runtime conversion requires <code>try</code> only when width fit cannot be proven:</p>
+
+            <pre><code>let mode := try DeviceMode(raw)</code></pre>
+
+            <p>
+                An in-range unnamed bit pattern never fails with
+                <code>EnumValueError.UndeclaredValue</code>.
+            </p>
+
+            <h3>String to string-backed enum</h3>
+
+            <pre><code>let program := try Program(input)</code></pre>
+
+            <p>
+                Runtime conversion checks whether the input equals one of the declared
+                string value classes. Failure is <code>EnumValueError.UndeclaredValue</code>.
+            </p>
+
+            <h3>Enum to enum</h3>
+
+            <p>Cross-enum conversion is never implicit.</p>
+
+            <p>Integer-backed enums convert explicitly through a suitable integer representation:</p>
+
+            <pre><code>let raw := int(SourceMode.Active)
+let target := try TargetMode(raw)</code></pre>
+
+            <p>String-backed enums use an explicit <code>string</code> intermediary.</p>
+        </section>
+
+        <section id="equality">
+            <h2>Assignment, Equality and Arithmetic</h2>
+
+            <p>
+                Values of the same enum type use ordinary assignment rules:
+            </p>
+
+            <pre><code>let mut state := Status.Ready
+state = Status.Waiting</code></pre>
+
+            <p>No implicit assignment exists between:</p>
+
+            <ul>
+                <li>an enum and its underlying integer or string type;</li>
+                <li>two different enum types.</li>
+            </ul>
+
+            <h3>Equality</h3>
+
+            <pre><code>if color == Color.Red {
+    HandleRed()
+}</code></pre>
+
+            <p>
+                Equality and inequality are defined between values of the same enum type.
+                Comparison uses the semantic underlying enum value.
+            </p>
+
+            <p>
+                Aliases with the same underlying value compare equal.
+            </p>
+
+            <h3>No direct arithmetic or ordering</h3>
+
+            <p>Enum values do not directly support arithmetic:</p>
+
+            <pre><code>let next := status + 1    // invalid</code></pre>
+
+            <p>They are not directly ordered:</p>
+
+            <pre><code>if status &lt; Status.Failed {    // invalid
+}</code></pre>
+
+            <p>
+                String-backed enums likewise do not acquire string concatenation or ordering.
+            </p>
+
+            <p>
+                Convert explicitly to the underlying representation when numeric or textual
+                operations are genuinely intended.
+            </p>
+        </section>
+
+        <section id="match">
+            <h2>Match and Exhaustiveness</h2>
+
+            <p>
+                <code>match</code> understands enum domains directly.
+            </p>
+
+            <h3>Closed ordinary enum</h3>
+
+            <pre><code>enum Direction {
+    North
+    East
+    South
+    West
+}
+
+match direction {
+    Direction.North =&gt; MoveNorth()
+    Direction.East =&gt; MoveEast()
+    Direction.South =&gt; MoveSouth()
+    Direction.West =&gt; MoveWest()
+}</code></pre>
+
+            <p>
+                This is exhaustive because every unique declared runtime value class is covered.
+            </p>
+
+            <p>
+                Numeric or string aliases count as one coverage class.
+            </p>
+
+            <h3>Open bit-backed enum</h3>
+
+            <pre><code>match mode {
+    DeviceMode.Off =&gt; HandleOff()
+    DeviceMode.Active =&gt; HandleActive()
+    DeviceMode.Sleep =&gt; HandleSleep()
+    _ =&gt; HandleUnknown()
+}</code></pre>
+
+            <p>
+                Exhaustiveness for <code>bit[N]</code> is based on all <code>2^N</code>
+                bit patterns, not merely on declared names.
+            </p>
+
+            <p>
+                A catch-all is unnecessary only when explicit patterns already cover the complete
+                bit domain.
+            </p>
+        </section>
+
+        <section id="switch">
+            <h2>Switch</h2>
+
+            <p>
+                An enum may be used as a normal <code>switch</code> subject.
+            </p>
+
+            <pre><code>switch status {
+case Status.Ready:
+    Start()
+
+case Status.Waiting:
+    Wait()
 
 default:
     Stop()
 }</code></pre>
 
-            <p>An enum switch is not required to be exhaustive.</p>
+            <p>
+                <code>switch</code> uses normal value-comparison semantics.
+                It does not become exhaustive merely because the subject is an enum.
+            </p>
 
-            <h3>match</h3>
+            <p>
+                Use <code>match</code> when exhaustive enum handling is part of the intended contract.
+            </p>
+        </section>
 
-            <p>Use <code>match</code> when every declared enum variant must be handled:</p>
+        <section id="ffi-enums">
+            <h2>Foreign C Enums</h2>
 
-            <pre><code>match direction {
-    Direction.north =&gt; MoveNorth()
-    Direction.east =&gt; MoveEast()
-    Direction.south =&gt; MoveSouth()
-    Direction.west =&gt; MoveWest()
+            <p>
+                A C ABI enum declared through the foreign interface is a separate category
+                from both ordinary Sec enums and bit-backed hardware enums.
+            </p>
+
+            <pre><code>extern "C" type NativeStatus enum {
+    ...
 }</code></pre>
 
-            <p>An enum match is exhaustive unless an allowed catch-all branch handles the remaining variants.</p>
-        </div>
+            <p>
+                Its representation is selected by the active C ABI.
+            </p>
 
-        <div class="section" id="common-errors">
-            <h2>Common Errors</h2>
+            <p>
+                Its value domain is open over every raw value representable by that ABI enum
+                representation, because foreign code may return values not named by the Sec declaration.
+            </p>
 
-            <h3>Duplicate Variant Name</h3>
+            <p>
+                Code that needs exhaustive interpretation of a foreign enum therefore requires
+                an unknown-value fallback where undeclared raw values remain possible.
+            </p>
 
-            <pre><code>enum Invalid {
-    value,
-    value,
-}</code></pre>
+            <div class="rule">
+                <strong>Do not conflate the three models:</strong> ordinary Sec enum,
+                hardware <code>bit[N]</code> enum, and foreign C ABI enum have different
+                domain rules even when their machine representations happen to be similar.
+            </div>
+        </section>
 
-            <h3>Invalid Underlying Type</h3>
+        <section id="diagnostics">
+            <h2>Diagnostics and Tooling</h2>
 
-            <pre><code>enum Invalid string {
-    value,
-}</code></pre>
-
-            <h3>Invalid Initializer</h3>
-
-            <pre><code>enum Invalid {
-    value = "invalid",
-}</code></pre>
-
-            <h3>Implicit Integer Conversion</h3>
-
-            <pre><code>let color: Color := 1
-let number: int := Color.red</code></pre>
-
-            <h3>Mixed Enum Types</h3>
-
-            <pre><code>let color: Color := Status.active
-let same := Color.red == Status.active</code></pre>
-
-            <h3>Arithmetic Without Conversion</h3>
-
-            <pre><code>let value := Color.red + 1</code></pre>
-
-            <h3>iota Outside an Enum</h3>
-
-            <pre><code>let value: int := iota</code></pre>
-        </div>
-
-        <div class="section" id="summary-rules">
-            <h2>Summary of Rules</h2>
+            <p>Important enum diagnostics include:</p>
 
             <ul>
-                <li>An enum defines a distinct named type and a finite set of named variants.</li>
-                <li>Variants are comma-separated and may use a trailing comma.</li>
-                <li>The default underlying type is <code>int</code>.</li>
-                <li>An explicit underlying type must be an integer type.</li>
-                <li>The first automatic value is <code>0</code>.</li>
-                <li>Later automatic values use the previous numeric value plus one.</li>
-                <li>Explicit initializers must be representable integer constant expressions.</li>
-                <li><code>iota</code> is local to enum initializers and follows variant position.</li>
-                <li>Variant names must be unique inside an enum.</li>
-                <li>Duplicate numeric values are allowed as aliases.</li>
-                <li>Enum variants have the enum type, not the underlying integer type.</li>
-                <li>Integer and enum conversions are explicit in both directions.</li>
-                <li>Different enum types are never implicitly compatible.</li>
-                <li>Equality and inequality require the same enum type.</li>
-                <li>Arithmetic requires explicit conversion to an integer type.</li>
-                <li>Nested enums use the owner-qualified name outside their <code>impl</code>.</li>
-                <li>Normal initialization and definite-assignment rules apply to enum variables.</li>
+                <li>duplicate enum member name;</li>
+                <li>invalid enum underlying type;</li>
+                <li>empty enum declaration;</li>
+                <li>initializer is not a constant expression;</li>
+                <li>initializer is not representable by the underlying type;</li>
+                <li>string-backed member requires an explicit initializer;</li>
+                <li>string-backed initializer is not a compile-time string constant;</li>
+                <li><code>iota</code> used in a string-backed enum;</li>
+                <li><code>iota</code> used outside enum member initialization;</li>
+                <li>multiple members marked <code>default</code>;</li>
+                <li>underlying value is not a declared member of a closed enum;</li>
+                <li>integer value does not fit a bit-backed enum width;</li>
+                <li>fallible enum conversion requires <code>try</code>;</li>
+                <li>non-exhaustive match for a closed enum;</li>
+                <li>non-exhaustive match for an open bit-backed enum.</li>
             </ul>
-        </div>
+
+            <p>
+                Tooling should expose both the underlying representation and the enum-domain kind:
+            </p>
+
+            <pre><code>closed ordinary enum
+open bit-backed enum</code></pre>
+
+            <p>
+                For open hardware enums, diagnostics and hover information should make clear
+                that undeclared in-range bit patterns are valid runtime values.
+            </p>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>An enum is a distinct nominal value type.</li>
+                <li>Enum members are typed enum constants in the enum namespace.</li>
+                <li>An ordinary enum defaults to underlying type <code>int</code>.</li>
+                <li>Ordinary enums may use explicit integer or <code>string</code> representations.</li>
+                <li>Integer-backed member initializers are compile-time integer expressions.</li>
+                <li><code>iota</code> is the zero-based member position for integer-backed enum initialization.</li>
+                <li>The first omitted integer initializer is implicit <code>iota</code>.</li>
+                <li>Later omitted integer initializers repeat the preceding initializer expression.</li>
+                <li>An explicit numeric jump does not reset <code>iota</code>.</li>
+                <li>String-backed members require explicit compile-time string values.</li>
+                <li><code>iota</code> does not apply to string-backed enums.</li>
+                <li>Duplicate underlying values are valid aliases.</li>
+                <li>Aliases with the same underlying value compare equal and form one match-coverage class.</li>
+                <li>Every valid non-empty enum is defaultable.</li>
+                <li>The first member is the default unless exactly one member is marked <code>default</code>.</li>
+                <li>Raw numeric zero has no special default status.</li>
+                <li>Ordinary integer- and string-backed enums are closed over declared value classes.</li>
+                <li>An ordinary closed enum may be marked as a concrete Sec <code>error</code> type.</li>
+                <li>Concrete error enums widen to <code>error</code> while preserving concrete identity.</li>
+                <li>Generic enums are supported and every concrete argument list creates a distinct nominal type.</li>
+                <li>Generic enum members remain payload-less; payload-bearing alternatives belong to unions.</li>
+                <li>Enums may be nested inside an owning <code>impl</code>.</li>
+                <li>Enums may have methods, properties and associated values through ordinary <code>impl</code> rules.</li>
+                <li>Associated values do not add enum members or alter the enum value domain.</li>
+                <li><code>bit</code> and <code>bit[N]</code> enums are open over every representable bit pattern.</li>
+                <li>Undeclared in-range hardware bit patterns are valid unnamed enum values.</li>
+                <li>A bit-backed enum may type a register field when widths match exactly.</li>
+                <li>Enums do not implicitly convert to or from their underlying representation.</li>
+                <li>Runtime conversion into a closed enum is checked and requires <code>try</code> when failure cannot be ruled out.</li>
+                <li>Runtime conversion into a bit-backed enum fails only when the value does not fit the bit width.</li>
+                <li>Enum equality is defined within the same enum type.</li>
+                <li>Direct arithmetic, ordering and string concatenation are not enum operations.</li>
+                <li><code>match</code> uses the enum's semantic domain for exhaustiveness.</li>
+                <li><code>switch</code> may branch on enum values but is not enum-exhaustive.</li>
+                <li>Foreign C enums form a separate open-domain ABI category.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="09-match.html">Previous: Match Expressions</a>
+            <a href="09-match.html">Previous: Match Expressions</a>
             <a href="11-unions.html">Next: Unions</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
-  <div class="site-footer-inner">
-      <p>&copy; 2026 Sec Language</p>
-      <a href="https://github.com/YoePro/sec">GitHub</a>
-  </div>
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
 </footer>
 </body>
 </html>

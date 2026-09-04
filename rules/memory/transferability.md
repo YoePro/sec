@@ -82,6 +82,13 @@ target/runtime policy
 
 § 2(3) A value does not become transferable merely because it appears in `spawn`, a channel operation, unsafe code, an FFI call, or an interrupt-related API.
 
+§ 2(4) Task-boundary transfer follows `rules/concurrency/tasks.md`. Reusable
+move-only sources use the ownership-v2 explicit move syntax, while borrows,
+migration, address stability, detach lifetime, and simultaneous shared access
+retain their ordinary transferability obligations. Wrapping `T` in
+`TaskOutcome[T]` does not independently change the transferability of `T`;
+ordinary union/payload ownership rules apply.
+
 § 2(4) `unsafe` does not make a data race, dangling reference, thread-affinity violation, or invalid process transfer valid.
 
 § 2(5) The compiler must reject statically known invalid transfers.

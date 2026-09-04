@@ -3,7 +3,7 @@
 - **Status:** Normative
 - **Created:** 2026-08-14
 - **Last updated:** 2026-09-04
-- **Document revision:** 2.1
+- **Document revision:** 2.2
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
 - **Canonical path:** `rules/declarations/generics.md`
@@ -16,7 +16,16 @@ Generics are a compile-time language feature.
 
 Generic type parameters do not exist as runtime values.
 
-Sec generics are monomorphized. Every reachable concrete combination of generic arguments produces or reuses a concrete specialized instantiation that is type-checked and lowered as ordinary concrete code.
+Sec generics are monomorphized. Every demanded canonical concrete argument
+combination produces or reuses one concrete semantic specialization according
+to `rules/compiler/monomorphization.md`. Distinct semantic specializations may
+share a physical backend implementation when that rulebook permits it.
+
+`rules/compiler/monomorphization.md` owns canonical concrete specialization and
+substitution application. `rules/compiler/generics_lowering.md` owns the
+verified boundary from those concrete specializations into
+representation-dependent lowering. This rulebook remains authoritative for
+source syntax, inference, constraints, and template validity.
 
 The generic model preserves:
 
@@ -735,50 +744,51 @@ the compiler operates on a concrete closed union with concrete variant payload t
 
 Exhaustiveness and payload ownership are checked on the substituted concrete union.
 
-## 24. Recursive generic types
+## 24. Recursive generic structures
 
-Generic recursion must terminate in a finite concrete representation.
+Generic declarations may participate in recursive type and callable structures.
 
-Direct infinite storage is invalid.
+Recursive by-value representation is governed by `rules/memory/layout.md` and
+the owning declaration rulebooks. A finite generic instantiation set may still
+have invalid recursive by-value layout.
 
-```sec
-type Node[T] struct {
-    next: Node[T],
-}
-```
+Concrete specialization demand is governed by
+`rules/compiler/monomorphization.md` and must converge to a finite set of
+canonical instantiations.
 
-unless the recursion is broken by a valid indirection/reference/container whose own rules provide finite representation.
+Revisiting an existing canonical instantiation is not by itself an error.
+Ordinary runtime recursion and finite mutually recursive specialization remain
+governed by the call graph and owning semantic rules.
 
-Changing generic arguments must not create non-converging instantiation.
+A generic dependency proven to generate an unbounded sequence of distinct
+canonical instantiations is rejected according to
+`rules/compiler/monomorphization.md`.
 
-The compiler must detect recursive-instantiation cycles and report the instantiation path.
+## 25. Concrete specialization
 
-## 25. Monomorphization
+Generics are specialized according to `rules/compiler/monomorphization.md`
+before runtime-relevant generic semantics cross into representation-dependent
+lowering.
 
-Generics are monomorphized before backend code generation.
+A concrete instantiation includes the complete canonical substitution of all
+generic parameters required by that specialization.
 
-A concrete instantiation includes the complete substitution of all generic parameters.
+For every reachable concrete generic type or callable, the compiler resolves
+every generic-dependent semantic fact required by the owning language rules,
+including the complete concrete type surface, applicable
+ownership/copy/move/destruction semantics, concrete callable signatures,
+concrete member and associated identities, and per-specialization static-storage
+identity.
 
-For every reachable concrete type instance, the compiler must know:
+Physical size, alignment, field offsets, ABI classification, target-sized
+representation, and other `CompilationPlan`-dependent representation facts are
+resolved by their owning layout, ABI, and lowering stages when required. They
+are not prerequisites for target-independent generic identity merely because
+the generic specialization is concrete.
 
-- concrete field/variant representation;
-- size and alignment;
-- defaultability;
-- copy/move classification;
-- destruction behavior;
-- implemented interfaces;
-- concrete methods;
-- concrete static storage identity.
-
-For every reachable concrete function/method instance, the compiler must know:
-
-- concrete parameter types;
-- concrete result type;
-- concrete constraints already satisfied;
-- concrete called symbols;
-- concrete ownership behavior.
-
-Unresolved generic parameters must not reach ABI lowering, MLIR lowering that requires concrete representation, or LLVM code generation.
+Runtime-relevant concrete IR must not depend on unresolved generic parameters.
+The verified lowering boundary is defined by
+`rules/compiler/generics_lowering.md`.
 
 ## 26. Lazy instantiation
 
@@ -789,6 +799,10 @@ Unused concrete generic functions and methods need not produce backend code.
 Repeated requests for the same declaration with the same concrete generic arguments reuse one canonical concrete instance.
 
 The compiler may analyze generic templates before concrete use, but concrete code generation is based on reachable concrete instantiations.
+
+Eager precomputation, speculative tooling, and cache population must not create
+additional active semantic instantiations, `LinkRoot`s, per-specialization
+static storage, or mandatory emitted code merely for implementation convenience.
 
 ## 27. ABI boundary
 
@@ -945,10 +959,10 @@ Sema must:
 - reject unresolved generic parameters;
 - reject generic argument holes;
 - check constraints after resolution;
-- canonicalize identical concrete instantiations;
-- detect infinite recursive instantiation;
+- use canonical `InstantiationIdentity` and demand rules from `rules/compiler/monomorphization.md`;
+- apply the termination and non-convergence model from `rules/compiler/monomorphization.md`;
 - substitute concrete types recursively;
-- re-evaluate concrete layout/default/copy/move/destruction properties;
+- resolve generic-dependent semantic type properties after substitution while leaving plan-specific physical layout and ABI facts to their owning stages;
 - preserve nominal identity;
 - register generic enums as templates and preserve their ordinary enum member
   set, representation facts, and generic identity after substitution;
@@ -1021,8 +1035,20 @@ generic operation requires capability not guaranteed for T
 ```
 
 ```text
-recursive generic instantiation does not produce a finite type
+generic instantiation does not converge
 ```
+
+```text
+recursive by-value layout has no finite size
+```
+
+```text
+generic instantiation resource limit exceeded
+```
+
+Non-convergence and resource limits are governed by
+`rules/compiler/monomorphization.md`; recursive layout is governed by layout and
+the owning declaration rules.
 
 Diagnostics for concrete instantiation failures should show both the failing generic declaration and the concrete substitution that triggered the failure.
 
@@ -1041,7 +1067,15 @@ Diagnostics for concrete instantiation failures should show both the failing gen
 
 ## 37. Cross-rulebook ownership
 
-This rulebook owns compile-time type generics, constraints, inference and monomorphization semantics.
+This rulebook owns Sec type-generic declarations, generic parameters and
+arguments, constraints, constraint satisfaction, inference, generic parameter
+scope, generic declaration families, and template-level semantic validity.
+
+Canonical concrete specialization, `InstantiationIdentity`, demand-driven
+monomorphization, the specialization dependency graph, semantic-versus-physical
+generic realization, implementation-sharing policy, monomorphization
+termination, and generic-specific cross-module specialization behavior are
+owned by `rules/compiler/monomorphization.md`.
 
 Related rules are owned elsewhere:
 
@@ -1054,4 +1088,5 @@ Related rules are owned elsewhere:
 - function signatures and overload resolution: functions rulebook;
 - ABI-visible concrete representation: `rules/platform/abi.md`;
 - FFI restrictions: platform FFI rulebook;
-- Semantic IR and MLIR lowering: compiler rulebooks.
+- verified concrete generic closure and representation-dependent lowering: `rules/compiler/generics_lowering.md`;
+- Semantic IR and MLIR representation: their compiler rulebooks.

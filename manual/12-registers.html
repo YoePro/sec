@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,726 +22,1148 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
 
-        <div class="sidebar-section">Registers</div>
-        <ul>
-            <li><a href="#registers">Overview</a></li>
-            <li><a href="#declaration">Register Declaration</a></li>
-            <li><a href="#bit-fields">Bit Fields</a></li>
-            <li><a href="#reserved-bits">Reserved Bits</a></li>
-            <li><a href="#layout">Layout Validation</a></li>
-        </ul>
+        <div class="sidebar-section">This page</div>
+        <a href="#registers">Registers</a>
+        <a href="#general-type">General Value Type</a>
+        <a href="#declaration">Declaration</a>
+        <a href="#identity">Nominal Identity</a>
+        <a href="#width">Exact Width</a>
+        <a href="#field-types">Field Types</a>
+        <a href="#reserved-fields">Reserved Fields</a>
+        <a href="#bit-numbering">Bit Numbering</a>
+        <a href="#allocation-order">Field Allocation Order</a>
+        <a href="#byte-order">Byte Order</a>
+        <a href="#typed-fields">Bit-Backed Enum Fields</a>
+        <a href="#nested-registers">Nested Registers</a>
+        <a href="#access-semantics">Field Access Semantics</a>
+        <a href="#permissions">Read / Write Permissions</a>
+        <a href="#special-write">Special Write Semantics</a>
+        <a href="#special-read">Special Read Semantics</a>
+        <a href="#shadow-policy">Shadow Policy</a>
+        <a href="#composition">Semantic Composition</a>
+        <a href="#values">Register Values</a>
+        <a href="#conversions">Conversions</a>
+        <a href="#field-access">Field Access</a>
+        <a href="#impl">Register Impl</a>
+        <a href="#hardware-boundary">Hardware Access Boundary</a>
+        <a href="#address">Static @address Binding</a>
+        <a href="#not-owned-here">Covered Later</a>
+        <a href="#polarity">Signal Polarity</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#complete-example">Complete Example</a>
+        <a href="#summary">Summary</a>
 
-        <div class="sidebar-section">Hardware Bindings</div>
-        <ul>
-            <li><a href="#addressed-registers">Addressed Registers</a></li>
-            <li><a href="#volatile-semantics">Volatile Semantics</a></li>
-            <li><a href="#read-only">Read-Only Registers</a></li>
-            <li><a href="#read-write">Read-Write Registers</a></li>
-            <li><a href="#initialization">Initialization</a></li>
-        </ul>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html" class="active">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-structs.html">Structs</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-constants.html">Constants</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
 
-        <div class="sidebar-section">Field Access</div>
-        <ul>
-            <li><a href="#reading-fields">Reading Fields</a></li>
-            <li><a href="#writing-fields">Writing Fields</a></li>
-            <li><a href="#field-ranges">Field Value Ranges</a></li>
-            <li><a href="#field-updates">Field Updates</a></li>
-            <li><a href="#units">Units on Fields</a></li>
-        </ul>
-
-        <div class="sidebar-section">Advanced</div>
-        <ul>
-            <li><a href="#ordinary-values">Ordinary Register Values</a></li>
-            <li><a href="#addresses">Address Validation</a></li>
-            <li><a href="#aliasing">Address Aliasing</a></li>
-            <li><a href="#safety">Safety</a></li>
-            <li><a href="#future">Future Extensions</a></li>
-            <li><a href="#common-errors">Common Errors</a></li>
-            <li><a href="#summary-rules">Summary of Rules</a></li>
-        </ul>
-
-                                <div class="sidebar-section">Language</div>
-        <ul>
-            <li><a href="01-introduction.html">Introduction</a></li>
-            <li><a href="02-basic-syntax.html">Basic Syntax</a></li>
-            <li><a href="03-types.html">Types</a></li>
-            <li><a href="04-named-types-contracts.html">Named Types &amp; Contracts </a></li>
-            <li><a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a></li>
-            <li><a href="06-functions.html">Functions</a></li>
-            <li><a href="07-if.html">If Statements</a></li>
-            <li><a href="08-switch.html">Switch Statements</a></li>
-            <li><a href="09-match.html">Match Expressions</a></li>
-            <li><a href="10-enums.html">Enums</a></li>
-            <li><a href="11-unions.html">Unions</a></li>
-            <li><a href="12-registers.html" class="active">Registers</a></li>
-            <li><a href="13-units.html">Units</a></li>
-            <li><a href="14-generics.html">Generics</a></li>
-            <li><a href="15-structs.html">Structs</a></li>
-            <li><a href="16-impl.html">Impl Blocks</a></li>
-            <li><a href="17-properties.html">Properties</a></li>
-            <li><a href="18-interfaces.html">Interfaces</a></li>
-            <li><a href="19-arrays.html">Arrays</a></li>
-            <li><a href="20-slices.html">Slices</a></li>
-            <li><a href="21-indexing.html">Indexing</a></li>
-            <li><a href="22-constants.html">Constants</a></li>
-            <li><a href="23-references.html">References</a></li>
-            <li><a href="24-ownership.html">Ownership</a></li>
-            <li><a href="25-borrowing.html">Borrowing</a></li>
-            <li><a href="26-unsafe.html">Unsafe</a></li>
-            <li><a href="27-spread.html">Spread</a></li>
-            <li><a href="30-modules.html">Modules and Imports</a></li>
-            <li><a href="31-projects.html">Projects and sec.module</a></li>
-            <li><a href="32-visibility.html">Visibility</a></li>
-            <li><a href="33-result-and-option.html">Result and Option</a></li>
-            <li><a href="34-try.html">Error Propagation</a></li>
-            <li><a href="35-defer.html">Deferred Cleanup</a></li>
-            <li><a href="36-attributes.html">Attributes</a></li>
-            <li><a href="37-build-directives.html">Build Directives</a></li>
-            <li><a href="38-ffi.html">Foreign Function Interfaces</a></li>
-            <li><a href="39-tasks.html">Tasks</a></li>
-            <li><a href="40-spawn.html">Spawning Work</a></li>
-            <li><a href="41-await.html">Awaiting Tasks</a></li>
-            <li><a href="42-channels.html">Channels and Coordination</a></li>
-            <li><a href="43-testing.html">Tests and Benchmarks</a></li>
-            <li><a href="44-formatting.html">Formatting</a></li>
-            <li><a href="45-diagnostics.html">Understanding Compiler Diagnostics</a></li>
-        </ul>
         <div class="sidebar-section">Reference</div>
-        <ul>
-            <li><a href="stdlib.html">Standard Library</a></li>
-            <li><a href="syntax-reference.html">Syntax Reference</a></li>
-            <li><a href="best-practices.html">Best Practices</a></li>
-        </ul>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
-        <ul>
-            <li><a href="test-status.html">Implementation Status</a></li>
-        </ul>
+        <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
-        <ul>
-            <li><a href="bug-report.html">Report a Bug</a></li>
-            <li><a href="join.html">Join</a></li>
-        </ul>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Registers</div>
 
-        <h1 id="registers">Registers and Memory-Mapped Hardware</h1>
+        <h1 id="registers">Registers</h1>
 
         <p>
-            A register type describes a fixed-width bit layout. It is intended for memory-mapped hardware,
-            embedded systems, device controllers, communication protocols, sensors and other code where
-            individual bits have defined meanings.
+            A Sec <code>register[N]</code> declaration defines a nominal fixed-width bit-layout
+            type whose total logical width is exactly <code>N</code> bits.
         </p>
 
-        <pre><code>type MotorControl register[8] {
-    Speed: bit[4]
-    Enabled: bit
-    _: bit[3]
+        <pre><code>type Control register[16] {
+    Enabled: bit,
+    Mode: bit[3],
+    _: bit[12],
 }</code></pre>
 
         <p>
-            The compiler validates the complete layout and generates the masks, shifts and hardware accesses
-            required to read and update individual fields.
+            Register types describe exact bit layout. They can be used for hardware register
+            definitions, protocol headers, packed control words, wire values, file-format fields
+            and other fixed-width representations.
+        </p>
+
+        <p>
+            Physical hardware access is a separate semantic layer. A register declaration does
+            not by itself imply MMIO, a fixed address, volatility or any particular hardware
+            transaction.
         </p>
 
         <div class="rule">
-            <strong>Rule:</strong> A register declaration describes representation. An <code>@address</code>
-            binding connects that representation to external hardware storage.
+            <strong>Core rule:</strong> <code>register[N]</code> defines the logical register
+            value and its field-local semantics. Hardware-access rules separately define how a
+            hardware-bound register may be physically observed or modified.
         </div>
 
-        <section id="declaration">
-            <h2>Register Declaration</h2>
-
-            <p>A register is declared with <code>type Name register[N]</code>:</p>
-
-            <pre><code>type Protocol register[8] {
-    Speed: bit[4]
-    Enabled: bit
-    _: bit[3]
-}</code></pre>
+        <section id="general-type">
+            <h2>A General Value Type</h2>
 
             <p>
-                The value inside <code>register[...]</code> is the total width in bits. It must be a positive
-                compile-time integer.
+                Register types are ordinary nominal Sec value types with exact-width layout semantics.
             </p>
 
-            <pre><code>type Status register[16] {
-    Ready: bit
-    Error: bit
-    Code: bit[6]
-    _: bit[8]
-}</code></pre>
-
-            <div class="rule">
-                <strong>Rule:</strong> The combined width of all fields must exactly equal the declared register width.
-            </div>
-        </section>
-
-        <section id="bit-fields">
-            <h2>Bit Fields</h2>
-
-            <p><code>bit</code> declares a one-bit field:</p>
-
-            <pre><code>Ready: bit</code></pre>
-
-            <p>It has the same width as:</p>
-
-            <pre><code>Ready: bit[1]</code></pre>
-
-            <p>A multi-bit field uses <code>bit[N]</code>:</p>
-
-            <pre><code>Mode: bit[3]
-Counter: bit[12]</code></pre>
-
-            <p>
-                The width must be a positive compile-time integer. Zero-width and negative-width fields are invalid.
-            </p>
-
-            <pre><code>Value: bit[0]
-Value: bit[-1]</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> Every bit field must occupy at least one bit.
-            </div>
-
-            <p>
-                A bit field is not an independent integer variable. Its value is extracted from or inserted into
-                the containing register by the compiler.
-            </p>
-        </section>
-
-        <section id="reserved-bits">
-            <h2>Reserved Bits</h2>
-
-            <p>The identifier <code>_</code> declares unnamed or reserved bits:</p>
-
-            <pre><code>type Status register[8] {
-    Ready: bit
-    Error: bit
-    _: bit[6]
-}</code></pre>
-
-            <p>Reserved bits contribute to the layout but do not create an accessible field.</p>
-
-            <pre><code>let value := status._</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> Reserved fields cannot be read or written.
-            </div>
-
-            <p>Several reserved regions may appear in one declaration:</p>
-
-            <pre><code>type Control register[16] {
-    Enabled: bit
-    _: bit[3]
-    Mode: bit[4]
-    _: bit[8]
-}</code></pre>
-
-            <p>
-                Named-field updates preserve reserved bits unless a later register rule explicitly defines
-                special write behavior.
-            </p>
-        </section>
-
-        <section id="layout">
-            <h2>Layout Validation</h2>
-
-            <p>The field widths must occupy the complete register.</p>
-
-            <pre><code>type InvalidProtocol register[8] {
-    Speed: bit[4]
-    Enabled: bit
-    Mode: bit[2]
-}</code></pre>
-
-            <p>The fields occupy only seven bits, so the declaration is invalid.</p>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                    <tr>
-                        <th>Field</th>
-                        <th>Width</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr><td><code>Speed</code></td><td>4 bits</td></tr>
-                    <tr><td><code>Enabled</code></td><td>1 bit</td></tr>
-                    <tr><td><code>Mode</code></td><td>2 bits</td></tr>
-                    <tr><td><strong>Total</strong></td><td><strong>7 bits</strong></td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <p>A valid eight-bit declaration could reserve the remaining bit:</p>
-
-            <pre><code>type Protocol register[8] {
-    Speed: bit[4]
-    Enabled: bit
-    Mode: bit[2]
-    _: bit
-}</code></pre>
-
-            <p>Fields may not overflow the declared width either.</p>
-        </section>
-
-        <section id="addressed-registers">
-            <h2>Addressed Register Instances</h2>
-
-            <p>
-                A register instance may be bound to a fixed hardware address with <code>@address</code>:
-            </p>
-
-            <pre><code>@address(0x40021000)
-let motorStatus: MotorStatus</code></pre>
-
-            <p>
-                The binding refers to existing external storage. It does not allocate ordinary local or heap memory.
-            </p>
-
-            <p>An addressed binding has these properties:</p>
-
-            <ul>
-                <li>It has a fixed external address.</li>
-                <li>Every access is volatile.</li>
-                <li>The binding does not own the storage.</li>
-                <li>The target defines the physical address representation.</li>
-                <li>The compiler validates that the declared type is a register type.</li>
-            </ul>
-
-            <div class="rule">
-                <strong>Rule:</strong> <code>@address</code> requires an explicit register type and a compile-time integer address.
-            </div>
-        </section>
-
-        <section id="volatile-semantics">
-            <h2>Volatile Semantics</h2>
-
-            <p>Every <code>@address</code> binding is volatile. No separate <code>volatile</code> keyword is used.</p>
-
-            <pre><code>@address(0x40021000)
-let status: StatusRegister
-
-let first := status.Ready
-let second := status.Ready</code></pre>
-
-            <p>
-                The two reads are separate observable hardware accesses. The compiler may not assume they return
-                the same value because hardware may change the register between them.
-            </p>
-
-            <p>
-                Writes are also observable. A write may not be removed merely because its result is not later read
-                by Sec code.
-            </p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Volatility describes external access behavior. It does not imply that Sec code may write.
-            </div>
-        </section>
-
-        <section id="read-only">
-            <h2>Read-Only Addressed Registers</h2>
-
-            <p>An addressed instance declared with <code>let</code> is read-only from Sec code:</p>
-
-            <pre><code>@address(0x40021000)
-let motorStatus: MotorStatus
-
-let ready := motorStatus.Ready</code></pre>
-
-            <p>The hardware may still change the value at any time.</p>
-
-            <pre><code>motorStatus.Ready = true</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> The binding is volatile and externally mutable, but Sec code may not write to it.
-            </div>
-        </section>
-
-        <section id="read-write">
-            <h2>Read-Write Addressed Registers</h2>
-
-            <p>An addressed instance declared with <code>let mut</code> may be read and written:</p>
-
-            <pre><code>@address(0x40021000)
-let mut motorControl: MotorControl
-
-let enabled := motorControl.Enabled
-motorControl.Enabled = true</code></pre>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                    <tr>
-                        <th>Declaration</th>
-                        <th>Sec access</th>
-                        <th>Volatile</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr>
-                        <td><code>@address(...) let value: T</code></td>
-                        <td>Read-only</td>
-                        <td>Yes</td>
-                    </tr>
-                    <tr>
-                        <td><code>@address(...) let mut value: T</code></td>
-                        <td>Read-write</td>
-                        <td>Yes</td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section id="initialization">
-            <h2>Initialization</h2>
-
-            <p>An addressed binding refers to hardware that already exists. The declaration must not initialize it:</p>
-
-            <pre><code>@address(0x40021000)
-let mut control: ControlRegister := initialValue</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> Addressed register bindings cannot have initializers.
-            </div>
-
-            <p>Hardware writes must be explicit:</p>
-
-            <pre><code>@address(0x40021000)
-let mut control: ControlRegister
-
-control.Enabled = true</code></pre>
-
-            <p>Declaring the binding alone performs no write.</p>
-        </section>
-
-        <section id="reading-fields">
-            <h2>Reading Fields</h2>
-
-            <p>Named fields are read through ordinary member access:</p>
-
-            <pre><code>let ready := motorStatus.Ready
-let mode := motorStatus.Mode</code></pre>
-
-            <p>
-                The compiler extracts the selected bits and produces the field value. For addressed storage,
-                the extraction begins with a volatile register read.
-            </p>
-
-            <p>Reserved fields cannot be read.</p>
-        </section>
-
-        <section id="writing-fields">
-            <h2>Writing Fields</h2>
-
-            <p>A field may be written when its containing storage is mutable:</p>
-
-            <pre><code>motorControl.Enabled = true
-motorControl.Mode = 3</code></pre>
-
-            <p>
-                The assigned value must be compatible with the field and must fit within its declared width.
-            </p>
-
-            <p>A write through a read-only addressed binding is rejected at compile time.</p>
-        </section>
-
-        <section id="field-ranges">
-            <h2>Field Value Ranges</h2>
-
-            <p>An unsigned <code>bit[N]</code> field stores values from zero through <code>2^N - 1</code>.</p>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                    <tr>
-                        <th>Field type</th>
-                        <th>Minimum</th>
-                        <th>Maximum</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr><td><code>bit</code></td><td>0</td><td>1</td></tr>
-                    <tr><td><code>bit[2]</code></td><td>0</td><td>3</td></tr>
-                    <tr><td><code>bit[4]</code></td><td>0</td><td>15</td></tr>
-                    <tr><td><code>bit[8]</code></td><td>0</td><td>255</td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <pre><code>type MotorControl register[8] {
-    Speed: bit[4]
-    Enabled: bit
-    _: bit[3]
+            <pre><code>type PacketHeader register[32] {
+    Version: bit[4],
+    Type: bit[4],
+    Length: bit[24],
 }
 
-motorControl.Speed = 19</code></pre>
-
-            <div class="rule">
-                <strong>Invalid:</strong> The value <code>19</code> does not fit in a four-bit field whose range is <code>0..15</code>.
-            </div>
-
-            <p>Constant assignments are checked at compile time.</p>
-        </section>
-
-        <section id="field-updates">
-            <h2>Field Updates</h2>
-
-            <p>Writing one named field updates only that field:</p>
-
-            <pre><code>motorControl.Enabled = true</code></pre>
-
-            <p>For an ordinary read-write hardware register, the compiler may implement this as:</p>
-
-            <ol>
-                <li>Volatile-read the complete register.</li>
-                <li>Preserve unrelated and reserved bits.</li>
-                <li>Replace the selected field bits.</li>
-                <li>Volatile-write the complete register.</li>
-            </ol>
+let header: PacketHeader</code></pre>
 
             <p>
-                The programmer does not need to manually create masks, shifts or read-modify-write sequences.
+                Nothing in this declaration says that <code>header</code> refers to hardware.
+                It may be a normal value decoded from a packet, loaded from a file, received
+                over a bus or produced by another function.
             </p>
 
-            <div class="rule">
-                <strong>Rule:</strong> Ordinary named-field updates preserve every unrelated bit.
-            </div>
+            <p>A register declaration does not inherently imply:</p>
+
+            <ul>
+                <li>MMIO;</li>
+                <li>a physical address;</li>
+                <li>port I/O;</li>
+                <li>CSR or system-register access;</li>
+                <li>volatile access;</li>
+                <li>runtime mapping;</li>
+                <li>hardware-resource ownership;</li>
+                <li>a physical bus transaction width.</li>
+            </ul>
 
             <p>
-                Hardware behaviors such as write-one-to-clear, write-only fields and atomic set registers require
-                additional metadata and are not part of the basic register model.
+                These facts belong to the hardware binding and platform model.
             </p>
         </section>
 
-        <section id="units">
-            <h2>Units on Register Fields</h2>
+        <section id="declaration">
+            <h2>Declaration</h2>
 
-            <p>A multi-bit field may carry a unit:</p>
+            <p>The basic declaration form is:</p>
 
-            <pre><code>type MotorProtocol register[8] {
-    Speed: bit[4]&lt;rpm&gt;
-    Enabled: bit
-    _: bit[3]
+            <pre><code>type Name register[Width] {
+    fields
 }</code></pre>
 
-            <p>The bit width describes storage. The unit describes meaning.</p>
-
-            <pre><code>let speed: rpm := motorProtocol.Speed</code></pre>
-
-            <p>An incompatible unit is invalid:</p>
-
-            <pre><code>let distance: m := motorProtocol.Speed</code></pre>
-
-            <div class="rule">
-                <strong>Rule:</strong> Unit compatibility remains active when register fields are read, assigned or used in expressions.
-            </div>
-
-            <p>
-                Scaling, offsets, signed encodings and device-specific conversion formulas require separate declarations.
-            </p>
-        </section>
-
-        <section id="ordinary-values">
-            <h2>Ordinary Register Values</h2>
-
-            <p>A register type may also be used for a normal in-memory value:</p>
-
-            <pre><code>let snapshot: MotorStatus := ReadStatus()</code></pre>
-
-            <p>The value is not volatile merely because its type is a register type.</p>
-
-            <div class="rule">
-                <strong>Rule:</strong> Volatility belongs to the storage access, not to every value of the register type.
-            </div>
-
-            <p>Compare:</p>
-
-            <pre><code>let snapshot: MotorStatus := ReadStatus()
-
-@address(0x40021001)
-let liveStatus: MotorStatus</code></pre>
-
-            <p><code>snapshot</code> is an ordinary value. <code>liveStatus</code> is volatile external storage.</p>
-        </section>
-
-        <section id="addresses">
-            <h2>Address Validation</h2>
-
-            <p>The address supplied to <code>@address</code> must be known at compile time:</p>
-
-            <pre><code>@address(0x40021000)
-let status: StatusRegister</code></pre>
-
-            <p>The selected target determines which address forms and ranges are valid.</p>
-
-            <p>
-                A microcontroller target may validate the address against known memory-mapped regions. Another target
-                may use a different hardware address model.
-            </p>
-
-            <p>Unchecked dynamic address calculations belong to unsafe code rather than ordinary addressed bindings.</p>
-        </section>
-
-        <section id="aliasing">
-            <h2>Address Aliasing</h2>
-
-            <p>Two declarations that refer to the same physical storage may conflict:</p>
-
-            <pre><code>@address(0x40021000)
-let mut first: RegisterA
-
-@address(0x40021000)
-let mut second: RegisterB</code></pre>
-
-            <p>
-                Statically known overlapping declarations may be rejected when their layouts or access rules conflict.
-                Explicit alias declarations may be introduced later for intentional hardware views.
-            </p>
-        </section>
-
-        <section id="safety">
-            <h2>Safety</h2>
-
-            <p>
-                A statically declared register and a validated <code>@address</code> binding provide a typed alternative
-                to raw pointers and manual pointer arithmetic.
-            </p>
-
-            <p>Normal addressed register access does not require <code>RawPtr</code>.</p>
-
-            <ul>
-                <li>The compiler knows the complete register width.</li>
-                <li>The compiler knows every field position and width.</li>
-                <li>Read-only and read-write access are explicit.</li>
-                <li>Volatile behavior is automatic for addressed storage.</li>
-                <li>Out-of-range constant assignments are rejected.</li>
-                <li>Reserved bits are not exposed as fields.</li>
-            </ul>
-
-            <p>
-                Dynamic addresses, unchecked address ranges and unsupported target address forms may require an
-                <code>unsafe</code> context.
-            </p>
-        </section>
-
-        <section id="future">
-            <h2>Future Extensions</h2>
-
-            <p>The basic register model may later be extended with:</p>
-
-            <ul>
-                <li>signed bit fields</li>
-                <li>explicit field offsets</li>
-                <li>bit ordering and endianness</li>
-                <li>read-only fields inside mutable registers</li>
-                <li>write-only fields</li>
-                <li>write-one-to-clear and write-zero-to-clear fields</li>
-                <li>atomic set and clear aliases</li>
-                <li>hardware reset values</li>
-                <li>scaled and offset field encodings</li>
-                <li>register arrays</li>
-                <li>dynamic base addresses</li>
-                <li>explicit register aliasing</li>
-                <li>generated declarations from hardware descriptions</li>
-            </ul>
-
-            <p>These extensions must preserve the core register rules.</p>
-        </section>
-
-        <section id="common-errors">
-            <h2>Common Errors</h2>
-
-            <h3>Incomplete layout</h3>
+            <p>Example:</p>
 
             <pre><code>type Status register[8] {
-    Ready: bit
-    Error: bit
+    Ready: bit,
+    Error: bit,
+    Code: bit[2],
+    _: bit[4],
 }</code></pre>
 
-            <p>Add reserved bits or change the declared width.</p>
+            <p>
+                <code>Width</code> must be a positive compile-time integer.
+            </p>
 
-            <h3>Zero-width field</h3>
-
-            <pre><code>Value: bit[0]</code></pre>
-
-            <p>Every field must occupy at least one bit.</p>
-
-            <h3>Accessing reserved bits</h3>
-
-            <pre><code>let reserved := status._</code></pre>
-
-            <p>Reserved regions participate only in layout.</p>
-
-            <h3>Writing through a read-only binding</h3>
-
-            <pre><code>@address(0x40021000)
-let status: Status
-
-status.Ready = true</code></pre>
-
-            <p>Use <code>let mut</code> only when Sec code is allowed to write to the hardware register.</p>
-
-            <h3>Initializing addressed storage</h3>
-
-            <pre><code>@address(0x40021000)
-let mut control: Control := initial</code></pre>
-
-            <p>Bind first, then perform an explicit field write.</p>
-
-            <h3>Out-of-range assignment</h3>
-
-            <pre><code>control.Mode = 8</code></pre>
-
-            <p>A three-bit field accepts values from zero through seven.</p>
-
-            <h3>Using an ordinary type with @address</h3>
-
-            <pre><code>@address(0x40021000)
-let value: int</code></pre>
-
-            <p><code>@address</code> requires an explicit register type.</p>
+            <p>
+                Register fields are comma-separated, and a trailing comma is permitted.
+            </p>
         </section>
 
-        <section id="summary-rules">
-            <h2>Summary of Rules</h2>
+        <section id="identity">
+            <h2>Nominal Identity</h2>
+
+            <p>Every declared register type has its own nominal identity.</p>
+
+            <pre><code>type ControlA register[8] {
+    Value: bit[8],
+}
+
+type ControlB register[8] {
+    Value: bit[8],
+}</code></pre>
+
+            <p>
+                <code>ControlA</code> and <code>ControlB</code> are different types even
+                though they have identical widths and field layouts.
+            </p>
+
+            <p>
+                Register compatibility is not inferred structurally from physical representation.
+            </p>
+        </section>
+
+        <section id="width">
+            <h2>Exact Width</h2>
+
+            <p>
+                The sum of every declared field width, including reserved fields, must equal
+                the register width exactly.
+            </p>
+
+            <pre><code>type Control register[8] {
+    Enabled: bit,
+    Mode: bit[3],
+    _: bit[4],
+}</code></pre>
+
+            <p>The layout consumes exactly eight bits:</p>
+
+            <pre><code>1 + 3 + 4 = 8</code></pre>
+
+            <p>Underfilling is invalid:</p>
+
+            <pre><code>type Invalid register[8] {
+    Enabled: bit,
+    Mode: bit[3],
+}</code></pre>
+
+            <p>Overfilling is invalid:</p>
+
+            <pre><code>type Invalid register[8] {
+    Value: bit[9],
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Every logical bit in a register belongs to exactly one
+                declared named or reserved field.
+            </div>
+        </section>
+
+        <section id="field-types">
+            <h2>Register Field Types</h2>
+
+            <p>A register field may use:</p>
 
             <ul>
-                <li>A register type has a fixed compile-time width in bits.</li>
-                <li>All fields must exactly occupy the declared width.</li>
-                <li><code>bit</code> occupies one bit.</li>
-                <li><code>bit[N]</code> occupies a positive compile-time number of bits.</li>
-                <li><code>_</code> declares reserved bits that cannot be accessed.</li>
-                <li>Named fields must be unique.</li>
-                <li>A register field may carry a unit.</li>
-                <li><code>@address</code> binds a register type to external hardware storage.</li>
-                <li>An addressed binding requires a compile-time integer address.</li>
-                <li>Every addressed register access is volatile.</li>
-                <li><code>let</code> creates a read-only addressed binding.</li>
-                <li><code>let mut</code> creates a read-write addressed binding.</li>
-                <li>Addressed bindings cannot have initializers.</li>
-                <li>Declaring an addressed register performs no hardware write.</li>
-                <li>Named-field updates preserve unrelated and reserved bits.</li>
-                <li>Constant field assignments must fit within the field width.</li>
-                <li>Ordinary non-addressed register values are not implicitly volatile.</li>
-                <li>The compiler handles masks, shifts and volatile accesses.</li>
-                <li>Dynamic or unchecked addressing may require unsafe code.</li>
+                <li><code>bit</code>, with width one;</li>
+                <li><code>bit[N]</code>, with width <code>N</code>;</li>
+                <li>a bit-backed enum with underlying representation <code>bit</code> or <code>bit[N]</code>;</li>
+                <li>another register type whose width is known at compile time.</li>
+            </ul>
+
+            <pre><code>type Control register[16] {
+    Enabled: bit,
+    Mode: bit[3],
+    Code: bit[12],
+}</code></pre>
+
+            <h3><code>bit</code> is not a general standalone scalar</h3>
+
+            <p>
+                <code>bit</code> and <code>bit[N]</code> are register-field and bit-backed-enum
+                representations. They are not general standalone Sec variable types.
+            </p>
+
+            <pre><code>let raw: bit[32]    // invalid</code></pre>
+
+            <p>Use an ordinary value type when a standalone raw value is required:</p>
+
+            <pre><code>let raw: uint32</code></pre>
+        </section>
+
+        <section id="reserved-fields">
+            <h2>Reserved Fields</h2>
+
+            <p>
+                The identifier <code>_</code> declares reserved or intentionally unnamed bits.
+            </p>
+
+            <pre><code>type Status register[8] {
+    Ready: bit,
+    _: bit[7],
+}</code></pre>
+
+            <p>
+                Reserved fields occupy layout width but do not introduce a source-accessible member.
+            </p>
+
+            <pre><code>let value := status._    // invalid</code></pre>
+
+            <p>
+                Their existence still matters to layout and to any later hardware-access contract
+                that describes how physical operations affect the complete register.
+            </p>
+        </section>
+
+        <section id="bit-numbering">
+            <h2>Bit Numbering</h2>
+
+            <p>
+                Bit zero is always the least-significant bit.
+            </p>
+
+            <p>For an <code>N</code>-bit register:</p>
+
+            <pre><code>bit 0       = least-significant bit
+bit N - 1   = most-significant bit</code></pre>
+
+            <p>
+                Register layout is defined in logical bit-number terms.
+                Diagrams drawn left-to-right are illustrative only.
+            </p>
+        </section>
+
+        <section id="allocation-order">
+            <h2>Field Allocation Order</h2>
+
+            <h3>Default: <code>lsb-first</code></h3>
+
+            <p>
+                Register fields are allocated <code>lsb-first</code> unless explicitly stated otherwise.
+            </p>
+
+            <pre><code>type Control register[16] {
+    Enabled: bit,
+    Mode: bit[3],
+    _: bit[12],
+}</code></pre>
+
+            <p>The logical layout is:</p>
+
+            <pre><code>Enabled = bit 0
+Mode    = bits 3..1
+_       = bits 15..4</code></pre>
+
+            <h3>Explicit <code>msb-first</code></h3>
+
+            <pre><code>type Header register[8] msb-first {
+    Version: bit[4],
+    IHL: bit[4],
+}</code></pre>
+
+            <p>The logical layout is:</p>
+
+            <pre><code>Version = bits 7..4
+IHL     = bits 3..0</code></pre>
+
+            <p>
+                <code>msb-first</code> changes declaration allocation direction.
+                It does not change the rule that bit zero is the LSB.
+            </p>
+        </section>
+
+        <section id="byte-order">
+            <h2>Byte Order</h2>
+
+            <p>
+                Field allocation order and byte order are independent.
+            </p>
+
+            <ul>
+                <li><code>lsb-first</code> / <code>msb-first</code> assign logical bit positions.</li>
+                <li><code>little-endian</code> / <code>big-endian</code> control multi-byte encoding and decoding.</li>
+            </ul>
+
+            <pre><code>type DeviceWord register[32] little-endian {
+    Value: bit[32],
+}</code></pre>
+
+            <pre><code>type PacketHeader register[32] big-endian {
+    Version: bit[4],
+    Length: bit[28],
+}</code></pre>
+
+            <p>Both dimensions may be combined:</p>
+
+            <pre><code>type Word register[16] lsb-first big-endian {
+    Code: bit[4],
+    Value: bit[12],
+}</code></pre>
+
+            <p>
+                <code>Code</code> remains bits <code>3..0</code>. The byte-order declaration
+                controls how the complete sixteen-bit value is represented as ordered bytes.
+            </p>
+
+            <p>
+                When no byte order is written, the applicable contextual or native rule is used.
+            </p>
+        </section>
+
+        <section id="typed-fields">
+            <h2>Bit-Backed Enum Fields</h2>
+
+            <p>
+                A bit-backed enum may be used directly as a register field when its width matches
+                the field representation.
+            </p>
+
+            <pre><code>enum ClockSource bit[2] {
+    Internal = 0b00
+    External = 0b01
+    Bypass = 0b10
+}
+
+type ClockConfig register[8] {
+    Source: ClockSource,
+    Enabled: bit,
+    _: bit[5],
+}</code></pre>
+
+            <p>
+                <code>Source</code> occupies two bits and retains nominal type
+                <code>ClockSource</code>.
+            </p>
+
+            <p>
+                Bit-backed enums are open over their complete representable domain.
+                Therefore <code>0b11</code> is still a valid <code>ClockSource</code> value,
+                although it has no declared member name.
+            </p>
+
+            <pre><code>match config.Source {
+    ClockSource.Internal =&gt; UseInternal()
+    ClockSource.External =&gt; UseExternal()
+    ClockSource.Bypass =&gt; UseBypass()
+    _ =&gt; HandleReservedEncoding()
+}</code></pre>
+        </section>
+
+        <section id="nested-registers">
+            <h2>Nested Registers</h2>
+
+            <p>
+                One register type may be used as a field of another register type.
+            </p>
+
+            <pre><code>type Flags register[4] {
+    Carry: bit,
+    Zero: bit,
+    Negative: bit,
+    Overflow: bit,
+}
+
+type StatusWord register[16] {
+    Flags: Flags,
+    Mode: bit[4],
+    _: bit[8],
+}</code></pre>
+
+            <p>
+                The nested register contributes exactly its declared width and occupies one
+                contiguous slice of the outer register.
+            </p>
+
+            <p>
+                The outer allocation rule determines where the slice is placed. Inside that slice,
+                the nested register's own field-allocation rule applies.
+            </p>
+
+            <p>
+                The nested register's bit zero maps to the least-significant bit of its assigned slice.
+            </p>
+
+            <h3>Nested byte order</h3>
+
+            <p>
+                Nested register composition is logical bit composition, not byte serialization.
+            </p>
+
+            <p>
+                The outer register's byte-order rule governs encoding or decoding of the complete
+                outer value. The nested register's byte-order declaration matters when that nested
+                value is independently serialized or deserialized.
+            </p>
+
+            <p>
+                Sec does not insert an implicit byte swap merely because inner and outer declarations
+                name different byte orders.
+            </p>
+
+            <h3>No recursive layout</h3>
+
+            <p>
+                Every register must have a finite exact compile-time-known width.
+                Recursive register layouts that imply infinite storage are invalid.
+            </p>
+        </section>
+
+        <section id="access-semantics">
+            <h2>Field Access Semantics</h2>
+
+            <p>
+                Register fields may carry compiler-known read, write and side-effect semantics.
+            </p>
+
+            <p>
+                These declarations describe the logical meaning of accessing the field.
+                They are part of the register type and survive whether that type is later used
+                as a detached value or through a hardware binding.
+            </p>
+
+            <p>
+                When the register is hardware-bound, the hardware-access model connects these
+                logical field operations to valid physical operations. That later planning layer
+                must preserve the semantics declared here.
+            </p>
+        </section>
+
+        <section id="permissions">
+            <h2>Read / Write Permissions</h2>
+
+            <p>
+                Fields are <code>read-write</code> by default.
+            </p>
+
+            <pre><code>Control: bit</code></pre>
+
+            <p>is permission-equivalent to:</p>
+
+            <pre><code>Control: bit read-write</code></pre>
+
+            <h3>Read-only</h3>
+
+            <pre><code>Ready: bit read-only</code></pre>
+
+            <p>
+                Reading is permitted where the surrounding value or binding allows it.
+                Writing the field is a compile-time error.
+            </p>
+
+            <h3>Write-only</h3>
+
+            <pre><code>Command: bit write-only</code></pre>
+
+            <p>
+                Writing is permitted where the surrounding value or binding allows it.
+                Reading the field is a compile-time error.
+            </p>
+
+            <p>
+                Access permission and specialized side-effect behavior are separate semantic axes.
+                Contradictory combinations are rejected.
+            </p>
+        </section>
+
+        <section id="special-write">
+            <h2>Specialized Write Semantics</h2>
+
+            <p>
+                Sec defines a compiler-known family for common field-local write behavior:
+            </p>
+
+            <pre><code>Pending: bit write-one-clear,
+Enable: bit write-one-set,
+Invert: bit write-one-toggle,
+Error: bit write-zero-clear,
+Disable: bit write-zero-set,
+Restore: bit write-zero-toggle,</code></pre>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Modifier</th>
+                            <th>Logical field operation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>write-one-clear</code></td><td>Writing one requests clear</td></tr>
+                        <tr><td><code>write-one-set</code></td><td>Writing one requests set</td></tr>
+                        <tr><td><code>write-one-toggle</code></td><td>Writing one requests toggle</td></tr>
+                        <tr><td><code>write-zero-clear</code></td><td>Writing zero requests clear</td></tr>
+                        <tr><td><code>write-zero-set</code></td><td>Writing zero requests set</td></tr>
+                        <tr><td><code>write-zero-toggle</code></td><td>Writing zero requests toggle</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                These modifiers describe one logical field write.
+                They do not describe a multi-register device protocol.
+            </p>
+
+            <p>
+                A compiler lowering may not erase these semantics and replace them blindly with
+                ordinary read-modify-write behavior.
+            </p>
+        </section>
+
+        <section id="special-read">
+            <h2>Specialized Read Semantics</h2>
+
+            <p>Read-side effects may also be declared:</p>
+
+            <pre><code>Event: bit read-clear,
+Flag: bit read-set,</code></pre>
+
+            <p>
+                <code>read-clear</code> is the canonical spelling for a read whose defined side
+                effect clears the field.
+            </p>
+
+            <p>
+                <code>read-set</code> is the corresponding form whose defined side effect sets the field.
+            </p>
+
+            <p>
+                These reads are effectful. Compiler analyses and lowering may not treat them as
+                ordinary pure field observations when doing so would remove, duplicate, speculate
+                or reorder the defined effect.
+            </p>
+        </section>
+
+        <section id="shadow-policy">
+            <h2>Shadow Policy Modifiers</h2>
+
+            <p>
+                <code>shadow</code> and <code>noshadow</code> declare hardware-access shadow policy.
+            </p>
+
+            <p>The global default is:</p>
+
+            <pre><code>noshadow</code></pre>
+
+            <p>A field may override the policy:</p>
+
+            <pre><code>type Configuration register[8] {
+    Mode: DeviceMode shadow,
+    Ready: bit read-only,
+    _: bit[5],
+}</code></pre>
+
+            <p>A register may establish a local default:</p>
+
+            <pre><code>type Configuration register[16] shadow {
+    Enabled: bit,
+    Mode: DeviceMode,
+    CurrentInput: bit read-only noshadow,
+    _: bit[12],
+}</code></pre>
+
+            <p>The inheritance rule is:</p>
+
+            <pre><code>explicit field shadow/noshadow
+otherwise register-level shadow/noshadow
+otherwise noshadow</code></pre>
+
+            <p>
+                Shadow policy does not change field layout or read/write permission.
+            </p>
+
+            <p>
+                The detailed meaning of shadow state, observed knowledge, pending write intent
+                and hardware commit belongs to the later Hardware Register Access chapter.
+            </p>
+        </section>
+
+        <section id="composition">
+            <h2>Access Semantics Compose Through Nested Registers</h2>
+
+            <p>
+                Nested registers preserve the semantics of their contained fields.
+            </p>
+
+            <pre><code>type InterruptFlags register[4] {
+    Pending: bit write-one-clear,
+    Enabled: bit,
+    Ready: bit read-only,
+    _: bit,
+}
+
+type DeviceStatus register[16] {
+    IRQ: InterruptFlags,
+    _: bit[12],
+}</code></pre>
+
+            <p>
+                <code>DeviceStatus.IRQ.Pending</code> retains
+                <code>write-one-clear</code> semantics.
+            </p>
+
+            <p>
+                <code>DeviceStatus.IRQ.Ready</code> remains read-only.
+            </p>
+
+            <p>
+                An operation on an entire nested field is valid only when the compiler can preserve
+                every contained access and side-effect requirement.
+            </p>
+        </section>
+
+        <section id="values">
+            <h2>Register Values</h2>
+
+            <p>
+                A register type is a fixed-width nominal value type.
+            </p>
+
+            <pre><code>type Packet register[32] {
+    Value: bit[32],
+}
+
+let packet: Packet</code></pre>
+
+            <p>
+                A detached register value carries no inherent hardware identity or physical address.
+            </p>
+
+            <p>
+                It can be stored, passed, returned, inspected and transformed according to the
+                ordinary value, ownership and access rules that apply to the register type.
+            </p>
+
+            <p>
+                Field permissions remain part of the nominal register semantics even for detached values.
+                A write-only field does not become source-readable merely because the value is detached.
+            </p>
+        </section>
+
+        <section id="conversions">
+            <h2>Conversions</h2>
+
+            <p>
+                An integer value may be converted explicitly to a register type when it fits the
+                register width.
+            </p>
+
+            <pre><code>type Packet register[32] {
+    Value: bit[32],
+}
+
+let raw: uint32 := ReadWord()
+let packet := Packet(raw)</code></pre>
+
+            <p>
+                Every <code>uint32</code> value fits a 32-bit register, so no runtime width check
+                is needed here.
+            </p>
+
+            <p>
+                When the integer source may exceed the register width, conversion is checked:
+            </p>
+
+            <pre><code>type Packet12 register[12] {
+    Value: bit[12],
+}
+
+let raw: uint16 := ReadWord()
+let packet := try Packet12(raw)</code></pre>
+
+            <p>
+                A compile-time-known out-of-range value is rejected during compilation.
+            </p>
+
+            <p>
+                Integer conversion interprets an already formed numeric value or bit pattern.
+                It is not byte decoding and does not perform implicit endian conversion.
+            </p>
+
+            <p>
+                Byte-oriented encoding and decoding are separate operations and obey the register's
+                byte-order contract.
+            </p>
+        </section>
+
+        <section id="field-access">
+            <h2>Field Access</h2>
+
+            <p>Named fields use ordinary member syntax:</p>
+
+            <pre><code>let enabled := control.Enabled
+control.Mode = value</code></pre>
+
+            <p>
+                A reserved <code>_</code> field cannot be named or accessed.
+            </p>
+
+            <p>
+                Field access preserves the nominal type of the field.
+                A bit-backed enum field remains its enum type, and a nested register field remains
+                its nested register type.
+            </p>
+
+            <p>
+                Whether field access is purely local or corresponds to hardware observation depends
+                on the receiver's binding. The register declaration itself does not decide that.
+            </p>
+        </section>
+
+        <section id="impl">
+            <h2>Register Types and Impl</h2>
+
+            <p>
+                Register types are nominal Sec types and may have ordinary implementations.
+            </p>
+
+            <pre><code>type Status register[8] {
+    Ready: bit read-only,
+    Error: bit,
+    _: bit[6],
+}
+
+impl Status {
+    fn IsHealthy() bool {
+        return self.Ready &amp;&amp; !self.Error
+    }
+}</code></pre>
+
+            <p>
+                Methods, properties and interface implementations follow the normal
+                <code>impl</code> rules.
+            </p>
+
+            <p>
+                An implementation cannot add bits, alter offsets or change the declared register width.
+            </p>
+        </section>
+
+        <section id="hardware-boundary">
+            <h2>The Hardware Access Boundary</h2>
+
+            <p>
+                The register declaration describes a logical register value and field-local semantics.
+                Hardware access adds a second contract that describes how physical hardware may
+                actually realize those logical operations.
+            </p>
+
+            <p>The central hardware-access principle is:</p>
+
+            <pre><code>logical register operation
+        ↓
+semantics-preserving hardware operation plan
+        ↓
+physical endpoint operation or operation sequence</code></pre>
+
+            <p>
+                A hardware field does not imply a physical operation merely from its width,
+                register width, address spelling or field name.
+            </p>
+
+            <p>
+                For example, reading a one-bit field does not imply that the hardware can perform
+                a one-bit physical read.
+            </p>
+
+            <p>
+                The compiler connects the logical register operation to hardware only through
+                resolved platform/device facts.
+            </p>
+
+            <div class="rule">
+                <strong>Boundary:</strong> This chapter defines the register side of that contract.
+                Physical endpoints, operation planning, aliases, access widths, coherence, ordering,
+                completion, mappings and explicit hardware transactions are covered separately.
+            </div>
+        </section>
+
+        <section id="address">
+            <h2>Static <code>@address</code> Binding</h2>
+
+            <p>
+                A register type may be connected to a statically resolvable hardware endpoint
+                using <code>@address(...)</code>.
+            </p>
+
+            <p>The preferred form uses a canonical named endpoint:</p>
+
+            <pre><code>@address(Platform.GPIOA)
+let mut gpio: GpioRegisters</code></pre>
+
+            <p>A project-defined canonical endpoint may be used in the same way:</p>
+
+            <pre><code>@address(Project.FpgaControl)
+let mut control: FpgaControlRegisters</code></pre>
+
+            <p>
+                The endpoint name is not treated as an ordinary integer constant.
+                It resolves to canonical hardware information required to validate the binding
+                and later register operations.
+            </p>
+
+            <p>
+                The <code>@address</code> form takes one endpoint expression. Width, alignment,
+                permissions, aliases, access classes and other hardware facts come from the
+                canonical endpoint/storage contract rather than from additional positional arguments.
+            </p>
+
+            <p>
+                The full validation and hardware-access semantics of <code>@address</code> belong
+                to the later Hardware Register Access chapter.
+            </p>
+        </section>
+
+        <section id="not-owned-here">
+            <h2>Hardware Topics Covered Later</h2>
+
+            <p>
+                Hardware register access is central to using register types against real devices,
+                but it is large enough to deserve its own chapter.
+            </p>
+
+            <p>The later Hardware Register Access chapter covers:</p>
+
+            <ul>
+                <li>physical endpoint kinds;</li>
+                <li>hardware resource identity;</li>
+                <li>endpoint identity and aliases;</li>
+                <li>safe implicit field observation;</li>
+                <li>explicit register <code>Read()</code> and <code>Write()</code>;</li>
+                <li>shadow state and pending write intent;</li>
+                <li>physical read and write widths;</li>
+                <li>alignment requirements;</li>
+                <li>read and write footprints;</li>
+                <li>collateral side effects;</li>
+                <li>coherent multi-step accesses;</li>
+                <li>operation planning and plan selection;</li>
+                <li>atomicity and failure atomicity;</li>
+                <li>ordering and completion;</li>
+                <li>runtime-resolved hardware mappings;</li>
+                <li>access context and authority;</li>
+                <li>hardware-access fault behavior;</li>
+                <li>the boundary between compiler-owned hardware realization and ordinary device protocol code;</li>
+                <li>raw volatile access through <code>RawPtr</code> and <code>unsafe</code>.</li>
+            </ul>
+
+            <p>
+                Keeping those concerns separate prevents the basic register type from being mistaken
+                for an MMIO-only construct while still preserving the full compiler-known hardware model.
+            </p>
+        </section>
+
+        <section id="polarity">
+            <h2>Signal Polarity Is Outside Register Semantics</h2>
+
+            <p>
+                Register declarations preserve field values and declared access semantics.
+                The compiler does not infer domain meaning from a field or signal name.
+            </p>
+
+            <p>It does not automatically infer or invert:</p>
+
+            <ul>
+                <li>active-high versus active-low;</li>
+                <li>asserted versus deasserted;</li>
+                <li>enabled versus disabled;</li>
+                <li>reset polarity;</li>
+                <li>chip-select polarity;</li>
+                <li>interrupt polarity.</li>
+            </ul>
+
+            <p>
+                Driver and application code owns that interpretation.
+            </p>
+
+            <pre><code>if status.InterruptPin == 0 {
+    HandleActiveLowInterrupt()
+}</code></pre>
+
+            <p>
+                The compiler may know the field width and access semantics without deciding what
+                logical state the physical bit represents in the device domain.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important register diagnostics include:</p>
+
+            <ul>
+                <li>non-constant or non-positive register width;</li>
+                <li>field widths whose sum does not equal the declared width;</li>
+                <li>invalid field type;</li>
+                <li>recursive or infinitely sized nested register layout;</li>
+                <li>contradictory read/write semantics;</li>
+                <li>contradictory <code>shadow</code> / <code>noshadow</code> policy;</li>
+                <li>read from a <code>write-only</code> field;</li>
+                <li>write to a <code>read-only</code> field;</li>
+                <li>operation that cannot preserve nested or specialized field semantics;</li>
+                <li>integer-to-register conversion whose out-of-range value is known at compile time;</li>
+                <li>runtime integer-to-register conversion used without required checked handling.</li>
+            </ul>
+
+            <p>
+                Hardware-bound register diagnostics add further information from the physical
+                endpoint contract. Those diagnostics are described with Hardware Register Access.
+            </p>
+
+            <p>
+                Tooling should be able to expose resolved register facts such as:
+            </p>
+
+            <ul>
+                <li>register width;</li>
+                <li>field width;</li>
+                <li>logical bit positions;</li>
+                <li>field allocation order;</li>
+                <li>byte-order contract;</li>
+                <li>field nominal type;</li>
+                <li>read/write permission;</li>
+                <li>special read/write semantics;</li>
+                <li>effective shadow policy.</li>
+            </ul>
+        </section>
+
+        <section id="complete-example">
+            <h2>Complete Example</h2>
+
+            <pre><code>module device
+
+enum ClockSource bit[2] {
+    Internal = 0b00
+    External = 0b01
+    Bypass = 0b10
+}
+
+type InterruptFlags register[4] {
+    Pending: bit write-one-clear,
+    Enabled: bit,
+    Ready: bit read-only,
+    _: bit,
+}
+
+type DeviceControl register[16] shadow {
+    Clock: ClockSource,
+    IRQ: InterruptFlags,
+    Reset: bit write-one-set noshadow,
+    _: bit[9],
+}
+
+impl DeviceControl {
+    fn UsesExternalClock() bool {
+        return self.Clock == ClockSource.External
+    }
+}
+
+let snapshot: DeviceControl
+
+match snapshot.Clock {
+    ClockSource.Internal =&gt; HandleInternalClock()
+    ClockSource.External =&gt; HandleExternalClock()
+    ClockSource.Bypass =&gt; HandleBypassClock()
+    _ =&gt; HandleReservedClockEncoding()
+}</code></pre>
+
+            <p>This example demonstrates the register type itself:</p>
+
+            <ul>
+                <li><code>ClockSource</code> is a nominal open two-bit enum;</li>
+                <li><code>InterruptFlags</code> is a nested four-bit register;</li>
+                <li><code>Pending</code> retains <code>write-one-clear</code> semantics;</li>
+                <li><code>Ready</code> is read-only;</li>
+                <li><code>DeviceControl</code> establishes a register-level shadow-policy default;</li>
+                <li><code>Reset</code> overrides that default with <code>noshadow</code>;</li>
+                <li>the complete register width is exactly sixteen bits;</li>
+                <li><code>impl</code> adds behavior without changing the bit layout;</li>
+                <li>the detached <code>snapshot</code> has ordinary value semantics.</li>
+            </ul>
+
+            <p>
+                The same <code>DeviceControl</code> type may later be used through a hardware binding:
+            </p>
+
+            <pre><code>@address(Platform.DeviceControl)
+let mut control: DeviceControl</code></pre>
+
+            <p>
+                That binding adds hardware-access semantics without changing
+                <code>DeviceControl</code>'s declared width, field offsets or nominal type identity.
+            </p>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>register[N]</code> defines a nominal fixed-width bit-layout type.</li>
+                <li>Register types are general language types and are not inherently MMIO types.</li>
+                <li>A register declaration does not itself imply a physical address, volatility or hardware transaction.</li>
+                <li>The complete field width must equal the declared register width exactly.</li>
+                <li><code>bit</code> and <code>bit[N]</code> are register-field and bit-enum representations, not general standalone scalar types.</li>
+                <li>Reserved <code>_</code> fields occupy bits but are not source-accessible.</li>
+                <li>Bit zero is always the least-significant bit.</li>
+                <li><code>lsb-first</code> is the default field-allocation rule.</li>
+                <li><code>msb-first</code> explicitly allocates declarations from the most-significant side.</li>
+                <li>Field allocation order and byte order are independent.</li>
+                <li><code>little-endian</code> and <code>big-endian</code> control byte encoding, not logical bit numbering.</li>
+                <li>Bit-backed enum fields retain nominal enum typing and accept every representable underlying bit pattern.</li>
+                <li>Nested registers occupy contiguous fixed-width slices and preserve their own inner field semantics.</li>
+                <li>Recursive or infinitely sized register layouts are invalid.</li>
+                <li>Register fields are <code>read-write</code> by default.</li>
+                <li><code>read-only</code> and <code>write-only</code> are compiler-enforced permissions.</li>
+                <li>Specialized write semantics include write-one/zero clear, set and toggle forms.</li>
+                <li><code>read-clear</code> and <code>read-set</code> describe effectful reads.</li>
+                <li>Specialized field semantics are part of the register declaration and cannot be erased by lowering.</li>
+                <li><code>shadow</code> and <code>noshadow</code> declare hardware shadow policy without changing field layout or permission.</li>
+                <li>Nested registers preserve contained access and side-effect semantics.</li>
+                <li>A register may exist as an ordinary detached Sec value.</li>
+                <li>Integer-to-register conversion is explicit and checked when width fit cannot be proven.</li>
+                <li>Integer conversion does not perform implicit endian conversion.</li>
+                <li>Named register fields use ordinary member syntax and preserve their declared nominal types.</li>
+                <li>Register types may have ordinary methods, properties and interface implementations through <code>impl</code>.</li>
+                <li>The hardware-access layer connects logical register operations to physical endpoints through semantics-preserving operation plans.</li>
+                <li>A field width does not imply a physical hardware access width.</li>
+                <li><code>@address</code> may bind a register to a statically resolvable canonical hardware endpoint.</li>
+                <li>Canonical named endpoints such as <code>Platform.GPIOA</code> are the preferred static binding form.</li>
+                <li>Hardware endpoint metadata is not reduced to an ordinary integer before the compiler consumes its semantic contract.</li>
+                <li>Physical endpoints, aliases, access widths, <code>Read()</code>/<code>Write()</code>, shadow state, operation planning, mappings, ordering and completion are covered in the dedicated Hardware Register Access chapter.</li>
+                <li>The compiler does not infer active-high/active-low or other device-domain signal meaning from register field names.</li>
             </ul>
         </section>
 
         <div class="page-navigation">
-                <a href="11-unions.html">Previous: Unions</a>
+            <a href="11-unions.html">Previous: Unions</a>
             <a href="13-units.html">Next: Units</a>
         </div>
     </main>
 </div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.1 &middot; 2026-09-04</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
 </body>
 </html>

@@ -255,7 +255,7 @@ fn Test() void {
 `,
 		},
 		{
-			name: "explicit ordinary copyable transfer",
+			name: "discard convergence after explicit ordinary copyable transfer",
 			source: `
 module main
 fn Inspect(value: int) void {}
@@ -265,8 +265,7 @@ fn Test() void {
     discard value
 }
 `,
-			wantErrors: 1,
-			want:       []string{"value value was consumed by call here and is no longer available"},
+			wantErrors: 0,
 		},
 		{
 			name: "failed later argument does not commit move",
@@ -1692,7 +1691,7 @@ fn Test() void {
 	})
 }
 
-func TestExplicitUnionConstructorMoveConsumesNonCopyablePayloadSource(t *testing.T) {
+func TestExplicitUnionConstructorMoveAllowsDiscardConvergenceOfPayloadSource(t *testing.T) {
 	input := `
 module main
 
@@ -1715,9 +1714,7 @@ fn Test() void {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, []string{
-		"use of moved value session at 17:10, previous declaration at 16:30",
-	})
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestMatchExpressionMergesUnionPayloadMoveState(t *testing.T) {

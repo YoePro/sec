@@ -866,6 +866,11 @@ type Box[T] struct {
 
 **§ 28(4)** Generic lowering must not assume trivial destruction before instantiation has proven it.
 
+**§ 28(5)** `rules/compiler/generics_lowering.md` owns the point at which these
+concrete destruction facts become mandatory for executable lowering. Missing
+destruction-aware lowering is an implementation gap and must not weaken or omit
+the concrete cleanup obligation.
+
 ---
 
 ## § 29 Recursive ownership and destruction

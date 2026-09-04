@@ -731,6 +731,13 @@ Other rulebooks may define additional exported summaries required for generics,
 analysis, optimization, or lowering. Those summaries do not change the module
 identity rules defined here.
 
+For exported generics, `rules/compiler/generics_lowering.md` permits a
+`ModuleSurface` to carry a lowering-ready semantic template and the non-public
+transitive semantic dependencies required to instantiate it. Those dependencies
+do not become source-visible imports or exports. The template body and required
+helper semantics participate in a deterministic generic-lowering fingerprint;
+stale or incompatible summaries must fail closed or be rebuilt.
+
 ### 20.1 Recommended incremental dependency model
 
 Conceptually:

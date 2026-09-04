@@ -692,6 +692,16 @@ schema-v6 regression fixtures remain valid
 no physical union layout is selected
 ```
 
+## 34.1 Generic concreteness
+
+Compiler-generated executable Sec MLIR follows the generic-concreteness
+boundary in `rules/compiler/generics_lowering.md`. Generic-dependent nominal
+types preserve declaration identity and complete ordered concrete arguments;
+generic enum instances use ordinary `!sec.enum` semantics with distinct
+concrete nominal identities. The executable dialect does not require runtime
+generic parameters, dictionaries, type descriptors, or generic call
+operations. Generic provenance may remain as non-runtime metadata.
+
 ---
 
 # 35. Schema-v8 match CFG

@@ -52,18 +52,18 @@ impl CookieHeaderIterator {
 
 impl extends Cookie {
     /**
-     * Creates a lazy parser for one HTTP Cookie header value.
-     *
-     * Parsing does not materialize a Cookie[] merely to iterate over the
-     * cookie-pairs. Request-level HTTP code is responsible for handling all
-     * Cookie header fields present on the request.
-     *
-     * Specification:
-     *   - RFC 10025 — Cookie header field
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — Cookie request parsing
-     */
+    * Creates a lazy parser for one HTTP Cookie header value.
+    *
+    * Parsing does not materialize a Cookie[] merely to iterate over the
+    * cookie-pairs. Request-level HTTP code is responsible for handling all
+    * Cookie header fields present on the request.
+    *
+    * Specification:
+    *   - RFC 10025 — Cookie header field
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — Cookie request parsing
+    */
     static fn ParseHeader(value: string) CookieHeaderIterator {
         return CookieHeaderIterator {
             source: value,
@@ -75,17 +75,17 @@ impl extends Cookie {
 
 impl extends SetCookie {
     /**
-     * Parses one Set-Cookie response header value.
-     *
-     * Unknown extension attributes are preserved so a newer cookie extension
-     * is not silently destroyed by an older stdlib parser.
-     *
-     * Specification:
-     *   - RFC 10025 — Set-Cookie parsing and storage model
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — Set-Cookie parsing
-     */
+    * Parses one Set-Cookie response header value.
+    *
+    * Unknown extension attributes are preserved so a newer cookie extension
+    * is not silently destroyed by an older stdlib parser.
+    *
+    * Specification:
+    *   - RFC 10025 — Set-Cookie parsing and storage model
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — Set-Cookie parsing
+    */
     static fn Parse(value: string) Result[SetCookie, CookieParseError] {
         return Err(CookieParseError.NotImplemented)
     }

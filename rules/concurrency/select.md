@@ -330,12 +330,12 @@ A task await may participate in select:
 
 ```sec
 select {
-    result := await first => {
-        HandleFirst(result)
+    outcome := await first => {
+        HandleFirst(outcome)
     }
 
-    result := await second => {
-        HandleSecond(result)
+    outcome := await second => {
+        HandleSecond(outcome)
     }
 }
 ```
@@ -1294,7 +1294,7 @@ These are not required for version 0.1.
 
 ```text
 channels.txt
-tasks.txt
+tasks.md
 spawn.txt
 await.txt
 concurrency.txt

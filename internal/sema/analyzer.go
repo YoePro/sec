@@ -1013,7 +1013,8 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if noCopy {
 				origin = stmt.Name.Value
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
+			params := a.genericParameterNames(stmt.GenericParameters)
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
 		case *ast.InterfaceDeclaration:
 			if stmt.Name == nil {
 				return
@@ -1511,7 +1512,7 @@ func (a *Analyzer) analyzeEnumDeclarations(program *ast.Program) {
 		if existing := a.types[enum.Name.Value]; existing.Kind == EnumType {
 			return
 		}
-		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
+		a.analyzeEnumDeclaration(enum.Name.Value, enum)
 	})
 }
 
@@ -1524,7 +1525,7 @@ func (a *Analyzer) analyzeEarlyEnumDeclarations(program *ast.Program) {
 		if a.invalidTypeDeclaration(enum.Name.Token) {
 			return
 		}
-		a.types[enum.Name.Value] = a.typeFromEnumDeclaration(enum.Name.Value, enum)
+		a.analyzeEnumDeclaration(enum.Name.Value, enum)
 	})
 	for _, stmt := range program.Statements {
 		if isNilStatement(stmt) {
@@ -1540,7 +1541,7 @@ func (a *Analyzer) analyzeEarlyEnumDeclarations(program *ast.Program) {
 				continue
 			}
 			qualified := impl.Target.Name + "." + enum.Name.Value
-			a.types[qualified] = a.typeFromEnumDeclaration(qualified, enum)
+			a.analyzeEnumDeclaration(qualified, enum)
 		}
 	}
 }
@@ -1551,6 +1552,23 @@ func (a *Analyzer) enumCanAnalyzeEarly(enum *ast.EnumDeclaration) bool {
 	}
 	underlying, ok := a.types[enum.UnderlyingType.Name]
 	return ok && (underlying.Kind == IntType || underlying.Kind == UintType)
+}
+
+// analyzeEnumDeclaration registers a generic enum template under its ordinary
+// generic parameter scope. Concrete instances are created later by resolveType.
+//
+// Rules:
+//   - rules/declarations/generics.md — "Generic enums"
+//   - rules/declarations/enums.md — "Generic enums"
+func (a *Analyzer) analyzeEnumDeclaration(name string, enum *ast.EnumDeclaration) {
+	if len(enum.GenericParameters) == 0 {
+		a.types[name] = a.typeFromEnumDeclaration(name, enum)
+		return
+	}
+	a.validateGenericParameterConstraints(enum.GenericParameters)
+	a.withGenericTypeParameters(enum.GenericParameters, func() {
+		a.types[name] = a.typeFromEnumDeclaration(name, enum)
+	})
 }
 
 func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
@@ -1596,7 +1614,9 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 					continue
 				}
 				a.withImplTarget(impl.Target.Name, func() {
-					a.types[qualified] = a.typeFromEnumDeclaration(qualified, member)
+					a.withGenericTypeParameters(genericParams, func() {
+						a.analyzeEnumDeclaration(qualified, member)
+					})
 				})
 			}
 		}
@@ -1947,7 +1967,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	case *ast.UnitDeclStatement:
 		a.analyzeUnitDeclaration(stmt)
 	case *ast.EnumDeclaration:
-		a.types[stmt.Name.Value] = a.typeFromEnumDeclaration(stmt.Name.Value, stmt)
+		a.analyzeEnumDeclaration(stmt.Name.Value, stmt)
 	case *ast.InterfaceDeclaration:
 		a.analyzeInterfaceDeclaration(stmt)
 	case *ast.FunctionDeclaration:
@@ -8784,12 +8804,14 @@ func (a *Analyzer) typeFromVariantDeclaration(name string, variants []*ast.Ident
 }
 
 // typeFromEnumDeclaration resolves integer-, string-, and bit-backed enum
-// domains, member constants, aliases, and defaults into one nominal Type.
+// domains, generic template identity, member constants, aliases, and defaults
+// into one nominal Type.
 //
 // Rules:
 //   - rules/declarations/enums.md — "Core model"
 //   - rules/declarations/enums.md — "Member initializer syntax"
 //   - rules/declarations/enums.md — "Enum defaults"
+//   - rules/declarations/generics.md — "Generic enums"
 func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
 	underlying := a.types["int"]
 	if enum.BitUnderlying {
@@ -8833,6 +8855,7 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		ExplicitlyNonCopyable: noCopy,
 		ErrorAssignable:       enum.ErrorType,
 		Underlying:            underlying.Name,
+		GenericParameters:     genericParameterNameValues(enum.GenericParameters),
 		EnumConsts:            map[string]EnumValue{},
 	}
 	if underlying.MinInteger != nil {
@@ -11774,7 +11797,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ.Dimension = dimension
 		typ.UnitSemantics = semantics
 	}
-	if (typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == InterfaceType) && len(typ.GenericParameters) > 0 {
+	if (typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == EnumType || typ.Kind == InterfaceType) && len(typ.GenericParameters) > 0 {
 		typ = a.instantiateGenericType(typ)
 	}
 	return typ, true
@@ -14076,8 +14099,20 @@ func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type
 	return Type{Kind: InvalidType}, true
 }
 
+// inferEnumValueExpression resolves a qualified enum member against either its
+// ordinary owner or the concrete generic owner written as Enum[T].Member.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Generic enums"
+//   - rules/declarations/generics.md — "Generic enums"
 func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, bool) {
-	typeName, ok := typePathFromExpression(expr.Object)
+	owner := expr.Object
+	if len(expr.OwnerGenericArguments) > 0 {
+		if indexed, ok := owner.(*ast.IndexExpression); ok {
+			owner = indexed.Left
+		}
+	}
+	typeName, ok := typePathFromExpression(owner)
 	if !ok {
 		return Type{}, false
 	}
@@ -14086,6 +14121,20 @@ func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, b
 	typ, ok := a.types[typeName]
 	if !ok || typ.Kind != EnumType {
 		return Type{}, false
+	}
+	if len(expr.OwnerGenericArguments) > 0 {
+		concrete, resolved := a.resolveType(&ast.TypeReference{
+			Token:    expr.Token,
+			Name:     typeName,
+			TypeArgs: expr.OwnerGenericArguments,
+		})
+		if !resolved {
+			return Type{Kind: InvalidType}, true
+		}
+		typ = concrete
+	} else if len(typ.GenericParameters) > 0 {
+		a.addErrorAtToken(expr.Token, "%s requires %d generic arguments, got 0", typeName, len(typ.GenericParameters))
+		return Type{Kind: InvalidType}, true
 	}
 	value, ok := typ.EnumConsts[expr.Property.Value]
 	if !ok {
@@ -20050,7 +20099,7 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	if target.Kind == EnumType || value.Kind == EnumType {
-		return target.Kind == EnumType && value.Kind == EnumType && target.Name == value.Name
+		return target.Kind == EnumType && value.Kind == EnumType && sameConcreteType(target, value)
 	}
 
 	if target.Kind == StructType || value.Kind == StructType {

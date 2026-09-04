@@ -37,6 +37,7 @@
         <ul>
             <li><a href="#structs">Generic Structs</a></li>
             <li><a href="#unions">Generic Unions</a></li>
+            <li><a href="#enums">Generic Enums</a></li>
             <li><a href="#functions">Generic Functions</a></li>
             <li><a href="#impl">Generic Impl Blocks</a></li>
             <li><a href="#constraints">Constraints</a></li>
@@ -263,6 +264,18 @@ let result: Result[string, IOError] := Result.Ok("ready")</code></pre>
             <p>Construction may use the expected target type or payload type to infer concrete arguments when the result is unambiguous.</p>
         </section>
 
+        <section id="enums">
+            <h2>Generic Enums</h2>
+            <p>A generic enum parameterizes nominal identity and associated behavior:</p>
+            <pre><code>enum SortOrder[T] {
+    Ascending
+    Descending
+}</code></pre>
+            <p><code>SortOrder[User]</code> and <code>SortOrder[Product]</code> are distinct Sec types even when they have identical runtime representations.</p>
+            <pre><code>let order: SortOrder[User] := SortOrder[User].Ascending</code></pre>
+            <p>The parameter may be absent from physical storage; it still contributes to the concrete type identity. Generic enum members remain payload-less. Use a union when alternatives carry different payload values.</p>
+        </section>
+
         <section id="functions">
             <h2>Generic Functions</h2>
             <pre><code>fn Identity[T](value: T) T {
@@ -479,7 +492,6 @@ fn Identity_string(value: string) string {
                 <li>default generic arguments</li>
                 <li>partial explicit generic argument lists</li>
                 <li>variadic generic parameter lists</li>
-                <li>generic enums</li>
                 <li>generic lifetime parameters</li>
                 <li>higher-kinded types</li>
                 <li>specialization</li>
@@ -510,6 +522,7 @@ fn Identity_string(value: string) string {
                 <li>Identical instantiations share one canonical concrete identity.</li>
                 <li>Named types, units, enums and unions preserve their identity.</li>
                 <li>Generic structs and unions are specialized after substitution.</li>
+                <li>Generic enums parameterize nominal identity and associated behavior without adding member payloads.</li>
                 <li>Generic impl blocks use the parameters of their target type.</li>
                 <li>Interfaces provide compile-time generic constraints.</li>
                 <li>Unconstrained parameters cannot assume methods, arithmetic, equality or defaults.</li>

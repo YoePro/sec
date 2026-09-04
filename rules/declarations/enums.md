@@ -2,9 +2,9 @@
 
 **Status:** Canonical normative rulebook
 **Language version:** Sec 0.1
-**Document revision:** 2.0
+**Document revision:** 2.1
 **Created:** 2026-08-13
-**Last updated:** 2026-09-01
+**Last updated:** 2026-09-04
 **Repository baseline reviewed:** `f22b07a`
 **Replaces:** the previous enum rulebook revision
 
@@ -846,11 +846,38 @@ Color.RED
 
 ---
 
+### 16.1 Generic enums
+
+An enum may declare ordinary Sec generic type parameters:
+
+```sec
+enum SortOrder[T] {
+    Ascending
+    Descending
+}
+```
+
+`SortOrder[User]` and `SortOrder[Product]` are distinct concrete nominal enum
+types. The generic argument may contribute only to type identity or associated
+behavior; it need not occupy runtime storage.
+
+Generic parameter declaration, constraints, substitution, concrete identity,
+and generic impl scope are owned by `rules/declarations/generics.md`. Once
+concretized, the type follows this rulebook's ordinary enum member, default,
+conversion, comparison, `switch`, `match`, and representation rules.
+
+Generic enum members remain payload-less. Payload-bearing alternatives belong
+to unions.
+
+---
+
 ## 17. Sema requirements
 
 Sema must:
 
 - register every enum as a distinct nominal type;
+- register generic enums as nominal templates and preserve the complete ordered
+  generic argument list in each concrete enum identity;
 - resolve the underlying type;
 - use `int` when an ordinary underlying type is omitted;
 - accept integer and `string` ordinary underlying types and reject every other
@@ -884,7 +911,10 @@ Sema must:
   classes;
 - validate open bit-enum `match` coverage against the complete bit domain;
 - treat aliases with equal underlying values as one pattern-coverage class;
-- preserve enum nominal identity through lowering metadata.
+- preserve enum nominal identity through lowering metadata;
+- apply ordinary enum validation after generic substitution and reject
+  unresolved representation parameters before representation-dependent
+  lowering.
 
 ---
 
@@ -958,6 +988,11 @@ Checked runtime conversions must lower to explicit validation and failure contro
 Sema cannot prove success.
 
 No enum lookup table or runtime reflection facility is implied by this rulebook.
+
+Generic enum instantiations must be fully concretized before this ordinary enum
+lowering begins. Identical runtime representations do not merge different
+concrete generic enum identities, and generic enum lowering introduces no
+runtime generic descriptor, dictionary, dispatch, erasure, or implicit boxing.
 
 Detailed MLIR operation and lowering contracts belong to `rules/mlir/`.
 

@@ -282,6 +282,7 @@ type EnumDeclaration struct {
 	Token              lexer.Token
 	Attributes         []*Attribute
 	Name               *Identifier
+	GenericParameters  []*GenericParameter
 	UnderlyingType     *TypeReference
 	BitUnderlying      bool
 	UnderlyingBitWidth int64
@@ -1896,6 +1897,10 @@ type MemberExpression struct {
 	Token    lexer.Token
 	Object   Expression
 	Property *Identifier
+	// OwnerGenericArguments preserves the generic-owner interpretation of the
+	// syntactically ambiguous E[T].Member form. Object retains the ordinary
+	// indexed-expression interpretation so Sema can choose from resolved types.
+	OwnerGenericArguments []*TypeReference
 }
 
 func (me *MemberExpression) expressionNode() {}
@@ -1905,7 +1910,15 @@ func (me *MemberExpression) TokenLiteral() string {
 }
 
 func (me *MemberExpression) String() string {
-	return me.Object.String() + "." + me.Property.Value
+	owner := me.Object.String()
+	if _, indexed := me.Object.(*IndexExpression); !indexed && len(me.OwnerGenericArguments) > 0 {
+		arguments := make([]string, 0, len(me.OwnerGenericArguments))
+		for _, argument := range me.OwnerGenericArguments {
+			arguments = append(arguments, constructionTypeReferenceString(argument))
+		}
+		owner += "[" + strings.Join(arguments, ", ") + "]"
+	}
+	return owner + "." + me.Property.Value
 }
 
 type ArrayLiteral struct {

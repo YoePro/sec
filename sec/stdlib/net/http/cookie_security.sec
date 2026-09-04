@@ -1,0 +1,110 @@
+module http
+
+// Higher-level cookie security helpers.
+//
+// Signing and authenticated encryption protect application cookie values; they
+// are not attributes of the HTTP Cookie or Set-Cookie grammar.
+//
+// This file is intentionally scaffolding. It establishes the architectural
+// boundary without locking cryptographic algorithms, providers, key storage,
+// or final CookieJar integration.
+//
+// Design goals:
+//     authenticated signed cookies
+//     authenticated encrypted/private cookies
+//     key rotation
+//     explicit failure through Result
+//     no home-grown cryptographic primitives
+//
+// Sec rulebook:
+//     TODO: create the canonical net/http cookie-security rulebook before this
+//     API is declared stable.
+
+enum CookieSecurityError error {
+    NotImplemented,
+    InvalidKey,
+    InvalidSignature,
+    AuthenticationFailed,
+    InvalidPayload,
+    AllocationFailed,
+}
+
+// Placeholder for cookie security key material.
+//
+// The final representation must prevent accidental logging, serialization, and
+// unrestricted copying of secret material and must integrate with Sec's
+// ownership/destruction rules.
+type CookieKey struct {
+}
+
+// Authenticates cookie values without hiding them.
+// The final type should support key rotation without forcing all active cookies
+// to become invalid at once.
+type SignedCookieCodec struct {
+}
+
+// Authenticates and encrypts cookie values.
+// Algorithm selection belongs to the canonical Sec crypto layer rather than
+// being hard-coded into net/http.
+type PrivateCookieCodec struct {
+}
+
+impl SignedCookieCodec {
+    /**
+     * Protects the value of a SetCookie against undetected modification.
+     *
+     * HTTP cookie attributes remain ordinary attributes. Only the application
+     * payload in the cookie value is transformed.
+     *
+     * Sec:
+     *   - TODO: net/http cookie-security rulebook — Signed cookies
+     *   - TODO: canonical crypto rulebook — message authentication
+     */
+    fn Encode(cookie: SetCookie, key: ref CookieKey) Result[SetCookie, CookieSecurityError] {
+        return Err(CookieSecurityError.NotImplemented)
+    }
+
+    /**
+     * Verifies and decodes a signed request cookie.
+     *
+     * Verification failure must never expose unauthenticated application data
+     * as a successful Cookie value.
+     *
+     * Sec:
+     *   - TODO: net/http cookie-security rulebook — Signed cookies
+     *   - TODO: canonical crypto rulebook — message authentication
+     */
+    fn Decode(cookie: Cookie, key: ref CookieKey) Result[Cookie, CookieSecurityError] {
+        return Err(CookieSecurityError.NotImplemented)
+    }
+}
+
+impl PrivateCookieCodec {
+    /**
+     * Authenticates and encrypts the value of a SetCookie.
+     *
+     * The operation protects application payload data, not the HTTP attributes
+     * that must remain visible to the user agent.
+     *
+     * Sec:
+     *   - TODO: net/http cookie-security rulebook — Private cookies
+     *   - TODO: canonical crypto rulebook — authenticated encryption
+     */
+    fn Encode(cookie: SetCookie, key: ref CookieKey) Result[SetCookie, CookieSecurityError] {
+        return Err(CookieSecurityError.NotImplemented)
+    }
+
+    /**
+     * Authenticates and decrypts a private request cookie.
+     *
+     * Authentication failure must be reported before decoded application data
+     * is exposed to the caller.
+     *
+     * Sec:
+     *   - TODO: net/http cookie-security rulebook — Private cookies
+     *   - TODO: canonical crypto rulebook — authenticated encryption
+     */
+    fn Decode(cookie: Cookie, key: ref CookieKey) Result[Cookie, CookieSecurityError] {
+        return Err(CookieSecurityError.NotImplemented)
+    }
+}

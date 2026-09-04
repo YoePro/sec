@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-09-03"
+updated: "2026-09-04"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -2563,9 +2563,11 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
+    revised: "2026-09-04"
+    document_revision: "2.1"
     summary: >-
-      Tracks revision-2.0 compile-time type generics and demand-driven
-      monomorphization. Generic structs, functions, unions, interfaces, impl
+      Tracks revision-2.1 compile-time type generics and demand-driven
+      monomorphization. Generic structs, functions, unions, enums, interfaces, impl
       scopes, inference, substitution, nominal instance caching, and basic
       constraint declaration validation have substantial frontend support;
       multi-constraints, partial explicit prefixes, method-level generics,
@@ -2573,11 +2575,13 @@ integrations:
       concrete-only backend lowering remain incomplete.
     rules:
       - rules/declarations/generics.md
+      - rules/declarations/enums.md
       - rules/declarations/impl.md
       - rules/declarations/interfaces.md
       - rules/foundations/grammar.md
       - rules/types/types.md
       - rules/compiler/semantic_ir.md
+      - rules/compiler/generics_lowering.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -2600,6 +2604,9 @@ integrations:
       - generic function template registration, exact full explicit argument calls, argument-based inference, and expected-result inference
       - canonical caching of repeated concrete generic function instances within one analysis
       - generic union template registration, concrete payload substitution, and empty and single-payload construction paths
+      - generic enum parameter parsing in direct and type-declaration forms, including concrete Enum[T].Member expressions
+      - generic enum template registration, phantom identity parameters, ordinary member semantics, arity and unknown-constraint diagnostics, canonical concrete instance caching, and distinct nominal identities by ordered argument list
+      - generic enum impl scopes make the owning type parameters available to associated declarations
       - generic impl target correspondence, owning parameter scopes, and concrete nested type and property substitution paths
       - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
       - focused rejection of method-level generic parameters on interface requirements without follow-on unknown-type diagnostics
@@ -2620,13 +2627,13 @@ integrations:
       - complete generic primary and impl extends member composition for every substituted member category
       - specialize static storage independently for every concrete generic instantiation
       - complete generic-union layout, match, ownership, destruction, Semantic IR, and backend lowering after substitution
+      - complete generic-enum constraint revalidation, representation-dependent substitution, match and switch provenance, Semantic IR identity, deterministic symbols, Sec MLIR, ABI, FFI, and backend lowering
       - detect every non-converging recursive instantiation and report the complete concrete instantiation path
       - assign deterministic cross-module symbol identities to concrete types, functions, methods, and static storage
       - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
       - prevent unresolved generic parameters or constraints from reaching ABI, FFI, Sec MLIR, LLVM, or any representation-dependent lowering
       - add the complete revision-2.0 parser, Sema, formatter, LSP, interface, ownership, recursion, Semantic IR, ABI, and backend regression matrix
     excluded:
-      - generic enums
       - runtime generic dispatch, type erasure, implicit boxing, and runtime reflection-based specialization
       - higher-kinded types, type-parameter packs, variadic type parameters, generic argument holes, and default generic arguments
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
@@ -2636,6 +2643,8 @@ integrations:
         result: passed
       - command: go test ./cmd/lsp -run TestAnalyzeRejectsMethodGenericInterfaceRequirement -count=1
         result: passed on 2026-09-03
+      - command: go test ./internal/parser ./internal/sema ./cmd/lsp -run 'Generic|Generics|Enum' -count=1
+        result: passed on 2026-09-04 with generic enum parsing, concrete member resolution, impl scope, arity checking, and nominal identity coverage
 
   - id: frontend.functions-v2
     area: frontend-analysis-and-lowering
@@ -5191,11 +5200,12 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-09-01"
-    document_revision: "2.0"
+    revised: "2026-09-04"
+    document_revision: "2.1"
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
-      including integer-backed and string-backed closed enums, Go-style iota
+      including integer-backed and string-backed closed enums, generic nominal
+      enum templates and concrete identities, Go-style iota
       initializer repetition for integer-backed enums, declared-member
       defaults, aliases, checked underlying-value conversions, match coverage,
       register integration, and tooling. The frontend now covers string-backed
@@ -5205,6 +5215,8 @@ integrations:
       executable backend representation remain integer-enum-only.
     rules:
       - rules/declarations/enums.md
+      - rules/declarations/generics.md
+      - rules/compiler/generics_lowering.md
       - rules/foundations/grammar.md
       - rules/types/default_values.md
       - rules/control-flow/flowcontrol_match.md
@@ -5237,6 +5249,8 @@ integrations:
       - testdata/errorhandling_match_invalid.sec
       - testdata/zim-decoder.sec
     normative_delta:
+      - generic enums are canonical Sec 0.1 compile-time nominal templates, including valid phantom identity parameters
+      - each ordered concrete generic argument list identifies a distinct enum type without runtime generic machinery
       - enum Name string declares a nominal closed enum backed by canonical Sec string representation
       - every string-backed enum member requires an explicit compile-time string initializer
       - iota and omitted-initializer repetition remain exclusive to integer-backed enums
@@ -5248,6 +5262,7 @@ integrations:
       - failed runtime string conversion produces EnumValueError.UndeclaredValue and never OutOfRange
       - match exhaustiveness, equality, switch comparison, member completion, hover, and lowering operate on declared string value classes while preserving nominal identity
     implemented:
+      - generic enum declaration parsing, template registration, concrete member resolution, generic impl scope, arity diagnostics, instance caching, and distinct concrete nominal frontend identity
       - ordinary enum declarations with default int or explicit integer underlying representation
       - exact-width open bit and bit[N] enum identities from width 1 through 256
       - non-empty declarations, unique member names, aliases, and compile-time representability checks
@@ -5277,6 +5292,8 @@ integrations:
       - canonical formatter preservation of string underlying syntax and explicit initializers
       - testdata/zim-decoder.sec uses the canonical Program string enum and passes compiler Sema
     remaining:
+      - preserve concrete generic enum owner and member provenance through Semantic IR, Sec MLIR, deterministic symbol formation, ABI, FFI, and executable backend lowering
+      - revalidate concrete-dependent enum representation and generic constraints before representation-dependent lowering
       - extend compile-time string constant evaluation beyond direct literals when the canonical constant evaluator supports composed string expressions
       - extend proof-based runtime string membership analysis beyond direct literal construction
       - expose string underlying type, closed domain, declared values, aliases, defaults, and checked conversion behavior through richer LSP hover and conversion diagnostics
@@ -5291,6 +5308,7 @@ integrations:
       - add formatter coverage for the enum default marker and recovery from noncanonical initializer spelling
       - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
     required_tests:
+      - generic enum declaration, concrete member access, same-instantiation canonicalization, distinct-instantiation rejection, impl owner scope, arity, constraints, and concrete representation validation
       - string-backed enum declaration and member access
       - explicit initializer required for every string-backed member
       - non-string and non-constant initializer rejection

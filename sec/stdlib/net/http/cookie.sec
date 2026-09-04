@@ -1,188 +1,192 @@
 module http
 
+// HTTP cookie value types.
+//
+// Cookie is the common name/value pair carried by both Cookie and Set-Cookie.
+// SetCookie contains that pair plus the response attributes that control how a
+// user agent stores and later sends it.
+//
+// Primary specification:
+//     RFC 10025 — HTTP State Management Mechanism
+//
+// Sec rulebook:
+//     TODO: create the canonical net/http cookie rulebook before this API is
+//     declared stable.
+
 enum SameSite {
     Strict,
     Lax,
     None,
-    Unspecified,
 }
 
+// CookieError reports cookie validation and serialization errors.
+// NotImplemented is temporary dogfooding scaffolding and must be removed once
+// the corresponding operation exists.
+enum CookieError error {
+    NotImplemented,
+    InvalidName,
+    InvalidValue,
+    InvalidDomain,
+    InvalidPath,
+    InvalidPrefix,
+    SecureRequired,
+    PartitionedRequiresSecure,
+    AllocationFailed,
+}
+
+// Cookie is the name/value pair visible in an HTTP Cookie request header.
+// Response-only attributes are intentionally absent because the request header
+// does not carry them.
 type Cookie struct {
     Name: string,
     Value: string,
+}
+
+impl Cookie {
+    /**
+     * Creates a cookie pair from a name and value.
+     *
+     * Construction does not imply HTTP validity. Validate() performs protocol
+     * validation before serialization.
+     *
+     * Specification:
+     *   - RFC 10025 — cookie-pair
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — Cookie construction
+     */
+    init(name: string, value: string) {
+        self.Name = name
+        self.Value = value
+    }
+
+    /**
+     * Validates this cookie pair for HTTP serialization.
+     *
+     * Only the common name/value pair is validated here. Set-Cookie-specific
+     * attributes are validated by SetCookie.Validate().
+     *
+     * Specification:
+     *   - RFC 10025 — cookie-pair
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — Cookie validation
+     */
+    fn Validate() Result[void, CookieError] {
+        return Err(CookieError.NotImplemented)
+    }
+
+    /**
+     * Serializes this cookie pair as "name=value".
+     *
+     * The operation must not silently apply URL decoding or reinterpret the
+     * stored value.
+     *
+     * Specification:
+     *   - RFC 10025 — Cookie header field
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — Cookie serialization
+     */
+    fn ToString() Result[string, CookieError] {
+        return Err(CookieError.NotImplemented)
+    }
+}
+
+// SetCookie is a Cookie pair plus response-side attributes from Set-Cookie.
+//
+// Pair makes the relationship explicit in the data model. Name and Value are
+// surfaced as properties so ordinary callers do not need to write
+// setCookie.Pair.Name or setCookie.Pair.Value.
+type SetCookie struct {
+    Pair: Cookie,
+
     Path: Option[string],
     Domain: Option[string],
     Expires: Option[datetime],
     MaxAge: Option[int64],
+
     Secure: bool,
-    HTTPOnly: bool,
+    HttpOnly: bool,
     SameSite: Option[SameSite],
+
+    // Contemporary extension; not part of the RFC 10025 core attribute set.
+    Partitioned: bool,
+
+    // Preserves unknown Set-Cookie extension attributes for forward
+    // compatibility without allocating an empty dynamic array in the common
+    // case.
+    Extensions: Option[string[]],
 }
 
-impl Cookie {
-    /** Creates a Cookie using only Cookie Name and Value */
+impl SetCookie {
+    /**
+     * Creates a Set-Cookie value with only a cookie name and value.
+     *
+     * Optional attributes are absent and flag attributes are disabled until
+     * explicitly configured by the caller.
+     *
+     * Specification:
+     *   - RFC 10025 — Set-Cookie header field
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — SetCookie construction
+     */
     init(name: string, value: string) {
-        self.Name = name
-        self.Value = value
-        self.Path = Option.None
-        self.Domain = Option.None
-        self.Expires = Option.None
-        self.MaxAge = Option.None
-        self.SameSite = Option.None
+        self.Pair = new Cookie(name, value)
+        self.Path = None
+        self.Domain = None
+        self.Expires = None
+        self.MaxAge = None
         self.Secure = false
-        self.HTTPOnly = false
+        self.HttpOnly = false
+        self.SameSite = None
+        self.Partitioned = false
+        self.Extensions = None
     }
 
-    /** Serialiserar kakan till en fullständig HTTP Set-Cookie-sträng.
-    *  Värdet blir automatiskt URL-kodat för att säkra mot ogiltiga tecken.
-    */
-    fn ToString() string {
-        let mut out := self.Name + "=" + self.Value
-
-        // Pattern matching på alla valfria attribut
-        match self.Path {
-            Some(path) => { out += "; Path=" + path }
-            None => {}
-        }
-
-        match self.Domain {
-            Some(domain) => { out += "; Domain=" + domain }
-            None => {}
-        }
-
-        match self.MaxAge {
-            Some(max_age) => { out += "; Max-Age=" + max_age.ToString() }
-            None => {}
-        }
-
-        match self.Expires {
-            Some(expires) => { out += "; Expires=" + expires.ToString() }
-            None => {}
-        }
-
-        match self.SameSite {
-            Some(site) => {
-                match site {
-                    SameSite.Strict => { out += "; SameSite=Strict" }
-                    SameSite.Lax => { out += "; SameSite=Lax" }
-                    SameSite.None => { out += "; SameSite=None" }
-                    SameSite.Unspecified => {}
-                }
-            }
-
-            None => {}
-        }
-
-        if self.Secure {
-            out += "; Secure"
-        }
-
-        if self.HTTPOnly {
-            out += "; HttpOnly"
-        }
-
-        return out
-    }
-
-}
-
-// Tar emot en sträng som "session=123; theme=dark"
-fn ParseHeaders(header_value: string) list[Cookie] {
-    let mut cookies := list[Cookie]
-
-    // Vi splittar upp alla kakor (separerade med semikolon)
-    let mut pairs := header_value.Split(";")
-
-    for pair in pairs {
-        let trimmed := pair.Trim()
-
-        // Här använder vi din nya core-funktion!
-        match trimmed.SplitOnce("=") {
-            Option.Some((name, value)) => {
-                let cookie := new Cookie(name, value)
-                cookies.Append(cookie)
-            }
-            Option.None => {
-                // Om det inte finns något '=' är kakan trasig, ignorera
-            }
+    property Name: string {
+        get {
+            return self.Pair.Name
         }
     }
 
-    return cookies
-}
-
-/** Ersätter en kaka i listan om en kaka med samma namn redan finns.
-*  Om kakan inte finns i listan, läggs den till i slutet.
-*  Returnerar den uppdaterade listan.
-*/
-fn SetInList(cookies: list[Cookie], new_cookie: Cookie) list[Cookie] {
-    let mut found := false
-    let mut i := 0
-
-    // Loopa igenom listan för att leta efter en eksisterande kaka med samma namn
-    while i < cookies.len {
-        // Vi antar att list[T] har en index-accessor eller get()-metod
-        let current := cookies[i]
-
-        if current.Name == new_cookie.Name {
-            cookies[i] = new_cookie
-            found = true
-            // Vi har hittat och ersatt kakan, så vi kan avbryta loopen
-            break
-        }
-        i += 1
-    }
-
-    // Om kakan inte fanns i listan lägger vi till den som ny
-    if found == false {
-        try cookies.Append(new_cookie) {
-            Err(_) => {} // We could not add cookie
+    property Value: string {
+        get {
+            return self.Pair.Value
         }
     }
 
-    return cookies
-}
-
-/** Ersätter eller lägger till en kaka i en lista med säker felhantering för allokering. */
-fn SetCookie(cookies: list[Cookie], new_cookie: Cookie) list[Cookie] {
-    let mut found := false
-    let mut i := 0
-
-    while i < cookies.Len {
-        let current := cookies[i]
-
-        if current.name == new_cookie.name {
-            cookies[i] = new_cookie
-            found = true
-            break
-        }
-        i += 1
+    /**
+     * Validates the complete Set-Cookie value.
+     *
+     * Validation includes the cookie pair, response attributes, security
+     * prefix requirements, and cross-attribute requirements.
+     *
+     * Specification:
+     *   - RFC 10025 — Set-Cookie processing and cookie name prefixes
+     *   - Partitioned cookie extension requirements
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — SetCookie validation
+     */
+    fn Validate() Result[void, CookieError] {
+        return Err(CookieError.NotImplemented)
     }
 
-    if found == false {
-        // Hanterar att Append kan returnera ett allokeringsfel (Result)
-        try cookies.Append(new_cookie) {
-            Err(_) => {} // Ignorerar fel om listan inte kunde växa
-        }
+    /**
+     * Serializes this value for one Set-Cookie response header field.
+     *
+     * Serialization is strict. Sec must not knowingly emit an invalid
+     * Set-Cookie value by silently dropping or rewriting invalid attributes.
+     *
+     * Specification:
+     *   - RFC 10025 — Set-Cookie header field
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — SetCookie serialization
+     */
+    fn ToString() Result[string, CookieError] {
+        return Err(CookieError.NotImplemented)
     }
-
-    return cookies
-}
-
-/** Söker efter en specifik kaka i en lista baserat på dess namn.
-*  Returnerar Option.Some(Cookie) om den hittas, annars Option.None.
-*/
-fn GetFromList(cookies: list[Cookie], name: string) Option[Cookie] {
-    let mut i := 0
-
-    while i < cookies.len {
-        let current := cookies[i]
-
-        if current.name == name {
-            return Option.Some(current)
-        }
-        i += 1
-    }
-
-    return Option.None
 }

@@ -157,6 +157,50 @@ type Pair[A, B] struct {
 	}
 }
 
+func TestParseGenericEnumDeclarations(t *testing.T) {
+	input := `
+enum SortOrder[T] {
+	Ascending,
+	Descending,
+}
+
+type Direction[T] enum {
+	Forward,
+	Reverse,
+}
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
+	}
+	for index, name := range []string{"SortOrder", "Direction"} {
+		declaration, ok := program.Statements[index].(*ast.EnumDeclaration)
+		if !ok {
+			t.Fatalf("statement %d is not EnumDeclaration. got=%T", index, program.Statements[index])
+		}
+		if declaration.Name.Value != name || len(declaration.GenericParameters) != 1 || declaration.GenericParameters[0].Name.Value != "T" {
+			t.Fatalf("wrong generic enum declaration: %+v", declaration)
+		}
+	}
+}
+
+func TestParseConcreteGenericEnumMember(t *testing.T) {
+	input := `fn Test() void { let order := SortOrder[User].Ascending }`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	member := fn.Body.Statements[0].(*ast.LetStatement).Value.(*ast.MemberExpression)
+	if member.String() != "SortOrder[User].Ascending" || len(member.OwnerGenericArguments) != 1 || member.OwnerGenericArguments[0].Name != "User" {
+		t.Fatalf("wrong concrete generic enum member: %+v string=%s", member, member.String())
+	}
+}
+
 func TestParseUnitDeclarations(t *testing.T) {
 	input := `
 unit Hertz decimal<Hz>

@@ -788,7 +788,14 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 	}
 }
 
+// parseExplicitGenericCallExpression parses attached generic call arguments and
+// concrete generic nominal owners used by member values such as E[T].Member.
+//
+// Rules:
+//   - rules/declarations/generics.md — "Generic arguments"
+//   - rules/declarations/generics.md — "Generic enums"
 func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Expression {
+	bracketToken := p.curToken
 	typeArgs := p.parseTypeArgs()
 	if typeArgs == nil {
 		return nil
@@ -816,12 +823,22 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 			return nil
 		}
 		if p.peekToken.Type != lexer.LPAREN {
-			p.addError(
-				"generic union variant arguments must be followed by call at %d:%d",
-				p.peekToken.Line,
-				p.peekToken.Column,
-			)
-			return nil
+			// Generic enum members and payload-less generic union variants are
+			// values rather than calls. The token sequence is ambiguous with an
+			// indexed value member, so retain both interpretations for Sema.
+			memberExpr, ok := member.(*ast.MemberExpression)
+			if !ok {
+				return nil
+			}
+			memberExpr.OwnerGenericArguments = typeArgs
+			if len(typeArgs) == 1 && typeArgs[0] != nil && len(typeArgs[0].TypeArgs) == 0 && typeArgs[0].ElementType == nil {
+				memberExpr.Object = &ast.IndexExpression{
+					Token: bracketToken,
+					Left:  left,
+					Index: &ast.Identifier{Token: typeArgs[0].Token, Value: typeArgs[0].Name},
+				}
+			}
+			return memberExpr
 		}
 		p.nextToken()
 		args, ok := p.parseCallArguments()

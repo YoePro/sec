@@ -2957,7 +2957,10 @@ func printASTTypeDecl(stmt *ast.TypeDeclStatement, prefix string, last bool) {
 func printASTEnum(stmt *ast.EnumDeclaration, prefix string, last bool) {
 	printASTBranch(prefix, last, "Enum")
 
-	children := []string{"Name: " + stmt.Name.Value}
+	children := []string{
+		"Name: " + stmt.Name.Value,
+		"GenericParameters: " + formatGenericParameters(stmt.GenericParameters),
+	}
 	if stmt.BitUnderlying {
 		children = append(children, fmt.Sprintf("Underlying: bit[%d]", stmt.UnderlyingBitWidth))
 	} else if stmt.UnderlyingType != nil {
@@ -3462,7 +3465,7 @@ func printTypeDecl(stmt *ast.TypeDeclStatement) {
 }
 
 func printEnum(stmt *ast.EnumDeclaration) {
-	fmt.Printf("Enum %s", stmt.Name.Value)
+	fmt.Printf("Enum %s%s", stmt.Name.Value, formatGenericParameters(stmt.GenericParameters))
 	if stmt.BitUnderlying {
 		fmt.Printf(": bit[%d]", stmt.UnderlyingBitWidth)
 	} else if stmt.UnderlyingType != nil {

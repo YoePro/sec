@@ -1,0 +1,129 @@
+module http
+
+// Client-side cookie storage and request selection.
+//
+// SetCookie is an instruction received from a server.
+// StoredCookie is the effective state after that instruction has been
+// interpreted relative to the response URL.
+// Cookie is the name/value pair later selected for a request.
+//
+//     SetCookie -> CookieJar / StoredCookie -> Cookie -> Cookie header
+//
+// Primary specification:
+//     RFC 10025 — cookie storage model and Cookie header generation
+//
+// Dependencies still to be finalized:
+//     canonical URL type
+//     public-suffix policy
+//     partition-key model
+//
+// Sec rulebook:
+//     TODO: create the canonical net/http cookie-jar rulebook before this API
+//     is declared stable.
+
+enum CookieJarError error {
+    NotImplemented,
+    RejectedByPolicy,
+    InvalidDomain,
+    PublicSuffixRejected,
+    InvalidPartition,
+    AllocationFailed,
+}
+
+// Internal cookie-jar state.
+//
+// These fields must not be exposed through the ordinary Cookie request type:
+// they describe user-agent storage state, not data present in a Cookie header.
+type StoredCookie struct {
+    Pair: Cookie,
+
+    Domain: string,
+    Path: string,
+    Expires: Option[datetime],
+
+    HostOnly: bool,
+    Secure: bool,
+    HttpOnly: bool,
+    SameSite: Option[SameSite],
+    Partitioned: bool,
+
+    CreationTime: datetime,
+    LastAccessTime: datetime,
+
+    // Placeholder until a canonical partition-key type exists.
+    PartitionKey: Option[string],
+}
+
+type CookieJar struct {
+    cookies: StoredCookie[],
+}
+
+impl CookieJar {
+    /**
+     * Stores or updates a cookie received in Set-Cookie.
+     *
+     * The response URL participates in domain, host-only, default-path,
+     * security, and partition validation. Replacement identity follows the
+     * cookie storage rules and must not compare only cookie names.
+     *
+     * Specification:
+     *   - RFC 10025 — storage model and Set-Cookie processing
+     *
+     * Sec:
+     *   - TODO: net/http cookie-jar rulebook — Store
+     */
+    fn Store(origin: URL, cookie: SetCookie) Result[void, CookieJarError] {
+        return Err(CookieJarError.NotImplemented)
+    }
+
+    /**
+     * Returns the request cookies applicable to a URL.
+     *
+     * Selection applies expiry, domain, path, Secure, SameSite, partition, and
+     * ordering rules before exposing cookie-pairs.
+     *
+     * The final return type may become a lazy iterator if dogfooding shows that
+     * materializing Cookie[] is the wrong allocation model.
+     *
+     * Specification:
+     *   - RFC 10025 — Cookie header generation
+     *
+     * Sec:
+     *   - TODO: net/http cookie-jar rulebook — Request cookie selection
+     */
+    fn Cookies(url: URL) Result[Cookie[], CookieJarError] {
+        return Err(CookieJarError.NotImplemented)
+    }
+
+    /**
+     * Produces the Cookie request-header value applicable to a URL.
+     *
+     * This is a convenience operation over the jar's normal selection and
+     * ordering rules and must not bypass them.
+     *
+     * Specification:
+     *   - RFC 10025 — Cookie header generation
+     *
+     * Sec:
+     *   - TODO: net/http cookie-jar rulebook — CookieHeader
+     */
+    fn CookieHeader(url: URL) Result[string, CookieJarError] {
+        return Err(CookieJarError.NotImplemented)
+    }
+
+    /**
+     * Removes cookies that have expired at or before `now`.
+     *
+     * Request-cookie selection must never return an expired cookie even when
+     * cleanup has not yet run.
+     *
+     * Specification:
+     *   - RFC 10025 — expiry and storage eviction
+     *
+     * Sec:
+     *   - TODO: net/http cookie-jar rulebook — Expiry
+     */
+    fn RemoveExpired(now: datetime) Result[uint, CookieJarError] {
+        return Err(CookieJarError.NotImplemented)
+    }
+}

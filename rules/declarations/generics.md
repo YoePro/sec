@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-08-14
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-04
+- **Document revision:** 2.1
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
 - **Canonical path:** `rules/declarations/generics.md`
@@ -110,6 +110,7 @@ Sec 0.1 supports generic parameters on:
 
 - structs;
 - unions;
+- enums;
 - named types;
 - interfaces;
 - functions;
@@ -198,24 +199,50 @@ Method-level generics are part of Sec 0.1 and are not postponed.
 
 ## 6. Generic enums
 
-Enums do not accept generic parameters.
-
-Invalid:
+A generic enum is a compile-time generic nominal enum template. It uses the
+ordinary generic-parameter grammar.
 
 ```sec
-enum Value[T] {
-    First
-    Second
+enum State[T] {
+    Ready
+    Busy
 }
 ```
 
-Expected diagnostic:
+Each complete argument list identifies a concrete nominal enum type. Therefore
+`State[Connection]` and `State[Socket]` are different Sec types even when their
+physical representations are identical.
 
-```text
-enum declarations cannot have generic parameters
+A generic parameter contributes to this identity and is semantically used even
+when it does not occur in the enum's physical representation. Such a phantom
+storage parameter is valid:
+
+```sec
+enum Permission[T] {
+    Read
+    Write
+}
 ```
 
-An enum represents a finite set of named value classes. Generic payload variation belongs in a union rather than in an enum.
+An implementation associated with a generic enum receives the owning generic
+scope in the ordinary way:
+
+```sec
+impl Permission[T] {
+    fn Check(value: T) void {
+        ...
+    }
+}
+```
+
+Generic parameters do not add payloads to enum members. Use a union when
+different alternatives carry payload values.
+
+After substitution, a generic enum follows all ordinary enum rules. If a
+generic parameter affects the underlying representation, that declaration is
+valid only when the generic constraints and enum rules prove a valid concrete
+representation for every permitted instantiation. No unresolved generic
+parameter may reach representation-dependent lowering.
 
 ## 7. Generic registers
 
@@ -858,7 +885,6 @@ The following are not part of the Sec 0.1 generic model:
 - higher-kinded types;
 - generic parameter packs;
 - variadic type-parameter lists;
-- generic enums;
 - generic argument holes;
 - automatic structural constraints inferred from member names;
 - automatic interface implementation;
@@ -884,6 +910,7 @@ The parser must support:
 - generic arguments on function/method calls;
 - partial explicit function/method generic prefixes;
 - nested generic type references;
+- generic enum declarations and concrete enum member owners;
 - generic interface declarations;
 - generic named type declarations;
 - generic impl targets.
@@ -894,7 +921,6 @@ The parser must reject or preserve for Sema with clear source locations:
 - malformed generic lists;
 - missing constraint after `:`;
 - missing constraint after `&`;
-- generic parameters on enums;
 - generic argument holes;
 - arbitrary runtime expressions used as type arguments.
 
@@ -924,6 +950,9 @@ Sema must:
 - substitute concrete types recursively;
 - re-evaluate concrete layout/default/copy/move/destruction properties;
 - preserve nominal identity;
+- register generic enums as templates and preserve their ordinary enum member
+  set, representation facts, and generic identity after substitution;
+- make owning generic enum parameters visible in matching generic impl scopes;
 - preserve consuming parameter modes and typed variadic shape through every concrete callable instantiation;
 - register concrete method and static-member surfaces;
 - ensure generic bodies use only capabilities guaranteed by their constraints;
@@ -942,6 +971,7 @@ It must preserve enough information to identify:
 - constraints;
 - concrete generic arguments;
 - canonical concrete instance identity;
+- concrete generic enum owner and variant identity;
 - concrete substituted types;
 - concrete called method/function symbols;
 - instantiation source location.
@@ -983,10 +1013,6 @@ generic argument holes are not supported
 ```
 
 ```text
-enum declarations cannot have generic parameters
-```
-
-```text
 method-level generic parameter U conflicts with enclosing generic parameter U
 ```
 
@@ -1008,7 +1034,8 @@ Diagnostics for concrete instantiation failures should show both the failing gen
 - Combine independent interface requirements with `&`.
 - Let inference handle obvious parameters; use an explicit positional prefix when it improves clarity or resolves ambiguity.
 - Use method-level generics when the variation belongs to one operation rather than the whole type.
-- Use generic unions for payload variation; do not model payload variation with generic enums.
+- Use unions when variants carry different payloads.
+- Use generic enums when parameterized enum identity or associated behavior is useful.
 - Avoid exposing unnecessary generic complexity across ABI or FFI boundaries.
 - Keep static state in generic types intentional because every concrete specialization receives distinct storage.
 

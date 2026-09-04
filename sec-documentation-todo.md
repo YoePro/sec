@@ -701,7 +701,7 @@ multiple target outputs.
 Recommended order:
 
 1. `compile_time_evaluation.md`
-2. `generics_lowering.md`
+2. `rules/compiler/generics_lowering.md` (written; implementation remains)
 3. `monomorphization.md`
 
 Compile-time values and evaluation must be stable before final generic lowering

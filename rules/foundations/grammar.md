@@ -1142,8 +1142,18 @@ A token such as `+` does not dynamically resolve to an arbitrary user method.
 
 ## Generic enums
 
-Generic enum declarations are invalid in Sec 0.1. Generic payload variation
-belongs in unions.
+Generic parameter syntax is valid on enum declarations:
+
+```sec
+enum State[T] {
+    Ready
+    Busy
+}
+```
+
+The parameter list uses the same grammar as other eligible generic nominal
+declarations. Generic parameters do not give enum members payloads; payload-
+bearing alternatives remain union declarations.
 
 ## Field-level match destructuring
 

@@ -6805,6 +6805,93 @@ fn Bad(value: Box[int]) Box[string] {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestGenericEnumIdentityMembersAndImplScope(t *testing.T) {
+	input := `
+module main
+
+type User struct {}
+type Product struct {}
+
+enum SortOrder[T] {
+	Ascending,
+	Descending,
+}
+
+impl SortOrder[T] {
+	fn Accept(value: T) void {
+		discard value
+	}
+}
+
+fn AcceptUserOrder(value: SortOrder[User]) void {
+	discard value
+}
+
+fn UseGenericEnum() void {
+	let first: SortOrder[User] := SortOrder[User].Ascending
+	let second: SortOrder[User] := SortOrder[User].Descending
+	AcceptUserOrder(first)
+	discard second
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+
+	template := analyzer.types["SortOrder"]
+	if template.Kind != EnumType || len(template.GenericParameters) != 1 || template.GenericParameters[0] != "T" {
+		t.Fatalf("wrong generic enum template: %+v", template)
+	}
+	if got := len(analyzer.genericTypeInstances); got != 1 {
+		t.Fatalf("generic enum instance count = %d, want 1; instances=%+v", got, analyzer.genericTypeInstances)
+	}
+}
+
+func TestGenericEnumInstantiationsAreDistinct(t *testing.T) {
+	input := `
+module main
+
+type User struct {}
+type Product struct {}
+
+enum SortOrder[T] {
+	Ascending,
+	Descending,
+}
+
+fn WrongIdentity() SortOrder[Product] {
+	return SortOrder[User].Ascending
+}
+
+fn WrongArity() void {
+	let value := SortOrder[User, Product].Ascending
+	discard value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function WrongIdentity must return SortOrder[Product], got SortOrder[User] at 13:24",
+		"SortOrder requires 1 generic arguments, got 2 at 17:39",
+	})
+}
+
+func TestGenericEnumConstraintDeclarationErrors(t *testing.T) {
+	input := `
+module main
+
+enum Invalid[T: MissingConstraint] {
+	First,
+	Second,
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"unknown generic constraint MissingConstraint for T at 4:17",
+	})
+}
+
 func TestGenericFunctionCallInference(t *testing.T) {
 	input := `
 module main

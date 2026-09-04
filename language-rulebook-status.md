@@ -58,6 +58,7 @@ collections/shaped-types.md
 concurrency/thread_local.md
 control-flow/discard.md
 declarations/generics.md
+compiler/generics_lowering.md
 declarations/static.md
 memory/ownership.md
 memory/borrowing.md
@@ -180,14 +181,14 @@ LSP token classification
 | Rulebook | Status | Notes |
 |---|---|---|
 | `declarations/struct.md` | **Written** | Canonical named aggregate declarations, field tags, complete/partial/spread construction, recursive defaults, field Places, copy/move, equality, destruction, and layout boundaries. Implementation is tracked by `frontend.structs`. |
-| `declarations/enums.md` | **Written** | Revision 2.0 defines closed integer- and string-backed ordinary enums, open bit-backed domains, integer-only `iota` repetition, declared-member defaults, aliases, checked conversions, match semantics, and lowering requirements. Implementation is tracked by `frontend.enums`. |
+| `declarations/enums.md` | **Written** | Revision 2.1 adds compile-time generic nominal enum templates and concrete owner identity while retaining the closed integer/string and open bit-backed enum model. Implementation is tracked by `frontend.enums` and `frontend.generics-v2`. |
 | `declarations/unions.md` | **Written** | Canonical closed nominal unions, payload construction, explicit defaults, empty initialization state, matching, ownership, equality, generics, recursion, and representation requirements. Implementation is tracked by `frontend.unions`. |
 | `declarations/registers.md` | **Written** | Canonical nominal `register[N]` types, logical bit layout, nested registers, field access semantics, conversions, and impl eligibility. Implementation is tracked by `frontend.registers`. |
 | `declarations/functions.md` | **Written** | Canonical revision 2.0 functions, owned/borrowed/consuming parameters, call-transfer commit, overloads, and native typed variadics. Frontend and lowering progress is tracked by `frontend.functions-v2`. |
 | `declarations/lambda-functions.md` | **Written** | Canonical revision 2.0 lambda, capture, callable-capability, and closure rulebook. Frontend and lowering progress is tracked by `frontend.lambda-functions-v2`. |
 | `lambdas.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
 | `closures.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
-| `declarations/generics.md` | **Written** | Canonical revision 2.0 compile-time type generics, constraints, inference, method generics, generic interfaces/named types, monomorphization, ABI boundaries, and diagnostics. Implementation progress is tracked by `frontend.generics-v2`. |
+| `declarations/generics.md` | **Written** | Canonical revision 2.1 compile-time type generics, now including generic enums with phantom nominal identity parameters, concrete member owners, ordinary generic impl scope, and no runtime generic machinery. Implementation progress is tracked by `frontend.generics-v2`. |
 | `declarations/interfaces.md` | **Written** | Revision 2.1 includes compiler-known generic interfaces such as statically dispatched `Iterator[T]`; ordinary receiver capabilities, inheritance, and primary-impl conformance remain canonical. Frontend progress is tracked by `frontend.interfaces` and `frontend.for-loops-v2`. |
 | `declarations/impl.md` | **Written** | Revision 2.1 additionally makes immutable impl `let` the canonical associated-value spelling and immutable impl `static let` its equivalent compatibility form; lifecycle status is tracked by `frontend.impl-lifecycle-construction` and associated values by `frontend.static-declarations-members`. |
 | `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
@@ -472,7 +473,7 @@ OrderedMap[K, V]
 | `analysis/effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model, including the distinction between logical shaped operations and storage-producing shaped operations. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
 | `analysis/isr_analysis.md` | **Written** | Canonical cross-analysis ISR constraint verifier: resolved profiles, reusable requirement summaries, execution-context propagation, stack/race/deadlock/FFI composition, Valid/Invalid/Unproven proof states, incremental dependencies, and progressive LSP refinement. Implementation status is tracked by `sema.isr-analysis`. |
 | `compiler/parser_recovery.md` | **Written** | Canonical deterministic recovery model; structured implementation remains partial. |
-| `generics_lowering.md` | **Planned** | Semantic and MLIR lowering of generic code. |
+| `compiler/generics_lowering.md` | **Written** | Canonical concrete-specialization boundary, identity, substitution, determinism, and generic enum lowering requirements. Implementation remains partial under `frontend.generics-v2`. |
 | `monomorphization.md` | **Planned** | Specialization, symbol identity, code size, and cross-module behavior. |
 | `compiler/linking.md` | **Written** | Canonical CompilationPlan-specific LinkPlan, binary symbol identity, native/foreign resolution, archives, reachability, dead stripping/LTO, deterministic toolchain materialization, and artifact verification. The existing direct clang-driver build path is a legacy partial slice; canonical work is tracked by `compiler.linking`. |
 | `compile_time_evaluation.md` | **Planned** | User-visible compile-time evaluation semantics. |
@@ -623,6 +624,7 @@ tooling/testing.md
 declarations/functions.md
 declarations/lambda-functions.md
 declarations/generics.md
+compiler/generics_lowering.md
 declarations/impl.md
 declarations/interfaces.md
 analysis/isr_analysis.md
@@ -710,7 +712,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-generics_lowering.md
 monomorphization.md
 compile_time_evaluation.md
 

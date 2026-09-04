@@ -29,6 +29,26 @@ enum IOError error {
     failed,
 }
 
+enum SortOrder[T] {
+    Ascending,
+    Descending,
+}
+
+impl SortOrder[T] {
+    fn Accept(value: T) void {
+        discard value
+    }
+}
+
+fn AcceptCustomerOrder(value: SortOrder[CustomerID]) void {
+    discard value
+}
+
+fn UseGenericEnum() void {
+    let order: SortOrder[CustomerID] := SortOrder[CustomerID].Ascending
+    AcceptCustomerOrder(order)
+}
+
 fn ReadInt(box: Box[int]) int {
     return box.value
 }

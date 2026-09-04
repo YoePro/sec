@@ -1,0 +1,101 @@
+module http
+
+// Cookie parsing.
+//
+// Parsing is separated from cookie.sec because tolerant Internet input handling
+// is expected to grow substantially without changing the small public data
+// model.
+//
+// The parser distinguishes Cookie request headers from Set-Cookie response
+// headers. Server-side serialization should be strict; client/user-agent input
+// parsing may require compatibility behavior.
+//
+// Primary specification:
+//     RFC 10025 — HTTP State Management Mechanism
+//
+// Sec rulebook:
+//     TODO: create the canonical net/http cookie parsing rulebook before this
+//     API is declared stable.
+
+enum CookieParseError error {
+    NotImplemented,
+    InvalidCookiePair,
+    InvalidSetCookie,
+    InvalidAttribute,
+    InvalidDate,
+    InvalidMaxAge,
+    AllocationFailed,
+}
+
+// Lazily parses cookie-pairs from one Cookie header value.
+//
+// The exact Next() contract is intentionally not locked yet. A plain
+// Option[Cookie] cannot report a malformed pair, while
+// Result[Option[Cookie], CookieParseError] may affect the future iterator
+// protocol. Dogfooding should decide this before the API is frozen.
+type CookieHeaderIterator struct {
+    source: string,
+    position: uint,
+    finished: bool,
+}
+
+impl CookieHeaderIterator {
+    property IsFinished: bool {
+        get {
+            return self.finished
+        }
+    }
+
+    // TODO: Define and implement Next() after malformed-pair behavior and the
+    // canonical iterator error model are settled.
+}
+
+impl extends Cookie {
+    /**
+     * Creates a lazy parser for one HTTP Cookie header value.
+     *
+     * Parsing does not materialize a Cookie[] merely to iterate over the
+     * cookie-pairs. Request-level HTTP code is responsible for handling all
+     * Cookie header fields present on the request.
+     *
+     * Specification:
+     *   - RFC 10025 — Cookie header field
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — Cookie request parsing
+     */
+    static fn ParseHeader(value: string) CookieHeaderIterator {
+        return CookieHeaderIterator {
+            source: value,
+            position: 0,
+            finished: false,
+        }
+    }
+}
+
+impl extends SetCookie {
+    /**
+     * Parses one Set-Cookie response header value.
+     *
+     * Unknown extension attributes are preserved so a newer cookie extension
+     * is not silently destroyed by an older stdlib parser.
+     *
+     * Specification:
+     *   - RFC 10025 — Set-Cookie parsing and storage model
+     *
+     * Sec:
+     *   - TODO: net/http cookie rulebook — Set-Cookie parsing
+     */
+    static fn Parse(value: string) Result[SetCookie, CookieParseError] {
+        return Err(CookieParseError.NotImplemented)
+    }
+}
+
+// Expected private helpers as the parser grows:
+//     parseCookiePair
+//     parseCookieDate
+//     parseMaxAge
+//     parseSameSite
+//     parseDomain
+//     parsePath
+//     parseExtensionAttribute

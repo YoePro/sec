@@ -1751,7 +1751,11 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	if p.peekToken.Type == lexer.ENUM {
 		p.nextToken()
-		enum := &ast.EnumDeclaration{Token: stmt.Token, Name: stmt.Name}
+		enum := &ast.EnumDeclaration{
+			Token:             stmt.Token,
+			Name:              stmt.Name,
+			GenericParameters: stmt.GenericParameters,
+		}
 		if !p.parseEnumUnderlying(enum) {
 			return nil
 		}
@@ -2154,6 +2158,12 @@ func (p *Parser) parseInterfacePropertySetter(property *ast.InterfaceProperty, f
 	return true
 }
 
+// parseEnumDeclaration preserves generic enum parameters for ordinary generic
+// registration and concrete nominal instantiation in Sema.
+//
+// Rules:
+//   - rules/declarations/generics.md — "Generic enums"
+//   - rules/foundations/grammar.md — "Generic enums"
 func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 	enum := &ast.EnumDeclaration{Token: p.curToken}
 
@@ -2161,6 +2171,13 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 		return nil
 	}
 	enum.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	if p.isAttachedGenericListStart(enum.Name) {
+		p.nextToken()
+		enum.GenericParameters = p.parseGenericParameters()
+		if enum.GenericParameters == nil {
+			return nil
+		}
+	}
 
 	if !p.parseEnumUnderlying(enum) {
 		return nil

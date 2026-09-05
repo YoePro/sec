@@ -17,16 +17,31 @@
     font-family: 'Arial Black', Arial, sans-serif;
   }
 
+  /* ===== SCENE ===== */
   .scene {
     position: relative;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at 50% 100%, #102a43 0%, #0b1d30 50%, #050d18 100%);
+    background:
+      radial-gradient(ellipse at 50% 80%, #1a3a5c 0%, #0d1f33 40%, #060d18 100%);
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     overflow: hidden;
+  }
+
+  /* Ground reflection */
+  .scene::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 30%;
+    background: linear-gradient(180deg, transparent 0%, rgba(10, 20, 35, 0.6) 100%);
+    pointer-events: none;
+    z-index: 1;
   }
 
   /* ===== FLASHING POLICE LIGHTS ===== */
@@ -37,6 +52,7 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
+    z-index: 2;
   }
 
   .lights::before,
@@ -51,24 +67,58 @@
 
   .lights::before {
     left: 0;
-    background: linear-gradient(180deg, rgba(255, 0, 0, 0.25) 0%, transparent 60%);
+    background: linear-gradient(180deg, rgba(255, 30, 30, 0.35) 0%, rgba(255, 0, 0, 0.08) 40%, transparent 70%);
     animation: flashRed 1s steps(2) infinite;
   }
 
   .lights::after {
     right: 0;
-    background: linear-gradient(180deg, rgba(0, 100, 255, 0.25) 0%, transparent 60%);
+    background: linear-gradient(180deg, rgba(30, 100, 255, 0.35) 0%, rgba(0, 60, 255, 0.08) 40%, transparent 70%);
     animation: flashBlue 1s steps(2) infinite;
   }
 
   @keyframes flashRed {
-    0%, 49%  { opacity: 1; }
+    0%, 49%   { opacity: 1; }
     50%, 100% { opacity: 0; }
   }
 
   @keyframes flashBlue {
-    0%, 49%  { opacity: 0; }
+    0%, 49%   { opacity: 0; }
     50%, 100% { opacity: 1; }
+  }
+
+  /* Light glow blobs at top corners */
+  .light-blob {
+    position: absolute;
+    top: -60px;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    filter: blur(80px);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .light-blob-red {
+    left: -60px;
+    background: rgba(255, 30, 30, 0.5);
+    animation: glowRed 1s steps(2) infinite;
+  }
+
+  .light-blob-blue {
+    right: -60px;
+    background: rgba(30, 100, 255, 0.5);
+    animation: glowBlue 1s steps(2) infinite;
+  }
+
+  @keyframes glowRed {
+    0%, 49%   { opacity: 0.9; }
+    50%, 100% { opacity: 0; }
+  }
+
+  @keyframes glowBlue {
+    0%, 49%   { opacity: 0; }
+    50%, 100% { opacity: 0.9; }
   }
 
   /* ===== POLICE TAPE ===== */
@@ -76,174 +126,555 @@
     position: absolute;
     left: -15%;
     width: 130%;
-    height: 52px;
-    background: repeating-linear-gradient(
-      45deg,
-      #f9d71c 0px,
-      #f9d71c 30px,
-      #111 30px,
-      #111 60px
-    );
-    box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
-    z-index: 6;
-    animation: tapeSlide 6s linear infinite;
+    height: 48px;
+    z-index: 7;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 1px 4px rgba(0, 0, 0, 0.3);
   }
 
-  .tape::before {
-    content: "POLICE LINE  •  DO NOT CROSS  •  POLICE LINE  •  DO NOT CROSS  •  POLICE LINE  •  DO NOT CROSS";
+  /* Yellow base with repeating text */
+  .tape-inner {
     position: absolute;
     inset: 0;
+    background: repeating-linear-gradient(
+      90deg,
+      #f9d71c 0px,
+      #f9d71c 140px,
+      #e8c514 140px,
+      #e8c514 280px
+    );
+    overflow: hidden;
+  }
+
+  .tape-text {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    transform: translateY(-50%);
     display: flex;
-    align-items: center;
-    font-size: 20px;
-    font-weight: 900;
-    color: #f9d71c;
-    background: #111;
     white-space: nowrap;
-    letter-spacing: 2px;
+    font-size: 18px;
+    font-weight: 900;
+    color: #1a1a1a;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .tape-text span {
+    padding: 0 20px;
+    flex-shrink: 0;
+  }
+
+  /* Tape sheen */
+  .tape-inner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.25) 0%, transparent 30%, rgba(0, 0, 0, 0.08) 100%);
+    pointer-events: none;
   }
 
   .tape-1 {
-    top: 18%;
+    top: 14%;
     transform: rotate(-4deg);
+    animation: tapeSlide1 8s linear infinite;
   }
 
   .tape-2 {
-    bottom: 16%;
-    transform: rotate(3deg);
-    animation-direction: reverse;
+    bottom: 12%;
+    transform: rotate(3.5deg);
+    animation: tapeSlide2 8s linear infinite;
   }
 
-  @keyframes tapeSlide {
-    0%   { background-position: 0 0; }
-    100% { background-position: 85px 0; }
+  .tape-3 {
+    top: 50%;
+    transform: rotate(-2deg);
+    animation: tapeSlide1 8s linear infinite reverse;
+    opacity: 0.85;
+    height: 40px;
   }
 
-  /* ===== GLOVED HAND (raised, stop!) ===== */
+  @keyframes tapeSlide1 {
+    0%   { transform: rotate(-4deg) translateX(0); }
+    100% { transform: rotate(-4deg) translateX(-140px); }
+  }
+
+  @keyframes tapeSlide2 {
+    0%   { transform: rotate(3.5deg) translateX(0); }
+    100% { transform: rotate(3.5deg) translateX(-140px); }
+  }
+
+  /* Tape sag in the middle for realism */
+  .tape-1::before,
+  .tape-2::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 30px;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent);
+    transform: translateX(-50%);
+  }
+
+  /* ===== GLOVED HAND ===== */
   .hand-wrap {
     position: relative;
     z-index: 10;
-    margin-bottom: 10%;
-    animation: handShake 2.2s ease-in-out infinite;
+    margin-bottom: 2rem;
+    width: 390px;
+    height: 500px;
+    animation: handShake 2.5s ease-in-out infinite;
   }
 
-  /* Arm / sleeve coming in from bottom-right */
+  /* ===== FULL POLICE OFFICER ===== */
+  .police-body {
+    position: absolute;
+    z-index: 2;
+    bottom: 105px;
+    left: 145px;
+    width: 145px;
+    height: 190px;
+    background: linear-gradient(100deg, #182f52 0%, #2b5484 50%, #162c4d 100%);
+    border-radius: 35px 35px 12px 12px;
+    border: 3px solid #10243f;
+    box-shadow: inset -18px 0 20px rgba(0, 0, 0, 0.22), inset 10px 0 15px rgba(255, 255, 255, 0.06), 0 10px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .police-body::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 3px;
+    height: 170px;
+    background: rgba(10, 25, 45, 0.55);
+    transform: translateX(-50%);
+  }
+
+  .badge {
+    position: absolute;
+    top: 20px;
+    left: 15px;
+    width: 25px;
+    height: 30px;
+    background: #f9d71c;
+    clip-path: polygon(50% 0, 62% 28%, 95% 32%, 70% 53%, 78% 88%, 50% 70%, 22% 88%, 30% 53%, 5% 32%, 38% 28%);
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+  }
+
+  .button {
+    position: absolute;
+    left: 50%;
+    width: 11px;
+    height: 11px;
+    background: #f9d71c;
+    border-radius: 50%;
+    box-shadow: inset 2px 2px 2px rgba(255, 255, 255, 0.35), 0 2px 3px rgba(0, 0, 0, 0.3);
+    transform: translateX(-50%);
+  }
+
+  .button-1 { top: 48px; }
+  .button-2 { top: 78px; }
+  .button-3 { top: 108px; }
+  .button-4 { top: 138px; }
+
+  .police-head {
+    position: absolute;
+    z-index: 5;
+    bottom: 285px;
+    left: 145px;
+    width: 145px;
+    height: 145px;
+    background: #e2e8f0;
+    border: 3px solid #10243f;
+    border-radius: 47% 47% 43% 43%;
+    box-shadow: inset -15px -8px 18px rgba(0, 0, 0, 0.14), 0 8px 16px rgba(0, 0, 0, 0.3);
+  }
+
+  .ear {
+    position: absolute;
+    top: 64px;
+    width: 25px;
+    height: 38px;
+    background: #d4dde8;
+    border: 3px solid #10243f;
+    border-radius: 50%;
+    z-index: -1;
+  }
+
+  .ear-left { left: -18px; }
+  .ear-right { right: -18px; }
+
+  .eye {
+    position: absolute;
+    top: 56px;
+    width: 31px;
+    height: 24px;
+    background: #fff;
+    border: 4px solid #10243f;
+    border-radius: 50%;
+  }
+
+  .eye::before {
+    content: "";
+    position: absolute;
+    top: -17px;
+    left: -2px;
+    width: 29px;
+    height: 8px;
+    border-top: 4px solid #10243f;
+    border-radius: 50%;
+  }
+
+  .eye::after {
+    content: "";
+    position: absolute;
+    top: 5px;
+    left: 9px;
+    width: 8px;
+    height: 8px;
+    background: #10243f;
+    border-radius: 50%;
+  }
+
+  .eye-left { left: 34px; }
+  .eye-right { right: 34px; }
+
+  .nose {
+    position: absolute;
+    top: 76px;
+    left: 50%;
+    width: 22px;
+    height: 27px;
+    border-right: 4px solid #10243f;
+    border-bottom: 4px solid #10243f;
+    border-radius: 0 0 13px 0;
+    transform: translateX(-35%) rotate(18deg);
+  }
+
+  .mouth {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    width: 52px;
+    height: 22px;
+    border-bottom: 5px solid #10243f;
+    border-radius: 50%;
+    transform: translateX(-50%);
+  }
+
+  .cheek {
+    position: absolute;
+    top: 98px;
+    width: 18px;
+    height: 8px;
+    border-top: 3px solid rgba(216, 90, 90, 0.45);
+    border-radius: 50%;
+  }
+
+  .cheek-left { left: 18px; }
+  .cheek-right { right: 18px; }
+
+  .cap {
+    position: absolute;
+    z-index: 2;
+    top: -40px;
+    left: -8px;
+    width: 160px;
+    height: 65px;
+    background: linear-gradient(180deg, #142944 0%, #1f426b 100%);
+    border: 3px solid #10243f;
+    border-radius: 80px 80px 12px 12px;
+    box-shadow: inset -10px 0 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .cap::before {
+    content: "";
+    position: absolute;
+    bottom: -9px;
+    left: -12px;
+    width: 178px;
+    height: 18px;
+    background: #10243f;
+    border-radius: 50%;
+    border-bottom: 4px solid #f9d71c;
+  }
+
+  .cap-badge {
+    position: absolute;
+    top: 11px;
+    left: 50%;
+    width: 28px;
+    height: 27px;
+    background: #f9d71c;
+    clip-path: polygon(50% 0, 62% 28%, 95% 32%, 70% 53%, 78% 88%, 50% 70%, 22% 88%, 30% 53%, 5% 32%, 38% 28%);
+    transform: translateX(-50%);
+  }
+
+  .leg {
+    position: absolute;
+    z-index: 1;
+    bottom: 0;
+    width: 58px;
+    height: 125px;
+    background: linear-gradient(90deg, #152d4d, #2b5484 55%, #162c4d);
+    border: 3px solid #10243f;
+    border-top: none;
+    border-radius: 0 0 20px 20px;
+    box-shadow: inset -10px 0 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .leg-left { left: 157px; transform: rotate(4deg); }
+  .leg-right { left: 218px; transform: rotate(-4deg); }
+
+  .shoe {
+    position: absolute;
+    z-index: 2;
+    bottom: -8px;
+    width: 78px;
+    height: 27px;
+    background: #101a2a;
+    border: 3px solid #07101c;
+    border-radius: 40% 70% 30% 20%;
+    box-shadow: inset 0 5px 5px rgba(255, 255, 255, 0.08);
+  }
+
+  .shoe-left { left: 135px; transform: rotate(7deg); }
+  .shoe-right { left: 220px; transform: rotate(-7deg); }
+
+  .whistle-arm {
+    position: absolute;
+    z-index: 4;
+    bottom: 246px;
+    left: 256px;
+    width: 105px;
+    height: 42px;
+    background: linear-gradient(180deg, #2b5484, #162c4d);
+    border: 3px solid #10243f;
+    border-radius: 24px;
+    transform: rotate(-132deg);
+    transform-origin: left center;
+    box-shadow: inset 0 -7px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  .whistle-arm::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    top: 0;
+    width: 28px;
+    height: 42px;
+    background: #162c4d;
+    border-radius: 20px;
+  }
+
+  .whistle-arm::after {
+    content: "";
+    position: absolute;
+    right: -13px;
+    top: 1px;
+    width: 42px;
+    height: 38px;
+    background: #d4dde8;
+    border: 3px solid #10243f;
+    border-radius: 45%;
+  }
+
+  /* Arm / sleeve */
   .sleeve {
     position: absolute;
-    bottom: -40px;
-    left: 40px;
-    width: 90px;
-    height: 220px;
-    background: linear-gradient(90deg, #1d3a63, #2c5282 60%, #1a3255);
-    border-radius: 20px 20px 0 0;
-    transform: rotate(18deg);
-    box-shadow: inset -12px 0 20px rgba(0, 0, 0, 0.4);
+    bottom: 0;
+    left: 45px;
+    width: 100px;
+    height: 200px;
+    background: linear-gradient(90deg, #1a3258 0%, #2c5282 50%, #1a3258 100%);
+    border-radius: 16px 16px 4px 4px;
+    box-shadow: inset -10px 0 18px rgba(0, 0, 0, 0.35), inset 10px 0 18px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Ny wrapper för att hantera armen som en enhet */
+.stop-arm {
+  position: absolute;
+  z-index: 6; 
+  width: 100%;
+  height: 100%;
+}
+
+/* Uppdaterad sleeve som ansluter mellan axel och hand */
+.sleeve {
+  position: absolute;
+  bottom: 165px;
+  left: 90px;
+  width: 75px;
+  height: 120px;
+  background: linear-gradient(90deg, #1a3258 0%, #2c5282 50%, #1a3258 100%);
+  border-radius: 16px;
+  box-shadow: inset -10px 0 18px rgba(0, 0, 0, 0.35), inset 10px 0 18px rgba(0, 0, 0, 0.15);
+  transform: rotate(35deg);
+}
+
+/* Justerad rand för den nya ärmen */
+.sleeve::after {
+  content: "";
+  position: absolute;
+  bottom: 15px;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  background: linear-gradient(90deg, #f9d71c, #ffd95e, #f9d71c);
+  opacity: 0.7;
+}
+  
+  /* Sleeve stripe */
+  .sleeve::after {
+    content: "";
+    position: absolute;
+    bottom: 30px;
+    left: 0;
+    width: 100%;
+    height: 8px;
+    background: linear-gradient(90deg, #f9d71c, #ffd95e, #f9d71c);
+    opacity: 0.7;
   }
 
   /* Glove cuff */
   .cuff {
     position: absolute;
-    bottom: 150px;
-    left: 30px;
-    width: 115px;
-    height: 45px;
-    background: linear-gradient(180deg, #2f5da8, #1d3a63);
-    border-radius: 14px;
-    transform: rotate(18deg);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    bottom: 165px;
+    left: 35px;
+    width: 120px;
+    height: 50px;
+    background: linear-gradient(180deg, #2f5da8 0%, #1d3a63 100%);
+    border-radius: 14px 14px 8px 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 -4px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Cuff stripe */
+  .cuff::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 0;
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, #f9d71c, #ffd95e, #f9d71c);
+    border-radius: 3px;
   }
 
   /* Palm */
   .palm {
     position: absolute;
-    bottom: 175px;
-    left: 35px;
+    bottom: 195px;
+    left: 38px;
     width: 115px;
-    height: 130px;
-    background: linear-gradient(180deg, #e8edf5 0%, #c9d4e5 70%, #b0bdd4 100%);
-    border-radius: 18px 18px 12px 12px;
-    transform: rotate(18deg);
-    box-shadow: inset -15px -10px 25px rgba(0, 0, 0, 0.25);
+    height: 125px;
+    background: linear-gradient(160deg, #f0f4fa 0%, #d4dde8 60%, #b8c5d8 100%);
+    border-radius: 22px 22px 14px 14px;
+    box-shadow: inset -12px -8px 22px rgba(0, 0, 0, 0.18), inset 8px 0 15px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Palm lines */
+  .palm::before {
+    content: "";
+    position: absolute;
+    bottom: 20px;
+    left: 25px;
+    width: 60px;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 50%;
+    transform: rotate(-15deg);
+  }
+
+  .palm::after {
+    content: "";
+    position: absolute;
+    bottom: 35px;
+    left: 35px;
+    width: 50px;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 50%;
+    transform: rotate(10deg);
   }
 
   /* Fingers */
   .finger {
     position: absolute;
-    width: 24px;
-    background: linear-gradient(180deg, #f2f5fa, #c9d4e5 80%);
-    border-radius: 12px;
-    box-shadow: inset -6px 0 10px rgba(0, 0, 0, 0.2);
+    width: 26px;
+    background: linear-gradient(180deg, #f2f5fa 0%, #d4dde8 70%, #c0ccdc 100%);
+    border-radius: 13px 13px 10px 10px;
+    box-shadow: inset -5px 0 8px rgba(0, 0, 0, 0.15), inset 3px 0 6px rgba(255, 255, 255, 0.3);
   }
 
-  .finger-1 { bottom: 285px; left: 38px;  height: 95px;  transform: rotate(18deg); }
-  .finger-2 { bottom: 300px; left: 64px;  height: 115px; transform: rotate(18deg); }
-  .finger-3 { bottom: 298px; left: 90px;  height: 118px; transform: rotate(18deg); }
-  .finger-4 { bottom: 284px; left: 116px; height: 100px; transform: rotate(18deg); }
+  .finger-1 { bottom: 300px; left: 40px;  height: 90px;  }
+  .finger-2 { bottom: 318px; left: 68px;  height: 110px; }
+  .finger-3 { bottom: 315px; left: 96px;  height: 112px; }
+  .finger-4 { bottom: 298px; left: 124px; height: 95px;  }
+
+  /* Finger knuckle creases */
+  .finger::after {
+    content: "";
+    position: absolute;
+    top: 30%;
+    left: 50%;
+    width: 70%;
+    height: 1.5px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 50%;
+    transform: translateX(-50%);
+  }
 
   /* Thumb */
   .thumb {
     position: absolute;
-    bottom: 200px;
-    left: 2px;
-    width: 32px;
-    height: 75px;
-    background: linear-gradient(90deg, #d8e0ee, #c0ccde);
-    border-radius: 16px;
-    transform: rotate(-25deg);
-    box-shadow: inset -6px 0 10px rgba(0, 0, 0, 0.2);
-  }
-
-  /* The hand wobbles firmly — "NO, stop" */
-  @keyframes handShake {
-    0%   { transform: translateX(0) rotate(0deg); }
-    15%  { transform: translateX(-12px) rotate(-2deg); }
-    30%  { transform: translateX(10px) rotate(2deg); }
-    45%  { transform: translateX(-14px) rotate(-3deg); }
-    60%  { transform: translateX(8px) rotate(1.5deg); }
-    75%  { transform: translateX(-6px) rotate(-1deg); }
-    100% { transform: translateX(0) rotate(0deg); }
+    bottom: 215px;
+    left: 8px;
+    width: 34px;
+    height: 80px;
+    background: linear-gradient(160deg, #f0f4fa 0%, #d4dde8 70%, #c0ccdc 100%);
+    border-radius: 16px 16px 12px 12px;
+    transform: rotate(-28deg);
+    box-shadow: inset -5px 0 8px rgba(0, 0, 0, 0.15);
   }
 
   /* ===== WHISTLE ===== */
   .whistle {
     position: absolute;
-    bottom: -15px;
-    right: -75px;
+    bottom: 297px;
+    left: 181px;
     z-index: 12;
-    width: 90px;
-    height: 48px;
-    animation: whistleBuzz 2.2s ease-in-out infinite;
-    transform-origin: center;
+    width: 75px;
+    height: 55px;
+    animation: whistleBuzz 2.5s ease-in-out infinite;
+    transform-origin: left center;
   }
 
-  /* Whistle body */
   .whistle-body {
     position: absolute;
     bottom: 0;
     left: 0;
-    width: 55px;
-    height: 48px;
-    background: radial-gradient(circle at 30% 30%, #e8edf5, #8a99b5 70%, #5c6d8c);
+    width: 50px;
+    height: 50px;
+    background: radial-gradient(circle at 30% 30%, #f0f4fa 0%, #8a99b5 60%, #5c6d8c 100%);
     border-radius: 50%;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset -8px -6px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset -8px -6px 12px rgba(0, 0, 0, 0.3), inset 4px 4px 8px rgba(255, 255, 255, 0.2);
   }
 
-  /* Whistle mouthpiece */
   .whistle-mouth {
     position: absolute;
-    bottom: 8px;
-    left: 45px;
-    width: 45px;
-    height: 20px;
-    background: linear-gradient(180deg, #b8c4d9, #6e7f9e);
-    border-radius: 4px 10px 10px 4px;
+    bottom: 12px;
+    left: 40px;
+    width: 38px;
+    height: 22px;
+    background: linear-gradient(180deg, #c8d2e0 0%, #6e7f9e 100%);
+    border-radius: 4px 12px 12px 4px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
   }
 
-  /* Whistle hole */
   .whistle-hole {
     position: absolute;
-    bottom: 22px;
+    bottom: 18px;
     left: 8px;
     width: 18px;
     height: 18px;
@@ -252,50 +683,78 @@
     box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.9);
   }
 
-  /* Air waves when the whistle "blows" */
-  .whistle::before,
-  .whistle::after {
+  /* Whistle ring/chain attachment */
+  .whistle-body::after {
     content: "";
     position: absolute;
-    right: -14px;
-    bottom: 10px;
-    width: 12px;
-    height: 12px;
-    border: 3px solid rgba(200, 220, 255, 0.8);
+    top: -4px;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    border: 2px solid #6e7f9e;
+    border-radius: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* Air waves */
+  .whistle-waves {
+    position: absolute;
+    right: -20px;
+    bottom: 15px;
+    z-index: 13;
+    pointer-events: none;
+  }
+
+  .whistle-waves::before,
+  .whistle-waves::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 3px solid rgba(200, 220, 255, 0.7);
     border-left: none;
     border-bottom: none;
     border-radius: 0 100% 0 0;
     opacity: 0;
   }
 
-  .whistle::before {
-    animation: wave1 0.8s ease-out infinite 1.8s;
+  .whistle-waves::before {
+    animation: wave1 0.7s ease-out infinite 2s;
   }
 
-  .whistle::after {
-    animation: wave2 0.8s ease-out infinite 1.8s;
+  .whistle-waves::after {
+    animation: wave2 0.7s ease-out infinite 2.1s;
   }
 
   @keyframes wave1 {
-    0%   { transform: scale(0.5) translateX(0); opacity: 0; }
-    20%  { opacity: 0.9; }
-    100% { transform: scale(1.6) translateX(18px); opacity: 0; }
+    0%   { transform: scale(0.4) translateX(0); opacity: 0; }
+    25%  { opacity: 0.9; }
+    100% { transform: scale(1.8) translateX(22px); opacity: 0; }
   }
 
   @keyframes wave2 {
-    0%   { transform: scale(0.5) translateX(0); opacity: 0; }
-    20%  { opacity: 0.6; }
-    100% { transform: scale(2.2) translateX(28px); opacity: 0; }
+    0%   { transform: scale(0.4) translateX(0) translateY(8px); opacity: 0; }
+    25%  { opacity: 0.6; }
+    100% { transform: scale(2.4) translateX(32px) translateY(8px); opacity: 0; }
   }
 
-  /* The whole hand+whistle group buzzes when the whistle blows */
   @keyframes whistleBuzz {
-    0%, 70%, 100% { transform: rotate(0deg); }
-    75% { transform: rotate(-8deg); }
-    80% { transform: rotate(6deg); }
-    85% { transform: rotate(-5deg); }
-    90% { transform: rotate(3deg); }
-    95% { transform: rotate(0deg); }
+    0%, 72%, 100% { transform: rotate(0deg); }
+    76% { transform: rotate(-7deg); }
+    82% { transform: rotate(5deg); }
+    88% { transform: rotate(-4deg); }
+    94% { transform: rotate(2deg); }
+  }
+
+  @keyframes handShake {
+    0%   { transform: translateX(0) rotate(0deg); }
+    12%  { transform: translateX(-10px) rotate(-1.5deg); }
+    25%  { transform: translateX(9px) rotate(1.5deg); }
+    38%  { transform: translateX(-12px) rotate(-2deg); }
+    50%  { transform: translateX(7px) rotate(1deg); }
+    65%  { transform: translateX(-5px) rotate(-0.5deg); }
+    80%  { transform: translateX(3px) rotate(0.5deg); }
+    100% { transform: translateX(0) rotate(0deg); }
   }
 
   /* ===== TEXT ===== */
@@ -306,80 +765,181 @@
   }
 
   .content h1 {
-    font-size: clamp(5rem, 20vw, 12rem);
+    font-size: clamp(5rem, 18vw, 11rem);
     line-height: 1;
     color: #f9d71c;
     text-shadow:
-      0 0 20px rgba(249, 215, 28, 0.6),
-      0 0 60px rgba(249, 215, 28, 0.3);
-    /* Subtle "stern officer" wobble matching the hand */
-    animation: handShake 2.2s ease-in-out infinite;
+      0 0 20px rgba(249, 215, 28, 0.5),
+      0 0 50px rgba(249, 215, 28, 0.25),
+      2px 2px 0 rgba(0, 0, 0, 0.4);
+    animation: handShake 2.5s ease-in-out infinite;
+    letter-spacing: -0.02em;
   }
 
   .content p {
-    font-size: clamp(1rem, 4vw, 2rem);
-    letter-spacing: 0.5em;
+    font-size: clamp(0.9rem, 3.5vw, 1.8rem);
+    letter-spacing: 0.4em;
     margin-top: 1rem;
     color: #9fb8d9;
-    text-shadow: 0 0 12px rgba(50, 100, 180, 0.5);
+    text-shadow: 0 0 12px rgba(50, 100, 180, 0.4);
+    text-transform: uppercase;
   }
 
   .content a {
     display: inline-block;
     margin-top: 2.5rem;
-    padding: 14px 36px;
+    padding: 14px 40px;
     font-size: 1rem;
     font-weight: bold;
     letter-spacing: 0.15em;
-    color: #111;
+    color: #1a1a1a;
     text-decoration: none;
     background: linear-gradient(90deg, #f9d71c, #ffd95e, #f9d71c);
     background-size: 200% 100%;
-    border: 3px solid #111;
+    border: 3px solid #1a1a1a;
     border-radius: 10px;
     animation: tapeGlow 2.5s linear infinite;
-    transition: transform 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-transform: uppercase;
   }
 
   @keyframes tapeGlow {
     0%   { background-position: 0% 0; box-shadow: 0 0 15px rgba(249, 215, 28, 0.4); }
-    50%  { background-position: 100% 0; box-shadow: 0 0 35px rgba(249, 215, 28, 0.8); }
+    50%  { background-position: 100% 0; box-shadow: 0 0 35px rgba(249, 215, 28, 0.7); }
     100% { background-position: 0% 0; box-shadow: 0 0 15px rgba(249, 215, 28, 0.4); }
   }
 
   .content a:hover {
-    transform: scale(1.1) rotate(-2deg);
+    transform: scale(1.08) rotate(-2deg);
+    box-shadow: 0 0 50px rgba(249, 215, 28, 0.9);
+  }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 600px) {
+    .hand-wrap {
+      transform: scale(0.72);
+      transform-origin: center bottom;
+      width: 390px;
+      height: 500px;
+      margin-bottom: -4rem;
+    }
+
+    .sleeve {
+      bottom: 125px;
+      left: 85px;
+      width: 60px;
+      height: 160px;
+      transform: rotate(35deg);
+    }
+    .cuff { bottom: 120px; left: 22px; width: 90px; height: 40px; }
+    .palm { bottom: 145px; left: 25px; width: 85px; height: 95px; }
+    .finger { width: 20px; }
+    .finger-1 { bottom: 225px; left: 28px; height: 68px; }
+    .finger-2 { bottom: 240px; left: 50px; height: 82px; }
+    .finger-3 { bottom: 238px; left: 72px; height: 84px; }
+    .finger-4 { bottom: 224px; left: 94px; height: 70px; }
+    .thumb { bottom: 160px; left: 0px; width: 26px; height: 60px; }
+    .whistle { bottom: 160px; right: -5px; width: 55px; height: 40px; }
+    .whistle-body { width: 38px; height: 38px; }
+    .whistle-mouth { bottom: 10px; left: 30px; width: 28px; height: 16px; }
+    .whistle-hole { bottom: 14px; left: 6px; width: 14px; height: 14px; }
+    .tape { height: 36px; }
+    .tape-text { font-size: 13px; letter-spacing: 2px; }
+    .tape-text span { padding: 0 12px; }
   }
 </style>
 </head>
 <body>
   <div class="scene">
+    <div class="light-blob light-blob-red"></div>
+    <div class="light-blob light-blob-blue"></div>
     <div class="lights"></div>
 
-    <div class="tape tape-1"></div>
-    <div class="tape tape-2"></div>
+    <!-- Police tape -->
+    <div class="tape tape-1">
+      <div class="tape-inner">
+        <div class="tape-text">
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+        </div>
+      </div>
+    </div>
 
-    <!-- Gloved hand + whistle -->
+    <div class="tape tape-3">
+      <div class="tape-inner">
+        <div class="tape-text">
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full police officer with raised stop hand and whistle -->
     <div class="hand-wrap">
-      <div class="sleeve"></div>
-      <div class="cuff"></div>
-      <div class="palm"></div>
-      <div class="finger finger-1"></div>
-      <div class="finger finger-2"></div>
-      <div class="finger finger-3"></div>
-      <div class="finger finger-4"></div>
-      <div class="thumb"></div>
+      <div class="police-body">
+        <div class="badge"></div>
+        <span class="button button-1"></span>
+        <span class="button button-2"></span>
+        <span class="button button-3"></span>
+        <span class="button button-4"></span>
+      </div>
+      <div class="leg leg-left"></div>
+      <div class="leg leg-right"></div>
+      <div class="shoe shoe-left"></div>
+      <div class="shoe shoe-right"></div>
+      <div class="police-head">
+        <div class="cap"><span class="cap-badge"></span></div>
+        <div class="ear ear-left"></div>
+        <div class="ear ear-right"></div>
+        <div class="eye eye-left"></div>
+        <div class="eye eye-right"></div>
+        <div class="nose"></div>
+        <div class="cheek cheek-left"></div>
+        <div class="cheek cheek-right"></div>
+        <div class="mouth"></div>
+      </div>
+      <div class="stop-arm">
+        <div class="sleeve"></div>
+        <div class="cuff"></div>
+        <div class="palm"></div>
+        <div class="finger finger-1"></div>
+        <div class="finger finger-2"></div>
+        <div class="finger finger-3"></div>
+        <div class="finger finger-4"></div>
+        <div class="thumb"></div>
+      </div>
+      <div class="whistle-arm"></div>
       <div class="whistle">
         <div class="whistle-body"></div>
         <div class="whistle-mouth"></div>
         <div class="whistle-hole"></div>
       </div>
+      <div class="whistle-waves"></div>
+    </div>
+
+    <!-- Bottom tape -->
+    <div class="tape tape-2">
+      <div class="tape-inner">
+        <div class="tape-text">
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+          <span>POLICE LINE &mdash; DO NOT CROSS</span>
+        </div>
+      </div>
     </div>
 
     <div class="content">
       <h1>403</h1>
-      <p>ACCESS DENIED</p>
-      <a href="/">BACK TO HOMEPAGE</a>
+      <p>Access Denied</p>
+      <a href="/">Back to Homepage</a>
     </div>
   </div>
 </body>

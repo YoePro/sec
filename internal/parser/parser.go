@@ -2650,6 +2650,11 @@ func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
 	return p.parseStatementBlock("function body")
 }
 
+// parseStatementBlock preserves parsed statements even when EOF leaves the block
+// unterminated. The error diagnostic still prevents ordinary code generation.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Recovery goals", "Error blocks code generation"
 func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 	previousContext := p.recoveryContext
@@ -2680,7 +2685,6 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 
 	if p.curToken.Type == lexer.EOF {
 		p.addError("unterminated %s", name)
-		return nil
 	}
 
 	return block

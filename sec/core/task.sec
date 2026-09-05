@@ -1,0 +1,36 @@
+module core
+
+/**
+* Describes how an already-created task terminated.
+*
+* Rules: rules/concurrency/tasks.md sections 11-16 and
+* rules/concurrency/concurrency.md section 7.
+*
+* This is a semantic core type. Its declaration does not require a scheduler,
+* executor, garbage collector, or universal Sec runtime.
+*/
+type TaskOutcome[T] union {
+    Completed(T)
+    Cancelled
+    Panicked(PanicInfo)
+    Failed(TaskError)
+}
+
+/**
+* Reports failure to create a task before any Task[T] handle exists.
+*
+* Rules: rules/concurrency/tasks.md sections 4-5.
+*/
+enum TaskSpawnError error {
+    OutOfMemory
+    ResourceLimit
+    ExecutorUnavailable
+    InvalidConfiguration
+    NativeFailure
+}
+
+// rules/concurrency/tasks.md section 15 and
+// rules/concurrency/concurrency_runtime_model.md require a named TaskError but
+// forbid inventing its still-open variant inventory. The current grammar can
+// express only closed enum/union error declarations, so TaskError remains a
+// compiler-known semantic identity until open error-family syntax is defined.

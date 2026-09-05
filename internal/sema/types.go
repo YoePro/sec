@@ -796,21 +796,50 @@ func builtinTypes() map[string]Type {
 				},
 			},
 		},
-		"Vec":                   {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
-		"Set":                   {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
-		"Map":                   {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
-		"list":                  {Name: "list", Kind: StructType, GenericParameters: []string{"T"}},
-		"map":                   {Name: "map", Kind: StructType, GenericParameters: []string{"K", "V"}},
-		"set":                   {Name: "set", Kind: StructType, GenericParameters: []string{"T"}},
-		"vector":                {Name: "vector", Kind: StructType, GenericParameters: []string{"T"}},
-		"matrix":                {Name: "matrix", Kind: StructType, GenericParameters: []string{"T"}},
-		"tensor":                {Name: "tensor", Kind: StructType, GenericParameters: []string{"T"}},
-		"tensor_view":           {Name: "tensor_view", Kind: StructType, GenericParameters: []string{"T"}},
-		"Shape":                 {Name: "Shape", Kind: StructType},
-		"Strides":               {Name: "Strides", Kind: StructType},
-		"TensorLayout":          {Name: "TensorLayout", Kind: StructType},
-		"MemorySpace":           {Name: "MemorySpace", Kind: StructType},
-		"Task":                  {Name: "Task", Kind: StructType, GenericParameters: []string{"T"}},
+		"Vec":          {Name: "Vec", Kind: StructType, GenericParameters: []string{"T"}},
+		"Set":          {Name: "Set", Kind: StructType, GenericParameters: []string{"T"}},
+		"Map":          {Name: "Map", Kind: StructType, GenericParameters: []string{"K", "V"}},
+		"list":         {Name: "list", Kind: StructType, GenericParameters: []string{"T"}},
+		"map":          {Name: "map", Kind: StructType, GenericParameters: []string{"K", "V"}},
+		"set":          {Name: "set", Kind: StructType, GenericParameters: []string{"T"}},
+		"vector":       {Name: "vector", Kind: StructType, GenericParameters: []string{"T"}},
+		"matrix":       {Name: "matrix", Kind: StructType, GenericParameters: []string{"T"}},
+		"tensor":       {Name: "tensor", Kind: StructType, GenericParameters: []string{"T"}},
+		"tensor_view":  {Name: "tensor_view", Kind: StructType, GenericParameters: []string{"T"}},
+		"Shape":        {Name: "Shape", Kind: StructType},
+		"Strides":      {Name: "Strides", Kind: StructType},
+		"TensorLayout": {Name: "TensorLayout", Kind: StructType},
+		"MemorySpace":  {Name: "MemorySpace", Kind: StructType},
+		"Task":         {Name: "Task", Kind: StructType, GenericParameters: []string{"T"}},
+		// rules/concurrency/tasks.md sections 11-16 and
+		// rules/concurrency/concurrency.md section 7: awaiting an already-created
+		// task preserves all terminal outcomes around the complete T. These are
+		// semantic compiler-known identities; they require no mandatory runtime.
+		"TaskOutcome": {
+			Name:              "TaskOutcome",
+			Kind:              UnionType,
+			GenericParameters: []string{"T"},
+			UnionVariants: []UnionVariant{
+				{Name: "Completed", Payload: &Type{Name: "T", Kind: GenericType}},
+				{Name: "Cancelled"},
+				{Name: "Panicked", Payload: &Type{Name: "PanicInfo", Kind: StructType}},
+				{Name: "Failed", Payload: &Type{Name: "TaskError", Kind: StructType, ErrorAssignable: true}},
+			},
+		},
+		"TaskSpawnError": {
+			Name:            "TaskSpawnError",
+			Kind:            EnumType,
+			Underlying:      "uint",
+			ErrorAssignable: true,
+			EnumValues:      []string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "InvalidConfiguration", "NativeFailure"},
+			EnumConsts:      builtinEnumConsts([]string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "InvalidConfiguration", "NativeFailure"}),
+		},
+		// TaskError deliberately has no invented variant inventory: tasks.md
+		// section 15 reserves the named error family but leaves it open.
+		"TaskError": {Name: "TaskError", Kind: StructType, ErrorAssignable: true},
+		// panic.md owns the eventual public shape; Sema only needs the stable
+		// identity carried by TaskOutcome.Panicked.
+		"PanicInfo":             {Name: "PanicInfo", Kind: StructType},
 		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
@@ -924,6 +953,7 @@ func builtinTypes() map[string]Type {
 	// families as concrete inhabitants of the open error root.
 	for _, name := range []string{
 		"AllocationError", "ArithmeticError", "IndexError", "EnumValueError", "ContractError", "CollectionError",
+		"TaskSpawnError", "TaskError",
 		"ThreadSpawnError", "ThreadStartError", "ThreadSchedulingError", "ThreadTerminationError", "ThreadContextError",
 	} {
 		typ := types[name]

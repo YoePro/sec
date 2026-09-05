@@ -1087,16 +1087,27 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 	if !exists || !existing.Intrinsic {
 		return false
 	}
-	// IndexError has a compiler-owned fallback for standalone analysis, while
-	// the trusted core module remains its canonical source declaration. Package
-	// 14 sections 50-54 require both identities to converge without allowing
-	// ordinary user code to shadow the name.
-	if name == "IndexError" && a.isTrustedCoreSourceToken(token) {
+	// Several compiler-known identities also have canonical source declarations
+	// in trusted core. The source declaration refines the standalone fallback;
+	// ordinary project code still cannot shadow any of these names.
+	//
+	// Rules: rules/library/core-library.md; rules/concurrency/tasks.md sections
+	// 4-5 and 11-16; Package 14 sections 50-54 for IndexError.
+	if isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token) {
 		return false
 	}
 	a.addErrorAtToken(token, "type name %s is compiler-known and cannot be redeclared", name)
 	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
 	return true
+}
+
+func isCoreBuiltinDeclaration(name string) bool {
+	switch name {
+	case "IndexError", "TaskOutcome", "TaskSpawnError":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *Analyzer) rejectUnitNameCollision(name string, token lexer.Token) bool {
@@ -11914,6 +11925,7 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type
 			return false
 		}
 	case "Task",
+		"TaskOutcome",
 		"Thread",
 		"ThreadObserver",
 		"ThreadLocal",
@@ -11981,6 +11993,12 @@ func (a *Analyzer) validateVoidTypeArguments(token lexer.Token, typ Type) bool {
 			continue
 		}
 		if typ.Name == "RawPtr" || typ.Name == "Result" && index == 0 {
+			continue
+		}
+		// rules/concurrency/tasks.md sections 3(3), 12(9), and 16(11), plus
+		// rules/concurrency/threads.md: execution handles and task outcomes may
+		// carry void. This denotes completion without a value, not stored void.
+		if index == 0 && (typ.Name == "Task" || typ.Name == "TaskOutcome" || typ.Name == "Thread" || typ.Name == "ThreadObserver") {
 			continue
 		}
 		a.addErrorAtToken(token, "%s does not permit void as a type argument", typ.Name)
@@ -12137,6 +12155,15 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	for _, variant := range typ.UnionVariants {
 		if variant.Payload != nil {
 			payload := substituteGenericType(*variant.Payload, substitution)
+			// rules/concurrency/tasks.md section 12(9): TaskOutcome[void]
+			// retains its four-way union shape, but Completed has no value payload.
+			// Normalize the compiler-known specialization for explicit and inferred
+			// TaskOutcome types through the same generic instantiation path.
+			if typ.Name == "TaskOutcome" && variant.Name == "Completed" && payload.Kind == VoidType {
+				variant.Payload = nil
+				out.UnionVariants = append(out.UnionVariants, variant)
+				continue
+			}
 			if genericStructFieldHasDirectRecursiveStorage(out, payload) {
 				if !recursive {
 					a.addErrorAtToken(variant.Token, "recursive generic type %s has infinite size", typeDisplayName(out))
@@ -12640,7 +12667,11 @@ func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.markMoveSource(expr.Value)
-	return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+	// rules/concurrency/tasks.md section 16 and
+	// rules/concurrency/concurrency.md section 7: await consumes Task[T] but
+	// never erases cancellation, panic, or task-execution failure. The complete
+	// task return T remains nested in TaskOutcome[T].
+	return a.intrinsicGenericType("TaskOutcome", valueType.TypeArgs[0]), expressionValue{Display: expr.String()}
 }
 
 func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expected Type) (Type, expressionValue, bool) {

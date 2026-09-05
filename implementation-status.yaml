@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-09-04"
+updated: "2026-09-05"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -1880,10 +1880,13 @@ integrations:
       - rules/concurrency/tasks.md
       - rules/concurrency/threads.md
       - rules/concurrency/spawn.md
+      - rules/concurrency/concurrency.md
       - rules/compiler/semantic_ir.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
+    governance_reconciliation:
+      - Concurrency lifecycle discard remains explicit; task and thread rulebooks own detach/discard details, and fallible creation is handled before a lifecycle handle exists.
     code:
       - internal/ast/ast.go
       - internal/lexer/lexer.go
@@ -3158,6 +3161,7 @@ integrations:
       - structured recovery events for virtual missing-token insertion
       - structured recovery events for skipped statement token ranges
       - InvalidStatement nodes retained at top level and in ordinary statement blocks
+      - unterminated ordinary statement blocks retain parsed statements and enclosing function/control-flow nodes at EOF while parser errors still block code generation
       - InvalidExpression nodes for missing Pratt prefix parsers
       - invalid TypeReference marking with recovery metadata on selected type paths
       - InvalidDeclaration nodes for failed declaration-shaped top-level statements
@@ -3186,6 +3190,10 @@ integrations:
       - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
     tests:
       - internal/parser/parser_test.go
+      - testdata/parser/unterminated_function_invalid.sec
+      - testdata/parser/unterminated_empty_block_invalid.sec
+      - testdata/parser/unterminated_nested_blocks_invalid.sec
+      - testdata/parser/unterminated_recovered_block_invalid.sec
     verification:
       - command: go test ./...
         result: passed
@@ -3199,13 +3207,15 @@ integrations:
         result: passed
       - command: GOMAXPROCS=2 go test ./internal/parser -run 'TestInvalidIfInitializerRecoveryPreservesFollowingImplMethods|TestParseResultRetainsRecoveryEventsAndInvalidNodes' -count=1
         result: passed
+      - command: go test ./internal/parser -run TestUnterminatedStatementBlocksRetainPartialAST -count=1
+        result: passed; empty, populated, nested, and previously recovered unterminated statement blocks retain partial AST nodes and parser errors
 
     remaining:
       - invalid type retention on every type-reference failure path
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-block retention
+      - partial unterminated-construct retention in specialized parsers beyond ordinary statement blocks, including switch/select bodies and match/try handlers
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
 
@@ -6572,6 +6582,9 @@ integrations:
       - rules/platform/ffi.md
       - rules/tooling/lsp.md
       - rules/projects/projects.txt
+      - rules/concurrency/concurrency.md
+    governance_reconciliation:
+      - concurrency.md owns the invariant that ordinary data races are invalid; data_races.md owns analysis, classifications, and diagnostics.
     remaining:
       - add canonical semantic memory-access events carrying Place/provenance, access kind, execution context, atomicity, and source location
       - consume canonical Place/provenance rather than coarse variable identity so fields, constant indices, dynamic indices, slices, and disjoint backing ranges retain precision
@@ -7007,6 +7020,9 @@ integrations:
       - rules/platform/ffi.md
       - rules/tooling/lsp.md
       - rules/projects/projects.txt
+      - rules/concurrency/concurrency.md
+    governance_reconciliation:
+      - concurrency.md owns common blocking and progress semantics; deadlock_analysis.md owns graph construction, proof strength, classification, and diagnostics.
     remaining:
       - add canonical synchronization-resource identity using Place/provenance and resource semantics rather than resource names
       - preserve Same, Disjoint, MayAlias, and Unknown resource-identity relationships or equivalent canonical precision
@@ -7100,12 +7116,15 @@ integrations:
       - rules/platform/fixed-address-bindings.md
       - rules/concurrency/concurrency_runtime_model.md
       - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/concurrency.md
       - rules/analysis/stack_analysis.md
       - rules/analysis/data_races.md
       - rules/analysis/deadlock_analysis.md
       - rules/analysis/isr_analysis.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
+    governance_reconciliation:
+      - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
     remaining:
       - add canonical Target and Variant platform-resolution integration that produces one concrete CompilationPlan for each requested Target x Variant pair
       - keep Target as the logical product and Variant as the concrete platform-specific build configuration throughout compiler and tooling APIs
@@ -9962,8 +9981,8 @@ integrations:
       Tracks revision-2 task creation, move-only lifecycle ownership,
       TaskOutcome terminal semantics, observers, transferability, Semantic IR,
       lowering, and runtime-independent target behavior. Current frontend
-      support models Task[T] and several lifecycle operations, but spawn and
-      await typing still use the older direct-handle/direct-value model.
+      support models Task[T], TaskOutcome[T], and several lifecycle operations.
+      Spawn typing still uses the older direct-Task[T] model.
     rules:
       - rules/concurrency/tasks.md
       - rules/concurrency/spawn.md
@@ -9977,6 +9996,9 @@ integrations:
       - rules/errors/panic.md
       - rules/compiler/semantic_ir.md
       - rules/control-flow/discard.md
+      - rules/concurrency/concurrency.md
+    governance_reconciliation:
+      - concurrency.md follows task v2 fallible creation and await Task[T] to TaskOutcome[T], including Panicked(PanicInfo) and Failed(TaskError).
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -9985,10 +10007,12 @@ integrations:
       - internal/ir/semantic
       - internal/lowering/secmlir
       - sec/core/error.sec
+      - sec/core/task.sec
     tests:
       - internal/parser/parser_test.go
       - internal/sema/concurrency_test.go
       - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
     normative:
       - "Task[T] is a move-only owning lifecycle handle."
       - "spawn Work() and spawn task Work() have raw type Result[Task[T], TaskSpawnError]."
@@ -10007,12 +10031,18 @@ integrations:
       - "Detach syntax and explicit discard forms have frontend support."
       - "Spawned callable and lambda task forms have parser and frontend support."
       - "Current-task context has partial frontend support for spawned lambda analysis."
+      - "TaskOutcome[T], TaskSpawnError, TaskError, and PanicInfo are compiler-known frontend identities shared with LSP consumers."
+      - "Awaiting Task[T] consumes the handle and has invariant static type TaskOutcome[T]."
+      - "TaskOutcome[Result[V,E]] preserves the complete nested Result type."
+      - "TaskOutcome[void] retains four variants while Completed is normalized to a payload-less variant."
+      - "LSP hover consumes the shared Sema await type and exposes TaskOutcome[T] without a parallel task-typing path."
+      - "Core declares the canonical TaskOutcome[T] union and the closed TaskSpawnError error enum without requiring runtime support."
+      - "Only loader-proven core sources may refine the compiler-known TaskOutcome and TaskSpawnError identities."
     remaining:
       - "synchronize parser and Sema typing of every task-spawn form to Result[Task[T], TaskSpawnError] instead of the current direct Task[T] paths"
-      - "implement TaskOutcome[T] as the invariant static result of await instead of the current direct T paths"
       - "implement terminal outcome production for Completed, Cancelled, Panicked, and Failed"
-      - "add the specified TaskSpawnError core error declaration and a TaskOutcome[T] core surface"
-      - "provide a named TaskError core error declaration without inventing its still-open variant inventory"
+      - "add a core TaskError declaration after the grammar can represent its normative still-open variant inventory without inventing variants"
+      - "add a core PanicInfo declaration after panic.md fixes its exact public shape or another canonical opaque declaration form is available"
       - "synchronize join semantics and terminal-value extraction with move-only payload rules"
       - "complete TaskObserver semantics and non-owning restrictions"
       - "complete path-sensitive task lifecycle analysis across every control-flow construct"
@@ -10033,6 +10063,120 @@ integrations:
       - "owning task handles cannot silently leave scope unresolved"
       - "observers cannot await, join as owner, detach, or take a move-only completion value"
       - "value-returning detached tasks require the canonical explicit discard form when applicable"
+    verification:
+      - command: go test ./internal/sema ./cmd/lsp -run 'Test(Spawn|Await|TaskOutcome|HoverUsesCompilerOwnedTaskOutcomeType|SelectValidChannelBranches|SelectRejectsDuplicateTaskBranch|CancelInsideSpawnedLambdaIsAllowed)' -count=1
+        result: passed
+      - command: go test ./...
+        result: passed
+
+  - id: concurrency.model-v2
+    area: concurrency-language-model
+    feature: concurrency-umbrella-semantics
+    status: partial
+    integrated: "2026-09-05"
+    document_revision: "2.0"
+    repository_baseline: 777beb8
+    rulebook: rules/concurrency/concurrency.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - sec/core/task.sec
+    tests:
+      - internal/sema/concurrency_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    summary: >-
+      Tracks the revision-2 umbrella concurrency model across task, thread,
+      process, ISR, foreign callback, transferability, synchronization,
+      race/deadlock analysis, Semantic IR, target profiles, and lowering while
+      leaving detailed construct semantics in their specialist rulebooks.
+    normative:
+      - "Tasks, threads, processes, ISR execution, and foreign callback contexts remain semantically distinct execution kinds."
+      - "Concurrency does not weaken ownership, borrowing, deterministic destruction, or explicit failure semantics."
+      - "Execution creation is explicit; work is never silently spawned or detached."
+      - "Task creation is fallible and task await always yields TaskOutcome[T]."
+      - "TaskOutcome[T] remains distinct from a task function's own Result[T,E]."
+      - "Boundary transferability is specific to task, thread, process, ISR, and foreign contexts and is not implied by ordinary assignability or bitwise copyability."
+      - "Shared mutable state requires explicit synchronization or another concurrency-safe ownership mechanism."
+      - "Volatile access is not synchronization."
+      - "Ordinary unsynchronized data races are invalid Sec behavior."
+      - "Data-race and deadlock algorithms remain owned by their dedicated analysis rulebooks."
+      - "Semantic IR preserves concurrency meaning without making concurrency.md own concrete opcode names."
+      - "Concurrency lowering consumes validated Semantic IR and immutable CompilationPlan facts rather than compiler-host facts."
+      - "Process-specific design remains outside the umbrella book until its owning process and IPC rulebooks define it."
+    implementation_evidence:
+      existing_frontend_and_governance:
+        - "Existing parser and Sema concurrency coverage is tracked by the specialist governance entries."
+        - "Task and Thread compiler-known type and lifecycle work exists, while specialist rulebooks own detailed coverage."
+        - "Mutex[T], MutexGuard[T], and static storage have existing frontend slices tracked by their specialist entries."
+        - "Transferability, data-race analysis, deadlock analysis, Semantic IR, lowering, platform, and tooling have dedicated governance entries."
+        - "Target-profile governance distinguishes task, scheduler, native-thread, synchronization, atomic, detached-execution, and local-storage capabilities."
+      synchronization_debt_resolved_by_rulebook_revision:
+        - "The umbrella no longer presents task creation as infallible or task await as returning T directly."
+        - "Detailed mutex, data-race, deadlock, and Semantic IR inventories were returned to their owning rulebooks."
+        - "Superseded .txt references were removed except for the still-canonical unfinished process rulebook."
+        - "Process details beyond stable cross-boundary invariants were removed."
+    removed_from_normative_book:
+      - "Mutable implementation status and current code or test coverage."
+      - "Direct task-spawn examples that assume infallible Task[T] creation."
+      - "Direct task-await examples that assume await Task[T] yields T."
+      - "Detailed mutex overload design duplicated from mutex.md."
+      - "Ad-hoc race and deadlock algorithms duplicated from their analysis rulebooks."
+      - "Hard-coded Semantic IR opcode inventory duplicated from semantic_ir.md."
+      - "Stale .txt references for rulebooks now using canonical .md paths."
+      - "Process-specific design assertions owned by unfinished process and IPC rulebooks."
+    correction_dependency:
+      required: false
+      reason: >-
+        The rewrite corrects stale or duplicated umbrella material. Task and
+        await cross-rulebook semantics are already tracked by the task-v2
+        correction package, so no additional correction document is required.
+    implemented:
+      - "Frontend await consumes Task[T] and produces invariant TaskOutcome[T] through canonical shared Sema facts used by compiler and LSP."
+      - "Compiler-known TaskOutcome[T] preserves Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError) without inventing TaskError variants."
+      - "Nested Result return types remain inside TaskOutcome rather than being flattened or reclassified."
+      - "TaskOutcome[void] uses a payload-less Completed variant while retaining the complete outcome union."
+      - "LSP hover displays the same compiler-owned TaskOutcome[T] inferred by Sema."
+      - "The core surface declares TaskOutcome[T] and TaskSpawnError; trusted-core provenance prevents user code from shadowing their compiler-known identities."
+    remaining:
+      - "Synchronize all umbrella-level examples and tests with fallible task creation."
+      - "Complete canonical boundary-transfer validation through frontend.transferability and analysis.transferability."
+      - "Complete data-race and deadlock analysis through their dedicated governance integrations."
+      - "Complete Semantic IR concurrency facts and verification through analysis.semantic-ir-v2 and semantic-ir.transferability."
+      - "Complete lowering/runtime mappings without changing source semantics or relying on compiler-host facts."
+      - "Complete platform/runtime execution-capability resolution through compiler.platform-model and target-profile governance."
+      - "Keep process-specific remaining work separate until processes.md is authored."
+    required_tests:
+      - id: execution-kind-distinction
+        expectation: "Task, Thread, process-adapter, ISR, and foreign callback contexts remain semantically distinguishable."
+      - id: no-implicit-execution
+        expectation: "Ordinary calls never become implicit spawn or detach operations."
+      - id: task-spawn-fallible
+        expectation: "Task creation has type Result[Task[T], TaskSpawnError]."
+      - id: task-await-outcome
+        expectation: "await Task[T] yields TaskOutcome[T] without flow-sensitive collapse."
+      - id: nested-task-result
+        expectation: "Task[Result[T,E]] preserves Completed(Err(E)) as normal completion distinct from Failed(TaskError)."
+      - id: move-only-boundary-transfer
+        expectation: "Move-only values cross execution boundaries explicitly and are never silently cloned."
+      - id: detached-borrow-rejection
+        expectation: "Detached execution cannot retain a source-scope borrow that may expire."
+      - id: task-thread-affinity
+        expectation: "Migratable tasks cannot retain thread-affine state without a canonical proof."
+      - id: shared-mutable-requires-sync
+        expectation: "Concurrent shared mutation without synchronization or safe ownership is rejected."
+      - id: volatile-not-sync
+        expectation: "Volatile access never satisfies synchronization requirements by itself."
+      - id: mutex-guard-boundary
+        expectation: "MutexGuard restrictions are consumed from mutex.md across suspension and execution boundaries."
+      - id: data-race-analysis-owner
+        expectation: "Race findings consume canonical Place and provenance facts from the dedicated analysis."
+      - id: deadlock-analysis-owner
+        expectation: "Deadlock findings consume canonical wait and resource facts from the dedicated analysis."
+      - id: semantic-ir-concurrency
+        expectation: "Semantic IR preserves execution kind, transfer, synchronization, completion, cancellation, and outcome facts."
+      - id: compilation-plan-concurrency
+        expectation: "Concurrency validation and lowering use selected CompilationPlan facts rather than host facts."
 
   - id: frontend.transferability
     area: boundary-transfer-validation
@@ -10052,7 +10196,10 @@ integrations:
     - rules/concurrency/channels.md
     - rules/concurrency/thread_local.md
     - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
     - rules/platform/interrupts.md
+    governance_reconciliation:
+    - concurrency.md requires one canonical boundary-transfer validation path for task, thread, process, ISR, and foreign execution boundaries.
     remaining:
     - introduce one canonical boundary-transfer validation path instead of ad-hoc per-feature checks
     - derive boundary-specific transfer facts recursively from the semantic value graph
@@ -10079,6 +10226,9 @@ integrations:
     rules:
     - rules/memory/transferability.md
     - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Transferability analysis supplies boundary-specific concurrency facts and never derives transferability from machine copyability alone.
     remaining:
     - derive TaskTransferable, ThreadTransferable, ProcessTransferable, ISRTransferable and ThreadSafeShared as conditional
       compiler facts
@@ -10106,6 +10256,9 @@ integrations:
     - rules/memory/transferability.md
     - rules/concurrency/tasks.md
     - rules/compiler/semantic_ir.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Semantic IR preserves owned and borrowed transfers plus process-adapter, ISR, and foreign-context distinctions required by concurrency.md.
     remaining:
     - represent task/thread owned and borrowed transfers explicitly where semantically relevant
     - represent observer/lifecycle-handle transfer distinctly
@@ -10128,6 +10281,9 @@ integrations:
     rules:
     - rules/memory/transferability.md
     - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Lowering must not clone move-only values or heap-promote invalid borrows to repair illegal concurrency-boundary transfers.
     remaining:
     - preserve consuming transfer commit/failure ownership semantics
     - avoid hidden copying of move-only lifecycle/resources
@@ -10151,6 +10307,9 @@ integrations:
     rules:
     - rules/memory/transferability.md
     - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Platform facts define affinity, migration, process-handle, ISR, shared-memory, and foreign-callback restrictions without weakening concurrency.md.
     remaining:
     - resolve target/runtime thread affinity and destruction restrictions
     - resolve scheduler migration/pinning guarantees
@@ -10174,6 +10333,9 @@ integrations:
     - rules/memory/transferability.md
     - rules/concurrency/tasks.md
     - rules/tooling/lsp.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Diagnostics identify the concrete concurrency boundary and the transferability fact that prevents safe use.
     remaining:
     - expose boundary-specific transferability/shareability conditions from canonical analysis
     - show nested blocking field/capture/reference/foreign contract in diagnostics
@@ -11619,6 +11781,11 @@ integrations:
     area: semantic-fact-bridge
     status: partial
     repository_baseline: 998d8d1
+    rules:
+    - rules/compiler/semantic_ir.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Concurrency facts survive into Semantic IR while the concrete operation vocabulary remains owned by semantic_ir.md.
     remaining:
     - make all builders consume immutable resolved Sema/analysis plans rather than rerun AST resolution
     - bridge canonical Place/storage/reference identities into Semantic IR

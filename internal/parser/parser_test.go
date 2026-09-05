@@ -4492,6 +4492,73 @@ fn Valid() void {
 	}
 }
 
+func TestUnterminatedStatementBlocksRetainPartialAST(t *testing.T) {
+	for _, name := range []string{"function", "empty_block", "nested_blocks", "recovered_block"} {
+		t.Run(name, func(t *testing.T) {
+			input, err := os.ReadFile("../../testdata/parser/unterminated_" + name + "_invalid.sec")
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := New(lexer.New(string(input))).Parse()
+			if !result.HasErrors || result.Fatal {
+				t.Fatalf("expected recoverable parse error: %+v", result)
+			}
+			foundUnterminated := false
+			for _, diagnostic := range result.Diagnostics {
+				if diagnostic.Primary.Type == lexer.EOF && strings.Contains(diagnostic.Message, "unterminated") {
+					foundUnterminated = true
+				}
+			}
+			if !foundUnterminated {
+				t.Fatalf("missing unterminated-block diagnostic: %+v", result.Diagnostics)
+			}
+			if len(result.Program.Statements) != 1 {
+				t.Fatalf("expected retained function, got %#v", result.Program.Statements)
+			}
+			fn, ok := result.Program.Statements[0].(*ast.FunctionDeclaration)
+			if !ok || fn.Body == nil || fn.Name.Value != "Incomplete" {
+				t.Fatalf("lost partial function: %#v", result.Program.Statements[0])
+			}
+			block := fn.Body
+			switch name {
+			case "empty_block":
+				if len(block.Statements) != 0 {
+					t.Fatalf("fabricated statements in empty block: %#v", block.Statements)
+				}
+				return
+			case "nested_blocks":
+				if len(block.Statements) != 1 {
+					t.Fatalf("lost while statement: %#v", block.Statements)
+				}
+				loop, ok := block.Statements[0].(*ast.WhileStatement)
+				if !ok || loop.Body == nil || len(loop.Body.Statements) != 1 {
+					t.Fatalf("lost partial while body: %#v", block.Statements[0])
+				}
+				branch, ok := loop.Body.Statements[0].(*ast.IfStatement)
+				if !ok || branch.Consequence == nil || len(branch.Consequence.Statements) != 1 {
+					t.Fatalf("lost partial if body: %#v", loop.Body.Statements[0])
+				}
+				block = branch.Consequence
+			default:
+				if len(block.Statements) != 2 {
+					t.Fatalf("lost body statements: %#v", block.Statements)
+				}
+				if name == "recovered_block" {
+					invalid, ok := block.Statements[0].(*ast.InvalidStatement)
+					if !ok || invalid.Recovery == nil || len(result.Recovery) == 0 {
+						t.Fatalf("lost invalid statement recovery: %#v", block.Statements[0])
+					}
+				} else if _, ok := block.Statements[0].(*ast.LetStatement); !ok {
+					t.Fatalf("lost local declaration: %T", block.Statements[0])
+				}
+			}
+			if _, ok := block.Statements[len(block.Statements)-1].(*ast.ReturnStatement); !ok {
+				t.Fatalf("lost final return: %#v", block.Statements)
+			}
+		})
+	}
+}
+
 func TestParseResultRecordsVirtualMissingToken(t *testing.T) {
 	result := New(lexer.New(`type Broken struct (`)).Parse()
 	if !result.HasErrors {

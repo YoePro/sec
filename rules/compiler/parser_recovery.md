@@ -609,6 +609,11 @@ become unrelated outer statements.
 Several parser paths detect EOF before a required closing brace and report an
 unterminated construct.
 
+Ordinary statement blocks retain their parsed statements at EOF, including
+empty blocks, nested blocks, and previously recovered invalid statements.
+Their enclosing function and control-flow nodes remain available to tooling.
+The unterminated-block error still blocks ordinary code generation.
+
 ---
 
 # Partly implemented
@@ -763,9 +768,11 @@ context within the active episode is suppressed as a same-cause cascade.
 Broader causal suppression across different token locations and full context
 coverage for every specialized parser remain pending.
 
-## Unterminated constructs often return nil
+## Specialized unterminated constructs can still return nil
 
-Several block parsers report an unterminated block and then return `nil`.
+Specialized parsers, including switch/select bodies and match/try handlers,
+can still report an unterminated construct and then return `nil`. Ordinary
+statement blocks now retain their partial contents.
 
 This can discard otherwise useful partial block contents.
 

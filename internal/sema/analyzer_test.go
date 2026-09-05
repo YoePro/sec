@@ -3336,6 +3336,45 @@ fn Slice(value: string, start: uint, end: uint) string {
 	}
 }
 
+// rules/library/core-library.md and rules/concurrency/tasks.md sections 4-5
+// and 11-16: only loader-proven core may provide source declarations that
+// refine the compiler-known task outcome and spawn-error identities.
+func TestTrustedCoreOwnsTaskOutcomeDeclarations(t *testing.T) {
+	input := `module core
+
+type TaskOutcome[T] union {
+	Completed(T)
+	Cancelled
+	Panicked(PanicInfo)
+	Failed(TaskError)
+}
+
+enum TaskSpawnError error {
+	OutOfMemory
+	ResourceLimit
+	ExecutorUnavailable
+	InvalidConfiguration
+	NativeFailure
+}
+`
+	const sourceFile = "sec/core/task.sec"
+	l := lexer.NewWithFile(input, sourceFile)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+	assertSemaErrors(t, NewAnalyzer().Analyze(program), nil)
+
+	delete(program.SourceProvenance, sourceFile)
+	errors := NewAnalyzer().Analyze(program)
+	assertSemaErrors(t, errors, []string{
+		"type name TaskOutcome is compiler-known and cannot be redeclared at sec/core/task.sec:3:6",
+		"type name TaskSpawnError is compiler-known and cannot be redeclared at sec/core/task.sec:10:6",
+	})
+}
+
 func TestCompilerKnownStringSliceValidatesArguments(t *testing.T) {
 	input := `module core
 

@@ -1,0 +1,3 @@
+fn Incomplete() int {
+    ? damaged
+    return 42

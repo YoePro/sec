@@ -2,7 +2,9 @@ package sema
 
 import "testing"
 
-func TestSpawnAwaitAndTaskType(t *testing.T) {
+// rules/concurrency/tasks.md section 16: awaiting Task[T] consumes the handle
+// and produces the complete TaskOutcome[T], never a flow-dependent bare T.
+func TestSpawnAwaitAndTaskOutcomeType(t *testing.T) {
 	input := `
 module main
 
@@ -10,18 +12,26 @@ fn Calculate() int {
     return 42
 }
 
-fn Run() int {
+fn Run() void {
     let work := spawn Calculate()
-    let value := await work
-    return value
+    let outcome := await work
 }
 `
 
-	errors := analyzeSourceRaw(t, input)
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
+	outcome := analyzer.completionSymbols["outcome"].Type
+	if got := typeDisplayName(outcome); got != "TaskOutcome[int]" {
+		t.Fatalf("wrong await outcome type. got=%q", got)
+	}
+	if len(outcome.UnionVariants) != 4 || outcome.UnionVariants[0].Payload == nil || outcome.UnionVariants[0].Payload.Kind != IntType {
+		t.Fatalf("TaskOutcome[int] variants = %+v, want Completed(int) plus three terminal alternatives", outcome.UnionVariants)
+	}
 }
 
-func TestSpawnPreservesResultReturnType(t *testing.T) {
+// rules/concurrency/tasks.md sections 11-12: a task function's Result remains
+// nested inside Completed and is not reclassified as task execution failure.
+func TestSpawnAwaitPreservesNestedResultReturnType(t *testing.T) {
 	input := `
 module main
 
@@ -35,7 +45,7 @@ fn Load() Result[int, IOError] {
 
 fn Run() void {
     let work := spawn Load()
-    let result: Result[int, IOError] := await work
+    let outcome: TaskOutcome[Result[int, IOError]] := await work
     return
 }
 `
@@ -52,11 +62,10 @@ fn Calculate() int {
     return 42
 }
 
-fn Run() int {
+fn Run() void {
     let taskHandle := spawn task Calculate()
     let threadHandle := spawn thread Calculate()
-    let value := await taskHandle
-    return value
+    let outcome := await taskHandle
 }
 `
 
@@ -70,6 +79,35 @@ fn Run() int {
 	}
 	if got := typeDisplayName(analyzer.completionSymbols["threadHandle"].Type); got != "Thread[int]" {
 		t.Fatalf("wrong thread handle type. got=%q", got)
+	}
+	if got := typeDisplayName(analyzer.completionSymbols["outcome"].Type); got != "TaskOutcome[int]" {
+		t.Fatalf("wrong await outcome type. got=%q", got)
+	}
+}
+
+// rules/concurrency/tasks.md section 12(9): void completion is payload-less,
+// while cancellation, panic, and execution failure remain distinct variants.
+func TestTaskOutcomeVoidHasPayloadlessCompletedVariant(t *testing.T) {
+	input := `
+module main
+
+fn Work() void {
+}
+
+fn Run() void {
+    let work := spawn Work()
+    let outcome: TaskOutcome[void] := await work
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertSemaErrors(t, errors, nil)
+	outcome := analyzer.completionSymbols["outcome"].Type
+	if len(outcome.UnionVariants) != 4 {
+		t.Fatalf("TaskOutcome[void] variants = %+v, want four variants", outcome.UnionVariants)
+	}
+	if completed := outcome.UnionVariants[0]; completed.Name != "Completed" || completed.Payload != nil {
+		t.Fatalf("TaskOutcome[void].Completed = %+v, want payload-less variant", completed)
 	}
 }
 

@@ -436,6 +436,27 @@ fn Apply(mutable: mut fn(int) int, consuming: -> fn() int) int {
 	}
 }
 
+// rules/concurrency/tasks.md section 16 and rules/tooling/lsp.md: hover must
+// consume the compiler's await result fact rather than duplicate task typing.
+func TestHoverUsesCompilerOwnedTaskOutcomeType(t *testing.T) {
+	source := `module main
+
+fn Calculate() int {
+    return 42
+}
+
+fn Run() void {
+    let task := spawn Calculate()
+    let outcome := await task
+}
+`
+	offset := strings.Index(source, "outcome")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok || !strings.Contains(result.Contents.Value, "outcome: TaskOutcome[int]") {
+		t.Fatalf("task outcome hover = %+v, %v", result, ok)
+	}
+}
+
 func TestHoverUsesCompilerOwnedRegisterFieldAccess(t *testing.T) {
 	source := `module main
 

@@ -1,0 +1,5 @@
+module main
+
+fn main() string {
+    return $"α {{ok}} {1 + /* plus */ 2} :: {$"z {value}"} end\n"
+}

@@ -5,6 +5,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	compilerdiagnostics "sec/internal/diagnostics"
 )
 
@@ -275,7 +277,12 @@ func (l *Lexer) Restore(state State) {
 	}
 }
 
+// NextToken classifies source tokens and records lexical errors without changing
+// their original spelling. Rules: rules/foundations/lexical_structure.md —
+// "6.1 Identifier form", "6.2 Unicode normalization", and token boundaries.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-06 10:01 UTC: Validate identifier NFC before keyword classification;
+// include underscore-prefixed combining-mark candidates in diagnostic recovery.
 func (l *Lexer) NextToken() Token {
 	l.skipWhitespaceAndComments()
 
@@ -299,13 +306,13 @@ func (l *Lexer) NextToken() Token {
 
 	// 2026-08-01: Keep the grammar's bare discard/reserved-field symbol
 	// distinct from ordinary identifiers such as _name and __name.
-	if ch == '_' && !isLetter(l.peekNext()) && !isDigit(l.peekNext()) {
+	if ch == '_' && !isLetter(l.peekNext()) && !isDigit(l.peekNext()) && !unicode.IsMark(l.peekNext()) {
 		return l.readOne(UNDERSCORE)
 	}
 
 	if isLetter(ch) {
 		lit := l.readIdentifier()
-		return l.token(lookupIdent(lit), lit, line, column)
+		return l.identifierToken(lit, line, column)
 	}
 
 	if isDigit(ch) {
@@ -581,15 +588,47 @@ func (l *Lexer) readBlockComment() Token {
 	}
 }
 
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// readIdentifier retains an entire identifier candidate, including combining
+// marks for diagnostics; identifierToken checks its validity without rewriting it.
+// Rules: rules/foundations/lexical_structure.md — "6.1 Identifier form", "6.2 Unicode normalization".
+// 2026-09-06 10:01 UTC: Stage-0 NFC validation and combining-mark recovery;
+// the corresponding bootstrap readIdentifier documents its pending NFC dependency.
 func (l *Lexer) readIdentifier() string {
 	start := l.pos
 
-	for isLetter(l.peek()) || isDigit(l.peek()) {
+	for isLetter(l.peek()) || isDigit(l.peek()) || unicode.IsMark(l.peek()) {
 		l.advance()
 	}
 
 	return string(l.input[start:l.pos])
+}
+
+// identifierToken rejects non-NFC spellings and invalid identifier characters,
+// preserving the source lexeme and suggesting NFC only in the diagnostic.
+// Rules: rules/foundations/lexical_structure.md — "6.1 Identifier form", "6.2 Unicode normalization".
+func (l *Lexer) identifierToken(literal string, line, column int) Token {
+	token := l.token(lookupIdent(literal), literal, line, column)
+	if !norm.NFC.IsNormalString(literal) {
+		token.Type = ILLEGAL
+		l.diagnostics = append(l.diagnostics, Diagnostic{
+			ID:      compilerdiagnostics.LexerNonNFCIdentifier,
+			Message: fmt.Sprintf("identifier %q is not in Unicode NFC; use the NFC spelling %q at %d:%d", literal, norm.NFC.String(literal), line, column),
+			Primary: token,
+		})
+		return token
+	}
+	for _, ch := range literal {
+		if unicode.IsMark(ch) {
+			token.Type = ILLEGAL
+			l.diagnostics = append(l.diagnostics, Diagnostic{
+				ID:      compilerdiagnostics.LexerIdentifierCharacter,
+				Message: fmt.Sprintf("identifier %q contains combining mark U+%04X; identifiers permit letters, ASCII digits, and underscore at %d:%d", literal, ch, line, column),
+				Primary: token,
+			})
+			break
+		}
+	}
+	return token
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
@@ -783,20 +822,75 @@ func (l *Lexer) readRawString() Token {
 	return l.token(RAW_STRING, string(l.input[start:l.pos]), line, column)
 }
 
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// readPrefixedString preserves an interpolated token while balancing expression
+// braces and using ordinary token boundaries for nested literals and comments.
+// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings", "15. Escapes".
+// 2026-09-06 10:13 UTC: Balanced interpolation scanning mirrored in bootstrap.
 func (l *Lexer) readPrefixedString(typ TokenType) Token {
 	line := l.line
 	column := l.column
 	start := l.pos
 
-	l.advance()
-
-	lit, ok := l.readStringBody(true)
-	if !ok {
-		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+	l.advance() // $
+	l.advance() // opening quote
+	for {
+		switch l.peek() {
+		case 0, '\n', '\r':
+			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		case '"':
+			l.advance()
+			return l.token(typ, string(l.input[start:l.pos]), line, column)
+		case '\\':
+			l.advance()
+			if l.peek() == 'u' && l.peekNext() == '{' {
+				l.advance()
+				l.advance()
+				for l.peek() != '}' && l.peek() != 0 && !isPhysicalLineEnding(l.peek()) {
+					l.advance()
+				}
+			}
+			if l.peek() != 0 && !isPhysicalLineEnding(l.peek()) {
+				l.advance()
+			}
+		case '{':
+			l.advance()
+			if l.peek() == '{' {
+				l.advance()
+			} else if !l.readInterpolationExpression() {
+				return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+			}
+		case '}':
+			l.advance()
+			if l.peek() != '}' {
+				return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+			}
+			l.advance()
+		default:
+			l.advance()
+		}
 	}
+}
 
-	return l.token(typ, "$"+lit, line, column)
+// readInterpolationExpression consumes through the matching expression brace.
+// Nested literals/comments use normal Sec tokenization, so their braces do not
+// affect expression depth and lexical diagnostics retain original positions.
+// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings".
+func (l *Lexer) readInterpolationExpression() bool {
+	line := l.line
+	depth := 1
+	for depth > 0 {
+		token := l.NextToken()
+		if token.Type == EOF || token.Type == ILLEGAL || l.line != line {
+			return false
+		}
+		switch token.Type {
+		case LBRACE:
+			depth++
+		case RBRACE:
+			depth--
+		}
+	}
+	return true
 }
 
 // readStringBody implements rules/foundations/lexical_structure.md ordinary and

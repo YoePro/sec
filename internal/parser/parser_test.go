@@ -5541,6 +5541,41 @@ fn Less(left: int, right: int) bool {
 	}
 }
 
+func TestParserRetainsBalancedInterpolationTokens(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/interpolation_balanced_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.New(string(input))).Parse()
+	if result.HasErrors {
+		t.Fatalf("balanced interpolation failed parsing: %+v", result.Diagnostics)
+	}
+	fn := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	if len(fn.Body.Statements) != 9 {
+		t.Fatalf("lost interpolation or following declaration: %#v", fn.Body.Statements)
+	}
+}
+
+func TestParserRejectsNonNFCIdentifiers(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/identifier_nfc_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "identifier_nfc_invalid.sec")).Parse()
+	if !result.HasErrors || result.Fatal {
+		t.Fatalf("expected nonfatal lexical rejection: %+v", result)
+	}
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerNonNFCIdentifier {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected both NFC diagnostics: %+v", result.Diagnostics)
+	}
+}
+
 func TestParserPreservesLexerDiagnosticIDs(t *testing.T) {
 	tests := []struct {
 		name  string

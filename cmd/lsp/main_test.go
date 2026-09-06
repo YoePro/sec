@@ -875,6 +875,45 @@ func TestStructuredParserDiagnosticUsesFocusedCodeAndTokenRange(t *testing.T) {
 	}
 }
 
+func TestAnalyzePublishesInterpolationExpressionDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/interpolation_parts_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	diags := analyze("file:///tmp/parts.sec", string(input))
+	if len(diags) != 3 {
+		t.Fatalf("diagnostics: %+v", diags)
+	}
+	for _, d := range diags {
+		if d.Range.Start.Line != 3 || d.Range.Start.Character < 19 || d.Severity != 1 {
+			t.Fatalf("incorrect interpolation diagnostic: %+v", d)
+		}
+	}
+}
+
+func TestAnalyzePublishesIdentifierNFCDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/identifier_nfc_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, diagnostic := range analyze("file:///tmp/identifier_nfc_invalid.sec", string(input)) {
+		if diagnostic.Code != diagnostics.LexerNonNFCIdentifier {
+			continue
+		}
+		count++
+		if diagnostic.Severity != 1 || diagnostic.Range.Start.Character != 8 || (diagnostic.Range.Start.Line != 3 && diagnostic.Range.Start.Line != 4) {
+			t.Fatalf("incorrect NFC diagnostic severity or position: %+v", diagnostic)
+		}
+		if !strings.Contains(diagnostic.Message, "NFC spelling") {
+			t.Fatalf("missing NFC suggestion: %+v", diagnostic)
+		}
+	}
+	if count != 2 {
+		t.Fatalf("published %d NFC diagnostics, want 2", count)
+	}
+}
+
 func TestAnalyzePublishesFocusedWhileAssignmentDiagnostic(t *testing.T) {
 	source := `module main
 

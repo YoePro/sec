@@ -510,8 +510,11 @@ func (g *Generator) emitStringLiteral(expr *ast.StringLiteral) (value, error) {
 	return value{typ: "string", ref: temp, lenRef: fmt.Sprintf("%d", len(expr.Value))}, nil
 }
 
+// emitInterpolatedStringLiteral rejects unsupported interpolation materialization
+// rather than emitting its source spelling and silently omitting expression effects.
+// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings".
 func (g *Generator) emitInterpolatedStringLiteral(expr *ast.InterpolatedStringLiteral) (value, error) {
-	return g.emitStringLiteral(&ast.StringLiteral{Token: expr.Token, Value: expr.Value})
+	return value{}, fmt.Errorf("LLVM lowering of interpolated strings is not implemented at %d:%d", expr.Token.Line, expr.Token.Column)
 }
 
 func llvmCString(bytes []byte) string {

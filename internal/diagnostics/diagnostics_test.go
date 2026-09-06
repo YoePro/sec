@@ -13,6 +13,8 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		LexerInvalidUTF8:             SeverityError,
 		LexerUnexpectedByteOrderMark: SeverityError,
 		LexerUnsupportedWhitespace:   SeverityError,
+		LexerNonNFCIdentifier:        SeverityError,
+		LexerIdentifierCharacter:     SeverityError,
 		ParserSyntaxError:            SeverityError,
 		MissingModuleDeclaration:     SeverityError,
 		DuplicateModuleDeclaration:   SeverityError,

@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-09-05"
+updated: "2026-09-06"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -6439,7 +6439,13 @@ integrations:
       - rules/compiler/parser_recovery.md
     code:
       - internal/lexer/lexer.go
+      - internal/diagnostics/diagnostics.go
+      - go.mod
+      - go.sum
       - internal/parser
+      - internal/parser/interpolation.go
+      - cmd/compiler/main.go
+      - internal/codegen/llvm/expressions.go
       - internal/ast
       - internal/sema
       - internal/formatter
@@ -6448,7 +6454,17 @@ integrations:
       - vscode/syntaxes/sec.tmLanguage.json
     tests:
       - internal/lexer/lexer_test.go
+      - internal/diagnostics/diagnostics_test.go
+      - testdata/lexer/interpolation_balanced_valid.sec
+      - testdata/lexer/interpolation_balanced_invalid.sec
+      - testdata/lexer/identifier_nfc_valid.sec
+      - testdata/lexer/identifier_nfc_invalid.sec
       - internal/parser/parser_test.go
+      - internal/parser/interpolation_test.go
+      - internal/codegen/llvm/generator_test.go
+      - testdata/parser/interpolation_parts_valid.sec
+      - testdata/parser/interpolation_parts_invalid.sec
+      - testdata/parser/interpolation_lowering_deferred.sec
       - internal/formatter/formatter_test.go
       - internal/sema/analyzer_test.go
       - cmd/lsp/main_test.go
@@ -6456,6 +6472,9 @@ integrations:
       - Unicode-rune input processing
       - one-based line and column tracking
       - identifier starts using underscore, ASCII letters, and Unicode letters
+      - Go frontend validates identifier NFC with Unicode-version-matched golang.org/x/text/unicode/norm, rejecting non-NFC spellings with mandatory L1004 and a normalized suggestion while preserving the original lexeme
+      - combining marks are retained in malformed identifier candidates for whole-token diagnostics; NFC candidates containing marks still violate the letter/digit/underscore grammar and receive L1005
+      - NFC diagnostics preserve source positions and snapshot rollback and propagate through parser errors and LSP diagnostics without normalizing literal or comment contents
       - ASCII digits after identifier start
       - keyword lookup for a large current subset
       - dedicated bare underscore tokens while underscore-prefixed names remain identifiers
@@ -6474,6 +6493,15 @@ integrations:
       - character-literal tokenization
       - backtick raw strings
       - interpolated-string tokenization using dollar-quoted syntax
+      - balanced interpolation-expression lexing with nested aggregate braces, ordinary/character/raw/nested interpolated literals, and comments; complete source lexemes and positions are preserved
+      - interpolation text scanning distinguishes doubled literal braces and Unicode escape braces from expression delimiters and rejects physical newlines and unmatched braces
+      - bootstrap lexer source mirrors balanced interpolation scanning and remains parser-valid
+      - interpolated-string AST retains ordered text and expression parts, original token spelling, and exclusive source ranges with original file and rune-based columns
+      - interpolation expressions use ordinary Pratt parsing, including nested interpolation, aggregate expressions, raw strings, and comment trivia
+      - interpolation text parts collapse doubled braces while preserving escape spelling for later materialization
+      - invalid interpolation expressions retain recovery metadata while later parts and enclosing statements survive; ordinary parser diagnostics reach LSP at original positions
+      - raw string literals are accepted by the expression parser without escape decoding
+      - legacy LLVM interpolation placeholder now explicitly rejects unsupported materialization instead of silently emitting source spelling and omitting expression evaluation
       - line comments
       - nested block comments
       - comment tokens
@@ -6504,7 +6532,7 @@ integrations:
       - keyword inventory synchronization, including removal of the obsolete sec reservation
       - character-literal content validation
       - escape validation
-      - interpolation parsing
+      - interpolation expression semantic traversal, formatting contracts, ownership/effects, escape materialization, and runtime lowering remain incomplete; AST/parser expression parts and source ranges are implemented
       - malformed base-literal diagnostics
       - comment attachment for formatter and documentation
       - >-
@@ -6530,12 +6558,12 @@ integrations:
       - repository keyword notes and lexer keyword switch are not yet fully synchronized
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
-      - NFC validation of identifiers
+      - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
       - confusable-identifier warnings
       - maximal malformed numeric-token recovery
       - lexer-level escape diagnostics; character-literal escape validation currently occurs during semantic analysis
-      - balanced interpolation-expression lexing
-      - doubled literal braces in interpolated strings
+      - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
+      - port interpolation AST parts and expression parsing to the bootstrap parser
       - parser-aware formatter and semantic-token classification for contextual x
       - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
       - complete reserved contract-word inventory
@@ -6554,6 +6582,13 @@ integrations:
       - stable lexer diagnostic IDs for all categories
       - formatter and complete LSP support for all contextual classifications in rules/foundations/lexical_structure.md
       - remove or repurpose the existing unused BYTES token because it does not represent a Sec 0.1 source feature
+    verification:
+      - command: go test ./internal/parser ./internal/codegen/llvm ./cmd/lsp -run Interpolat -count=1
+        result: passed; AST parts, nested positions, invalid-expression recovery, LSP diagnostics, and explicit unsupported LLVM materialization
+      - command: go test ./internal/lexer ./internal/parser -run Interpolation -count=1
+        result: passed; nested literals, comments, braces, token positions, parser retention, malformed input, and LF/CR/CRLF rejection
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/lsp
+        result: passed; NFC validity, normalized suggestions, original token positions, rollback, grammar exclusions, parser rejection, and LSP publication
 
   - id: sema.data-race-analysis
     area: frontend-analysis-and-lowering

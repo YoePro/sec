@@ -110,7 +110,7 @@ These were written after the older temporary checklist was last synchronized.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `foundations/language_philosophy.md` | **Written** | Core language direction and design principles. |
-| `foundations/lexical_structure.md` | **Written** | Canonical lexical rules; implementation status is tracked by `frontend.lexical-structure` in `implementation-status.yaml`. |
+| `foundations/lexical_structure.md` | **Written** | Canonical lexical rules; Go frontend NFC identifier validation and balanced interpolation-expression lexing are implemented. Interpolation AST parts, expression parsing, and source ranges are implemented; bootstrap normalization and interpolation semantic processing/lowering remain pending. Implementation status is tracked by `frontend.lexical-structure` in `implementation-status.yaml`. |
 | `types/types.md` | **Written** | Canonical replacement for the retired `types.txt`; implementation is tracked by `frontend.types-core`, `frontend.literal-family-suffix-v2`, `frontend.temporal-builtin-types`, and `frontend.wide-numeric-language-types`. |
 | `types/contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics, including declared-member defaults for integer-, string-, and bit-backed enums. |

@@ -1,0 +1,13 @@
+module main
+
+fn main() void {
+    let quoted := $"{Format("text }")}"
+    let aggregate := $"{Value{Text: "}", Nested: Other{Number: 1}}}"
+    let character := $"{Format('}')}"
+    let raw := $"{Format(`{ } "`)}"
+    let comment := $"{value /* } /* { */ " */}"
+    let nested := $"{Format($"inner {value}")}"
+    let braces := $"{{value}} {{{value}}}"
+    let escape := $"\u{03A9} {value} \"quoted\""
+    let following := 42
+}

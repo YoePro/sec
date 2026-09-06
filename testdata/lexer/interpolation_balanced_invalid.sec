@@ -1,0 +1,6 @@
+$"{Value{Number: 1}"
+$"{Format("unterminated)}
+$"{value /* unterminated }"
+$"{value // }"
+$"single } brace"
+$"{Format($"inner {value}")"

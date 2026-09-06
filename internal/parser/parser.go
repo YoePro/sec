@@ -92,8 +92,9 @@ type Parser struct {
 	curToken  lexer.Token
 	peekToken lexer.Token
 
-	stopBeforeBrace bool
-	inRefExpression bool
+	stopBeforeBrace        bool
+	inRefExpression        bool
+	skipExpressionComments bool
 }
 
 type diagnosticKey struct {
@@ -114,12 +115,20 @@ type diagnosticLocation struct {
 const maxParserDiagnostics = 100
 
 func New(l *lexer.Lexer) *Parser {
+	return newParser(l, false)
+}
+
+// newParser initializes the ordinary parser or an interpolation fragment parser,
+// where comments are expression trivia rather than top-level AST statements.
+// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings", comments.
+func newParser(l *lexer.Lexer, skipExpressionComments bool) *Parser {
 	p := &Parser{
-		l:               l,
-		errors:          []string{},
-		warnings:        []string{},
-		diagnosticKeys:  map[diagnosticKey]struct{}{},
-		recoveryContext: RecoveryContextTopLevel,
+		skipExpressionComments: skipExpressionComments,
+		l:                      l,
+		errors:                 []string{},
+		warnings:               []string{},
+		diagnosticKeys:         map[diagnosticKey]struct{}{},
+		recoveryContext:        RecoveryContextTopLevel,
 	}
 
 	p.nextToken()
@@ -4717,6 +4726,9 @@ func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
 func (p *Parser) nextToken() {
 	p.curToken = p.peekToken
 	p.peekToken = p.l.NextToken()
+	for p.skipExpressionComments && p.peekToken.Type == lexer.COMMENT {
+		p.peekToken = p.l.NextToken()
+	}
 	p.collectLexerDiagnostics()
 }
 

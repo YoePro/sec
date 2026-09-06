@@ -1280,6 +1280,18 @@ func (bl *BooleanLiteral) String() string {
 type InterpolatedStringLiteral struct {
 	Token lexer.Token
 	Value string
+	Parts []InterpolatedStringPart
+}
+
+// InterpolatedStringPart preserves a text segment or a parsed expression with
+// an exclusive source end. Text collapses doubled braces but retains escape
+// spelling for later materialization; Expression is nil for text parts.
+// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings", "15. Escapes".
+type InterpolatedStringPart struct {
+	Token      lexer.Token
+	End        lexer.Token
+	Text       string
+	Expression Expression
 }
 
 func (isl *InterpolatedStringLiteral) expressionNode() {}

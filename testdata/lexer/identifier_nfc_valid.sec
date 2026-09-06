@@ -1,0 +1,9 @@
+module main
+
+// K and café are preserved inside comments and strings.
+fn main() int {
+    let café := 1
+    let text := "K café"
+    let character := 'K'
+    return café
+}

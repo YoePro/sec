@@ -99,6 +99,8 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 
 	case lexer.STRING:
 		left = p.parseStringLiteral()
+	case lexer.RAW_STRING:
+		left = p.parseRawStringLiteral()
 
 	case lexer.CHAR:
 		left = p.parseCharLiteral()
@@ -1450,17 +1452,16 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	}
 }
 
+// parseRawStringLiteral retains raw content without interpreting escapes.
+// Rules: rules/foundations/lexical_structure.md — "14.2 Raw strings".
+func (p *Parser) parseRawStringLiteral() ast.Expression {
+	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Lexeme[1 : len(p.curToken.Lexeme)-1]}
+}
+
 func (p *Parser) parseCharLiteral() ast.Expression {
 	return &ast.CharLiteral{
 		Token: p.curToken,
 		Value: trimCharQuotes(p.curToken.Lexeme),
-	}
-}
-
-func (p *Parser) parseInterpolatedStringLiteral() ast.Expression {
-	return &ast.InterpolatedStringLiteral{
-		Token: p.curToken,
-		Value: p.curToken.Lexeme,
 	}
 }
 
@@ -1623,6 +1624,7 @@ func (p *Parser) isExpressionStart(t lexer.TokenType) bool {
 		lexer.INT,
 		lexer.FLOAT,
 		lexer.STRING,
+		lexer.RAW_STRING,
 		lexer.CHAR,
 		lexer.INTERPSTRING,
 		lexer.TRUE,

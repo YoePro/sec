@@ -1,6 +1,152 @@
 package lexer
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
+)
+
+func TestIdentifierNFCValidation(t *testing.T) {
+	if norm.Version != unicode.Version {
+		t.Fatalf("normalization Unicode %s differs from identifier Unicode %s", norm.Version, unicode.Version)
+	}
+	for _, test := range []struct {
+		input, normalized, id string
+	}{
+		{"plain_42", "", ""},
+		{"café", "", ""},
+		{"Ω", "", ""},
+		{"가", "", ""},
+		{"\u212Aelvin", "Kelvin", "L1004"},
+		{"\u212Bngstrom", "Ångstrom", "L1004"},
+		{"\u2126", "Ω", "L1004"},
+		{"cafe\u0301", "café", "L1004"},
+		{"\u1100\u1161", "가", "L1004"},
+		{"_cafe\u0301", "_café", "L1004"},
+		{"q\u0301", "", "L1005"},
+		{"_\u0301", "", "L1005"},
+	} {
+		t.Run(test.input, func(t *testing.T) {
+			l := NewWithFile("\n  "+test.input+" next", "identifier.sec")
+			state := l.Snapshot()
+			for attempt := 0; attempt < 2; attempt++ {
+				token := l.NextToken()
+				want := IDENT
+				if test.id != "" {
+					want = ILLEGAL
+				}
+				if token.Type != want || token.Lexeme != test.input || token.Line != 2 || token.Column != 3 || token.File != "identifier.sec" {
+					t.Fatalf("original token not preserved: %+v", token)
+				}
+				if test.id == "" {
+					if len(l.Diagnostics()) != 0 {
+						t.Fatalf("valid identifier rejected: %+v", l.Diagnostics())
+					}
+				} else {
+					diags := l.Diagnostics()
+					if len(diags) != 1 || diags[0].ID != test.id || diags[0].Primary != token {
+						t.Fatalf("incorrect diagnostic: %+v", diags)
+					}
+					if test.normalized != "" && !strings.Contains(diags[0].Message, "\""+test.normalized+"\"") {
+						t.Fatalf("missing normalized suggestion %q: %s", test.normalized, diags[0].Message)
+					}
+				}
+				if next := l.NextToken(); next.Type != IDENT || next.Lexeme != "next" || next.Column != 4+len([]rune(test.input)) {
+					t.Fatalf("lost following identifier or rune position: %+v", next)
+				}
+				l.Restore(state)
+				if len(l.Diagnostics()) != 0 {
+					t.Fatal("speculative NFC diagnostic survived restore")
+				}
+			}
+		})
+	}
+}
+
+func TestIdentifierNFCLeavesLiteralAndCommentContentsUntouched(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/identifier_nfc_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := New(string(input))
+	for token := l.NextToken(); token.Type != EOF; token = l.NextToken() {
+		if token.Type == ILLEGAL {
+			t.Fatalf("valid fixture rejected: %+v", token)
+		}
+	}
+	if len(l.Diagnostics()) != 0 {
+		t.Fatalf("literal/comment contents diagnosed as identifiers: %+v", l.Diagnostics())
+	}
+}
+
+func TestBalancedInterpolationLexing(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/interpolation_balanced_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := NewWithFile(string(input), "interpolation.sec")
+	count := 0
+	foundAfter := false
+	lines := strings.Split(string(input), "\n")
+	for token := l.NextToken(); token.Type != EOF; token = l.NextToken() {
+		if token.Type == ILLEGAL {
+			t.Fatalf("valid interpolation rejected: %+v", token)
+		}
+		if token.Type == INTERPSTRING {
+			count++
+			source := []rune(lines[token.Line-1])
+			if token.Lexeme != string(source[token.Column-1:]) {
+				t.Fatalf("interpolation truncated or position changed: %+v", token)
+			}
+		}
+		if token.Type == IDENT && token.Lexeme == "following" {
+			foundAfter = true
+		}
+	}
+	if count != 8 || !foundAfter || len(l.Diagnostics()) != 0 {
+		t.Fatalf("count=%d after=%t diagnostics=%+v", count, foundAfter, l.Diagnostics())
+	}
+}
+
+func TestUnbalancedInterpolationLexing(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/interpolation_balanced_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range strings.Split(strings.TrimSpace(string(input)), "\n") {
+		t.Run(source, func(t *testing.T) {
+			if token := New(source).NextToken(); token.Type != ILLEGAL {
+				t.Fatalf("malformed interpolation accepted: %+v", token)
+			}
+		})
+	}
+}
+
+func TestInterpolationRejectsPhysicalNewlines(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/interpolation_balanced_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, newline := range []string{"\n", "\r", "\r\n"} {
+		// Inject a physical newline into each syntactic context in the fixture.
+		for _, target := range []string{"text", "Number", "value /*", "/* {", "inner", "03A9"} {
+			l := New(strings.Replace(string(input), target, target+newline, 1))
+			found := false
+			for token := l.NextToken(); token.Type != EOF; token = l.NextToken() {
+				if token.Type == ILLEGAL {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("accepted newline %q after %q", newline, target)
+			}
+		}
+	}
+}
 
 func TestNewIsHardKeyword(t *testing.T) {
 	tokens := []TokenType{NEW, IDENT, LPAREN, RPAREN, EOF}

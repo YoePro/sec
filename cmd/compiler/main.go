@@ -3236,7 +3236,7 @@ func formatASTExpression(expr ast.Expression) string {
 	case *ast.BooleanLiteral:
 		return fmt.Sprintf("Bool(%t)", expr.Value)
 	case *ast.InterpolatedStringLiteral:
-		return fmt.Sprintf("InterpolatedString(%q)", expr.Value)
+		return formatInterpolatedStringParts(expr)
 	case *ast.PrefixExpression:
 		return "Prefix(" + expr.Operator + ")"
 	case *ast.InfixExpression:
@@ -3264,6 +3264,21 @@ func formatASTExpression(expr ast.Expression) string {
 	default:
 		return fmt.Sprintf("%T", expr)
 	}
+}
+
+// formatInterpolatedStringParts exposes ordered interpolation children in AST
+// dumps while each child's source range remains available on the AST itself.
+// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings".
+func formatInterpolatedStringParts(expr *ast.InterpolatedStringLiteral) string {
+	parts := make([]string, 0, len(expr.Parts))
+	for _, part := range expr.Parts {
+		if part.Expression != nil {
+			parts = append(parts, formatASTExpression(part.Expression))
+		} else {
+			parts = append(parts, fmt.Sprintf("Text(%q)", part.Text))
+		}
+	}
+	return "InterpolatedString[" + strings.Join(parts, ", ") + "]"
 }
 
 func formatVariants(variants []*ast.Identifier) string {

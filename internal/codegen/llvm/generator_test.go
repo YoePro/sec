@@ -1,6 +1,7 @@
 package llvm
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -9,6 +10,21 @@ import (
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
+
+func TestInterpolationDoesNotSilentlyEmitSourceText(t *testing.T) {
+	input, err := os.ReadFile("../../../testdata/parser/interpolation_lowering_deferred.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := parser.New(lexer.New(string(input))).Parse()
+	if result.HasErrors {
+		t.Fatalf("parse errors: %+v", result.Diagnostics)
+	}
+	_, err = Generate(result.Program)
+	if err == nil || !strings.Contains(err.Error(), "lowering of interpolated strings is not implemented") {
+		t.Fatalf("expected explicit lowering boundary, got %v", err)
+	}
+}
 
 func TestGenerateMinimalMainWithIf(t *testing.T) {
 	input := `

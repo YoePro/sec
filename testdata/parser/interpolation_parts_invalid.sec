@@ -1,0 +1,6 @@
+module main
+
+fn main() void {
+    let text := $"α {} b {1 + } c {1 2} d {42}"
+    let following := 7
+}

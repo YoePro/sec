@@ -26,6 +26,8 @@ const (
 	LexerInvalidUTF8             = "L1001"
 	LexerUnexpectedByteOrderMark = "L1002"
 	LexerUnsupportedWhitespace   = "L1003"
+	LexerNonNFCIdentifier        = "L1004"
+	LexerIdentifierCharacter     = "L1005"
 	ParserSyntaxError            = "P2001"
 	ParserMissingToken           = "P2002"
 	ParserUnexpectedToken        = "P2003"
@@ -74,6 +76,12 @@ const (
 )
 
 var registry = map[string]Definition{
+	LexerNonNFCIdentifier: {
+		ID: LexerNonNFCIdentifier, Name: "lexer.non-nfc-identifier", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	LexerIdentifierCharacter: {
+		ID: LexerIdentifierCharacter, Name: "lexer.invalid-identifier-character", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
+	},
 	LexerInvalidUTF8: {
 		ID: LexerInvalidUTF8, Name: "lexer.invalid-utf8", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
 	},

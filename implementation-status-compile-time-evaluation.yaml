@@ -1,0 +1,161 @@
+# Merge fragment for repository-level implementation-status.yaml.
+# This file describes implementation state only.
+# Normative behavior belongs in rules/compiler/compile_time_evaluation.md.
+#
+# Merge this item into the canonical integrations/status list and reconcile
+# overlap with existing frontend constant-expression / static / enum / array
+# implementation entries rather than inferring language semantics from current
+# compiler coverage.
+
+- id: compiler.compile-time-evaluation
+  area: compiler-semantic-evaluation
+  status: partial
+  integrated: null
+  document_revision: "1.0"
+  repository_baseline: "0f5027d"
+  summary: >-
+    Tracks canonical Sec 0.1 compile-time evaluation: restricted plan-time
+    contexts plus typed semantic CTE over canonical Sec semantics, including
+    ordinary user functions, path-sensitive effect legality, loops/recursion,
+    transient allocation, ownership/borrowing/destruction, cross-module
+    semantic execution, generic concrete callables, dependency tracking,
+    resource limits, typed compile-time values, static materialization,
+    diagnostics, caching, and integration around the Semantic IR -> Sec MLIR ->
+    MLIR -> LLVM -> artifact pipeline. The repository already contains partial
+    compile-time/constant evaluation behavior for several declaration and
+    folding paths, but the complete semantic CTE service is not yet implemented.
+  rules:
+    - rules/compiler/compile_time_evaluation.md
+    - rules/foundations/attributes.md
+    - rules/declarations/static.md
+    - rules/declarations/generics.md
+    - rules/compiler/generics_lowering.md
+    - rules/compiler/monomorphization.md
+    - rules/compiler/compiler_known_members.md
+    - rules/compiler/semantic_ir.md
+    - rules/compiler/compiler_pipeline.md
+    - rules/projects/modules.md
+    - rules/memory/layout.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/copy_move.md
+    - rules/memory/destruction.md
+    - rules/memory/raw_pointers.md
+    - rules/analysis/effect_analysis.md
+    - rules/errors/panic.md
+    - rules/errors/runtime_checks.md
+    - rules/mlir/sec_mlir.md
+    - rules/mlir/sec_mlir_dialect.md
+    - rules/mlir/sec_mlir_lowering.md
+  implemented:
+    - parser/Sema infrastructure already recognizes multiple compile-time-required declaration facts such as enum values, fixed sizes/extents, static facts, attributes, and compiler-known layout/member queries
+    - compiler-known SizeOf already resolves target-plan-dependent layout information in value/type/global forms prior to the property-only correction
+    - current frontend and semantic analyses already perform constant propagation/folding and static validation in several narrow language paths
+    - generic frontend and Semantic IR infrastructure can represent concrete generic identities required by future generic CTE execution
+    - module and separate-compilation infrastructure already defines canonical declaration identities and semantic artifacts that can be extended for CTE bodies/dependencies
+    - effect analysis already provides canonical effect facts that CTE can consume for permitted-effect decisions
+    - ownership, borrowing, destruction, layout, and Semantic IR rulebooks already define the semantic facts the CTE service must preserve
+  remaining:
+    - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state
+    - preserve the existing restricted plan-time evaluator for attributes/source selection and prevent ordinary semantic function calls from creating phase cycles
+    - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
+    - execute ordinary user-defined functions during semantic CTE without requiring const-fn/comptime source modifiers
+    - implement nested calls, if/switch/match/for/while execution, recursion, and mutual recursion
+    - implement path-sensitive CTE effect legality so forbidden effects on unexecuted branches do not invalidate the concrete evaluation
+    - reject executed filesystem, network, environment, clock, ambient-random, target-memory, volatile, atomic, barrier, concurrency, foreign-call, and unsupported-runtime operations
+    - support deterministic transient evaluator-local allocation independently of runtime target allocators
+    - execute ordinary Sec ownership, move, borrow, destruction, defer, Result/Option, try, assert, and panic semantics during CTE
+    - represent evaluator-local references/raw pointers using deterministic semantic identity independent of compiler-host addresses
+    - prevent transient addresses and generational/liveness identities from escaping materialization
+    - implement typed CompileTimeValue representation with canonical Sec TypeIdentity and SemanticValue
+    - separate evaluation, owning-context validation, and static materialization
+    - materialize supported scalar, fixed aggregate, enum/union/Option/Result, and immutable string values through ordinary target storage/layout lowering
+    - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
+    - implement recursive materialization graph validation and explicit materialization-failure reasons
+    - detect compile-time value/type/layout dependency cycles without conflating them with ordinary terminating function recursion
+    - implement finite ExecutionSteps, CallDepth, TransientMemory, and AggregateValueSize evaluator budgets
+    - distinguish resource exhaustion from semantic nontermination and from target runtime out-of-memory
+    - implement cross-module CTE body availability using compatible canonical semantic artifacts
+    - preserve origin scope for private/sourcefile-only helper execution without leaking source visibility to importers
+    - request and execute canonical generic concrete instances through the monomorphization/generic-lowering contracts
+    - implement conservative CTE dependency tracking for declaration semantics, immutable values, generic concrete instances, type facts, layout facts, CompilationPlan facts, and imported semantic artifacts
+    - implement deterministic CTE result memoization and correct invalidation
+    - prevent resource-limit and cancellation outcomes from becoming permanent semantic negative caches
+    - implement CompileTimeProvenance including RequiredBy, RootExpression, CurrentCallStack, GenericInstantiationContext, and OriginModule
+    - distinguish NotEvaluable, EvaluationFailed, DependencyCycle, ResourceLimit, ResultNotMaterializable, ImplementationGap, Cancelled, and CompilerInvariantFailure
+    - rename/standardize ordinary semantic operation failure classification as SemanticOperationFailed
+    - make required CTE fail closed rather than silently emitting runtime initializers or host-executed substitutes
+    - permit optional optimizer early evaluation to reuse evaluator machinery without turning optional failure into source diagnostics
+    - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
+    - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
+    - ensure required CTE does not depend on optional MLIR/LLVM constant folding
+    - synchronize compiler-known SizeOf to property-only value.SizeOf and TypeName.SizeOf forms
+    - remove canonical global SizeOf(TypeName) from parser/Sema/registry/tooling/tests/docs
+    - synchronize compiler-known ToString fallback/replacement governance through the companion correction
+    - audit every compiler-known Sec declaration for complete canonical declaration and owning module
+    - update language-rulebook-status.md from Planned to Written and remove resolved CTE closure questions
+    - narrow the Sec 0.1 reflection exclusion to general-purpose structural compile-time reflection and declaration metaprogramming
+    - expose compiler CTE values/provenance/diagnostics through LSP without a separate editor evaluator
+  required_tests:
+    - plan-time attribute expression accepts permitted plan inputs and rejects ordinary semantic user-function dependency
+    - semantic CTE executes an ordinary user function without const-fn/comptime syntax
+    - same ordinary function executes at runtime when used from an ordinary local runtime context
+    - ordinary local constant expression remains valid when optional folding is disabled
+    - required static initializer fails compilation when semantic CTE cannot produce a value
+    - required static initializer never falls back to hidden runtime initialization
+    - path-sensitive CTE succeeds when a forbidden-effect branch is not executed
+    - path-sensitive CTE rejects the same function when the forbidden-effect branch is executed
+    - immutable compile-time value may be read during CTE
+    - mutable runtime static may not be read or mutated during CTE
+    - filesystem, network, environment, clock, ambient random, MMIO, volatile, atomic, barrier, concurrency, and foreign operations are rejected when executed by required CTE
+    - explicit deterministic PRNG state using only compile-time values remains ordinary deterministic computation
+    - unsafe block does not grant extra CTE capability
+    - transient allocation succeeds without using target runtime heap state
+    - explicit runtime allocator resource is not silently replaced by evaluator allocation
+    - move-only value preserves move semantics during CTE
+    - borrow/reborrow/lifetime rules remain valid during CTE
+    - destruction and defer ordering follow ordinary Sec execution during successful CTE
+    - assert failure becomes required CTE evaluation failure with provenance
+    - panic reached during required CTE becomes evaluation failure without crashing the compiler
+    - Result.Err remains a successfully evaluated Result value
+    - semantic operation failure uses owning language diagnostic plus SemanticOperationFailed category
+    - ordinary recursion can succeed during CTE
+    - compile-time value dependency cycle is rejected distinctly from function recursion
+    - type/layout/value dependency cycle is diagnosed with the semantic cycle
+    - ExecutionSteps limit exhaustion reports resource limit rather than semantic nontermination
+    - larger evaluation budget may retry an earlier resource-limited evaluation
+    - transient-memory exhaustion is not target runtime OOM
+    - scalar/fixed-array/struct/enum/union/Option/Result values materialize when their owning rules permit
+    - CTE-generated immutable string materializes without preserving evaluator-host address
+    - dynamic list may be used transiently to compute a scalar result
+    - dynamic list result without static materialization reports ResultNotMaterializable rather than NotEvaluable
+    - transient safe-reference address cannot escape static materialization
+    - transient raw-pointer numeric host address cannot escape static materialization
+    - target platform address metadata is distinct from evaluator-local address identity
+    - public cross-module function executes under semantic CTE
+    - public cross-module function may execute its already-resolved private origin-module helper without exposing that helper to importing source
+    - sourcefile-only origin helper remains inaccessible to other source files/importers
+    - generic concrete callable uses the same canonical specialization identity for CTE and runtime demand
+    - unresolved generic parameter never executes as runtime-like CTE generic state
+    - SizeOf result uses active CompilationPlan and cross-target tests do not use host size
+    - TypeName.SizeOf and value.SizeOf resolve as canonical properties
+    - global SizeOf(TypeName) is rejected after correction migration
+    - CTE cache invalidates on relevant body/helper/immutable-value/layout/CompilationPlan changes
+    - cancellation does not produce a source diagnostic or permanent negative cache
+    - optional early evaluation resource failure leaves ordinary runtime code intact
+    - valid-but-unimplemented semantic CTE path reports implementation gap
+    - impossible evaluator type/value mismatch reports compiler invariant failure
+    - LSP displays compiler-established CTE result/provenance without re-evaluating source independently
+  excluded:
+    - source-level const fn or comptime fn modifiers
+    - source-level comptime expression or block syntax
+    - a source-visible CTE namespace or IsCompileTime-style query
+    - first-class Sec Type/TypeInfo values introduced solely by this rulebook
+    - TypeOf introduced by this rulebook
+    - arbitrary value/const generic parameters
+    - general-purpose structural compile-time reflection
+    - declaration generation, AST rewriting, source-string reparsing, or Zig-style compiler-language metaprogramming
+    - runtime generic dictionaries, type erasure, hidden reflection metadata, or runtime specialization as CTE fallback
+    - ambient host filesystem/environment/time/random/network as implicit semantic CTE input
+    - target hardware execution or MMIO reads during CTE
+    - optional MLIR/LLVM constant folding as the semantic implementation of required CTE

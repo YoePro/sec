@@ -1,0 +1,179 @@
+fragment:
+  id: cancellation-v2
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: rules/concurrency/cancellation.md
+  repository_baseline: 0f5027d
+  document_revision: "2.0"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-06"
+  purpose: >
+    Synchronize cooperative task/thread cancellation, Task.Current/Thread.Current
+    cancellation observation, inferred cancellable-execution effects, commit
+    semantics, Context/ContextSource ownership and first-wins terminal causes,
+    tooling, Semantic IR, lowering and target capability.
+  codex_instructions:
+    - Reconcile with existing implementation-status entries; preserve stronger/newer evidence.
+    - Use canonical public CamelCase CancelRequested and RequestCancel spellings.
+    - Keep Task and Thread cancellation identities distinct while preserving symmetric API naming.
+    - Add/complete real source-visible compiler-known TaskContext and ThreadContext cancellation extensions.
+    - Implement Task.Current() -> TaskContext and Thread.Current() -> ThreadContext with their distinct semantic requirements.
+    - Infer a callable effect requiring current cancellable execution from `cancel` and transitively from calls; do not require an @cancellable source annotation.
+    - Preserve the inferred effect through callable/function values and indirect calls.
+    - Reject calls requiring cancellable execution where no suitable Task/Thread execution context exists.
+    - Keep bare cancel targeting the current logical Task when one exists, otherwise the current explicit cancellable Thread.
+    - Keep cancel invalid inside defer.
+    - Implement cancellation-point exactly-one commit semantics.
+    - Treat current-execution cancellation as terminal control flow, not a returned generic cancellation error.
+    - Keep supplied Context cancellation/deadline as operation-local ContextError, distinct from terminal execution cancellation.
+    - Context and ContextSource are @noCopy.
+    - Context has no Cancel(); ContextSource owns cancellation authority.
+    - ContextSource.Context is ref Context and cannot be moved out.
+    - Context.Error is Option[ContextError].
+    - Context terminal cause is first-wins and immutable.
+    - ContextSource destruction ends child lifetime/resources and is not implicit cancellation.
+    - Use existing duration as the canonical relative timeout type and Instant as monotonic deadline point.
+    - Do not hard-code the legacy cancellation Semantic IR opcode list into the language rulebook.
+    - Keep process termination/cancellation APIs outside this task/thread cancellation rewrite.
+
+governance_tags_used:
+  - concurrency.cancellation-v2
+  - concurrency.context-v1
+  - frontend.cancellation-v2
+  - frontend.cancellation-effect-v1
+  - tooling.cancellation-v2
+  - semantic-ir.cancellation-v2
+  - lowering.cancellation-v2
+  - concurrency.tasks-v2
+  - concurrency.mutex-v2
+  - concurrency.memory-model-v2
+  - analysis.transferability
+  - analysis.semantic-ir-v2
+  - compiler.platform-model
+
+integrations:
+  - id: concurrency.cancellation-v2
+    area: cooperative-execution-cancellation
+    rulebook: rules/concurrency/cancellation.md
+    status: partial
+    normative:
+      - "Task[T] and Thread[T] owning handles expose fn RequestCancel() void."
+      - "RequestCancel is idempotent, non-consuming, and has no effect after terminal completion."
+      - "Task.Current().CancelRequested observes logical task cancellation."
+      - "Thread.Current().CancelRequested observes physical thread cancellation."
+      - "Task and Thread cancellation identities remain distinct."
+      - "bare cancel is a terminating statement and runs deterministic cleanup."
+      - "bare cancel targets the current logical Task when one exists, otherwise an explicit cancellable Thread."
+      - "cancel is invalid outside cancellable execution and inside defer."
+      - "cancellation points preserve exactly-one operation/cancellation commit."
+      - "current-execution cancellation is terminal control flow rather than a generic runtime error."
+    remaining:
+      - "Implement exact RequestCancel member registration on Task[T] and Thread[T]."
+      - "Implement Task.Current and TaskContext cancellation observation."
+      - "Synchronize Thread.Current/ThreadContext to CancelRequested CamelCase."
+      - "Implement runtime request/observation state and wakeup integration."
+      - "Implement cancellation-point registration and commit races."
+      - "Integrate deterministic cleanup and terminal outcome publication."
+      - "Integrate completion synchronization after cancelled termination."
+    required_tests:
+      - id: task-request-cancel
+        expectation: "Task[T].RequestCancel() is void, idempotent, non-consuming and distinct from terminal completion."
+      - id: thread-request-cancel
+        expectation: "Thread[T].RequestCancel() has symmetric cooperative semantics."
+      - id: task-current-cancel-requested
+        expectation: "Task.Current().CancelRequested follows logical task identity across permitted worker migration."
+      - id: thread-current-cancel-requested
+        expectation: "Thread.Current().CancelRequested observes the physical thread identity and remains distinct from task cancellation."
+      - id: cancel-cleanup
+        expectation: "cancel executes defer/destruction cleanup and yields terminal Cancelled rather than normal T."
+      - id: cancel-in-defer-reject
+        expectation: "cancel inside defer is rejected specifically."
+      - id: cancellation-point-single-winner
+        expectation: "operation commit and current-execution cancellation cannot both win or lose ownership state."
+
+  - id: frontend.cancellation-effect-v1
+    area: inferred-cancellable-execution-effect
+    status: planned
+    normative:
+      - "Functions containing cancel require current cancellable execution."
+      - "The requirement propagates transitively through calls."
+      - "The requirement is compiler-inferred with no @cancellable source annotation in v0.1."
+      - "Callable/function values preserve the requirement and cannot erase it."
+      - "Task.Current carries a specific current-logical-task requirement."
+      - "Thread.Current carries a physical-thread capability requirement."
+    remaining:
+      - "Add effect field/facts to callable semantic representation."
+      - "Propagate through direct calls, recursion/SCCs, generics and indirect callable values."
+      - "Add context-validity diagnostics at call sites."
+      - "Preserve effect into Semantic IR indirect-call metadata."
+    required_tests:
+      - id: direct-cancel-effect
+        expectation: "Function containing cancel is callable only from valid cancellable execution."
+      - id: transitive-cancel-effect
+        expectation: "Caller of cancellation-dependent helper inherits the requirement."
+      - id: callable-cancel-effect
+        expectation: "Storing a cancellation-dependent function in a callable does not erase the requirement."
+      - id: task-current-specific-effect
+        expectation: "Task.Current cannot be satisfied merely by a physical Thread context."
+
+  - id: concurrency.context-v1
+    area: context-cancellation-surface
+    status: planned
+    normative:
+      - "Context and ContextSource are @noCopy."
+      - "Context does not expose Cancel()."
+      - "ContextSource owns one child Context, cancellation authority and registrations."
+      - "ContextSource.Context is ref Context and cannot outlive the source."
+      - "ContextSource.Cancel() is idempotent and leaves Context/source alive."
+      - "Context.Error is Option[ContextError]."
+      - "ContextError is exactly Cancelled | DeadlineExceeded."
+      - "Context terminal cause is first-wins and immutable."
+      - "Parent cancellation propagates downward; child cancellation does not propagate upward."
+      - "ContextSource destruction is not itself a cancellation event."
+    remaining:
+      - "Create/register source-visible Context, ContextSource, ContextError and relevant temporal identities."
+      - "Implement ownership/borrow/lifetime checks."
+      - "Implement first-wins terminal state and coherent IsCancelled/Error observation."
+      - "Implement parent-child cancellation propagation and deadline registration."
+      - "Implement LSP hover/completion/navigation."
+    required_tests:
+      - id: context-first-terminal-cause
+        expectation: "Whichever of cancellation/deadline commits first remains Context.Error permanently."
+      - id: context-error-coherence
+        expectation: "After terminal commit, IsCancelled is true and Error is the committed Some(ContextError)."
+      - id: context-no-cancel-method
+        expectation: "Context has no Cancel completion/member; ContextSource does."
+      - id: contextsource-destruction-not-cancel
+        expectation: "Destroying ContextSource ends child lifetime without synthesizing ContextError.Cancelled."
+
+  - id: semantic-ir.cancellation-v2
+    area: semantic-ir-cancellation-facts
+    status: planned
+    remaining:
+      - "Preserve task/thread identity, request/observe/cancel operations, inferred callable effect, cancellation-point commit, Context identity/cause/hierarchy/deadline and source provenance."
+      - "Keep current-execution terminal cancellation distinct from ContextError and unsafe termination."
+      - "Let semantic_ir.md own concrete operation names."
+
+  - id: lowering.cancellation-v2
+    area: cancellation-runtime-lowering
+    status: planned
+    remaining:
+      - "Implement cooperative request/observation/wakeup using CompilationPlan capabilities."
+      - "Preserve deterministic cleanup and exactly-one terminal execution outcome."
+      - "Preserve exactly-one Context terminal cause."
+      - "Preserve cancellation-point ownership commit semantics."
+
+rulebook_status_updates:
+  - action: update
+    path: rules/concurrency/cancellation.md
+    status: Written
+    document_revision: "2.0"
+    sync_required: false
+    note: >
+      Rewritten to exact symmetric Task/Thread cancellation surfaces, TaskContext
+      and ThreadContext CancelRequested views, compiler-inferred cancellable-call
+      effects, cancellation-point commit semantics, canonical Context/ContextSource
+      ownership and first-wins ContextError causes.
+
+correction_dependency:
+  required: true
+  file: rules/corrections/cancellation-v2-cross-rulebook-correction.md

@@ -1,0 +1,130 @@
+fragment:
+  id: concurrency-memory-model-v2
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: rules/concurrency/concurrency_memory_model.md
+  repository_baseline: 0f5027d
+  document_revision: "2.0"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-06"
+  purpose: >
+    Synchronize the Sec concurrency memory model with exact MemoryOrder,
+    per-atomic modification order, normative release sequences, CompareExchange
+    success/failure semantics, explicit fences, task/thread completion, canonical
+    race-analysis ownership, Semantic IR and CompilationPlan lowering.
+  codex_instructions:
+    - Reconcile with existing implementation-status entries; do not duplicate stronger/newer evidence.
+    - Treat modification order and release sequence as normative Sec concepts.
+    - Release sequences continue only through contiguous RMW modifications on the same atomic object.
+    - Successful CompareExchange is RMW; failed CompareExchange is read-only.
+    - A plain Store breaks the previous release sequence.
+    - Implement real fence synchronization semantics, not only backend fence emission.
+    - Two fences do not synchronize without qualifying atomic communication.
+    - Keep volatile distinct from synchronization.
+    - Keep data-race analysis in data_races.md; this rulebook supplies memory-model facts.
+    - Use canonical CamelCase atomic API spellings in tests and diagnostics.
+    - Do not hard-code a compiler-host memory model or target width as language truth.
+
+governance_tags_used:
+  - concurrency.memory-model-v2
+  - concurrency.atomics-v2
+  - concurrency.tasks-v2
+  - sema.data-race-analysis
+  - analysis.semantic-ir-v2
+  - semantic-ir.atomics-v2
+  - tooling.atomics-v2
+  - compiler.platform-model
+  - frontend.transferability
+  - analysis.transferability
+
+integrations:
+  - id: concurrency.memory-model-v2
+    area: shared-memory-ordering
+    rulebook: rules/concurrency/concurrency_memory_model.md
+    status: partial
+    normative:
+      - "Happens-before is built from program order and canonical synchronizes-with edges."
+      - "Every atomic object has its own total modification order."
+      - "Modification order is per atomic object, not one global atomic modification order."
+      - "Successful RMW operations participate as modifications."
+      - "Failed CompareExchange is read-only and does not participate as a modification."
+      - "A release sequence begins with a release modification and continues only through a contiguous RMW chain on the same atomic object."
+      - "A plain Store breaks the preceding release sequence."
+      - "Acquire can synchronize through a release sequence when it observes a value carried by that sequence."
+      - "atomic.Fence(Acquire/Release/AcqRel/SeqCst) is normative in v0.1; Relaxed fence is invalid."
+      - "Fence synchronization requires qualifying atomic communication; fences do not synchronize merely by existing."
+      - "SeqCst operations/fences participate in one global SeqCst order."
+      - "Volatile is not synchronization."
+      - "Task/thread completion synchronization publishes valid prior effects."
+      - "Ordinary unsynchronized data races are invalid Sec behavior."
+    remaining:
+      - "Represent per-atomic modification order and RMW coherence in analysis/IR facts."
+      - "Represent release-sequence head and RMW-chain semantics."
+      - "Implement fence/atomic, atomic/fence and fence/fence synchronization patterns."
+      - "Preserve SeqCst total-order constraints through optimization/lowering."
+      - "Preserve spawn and task/thread completion publication."
+      - "Integrate canonical memory-model facts into data-race analysis."
+      - "Preserve FFI/platform synchronization without name-based inference."
+    required_tests:
+      - id: per-atomic-modification-order
+        expectation: "Each atomic object has coherent total modification order independent from unrelated atomics."
+      - id: successful-cas-rmw
+        expectation: "Successful CompareExchange is a modification/RMW."
+      - id: failed-cas-read-only
+        expectation: "Failed CompareExchange adds no modification and does not extend release sequence."
+      - id: release-sequence-rmw
+        expectation: "Relaxed RMW can extend a release sequence headed by release modification."
+      - id: release-sequence-store-break
+        expectation: "Plain Store terminates the preceding release sequence."
+      - id: release-fence-acquire
+        expectation: "Release fence can synchronize through qualifying atomic write/read communication."
+      - id: release-acquire-fence
+        expectation: "Acquire fence can synchronize when preceding atomic read observes qualifying release-carried value."
+      - id: fence-fence-carrier
+        expectation: "Fence-to-fence synchronization requires qualifying atomic carrier."
+      - id: relaxed-fence-invalid
+        expectation: "MemoryOrder.Relaxed is rejected for atomic.Fence."
+      - id: seqcst-order
+        expectation: "SeqCst atomics/fences remain consistent with one global sequentially consistent order."
+      - id: volatile-not-sync
+        expectation: "Volatile never establishes Sec synchronizes-with by itself."
+      - id: completion-publication
+        expectation: "Successful task/thread completion wait observes validly published prior effects."
+
+patch_integrations:
+  - id: sema.data-race-analysis
+    actions:
+      - ensure_rule: rules/concurrency/concurrency_memory_model.md
+      - ensure_note: >
+          Race analysis consumes canonical program-order, publication,
+          synchronizes-with, modification-order, release-sequence, atomic and
+          completion facts from the memory model.
+
+  - id: analysis.semantic-ir-v2
+    actions:
+      - ensure_rule: rules/concurrency/concurrency_memory_model.md
+      - ensure_note: >
+          Semantic IR must preserve memory-order, atomic identity, RMW,
+          CompareExchange outcome and fence semantics without forcing this
+          rulebook to own concrete opcode names.
+
+  - id: compiler.platform-model
+    actions:
+      - ensure_rule: rules/concurrency/concurrency_memory_model.md
+      - ensure_note: >
+          Target lowering and atomic/fence capability are resolved through the
+          immutable CompilationPlan; compiler-host memory behavior is not target truth.
+
+rulebook_status_updates:
+  - action: update
+    path: rules/concurrency/concurrency_memory_model.md
+    status: Written
+    document_revision: "2.0"
+    sync_required: false
+    note: >
+      Synchronized to explicit per-atomic modification order, normative release
+      sequences, exact MemoryOrder, independent CompareExchange path orderings,
+      explicit v0.1 fences and current task/thread/analysis architecture.
+
+correction_dependency:
+  required: true
+  file: rules/corrections/atomics-memory-model-v2-cross-rulebook-correction.md

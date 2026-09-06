@@ -1,0 +1,165 @@
+fragment:
+  id: atomics-v2
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: rules/concurrency/atomics.md
+  repository_baseline: 0f5027d
+  document_revision: "2.0"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-06"
+  purpose: >
+    Synchronize the atomic source surface, core compiler-known declarations,
+    type eligibility, memory-order validation, compare-exchange result model,
+    fences, tooling, Semantic IR, lowering, and target capability separation.
+  codex_instructions:
+    - Reconcile with existing entries; do not duplicate stronger/newer evidence.
+    - Preserve the language/target separation: Atomic[T] eligibility is semantic; concrete operation support is a CompilationPlan capability.
+    - Do not hard-code target bit-width ceilings into language eligibility.
+    - Use canonical public CamelCase spellings exactly.
+    - Implement MemoryOrder and CompareExchangeResult[T] as real source-visible core declarations, not names only.
+    - LSP hover/completion and compiler Sema must consume the same canonical declarations.
+    - Do not replace CompareExchangeResult[T] with bool, Option[T], Result[T,T], or Result[void,E].
+    - Do not invent weak CompareExchange, float atomics, decimal atomics, arbitrary struct atomics, or lock-free query APIs.
+    - Do not enforce a rule that CompareExchange failure order must be weaker than success order.
+    - Do reject Release and AcqRel as failure orders.
+    - Do implement atomic.Fence(order: MemoryOrder) with mandatory explicit order and reject Relaxed.
+    - Do not reintroduce lowercase atomic public methods.
+
+governance_tags_used:
+  - concurrency.atomics-v2
+  - frontend.atomics-v2
+  - tooling.atomics-v2
+  - semantic-ir.atomics-v2
+  - lowering.atomics-v2
+  - platform.atomics-v2
+  - concurrency.memory-model-v2
+  - compiler.platform-model
+  - analysis.semantic-ir-v2
+  - sema.data-race-analysis
+  - analysis.transferability
+
+integrations:
+  - id: concurrency.atomics-v2
+    area: atomic-language-surface
+    rulebook: rules/concurrency/atomics.md
+    status: partial
+    normative:
+      - "Atomic[T] is a compiler-known nominal generic atomic-storage type."
+      - "Atomic eligibility is semantic and separate from concrete CompilationPlan capability."
+      - "The v0.1 compatible set is bool, primitive signed/unsigned integers, RawPtr[T], integer-backed enums, and compatible named types."
+      - "float/float32/float64, decimal/decimal128, arbitrary structs/unions/collections and other composites are not atomic-compatible in v0.1."
+      - "All public atomic methods use CamelCase."
+      - "MemoryOrder is exactly Relaxed, Acquire, Release, AcqRel, SeqCst."
+      - "CompareExchangeResult[T] is exactly Exchanged | NotExchanged(T)."
+      - "CompareExchange mismatch is normal control flow, not an error."
+      - "CompareExchange failure orders are Relaxed/Acquire/SeqCst only."
+      - "Failure ordering is not required to be weaker than success ordering."
+      - "SeqCst is the default for ordinary atomic object operations."
+      - "atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed."
+    remaining:
+      - "Implement/source-register the canonical core MemoryOrder enum."
+      - "Implement/source-register the canonical generic CompareExchangeResult[T] enum."
+      - "Ensure Atomic[T] compiler-known identity exposes the exact public API through compiler and LSP."
+      - "Synchronize parser/Sema member lookup to CamelCase public atomic names."
+      - "Implement exact per-T method applicability."
+      - "Implement exact MemoryOrder operation matrix."
+      - "Implement CompareExchange success/failure typing and observed-value transfer."
+      - "Implement fence parsing/name resolution/Sema/IR/lowering."
+      - "Separate semantic Atomic[T] eligibility from CompilationPlan capability."
+      - "Add target diagnostics for unsupported concrete operation/order combinations."
+      - "Synchronize documentation, formatter fixtures, hover, completion and navigation."
+    required_tests:
+      - id: memory-order-core-enum
+        expectation: "Core exposes exactly Relaxed, Acquire, Release, AcqRel, SeqCst and LSP hover shows the declaration."
+      - id: compare-exchange-result-core-enum
+        expectation: "Core exposes generic Exchanged and NotExchanged(T); LSP and Sema recognize payload typing."
+      - id: atomic-public-naming
+        expectation: "Load/Store/Swap/CompareExchange/FetchAdd/FetchSub/FetchAnd/FetchOr/FetchXor are canonical; lowercase alternates are rejected/not offered."
+      - id: atomic-type-eligibility
+        expectation: "Conservative v0.1 eligible set is enforced independently of target bit width."
+      - id: atomic-float-reject
+        expectation: "Atomic[float64] is rejected as a language type in v0.1 even if target representation could be atomic."
+      - id: atomic-decimal-reject
+        expectation: "Atomic[decimal] is rejected as a language type in v0.1."
+      - id: atomic-struct-reject
+        expectation: "Arbitrary struct does not become atomic-compatible from matching machine width."
+      - id: atomic-target-separation
+        expectation: "Semantically valid Atomic[uint64] can still produce target operation capability failure without being reclassified as an invalid type."
+      - id: compare-exchange-failure-orders
+        expectation: "Relaxed/Acquire/SeqCst accepted; Release/AcqRel rejected."
+      - id: compare-exchange-independent-orders
+        expectation: "Valid failure order is not rejected merely for being stronger than success order."
+      - id: atomic-fence
+        expectation: "atomic.Fence requires explicit Acquire/Release/AcqRel/SeqCst and rejects Relaxed."
+
+  - id: frontend.atomics-v2
+    area: parser-sema-atomic-surface
+    status: partial
+    rules:
+      - rules/concurrency/atomics.md
+      - rules/concurrency/concurrency_memory_model.md
+    remaining:
+      - "Register canonical core symbols and generic arity."
+      - "Implement per-T member availability."
+      - "Implement exact order matrix before lowering."
+      - "Preserve successful versus failed CompareExchange semantic paths."
+
+  - id: tooling.atomics-v2
+    area: lsp-format-docs-atomic-surface
+    status: planned
+    rules:
+      - rules/concurrency/atomics.md
+    remaining:
+      - "Hover shows exact core enum/type/member shapes and comments."
+      - "Completion uses canonical CamelCase members."
+      - "Navigation reaches canonical core declarations where source navigation applies."
+      - "Tooling distinguishes semantic invalidity from CompilationPlan capability failure."
+
+  - id: semantic-ir.atomics-v2
+    area: semantic-ir-atomic-facts
+    status: planned
+    rules:
+      - rules/concurrency/atomics.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/compiler/semantic_ir.md
+    remaining:
+      - "Preserve storage identity, T, operation kind, success/failure order, RMW classification, fence semantics, execution context and source provenance."
+      - "Preserve successful CompareExchange as modification/RMW and failure as read-only."
+
+  - id: lowering.atomics-v2
+    area: atomic-lowering
+    status: planned
+    rules:
+      - rules/concurrency/atomics.md
+      - rules/concurrency/concurrency_memory_model.md
+    remaining:
+      - "Consume immutable CompilationPlan capability facts."
+      - "Preserve or strengthen requested order; never weaken."
+      - "Return failed CompareExchange observed value from the same atomic operation."
+      - "Preserve fence and release-sequence semantics."
+
+  - id: platform.atomics-v2
+    area: compilation-plan-atomic-capability
+    status: planned
+    rules:
+      - rules/concurrency/atomics.md
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+    remaining:
+      - "Model capability by concrete T, size/alignment, operation, ordering and execution context."
+      - "Separate semantic eligibility from native/lock-free/emulated capability."
+      - "Reject blocking or ISR-incompatible emulation where context forbids it."
+
+rulebook_status_updates:
+  - action: update
+    path: rules/concurrency/atomics.md
+    status: Written
+    document_revision: "2.0"
+    sync_required: false
+    note: >
+      Synchronized to exact core type declarations, CamelCase public API,
+      conservative v0.1 atomic type eligibility, target-capability separation,
+      CompareExchangeResult[T], independent success/failure ordering and v0.1 fences.
+
+correction_dependency:
+  required: true
+  file: rules/corrections/atomics-memory-model-v2-cross-rulebook-correction.md

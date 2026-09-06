@@ -1,0 +1,228 @@
+schema_version: 1
+updated: "2026-09-06"
+repository_baseline: "0f5027d"
+
+rulebook:
+  path: rules/concurrency/processes.md
+  status: Written
+  document_revision: "2.0"
+  language_version: "Sec 0.1"
+  replaces: rules/concurrency/processes.txt
+  area: process-execution-and-lifecycle
+  canonical_owner_for:
+    - Sec-callable process creation through spawn process
+    - external executable launch through Command
+    - Process[T] lifecycle and typed terminal completion
+    - Command lifecycle and ExitStatus completion
+    - ProcessID and ProcessStatus
+    - process observers and process-completion waiting
+    - process join, detach, hard termination, reaping, and resolved destruction
+    - process startup transfer commit and rollback semantics
+    - process completion transfer and completion failure
+    - process standard-I/O launch modes and Command pipe ownership integration
+    - process target-capability requirements
+    - process-specific synchronization and memory-isolation semantics
+    - process Semantic IR facts and lowering obligations
+
+implementation_status_patch:
+  action: add_integration
+  integration:
+    id: concurrency.processes-v2
+    area: process-execution-and-lifecycle
+    status: planned
+    reviewed: "2026-09-06"
+    document_revision: "2.0"
+    repository_baseline: "0f5027d"
+    summary: >-
+      Implements the canonical Sec 0.1 process model defined by
+      rules/concurrency/processes.md: isolated Sec-callable subprocesses through
+      spawn process, external executable launch through Command, complete
+      compiler-known process/core types, transactional startup transfer,
+      typed completion transfer, process observation, join/detach/termination,
+      standard-I/O launch modes and pipes, target capability validation,
+      process lifecycle analysis, Semantic IR, lowering, diagnostics, and
+      deterministic native cleanup/reaping. The previous processes.txt file was
+      only a placeholder and does not represent an implementation baseline.
+    rules:
+      - rules/concurrency/processes.md
+      - rules/concurrency/spawn.md
+      - rules/concurrency/select.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/concurrency.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/memory/transferability.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/errors/panic.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+      - rules/ipc.md
+    implemented: []
+    remaining:
+      - replace rules/concurrency/processes.txt with rules/concurrency/processes.md and update every canonical reference to the new path
+      - add compiler-known/core declarations for Process[T], ProcessID, ProcessStatus, ExitStatus, ProcessTerminationKind, ProcessTermination, ProcessCompletionError, ProcessSpawnError, ProcessTerminationError, ProcessObserver, Command, CommandConfigurationError, CommandValidationError, CommandStartError, CommandInputMode, CommandOutputMode, and ProcessPlatform
+      - make every process/core declaration expose exactly the properties, methods, modifiers, enum variants, return types, and availability constraints defined by processes.md
+      - add parser and AST preservation for the process spawn modifier without allowing it to degrade to task/thread execution
+      - type spawn process Callable(...) as Result[Process[T], ProcessSpawnError] while preserving the callable's complete declared return type T
+      - make spawn process eager and reject any implementation that exposes an unstarted Process[T] or hidden ProcessConfig semantics
+      - implement process-callable materialization for named functions, concrete generic specializations, eligible methods, and eligible callable values/lambdas
+      - transfer instance-method receiver state into child-local storage while keeping impl/method code as compiler/linker materialization rather than runtime object payload
+      - reject ordinary ref, ref mut, process-invalid RawPtr, and process-local capabilities at process boundaries unless a canonical process-transfer adapter proves validity
+      - require explicit <- for every existing named argument, receiver, or capture whose ownership is consumed by process startup
+      - preserve fresh-temporary forwarding without synthetic move markers
+      - implement transactional startup transfer so ownership commits only after successful process bootstrap and is preserved on every pre-commit ProcessSpawnError path
+      - implement child bootstrap with all startup arguments/captures materialized before user callable entry
+      - guarantee that failed spawn never leaves a hidden running child, unreaped child, leaked bootstrap object, or half-committed ownership state
+      - implement ProcessID allocation with target-sized unsigned representation and no reuse during one Sec program execution
+      - implement ProcessStatus Created, Running, Completed, CompletionFailed, Panicked, and Terminated with the exact terminal/nonterminal meanings in processes.md
+      - implement one typed terminal completion payload for Process[T] and ExitStatus completion for Command
+      - implement ProcessCompletionError and owner-side completion-transfer failure semantics distinct from spawn failure, panic, and abnormal termination
+      - integrate canonical PanicInfo transport for process panic without fabricating panic metadata when the child panic report cannot be established
+      - implement ProcessObserver as copyable non-owning observation state with ID, Name, Status, Platform, and repeatable Wait()
+      - implement process join as one-shot lifecycle synchronization that preserves the resolved owner for terminal inspection and unconsumed result ownership
+      - ensure process join proves child quiescence and reaps/collects native terminal state without publishing arbitrary child memory
+      - implement selectable process join and ProcessObserver.Wait readiness/commit semantics
+      - implement detach for Process[T] and Command with explicit discard for non-void/non-ignored completion values where required
+      - transfer native reaping responsibility on detach without implicitly terminating the detached child
+      - guarantee that ordinary owner termination does not itself terminate a detached child on targets that support canonical detach, while preserving external platform policy as outside Sec semantics
+      - implement Terminate() as safe hard process termination in the Sec memory-safety sense, with ProcessTerminationError and no child cleanup guarantee
+      - keep Terminate() distinct from join and require join for terminal synchronization/reaping
+      - normalize abnormal termination into ProcessTerminationKind Requested, External, Fault, or Unknown without inventing a universal signal/native-code field
+      - implement Command as a move-only external-executable launch description and lifecycle owner after successful Start()
+      - implement infallible Command construction, optional Validate() preflight, and fallible Start() with complete rollback to Created on failure
+      - implement Command executable resolution, arguments, working-directory configuration, environment inheritance/overrides/removals, and Start-time snapshot semantics
+      - make SetWorkingDirectory() eagerly verify current existence, directory kind, and usable permissions while retaining Validate()/Start() revalidation
+      - implement CommandInputMode Inherit/Closed/Pipe and CommandOutputMode Inherit/Discard/Pipe
+      - implement anonymous process standard-I/O pipe creation atomically as part of successful Command.Start()
+      - implement Command TakeStdinPipe(), TakeStdoutPipe(), and TakeStderrPipe() through internal optional ownership slots rather than direct aggregate partial-move state
+      - keep join and lifecycle Drain from reading or buffering stdout/stderr
+      - implement resolved Command and Process[T] destruction with internal infallible lifecycle Drain that releases retained native/runtime bookkeeping without implicit join, terminate, detach, or standard-I/O draining
+      - reject unresolved process lifecycle owners at scope exit rather than silently invoking lifecycle-changing destruction behavior
+      - allow child processes to replace/close/redirect their own standard streams after start without mutating parent-side Command launch configuration or retargeting existing pipe endpoints
+      - add target/CompilationPlan facts ProcessExecution, ExternalProcessExecution, ProcessDetach, ProcessTermination, ProcessStandardIOInheritance, and ProcessPipes
+      - reject statically unsupported process capabilities at compile time instead of converting them into runtime errors
+      - ensure bare-metal, scheduler-only, and RTOS task facilities do not satisfy Sec process semantics without the required isolation, transfer, lifecycle, and cleanup model
+      - provide a complete concrete ProcessPlatform implementation for every process-capable target, including a target-native read-only ID type
+      - keep raw owning/mutating native process capabilities outside the portable ProcessPlatform surface and require unsafe for target-specific lifecycle escape hatches
+      - integrate process waits with blocking/effect analysis so Tasks suspend where supported and physical Threads may park/block according to the selected profile
+      - make Command.Validate() and SetWorkingDirectory() participate in filesystem/I/O/blocking analysis according to their eager checks
+      - reject process control/wait operations from ISR contexts where processes.md marks them non-ISR-safe
+      - preserve process cancellation independence so cancellation does not implicitly terminate or detach owned child processes
+      - integrate process edges into deadlock analysis and keep ordinary parent/child memory out of data-race sharing unless explicit IPC/shared-memory types introduce sharing
+      - add explicit Semantic IR operations/facts for process spawn, command create/configure/validate/start, owner movement, observers, wait, join, termination request, detach, pipe extraction, completion states, lifecycle Drain, and process-transfer prepare/commit/rollback
+      - lower process operations only after ownership, transferability, lifecycle, completion, and target capability facts have been verified
+      - synchronize spawn.md, select.md, blocking.md, concurrency.md, panic.md, language-rulebook-status.md, and implementation-status.yaml with the process v2 model
+      - resolve existing File/socket/native-capability standard-I/O binding against the canonical IPC capability-transfer model before declaring that extension complete
+    governance_reconciliation:
+      - rules/concurrency/processes.md is the sole canonical owner of Process[T], Command process lifecycle, process join/detach/termination, process completion, and process-specific target semantics
+      - rules/memory/transferability.md remains the canonical owner of ProcessTransferable proof and adapter validity; processes.md consumes that proof
+      - rules/ipc.md owns PipeReader, PipeWriter, general IPC, shared memory, and general handle/capability transfer
+      - rules/concurrency/spawn.md owns generic spawn syntax and common execution-kind dispatch but must delegate process-specific transfer/lifecycle semantics to processes.md
+      - rules/concurrency/select.md owns generic select source-order/readiness/commit rules while processes.md owns process-join and ProcessObserver.Wait readiness semantics
+      - rules/concurrency/blocking.md owns generic blocking/suspension/effect rules while processes.md classifies process operations under those rules
+      - rules/errors/panic.md remains the canonical owner of PanicInfo/PanicID and panic-domain semantics; processes.md only transports/observes canonical panic information
+      - implementation-status.yaml remains mutable implementation state and must not be copied into the normative process rulebook
+    corrections_pending:
+      - rules/corrections/processes-cross-rulebook-correction.md
+      - rules/corrections/panic-info-compiler-known-correction.md
+    required_tests:
+      - spawn process returning T has raw type Result[Process[T], ProcessSpawnError]
+      - spawn process preserves nested Result as Process[Result[T, E]]
+      - successful spawn process never exposes Created state
+      - target without ProcessExecution rejects spawn process at compile time
+      - target without ExternalProcessExecution rejects Command.Start() at compile time
+      - target scheduler/RTOS task without isolation is not accepted as process support
+      - named consumed startup argument requires <- and becomes unavailable only on successful spawn commit
+      - omitted <- for required consumed named startup argument is diagnosed
+      - fresh temporary may transfer to consuming process startup without synthetic <-
+      - failed process startup preserves ownership of every not-yet-committed consumed source value
+      - failed spawn after native child creation cleans up and reaps the bootstrap child
+      - process method receiver is transferred into child-local self and parent ordinary storage is not aliased
+      - borrowed receiver/capture/argument with ordinary ref is rejected across process boundary
+      - Process[T] is move-only even when T is copyable
+      - Command is move-only before and after Start()
+      - ProcessID width follows selected target uint width and does not reuse an ID during one program execution
+      - Command.ID, Command.Platform, and Command.Observe() are absent/None before successful Start and present afterward
+      - Command.Validate() does not change lifecycle state and does not guarantee later Start success
+      - SetWorkingDirectory() performs eager existence/directory/permission validation and Start rechecks later
+      - failed Command.Start() returns to Created with launch configuration intact and no observable pipe endpoint
+      - CommandInputMode.Closed produces end-of-input semantics without introducing Sec null/nil
+      - CommandOutputMode.Discard discards output without introducing Sec null/nil
+      - piped stdin yields parent PipeWriter and piped stdout/stderr yield parent PipeReader
+      - Take*Pipe() transfers endpoint ownership without making Command an ordinary partially moved aggregate
+      - join never drains piped stdout/stderr and pipe backpressure can participate in deadlock analysis
+      - successful process join is one-shot, preserves terminal owner inspection, reaps native state, and proves child quiescence
+      - status polling does not unlock terminal payload before join
+      - ProcessObserver.Wait() is repeatable, non-owning, and selectable
+      - selected join branch commits join while non-selected join branch preserves lifecycle ownership
+      - selected observer Wait branch performs observation only and does not join
+      - Terminate() does not imply terminal state or reaping until join
+      - hard termination never promises child defer/destruction/buffer-flush execution
+      - detach does not terminate the child and moves reaping responsibility to runtime/platform facilities
+      - detached child survives ordinary Sec owner termination when the target provides canonical detach, subject to external platform policy
+      - internal lifecycle Drain never joins, terminates, detaches, or reads standard-I/O pipes
+      - process panic yields Panicked only when canonical PanicInfo is established; otherwise abnormal loss is Terminated
+      - ordinary child-local memory is not treated as shared after join
+      - shared-memory visibility follows IPC/shared-memory synchronization rather than generic process join
+      - raw ProcessPlatform native lifecycle access is unavailable from the portable safe surface
+      - Semantic IR preserves process execution kind and transfer prepare/commit/rollback before lowering
+
+language_rulebook_status_patch:
+  replace:
+    rules/concurrency/processes.txt:
+      with: rules/concurrency/processes.md
+      status: Written
+      notes: >-
+        Normative Sec 0.1 process model covering typed Process[T] subprocesses,
+        external Command launch, lifecycle, completion, join/detach/termination,
+        standard I/O, target capabilities, analysis, and lowering. Implementation
+        remains planned until the compiler/runtime vertical slice is integrated.
+  amend:
+    rules/concurrency/spawn.md:
+      status: Written — sync required
+      notes: >-
+        Must adopt Result[Process[T], ProcessSpawnError], process-specific
+        transfer rules, eager process semantics, and processes.md ownership.
+    rules/concurrency/select.md:
+      status: Written — sync required
+      notes: >-
+        Must replace provisional process-completion wording with canonical
+        selectable process join and ProcessObserver.Wait semantics.
+    rules/concurrency/blocking.md:
+      status: Written — sync required
+      notes: >-
+        Must use Process[T], add ProcessObserver.Wait and process-specific join
+        synchronization wording, and classify process validation/control waits.
+    rules/concurrency/concurrency.md:
+      status: Written — sync required
+      notes: >-
+        Must stop describing the process rulebook as unfinished and reference
+        rules/concurrency/processes.md as the canonical process owner.
+    rules/errors/panic.md:
+      status: Written — sync required
+      notes: >-
+        PanicInfo/PanicID must become fully declared compiler-known/core types
+        suitable for process panic observation rather than conceptual-only names.
+  keep:
+    rules/ipc.md:
+      status: Planned
+      notes: >-
+        Owns general IPC, PipeReader/PipeWriter, shared memory, and process
+        capability/handle transfer. Existing-resource Command stdio binding is
+        resolved with this book before that extension is complete.
+
+files_to_add_or_replace:
+  - rules/concurrency/processes.md
+  - implementation-status-processes.yaml
+  - rules/corrections/processes-cross-rulebook-correction.md
+  - rules/corrections/panic-info-compiler-known-correction.md
+
+files_to_remove_after_merge:
+  - rules/concurrency/processes.txt

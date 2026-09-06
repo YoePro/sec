@@ -1,0 +1,207 @@
+fragment:
+  id: mutex-v2
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: rules/concurrency/mutex.md
+  repository_baseline: 0f5027d
+  document_revision: "2.0"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-06"
+  purpose: >
+    Synchronize Mutex[T], MutexGuard[T], exact Lock overloads, deterministic
+    guard release, direct protected-member forwarding, Context/ContextSource
+    ownership, ContextError, duration-based timeouts, monotonic deadlines,
+    cancellation commit semantics, tooling, Semantic IR and target capability.
+  codex_instructions:
+    - Reconcile with existing implementation-status entries; preserve stronger/newer evidence.
+    - Use canonical public CamelCase names Lock and TryLock.
+    - Do not retain legacy lowercase public mutex API as an alternate source surface.
+    - Implement Mutex[T], MutexGuard[T], Context and ContextSource as @noCopy source-visible/compiler-known types.
+    - Implement ContextError exactly as Cancelled and DeadlineExceeded.
+    - Context itself must not expose Cancel(); cancellation authority belongs to ContextSource.
+    - ContextSource.Context is a borrowed ref Context and cannot be moved out.
+    - Destroying ContextSource destroys its owned child Context/resources and is not an implicit cancellation event.
+    - Parent cancellation propagates to children; child cancellation does not propagate upward.
+    - Enforce child lifetime dependency on parent Context.
+    - Use existing compiler-known/core duration as the canonical timeout type.
+    - Time-unit expressions may convert to duration through canonical temporal/unit rules; do not create mutex-specific unit overloads.
+    - Do not invent a second Duration type.
+    - Add source-visible compiler-known Instant as the monotonic deadline point type required by Context.
+    - Implement exact mutex overloads: Lock(), TryLock(), Lock(duration), Lock(ref Context).
+    - Do not add Lock(timeout, context) in v0.1.
+    - Do not add portable LockError in v0.1.
+    - Preserve current-execution cancellation as terminal cancellation, distinct from ContextError.
+    - Implement direct MutexGuard[T] member forwarding with guard lookup first and T lookup second.
+    - Do not add public Unlock(), Value or Get() to MutexGuard[T].
+    - Preserve target capability separation through CompilationPlan.
+
+  governance_tags_used:
+    - concurrency.mutex-v2
+    - concurrency.context-v1
+    - frontend.mutex-v2
+    - frontend.mutex-guard-forwarding
+    - frontend.context-v1
+    - frontend.temporal-duration
+    - frontend.temporal-instant
+    - frontend.units-v2
+    - tooling.mutex-v2
+    - tooling.context-v1
+    - semantic-ir.mutex-v2
+    - lowering.mutex-v2
+    - compiler.platform-model
+    - analysis.transferability
+    - analysis.semantic-ir-v2
+    - sema.deadlock-analysis
+    - sema.data-race-analysis
+    - concurrency.memory-model-v2
+
+  integrations:
+    - id: concurrency.mutex-v2
+      area: mutex-language-surface
+      rulebook: rules/concurrency/mutex.md
+      status: partial
+      normative:
+        - "Mutex[T] and MutexGuard[T] are @noCopy compiler-known/source-visible generic types."
+        - "Mutex[T] owns exactly one protected T and one synchronization identity."
+        - "MutexGuard[T] represents exactly one exclusive acquisition and releases on deterministic destruction."
+        - "Public acquisition surface is Lock(), TryLock(), Lock(duration), Lock(ref Context)."
+        - "Lock() returns MutexGuard[T]."
+        - "TryLock() returns Option[MutexGuard[T]]."
+        - "Lock(duration) returns Option[MutexGuard[T]]."
+        - "Lock(ref Context) returns Result[MutexGuard[T], ContextError]."
+        - "There is no portable LockError and no Lock(timeout, context) overload in v0.1."
+        - "MutexGuard[T] forwards accessible members to protected T."
+        - "Guard-specific lookup precedes protected-T lookup."
+        - "The complete protected T cannot be moved out."
+        - "No public Unlock/Value/Get guard API exists."
+        - "Mutex is non-reentrant."
+        - "Live guards cannot cross spawn/await/suspending join/select."
+      remaining:
+        - "Synchronize canonical CamelCase method registration and legacy lowercase call sites/tests."
+        - "Implement/verify @noCopy semantic declarations for Mutex[T] and MutexGuard[T]."
+        - "Implement exact timeout/context overload resolution."
+        - "Implement deterministic guard destruction/release lowering."
+        - "Implement execution-entity-bound guard escape analysis."
+        - "Implement await/join/select/spawn live-guard diagnostics."
+        - "Implement same-execution repeated-lock detection."
+        - "Complete direct forwarding for fields/properties/methods and lifetime-aware references."
+        - "Reject consuming complete-T forwarded operations."
+        - "Integrate acquire/release synchronization with memory-model facts."
+        - "Integrate target/platform lock capability through CompilationPlan."
+      required_tests:
+        - id: mutex-camelcase-api
+          expectation: "Lock and TryLock are canonical; legacy lowercase public spellings are not offered as the public source API."
+        - id: mutex-basic-lock-type
+          expectation: "Lock() has static type MutexGuard[T]."
+        - id: mutex-try-lock-type
+          expectation: "TryLock() has static type Option[MutexGuard[T]]."
+        - id: mutex-timeout-type
+          expectation: "Lock(duration) has static type Option[MutexGuard[T]]."
+        - id: mutex-context-type
+          expectation: "Lock(ref Context) has static type Result[MutexGuard[T], ContextError]."
+        - id: mutex-no-lockerror
+          expectation: "Ordinary portable lock acquisition does not synthesize LockError."
+        - id: guard-forwarding
+          expectation: "Accessible fields/properties/non-consuming methods resolve through MutexGuard[T] with correct mutability/lifetime."
+        - id: guard-no-complete-move
+          expectation: "Complete protected T cannot be consumed/moved through a guard."
+        - id: guard-no-unlock-member
+          expectation: "Completion does not expose public Unlock/Value/Get on MutexGuard[T]."
+        - id: guard-suspension-reject
+          expectation: "Live guard across await/suspending join/select is rejected."
+        - id: guard-spawn-reject
+          expectation: "Move/borrow/capture of live guard across spawn is rejected."
+        - id: mutex-nonreentrant
+          expectation: "Statically provable same-execution reacquisition while guard is live is rejected."
+
+    - id: concurrency.context-v1
+      area: context-source-language-surface
+      status: planned
+      normative:
+        - "Context and ContextSource are @noCopy."
+        - "Context has no Cancel() method."
+        - "ContextSource owns one derived child Context plus cancellation/deadline/runtime registrations."
+        - "ContextSource.Context is ref Context and cannot outlive the source."
+        - "ContextSource.Cancel() is explicit, idempotent cancellation authority."
+        - "Destroying ContextSource destroys its child Context/resources but is not itself cancellation."
+        - "Parent cancellation propagates downward; child cancellation does not propagate upward."
+        - "Derived ContextSource cannot outlive its parent Context."
+        - "ContextError is exactly Cancelled | DeadlineExceeded."
+      remaining:
+        - "Create/register real core source-visible Context, ContextSource and ContextError declarations."
+        - "Implement @noCopy move/borrow semantics and ContextSource.Context lifetime."
+        - "Implement cancellation tree propagation and deadline/timer registration."
+        - "Implement explicit Cancel() state transition separate from destruction."
+        - "Implement Context hover/completion/navigation."
+        - "Integrate Context cancellation memory ordering."
+      required_tests:
+        - id: context-nocopy
+          expectation: "Owned Context cannot be copied; it can be moved or borrowed."
+        - id: contextsource-nocopy
+          expectation: "ContextSource cannot be copied."
+        - id: context-no-cancel
+          expectation: "Context completion/API has no Cancel()."
+        - id: contextsource-cancel
+          expectation: "ContextSource.Cancel() is idempotent and leaves source/context alive in cancelled state."
+        - id: contextsource-borrow
+          expectation: "ContextSource.Context is ref Context and cannot escape source lifetime."
+        - id: contextsource-destruction
+          expectation: "Source destruction ends child Context lifetime without synthesizing cancellation."
+        - id: context-parent-propagation
+          expectation: "Parent cancellation cancels descendants; child cancellation does not cancel parent."
+        - id: context-error
+          expectation: "ContextError exposes exactly Cancelled and DeadlineExceeded."
+
+    - id: frontend.temporal-duration
+      area: timeout-conversion
+      status: partial
+      normative:
+        - "duration is the canonical timeout parameter type."
+        - "Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced."
+        - "Time-unit quantities may materialize as duration at compatible call boundaries under canonical temporal/unit rules."
+      remaining:
+        - "Define/verify compiler-known conversion from time-dimension unit quantity to duration."
+        - "Avoid mutex-specific hard-coded unit spellings."
+
+    - id: frontend.temporal-instant
+      area: monotonic-deadline-type
+      status: planned
+      normative:
+        - "Instant is a source-visible compiler-known copyable monotonic point-in-time type."
+        - "Instant is not wall-clock/calendar time."
+      remaining:
+        - "Add canonical core Instant declaration/identity."
+        - "Define general monotonic clock acquisition/arithmetic in the owning temporal rulebook."
+
+    - id: semantic-ir.mutex-v2
+      area: semantic-ir-mutex-context-facts
+      status: planned
+      remaining:
+        - "Preserve mutex identity, protected T, acquisition mode, duration/context, commit outcome, guard identity/owner, forwarded access, release, cancellation/deadline registration and source provenance."
+        - "Keep ContextError distinct from terminal execution cancellation."
+        - "Use semantic_ir.md as owner of concrete opcode names."
+
+    - id: lowering.mutex-v2
+      area: mutex-context-lowering
+      status: planned
+      remaining:
+        - "Implement exactly-once acquisition/release and acquire/release synchronization."
+        - "Implement one-winner semantics among acquisition, timeout/context event and current-execution cancellation."
+        - "Implement ContextSource registration cleanup."
+        - "Consume CompilationPlan lock/cancellation capabilities."
+
+  rulebook_status_updates:
+    - action: update
+      path: rules/concurrency/mutex.md
+      status: Written
+      document_revision: "2.0"
+      sync_required: false
+      note: >
+        Rewritten to canonical CamelCase mutex API, exact Lock overloads,
+        deterministic @noCopy guard semantics, direct member forwarding,
+        no LockError, Context/ContextSource ownership and cancellation authority,
+        existing duration timeout semantics, monotonic Instant deadlines,
+        Semantic IR/tooling and CompilationPlan separation.
+
+  correction_dependency:
+    required: true
+    file: rules/corrections/mutex-v2-cross-rulebook-correction.md

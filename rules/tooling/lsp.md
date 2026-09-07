@@ -366,13 +366,10 @@ Implemented:
 Type-qualified completion for a string-backed enum exposes its declared
 members exactly like an integer-backed closed enum. Hover shows the nominal enum
 type, `string` underlying representation, closed domain, and declared constant
-value. Associated immutable `let` members and compatibility-spelled `static
-let` members share one readonly type-qualified member category; tooling must
-not offer either on an instance receiver.
-
-For immutable `static let` inside an `impl`, the LSP may offer the canonical
-rewrite to `let` and an informational redundant-modifier diagnostic. It must
-not offer that rewrite for `static let mut`, `static fn`, or `static property`.
+value. Explicit `static let` members are readonly type-qualified members;
+non-static `let` members require an instance receiver. Tooling must keep these
+categories distinct and must never offer a remove-static rewrite or a redundant
+modifier diagnostic for an implementation binding.
 
 ### Hover
 
@@ -3778,3 +3775,21 @@ must not parse Sec independently or invent an editor-specific runner. Every
 editor invocation uses the same discovery, selection, plan, harness, cleanup,
 and execution-provider semantics as `sec test` in
 `rules/tooling/testing.md`.
+
+## Compile-time evaluation integration
+
+The LSP consumes compiler-owned CTE values, provenance, and diagnostics and
+must not implement a separate evaluator. Diagnostics distinguish
+`NotEvaluable`, `EvaluationFailed`, `ResourceLimit`, `DependencyCycle`,
+`ResultNotMaterializable`, `ImplementationGap`,
+`CompilerInvariantFailure`, and `Cancelled`, while retaining the owning
+language error for `SemanticOperationFailed`. Cancellation of obsolete editor
+work is not a source diagnostic.
+
+The LSP consumes the same compiler-known registry as Sema. Hover/completion
+shows `value.SizeOf` and `TypeName.SizeOf` as authoritative read-only
+`uint` properties and never advertises global `SizeOf(TypeName)`.
+`ToString() string` is shown as a compiler-provided fallback unless an
+eligible exact user replacement resolves first. Tooling may identify fallback,
+authoritative, privileged-core-backed, and ordinary replacement categories, but
+must not infer compiler authority or source visibility from underscore spelling.

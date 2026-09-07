@@ -1,10 +1,10 @@
 # Impl
 
 **Status:** Normative  
-**Document revision:** 2.1
+**Document revision:** 2.2
 **Sec language version:** 0.1  
 **Created:** 2026-08-13  
-**Last updated:** 2026-09-01
+**Last updated:** 2026-09-07
 
 **Supersedes:** `rules/declarations/impl.txt`
 
@@ -25,7 +25,7 @@ revision is implemented.
 
 ## 1. Purpose
 
-`impl` defines behavior and type-associated declarations for a named type.
+`impl` defines behavior, instance members, and type-associated declarations for a named type.
 
 The hard separation is:
 
@@ -34,11 +34,13 @@ type declaration
     owns stored instance representation
 
 impl
-    owns behavior and type-associated declarations
+    owns behavior, instance let members, and explicitly static declarations
 ```
 
-An `impl` must never add stored instance data to its target type or otherwise
-change the target type's representation.
+An instance `let` or `let mut` in an `impl` contributes per-instance state.
+Its storage, initialization, ownership, and destruction must be included in the
+complete target representation before layout and lowering. Static members never
+contribute per-instance state.
 
 This rule does **not** mean that every declaration inside an `impl` must be
 behavioral. An `impl` may own associated or nested type definitions because a
@@ -74,8 +76,8 @@ impl Vehicle {
 }
 ```
 
-The `impl` above attempts to add a stored instance field to `Vehicle` and is a
-semantic error.
+The bare field syntax above is invalid in `impl`. An instance binding must use
+`let engine: Engine := value` and follow instance initialization rules.
 
 ---
 
@@ -236,7 +238,7 @@ Subject to the specialized rulebooks, an implementation may contain:
 - static methods;
 - static properties;
 - static storage/value declarations;
-- immutable associated value declarations using direct `let`;
+- instance value declarations using direct `let` or `let mut`;
 - lifecycle `init` declarations;
 - lifecycle `free` declarations;
 - associated/nested type declarations;
@@ -275,25 +277,17 @@ These declarations become members of the implemented type's namespace.
 
 ---
 
-## 7. Stored representation must not change
+## 7. Instance bindings and representation
 
-An `impl` must not directly add or redefine the stored representation of its
-target.
+An implementation may declare instance storage using `let` or `let mut`.
+These members belong to each instance and must be included in the owning type's
+complete storage, initialization, ownership, and destruction model.
 
-Forbidden directly in the implementation of the target include:
-
-- stored instance fields;
-- register fields of the target;
-- enum members of the target;
-- union variants of the target;
-- any other representation-changing member;
-- executable statements outside a member body;
-- ordinary local-style `let` declarations directly in the `impl` body.
-
-This remains true across `impl extends` fragments.
-
-Associated nested type definitions are permitted because their representation
-belongs to the nested type, not to the outer implementation target.
+Bare field syntax, target register fields, target enum members, target union
+variants, and executable statements outside member bodies remain forbidden.
+This distinction also applies across same-module `impl extends` fragments.
+Nested type definitions remain separate types and do not by themselves add
+storage to the outer target.
 
 ---
 
@@ -491,42 +485,27 @@ defined by `properties.md`.
 
 ## 13. Static members
 
-Type-associated members use explicit `static` where required by `static.md`.
-An immutable associated value is the deliberate exception: direct `let` is
-its canonical implementation-member spelling.
+Type-associated members require explicit `static`, including immutable
+`static let` bindings. A direct `let` without `static` is instance-bound;
+`let mut` is mutable instance storage. These are different semantic categories,
+not canonical and compatibility spellings of one declaration.
 
 ```sec
 impl Counter {
-    let Maximum: int := 100
-
-    static fn IsValid(value: int) bool {
-        return value <= Counter.Maximum
-    }
+    static let Maximum: int := 100
+    let Label: string := "counter"
 }
 ```
 
-Static members do not contribute to instance layout.
+`Counter.Maximum` needs no instance. `counter.Label` and `self.Label` require
+an instance. `Counter.Label` is invalid. Instance initialization is performed
+for the instance and must not enter the static initialization dependency graph.
+The formatter preserves `static` on all implementation bindings.
 
-Static members do not receive `self`.
-
-For immutable implementation members, `static let Maximum := value` is accepted
-as semantically identical compatibility syntax for `let Maximum := value`.
-Both spellings register one type-associated immutable member category and use
-the same qualified access, initialization, visibility, lifetime, duplicate,
-and lowering rules. Canonical formatting removes the redundant `static`.
-
-This equivalence does not extend to mutation. Shared mutable type storage must
-be declared `static let mut`; bare `let mut` directly inside an implementation
-is invalid. A bare implementation `let` never declares an instance field.
-
-Static storage, methods, and properties may occur in either the primary
-implementation or a same-module `impl extends` fragment. All fragments
-contribute to one combined static member surface, and duplicate or conflicting
-members are rejected across that complete surface.
-
-The combined-surface check treats `let Name` and `static let Name` as the same
-member category and identity. Mixing the two spellings cannot evade a duplicate
-diagnostic.
+The primary impl and same-module extensions form one combined member namespace.
+Duplicate names remain invalid, including conflicts between static and instance
+members. Instance representation must account for all instance bindings before
+layout and lowering.
 
 Static members are accessed through the target type, never through an
 instance. An ordinary `fn` remains instance-bound with implicit `self`; only
@@ -807,7 +786,7 @@ If construction fails:
 - explicitly registered construction temporaries are cleaned up as required.
 
 This aligns lifecycle construction with the general partial-construction rules
-in `destruction.txt`.
+in `destruction.md`.
 
 ---
 
@@ -837,7 +816,7 @@ impl ForeignBuffer {
 - exists at most once for the complete merged implementation of a type.
 
 Detailed destruction, cleanup ordering, partial-move restrictions, and
-deallocation rules are defined by `destruction.txt`.
+deallocation rules are defined by `destruction.md`.
 
 ---
 
@@ -935,7 +914,7 @@ The combined implementation must reject:
 - conflicts between a field and a behavior/associated member;
 - conflicts between associated/nested type names and other members;
 - nested implementations of unrelated types;
-- representation-changing declarations directly in the outer `impl`.
+- forbidden representation declarations other than explicit instance let bindings.
 
 Diagnostics should identify both declarations when a conflict has two source
 sites.
@@ -980,7 +959,9 @@ An implementation block does not add:
 - a method table merely because methods exist;
 - a vtable unless a separate interface/runtime rule requires one;
 - hidden metadata pointers;
-- storage solely because a member is declared.
+- storage solely because a method or nested type is declared.
+
+Explicit non-static let bindings do require per-instance storage and construction.
 
 Methods, properties, static members, `init`, `free`, and interface operations are
 lowered according to their own semantic requirements.
@@ -1006,10 +987,9 @@ scatter unrelated methods arbitrarily.
 
 ### 26.2 Data/behavior separation
 
-Keep stored instance representation in the type declaration.
-
-Use `impl` for behavior and associated definitions that do not mutate the outer
-type's representation.
+Use the type declaration for ordinary fields and `impl let` for instance
+bindings. Both participate in per-instance representation. Use explicit
+`static let` for state owned by the type rather than each instance.
 
 ### 26.3 Construction
 
@@ -1062,7 +1042,7 @@ static member Reset cannot use self
 ```
 
 ```text
-stored instance fields are not allowed inside impl Device
+bare field syntax is not allowed inside impl Device; use an instance let binding
 ```
 
 ```text
@@ -1124,7 +1104,7 @@ Detailed semantics are owned by the narrow rulebooks where applicable:
 - `static.md` — static storage and static members;
 - `generics.md` — generic targets and parameters;
 - `interfaces.md` — interface conformance and interface implementations;
-- `destruction.txt` — destruction, partial construction, and `free` cleanup;
+- `destruction.md` — destruction, partial construction, and `free` cleanup;
 - `errorhandling.md` — `try`, error propagation, and exact error typing;
 - `ownership.md` / `borrowing.md` — ownership and receiver/body access;
 - `names_scopes_visibility.md` — member namespaces, overload identity, visibility;

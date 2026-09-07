@@ -226,16 +226,12 @@ nested unions
 nested units
 ```
 
-An immutable `let` declared directly in an `impl` enters this member namespace
-as a type-associated constant. The compatibility spelling `static let` enters
-the same namespace with the same declaration identity; it does not create a
-second static-only namespace. Consequently, `let Name` and `static let Name`
-conflict across primary and extension fragments exactly as two declarations of
-either spelling would.
-
-Associated constants are resolved through their owning type outside the
-implementation (`Type.Name`). They do not enter the surrounding module
-namespace unqualified and are never instance fields.
+A non-static `let` or `let mut` in an `impl` is instance-bound; it requires an
+instance receiver. A `static let` or `static let mut` is type-owned and uses
+`Type.Name`. The modifier changes the member category and must be preserved.
+Both categories occupy the combined member-name namespace, so duplicate names
+conflict across primary and extension fragments even when their static flags
+differ. They are never interchangeable spellings of the same declaration.
 
 A member name may not be reused by a different member category.
 

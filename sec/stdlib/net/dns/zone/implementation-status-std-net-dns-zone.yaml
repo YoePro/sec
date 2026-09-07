@@ -1,0 +1,169 @@
+fragment:
+  id: stdlib-net-dns-zone-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/dns/zone/std-net-dns-zone.md
+  parent_rulebook: sec/stdlib/net/dns/std-net-dns.md
+  latest_verified_repository_main: 0f5027d
+  standards_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track the base DNS zone/master-file package: shared RRsets, RFC 1982 SOA
+    serial arithmetic, immutable zone snapshots/builders, structural
+    validation, RFC 1035 master-file parsing, RFC 2308 $TTL, RFC 3597 unknown
+    RR representation, safe caller-controlled includes, stable writing,
+    DNSSEC interaction, and boundaries for XFR and UPDATE child packages.
+
+  codex_instructions:
+    - Treat std-net-dns-zone.md as normative.
+    - Reuse shared dns.Rrset from parent net/dns; do not create zone.Rrset.
+    - Implement RFC 1982 SOA serial arithmetic, including undefined comparison.
+    - Implement RFC 1035 master-file syntax and directives.
+    - Implement RFC 2308 $TTL.
+    - Implement RFC 3597 generic unknown-RR presentation.
+    - Keep dns.Name absolute; resolve relative master-file names inside the parser.
+    - Never let $INCLUDE imply unrestricted filesystem access; use caller-supplied IncludeResolver.
+    - Bound includes, records, source bytes, token sizes, and parser resources.
+    - Reject non-standard directives by default.
+    - Build immutable Zone snapshots transactionally through ZoneBuilder.
+    - Loading DNSSEC records is not DNSSEC validation.
+    - Reserve zone/xfr and zone/update as child packages; do not put their network protocols in base zone.
+    - If TSIG is later implemented, use current RFC 8945, not obsolete RFC 2845.
+    - Add standards URLs to files and required tests.
+    - Reconcile implementation status without replacing stronger/newer evidence.
+
+  governance_tags_used:
+    - stdlib.net.dns.zone
+    - stdlib.net.dns.zone.serial
+    - stdlib.net.dns.zone.master-file
+    - stdlib.net.dns.zone.include
+    - stdlib.net.dns.zone.validation
+    - stdlib.net.dns.rrset
+
+  integrations:
+    - id: stdlib.net.dns.zone
+      status: specified
+      rulebook: sec/stdlib/net/dns/zone/std-net-dns-zone.md
+
+      normative:
+        - Base net/dns/zone owns zone data/model and master-file parsing/writing.
+        - net/dns/zone/xfr is reserved for AXFR/IXFR/NOTIFY and transfer transports.
+        - net/dns/zone/update is reserved for RFC 2136/3007 dynamic update.
+        - TSIG is a sibling/general DNS concern rather than base-zone functionality.
+        - Zone and DNSSEC both reuse parent dns.Rrset.
+        - SOA Serial follows RFC 1982 and is not naively compared as uint32.
+        - Zone is immutable after successful validation/build.
+        - ZoneBuilder owns mutable construction.
+        - A complete normal zone requires one apex SOA and apex NS data.
+        - Master-file parsing follows RFC 1035.
+        - $TTL follows RFC 2308.
+        - Unknown RR presentation follows RFC 3597 and unknown data is preserved.
+        - dns.Name stays absolute; relative file names are resolved against parser origin.
+        - $ORIGIN, $TTL, and $INCLUDE are standardized directives in revision 0.1.
+        - Non-standard directives such as $GENERATE are rejected by default.
+        - Includes are resolved through caller-supplied IncludeResolver, never automatic unrestricted filesystem access.
+        - Parser/include resource use is bounded.
+        - Writer provides deterministic semantic output but does not preserve comments/formatting trivia.
+        - Loading a signed zone does not imply cryptographic DNSSEC validation.
+        - Base zone has no TCP/TLS/QUIC dependency.
+
+      source_manifest:
+        - sec/stdlib/net/dns/zone/error.sec
+        - sec/stdlib/net/dns/zone/source.sec
+        - sec/stdlib/net/dns/zone/serial.sec
+        - sec/stdlib/net/dns/zone/zone.sec
+        - sec/stdlib/net/dns/zone/builder.sec
+        - sec/stdlib/net/dns/zone/validation.sec
+        - sec/stdlib/net/dns/zone/directive.sec
+        - sec/stdlib/net/dns/zone/master_token.sec
+        - sec/stdlib/net/dns/zone/master_parser.sec
+        - sec/stdlib/net/dns/zone/master_writer.sec
+        - sec/stdlib/net/dns/zone/include.sec
+
+      child_packages_reserved:
+        - path: sec/stdlib/net/dns/zone/xfr
+          rulebook: sec/stdlib/net/dns/zone/xfr/std-net-dns-zone-xfr.md
+          status: not-designed
+        - path: sec/stdlib/net/dns/zone/update
+          rulebook: sec/stdlib/net/dns/zone/update/std-net-dns-zone-update.md
+          status: not-designed
+
+      required_parent_correction:
+        - Add shared dns.Rrset to net/dns/record.sec.
+        - Ensure RecordData.Unknown supports RFC 3597 round-trip.
+        - Ensure all record presentation parsers needed by master files are available or implemented through zone parser helpers without duplicate wire types.
+
+      remaining:
+        - Implement shared dns.Rrset.
+        - Implement errors/source positions.
+        - Implement Serial RFC 1982 arithmetic.
+        - Implement Zone and ZoneBuilder.
+        - Implement structural zone validation.
+        - Implement master tokenizer.
+        - Implement directives.
+        - Implement master parser.
+        - Implement RFC 3597 unknown RR handling.
+        - Implement caller-controlled IncludeResolver.
+        - Implement deterministic master writer.
+        - Add signed-zone structural interoperability tests.
+        - Write std-net-dns-zone-xfr.md.
+        - Write std-net-dns-zone-update.md.
+        - Decide TSIG sibling package.
+        - Decide optional non-standard extension policy.
+
+      required_tests:
+        - id: zone-serial-wrap
+          expectation: RFC 1982 addition/comparison works across uint32 wrap.
+        - id: zone-serial-undefined
+          expectation: half-space serial comparison returns undefined/None rather than invented ordering.
+        - id: zone-apex-soa
+          expectation: complete zone requires exactly one SOA at apex.
+        - id: zone-apex-ns
+          expectation: complete zone requires apex NS RRset.
+        - id: zone-rrset-ttl
+          expectation: mixed TTL values within one RRset are rejected.
+        - id: zone-duplicate-rr
+          expectation: duplicate identical RRs are rejected/normalized according to the locked builder rule.
+        - id: zone-cname
+          expectation: CNAME coexistence follows current DNS/DNSSEC rules.
+        - id: zone-origin
+          expectation: relative master-file names resolve against current $ORIGIN into absolute dns.Name.
+        - id: zone-ttl-directive
+          expectation: $TTL supplies missing TTL according to RFC 2308 and SOA MINIMUM is not used as generic default.
+        - id: zone-include-disabled
+          expectation: untrusted parsing can disable $INCLUDE completely.
+        - id: zone-include-resolver
+          expectation: parser delegates includes to caller and never opens target strings itself.
+        - id: zone-include-cycle
+          expectation: include cycles/depth are detected and bounded.
+        - id: zone-unknown-rr
+          expectation: RFC 3597 TYPE#### and \# generic RDATA round-trip without loss.
+        - id: zone-parentheses-comments
+          expectation: multiline parentheses, comments, quotes, and escapes follow RFC master-file syntax.
+        - id: zone-stable-writer
+          expectation: semantic zone output is deterministic.
+        - id: zone-semantic-roundtrip
+          expectation: parse/build/write/parse preserves semantic zone data.
+        - id: zone-comments-not-promised
+          expectation: APIs/documentation do not claim formatting/comment preservation.
+        - id: zone-dnssec-load-not-validation
+          expectation: loading RRSIG/DNSKEY/NSEC data does not mark it cryptographically validated.
+        - id: zone-no-network-dependency
+          expectation: base zone package builds/works without TCP/TLS/QUIC runtime support.
+
+      standards:
+        - {name: RFC 1034, url: https://www.rfc-editor.org/rfc/rfc1034}
+        - {name: RFC 1035, url: https://www.rfc-editor.org/rfc/rfc1035}
+        - {name: RFC 2308, url: https://www.rfc-editor.org/rfc/rfc2308}
+        - {name: RFC 3597, url: https://www.rfc-editor.org/rfc/rfc3597}
+        - {name: RFC 1982, url: https://www.rfc-editor.org/rfc/rfc1982}
+        - {name: RFC 9499, url: https://www.rfc-editor.org/rfc/rfc9499}
+        - {name: RFC 1995, url: https://www.rfc-editor.org/rfc/rfc1995}
+        - {name: RFC 1996, url: https://www.rfc-editor.org/rfc/rfc1996}
+        - {name: RFC 5936, url: https://www.rfc-editor.org/rfc/rfc5936}
+        - {name: RFC 9103, url: https://www.rfc-editor.org/rfc/rfc9103}
+        - {name: RFC 2136, url: https://www.rfc-editor.org/rfc/rfc2136}
+        - {name: RFC 3007, url: https://www.rfc-editor.org/rfc/rfc3007}
+        - {name: RFC 8945, url: https://www.rfc-editor.org/rfc/rfc8945}

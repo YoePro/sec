@@ -524,7 +524,7 @@ let values := try arena.Alloc[int32](100)
 § 16(2) Required payload bytes are conceptually:
 
 ```text
-CheckedMultiply(count, SizeOf(T))
+CheckedMultiply(count, T.SizeOf)
 ```
 
 § 16(3) Allocation start is aligned according to `AlignOf(T)`.
@@ -535,7 +535,7 @@ CheckedMultiply(count, SizeOf(T))
 
 ```text
 alignedOffset = AlignUp(currentOffset, AlignOf(T))
-payloadSize   = CheckedMultiply(count, SizeOf(T))
+payloadSize   = CheckedMultiply(count, T.SizeOf)
 endOffset     = CheckedAdd(alignedOffset, payloadSize)
 
 endOffset <= capacity
@@ -552,7 +552,7 @@ endOffset <= capacity
 § 17(2) Arena implementation must not assume:
 
 ```text
-SizeOf(T) == AlignOf(T);
+T.SizeOf == AlignOf(T);
 every target alignment is a power of two;
 cursor is already aligned;
 all backing bases satisfy every possible T alignment.
@@ -707,7 +707,7 @@ does not advance epoch.
 
 § 23(1) Layout rules own whether a concrete zero-sized `T` is valid.
 
-§ 23(2) When `SizeOf(T) == 0` is valid:
+§ 23(2) When `T.SizeOf == 0` is valid:
 
 ```text
 Alloc[T](count) may consume no payload bytes;

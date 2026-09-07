@@ -1278,3 +1278,9 @@ diagnostic identifies nested blocking field/capture
 § 49(11) The compiler derives transferability from canonical ownership, borrow, lifetime, concurrency, FFI, platform, and target facts rather than duplicating those analyses.
 
 § 49(12) Safe transferability failures are compile-time errors; Sec requires no generic runtime transfer checker.
+
+§ 49(13) `MutexGuard[T]` is never transferable across task/thread/process
+spawn or suspension boundaries while live. `Context` and `ContextSource`
+remain `@noCopy`; a standalone owned Context may move where lifetime rules
+permit, while the child owned by ContextSource is exposed only as its
+source-bounded `ref Context`.

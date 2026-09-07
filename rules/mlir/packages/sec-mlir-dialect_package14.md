@@ -2237,7 +2237,7 @@ MemRef
 The canonical layout rule remains:
 
 ```text
-elementStride = RoundUp(SizeOf(T), AlignOf(T))
+elementStride = RoundUp(T.SizeOf, AlignOf(T))
 arraySize = CheckedMultiply(N, elementStride)
 ```
 
@@ -2271,7 +2271,7 @@ An array may have:
 
 ```text
 N > 0
-SizeOf(T) == 0
+T.SizeOf == 0
 ```
 
 Element identity remains:

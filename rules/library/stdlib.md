@@ -1279,7 +1279,7 @@ allocation.md
 ownership.md
 borrowing.md
 copy_move.md
-destruction.txt
+destruction.md
 collections.md
 shaped-types.md
 types/units.md

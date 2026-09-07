@@ -9,7 +9,7 @@
 - Replaces: No canonical rulebook. This rulebook closes the previously planned compile-time-evaluation area.
 - Repository baseline reviewed: `0f5027d`
 - Related rulebooks: `rules/foundations/attributes.md`, `rules/declarations/static.md`, `rules/declarations/generics.md`, `rules/compiler/generics_lowering.md`, `rules/compiler/monomorphization.md`, `rules/compiler/compiler_known_members.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_pipeline.md`, `rules/projects/modules.md`, `rules/memory/layout.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/copy_move.md`, `rules/memory/destruction.md`, `rules/memory/raw_pointers.md`, `rules/analysis/effect_analysis.md`, `rules/errors/panic.md`, `rules/errors/runtime_checks.md`, `rules/mlir/sec_mlir.md`, `rules/mlir/sec_mlir_dialect.md`, `rules/mlir/sec_mlir_lowering.md`
-- Required corrections: `rules/corrections/compile-time-evaluation-cross-rulebook-correction.md`, `rules/corrections/compiler-known-fundamentals-cross-rulebook-correction.md`
+- Applied corrections: `rules/corrections/applied/compile-time-evaluation-cross-rulebook-correction-20260907.md`, `rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md`
 - Governance note: this rulebook defines evaluation of Sec expressions into typed compile-time values. It does not redefine source visibility, generic specialization discovery, layout, ABI, source generation, reflection, optimizer constant folding, or compiler-internal data structures.
 
 ---

@@ -22,6 +22,12 @@ Implementation is partial. Named integer contracts, compile-time literal checks,
 ordered membership values, duplicate detection and explicit type defaults are
 implemented. The parser and Sema still require an audit to reject every obsolete
 variable- and field-contract form. Every `in [...]` member is checked against
+
+Static proof of a local contract fact is not by itself a required CTE context.
+Where the owning declaration requires a bound, member, divisor, or other value
+before runtime lowering, it must classify that source position explicitly under
+`rules/compiler/compile_time_evaluation.md`. Otherwise canonical runtime
+contract behavior remains when the value is not statically established.
 the complete named-type contract set. Runtime validation paths for fallible
 conversions are not complete.
 

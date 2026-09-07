@@ -76,6 +76,12 @@ The language must provide:
 
 # Core rule
 
+When a language-defined operation failure is reached during semantic CTE, its
+owning numeric/index/contract/check rule supplies the exact semantic reason and
+the evaluator classifies the request as `SemanticOperationFailed`. Static
+proof and optional check elimination do not themselves create a required CTE
+context.
+
 > Every language-defined runtime failure must have a path that does not panic.
 
 The non-panicking path may be:
@@ -1252,7 +1258,7 @@ ownership.md
 copy_move.md
 defer.md
 discard.md
-destruction.txt
+destruction.md
 allocation.md
 unsafe.md
 platform/ffi.md

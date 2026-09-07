@@ -612,6 +612,8 @@ unterminated construct.
 Ordinary statement blocks retain their parsed statements at EOF, including
 empty blocks, nested blocks, and previously recovered invalid statements.
 Their enclosing function and control-flow nodes remain available to tooling.
+Unterminated switch bodies also retain their subject, parsed case clauses,
+default clause, and clause bodies, including an empty switch at EOF.
 The unterminated-block error still blocks ordinary code generation.
 
 ---
@@ -770,9 +772,9 @@ coverage for every specialized parser remain pending.
 
 ## Specialized unterminated constructs can still return nil
 
-Specialized parsers, including switch/select bodies and match/try handlers,
+Specialized parsers, including select bodies and match/try handlers,
 can still report an unterminated construct and then return `nil`. Ordinary
-statement blocks now retain their partial contents.
+statement blocks and switch bodies now retain their partial contents.
 
 This can discard otherwise useful partial block contents.
 

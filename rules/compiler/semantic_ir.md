@@ -351,7 +351,12 @@ debug information
 constant proof
 ```
 
-§ 12(3) Semantic IR must not rerun general compile-time evaluation.
+§ 12(3) Semantic CTE consumes canonical typed Semantic IR preserving resolved
+callable/member identities, control flow, ownership/borrow legality, effects,
+concrete generic identity, and source provenance. It must not redo source Sema
+from raw AST. Because semantic CTE is a service used while semantic facts are
+formed, its requests may occur before the whole program's Semantic IR is
+complete; lowering does not rerun it.
 
 § 12(4) Compile-time declarations with no runtime representation may be omitted from runtime lowering.
 
@@ -2778,3 +2783,26 @@ backend metadata no stronger than Sec proof
 § 121(11) Tasks, threads, collections, shaped values, hardware, interrupts, and unsafe/FFI operations are first-class semantic concerns rather than lowering-only accidents.
 
 § 121(12) Sec MLIR implements Semantic IR meaning; it does not redefine the language.
+
+## § 122 Concurrency v2 synchronization facts
+
+Semantic IR preserves, without forcing the owning language rulebooks to define
+duplicate opcode lists:
+
+- atomic storage identity, resolved `Atomic[T]`, load/store/RMW kind,
+  successful-versus-failed `CompareExchange`, success/failure orders, explicit
+  fences, target requirements, synchronization/publication, provenance;
+- mutex identity and protected `T`, acquisition kind and duration/Context
+  input, exactly-one outcome, guard identity/execution owner, forwarding,
+  release, cancellation/deadline registration, synchronization, provenance;
+- distinct Task/Thread cancellation identity, request/observation, terminal
+  `cancel`, inferred callable requirement, cancellation-point winner, Context
+  and source/parent/deadline/first-cause identity, and Context error versus
+  terminal execution cancellation;
+- process execution kind, callable entry, `Process[T]` and creation-error
+  identity, transfer adapters, startup prepare/commit/rollback, lifecycle,
+  observer/wait/join/detach/termination/reaping, terminal payload, and target
+  requirements.
+
+Successful compare-exchange is a modification/RMW; failure is read-only.
+Lowering consumes these verified facts and the immutable `CompilationPlan`.

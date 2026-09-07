@@ -904,7 +904,8 @@ The following are not part of the Sec 0.1 generic model:
 - automatic interface implementation;
 - negative constraints;
 - union-of-types constraints;
-- arbitrary compile-time reflection as a generic mechanism.
+- general-purpose structural compile-time reflection and declaration
+  metaprogramming as a generic mechanism.
 
 Const/value generics are not introduced by this rulebook. Compile-time value parameterization, if present elsewhere in Sec, must have separate normative semantics and must not be inferred from type-generic syntax.
 

@@ -1,0 +1,62 @@
+module http
+
+enum HeaderError error {
+    InvalidName,
+    InvalidValue,
+    InjectionAttempt,
+    TooManyFields,
+    FieldsTooLarge,
+}
+
+enum BodyError error {
+    Closed,
+    TooLarge,
+    UnexpectedEof,
+    LengthMismatch,
+    NotReplayable,
+    ReadFailed,
+    WriteFailed,
+}
+
+enum MessageError error {
+    InvalidMethod,
+    InvalidStatus,
+    InvalidVersion,
+    InvalidTarget,
+    InvalidFraming,
+    InvalidContentLength,
+    ConflictingContentLength,
+    InvalidTransferEncoding,
+    InvalidTrailer,
+    HeaderTooLarge,
+    BodyTooLarge,
+    MalformedMessage,
+    UnsupportedProtocol,
+}
+
+type ClientError union error {
+    Url(error),
+    Dns(error),
+    Network(ip.NetworkError),
+    Tls(error),
+    Quic(error),
+    Message(MessageError),
+    Header(HeaderError),
+    Body(BodyError),
+    Redirect(RedirectError),
+    Cache(CacheError),
+    Cookie(CookieJarError),
+    ConnectionClosed,
+    NoProtocolAvailable,
+    ResourceLimitExceeded,
+}
+
+type ServerError union error {
+    Network(ip.NetworkError),
+    Tls(error),
+    Quic(error),
+    Message(MessageError),
+    Handler(error),
+    Closed,
+    ResourceLimitExceeded,
+}

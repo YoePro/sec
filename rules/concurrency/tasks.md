@@ -626,10 +626,12 @@ platform
 
 § 19(1) An owning task handle may request cooperative cancellation according to `cancellation.md`.
 
-Conceptual form:
+Canonical owning-handle surface:
 
 ```sec
-worker.RequestCancel()
+impl Task[T] {
+    fn RequestCancel() void
+}
 ```
 
 § 19(2) Requesting cancellation does not consume the handle.
@@ -647,6 +649,25 @@ worker.RequestCancel()
 § 19(8) If the task panics after a cancellation request but before cancellation termination, the actual terminal category is determined by the panic/cancellation ordering rules, not by the mere existence of the request.
 
 § 19(9) Cancellation must not fabricate a `TaskError`.
+
+The source-visible current-task surface is:
+
+```sec
+type TaskContext
+
+impl Task {
+    static fn Current() TaskContext
+}
+
+impl TaskContext {
+    CancelRequested bool
+}
+```
+
+`TaskContext` is immutable, non-owning, and follows the current logical task
+across permitted worker migration. It owns no `Task[T]` lifecycle or result
+capability. `Task.Current()` requires a current logical task and is never
+synthesized merely from a physical worker thread.
 
 ---
 

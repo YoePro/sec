@@ -1,0 +1,162 @@
+fragment:
+  id: stdlib-net-dns-dnssec-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/dns/dnssec/std-net-dns-dnssec.md
+  parent_rulebook: sec/stdlib/net/dns/std-net-dns.md
+  latest_verified_repository_main: 0f5027d
+  standards_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track local DNSSEC validation: shared RRset integration, canonical DNSSEC
+    encoding, trust anchors and RFC 5011 maintenance, live IANA algorithm
+    policy under RFC 9904, RRSIG/DS/DNSKEY chain validation, NSEC/NSEC3
+    authenticated denial, validation cache, resolver integration, security
+    status, bounded work, and tests.
+
+  codex_instructions:
+    - Treat std-net-dns-dnssec.md as normative.
+    - Reuse DNSSEC wire RR types from net/dns.
+    - Add shared dns.Rrset to parent net/dns; do not create dnssec.Rrset.
+    - Distinguish Secure, Insecure, Bogus, and Indeterminate.
+    - Follow RFC 4033/4034/4035 plus RFC 6840 clarifications.
+    - Follow RFC 5155 and current RFC 9276 NSEC3 guidance.
+    - Apply RFC 8198 only to validated NSEC/NSEC3 cache material.
+    - Implement explicit trust anchors and persistent RFC 5011 state before claiming automated updates.
+    - Follow RFC 9904 and live IANA DNSSEC algorithm policy; RFC 8624 is obsolete as the canonical policy table.
+    - Preserve unknown DNSSEC algorithm values.
+    - Never equate upstream AD with local validation.
+    - Use canonical crypto APIs; do not implement private crypto primitives in DNSSEC.
+    - Bound chain depth, NSEC3 work, key/signature attempts, dependency fetches, and cache growth.
+    - Integrate with common DNS resolver/query transports; do not create dnssec.Resolver.
+    - Keep future signing primitives independent of net/dns/zone.
+    - Add standards URLs and tests.
+    - Reconcile implementation status without replacing stronger/newer evidence.
+
+  governance_tags_used:
+    - stdlib.net.dns.dnssec
+    - stdlib.net.dns.rrset
+    - stdlib.net.dns.dnssec.validation
+    - stdlib.net.dns.dnssec.trust-anchor
+    - stdlib.net.dns.dnssec.algorithm
+    - stdlib.net.dns.dnssec.nsec
+    - stdlib.net.dns.dnssec.nsec3
+    - stdlib.net.dns.dnssec.cache
+    - security.dns.dnssec
+
+  integrations:
+    - id: stdlib.net.dns.dnssec
+      status: specified
+      rulebook: sec/stdlib/net/dns/dnssec/std-net-dns-dnssec.md
+
+      normative:
+        - net/dns owns DNSSEC wire RR types.
+        - net/dns must gain one shared dns.Rrset type.
+        - DNSSEC validation status has Secure, Insecure, Bogus, and Indeterminate states.
+        - Trust anchors are explicit and typed.
+        - RFC 5011 automated trust-anchor updates require persistent state.
+        - DNSSEC algorithm policy is read from current IANA registries under RFC 9904.
+        - Unknown algorithm values remain representable.
+        - RRSIG validation uses RFC 4034 canonical RRset form and ordering.
+        - NSEC and NSEC3 authenticated denial are both supported.
+        - NSEC3 validation work is bounded by policy.
+        - RFC 8198 aggressive negative caching may use only validated proof material.
+        - AD does not establish local Secure status.
+        - Validation is independent of DNS transport.
+        - Validator may use the common QueryTransport to fetch DS/DNSKEY/proof dependencies.
+        - No dnssec.Resolver is introduced.
+        - Crypto implementations remain owned by canonical crypto packages.
+        - Full zone signing is deferred; future RRset signing can live here without importing net/dns/zone.
+
+      source_manifest:
+        - sec/stdlib/net/dns/dnssec/error.sec
+        - sec/stdlib/net/dns/dnssec/status.sec
+        - sec/stdlib/net/dns/dnssec/policy.sec
+        - sec/stdlib/net/dns/dnssec/canonical.sec
+        - sec/stdlib/net/dns/dnssec/keytag.sec
+        - sec/stdlib/net/dns/dnssec/trust_anchor.sec
+        - sec/stdlib/net/dns/dnssec/anchor_update.sec
+        - sec/stdlib/net/dns/dnssec/algorithm.sec
+        - sec/stdlib/net/dns/dnssec/signature.sec
+        - sec/stdlib/net/dns/dnssec/delegation.sec
+        - sec/stdlib/net/dns/dnssec/denial_nsec.sec
+        - sec/stdlib/net/dns/dnssec/denial_nsec3.sec
+        - sec/stdlib/net/dns/dnssec/cache.sec
+        - sec/stdlib/net/dns/dnssec/validator.sec
+        - sec/stdlib/net/dns/dnssec/integration.sec
+
+      required_parent_correction:
+        - Add dns.Rrset to net/dns/record.sec.
+        - Expose validator-compatible query transport abstraction.
+        - Expose or accommodate four-state DNSSEC security metadata.
+        - Provide typed DO/CD request controls.
+        - Make resolver cache capable of preserving validation metadata.
+
+      remaining:
+        - Implement shared dns.Rrset.
+        - Implement validation errors/status/policy.
+        - Implement canonical DNSSEC RRset encoding.
+        - Implement key-tag and DS matching.
+        - Implement TrustAnchorStore.
+        - Implement current IANA algorithm policy mapping.
+        - Implement RRSIG verification.
+        - Implement secure/insecure delegation chain.
+        - Implement NSEC validation.
+        - Implement NSEC3 validation and work limits.
+        - Implement DNSSEC validation cache.
+        - Implement Validator dependency fetches.
+        - Integrate common Resolver without dnssec.Resolver.
+        - Implement RFC 8198.
+        - Implement persistent RFC 5011 state machine.
+        - Add future signing primitives only after canonical crypto/private-key APIs exist.
+
+      required_tests:
+        - id: dnssec-status-four-state
+          expectation: Secure/Insecure/Bogus/Indeterminate remain distinct.
+        - id: dnssec-canonical-rrset
+          expectation: RFC 4034 canonical form and ordering is exact.
+        - id: dnssec-keytag
+          expectation: DNSKEY key tags match standards test vectors.
+        - id: dnssec-ds-match
+          expectation: DS digest/key matching succeeds and mismatch fails.
+        - id: dnssec-signature-time
+          expectation: inception/expiration including wraparound cases are handled correctly.
+        - id: dnssec-secure-chain
+          expectation: a valid trust-anchor->DS->DNSKEY->RRSIG chain returns Secure.
+        - id: dnssec-insecure-delegation
+          expectation: authenticated insecure delegation returns Insecure.
+        - id: dnssec-bogus
+          expectation: expected signed data with invalid/missing required proof returns Bogus.
+        - id: dnssec-indeterminate
+          expectation: inability to obtain required security data can return Indeterminate.
+        - id: dnssec-nsec
+          expectation: NSEC proves NXDOMAIN/NODATA/wildcard cases correctly.
+        - id: dnssec-nsec3
+          expectation: NSEC3 and Opt-Out proofs follow RFC 5155/9276.
+        - id: dnssec-nsec3-budget
+          expectation: excessive hostile NSEC3 work is bounded.
+        - id: dnssec-rfc8198
+          expectation: aggressive negative synthesis uses validated proof material only.
+        - id: dnssec-rfc5011
+          expectation: trust-anchor hold-down/revoke state persists safely across restart.
+        - id: dnssec-iana-policy
+          expectation: algorithm requirements match the synchronized live IANA registry.
+        - id: dnssec-ad-not-local-proof
+          expectation: untrusted upstream AD alone cannot produce local Secure state.
+        - id: dnssec-transport-independent
+          expectation: the same validator works over classic DNS, DoT, DoH, and DoQ query transports.
+
+      standards:
+        - {name: RFC 4033, url: https://www.rfc-editor.org/rfc/rfc4033}
+        - {name: RFC 4034, url: https://www.rfc-editor.org/rfc/rfc4034}
+        - {name: RFC 4035, url: https://www.rfc-editor.org/rfc/rfc4035}
+        - {name: RFC 6840, url: https://www.rfc-editor.org/rfc/rfc6840}
+        - {name: RFC 5155, url: https://www.rfc-editor.org/rfc/rfc5155}
+        - {name: RFC 9276, url: https://www.rfc-editor.org/rfc/rfc9276}
+        - {name: RFC 8198, url: https://www.rfc-editor.org/rfc/rfc8198}
+        - {name: RFC 5011, url: https://www.rfc-editor.org/rfc/rfc5011}
+        - {name: RFC 9904, url: https://www.rfc-editor.org/rfc/rfc9904}
+        - {name: RFC 9615, url: https://www.rfc-editor.org/rfc/rfc9615}
+        - {name: IANA DNSSEC Algorithm Numbers, url: https://www.iana.org/assignments/dns-sec-alg-numbers}

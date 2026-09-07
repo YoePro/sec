@@ -992,3 +992,11 @@ rules/tooling/testing.md
 incremental-compilation rules consume the module identities and surfaces defined
 here and must not redefine their source-level meaning. The ModuleGraph is not a
 runtime initialization graph.
+
+Public source-accessible functions may execute across modules during semantic
+CTE. Compatible `ModuleSurface`/separate-compilation metadata may retain
+semantic bodies and dependencies without exposing private names. Execution uses
+origin declaration identities and scope: an already-resolved private or
+sourcefile-only helper may run as part of its origin body, but importers gain no
+new source visibility. Imported semantic artifacts must pass compatibility and
+fingerprint validation under `rules/compiler/compile_time_evaluation.md`.

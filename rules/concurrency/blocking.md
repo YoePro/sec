@@ -42,11 +42,13 @@ The following may wait:
 await Task[T]
 join Task[T]
 join Thread[T]
-join Process
+join Process[T]
+join Command
+ProcessObserver.Wait()
 Channel.Send
 Receiver.Receive
 select without ready branch
-Mutex.lock
+Mutex.Lock
 timer wait
 I/O readiness or completion
 platform wait operations
@@ -95,6 +97,18 @@ park or block current physical thread
 A successful join establishes the completion synchronization edge defined by the
 concurrency memory model.
 
+For `Process[T]` and `Command`, successful join additionally proves child
+quiescence, stabilizes terminal metadata and allowed completion payloads, and
+collects/reaps native terminal state where required. It does not publish
+arbitrary child addresses or ordinary child storage; explicit shared-memory IPC
+retains its own visibility contract.
+
+`ProcessObserver.Wait()` is repeatable, non-owning terminal observation. It
+does not perform owner join, reaping, detachment, termination, or terminal
+payload transfer. From a Task these waits should suspend when the backend can
+register completion without blocking the worker; from a physical Thread they
+may park/block. Blocking an executor worker requires explicit profile support.
+
 ---
 
 ## Channel operations
@@ -133,7 +147,7 @@ A non-selected branch must not:
 
 ## Mutex acquisition
 
-`Mutex[T].lock()` may wait.
+`Mutex[T].Lock()` may wait.
 
 In task context the backend should use task-aware suspension where available.
 
@@ -277,6 +291,13 @@ Task suspension and physical blocking are separate effects.
 A function may be nonblocking for a physical thread while still permitting task
 suspension only when its contract says so explicitly.
 
+Process operations are classified by their selected implementation effects.
+This includes `spawn process`, `Command.Start()`, `Command.Validate()`,
+`Command.SetWorkingDirectory()`, process/command `Terminate()`, owning
+process or command join, and `ProcessObserver.Wait()`. Validation and
+working-directory configuration may perform filesystem/native permission
+checks and are not assumed to be pure in-memory operations.
+
 ---
 
 ## Call graph analysis
@@ -326,6 +347,11 @@ An interrupt routine must not:
 - call an unannotated potentially blocking extern function;
 - sleep;
 - yield.
+
+Process creation, command start/validation/working-directory checks, hard
+termination, process/command join, and `ProcessObserver.Wait()` are likewise
+not ISR-safe in Sec 0.1. A narrower immutable metadata read still requires the
+ordinary interrupt-safety proof.
 
 ISR-safe operations must be bounded and explicitly declared.
 
@@ -470,7 +496,7 @@ deadlock_analysis.md
 data_races.md
 concurrency.md
 concurrency_runtime_model.md
-concurrency_memory_model.txt
+concurrency_memory_model.md
 platform/ffi.md
 compiler_analysis.md
 semantic_ir.md

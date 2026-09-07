@@ -1886,3 +1886,9 @@ Destroy exactly what is still owned, exactly once.
 Prefer static proof; permit checked runtime ownership state only when policy allows it.
 Explain mistakes like a mentor, not like a compiler textbook.
 ```
+
+`Mutex[T]`, `MutexGuard[T]`, `Context`, and `ContextSource` are
+`@noCopy`; that does not prohibit borrowing or movement of an independently
+owned value. `ContextSource.Context` is a source-bounded `ref Context` and
+cannot be moved out. A live mutex guard remains within its acquiring execution
+entity and cannot cross spawn or suspending await/join/select boundaries.

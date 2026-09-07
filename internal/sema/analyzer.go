@@ -9102,6 +9102,10 @@ func (a *Analyzer) setImplMethodReceiverMutable(name string, targetName string, 
 	a.functions[name] = functions
 }
 
+// registerImplStatement registers implementation members with their explicit
+// static/instance category; unsupported instance bindings are never made static.
+// Rules: rules/declarations/impl.md — "Static members";
+// rules/declarations/static.md — "Static declarations in implementations".
 func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	if !a.validImplStatements[stmt] {
 		return
@@ -9159,18 +9163,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 		if let, ok := member.(*ast.LetStatement); ok {
-			if !let.Static && let.Mutable {
-				a.addErrorAtToken(let.Token, "mutable associated storage must be declared with static let mut")
+			if !let.Static {
+				a.addErrorAtToken(let.Token, "instance member %s requires per-instance storage and initialization, which are not implemented yet", let.Name.Value)
 				continue
-			}
-			if let.Static && !let.Mutable {
-				a.addWarningAtTokenWithMetadata(
-					let.Token,
-					diagnostics.RedundantAssociatedStatic,
-					"Remove static; immutable let is already type-associated inside impl.",
-					"static is redundant on immutable associated declaration %s",
-					let.Name.Value,
-				)
 			}
 			a.analyzeImplAssociatedLet(stmt.Target.Name, let)
 			continue
@@ -9337,14 +9332,14 @@ func (a *Analyzer) registerInitDeclaration(targetName string, target Type, initi
 	a.functions[key] = functions
 }
 
-// analyzeImplAssociatedLet registers the single immutable-associated/static
-// storage category shared by `let` and compatibility `static let` in impl.
+// analyzeImplAssociatedLet registers explicitly static impl storage only.
+// A bare let is instance-bound and must never enter this symbol category.
 //
 // Rules:
 //   - rules/declarations/static.md — "Static declarations in implementations"
 //   - rules/declarations/impl.md — "Static members"
 func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStatement) {
-	if stmt == nil || stmt.Name == nil {
+	if stmt == nil || stmt.Name == nil || !stmt.Static {
 		return
 	}
 	qualifiedName := targetName + "." + stmt.Name.Value

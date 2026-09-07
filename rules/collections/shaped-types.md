@@ -136,6 +136,14 @@ Len   = N
 
 `N` is compile-time-known.
 
+When a static extent or rank is supplied by a source expression required to
+form the shaped type, that expression is a
+`SemanticCompileTimeRequiredContext`. This classification does not turn an
+ordinary read of compiler-known `Rank`, `Shape`, `Len`, `Strides`,
+`Layout`, `MemorySpace`, `IsContiguous`, `Ptr`, or `SizeOf` into
+required CTE merely because its value is statically known. Domain, overflow,
+and extent legality remain owned by this rulebook after evaluation succeeds.
+
 A vector is not a growable collection.
 
 ## 3.2 `matrix`
@@ -622,8 +630,9 @@ to one backing element repeatedly.
 the relevant layout and FFI requirements are satisfied and `.IsContiguous` is
 true.
 
-Associated type `.SizeOf` and global `SizeOf(T)` remain physical type-layout
-queries under the compiler-known-member and layout rules.
+Associated `TypeName.SizeOf` remains the physical complete-type layout query
+under the compiler-known-member and layout rules. Sec 0.1 has no global
+`SizeOf(T)` source form.
 
 ---
 

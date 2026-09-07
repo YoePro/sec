@@ -32,7 +32,6 @@ func format(text string, options Options) string {
 	}
 	out := make([]string, 0, len(lines))
 	indent := 0
-	implMemberDepths := map[int]bool{}
 	blank := false
 	branches := []branch{}
 	for _, line := range lines {
@@ -50,12 +49,7 @@ func format(text string, options Options) string {
 		if indent == 0 && strings.HasPrefix(line, "static let ") {
 			line = strings.TrimPrefix(line, "static ")
 		}
-		// rules/declarations/static.md sections 6 and 25. Immutable static let
-		// is redundant only as a direct impl member; function-local static and
-		// mutable associated storage retain the modifier.
-		if implMemberDepths[indent] && strings.HasPrefix(line, "static let ") && !strings.HasPrefix(line, "static let mut ") {
-			line = strings.TrimPrefix(line, "static ")
-		}
+		// static.md section 6: impl static let is distinct from instance let.
 		if strings.HasPrefix(line, "@noCopy ") {
 			if blank && len(out) > 0 {
 				out = append(out, "")
@@ -96,17 +90,9 @@ func format(text string, options Options) string {
 		}
 		out = append(out, strings.Repeat(" ", (level+extra)*4)+line)
 		delta := delimiters(line)
-		if strings.HasPrefix(line, "impl ") && delta > 0 {
-			implMemberDepths[indent+delta] = true
-		}
 		indent += delta
 		if indent < 0 {
 			indent = 0
-		}
-		for depth := range implMemberDepths {
-			if depth > indent {
-				delete(implMemberDepths, depth)
-			}
 		}
 		if branchStart(line) && delta > 0 {
 			branches = append(branches, branch{depth: indent, extra: switchStart(line)})

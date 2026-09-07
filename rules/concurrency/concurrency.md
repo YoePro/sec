@@ -2,13 +2,13 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-04
-- **Last updated:** 2026-09-04
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-07
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/concurrency.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `777beb8`
-- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.txt`, `rules/concurrency/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`
+- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.md`, `rules/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`
 
 ---
 
@@ -257,9 +257,19 @@ TaskOutcome[Result[Image, IOError]]
 
 § 9(1) Process execution is a distinct concurrency boundary.
 
-§ 9(2) This overview does not define process creation syntax, process result shape, process lifecycle APIs, or process termination policy.
+§ 9(2) Sec-callable isolated subprocesses use:
 
-§ 9(3) Those semantics belong to the process and IPC rulebooks.
+```sec
+spawn process Work(...)  // Result[Process[T], ProcessSpawnError]
+```
+
+External executable launch uses the distinct move-only `Command` abstraction.
+
+§ 9(3) `Process[T]` and `Command` are distinct from task/thread lifecycle
+objects. Process lifecycle, completion, join, detach, termination, observation,
+reaping, standard I/O, and process-specific synchronization belong to
+`processes.md`; general messaging, shared memory, and capability transfer
+belong to `ipc.md`.
 
 § 9(4) Cross-process transfer must not be modeled as ordinary in-process reference or pointer transfer unless an explicit shared-memory or process adapter contract defines that representation.
 
@@ -269,7 +279,14 @@ TaskOutcome[Result[Image, IOError]]
 
 § 9(7) Process transferability is a semantic property, not a bit-copy property.
 
-§ 9(8) This section intentionally establishes only the common cross-boundary invariant and does not complete the currently unfinished process rulebook.
+§ 9(8) Task or Thread cancellation does not implicitly terminate or detach an
+owned process. Its lifecycle obligation must be resolved explicitly according
+to `processes.md`.
+
+§ 9(9) Canonical process detach removes the Sec owner-child lifetime dependency
+where supported; ordinary termination of the former owner does not itself
+terminate the child. External platform, container, service-manager, session, or
+system policy remains outside this guarantee.
 
 ---
 
@@ -467,6 +484,13 @@ let worker := try spawn Consume(<-data)
 § 16(8) Unsupported required atomic behavior must be rejected or lowered through an explicitly permitted runtime mechanism according to `atomics.md` and the target profile.
 
 § 16(9) Detailed atomic types, operations, memory-order values, compare/exchange semantics, fences, and target mapping are owned by `atomics.md`.
+
+§ 16(10) Semantic eligibility of `Atomic[T]` is a language fact and is distinct
+from concrete operation/order/layout support in the selected `CompilationPlan`.
+The overview does not impose a target-width list. Public operations use
+`Load`, `Store`, `Swap`, `CompareExchange`, `FetchAdd`, `FetchSub`,
+`FetchAnd`, `FetchOr`, `FetchXor`, and `atomic.Fence`; exact release
+sequences and fence communication are owned by `concurrency_memory_model.md`.
 
 ---
 
@@ -1276,7 +1300,9 @@ when mutex semantics are appropriate.
 
 § 47(13) `thread_local.md` owns thread-local storage semantics.
 
-§ 47(14) Process and IPC rulebooks own process-specific syntax, lifecycle, results, termination, and communication.
+§ 47(14) `processes.md` owns process-specific syntax, lifecycle, results,
+termination, observation, reaping, and synchronization; `ipc.md` owns general
+inter-process communication, shared memory, and capability/handle transfer.
 
 § 47(15) `transferability.md` owns cross-boundary transfer proof.
 

@@ -296,7 +296,6 @@ Associated type layout remains a different query:
 
 ```sec
 T.SizeOf
-SizeOf(T)
 ```
 
 Those forms describe the physical layout size of one value/type `T` according
@@ -2321,7 +2320,7 @@ reference_model.md
 borrowing.md
 ownership.md
 copy_move.md
-destruction.txt
+destruction.md
 errorhandling.md
 platform/ffi.md
 shaped-types.md
@@ -2385,7 +2384,7 @@ Len
 instance SizeOf
     represented payload bytes for contiguous sequences
 
-T.SizeOf / SizeOf(T)
+T.SizeOf
     type/layout size
 
 normal absence

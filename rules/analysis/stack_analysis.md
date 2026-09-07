@@ -871,7 +871,7 @@ instantiation when a sound symbolic semantic summary can be preserved.
 Conceptual examples include:
 
 ```text
-OwnFrame(T) <= SizeOf(T) + K
+OwnFrame(T) <= T.SizeOf + K
 Maximum(F<N>) <= N * K + C
 ```
 

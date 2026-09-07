@@ -581,7 +581,10 @@ compiler-known type identity.
 
 § 24(1) Compile-time evaluation is not one mandatory late linear stage.
 
-§ 24(2) It is a semantic service used whenever a canonical frontend rule requires a compile-time value.
+§ 24(2) It is a semantic service used whenever a canonical frontend rule
+declares a `SemanticCompileTimeRequiredContext`. Restricted source-graph and
+attribute selection instead uses `PlanTimeRequiredContext`. Static proof,
+constant propagation, and optional optimizer folding are separate activities.
 
 § 24(3) Consumers include:
 
@@ -604,6 +607,11 @@ inline assembly constraints where applicable.
 § 24(4) Target-dependent evaluation consumes `CompilationPlan`.
 
 § 24(5) Compile-time evaluation uses Sec semantics and must not depend on host overflow/pointer width/locale.
+
+§ 24(6) The canonical pipeline relationship is plan-time selection followed by
+typed semantic analysis with semantic CTE invoked as needed, then verified
+Semantic IR and Sec-MLIR/MLIR/LLVM lowering. Required semantic CTE cannot fall
+back to optional MLIR/LLVM constant folding or compiler-host execution.
 
 ---
 

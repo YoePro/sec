@@ -498,7 +498,7 @@ Required calculations are semantic checked arithmetic:
 
 ```text
 alignedOffset = AlignUp(currentOffset, AlignOf(T))
-payloadSize   = CheckedMultiply(count, SizeOf(T))
+payloadSize   = CheckedMultiply(count, T.SizeOf)
 endOffset     = CheckedAdd(alignedOffset, payloadSize)
 ```
 
@@ -508,7 +508,7 @@ No host-width truncation.
 
 # 20. Arena layout source
 
-`SizeOf(T)` and `AlignOf(T)` come from the active CompilationPlan's canonical
+`T.SizeOf` and `AlignOf(T)` come from the active CompilationPlan's canonical
 resolved layout.
 
 P19 must not independently invent layout.
@@ -692,7 +692,7 @@ A proof may eliminate the failure branch without changing source typing.
 
 # 30. Zero-sized T
 
-If the canonical layout permits `SizeOf(T) == 0`:
+If the canonical layout permits `T.SizeOf == 0`:
 
 ```text
 Alloc[T](count) may consume no payload bytes

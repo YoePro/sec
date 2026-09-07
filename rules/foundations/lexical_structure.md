@@ -645,7 +645,8 @@ fn thread() void {
 and remains a valid ordinary identifier outside set-type and property-setter
 contexts.
 
-`process` remains reserved even while process spawning is deferred.
+`process` remains reserved as the contextual modifier for the canonical
+`spawn process` form.
 
 ---
 

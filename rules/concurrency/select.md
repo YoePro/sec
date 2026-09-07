@@ -232,7 +232,35 @@ as an ordinary successful thread join.
 Non-selected join branches must not consume, detach or otherwise alter their
 thread handles.
 
-Process completion may be added by a later process rule.
+## Process completion branches
+
+An owning `Process[T]` participates through `join`. The branch is ready when
+the child is terminal and join can commit without further waiting. If selected,
+it performs the same one-shot lifecycle join as ordinary `join`: completion
+synchronization, native collection/reaping, release of join-only resources, and
+unlocking of the status-appropriate terminal payload. The resolved owner remains
+available for terminal inspection and any unconsumed normal result.
+
+If the branch is not selected, its join capability and payload ownership are
+unchanged and the process is neither reaped, detached, nor terminated.
+
+```sec
+select {
+    join worker => { HandleCompletion(worker.Status) }
+    message := receiver.Receive() => { HandleMessage(message) }
+}
+```
+
+A `ProcessObserver` participates through repeatable `Wait()`. Its branch is
+ready on terminal status and selecting it observes only `ProcessStatus`; it
+does not join, reap, detach, terminate, or unlock the owner's terminal payload.
+
+```sec
+select {
+    status := observer.Wait() => { Report(status) }
+    after 1s => { ReportTimeout() }
+}
+```
 
 ---
 
@@ -376,11 +404,10 @@ The non-selected task handle remains unchanged.
 
 ---
 
-## Process and I/O readiness
+## Additional I/O readiness
 
 The `select` model may later support other readiness-based operations, including:
 
-- process completion;
 - IPC receive;
 - socket receive;
 - listener accept;
@@ -570,13 +597,14 @@ select {
         Process(message)
     }
 
-    task.cancelRequested => {
+    Task.Current().CancelRequested => {
         cancel
     }
 }
 ```
 
-The exact readiness semantics of `task.cancelRequested` must be compiler-defined.
+The exact readiness semantics of `Task.Current().CancelRequested` are governed
+by `cancellation.md` and the selected cancellation-point operation.
 
 An explicit branch is useful when local cleanup or alternate control flow is
 required.
@@ -831,7 +859,7 @@ A live `MutexGuard[T]` must not cross a blocking select.
 Invalid:
 
 ```sec
-let mut state := State.lock()
+let mut state := State.Lock()
 
 select {
     message := rx.Receive() => {
@@ -855,7 +883,7 @@ End the guard scope before select:
 
 ```sec
 {
-    let mut state := State.lock()
+    let mut state := State.Lock()
     Prepare(state)
 }
 
@@ -1052,7 +1080,7 @@ Non-selected branches establish no operation synchronization edge.
 
 The `select` mechanism itself must safely coordinate readiness and commit.
 
-Detailed ordering is defined in `concurrency_memory_model.txt`.
+Detailed ordering is defined in `concurrency_memory_model.md`.
 
 ---
 
@@ -1280,7 +1308,7 @@ explicit fairness policies
 weighted selection
 dynamic wait sets
 named selection policies
-process and socket integration
+socket integration
 select observers
 compile-time branch groups
 priority annotations independent of source order
@@ -1298,9 +1326,9 @@ tasks.md
 spawn.txt
 await.txt
 concurrency.txt
-mutex.txt
-atomics.txt
-concurrency_memory_model.txt
-processes.txt
+mutex.md
+atomics.md
+concurrency_memory_model.md
+processes.md
 ipc.txt
 ```

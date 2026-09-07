@@ -1194,7 +1194,7 @@ The rule system should make ownership decisions available consistently.
 
 Copy and move behavior must follow copy_move.md.
 
-Destruction behavior must follow destruction.txt.
+Destruction behavior must follow destruction.md.
 
 Phase 11 - Unsafe rules
 -----------------------

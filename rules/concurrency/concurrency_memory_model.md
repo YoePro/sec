@@ -1,93 +1,275 @@
 # Concurrency Memory Model
 
-## Purpose
-
-The concurrency memory model defines when writes performed by one execution
-entity become visible to another execution entity.
-
-It also defines:
-
-- synchronization
-- publication
-- happens-before relationships
-- atomic ordering
-- mutex ordering
-- task and thread completion ordering
-- data-race validity
-- compiler reordering limits
-- backend lowering requirements
-
-The memory model applies to all concurrent Sec execution.
+- **Status:** Normative
+- **Created:** 2026-09-06
+- **Last updated:** 2026-09-06
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/concurrency/concurrency_memory_model.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `0f5027d`
+- **Related rulebooks:** `rules/concurrency/concurrency.md`, `rules/concurrency/atomics.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/mutex.md`, `rules/concurrency/channels.md`, `rules/concurrency/cancellation.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/analysis/data_races.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`, `rules/platform/volatile.md`
 
 ---
 
-## Core principle
+## § 1. Purpose
 
-Ordinary ownership and borrowing determine who may access a value.
+**Governance tags:** `concurrency.memory-model-v2`
 
-The concurrency memory model determines when concurrent accesses may observe
-writes safely.
+§ 1(1) This rulebook defines when memory effects performed by one Sec execution context become visible to another.
 
-A program must satisfy both models.
+§ 1(2) It defines program order, synchronization, publication, happens-before, atomic ordering, per-atomic modification order, release sequences, fences, mutex ordering, execution completion ordering, and compiler/backend reordering constraints.
 
-Valid lifetime does not imply valid concurrent access.
+§ 1(3) It applies to tasks, threads, mixed task/thread execution, interrupt interaction where the platform rules permit it, foreign callbacks, and other shared-memory execution contexts recognized by Sec.
 
-Valid synchronization does not make an invalid reference valid.
+§ 1(4) Process and IPC memory visibility is governed by the explicit transport/shared-memory contract and does not inherit ordinary in-process shared-memory semantics automatically.
 
----
-
-## Sequential execution
-
-Within one execution entity, operations follow normal Sec evaluation and
-control-flow rules.
-
-The compiler may optimize and reorder operations only when observable behavior is
-preserved.
-
-Observable behavior includes:
-
-- ordinary single-task semantics
-- atomic operations
-- mutex synchronization
-- task or thread creation
-- task or thread completion
-- cancellation
-- FFI effects
-- volatile effects
-- process and IPC effects
+§ 1(5) Data-race analysis consumes this memory model but is owned by `data_races.md`.
 
 ---
 
-## Concurrency visibility
+## § 2. Core principle
 
-A write by one task or thread is guaranteed visible to another task or thread
-only when a defined synchronization relationship exists.
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
 
-Examples include:
+§ 2(1) Ownership and borrowing determine who may access a value.
 
-- ownership transfer into a spawned task
-- successful mutex unlock followed by lock
-- release atomic followed by matching acquire atomic
-- successful task completion followed by join or await
-- successful thread completion followed by join
-- process or IPC synchronization defined by its transport
+§ 2(2) The concurrency memory model determines when memory effects may be observed safely across concurrent execution contexts.
 
-Without synchronization, concurrent visibility is not guaranteed.
+§ 2(3) A program must satisfy both models.
+
+§ 2(4) Valid lifetime does not imply valid concurrent access.
+
+§ 2(5) Valid synchronization does not make an invalid reference valid.
+
+§ 2(6) Memory ordering does not create ownership.
+
+§ 2(7) Ownership transfer does not permit the compiler to omit the publication ordering required by an execution boundary.
 
 ---
 
-## Happens-before
+## § 3. Terminology
 
-The memory model uses a happens-before relation.
+**Governance tags:** `concurrency.memory-model-v2`
 
-If operation A happens-before operation B, effects of A must be visible to B as
-defined by the relevant synchronization primitive.
+§ 3(1) An **execution context** is a task, physical thread, interrupt context, foreign callback context, or another canonical context that may overlap another context.
 
-Happens-before is:
+§ 3(2) A **memory effect** is a read, write, atomic operation, synchronization operation, publication event, fence, or other canonical operation whose ordering can affect shared-memory observation.
 
-- ordered within one execution entity
-- created by synchronization operations
-- transitive
+§ 3(3) **Program order** is the order required by Sec evaluation/control-flow semantics within one execution context.
+
+§ 3(4) **Synchronizes-with** is a cross-context relation created by a synchronization rule.
+
+§ 3(5) **Happens-before** is the transitive ordering relation formed from program-order and synchronizes-with edges.
+
+§ 3(6) **Modification order** is the total order of modifications for one atomic object.
+
+§ 3(7) A **release sequence** is the release-headed contiguous RMW modification chain defined by this rulebook.
+
+§ 3(8) **Publication** is the act of making data reachable/observable by another execution context through a defined boundary or synchronization mechanism.
+
+---
+
+## § 4. Exact memory-order type
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`, `tooling.atomics-v2`
+
+§ 4(1) The canonical source-visible memory-order type is:
+
+```sec
+enum MemoryOrder {
+    Relaxed
+    // Atomicity only for the atomic operation itself.
+
+    Acquire
+    // Acquire ordering for an operation that reads atomic state.
+
+    Release
+    // Release ordering for an operation that writes/publishes atomic state.
+
+    AcqRel
+    // Combined acquire and release ordering for read-modify-write operations.
+
+    SeqCst
+    // Sequentially consistent ordering and participation in the global SeqCst order.
+}
+```
+
+§ 4(2) `MemoryOrder` is compiler-known and also a real source-visible core enum.
+
+§ 4(3) The compiler and LSP must not implement only the name while omitting its variants or documentation.
+
+§ 4(4) The exact ownership, core placement, and API requirements are cross-defined with `atomics.md`.
+
+---
+
+## § 5. Exact compare-exchange result type
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 5(1) Compare-exchange uses the canonical result type:
+
+```sec
+enum CompareExchangeResult[T] {
+    Exchanged
+    // Compare matched and the desired value was stored.
+
+    NotExchanged(T)
+    // Compare did not exchange.
+    // The payload is the value observed by that atomic operation.
+}
+```
+
+§ 5(2) A successful `CompareExchange` is an atomic read-modify-write.
+
+§ 5(3) A failed `CompareExchange` is an atomic read only.
+
+§ 5(4) The success/failure distinction therefore affects modification order and release-sequence participation.
+
+---
+
+## § 6. Exact fence surface
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 6(1) Sec 0.1 provides:
+
+```sec
+atomic.Fence(order: MemoryOrder) void
+// Establishes an explicit ordering fence.
+// The function itself does not access an Atomic[T].
+```
+
+§ 6(2) The argument is mandatory.
+
+§ 6(3) Valid orders are:
+
+```text
+Acquire
+Release
+AcqRel
+SeqCst
+```
+
+§ 6(4) `Relaxed` is invalid for `atomic.Fence`.
+
+§ 6(5) `atomic.Fence` has no implicit/default `SeqCst` overload.
+
+---
+
+## § 7. Referenced compiler-known concurrency types
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.tasks-v2`, `tooling.atomics-v2`
+
+§ 7(1) This memory model materially depends on task and mutex types defined by their owning concurrency rulebooks. Their relevant source surface is repeated here so an implementation cannot satisfy this rulebook by recognizing only their names.
+
+§ 7(2) The canonical task-handle type-use syntax is:
+
+```sec
+Task[T]
+// `Task` is the compiler-known nominal generic task-handle type.
+// `[T]` supplies exactly one type argument.
+// `T` is the complete declared return type of the spawned task body.
+// The physical handle representation is compiler/runtime-defined and is not
+// exposed as ordinary source fields.
+```
+
+§ 7(3) `Task[T]` is move-only and carries lifecycle responsibility according to `tasks.md`.
+
+§ 7(4) Awaiting `Task[T]` has the exact static result type `TaskOutcome[T]`.
+
+§ 7(5) The canonical source-visible task outcome declaration is:
+
+```sec
+type TaskOutcome[T] union {
+    Completed(T)
+    // The task function completed normally.
+    // The payload is exactly the task function's declared return type T.
+
+    Cancelled
+    // The task terminated through cooperative task cancellation.
+    // No T payload is produced.
+
+    Panicked(PanicInfo)
+    // A panic escaped the task boundary under a runtime/profile that can
+    // represent task-local panic termination.
+    // PanicInfo is the canonical panic-information type.
+
+    Failed(TaskError)
+    // An already-created task failed at the task-execution/runtime layer.
+    // TaskError is distinct from an application Result error returned as T.
+}
+```
+
+§ 7(6) `type ... union` declares a Sec union type; `[T]` declares one generic type parameter; `Completed(T)`, `Panicked(PanicInfo)`, and `Failed(TaskError)` are payload-bearing variants; `Cancelled` is payload-less.
+
+§ 7(7) `TaskOutcome[T]` is a real source-visible core declaration and must be exposed by compiler Sema and LSP tooling according to `tasks.md`.
+
+§ 7(8) The memory model materially depends on the compiler-known generic mutex types:
+
+```sec
+Mutex[T]
+// Owns one protected value of T together with one synchronization identity.
+
+MutexGuard[T]
+// Represents one successful exclusive acquisition of Mutex[T].
+// It is move-only and provides controlled access to the protected T.
+```
+
+§ 7(9) `Mutex[T]` and `MutexGuard[T]` are nominal compiler-known generic types. Their physical lock/runtime representation is not an ordinary source-visible struct layout and must not be invented by this rulebook.
+
+§ 7(10) The mutex operations relevant to this memory model have the canonical public surface:
+
+```sec
+impl Mutex[T] {
+    fn Lock() MutexGuard[T]
+    // Waits until exclusive ownership of the mutex acquisition is obtained.
+    // Successful acquisition provides acquire synchronization.
+
+    fn TryLock() Option[MutexGuard[T]]
+    // Attempts immediate acquisition.
+    // Some(MutexGuard[T]) means acquisition succeeded and provides acquire
+    // synchronization; None means no acquisition occurred.
+}
+```
+
+§ 7(11) `impl Mutex[T]` associates the public methods with the generic mutex type. Instance-method `self` is implicit according to `impl.md` and is therefore not written in these signatures.
+
+§ 7(12) `Lock` and `TryLock` use the canonical public CamelCase naming rule. Older lowercase spellings in legacy mutex material are non-canonical and must be synchronized by the corrections workflow.
+
+§ 7(13) Destruction of the owning `MutexGuard[T]` releases the acquisition; that release provides the mutex release synchronization defined by this memory model and `mutex.md`.
+
+§ 7(14) The exact complete task and mutex APIs remain owned by `tasks.md` and `mutex.md`. Repeating the relevant surface here does not authorize a competing declaration or alternate spelling.
+
+---
+
+## § 8. Sequential execution and program order
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 8(1) Within one execution context, Sec evaluation and control-flow semantics establish program order.
+
+§ 8(2) If operation A is sequenced before operation B by Sec semantics, the compiler may transform them only when all observable single-context and concurrent semantics remain valid.
+
+§ 8(3) Program order contributes edges to happens-before.
+
+§ 8(4) A release operation constrains preceding operations from being observed as if they occurred after the release when that would violate the release contract.
+
+§ 8(5) An acquire operation constrains following operations from being observed as if they occurred before the acquire when that would violate the acquire contract.
+
+---
+
+## § 9. Happens-before
+
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
+
+§ 9(1) If A happens-before B, the effects of A must be visible to B to the extent required by the relevant storage and synchronization semantics.
+
+§ 9(2) Happens-before includes program-order edges.
+
+§ 9(3) Happens-before includes synchronizes-with edges.
+
+§ 9(4) Happens-before is transitive.
 
 If:
 
@@ -102,29 +284,40 @@ then:
 A happens-before C
 ```
 
----
-
-## Program order
-
-Within one execution entity, earlier operations happen-before later operations
-when ordinary control flow requires that order.
-
-Example:
-
-```sec
-state.value = 10
-Ready.store(true, MemoryOrder.Release)
-```
-
-The write to `state.value` happens-before the release store in program order.
-
-The compiler must not reorder the ordinary write after the release store.
+§ 9(5) The compiler and backend must preserve the observable consequences of happens-before.
 
 ---
 
-## Spawn publication
+## § 10. Synchronizes-with
 
-Values moved or copied into a newly spawned task are published to that task.
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 10(1) Synchronizes-with is created only by a canonical synchronization rule.
+
+§ 10(2) Examples include:
+
+- release/acquire atomic communication;
+- release-sequence communication;
+- valid fence/atomic communication;
+- mutex release followed by a successful later acquisition of the same mutex;
+- successful execution completion followed by the owning join/await synchronization defined by the relevant execution-kind rulebook;
+- channel send/receive commit where the channel rule defines publication;
+- spawn publication;
+- explicit FFI/platform synchronization contracts.
+
+§ 10(3) Ordinary function calls do not create cross-context synchronizes-with edges merely by being function calls.
+
+§ 10(4) Volatile access does not create a synchronizes-with edge.
+
+§ 10(5) Status polling does not create completion synchronization unless the owning status API explicitly defines such semantics.
+
+---
+
+## § 11. Spawn publication
+
+**Governance tags:** `concurrency.memory-model-v2`, `frontend.transferability`
+
+§ 11(1) Values moved or copied into successfully created task/thread execution are published before the child first accesses those received values.
 
 Example:
 
@@ -133,937 +326,871 @@ let data := BuildData()
 let worker := try spawn Process(<-data)
 ```
 
-All writes that initialize `data` before `spawn` happen-before the child task's
-first access to its received value.
+§ 11(2) Initialization writes sequenced before the successful creation publication happen-before the child execution's first access to the transferred value.
 
-This applies to:
+§ 11(3) The same principle applies to valid captured owned values.
 
-- moved arguments
-- copied arguments
-- captured owned values
-- receiver values
-- task metadata required for startup
+§ 11(4) A borrow crossing an execution boundary remains subject to lifetime, aliasing, address-stability, and transferability rules.
 
-The backend must not begin child access before argument publication is complete.
+§ 11(5) Publication does not make later unsynchronized shared mutation valid.
 
-The same publication rule applies to `spawn thread`.
-
-All writes sequenced before successful thread creation happen-before the new
-thread's first access to its received values.
-
-The same rule applies to process creation only through explicitly defined
-process and IPC publication rules.
+§ 11(6) Process publication is defined only through explicit process/IPC semantics.
 
 ---
 
-## Spawned borrows
+## § 12. Task completion
 
-A reference passed to a spawned task does not create ownership.
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.tasks-v2`
 
-The referenced storage must remain alive and must not be accessed in conflict.
+§ 12(1) All ordinary writes validly performed by a task before terminal publication happen-before a successful task join or await that observes that terminal completion.
 
-Publication guarantees that writes completed before spawn are visible to the
-child task.
+§ 12(2) Awaiting `Task[T]` yields the canonical `TaskOutcome[T]` defined by `tasks.md`.
+
+§ 12(3) The awaiting context must observe the fully initialized terminal outcome and all effects that the task validly publishes through completion.
+
+§ 12(4) Completion synchronization does not retroactively make prior invalid data races valid.
+
+§ 12(5) Reading a task status property without the synchronization promised by join/await is not a substitute for completion synchronization.
+
+---
+
+## § 13. Thread completion
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 13(1) Writes validly performed by a thread before terminal publication happen-before a successful join that observes that termination.
+
+§ 13(2) Thread detach does not itself establish a completion synchronization edge to the detaching context.
+
+§ 13(3) Thread completion memory semantics remain distinct from task scheduling implementation.
+
+---
+
+## § 14. Mutex ordering
+
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
+
+§ 14(1) Successful unlock/release of a mutex provides release synchronization.
+
+§ 14(2) A later successful lock/acquisition of the same mutex identity provides acquire synchronization according to `mutex.md`.
+
+§ 14(3) The release synchronizes with the matching later successful acquisition according to mutex semantics.
+
+§ 14(4) Protected writes before release happen-before accesses after the synchronizing acquisition.
+
+§ 14(5) Two different mutex identities do not synchronize merely because they protect values of the same type.
+
+§ 14(6) A live `MutexGuard[T]` remains subject to the execution-boundary and suspension rules in `mutex.md`.
+
+---
+
+## § 15. Atomic indivisibility
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 15(1) A Sec atomic operation is indivisible with respect to other atomic operations on the same atomic storage identity.
+
+§ 15(2) Atomic loads observe one complete atomic value permitted by the memory model.
+
+§ 15(3) Atomic stores and RMW operations publish one complete modification.
+
+§ 15(4) Atomic operations must not tear.
+
+§ 15(5) A target implementation must preserve indivisibility for the complete concrete atomic value.
+
+---
+
+## § 16. Per-atomic modification order
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 16(1) Every atomic storage identity has its own total modification order.
+
+§ 16(2) Modification order is per atomic object; Sec does not define one global modification order for all atomic objects.
+
+§ 16(3) Every modification of one atomic object appears exactly once in that object's modification order.
+
+§ 16(4) Modifications include:
+
+```text
+Store
+Swap
+FetchAdd
+FetchSub
+FetchAnd
+FetchOr
+FetchXor
+successful CompareExchange
+```
+
+§ 16(5) Pure reads do not appear in modification order.
+
+§ 16(6) `Load` is a pure atomic read.
+
+§ 16(7) failed `CompareExchange` is a pure atomic read.
+
+§ 16(8) `atomic.Fence` is not a modification of an atomic object.
+
+§ 16(9) Modification order must remain coherent with happens-before constraints on modifications to the same atomic object.
+
+---
+
+## § 17. RMW coherence
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 17(1) A read-modify-write operation reads and modifies one coherent atomic state as one indivisible operation.
+
+§ 17(2) The value read by an RMW is the value immediately preceding that RMW modification in the atomic object's modification order, subject to the operation's success condition for compare-exchange.
+
+§ 17(3) A successful `CompareExchange` therefore reads the state it replaces.
+
+§ 17(4) A failed `CompareExchange` does not enter modification order and returns the value it observed through `NotExchanged(T)`.
+
+---
+
+## § 18. Relaxed ordering
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 18(1) `MemoryOrder.Relaxed` guarantees atomicity and modification-order coherence for the atomic object.
+
+§ 18(2) It does not create acquire synchronization for later ordinary memory.
+
+§ 18(3) It does not create release synchronization for earlier ordinary memory.
+
+§ 18(4) Relaxed operations may still participate in a release sequence when they are RMW modifications following a release head.
 
 Example:
 
 ```sec
-let data := BuildData()
-let worker := try spawn Inspect(ref data)
+Requests.FetchAdd(1, MemoryOrder.Relaxed)
 ```
 
-The child may observe the initialized `data`.
-
-Further concurrent mutation requires valid synchronization.
-
-The same lifetime and synchronization requirements apply to references passed to
-a spawned thread.
+does not by itself publish unrelated ordinary writes.
 
 ---
 
-## Task completion
+## § 19. Acquire ordering
 
-All ordinary writes performed by a task before successful completion happen-before
-a successful join or await that observes that completion.
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 19(1) `MemoryOrder.Acquire` applies to an atomic operation that reads atomic state.
+
+§ 19(2) An acquire operation can synchronize with a qualifying release operation or release sequence when it observes a value carried by that synchronization relationship.
+
+§ 19(3) Ordinary operations sequenced after the acquire must observe memory consistently with the established happens-before edge.
 
 Example:
 
 ```sec
-let worker := try spawn BuildResult()
-let outcome := await worker
-```
-
-The awaiting task must observe the fully initialized `TaskOutcome[T]` and all
-memory effects that the task validly published through owned terminal-payload
-transfer.
-
----
-
-## Join
-
-A successful `join task` establishes a synchronization edge from task completion
-to the joining task.
-
-After join:
-
-- completion status is visible
-- task failure status is visible
-- cancellation status is visible
-- stored result state is visible
-- writes validly published by the task are visible
-
-Reading `task.done` without join does not provide the same synchronization
-guarantee.
-
----
-
-## Await
-
-A successful `await task` establishes the same completion synchronization as
-join and additionally consumes the task handle.
-
-All writes that happen-before task completion become visible to the awaiting task.
-
-The result value is transferred according to ordinary ownership rules.
-
-## Thread completion
-
-All ordinary writes performed by a thread before successful termination
-happen-before a successful `join threadHandle` that observes that termination.
-
-After a successful thread join, writes validly published by that thread are
-visible to the joining execution entity.
-
-`detach threadHandle` does not establish a synchronization edge.
-
-Detaching relinquishes join ownership; it does not publish ordinary writes to
-another execution entity.
-
-## Mixed synchronization
-
-The same synchronization edges apply across:
-
-- task to task
-- task to thread
-- thread to task
-- thread to thread
-
-Examples include:
-
-- channel send happens-before the matching receive commit
-- mutex unlock happens-before a later successful lock on the same mutex
-- task completion happens-before successful task await or join
-- thread completion happens-before successful thread join
-
-Using a physical thread does not weaken ownership, borrowing or synchronization
-requirements.
-
-Data races are invalid Sec programs.
-
-`unsafe` may permit operations the safe language cannot express, but it does not
-make a data race valid.
-
----
-
-## Status polling
-
-Reading task status properties such as:
-
-```sec
-task.done
-task.running
-task.cancelled
-task.failed
-```
-
-is an observation.
-
-Status polling alone must not be used as a replacement for join or await when
-memory synchronization is required.
-
-The implementation may expose current state safely, but ordinary non-atomic data
-written by the task is not thereby guaranteed visible.
-
----
-
-## Mutex synchronization
-
-Unlocking a mutex performs release synchronization.
-
-A later successful lock of the same mutex performs acquire synchronization.
-
-All writes performed while holding the guard happen-before accesses performed
-after a later successful lock.
-
-Example:
-
-```sec
-{
-    let mut state := State.lock()
-    state.value = 10
-}
-```
-
-Later:
-
-```sec
-{
-    let state := State.lock()
-    Use(state.value)
-}
-```
-
-The second guard must observe the synchronized protected state.
-
----
-
-## Mutex guard scope
-
-A `MutexGuard[T]` represents exclusive access to the protected value.
-
-All ordinary reads and writes through the guard are synchronized by the lock.
-
-The compiler may optimize within the guard scope but must not move protected
-access:
-
-- before successful lock acquisition
-- after unlock
-- across await
-- across join
-- into another task
-
----
-
-## Non-reentrant identity
-
-A mutex synchronization edge applies to the same mutex identity.
-
-Two distinct `Mutex[T]` values do not synchronize merely because they protect
-values of the same type.
-
-Mutex identity must remain stable after publication.
-
----
-
-## Atomic operations
-
-Atomic operations are indivisible with respect to other atomic operations on the
-same storage location.
-
-They also provide ordering according to `MemoryOrder`.
-
-The default order is:
-
-```sec
-MemoryOrder.SeqCst
-```
-
----
-
-## Relaxed ordering
-
-```sec
-MemoryOrder.Relaxed
-```
-
-guarantees atomicity for the operation itself.
-
-It does not create acquire or release synchronization for surrounding ordinary
-memory.
-
-Relaxed atomics are suitable for independent counters and statistics.
-
-Example:
-
-```sec
-Requests.fetchAdd(1, MemoryOrder.Relaxed)
-```
-
-This does not publish unrelated non-atomic writes.
-
----
-
-## Acquire ordering
-
-```sec
-MemoryOrder.Acquire
-```
-
-prevents later memory operations in the same task from being reordered before
-the acquire operation.
-
-A successful acquire may synchronize with a release operation on the same atomic
-or through a valid release sequence.
-
-Example:
-
-```sec
-if Ready.load(MemoryOrder.Acquire) {
+if Ready.Load(MemoryOrder.Acquire) {
     Use(Data)
 }
 ```
 
-When the load observes a matching released value, prior published writes become
-visible.
+§ 19(4) The acquire does not create publication merely because it executes; it must participate in a valid synchronization relation.
 
 ---
 
-## Release ordering
+## § 20. Release ordering
 
-```sec
-MemoryOrder.Release
-```
+**Governance tags:** `concurrency.memory-model-v2`
 
-prevents earlier memory operations in the same task from being reordered after
-the release operation.
+§ 20(1) `MemoryOrder.Release` applies to an atomic operation that performs a modification.
+
+§ 20(2) Ordinary operations sequenced before the release are published through a matching acquire relation when the synchronization conditions are met.
 
 Example:
 
 ```sec
-Data.value = 10
-Ready.store(true, MemoryOrder.Release)
+Data.Value = 10
+Ready.Store(true, MemoryOrder.Release)
 ```
 
-A matching acquire load that observes `true` may then observe `Data.value == 10`.
+§ 20(3) A matching acquire that observes the released value or a value carried through its release sequence can establish visibility of the prior write.
+
+§ 20(4) Release does not itself perform acquire ordering.
 
 ---
 
-## Acquire-release ordering
+## § 21. Acquire-release ordering
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 21(1) `MemoryOrder.AcqRel` combines acquire and release semantics.
+
+§ 21(2) It is valid for read-modify-write operations.
+
+§ 21(3) It is invalid for pure `Load`.
+
+§ 21(4) It is invalid for pure `Store`.
+
+§ 21(5) It is invalid as a failed compare-exchange order because that path performs no modification.
+
+---
+
+## § 22. Sequential consistency
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 22(1) `MemoryOrder.SeqCst` provides the acquire/release behavior appropriate to the operation and participates in one global order of sequentially consistent atomic operations and sequentially consistent fences.
+
+§ 22(2) That global order must be consistent with the ordering requirements of this memory model.
+
+§ 22(3) All execution contexts must observe the SeqCst operations consistently with one permitted total SeqCst order.
+
+§ 22(4) `SeqCst` is the default for ordinary atomic object operations when no explicit order is supplied.
+
+§ 22(5) The compiler may lower an operation using a stronger target primitive when semantics remain equivalent, but must not weaken the requested ordering.
+
+---
+
+## § 23. Operation/order matrix
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 23(1) Valid orders are:
+
+| Operation category | Relaxed | Acquire | Release | AcqRel | SeqCst |
+|---|---:|---:|---:|---:|---:|
+| atomic `Load` | yes | yes | no | no | yes |
+| atomic `Store` | yes | no | yes | no | yes |
+| atomic RMW success | yes | yes | yes | yes | yes |
+| `CompareExchange` failure | yes | yes | no | no | yes |
+| `atomic.Fence` | no | yes | yes | yes | yes |
+
+§ 23(2) Invalid combinations are compile-time semantic errors.
+
+---
+
+## § 24. Compare-exchange ordering
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 24(1) `CompareExchange` has a success order and a failure order.
+
+§ 24(2) The success order is applied only when the exchange occurs.
+
+§ 24(3) The failure order is applied only when the exchange does not occur.
+
+§ 24(4) Failure orders are limited to:
+
+```text
+Relaxed
+Acquire
+SeqCst
+```
+
+§ 24(5) `Release` and `AcqRel` are invalid failure orders because no modification occurs on that path.
+
+§ 24(6) Sec imposes no additional language rule requiring the failure order to be weaker than the success order.
+
+§ 24(7) A success path and failure path may therefore request different ordering strengths for different semantic reasons.
+
+---
+
+## § 25. Release-sequence definition
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 25(1) A release sequence belongs to one atomic storage identity.
+
+§ 25(2) It begins with a release modification on that atomic object.
+
+§ 25(3) The head may be a `Release`, `AcqRel`, or `SeqCst` modification with release semantics.
+
+§ 25(4) The release sequence continues only through a contiguous sequence of atomic read-modify-write modifications on the same atomic object.
+
+§ 25(5) The RMW modifications extending the sequence may use `MemoryOrder.Relaxed`.
+
+§ 25(6) The RMW operations may be performed by execution contexts different from the context that performed the release head.
+
+§ 25(7) A plain later `Store` is not an RMW and therefore terminates the preceding release sequence.
+
+§ 25(8) A failed `CompareExchange` is not a modification and does not extend the release sequence.
+
+§ 25(9) A successful `CompareExchange` is RMW and may extend the release sequence.
+
+---
+
+## § 26. Release-sequence example
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+Given:
 
 ```sec
-MemoryOrder.AcqRel
+// Producer
+Data.Value = 42
+Counter.Store(1, MemoryOrder.Release)
+
+// Another execution context
+Counter.FetchAdd(1, MemoryOrder.Relaxed)
+
+// Consumer
+let observed := Counter.Load(MemoryOrder.Acquire)
 ```
 
-combines acquire and release semantics for read-modify-write operations.
+§ 26(1) The release store creates the head modification.
 
-It is not valid for a pure load or pure store when the operation does not support
-both directions.
+§ 26(2) The relaxed `FetchAdd` is an RMW modification immediately following the head in the relevant release sequence when no intervening non-RMW modification breaks it.
+
+§ 26(3) If the acquire load observes the value produced by that RMW, it can synchronize with the release head through the release sequence.
+
+§ 26(4) The producer's prior write to `Data.Value` then happens-before the consumer operations sequenced after the acquire.
 
 ---
 
-## Sequential consistency
+## § 27. Release-sequence break
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+Given:
 
 ```sec
-MemoryOrder.SeqCst
+Counter.Store(1, MemoryOrder.Release)
+Counter.FetchAdd(1, MemoryOrder.Relaxed)
+Counter.Store(100, MemoryOrder.Relaxed)
+Counter.FetchAdd(1, MemoryOrder.Relaxed)
 ```
 
-provides acquire and release semantics and participates in one global
-sequentially consistent order for sequentially consistent atomic operations.
+§ 27(1) The first `FetchAdd` can extend the release sequence headed by the release store.
 
-This is the default because it is the easiest ordering to reason about.
+§ 27(2) The plain relaxed `Store(100, ...)` is a new non-RMW modification and breaks that earlier release sequence.
 
-The implementation may use stronger ordering than requested.
+§ 27(3) The later `FetchAdd` is not part of the original release sequence headed by the first release store.
 
-It must not use weaker ordering.
+§ 27(4) An acquire that observes the later value does not automatically receive the publication associated with the old release head merely because an RMW occurred later.
 
 ---
 
-## Compare-exchange ordering
+## § 28. Release/acquire publication
 
-Compare-and-exchange has:
+**Governance tags:** `concurrency.memory-model-v2`
 
-- success ordering
-- failure ordering
+§ 28(1) A release modification can publish ordinary prior writes.
 
-The success order applies when the exchange occurs.
+§ 28(2) An acquire operation that reads the release modification or a value carried through its valid release sequence can synchronize with that release.
 
-The failure order applies when the current value differs from `expected`.
+§ 28(3) The synchronizes-with edge plus program-order edges establishes happens-before.
 
-Failure ordering may use:
+§ 28(4) The relation is based on actual atomic communication, not merely on using `Release` and `Acquire` somewhere in the program.
+
+---
+
+## § 29. Release fence to acquire atomic
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 29(1) A release fence can participate in synchronization when it is sequenced before an atomic modification that communicates with an acquire operation.
+
+Conceptual pattern:
 
 ```sec
-MemoryOrder.Relaxed
-MemoryOrder.Acquire
-MemoryOrder.SeqCst
+Data.Value = 42
+
+atomic.Fence(MemoryOrder.Release)
+Ready.Store(true, MemoryOrder.Relaxed)
+
+// Another execution context:
+if Ready.Load(MemoryOrder.Acquire) {
+    Use(Data)
+}
 ```
 
-It must not use release-only semantics because no write occurs on failure.
+§ 29(2) The release fence does not synchronize directly with the acquire operation merely because both exist.
+
+§ 29(3) The relaxed atomic modification after the release fence provides the atomic communication carrier.
+
+§ 29(4) When the acquire operation observes the qualifying value, the release-fence publication participates in the happens-before relation.
 
 ---
 
-## Release sequences
+## § 30. Release atomic to acquire fence
 
-A release sequence may extend synchronization through compatible atomic
-read-modify-write operations on the same atomic location.
+**Governance tags:** `concurrency.memory-model-v2`
 
-Version 0.1 may expose this through the standard acquire/release behavior without
-requiring source-level terminology.
+§ 30(1) An acquire fence can participate in synchronization when an atomic read sequenced before the fence observes a qualifying release modification or release sequence.
 
-Backend lowering must preserve the target's valid release-sequence semantics.
-
----
-
-## Atomic and ordinary memory
-
-Atomic access to one storage location does not automatically synchronize unrelated
-ordinary storage.
-
-Example:
+Conceptual pattern:
 
 ```sec
-Counter.fetchAdd(1, MemoryOrder.Relaxed)
+// Producer
+Data.Value = 42
+Ready.Store(true, MemoryOrder.Release)
+
+// Consumer
+let ready := Ready.Load(MemoryOrder.Relaxed)
+
+if ready {
+    atomic.Fence(MemoryOrder.Acquire)
+    Use(Data)
+}
 ```
 
-does not publish another ordinary variable.
+§ 30(2) The acquire fence does not turn an unrelated prior load into a synchronization carrier.
 
-Publication requires:
-
-- release/acquire ordering
-- mutex synchronization
-- task completion synchronization
-- ownership transfer
-- another defined synchronization mechanism
+§ 30(3) The prior atomic load must observe the qualifying release-carried value.
 
 ---
 
-## Data races
+## § 31. Fence-to-fence synchronization
 
-A data race occurs when:
+**Governance tags:** `concurrency.memory-model-v2`
 
-- two tasks access the same memory location concurrently
-- at least one access writes
-- the accesses are not ordered by happens-before
-- the accesses are not valid atomic operations on the same atomic storage
-- the accesses are not protected by the same synchronization primitive
+§ 31(1) A release fence and acquire fence can synchronize through atomic communication.
 
-Data races are invalid Sec programs.
-
-The compiler must reject statically provable data races.
-
-Sec does not define ordinary data races as acceptable behavior.
-
----
-
-## Data-race consequences
-
-The language must not rely on C-style undefined behavior as the primary user
-model for ordinary data races.
-
-A data race should result in:
-
-- compile-time error when statically provable
-- checked runtime diagnostic when supported and not statically provable
-- explicit unsafe responsibility only when raw memory access prevents proof
-
-Unsafe code does not make a data race valid.
-
----
-
-## Conflicting borrows
-
-Concurrent shared references are valid only for read-only access.
-
-Concurrent mutable access requires exclusive ownership or synchronization.
-
-The borrow checker and memory model work together.
-
-Example:
+Conceptual pattern:
 
 ```sec
-let mut state := State.Create()
+// Producer
+Data.Value = 42
+atomic.Fence(MemoryOrder.Release)
+Ready.Store(true, MemoryOrder.Relaxed)
 
-let first := try spawn Update(ref mut state)
-let second := try spawn Update(ref mut state)
+// Consumer
+let ready := Ready.Load(MemoryOrder.Relaxed)
+
+if ready {
+    atomic.Fence(MemoryOrder.Acquire)
+    Use(Data)
+}
 ```
 
-This is invalid before backend lowering.
+§ 31(2) The producer's relaxed atomic modification and consumer's relaxed atomic read are the communication carrier between the fences.
 
-No memory ordering can make two overlapping `ref mut` borrows valid.
+§ 31(3) Two fences without the required atomic communication do not synchronize.
+
+§ 31(4) A fence must not be documented as a universal global "flush memory" operation.
 
 ---
 
-## Atomics and aliasing
+## § 32. `AcqRel` fence
 
-Atomic mutation through shared references is valid because `Atomic[T]` defines
-its own synchronized interior mutation.
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 32(1) `atomic.Fence(MemoryOrder.AcqRel)` combines the applicable release-fence and acquire-fence constraints at one program point.
+
+§ 32(2) It does not itself read from or modify an atomic object.
+
+§ 32(3) Synchronization still requires the appropriate atomic communication relation.
+
+---
+
+## § 33. `SeqCst` fence
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 33(1) `atomic.Fence(MemoryOrder.SeqCst)` provides acquire/release fence semantics and participates in the global SeqCst order.
+
+§ 33(2) It does not itself create an atomic value modification.
+
+§ 33(3) SeqCst fence ordering must remain consistent with the other sequentially consistent operations required by the program.
+
+---
+
+## § 34. Atomic and ordinary memory
+
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
+
+§ 34(1) Atomic access to one atomic object does not automatically synchronize unrelated ordinary storage.
+
+§ 34(2) A relaxed counter update does not publish unrelated ordinary writes.
+
+§ 34(3) Publication of ordinary writes requires a defined synchronization mechanism such as release/acquire communication, mutex synchronization, channel publication, completion synchronization, spawn publication, or another explicit contract.
+
+§ 34(4) The presence of an atomic object in a struct does not make all fields of the struct concurrently safe.
+
+---
+
+## § 35. Data races
+
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
+
+§ 35(1) Ordinary unsynchronized data races are invalid Sec behavior.
+
+§ 35(2) This rulebook defines the synchronization/happens-before facts consumed by canonical race analysis.
+
+§ 35(3) `data_races.md` owns access pairing, Place overlap, proof classifications, diagnostics, and incremental analysis.
+
+§ 35(4) No atomic memory order can make overlapping ordinary `ref mut` borrows valid if the borrow rules already prohibit them.
+
+§ 35(5) `unsafe` does not make a data race semantically valid.
+
+---
+
+## § 36. Atomic interior mutation
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 36(1) Atomic methods may mutate contained atomic state through a shared reference because `Atomic[T]` defines compiler-known synchronized interior mutation.
 
 Example:
 
 ```sec
 fn Increment(counter: ref Atomic[uint64]) void {
-    counter.fetchAdd(1)
+    counter.FetchAdd(1)
 }
 ```
 
-This does not permit ordinary unsynchronized mutation of surrounding fields.
+§ 36(2) This rule applies only to the atomic object's contained state.
+
+§ 36(3) It does not authorize unsynchronized mutation of surrounding ordinary memory.
 
 ---
 
-## Publication
+## § 37. Publication and address stability
 
-A value becomes published when another task may access it.
+**Governance tags:** `concurrency.memory-model-v2`, `analysis.transferability`
 
-Publication may occur through:
+§ 37(1) Publication can make storage reachable by additional execution contexts.
 
-- spawn argument transfer
-- task capture
-- shared static storage
-- storing a reference in shared synchronized storage
-- atomic pointer publication
-- IPC or process transfer
-- explicit runtime registration
+§ 37(2) After publication, source-level movement must preserve all live address and synchronization identities.
 
-Before publication, a uniquely owned value may be moved freely.
+§ 37(3) Atomics, mutexes, shared references, task captures, wait queues, interrupt registrations, and foreign registrations may therefore impose address-stability requirements.
 
-After publication, address stability and synchronization rules may restrict
-movement.
+§ 37(4) The backend may use indirection where allowed, but source-level identity must remain stable.
 
 ---
 
-## Address stability
+## § 38. Static storage
 
-Mutexes, atomics and references shared with another task may require stable
-storage identity.
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
 
-The compiler must reject moves that may invalidate:
+§ 38(1) Static lifetime is not synchronization.
 
-- mutex identity
-- atomic identity
-- shared references
-- task captures
-- wait queues
-- backend synchronization state
+§ 38(2) Immutable static storage may be shared after valid initialization.
 
-A backend may use movable indirection internally, but source-level identity must
-remain stable.
+§ 38(3) Mutable static storage requires synchronization or proof of non-overlapping exclusive access.
+
+§ 38(4) Static `Atomic[T]` and `Mutex[T]` values provide their specialized synchronization semantics; ordinary mutable static values do not gain such semantics automatically.
 
 ---
 
-## Static storage
+## § 39. Initialization publication
 
-Static storage is published whenever multiple tasks may access it.
+**Governance tags:** `concurrency.memory-model-v2`
 
-Immutable static storage may be shared when validly initialized.
+§ 39(1) Compile-time static initialization is visible before concurrent execution that begins after program initialization.
 
-Mutable static storage requires synchronization.
+§ 39(2) Runtime initialization must be ordered before publication to another execution context.
 
-Example:
+§ 39(3) A task or thread must not observe partially initialized storage through an invalid publication path.
 
-```sec
-static let State: Mutex[ApplicationState]
-```
-
-A plain:
-
-```sec
-static let mut State: ApplicationState
-```
-
-must not be accessed concurrently without proof of exclusive access.
+§ 39(4) The compiler must reject statically provable initialization/publication races.
 
 ---
 
-## Initialization publication
+## § 40. Cancellation visibility
 
-Compile-time static initialization is visible before concurrent task execution
-begins.
+**Governance tags:** `concurrency.memory-model-v2`
 
-Runtime initialization must be explicit.
+§ 40(1) Cancellation state is communicated through the canonical task cancellation mechanism.
 
-A task must not observe partially initialized static storage.
+§ 40(2) Cancellation visibility does not imply publication of unrelated application data.
 
-The compiler must reject or guard execution paths where task creation may occur
-before required runtime initialization completes.
+§ 40(3) Cleanup performed during cooperative cancellation retains the ordinary synchronization semantics of any mutex release, atomic operation, channel operation, or other primitive used during cleanup.
 
----
-
-## Cancellation visibility
-
-A cancellation request must become visible to the target task through the task
-cancellation mechanism.
-
-Reading:
-
-```sec
-task.cancelRequested
-```
-
-must safely observe the cancellation state.
-
-The implementation may use atomic or scheduler-managed storage.
-
-Cancellation visibility does not imply synchronization of unrelated application
-data.
+§ 40(4) Forced external termination is not equivalent to cooperative cancellation and may not provide cleanup publication guarantees.
 
 ---
 
-## Cancellation and cleanup
+## § 41. Blocking and yielding
 
-A task that observes cancellation and exits through `cancel` performs normal
-cleanup.
+**Governance tags:** `concurrency.memory-model-v2`
 
-Cleanup operations remain ordered within the task.
+§ 41(1) Blocking or suspension does not by itself create memory synchronization.
 
-Mutex unlocks, atomic releases and destruction performed during cancellation
-retain their normal synchronization semantics.
+§ 41(2) A mutex acquisition can create synchronization because the mutex contract defines it.
 
-Forced process termination provides no such guarantee.
+§ 41(3) Await/join can create completion synchronization because the execution-kind contract defines it.
+
+§ 41(4) Plain sleep does not publish ordinary memory by itself.
+
+§ 41(5) Plain scheduler yield does not publish ordinary memory by itself.
+
+§ 41(6) A context switch is not a source-level memory barrier unless a canonical primitive gives it such semantics.
 
 ---
 
-## Blocking operations
+## § 42. Volatile
 
-A blocking or suspending operation must define whether it creates synchronization.
+**Governance tags:** `concurrency.memory-model-v2`, `compiler.platform-model`
 
-Examples:
+§ 42(1) Volatile access is not synchronization.
+
+§ 42(2) Volatile does not provide atomicity.
+
+§ 42(3) Volatile does not provide acquire semantics.
+
+§ 42(4) Volatile does not provide release semantics.
+
+§ 42(5) Volatile does not create race freedom.
+
+§ 42(6) Memory-mapped I/O may require volatile access and separate hardware ordering/completion mechanisms.
+
+§ 42(7) The compiler must keep volatile and atomic semantics distinct in Semantic IR.
+
+---
+
+## § 43. FFI
+
+**Governance tags:** `concurrency.memory-model-v2`, `compiler.platform-model`
+
+§ 43(1) A foreign function call does not automatically publish memory to other execution contexts.
+
+§ 43(2) Foreign synchronization must be described by a verified FFI/platform contract before it can satisfy Sec synchronization requirements.
+
+§ 43(3) FFI contracts may need to define atomic representation, memory ordering, callback concurrency, retention, thread affinity, shared-memory ownership, and volatile effects.
+
+§ 43(4) The compiler must not infer a synchronization contract from a native function name.
+
+---
+
+## § 44. Interrupts
+
+**Governance tags:** `concurrency.memory-model-v2`, `platform.atomics-v2`, `sema.data-race-analysis`
+
+§ 44(1) Interrupt handlers form concurrent/preemptive execution contexts when platform semantics permit overlap with ordinary code.
+
+§ 44(2) Shared storage between ISR and ordinary execution must use primitives valid for the selected `CompilationPlan`.
+
+§ 44(3) Ordinary mutexes are not assumed interrupt-safe.
+
+§ 44(4) Atomic operations are ISR-usable only when the concrete target lowering is valid in that context.
+
+§ 44(5) Device-specific barriers are separate from generic Sec memory fences unless the platform rule explicitly maps them.
+
+---
+
+## § 45. Lock-free algorithms and reclamation
+
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`
+
+§ 45(1) Correct atomic ordering does not by itself establish safe memory reclamation.
+
+§ 45(2) Lock-free pointer algorithms remain subject to ownership, lifetime, ABA, reclamation, and transferability rules.
+
+§ 45(3) Compare-exchange success does not prove that a pointer identity remained continuously live between observations.
+
+§ 45(4) The compiler must not infer reclamation safety from the presence of atomic operations.
+
+---
+
+## § 46. No out-of-thin-air values
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 46(1) Atomic and ordinary operations must not produce a value without a valid source in the program execution permitted by Sec semantics.
+
+§ 46(2) Compiler speculation and backend transformations must not introduce out-of-thin-air values.
+
+§ 46(3) This restriction applies even when a weaker hardware model would otherwise permit aggressive speculation.
+
+---
+
+## § 47. Compiler reordering
+
+**Governance tags:** `concurrency.memory-model-v2`, `analysis.semantic-ir-v2`
+
+§ 47(1) The compiler may reorder operations only when all observable Sec semantics remain valid.
+
+§ 47(2) It must preserve acquire boundaries.
+
+§ 47(3) It must preserve release boundaries.
+
+§ 47(4) It must preserve SeqCst ordering.
+
+§ 47(5) It must preserve modification-order and RMW semantics.
+
+§ 47(6) It must preserve release-sequence semantics.
+
+§ 47(7) It must preserve fence relationships.
+
+§ 47(8) It must preserve mutex synchronization.
+
+§ 47(9) It must preserve spawn publication.
+
+§ 47(10) It must preserve completion synchronization.
+
+§ 47(11) It must preserve FFI/platform synchronization contracts.
+
+§ 47(12) It must preserve volatile observable-order rules without upgrading volatile into general synchronization.
+
+---
+
+## § 48. Hardware reordering
+
+**Governance tags:** `concurrency.memory-model-v2`, `compiler.platform-model`
+
+§ 48(1) The backend must emit target operations sufficient to enforce the source-level memory order.
+
+§ 48(2) The same Sec source semantics apply independently of whether the target is strongly or weakly ordered.
+
+§ 48(3) Stronger target hardware does not weaken source requirements.
+
+§ 48(4) Weaker target hardware requires appropriate target barriers/instructions/runtime mechanisms.
+
+§ 48(5) The backend must not use compiler-host memory ordering as a substitute for target lowering.
+
+---
+
+## § 49. Sequential consistency does not cover ordinary racy code
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 49(1) Sec does not guarantee one global sequential order for all ordinary concurrent accesses.
+
+§ 49(2) Sequential consistency in this rulebook concerns SeqCst atomics/fences and their defined relationships.
+
+§ 49(3) Ordinary shared-memory accesses require valid ownership and synchronization.
+
+§ 49(4) A program containing an invalid data race does not become valid because another atomic object uses `SeqCst`.
+
+---
+
+## § 50. Message passing
+
+**Governance tags:** `concurrency.memory-model-v2`, `frontend.transferability`
+
+§ 50(1) A successful message-send/receive pair establishes ownership and visibility according to the owning channel/message primitive.
+
+§ 50(2) A sent owned value must be fully initialized at the transfer commit point.
+
+§ 50(3) A successful receive obtains the ownership/publication guarantee defined by the primitive.
+
+§ 50(4) Channel memory semantics are not inferred from implementation queues; they are source-level contracts.
+
+---
+
+## § 51. Process boundaries
+
+**Governance tags:** `concurrency.memory-model-v2`
+
+§ 51(1) Separate processes do not share ordinary Sec memory by default.
+
+§ 51(2) IPC establishes visibility according to the transport contract.
+
+§ 51(3) Explicit shared-memory IPC must separately define mapping lifetime, ownership, synchronization, atomic compatibility, process lifetime, and failure behavior.
+
+§ 51(4) This book does not invent process-specific lifecycle or termination semantics.
+
+---
+
+## § 52. Semantic analysis
+
+**Governance tags:** `concurrency.memory-model-v2`, `sema.data-race-analysis`
+
+§ 52(1) Semantic analysis must preserve enough facts to validate atomic orderings before lowering.
+
+§ 52(2) It must distinguish atomic object identity.
+
+§ 52(3) It must distinguish read, write, and RMW operations.
+
+§ 52(4) It must distinguish successful and failed compare-exchange paths.
+
+§ 52(5) It must validate the exact order matrix.
+
+§ 52(6) It must preserve publication, execution-context, and synchronization facts consumed by race/deadlock analysis.
+
+§ 52(7) It must not defer invalid memory-order combinations to LLVM or another backend verifier.
+
+---
+
+## § 53. Semantic IR
+
+**Governance tags:** `concurrency.memory-model-v2`, `analysis.semantic-ir-v2`, `semantic-ir.atomics-v2`
+
+§ 53(1) Semantic IR must preserve synchronization explicitly enough for verification and lowering.
+
+§ 53(2) It must preserve:
+
+- program-order relevant effects;
+- spawn publication;
+- completion synchronization;
+- mutex acquire/release;
+- atomic loads/stores/RMW;
+- compare-exchange success/failure;
+- explicit fences;
+- memory orders;
+- atomic storage identity;
+- synchronization source/target relationships where resolved;
+- source provenance;
+- platform/FFI ordering contracts.
+
+§ 53(3) Concrete Semantic IR opcode names are owned by `semantic_ir.md`.
+
+§ 53(4) Low-level lowering must not infer atomic semantics from ordinary load/store instructions or naming conventions.
+
+---
+
+## § 54. LSP and diagnostics
+
+**Governance tags:** `tooling.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 54(1) LSP hover must expose the exact `MemoryOrder` declaration and documentation.
+
+§ 54(2) LSP diagnostics must use the same order-validation facts as compiler Sema.
+
+§ 54(3) An invalid order should produce a focused diagnostic, for example:
 
 ```text
-Mutex.lock()
-    acquire synchronization
-
-await
-    task completion synchronization
-
-join
-    task completion synchronization
-
-plain sleep
-    no publication by itself
-
-plain scheduler yield
-    no publication by itself
+MemoryOrder.Release is not valid for Atomic.Load
 ```
 
-Yielding execution is not a memory synchronization primitive.
+§ 54(4) Compare-exchange diagnostics should distinguish the success order from the failure order.
+
+§ 54(5) A target capability failure should remain distinguishable from a language-semantic order error.
+
+§ 54(6) Tooling must not suggest status polling, volatile access, or sleep/yield as a substitute for required synchronization.
 
 ---
 
-## Fences
+## § 55. Restrictions
 
-Version 0.1 may expose explicit memory fences only for low-level code.
+**Governance tags:** `concurrency.memory-model-v2`
 
-Conceptual form:
+§ 55(1) Static lifetime must not be treated as synchronization.
 
-```sec
-atomic.fence(MemoryOrder.SeqCst)
-```
+§ 55(2) Volatile access must not be treated as atomic or synchronized access.
 
-A fence orders memory but does not access an atomic value itself.
+§ 55(3) Task status polling must not be treated as task completion synchronization.
 
-Fences should be restricted to valid memory orders.
+§ 55(4) Ordinary data races must not be permitted.
 
-Most application code should use mutexes, task synchronization or ordinary
-atomic operations instead.
+§ 55(5) Requested atomic ordering must not be weakened.
 
----
+§ 55(6) Atomic values must not tear.
 
-## Compiler reordering
+§ 55(7) Speculation must not create out-of-thin-air values.
 
-The compiler may reorder ordinary operations only when all observable semantics
-remain valid.
+§ 55(8) Memory ordering must not bypass ownership or borrowing.
 
-It must preserve:
+§ 55(9) The compiler must not assume one universal hardware memory model.
 
-- acquire boundaries
-- release boundaries
-- sequentially consistent order
-- mutex lock and unlock boundaries
-- spawn publication
-- task completion publication
-- FFI barriers
-- volatile access order
-- explicit fences
+§ 55(10) Process IPC must not be assumed to share ordinary in-process task memory semantics.
 
-It must not move an ordinary access across a synchronization edge when doing so
-changes visibility.
+§ 55(11) A plain `Store` must not be treated as an RMW merely to extend a release sequence.
+
+§ 55(12) A failed `CompareExchange` must not be treated as a modification.
+
+§ 55(13) Two fences must not be treated as synchronizing without the required atomic communication relation.
 
 ---
 
-## Hardware reordering
+## § 56. Governance
 
-The backend must emit instructions or runtime calls sufficient to enforce the
-requested memory order on the target architecture.
+**Governance tags:** `concurrency.memory-model-v2`, `concurrency.atomics-v2`, `sema.data-race-analysis`, `analysis.semantic-ir-v2`, `semantic-ir.atomics-v2`, `tooling.atomics-v2`, `compiler.platform-model`, `frontend.transferability`
 
-The same Sec source semantics apply on:
+§ 56(1) Mutable implementation information for this rulebook must be maintained in `implementation-status.yaml`.
 
-- x86-64
-- ARM64
-- ARM32
-- RISC-V
-- RTOS targets
-- bare-metal targets
+§ 56(2) The primary governance integration is `concurrency.memory-model-v2`.
 
-A stronger hardware model must not weaken source-level guarantees.
+§ 56(3) Atomic API implementation is tracked through `concurrency.atomics-v2` and its frontend/tooling/IR/lowering/platform integrations.
 
-A weaker hardware model requires appropriate barriers.
+§ 56(4) Data-race analysis consumes this rulebook without redefining its memory-order semantics.
 
----
+§ 56(5) Semantic IR and lowering must preserve the normative modification-order, release-sequence, fence, and compare-exchange semantics even when current implementation coverage is partial.
 
-## Sequential consistency of ordinary code
-
-Sec does not guarantee that all ordinary concurrent accesses appear in one global
-sequential order.
-
-Only properly synchronized programs receive defined cross-task visibility.
-
-Within one task, ordinary semantics remain deterministic subject to defined
-external effects.
-
----
-
-## Message passing
-
-Message passing establishes ownership and visibility according to the message
-primitive.
-
-A sent owned value must be fully initialized before transfer.
-
-A successful receive obtains the value and required visibility.
-
-Detailed channel or IPC semantics are defined separately.
-
-Message passing must not expose partially initialized values.
-
----
-
-## Process boundaries
-
-Processes do not share ordinary Sec memory by default.
-
-IPC creates visibility according to the transport.
-
-Shared-memory IPC must define:
-
-- ownership
-- synchronization
-- atomic compatibility
-- process lifetime
-- mapping lifetime
-- failure behavior
-
-Ordinary task memory-order guarantees do not automatically apply across process
-boundaries unless the primitive explicitly defines them.
-
----
-
-## FFI
-
-Foreign code may use a different memory model.
-
-FFI boundaries must specify or wrap:
-
-- atomic representation
-- memory ordering
-- thread safety
-- callback concurrency
-- shared-memory ownership
-- volatile behavior
-
-The compiler must not assume that an ordinary foreign function call publishes
-memory safely.
-
-A foreign synchronization primitive requires an explicit adapter.
-
----
-
-## Volatile
-
-Volatile access is not synchronization.
-
-It may prevent removal or merging of specific accesses but does not provide:
-
-- atomicity
-- ownership
-- acquire semantics
-- release semantics
-- data-race safety
-
-Memory-mapped I/O may require volatile rules in addition to synchronization.
-
----
-
-## Interrupts
-
-ISR communication requires primitives valid for the selected target profile.
-
-Ordinary mutexes are not interrupt-safe by default.
-
-Atomics may be used only when the operation is supported and interrupt-safe.
-
-The memory model must account for execution between ordinary code and interrupt
-handlers.
-
-Target profiles may define additional device barriers.
-
----
-
-## Lock-free algorithms
-
-Lock-free algorithms must still satisfy:
-
-- ownership
-- lifetime
-- atomic ordering
-- memory reclamation
-- ABA prevention where required
-
-Atomic pointers do not by themselves make an algorithm memory-safe.
-
-The compiler must not infer reclamation safety from compare-exchange usage.
-
----
-
-## Out-of-thin-air values
-
-Atomic and ordinary operations must not produce values without a valid source in
-the program execution.
-
-The compiler and backend must not introduce out-of-thin-air values through
-speculative transformations.
-
----
-
-## Tearing
-
-Atomic operations must not tear.
-
-A successful atomic load observes one complete value permitted by the atomic
-ordering.
-
-Ordinary concurrent non-atomic access that may tear is invalid when it forms a
-data race.
-
-Target support must be verified for the complete atomic width.
-
----
-
-## False sharing
-
-False sharing is a performance concern, not a semantic error.
-
-A future attribute may permit cache-line alignment or padding.
-
-The language memory model does not guarantee cache placement.
-
----
-
-## Semantic analysis
-
-The compiler should determine:
-
-- publication points
-- task ownership transfer
-- active shared references
-- conflicting accesses
-- mutex synchronization
-- atomic ordering validity
-- task completion synchronization
-- static initialization visibility
-- address-stability requirements
-- FFI synchronization effects
-- interrupt-safe atomic support
-- statically provable happens-before relations
-
-Whole-program analysis should be used when available.
-
----
-
-## Semantic IR
-
-Semantic IR must preserve synchronization explicitly.
-
-At minimum:
-
-```text
-TaskPublish
-TaskComplete
-TaskJoin
-TaskAwait
-MutexAcquire
-MutexRelease
-AtomicLoad
-AtomicStore
-AtomicReadModifyWrite
-AtomicCompareExchange
-AtomicFence
-StaticPublish
-IPCTransfer
-```
-
-IR must record:
-
-- storage identity
-- operation kind
-- memory order
-- task identity
-- synchronization source
-- synchronization target
-- publication state
-- source location
-
-Low-level lowering must not infer memory ordering from naming conventions.
-
----
-
-## Diagnostics
-
-Examples:
-
-```text
-shared mutable access to State is not ordered by synchronization
-```
-
-```text
-atomic load cannot use MemoryOrder.Release
-```
-
-```text
-compare-exchange failure order cannot use release semantics
-```
-
-```text
-task status polling does not synchronize access to result data; use join or await
-```
-
-```text
-cannot move mutex State after publication
-```
-
-```text
-concurrent ordinary and atomic access to the same storage is invalid
-```
-
-```text
-runtime initialization of State may race with task creation
-```
-
-```text
-target arm32 cannot provide required atomic uint64 operation
-```
-
----
-
-## Restrictions
-
-The memory model must not:
-
-- make static lifetime equivalent to synchronization
-- make volatile equivalent to atomic
-- make task status polling equivalent to join
-- permit ordinary data races
-- weaken requested atomic ordering
-- invent values through speculation
-- allow tearing of atomic values
-- bypass ownership or borrowing
-- assume one universal hardware memory model
-- assume process IPC shares ordinary task memory semantics
-
----
-
-## Related rules
-
-Detailed behavior is defined in:
-
-```text
-tasks.md
-spawn.txt
-await.txt
-concurrency.txt
-mutex.txt
-atomics.txt
-static.txt
-processes.txt
-spawn_process.txt
-ipc.txt
-platform/ffi.md
-```
+§ 56(6) Cross-rulebook synchronization required by this revision is tracked in the accompanying corrections document.

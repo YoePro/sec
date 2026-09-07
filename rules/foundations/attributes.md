@@ -282,10 +282,23 @@ Using the wrong argument form is a compile error.
 
 # Compile-time arguments
 
-Every initial attribute argument must be a compile-time expression.
+Every initial attribute argument is a `PlanTimeRequiredContext` as defined by
+`rules/compiler/compile_time_evaluation.md`.
 
 Attribute evaluation may use only values available while constructing or
 validating the compilation plan.
+
+This preserves the restricted attribute-expression contract. Ordinary
+user-function semantic CTE is not permitted in initial `@when` selection,
+because plan-time selection establishes the active semantic graph before
+ordinary typed Sema:
+
+```text
+CompilationRequest
+    -> plan-time attribute/selection evaluation
+    -> active source graph
+    -> ordinary typed Sema
+```
 
 No initial attribute argument may require:
 
@@ -2650,7 +2663,7 @@ runtime_checks.md
 panic.md
 allocation.md
 defer.md
-destruction.txt
+destruction.md
 inline_assembly.md
 platform/ffi.md
 functions.md

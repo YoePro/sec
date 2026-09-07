@@ -233,6 +233,7 @@ var registry = map[string]Definition{
 		Family:          "declarations",
 		DefaultSeverity: SeverityInformation,
 		Mandatory:       false,
+		Retired:         true,
 	},
 	LargeValueParameter: {
 		ID:              LargeValueParameter,

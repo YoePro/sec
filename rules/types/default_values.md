@@ -1989,7 +1989,7 @@ unions.md
 memory_model.md
 ownership.md
 copy_move.md
-destruction.txt
+destruction.md
 allocation.md
 formatter.md
 operators.md

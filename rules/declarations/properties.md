@@ -8,6 +8,12 @@
 - **Replaces:** `rules/declarations/properties.txt`
 - **Canonical path:** `rules/declarations/properties.md`
 
+Compiler-known authoritative properties use the same read-only property shape
+defined here but are not ordinary user declarations. In particular,
+`value.SizeOf` and `TypeName.SizeOf` have canonical `uint` instance/static
+property shapes and cannot be replaced where the compiler-known registry says
+they apply. Sec 0.1 has no global `SizeOf(TypeName)` source form.
+
 ## 1. Purpose
 
 A property defines controlled member-like behavior for reading or assigning a value.

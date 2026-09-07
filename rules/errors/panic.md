@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-09-01
-- Document revision: 2.0
+- Last updated: 2026-09-07
+- Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/errors/panic.md`
 - Replaces: previous revision of `rules/errors/panic.md`
@@ -138,7 +138,7 @@ Examples include customer absence, insufficient credit, unavailable inventory, c
 
 ---
 
-## § 7 Managed task and thread panic
+## § 7 Managed task, thread, and process panic
 
 **§ 7(1)** A panic in a managed task or managed thread terminates that execution domain and never resumes its failed stack.
 
@@ -168,6 +168,14 @@ type TaskOutcome[T] union {
 `Failed(TaskError)` and from a normally returned Sec `Err(E)`. A selected
 hard-termination panic policy need not recover a task-local panic into an
 outcome when the panic rulebook says the execution domain cannot contain it.
+
+**§ 7(8)** Managed process panic observation uses the same canonical
+`PanicInfo` according to `rules/concurrency/processes.md`. A joined
+`Process[T]` may report `ProcessStatus.Panicked` only when the complete
+canonical metadata reached the owner. Failed metadata establishment is
+classified as abnormal termination rather than a fabricated partial
+`PanicInfo`. Transport at this containment boundary is runtime control
+metadata and does not weaken ordinary `ProcessTransferable` requirements.
 
 ---
 
@@ -294,31 +302,59 @@ explicit panic
 foreign abort/trusted-boundary failure
 ```
 
-**§ 13(2)** Exact registry spelling and numeric representation belong to the diagnostics/panic registry.
+**§ 13(2)** Exact reason spelling and numeric assignments belong to the
+diagnostics/panic registry. The public ID representation is fixed as:
+
+```sec
+type PanicID uint32
+```
+
+`PanicID` is copyable, equality-comparable, and target-independent. It is a
+stable registered panic-reason identity, not a signal number, native exception
+code, source address, process/thread identifier, transient source hash, or
+backend trap ID.
 
 **§ 13(3)** Panic observation uses a bounded structured panic-information value.
 
-Conceptually:
+The exact source-visible compiler-known/core declaration is:
 
 ```sec
 type PanicInfo struct {
-    ID: PanicID
-    File: string
-    Line: uint
-    Column: uint
-    Function: string
+    ID: PanicID,
+    File: string,
+    Line: uint,
+    Column: uint,
+    Function: string,
 }
 ```
 
-**§ 13(4)** The exact public ABI/layout/name of `PanicInfo` is not fixed by the conceptual example.
+**§ 13(4)** These five fields are the complete portable Sec 0.1 surface.
+`PanicInfo` is bounded immutable observation metadata and is copyable. Copying
+it transfers no panic-domain or execution-lifecycle ownership.
 
-**§ 13(5)** Optional profile information may include message, operation, type, task/thread ID, source expression, call stack, and related panic.
+**§ 13(5)** `File` and `Function` are canonical compiler-known diagnostic
+metadata; `Line` and `Column` follow Sec source-location rules. Optional
+profile information may include message, operation, type, task/thread/process
+identity, source expression, call stack, and related panic, but it does not
+change this struct.
 
-**§ 13(6)** The minimum representation must not require dynamic allocation.
+**§ 13(6)** Construction of these exact fields on the minimum path must not
+require dynamic allocation. Compiler-emitted/static metadata or constant tables
+must present `File` and `Function` as the canonical source-level `string`
+without allocating or symbolizing at panic time.
+
+**§ 13(7)** Every compiler-known panic-related Sec type named by this rulebook
+must have one complete canonical declaration. Compiler-known identity and the
+core source-visible declaration resolve to the same semantic symbol.
 
 ---
 
 ## § 14 Allocation-free panic path
+
+When a panic or failed `assert` path is reached during required semantic CTE,
+the evaluator reports compile-time evaluation failure with source provenance;
+it does not crash the compiler or materialize runtime panic. A normal
+`Result.Err(...)` remains a successfully evaluated Sec value.
 
 **§ 14(1)** The minimum panic path must not require heap allocation, dynamic string concatenation, growing collections, symbolization, filesystem/network access, or blocking on a potentially poisoned allocator.
 
@@ -705,7 +741,10 @@ assertion message path allocates nothing
 
 **§ 30(3)** Cleanup integration is complete when every panic policy preserves exactly the cleanup guarantees defined jointly by panic/defer/destruction without assuming nonexistent unwinding.
 
-**§ 30(4)** Concurrency containment is complete when managed task/thread panic is recorded and observed without resuming failed execution or collapsing panic into returned `Result`.
+**§ 30(4)** Concurrency containment is complete when managed task/thread/process
+panic uses the canonical `PanicInfo`, is recorded and observed without
+resuming failed execution or collapsing panic into returned `Result`, and
+process transport never fabricates incomplete metadata.
 
 **§ 30(5)** ISR integration is complete when interrupt roots consume the same canonical panic effects and enforce Sec 0.1 `noPanic` transitively.
 

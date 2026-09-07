@@ -1,0 +1,15 @@
+// Sec Standard Library: net/dns
+// File: message.sec
+//
+// Standards:
+//   RFC 1035 - Domain Names - Implementation and Specification
+//   https://www.rfc-editor.org/rfc/rfc1035
+//
+//   RFC 6891 - Extension Mechanisms for DNS (EDNS(0))
+//   https://www.rfc-editor.org/rfc/rfc6891
+//
+// Related:
+//   RFC 2181 - Clarifications to the DNS Specification
+//   https://www.rfc-editor.org/rfc/rfc2181
+
+module dns

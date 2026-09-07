@@ -692,7 +692,7 @@ requests cancellation but does not force immediate termination.
 The running callable may observe:
 
 ```sec
-Thread.Current().cancelRequested
+Thread.Current().CancelRequested
 ```
 
 or reach a cancellation-aware blocking operation.
@@ -768,11 +768,32 @@ At minimum it exposes:
 ```sec
 current.id
 current.name
-current.cancelRequested
+current.CancelRequested
 current.platform.id
 ```
 
 It cannot be joined, detached or used to obtain a result.
+
+The canonical cancellation extension is:
+
+```sec
+impl Thread[T] {
+    fn RequestCancel() void
+}
+
+impl Thread {
+    static fn Current() ThreadContext
+}
+
+impl ThreadContext {
+    CancelRequested bool
+}
+```
+
+`RequestCancel()` is cooperative, idempotent, non-consuming, and distinct
+from unsafe `Terminate()`. `ThreadContext` retains the physical-thread
+identity, name, and platform metadata defined here; it is not interchangeable
+with logical `TaskContext`.
 
 ---
 
@@ -1014,9 +1035,9 @@ This rule must be merged with and cross-checked against:
 spawn.md
 tasks.md
 await.md
-processes.txt
+processes.md
 concurrency.md
-concurrency_memory_model.txt
+concurrency_memory_model.md
 scheduling.md
 blocking.md
 transferability.md
@@ -1034,7 +1055,7 @@ copy_move.md
 ownership.md
 borrowing.md
 lifetime_analysis.md
-destruction.txt
+destruction.md
 errorhandling.md
 semantic_ir.md
 core-library.md

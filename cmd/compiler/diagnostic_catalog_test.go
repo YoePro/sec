@@ -73,8 +73,8 @@ func TestBuildDiagnosticCatalogContainsEveryRegisteredDefinition(t *testing.T) {
 	if catalog.Summary.Active+catalog.Summary.Retired != catalog.Summary.Total {
 		t.Fatalf("status counts do not cover every definition: active=%d retired=%d total=%d", catalog.Summary.Active, catalog.Summary.Retired, catalog.Summary.Total)
 	}
-	if catalog.Summary.Retired != 1 {
-		t.Fatalf("retired definitions = %d, want 1", catalog.Summary.Retired)
+	if catalog.Summary.Retired != 2 {
+		t.Fatalf("retired definitions = %d, want 2", catalog.Summary.Retired)
 	}
 }
 

@@ -115,9 +115,9 @@ These were written after the older temporary checklist was last synchronized.
 | `types/contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
 | `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics, including declared-member defaults for integer-, string-, and bit-backed enums. |
 | `types/units.md` | **Written** | Canonical revision 2.0 carrier-independent unit model; implementation progress is tracked by `frontend.units-v2` and `stdlib.units-catalog` in `implementation-status.yaml`. |
-| `foundations/grammar.md` | **Written** | Canonical consolidated grammar for Sec 0.1, including string-backed enum declarations and canonical immutable associated `let` members. |
+| `foundations/grammar.md` | **Written** | Canonical grammar distinguishes instance let from explicitly static impl bindings. |
 | `foundations/operators.md` | **Written** | Canonical operator semantics; compiler progress belongs in `implementation-status.yaml`. |
-| `foundations/names_scopes_visibility.md` | **Written — sync required** | Defines one member identity for canonical immutable impl `let` and compatibility `static let`; top-level conflicts are partially implemented and the remaining scope, visibility, reserved-name and naming-rule audit is still needed. |
+| `foundations/names_scopes_visibility.md` | **Written** | Static and instance bindings require different receivers and share the combined member-name namespace; remaining visibility audit is tracked separately. |
 | `foundations/attributes.md` | **Written** | Canonical closed Sec 0.1 attribute set, syntax, attachment, selection, target binding, `@noCopy`, verified guarantees, conflicts, formatter/LSP behavior, and explicit implementation status. |
 | `memory/unsafe.md` | **Written** | Canonical revision 2.0 unsafe contexts, operation-level obligations, unsafe functions/extern calls, trusted declarations, safe wrappers, trust provenance, target/FFI/assembly boundaries, Semantic IR, lowering, diagnostics, and tooling. Implementation progress is tracked by the six `*.unsafe` entries in `implementation-status.yaml`. |
 
@@ -191,7 +191,7 @@ LSP token classification
 | `closures.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
 | `declarations/generics.md` | **Written** | Canonical revision 2.1 compile-time type generics, now including generic enums with phantom nominal identity parameters, concrete member owners, ordinary generic impl scope, and no runtime generic machinery. Implementation progress is tracked by `frontend.generics-v2`. |
 | `declarations/interfaces.md` | **Written** | Revision 2.1 includes compiler-known generic interfaces such as statically dispatched `Iterator[T]`; ordinary receiver capabilities, inheritance, and primary-impl conformance remain canonical. Frontend progress is tracked by `frontend.interfaces` and `frontend.for-loops-v2`. |
-| `declarations/impl.md` | **Written** | Revision 2.1 additionally makes immutable impl `let` the canonical associated-value spelling and immutable impl `static let` its equivalent compatibility form; lifecycle status is tracked by `frontend.impl-lifecycle-construction` and associated values by `frontend.static-declarations-members`. |
+| `declarations/impl.md` | **Written** | Corrected static/instance distinction: bare let is instance-owned; explicit static let is type-owned. Per-instance storage implementation remains pending. |
 | `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
 | `control-flow/defer.md` | **Written** | Canonical revision 2.0 invocation-scoped deferred cleanup, unified LIFO ordering with automatic destruction, lifetime extension, forbidden control transfer, and callable-context boundaries. Implementation progress is tracked by `frontend.defer-v2`. |
 | `declarations/spread.md` | **Written** | Canonical postfix spread for fixed-array calls/literals and same-type struct construction. Frontend progress is tracked by `frontend.spread`. |
@@ -313,7 +313,7 @@ The remaining details to close are:
 | `memory/lifetime_analysis.md` | **Written** | Canonical revision 2.0 lifetime analysis, including value/storage/reference lifetimes, Place-sensitive invalidation, non-lexical borrows, control-flow and loop joins, returned-reference summaries, defer/capture dependencies, arena epochs, fixed-address and runtime-mapping boundaries, Semantic IR obligations, and diagnostics. Implementation progress is tracked by `frontend.lifetime-analysis`, `interprocedural.lifetime-analysis`, `semantic-ir.lifetime-analysis`, `lowering.lifetime-analysis`, `platform.lifetime-analysis`, and `tooling.lifetime-analysis` in `implementation-status.yaml`. |
 | `memory/destruction.md` | **Written** | Canonical revision 2.0 deterministic destruction, exact-once cleanup responsibility, partial and conditional aggregate cleanup, custom `free`, construction-failure cleanup, unified defer/destruction ordering, and target-policy boundaries. Implementation progress is tracked by `frontend.destruction`, `semantic-ir.destruction`, `lowering.destruction`, `target-policy.destruction`, and `tooling.destruction` in `implementation-status.yaml`. |
 | `memory/memory_model.md` | **Written** | Canonical revision 2.0 abstract memory machine separating values, objects, bindings, Places, storage, representations, ownership, borrows, provenance, validity, concurrency, hardware effects, and lowering obligations. Implementation progress is tracked by the six `*.memory-model` entries in `implementation-status.yaml`. |
-| `declarations/static.md` | **Written** | Revision 2.1 defines module and function-local static storage plus type-associated members; immutable impl `let` is canonical and immutable impl `static let` is equivalent compatibility syntax, while mutable associated storage remains explicit. Implementation progress is tracked by `frontend.static-declarations-members`. |
+| `declarations/static.md` | **Written** | Explicit static is required for type-owned impl bindings, including immutable bindings. Implementation is tracked by frontend.static-declarations-members. |
 | `control-flow/discard.md` | **Written** | Canonical revision 2.0 explicit and implicit discard, must-use/discardability, reinitialization, lifecycle-handle, and deterministic destruction semantics. The implemented frontend slice and remaining lowering, Place, diagnostics, and path-sensitive work are tracked by `frontend.discard-v2`. |
 | `memory/storage.md` | **Written** | Canonical revision 2.0 storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, epochs, pin/protection state, memory spaces, placement, concurrency, Semantic IR, lowering, and diagnostics. Implementation progress is tracked by the six `*.storage` entries in `implementation-status.yaml`. |
 | `memory/layout.md` | **Written** | Canonical revision 2.0 semantic/native/explicit layout, size, alignment, stride, padding, aggregate and union representation, completeness, validity, target plans, ABI/register integration, Semantic IR, lowering, and tooling. Implementation progress is tracked by the six `*.layout` entries in `implementation-status.yaml`. |
@@ -344,9 +344,9 @@ memory/storage.md
 | Rulebook | Status | Notes |
 |---|---|---|
 | `errors/errorhandling.md` | **Written** | Canonical revision 2.0 compiler-known `error`, typed Result channels, Result projections, general Result/Option/fallible-operation `try`, partial guarded handlers, explicit fallible-setter contracts, ownership, Semantic IR, diagnostics, and LSP requirements. Implementation progress is tracked by `frontend.errorhandling-v2`. |
-| `errors/panic.md` | **Written — revision 2.0** | Canonical panic domains, containment, cleanup, checked unreachable, task/thread outcomes, panic information, no-panic verification, and runtime-free support model. Sec 0.1 assertion syntax is locked to `assert condition` or `assert condition, "message"`; exact explicit-panic and build-manifest syntax remain open. |
+| `errors/panic.md` | **Written — revision 2.1** | Canonical panic domains, containment, cleanup, checked unreachable, task/thread/process outcomes, exact `PanicID uint32` and five-field `PanicInfo`, no-panic verification, and runtime-free support model. Sec 0.1 assertion syntax is locked to `assert condition` or `assert condition, "message"`; exact explicit-panic and build-manifest syntax remain open. |
 | `errors/runtime_checks.md` | **Written** | Canonical checked-operation model, proof elimination, fallible `try` paths, panic-capable ordinary paths, typed propagation, no-panic integration, and runtime-free lowering requirements. |
-| `library/core-library.md` | **Written — sync required** | Must include the compiler/core access model and all language-level core errors. |
+| `library/core-library.md` | **Written** | Canonical core/compiler boundary, privileged compiler-known declaration policy, source-visible core declarations, and language-level core errors including panic, concurrency, context, atomic, process, and thread families. |
 | `core/errors.sec` | **Implementation artifact** | Every language-level runtime error type must be declared here. |
 
 A runtime check does not imply a general managed runtime.
@@ -368,28 +368,28 @@ implementation remains tracked separately.
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `concurrency/concurrency.md` | **Written** | Canonical revision 2.0 umbrella model synchronized with task v2, execution-kind boundaries, transferability, race/deadlock ownership, Semantic IR, and immutable `CompilationPlan`-driven lowering. Implementation is tracked by `concurrency.model-v2` and the specialist governance entries. |
-| `concurrency/concurrency_memory_model.md` | **Written — sync required** | Must remain aligned with tasks, threads, channels, atomics, and events. |
-| `concurrency/concurrency_runtime_model.md` | **Written — sync required** | Must include core errors and no-required-runtime profiles. |
+| `concurrency/concurrency.md` | **Written** | Canonical revision 2.1 umbrella model synchronized with task v2, process v2, execution-kind boundaries, transferability, race/deadlock ownership, Semantic IR, and immutable `CompilationPlan`-driven lowering. Implementation is tracked by `concurrency.model-v2` and the specialist governance entries. |
+| `concurrency/concurrency_memory_model.md` | **Written** | Revision 2.0 defines exact MemoryOrder, per-atomic modification order, release sequences, compare-exchange paths, fences, completion publication, and analysis/lowering obligations. |
+| `concurrency/concurrency_runtime_model.md` | **Written** | Canonical no-required-runtime profile model, runtime capability surface, task/thread/process/context errors, and target-selected lowering boundaries. |
 | `concurrency/tasks.md` | **Written** | Canonical revision 2.0 task semantics: fallible task spawn, move-only lifecycle ownership, `TaskOutcome[T]`, cancellation, panic/execution-failure separation, observers, transferability, Semantic IR, and runtime-independent lowering. Implementation is tracked by `concurrency.tasks-v2`. |
-| `concurrency/spawn.md` | **Written — sync required** | All spawn forms are fallible; process spawn is deferred. |
-| `concurrency/await.md` | **Written — sync required** | Must be synchronized with task outcome and cancellation. |
-| `concurrency/threads.md` | **Written — sync required** | Thread design is closed for Sec 0.1; implementation remains. |
+| `concurrency/spawn.md` | **Written** | All spawn forms are fallible; `spawn process` yields `Result[Process[T], ProcessSpawnError]` with process-specific transactional transfer. |
+| `concurrency/await.md` | **Written** | Canonical task-only await semantics producing `TaskOutcome[T]`, with cancellation and panic outcomes preserved distinctly. |
+| `concurrency/threads.md` | **Written** | Canonical physical-thread model, `Thread[T]` lifecycle, `ThreadContext`, `Thread.Current().CancelRequested`, cooperative cancellation, join/detach/termination, target capability and runtime boundaries. |
 | `concurrency/thread_local.md` | **Written — sync required** | Physical thread-local storage and task-migration restrictions. |
 | `concurrency/scheduling.md` | **Written — sync required** | |
-| `concurrency/blocking.md` | **Written — sync required** | |
-| `concurrency/cancellation.md` | **Written — sync required** | |
+| `concurrency/blocking.md` | **Written** | Includes owning process/Command join, non-owning ProcessObserver waits, process effects and ISR restrictions. |
+| `concurrency/cancellation.md` | **Written** | Revision 2.0 defines distinct task/thread cancellation, inferred cancellable-execution effects, exactly-one commit, and Context/ContextSource. |
 | `concurrency/structured_concurrency.md` | **Written — sync required** | |
 | `memory/transferability.md` | **Written** | Canonical revision 2.0 boundary-specific transferability and shareability across tasks, physical threads, processes, interrupts, and foreign callbacks, including closure/reference/capability dependencies and platform constraints. Implementation progress is tracked by the six `*.transferability` entries in `implementation-status.yaml`. |
 | `analysis/data_races.md` | **Written** | Canonical data-race analysis rules; implementation status is tracked by `sema.data-race-analysis` in `implementation-status.yaml`. |
 | `analysis/deadlock_analysis.md` | **Written** | Canonical deadlock-analysis rules; implementation status is tracked by `sema.deadlock-analysis` in `implementation-status.yaml`. |
 | `concurrency/channels.md` | **Written — sync required** | |
 | `concurrency/events.md` | **Written — sync required** | C#-style publish/subscribe event model; distinct from readiness/completion. |
-| `concurrency/select.md` | **Written — sync required** | |
-| `concurrency/mutex.md` | **Written — sync required** | |
-| `concurrency/atomics.md` | **Written — sync required** | |
-| `concurrency/processes.txt` | **Written — planned feature** | Rulebook exists, but `spawn process` design/implementation is intentionally postponed. |
-| `ipc.md` | **Planned** | Process communication is postponed with process spawning. |
+| `concurrency/select.md` | **Written** | Includes selectable owning Process join and repeatable non-owning ProcessObserver.Wait semantics. |
+| `concurrency/mutex.md` | **Written** | Revision 2.0 defines canonical Lock overloads, @noCopy guards, forwarding, Context ownership, duration/Instant, and cancellation commit semantics. |
+| `concurrency/atomics.md` | **Written** | Revision 2.0 defines canonical Atomic[T], MemoryOrder, CompareExchangeResult[T], CamelCase operations, fences, and target-capability separation. |
+| `concurrency/processes.md` | **Written** | Revision 2.0 is the normative Sec 0.1 model for Process[T], Command, lifecycle/completion, standard I/O, target capabilities, analysis, and lowering; compiler/runtime implementation remains planned. |
+| `ipc.md` | **Planned** | Planned owner of PipeReader/PipeWriter, general inter-process messaging, shared memory, process-aware synchronization, capability/handle transfer, and existing-resource Command standard-I/O binding. |
 
 Threads are considered design-complete for Sec 0.1.
 
@@ -404,7 +404,7 @@ Semantic IR
 MLIR and target lowering
 ```
 
-Process spawning and IPC do not block the immediate language closure.
+IPC does not block the immediate language closure.
 
 ---
 
@@ -415,10 +415,10 @@ Process spawning and IPC do not block the immediate language closure.
 | `types/types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `implementation-status.yaml`. |
 | `declarations/generics.md` | **Written** | Type-generic declarations, parameters, constraints, inference, generic enums/interfaces/named types/methods, and template-level validity. Canonical concrete specialization is owned by `compiler/monomorphization.md`; compile-time value parameters still require separate normative semantics. |
 | `declarations/interfaces.md` | **Written** | Interface declarations, generic constraints, and compiler-known `Iterator[T]`; implementation progress is tracked by `frontend.interfaces` and `frontend.for-loops-v2`. |
-| `declarations/impl.md` | **Written** | Frontend lifecycle construction is partially implemented and tracked canonically in `implementation-status.yaml`. |
+| `declarations/impl.md` | **Written** | Corrected static/instance distinction: bare let is instance-owned; explicit static let is type-owned. Per-instance storage implementation remains pending. |
 | `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties`. |
-| `library/core-library.md` | **Written — sync required** | Compiler-known core declarations and privileged impl access. |
-| `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, lookup, builtin and shaped member surfaces, core boundary and tooling behavior. Initial Sema/LSP registry integration is implemented. |
+| `library/core-library.md` | **Written** | Compiler-known core declarations, privileged impl access, source-visible compiler/core identity, and required language-level core errors. |
+| `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, fallback-versus-authoritative policy, universal `ToString() string`, property-only `SizeOf`, complete compiler-known declaration governance, core boundary, and tooling behavior. Initial Sema/LSP registry integration remains partial. |
 | `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts, including the canonical `stdlib/hw` area and reserved `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart` infrastructure, plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Hardware-bus APIs, allocating complete-file APIs, and directory-list APIs remain pending. |
 
 Built-in lowercase types may receive privileged implementations in core.
@@ -473,11 +473,11 @@ OrderedMap[K, V]
 | `analysis/pitfall_analysis.md` | **Written** | Canonical semantic pitfall-finding, evidence, suppression, confidence, corrective-action, budget, incremental, LSP, and FFI-contract model. Implementation status is tracked by `sema.pitfall-analysis`. |
 | `analysis/effect_analysis.md` | **Written** | Canonical compile-time effect domains and propagation model, including the distinction between logical shaped operations and storage-producing shaped operations. Initial Arena event sites, synchronous `MayAllocate` propagation, cause paths, and LSP hover are implemented; the complete effect set, guarantees, contexts, indirect targets, and per-plan analysis remain. |
 | `analysis/isr_analysis.md` | **Written** | Canonical cross-analysis ISR constraint verifier: resolved profiles, reusable requirement summaries, execution-context propagation, stack/race/deadlock/FFI composition, Valid/Invalid/Unproven proof states, incremental dependencies, and progressive LSP refinement. Implementation status is tracked by `sema.isr-analysis`. |
-| `compiler/parser_recovery.md` | **Written** | Canonical deterministic recovery model; ordinary unterminated statement blocks retain partial AST contents for tooling. Structured implementation remains partial, including specialized unterminated constructs. |
+| `compiler/parser_recovery.md` | **Written** | Canonical deterministic recovery model; ordinary unterminated statement blocks and switch bodies retain partial AST contents for tooling. Structured implementation remains partial, including select and match/try constructs. |
 | `compiler/generics_lowering.md` | **Written** | Verified concrete-generic closure and representation-dependent lowering boundary. Canonical specialization identity and demand are owned by `compiler/monomorphization.md`; implementation remains partial under `compiler.generics-lowering`. |
 | `compiler/monomorphization.md` | **Written** | Canonical demand-driven specialization model: `InstantiationIdentity`, dependency graph, simultaneous substitution, semantic-versus-physical realization, implementation sharing, cross-module artifacts, ABI/FFI, incremental fingerprints, termination/resource limits, diagnostics, cost policy, and determinism. Implementation is tracked by `compiler.monomorphization`. |
 | `compiler/linking.md` | **Written** | Canonical CompilationPlan-specific LinkPlan, binary symbol identity, native/foreign resolution, archives, reachability, dead stripping/LTO, deterministic toolchain materialization, and artifact verification. The existing direct clang-driver build path is a legacy partial slice; canonical work is tracked by `compiler.linking`. |
-| `compile_time_evaluation.md` | **Planned** | User-visible compile-time evaluation semantics. |
+| `compiler/compile_time_evaluation.md` | **Written** | Canonical Sec 0.1 plan-time and typed semantic CTE model, including user functions, effects, ownership, transient allocation, generics, materialization, diagnostics, caching, and lowering boundaries. Implementation is tracked by `compiler.compile-time-evaluation`. |
 
 File extensions for new rulebooks should preferably converge on:
 
@@ -569,13 +569,13 @@ multiple target outputs
 | Rulebook | Status | Notes |
 |---|---|---|
 | `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
-| `tooling/formatter.md` | **Written** | Canonical formatting behavior, including string-enum initializer preservation, immutable impl `static let` normalization to `let`, and canonical assertion-message comma spacing; implementation progress belongs in `implementation-status.yaml`. |
+| `tooling/formatter.md` | **Written** | Canonical formatting preserves impl static let because removing static changes member ownership and receiver requirements. |
 | `tooling/testing.md` | **Written** | Canonical source-level `test`, `*_test.sec`, `sec test`, compiler-known `testing.*`, subtests, integration tests, `TestCompilationPlan`, execution-provider, structured-result, LSP and editor-integration semantics. Implementation progress is tracked by `tooling.language-testing`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `tooling/diagnostics.txt`; avoid duplication. |
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
-| `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook, now including string-backed enum facts and one readonly type-qualified category for both associated-value spellings; implementation remains partial as detailed in governance. |
+| `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; static and instance bindings are distinct, and impl static-removal advice is withdrawn. Implementation remains partial as detailed in governance. |
 
 ---
 
@@ -644,7 +644,7 @@ concurrency/mutex.md
 foundations/operators.md
 memory/ownership.md
 errors/panic.md
-concurrency/processes.txt
+concurrency/processes.md
 projects/projects.txt
 projects/modules.md
 declarations/properties.md
@@ -679,6 +679,7 @@ types/contracts.md
 tooling/lsp.md
 foundations/grammar.md
 compiler/parser_recovery.md
+compiler/compile_time_evaluation.md
 ```
 
 The following newer rulebooks are also written and present in the canonical
@@ -714,8 +715,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-compile_time_evaluation.md
-
 debug_information.md
 compiler_testing.md
 incremental_compilation.md
@@ -828,12 +827,10 @@ The canonical rule is `declarations/lambda-functions.md`.
 
 ## Compile-time evaluation and generics
 
-Still to decide:
-
-- user-defined compile-time execution;
-- allocation and I/O restrictions;
-- compile-time panic;
-- recursion and loop limits;
+`compiler/compile_time_evaluation.md` now locks user-defined semantic CTE,
+executed-effect restrictions, transient allocation, panic/failure handling,
+loops/recursion and resource budgets. Const/value generics remain separately
+excluded unless an owning rulebook introduces them.
 
 ## Collections and shaped types
 
@@ -864,7 +861,7 @@ The following must be either included or explicitly marked as excluded:
 
 ```text
 macros
-compile-time reflection
+general-purpose structural compile-time reflection and declaration metaprogramming
 runtime reflection
 tuples
 multiple return values
@@ -876,7 +873,6 @@ inheritance
 exceptions
 garbage collection
 dynamic-rank tensors
-process spawning
 IPC
 general user-defined operator overloading
 ```

@@ -29,6 +29,12 @@ The unit system is designed to prevent mistakes such as:
 Unit checking is a compile-time semantic feature. A backend representation must
 not be used to infer unit meaning.
 
+Static unit conversion/dimension proof is not automatically a semantic-CTE
+request. An owning unit/type source position that requires evaluation before
+runtime lowering must declare the appropriate required context explicitly. CTE
+preserves the exact nominal unit and carrier semantics rather than evaluating
+only the underlying representation.
+
 Implementation status is maintained outside this rulebook.
 
 ---

@@ -922,6 +922,10 @@ func (p *Parser) skipMalformedForHeader(stmt *ast.ForStatement) {
 	}
 }
 
+// parseSwitchStatement parses switch clauses and retains their partial AST at
+// EOF; the unterminated-body diagnostic still blocks ordinary code generation.
+// Rules: rules/control-flow/flowcontrol_switch.md — switch statements;
+// rules/compiler/parser_recovery.md — "Recovery goals", "Error blocks code generation".
 func (p *Parser) parseSwitchStatement() ast.Statement {
 	stmt := &ast.SwitchStatement{Token: p.curToken}
 
@@ -976,7 +980,6 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 
 	if p.curToken.Type == lexer.EOF {
 		p.addError("unterminated switch body")
-		return nil
 	}
 
 	return stmt

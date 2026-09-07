@@ -4711,42 +4711,33 @@ impl Vehicle {
 	assertSemaErrors(t, errors, expected)
 }
 
-// rules/declarations/static.md, sections 6-12; properties.md, section 10.
-// rules/declarations/static.md section 6: immutable let and static let share
-// one associated member category, while bare mutable impl storage is invalid.
-func TestImplAssociatedLetAndRedundantStaticInformation(t *testing.T) {
-	input := `
-module main
-
-type Program string
-
-impl Program {
-	let OneCare := "Zebra OneCare"
-	static let VIQ := "Z1C+VIQ"
-	let mut Invalid := "shared"
-}
-
-fn Read() string {
-	return Program.OneCare
-}
-`
-	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
-	assertSemaErrors(t, errors, []string{
-		"mutable associated storage must be declared with static let mut at 9:2",
-	})
-
-	oneCare, ok := analyzer.symbols["Program.OneCare"]
-	if !ok || oneCare.Mutable || oneCare.Storage != StorageOriginStatic || oneCare.Type.Kind != StringType {
-		t.Fatalf("canonical associated let was not registered correctly: %+v", oneCare)
+// Rules: rules/declarations/static.md section 6: static is required for type-owned values.
+func TestImplStaticAndInstanceLetAreDistinct(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/impl_instance_let_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
 	}
-	viq, ok := analyzer.symbols["Program.VIQ"]
-	if !ok || viq.Mutable || viq.Storage != StorageOriginStatic || viq.Type.Kind != StringType {
-		t.Fatalf("compatibility associated static let was not registered correctly: %+v", viq)
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, string(input))
+	if len(errors) != 2 {
+		t.Fatalf("expected unsupported instance storage errors: %v", errors)
 	}
-	warnings := analyzer.Warnings()
-	if len(warnings) != 1 || warnings[0].ID != diagnostics.RedundantAssociatedStatic || warnings[0].Severity != diagnostics.SeverityInformation ||
-		warnings[0].Message != "static is redundant on immutable associated declaration VIQ" {
-		t.Fatalf("wrong redundant-static information diagnostic: %+v", warnings)
+	for _, message := range errors {
+		if !strings.Contains(message.Message, "per-instance storage and initialization") {
+			t.Fatalf("wrong diagnostic: %s", message)
+		}
+	}
+	if _, ok := analyzer.symbols["Program.Instance"]; ok {
+		t.Fatal("instance let became a static symbol")
+	}
+	if _, ok := analyzer.symbols["Program.MutableInstance"]; ok {
+		t.Fatal("mutable instance let became a static symbol")
+	}
+	shared, ok := analyzer.symbols["Program.Shared"]
+	if !ok || shared.Mutable || shared.Storage != StorageOriginStatic {
+		t.Fatalf("missing static member: %+v", shared)
+	}
+	if len(analyzer.Warnings()) != 0 {
+		t.Fatalf("static must not be diagnosed as redundant: %+v", analyzer.Warnings())
 	}
 }
 

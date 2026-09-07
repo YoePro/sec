@@ -80,12 +80,15 @@ result types:
 spawn Work()          // Result[Task[T], TaskSpawnError]
 spawn task Work()     // Result[Task[T], TaskSpawnError]
 spawn thread Work()   // Result[Thread[T], ThreadSpawnError]
-spawn process Work()  // fallible process result defined by processes.txt
+spawn process Work()  // Result[Process[T], ProcessSpawnError]
 ```
 
 `spawn expression` is exactly equivalent to `spawn task expression`.
 
-`spawn.md` does not finalize the process result model.
+For every execution kind, `T` is the callable's complete declared normal return
+type. A callable returning `Result[U, E]` therefore produces
+`Process[Result[U, E]]`; process-creation failure is the outer
+`ProcessSpawnError` and is never flattened with the callable result.
 
 Example:
 
@@ -123,7 +126,7 @@ Task[Result[Image, IOError]]
 Task creation failure occurs before a `Task[T]` exists and remains distinct
 from every outcome of the successfully created task.
 
-`Task[T]`, `Thread[T]` and the process handle type are distinct handle types.
+`Task[T]`, `Thread[T]`, and `Process[T]` are distinct handle types.
 
 They are not interchangeable and must not be silently lowered across kinds.
 
@@ -152,7 +155,7 @@ must not become a task or thread.
 Expected diagnostic:
 
 ```text
-target profile does not support process creation
+target profile does not support process execution
 ```
 
 The spawn IR must record the requested execution kind:
@@ -164,6 +167,12 @@ Process
 ```
 
 The backend must not infer execution kind from the called function.
+
+For `Process`, Semantic IR additionally preserves the concrete callable entry,
+`Process[T]` and `ProcessSpawnError` result identities, transfer adapters for
+arguments/captures/receiver, startup prepare/commit/rollback facts, and source
+provenance. It must not retain ordinary cross-process borrow facts or lower the
+operation as task/thread execution.
 
 ## Common ownership
 
@@ -189,7 +198,7 @@ detach handle
 
 ## Eager scheduling
 
-`spawn` creates an eager task.
+`spawn` creates the selected execution kind eagerly.
 
 After the `spawn` expression completes, the new task is scheduled, running or already completed.
 
@@ -197,7 +206,12 @@ The implementation may begin execution immediately.
 
 The language does not guarantee that the spawned operation executes before the next source statement.
 
-The language does guarantee that the operation has been submitted to the selected task execution mechanism.
+The language does guarantee that the operation has been submitted to the selected
+execution mechanism. In particular, successful `spawn process` establishes the
+process identity, child bootstrap, startup-transfer commit, callable entry,
+completion transport, and lifecycle owner defined by `processes.md`. It never
+exposes an unstarted `Process[T]`; there is no `ProcessConfig` or
+`Process.Start()` surface.
 
 ## Synchronous calls
 
@@ -226,7 +240,7 @@ The spawned operation executes with a new current task context.
 Inside the spawned operation:
 
 ```sec
-task.cancelRequested
+Task.Current().CancelRequested
 ```
 
 refers to the new task.
@@ -262,6 +276,20 @@ The compiler must preserve normal argument evaluation order.
 Successfully evaluated argument values are copied, moved or borrowed according to their types and parameter modes.
 
 The backend must not reorder argument evaluation across the task creation boundary when that changes observable behavior.
+
+For `spawn process`, arguments, captures, and instance-method receiver state
+must satisfy the canonical `ProcessTransferable` proof or adapter from
+`rules/memory/transferability.md`. Ordinary `ref T` and `ref mut T` never
+cross the process boundary, and a numeric `RawPtr[T]` does not become a
+child-valid pointer merely by transfer. Transferred receiver state becomes
+child-local; method code is compiler/linker materialization rather than runtime
+object payload.
+
+An existing named binding consumed by process startup requires the ordinary
+`<-` marker; fresh temporaries require no synthetic marker. Startup is
+transactional: on `Ok(Process[T])` the transfer commits and the source becomes
+unavailable, while on `Err(ProcessSpawnError)` it does not commit and the
+source remains owned for normal recovery or cleanup.
 
 ## Ownership transfer
 
@@ -585,6 +613,18 @@ target profile does not provide task execution
 ```
 
 ```text
+target profile does not support process execution
+```
+
+```text
+process spawn consumes 'payload'; write <-payload to transfer ownership
+```
+
+```text
+value of type 'T' cannot cross the process boundary
+```
+
+```text
 unbounded recursive task creation detected: Bomb -> spawn Bomb
 ```
 
@@ -611,8 +651,8 @@ tasks.md
 await.txt
 concurrency.txt
 threads.md
-processes.txt
-mutex.txt
+processes.md
+mutex.md
 static.txt
-concurrency_memory_model.txt
+concurrency_memory_model.md
 ```

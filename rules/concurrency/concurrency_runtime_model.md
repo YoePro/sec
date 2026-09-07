@@ -690,7 +690,7 @@ Cross-check and update:
 spawn.md
 tasks.md
 threads.md
-processes.txt
+processes.md
 await.md
 scheduling.md
 blocking.md
@@ -703,7 +703,7 @@ mutex.md
 atomics.md
 thread_local.md
 concurrency.md
-concurrency_memory_model.txt
+concurrency_memory_model.md
 allocation.md
 static.md
 platform/ffi.md

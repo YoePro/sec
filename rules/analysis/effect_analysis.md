@@ -2983,3 +2983,9 @@ rulebook remains authoritative for effect meaning and compatibility.
 Effect analysis is performed per concrete compilation plan.
 
 Effect analysis introduces no mandatory runtime.
+
+The canonical effect facts defined here are also consumed by semantic CTE.
+`rules/compiler/compile_time_evaluation.md` decides whether an effect on the
+concretely executed path is permitted; it does not create a competing effect
+taxonomy. A forbidden effect in an unexecuted branch does not by itself
+invalidate path-sensitive evaluation.

@@ -43,8 +43,17 @@ module http
 *   status in the IANA registry.
 */
 
+enum StatusClass {
+    Informational,
+    Success,
+    Redirection,
+    ClientError,
+    ServerError,
+    Extension,
+}
+
 /** HTTP Reply Status */
-type Status int range 100..999 default 199
+type Status int range 100..999
 
 impl Status {
 
@@ -57,9 +66,6 @@ impl Status {
     // Temporary IANA registration.
     // Expires 2026-11-13 unless extended or made permanent.
     static let UploadResumptionSupported: Status := 104
-
-    // SEC-unitialized
-    static let Uninitialized: Status := 199
 
     // Successfull
     static let Ok: Status := 200
@@ -130,6 +136,18 @@ impl Status {
     // Obsolete, but retained because it is a known registered status code.
     static let NotExtended: Status := 510
     static let NetworkAuthenticationRequired: Status := 511
+
+    property Class: StatusClass {
+        get {
+            return StatusClass.ServerError
+        }
+    }
+
+    property IsInformational: bool { get { return false } }
+    property IsSuccess: bool { get { return false } }
+    property IsRedirection: bool { get { return false } }
+    property IsClientError: bool { get { return false } }
+    property IsServerError: bool { get { return false } }
 
     fn ToString() string {
         switch int(self) {
@@ -275,4 +293,5 @@ impl Status {
                 return ""
         }
     }
+
 }

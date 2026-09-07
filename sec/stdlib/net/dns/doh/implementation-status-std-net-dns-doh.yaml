@@ -1,0 +1,210 @@
+fragment:
+  id: stdlib-net-dns-doh-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/dns/doh/std-net-dns-doh.md
+  parent_rulebook: sec/stdlib/net/dns/std-net-dns.md
+  latest_verified_repository_main: 0f5027d
+  standards_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track the DNS over HTTPS child package: validated HTTPS URI Templates,
+    bootstrap handling, GET/POST application/dns-message mapping, HTTP/DNS
+    error separation, HTTP Age to DNS TTL handling, DoH client/server mapping,
+    common resolver-transport integration, security rules, and tests.
+
+  codex_instructions:
+    - Treat sec/stdlib/net/dns/doh/std-net-dns-doh.md as the normative DoH source.
+    - Reconcile with canonical implementation-status.yaml without duplicating stronger/newer evidence.
+    - Reuse net/dns DNS message/record/codec types; do not duplicate DNS wire semantics.
+    - Reuse net/http for HTTP, HTTPS, caching, redirects, status, headers, bodies, and connection pooling.
+    - Reuse net/url RFC 6570 URI Template support once its canonical API is locked.
+    - Reuse a shared base64url implementation; do not create a private incompatible codec.
+    - Require HTTPS and preserve the configured authentication host when bootstrap IP addresses are used.
+    - Support both GET and POST; default Sec client policy to POST.
+    - Support application/dns-message and enforce its 65535-byte maximum while reading.
+    - Treat valid DNS responses with NXDOMAIN/SERVFAIL/etc. as successful HTTP-carried DNS messages.
+    - Treat non-success HTTP status as DoH/HTTP failure, not DNS RCODE.
+    - Apply HTTP Age to effective DNS TTL exactly once before DNS caching.
+    - Default redirects to reject; revision 0.1 must reject cross-origin redirects.
+    - Do not silently fall back from DoH to cleartext DNS.
+    - Do not add a duplicate doh.Resolver; revise parent DNS to share one resolver engine across query transports.
+    - Add standards URLs to every source file.
+    - Add/update tests and this fragment as implementation advances.
+
+  governance_tags_used:
+    - stdlib.net
+    - stdlib.net.dns
+    - stdlib.net.dns.doh
+    - stdlib.net.dns.doh.endpoint
+    - stdlib.net.dns.doh.bootstrap
+    - stdlib.net.dns.doh.media
+    - stdlib.net.dns.doh.client
+    - stdlib.net.dns.doh.server
+    - stdlib.net.dns.transport
+    - stdlib.net.http.integration
+    - security.dns.doh
+
+  integrations:
+    - id: stdlib.net.dns.doh
+      area: standard-library-networking
+      rulebook: sec/stdlib/net/dns/doh/std-net-dns-doh.md
+      status: specified
+      latest_verified_repository_main: 0f5027d
+
+      normative:
+        - Canonical package path is net/dns/doh with qualifier doh.
+        - RFC 8484 is the primary DoH standard.
+        - Current HTTP semantics/caching standards are used where they supersede RFC 8484's older HTTP references.
+        - The package depends on net/dns, net/http, net/url, and net/ip.
+        - The base net/dns package must not import net/dns/doh.
+        - Endpoint is a validated absolute HTTPS URI Template.
+        - URI userinfo and fragments are rejected in revision 0.1.
+        - GET and POST are supported.
+        - ClientOptions defaults RequestMode to Post.
+        - Redirect policy defaults to Reject.
+        - Revision 0.1 supports optional SameOrigin redirect policy but rejects cross-origin redirects.
+        - GET uses unpadded RFC 4648 base64url in the RFC 6570 dns variable.
+        - POST uses raw DNS wire bytes as the HTTP body.
+        - application/dns-message is mandatory.
+        - Maximum application/dns-message payload is 65535 bytes.
+        - Generated ordinary DoH Query messages use DNS MessageId zero.
+        - A successful HTTP response may carry any valid DNS RCODE including NXDOMAIN and SERVFAIL.
+        - Non-success HTTP status is a DoH/HTTP failure, not a DNS response.
+        - HTTP Age reduces effective DNS TTL before resolver caching and must be applied once.
+        - Local HTTP cache defaults off; intermediary Age handling remains mandatory.
+        - Bootstrap may use system resolution or explicit IP addresses.
+        - Explicit bootstrap addresses never replace the configured HTTPS authentication name.
+        - No insecure HTTP mode or silent cleartext DNS fallback is provided.
+        - Client is an @noCopy owner of its HTTP resources.
+        - Server mapping supports both GET and POST.
+        - DoH server cache freshness must not outlive DNS freshness.
+        - DNS EDNS UDP payload size does not constrain DoH HTTP body size.
+        - DoH uses Sec's common cancellation/context semantics.
+        - DoH does not own DDR or ODoH.
+        - High-level DNS resolver semantics must be shared across classic DNS, DoH, DoT, and DoQ.
+        - No separate doh.Resolver is introduced in revision 0.1.
+
+      source_manifest:
+        - sec/stdlib/net/dns/doh/error.sec
+        - sec/stdlib/net/dns/doh/endpoint.sec
+        - sec/stdlib/net/dns/doh/bootstrap.sec
+        - sec/stdlib/net/dns/doh/options.sec
+        - sec/stdlib/net/dns/doh/media.sec
+        - sec/stdlib/net/dns/doh/client.sec
+        - sec/stdlib/net/dns/doh/server.sec
+        - sec/stdlib/net/dns/doh/transport.sec
+
+      required_parent_correction:
+        - Revise sec/stdlib/net/dns/std-net-dns.md to introduce a common query-transport exchange abstraction or equivalent non-cyclic resolver engine.
+        - The common semantic contract is QueryTransport.Exchange(ref Message) -> Result[Message, error].
+        - Base net/dns must not import child transports to achieve resolver integration.
+        - Resolver cache/CNAME/lookup logic must not be duplicated in doh/dot/doq packages.
+
+      remaining:
+        - Create the net/dns/doh directory and normative book.
+        - Implement endpoint validation.
+        - Implement bootstrap configuration and address override without changing TLS authentication identity.
+        - Implement ClientOptions defaults and redirect policy.
+        - Integrate canonical application/dns-message media type.
+        - Implement shared unpadded base64url GET mapping.
+        - Implement POST mapping.
+        - Implement response status/content-type/body-size validation.
+        - Implement HTTP Age to effective DNS TTL adjustment with no double-aging.
+        - Implement @noCopy Client over net/http.
+        - Implement server request decoding.
+        - Implement server response encoding and DNS-bounded HTTP cache freshness.
+        - Revise parent DNS resolver transport architecture.
+        - Add DoH to common resolver engine without a duplicate doh.Resolver.
+        - Add HTTP/2 integration tests.
+        - Add HTTP/3 integration tests after net/http + net/quic support exists.
+        - Revisit RFC 9461/9462 shared encrypted-DNS discovery later.
+
+      required_tests:
+        - id: doh-endpoint-https
+          expectation: Absolute HTTPS DoH endpoint templates are accepted while cleartext HTTP is rejected.
+        - id: doh-endpoint-userinfo-fragment
+          expectation: URI userinfo and fragments are rejected in revision 0.1.
+        - id: doh-bootstrap-auth-name
+          expectation: Explicit bootstrap IP affects routing only; HTTP authority/TLS certificate identity remains the configured endpoint host.
+        - id: doh-bootstrap-loop
+          expectation: A DoH client does not recursively resolve its own endpoint through itself.
+        - id: doh-get-base64url
+          expectation: GET uses RFC 4648 base64url without padding in the RFC 6570 dns variable.
+        - id: doh-post-wire-body
+          expectation: POST carries raw DNS wire bytes with application/dns-message.
+        - id: doh-generated-id-zero
+          expectation: Client.Query-generated DoH requests use DNS MessageId zero.
+        - id: doh-valid-dns-error-response
+          expectation: HTTP success carrying DNS NXDOMAIN/SERVFAIL remains a successful decoded dns.Message.
+        - id: doh-http-status-separate
+          expectation: Non-success HTTP status returns DohError.HttpStatus and is not decoded as a DNS response.
+        - id: doh-content-type
+          expectation: application/dns-message is accepted and unsupported/missing response media type is rejected.
+        - id: doh-response-limit
+          expectation: Responses larger than configured/max 65535 bytes are stopped while reading without unbounded allocation.
+        - id: doh-http-age
+          expectation: HTTP Age reduces effective DNS TTL using max(0, TTL-Age).
+        - id: doh-no-double-age
+          expectation: HTTP Age is applied exactly once before insertion into the DNS cache.
+        - id: doh-redirect-default
+          expectation: Redirects are rejected by default.
+        - id: doh-redirect-same-origin
+          expectation: Same-origin redirects work only when SameOrigin policy is explicitly configured.
+        - id: doh-redirect-cross-origin
+          expectation: Cross-origin redirects are rejected in revision 0.1.
+        - id: doh-server-get-post
+          expectation: Server-side mapping supports both GET and POST.
+        - id: doh-server-cache-ttl
+          expectation: HTTP freshness lifetime does not exceed DNS answer/negative cache lifetime.
+        - id: doh-no-cleartext-fallback
+          expectation: DoH connection failure does not silently retry using UDP/TCP port 53.
+        - id: doh-http2
+          expectation: DoH functions over the canonical HTTP/2 client once that transport is available.
+        - id: doh-http3
+          expectation: DoH functions over the canonical HTTP/3 client once net/http + net/quic support exists.
+        - id: doh-shared-resolver-engine
+          expectation: Classic DNS and DoH can use the same high-level resolver logic without a base dns->doh dependency or duplicate doh.Resolver.
+
+      standards:
+        - name: RFC 8484
+          url: https://www.rfc-editor.org/rfc/rfc8484
+          role: DNS over HTTPS
+        - name: RFC 1035
+          url: https://www.rfc-editor.org/rfc/rfc1035
+          role: DNS wire message
+        - name: RFC 6891
+          url: https://www.rfc-editor.org/rfc/rfc6891
+          role: EDNS
+        - name: RFC 6570
+          url: https://www.rfc-editor.org/rfc/rfc6570
+          role: URI Template
+        - name: RFC 4648
+          url: https://www.rfc-editor.org/rfc/rfc4648
+          role: base64url
+        - name: RFC 9110
+          url: https://www.rfc-editor.org/rfc/rfc9110
+          role: current HTTP semantics
+        - name: RFC 9111
+          url: https://www.rfc-editor.org/rfc/rfc9111
+          role: current HTTP caching
+        - name: RFC 9113
+          url: https://www.rfc-editor.org/rfc/rfc9113
+          role: HTTP/2
+        - name: RFC 9114
+          url: https://www.rfc-editor.org/rfc/rfc9114
+          role: HTTP/3
+        - name: RFC 8446
+          url: https://www.rfc-editor.org/rfc/rfc8446
+          role: TLS 1.3
+        - name: RFC 9461
+          url: https://www.rfc-editor.org/rfc/rfc9461
+          role: SVCB mapping and dohpath discovery input
+        - name: RFC 9462
+          url: https://www.rfc-editor.org/rfc/rfc9462
+          role: Discovery of Designated Resolvers; related, not owned solely by DoH
+        - name: RFC 9230
+          url: https://www.rfc-editor.org/rfc/rfc9230
+          role: Experimental Oblivious DoH; explicitly outside ordinary DoH revision 0.1

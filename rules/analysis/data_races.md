@@ -2299,3 +2299,11 @@ behavior and may also run it explicitly.
 Separate compilation uses versioned symbolic summaries and contracts.
 Implementation progress remains outside this rulebook in
 `implementation-status.yaml`.
+
+The analysis consumes the concurrency memory model's canonical per-atomic
+identity, atomic/ordinary classification, program order, synchronizes-with and
+happens-before edges, modification/RMW outcome, release sequences, fences,
+task/thread completion publication, and FFI/platform synchronization contracts.
+It does not define a second `MemoryOrder`. Mutex proofs likewise consume
+canonical acquire/release edges, protected Place access, guard lifetime, and
+alias legality from their owning rules.

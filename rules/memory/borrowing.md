@@ -973,3 +973,7 @@ conflicting outstanding borrow
 **§ 37(8)** Functions, methods, match patterns, closures, defer, FFI, collections, and concurrency reuse this one borrow model rather than inventing parallel alias semantics.
 
 **§ 37(9)** The compiler must explain borrow conflicts as a mentor: what is borrowed, where, why the later operation conflicts, and how the programmer can restructure the code safely.
+
+**§ 37(10)** Semantic CTE preserves ordinary borrow and lifetime legality.
+Evaluator-local abstract reference/address identities cannot escape
+materialization and do not imply runtime generation/epoch state.

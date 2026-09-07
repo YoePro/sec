@@ -1755,18 +1755,17 @@ impl Vehicle {
 }
 ```
 
-Immutable associated values use direct `let` in canonical output:
+Immutable type-owned values require explicit `static let` in canonical output:
 
 ```sec
 impl Program {
-    let OneCare := "Zebra OneCare"
+    static let OneCare := "Zebra OneCare"
 }
 ```
 
-When the parser accepts `static let OneCare := "Zebra OneCare"` in an `impl`,
-ordinary canonical formatting removes the redundant `static`. It preserves
-`static let mut`, `static fn`, and `static property`; those forms are not
-equivalent to an immutable associated value.
+Inside an `impl`, `static let` and `let` have different receiver and ownership
+semantics. Ordinary and fix-enabled formatting must preserve `static` on
+implementation bindings, including immutable bindings.
 
 Nested types and enums follow their ordinary formatting rules.
 

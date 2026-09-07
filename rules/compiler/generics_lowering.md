@@ -31,6 +31,11 @@ demanded concrete specializations supplied by
 `rules/compiler/monomorphization.md`; it does not create a competing demand or
 specialization identity model.
 
+Concrete generic callables may execute during semantic CTE according to
+`rules/compiler/compile_time_evaluation.md`. CTE consumes the same canonical
+specialization identity used by runtime demand; it does not own discovery,
+identity allocation, worklists, deduplication, or physical emission.
+
 Lowering must not introduce:
 
 - runtime type descriptors;

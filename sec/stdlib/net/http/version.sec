@@ -1,0 +1,30 @@
+module http
+
+type VersionNumber struct {
+    Major: uint8,
+    Minor: uint8,
+}
+
+enum Version {
+    Http10,
+    Http11,
+    Http2,
+    Http3,
+}
+
+type Protocols struct {
+    Http11: bool,
+    Http2: bool,
+    Http3: bool,
+}
+
+impl Protocols {
+
+    static fn ClientDefault() Protocols {
+        return Protocols{}
+    }
+
+    static fn ServerDefault() Protocols {
+        return Protocols{}
+    }
+}

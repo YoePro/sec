@@ -343,7 +343,7 @@ references.md
 raw_pointers.md
     unsafe pointer operations
 
-concurrency_memory_model.txt
+concurrency_memory_model.md
     atomics and ordering
 
 memory_model.md
@@ -4084,8 +4084,8 @@ types/units.md
 references.md
 raw_pointers.md
 allocation.md
-destruction.txt
-concurrency_memory_model.txt
+destruction.md
+concurrency_memory_model.md
 semantic_ir.md
 compiler_pipeline.md
 diagnostics.txt

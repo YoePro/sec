@@ -1,5 +1,14 @@
 # Sec Core Library
 
+Compiler-known Sec declarations backed by `core` remain real source-visible
+declarations and must be specified in complete canonical syntax. Their
+compiler-known identity and core declaration resolve to one semantic symbol.
+Compiler-internal structures are not Sec declarations and do not use `_` or
+`__` as a substitute for an explicit authority boundary. Real core helpers
+with those names retain ordinary Sec visibility semantics. The canonical
+registry and replacement policy are owned by
+`rules/compiler/compiler_known_members.md`.
+
 ## Purpose
 
 The Sec core library defines the minimum language-level functionality that is

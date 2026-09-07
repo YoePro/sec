@@ -1,0 +1,190 @@
+fragment:
+  id: stdlib-net-dns-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/dns/std-net-dns.md
+  latest_verified_repository_main: 0f5027d
+  repository_tree_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track implementation of the Sec net/dns standard-library package:
+    DNS names, host names/IDNA, IANA registries, wire messages, common
+    resource records, EDNS, DNSSEC wire records, UDP/TCP transports,
+    direct DNS client, stub resolver, cache, reverse lookup, target resolver
+    configuration, tests, and child-package boundaries.
+
+  codex_instructions:
+    - Treat sec/stdlib/net/dns/std-net-dns.md as the normative API/package source.
+    - Reconcile this fragment with existing implementation-status.yaml evidence; do not duplicate stronger or newer evidence.
+    - The current sec/stdlib/net/dns/dns.sec is a one-line stub and does not establish a compatibility API.
+    - Reuse net/ip address, port, endpoint, TCP, UDP, and NetworkError types.
+    - Keep IANA DNS registries open across their wire widths; unknown values must remain representable.
+    - Synchronize registry constants against current IANA registry sources and record source URLs/dates in source comments.
+    - Do not implement a UDP-only general-purpose DNS stack and call it complete; RFC 7766 requires TCP support.
+    - Treat EDNS0 as first-class and keep EDNS Client Subnet disabled by default.
+    - Keep DNSSEC wire parsing distinct from local validation.
+    - Do not import net/http from the base net/dns package; DoH belongs in net/dns/doh.
+    - Do not fabricate DNS records from limited system host-resolution APIs for arbitrary RR lookups.
+    - Bound compression traversal, section-count allocation, retries, and CNAME processing.
+    - Add authoritative standards URLs to all protocol files.
+    - Create child-package implementation only after the corresponding local std-net-dns-*.md book exists.
+    - Update tests and this status fragment as implementation advances.
+
+  governance_tags_used:
+    - stdlib.net
+    - stdlib.net.dns
+    - stdlib.net.dns.name
+    - stdlib.net.dns.idna
+    - stdlib.net.dns.registry
+    - stdlib.net.dns.message
+    - stdlib.net.dns.records
+    - stdlib.net.dns.edns
+    - stdlib.net.dns.dnssec-wire
+    - stdlib.net.dns.transport
+    - stdlib.net.dns.resolver
+    - platform.net.dns
+
+  integrations:
+    - id: stdlib.net.dns
+      area: standard-library-networking
+      rulebook: sec/stdlib/net/dns/std-net-dns.md
+      status: scaffold-only
+      latest_verified_repository_main: 0f5027d
+
+      confirmed_existing:
+        - sec/stdlib/net/dns/ exists.
+        - sec/stdlib/net/dns/dns.sec exists.
+        - dns.sec contains only `module dns` and no public API or implementation.
+        - net/ip is the intended owner of IP address, endpoint, TCP, UDP, and network-error primitives.
+
+      normative:
+        - Canonical public package path is net/dns with imported qualifier dns.
+        - dns.Name is an absolute DNS name and is distinct from dns.HostName.
+        - HostName supports explicit strict IDNA2008 processing.
+        - IANA DNS wire registries use open fixed-width enums/values rather than magic strings or closed brittle lists.
+        - Unknown RR types and EDNS options survive decoding.
+        - A and AAAA records reuse ip.Ipv4Address and ip.Ipv6Address.
+        - SRV uses ip.Port.
+        - DNS TXT data remains byte-oriented unless explicitly decoded as UTF-8.
+        - Message is an owning decoded/builder representation.
+        - DecodeMessageToOwned may allocate and makes ownership materialization explicit.
+        - EncodeMessage writes to caller-provided storage.
+        - DNS compression parsing must be bounded and loop-safe.
+        - EDNS0 is first-class; default advertised UDP payload size is 1232.
+        - EDNS Client Subnet is disabled by default.
+        - General-purpose classic DNS supports UDP and TCP.
+        - Direct Client returns syntactically valid DNS responses even when RCODE is nonzero.
+        - Resolver is initially a stub resolver using configured recursive servers, not a full recursive resolver.
+        - Resolver cache distinguishes positive, NXDOMAIN, and NODATA semantics.
+        - DNSSEC wire records/flags live in the base package; full local validation belongs in net/dns/dnssec.
+        - DoT, DoH, and DoQ are child packages.
+        - Base net/dns does not import net/http.
+        - mDNS and DNS-SD remain separate package families.
+        - Active resolver use requires platform networking/resolver capability.
+
+      child_packages_reserved:
+        - path: sec/stdlib/net/dns/doh
+          rulebook: sec/stdlib/net/dns/doh/std-net-dns-doh.md
+          status: not-designed
+        - path: sec/stdlib/net/dns/dot
+          rulebook: sec/stdlib/net/dns/dot/std-net-dns-dot.md
+          status: not-designed
+        - path: sec/stdlib/net/dns/doq
+          rulebook: sec/stdlib/net/dns/doq/std-net-dns-doq.md
+          status: not-designed
+        - path: sec/stdlib/net/dns/dnssec
+          rulebook: sec/stdlib/net/dns/dnssec/std-net-dns-dnssec.md
+          status: not-designed
+        - path: sec/stdlib/net/dns/zone
+          rulebook: sec/stdlib/net/dns/zone/std-net-dns-zone.md
+          status: not-designed
+
+      migration:
+        - Add sec/stdlib/net/dns/std-net-dns.md.
+        - Create error.sec, name.sec, idna.sec, registry.sec, message.sec, record.sec, records_basic.sec, records_service.sec, records_dnssec.sec, edns.sec, codec.sec, reverse.sec, transport_udp.sec, transport_tcp.sec, client.sec, cache.sec, resolver.sec, and target-specific system.<target>.sec files as implementation progresses.
+        - Remove the empty dns.sec package stub after real module files exist.
+        - Create reserved child directories but do not invent their public APIs before child books are written.
+        - Add standards/source headers to every DNS protocol source file.
+
+      remaining:
+        - Implement Name and host-name validation.
+        - Implement strict IDNA2008 conversion.
+        - Synchronize RecordType, DnsClass, Opcode, ResponseCode, EDNS, and DNSSEC registries with IANA.
+        - Implement semantic Message/Question/Record structures.
+        - Implement common RR RDATA types.
+        - Implement unknown-RR preservation.
+        - Implement modern service records including SRV, CAA, SVCB, and HTTPS.
+        - Implement DNSSEC wire record types.
+        - Implement EDNS0 and common options.
+        - Implement allocation-aware DNS codec with safe compression handling.
+        - Implement reverse IPv4/IPv6 query names.
+        - Implement UDP classic DNS transport.
+        - Implement TCP DNS framing and connection reuse.
+        - Implement direct Client.
+        - Implement positive and negative cache behavior.
+        - Implement first hosted target system resolver adapter.
+        - Implement stub Resolver.
+        - Add platform capability diagnostics for targets without active networking/resolver configuration.
+        - Resolve explicit search-list input API.
+        - Resolve CNAME-loop public error spelling.
+        - Resolve DNS Cookie default policy.
+        - Resolve zero-copy MessageView design.
+        - Write child books for DoT, DoH, DoQ, DNSSEC validation, and zone support.
+
+      required_tests:
+        - id: dns-name-root
+          expectation: The root DNS name parses and round-trips correctly.
+        - id: dns-name-limits
+          expectation: Label and full encoded-name protocol limits are enforced after presentation escape processing.
+        - id: dns-name-case
+          expectation: DNS ASCII letters compare case-insensitively without locale-sensitive folding.
+        - id: dns-hostname-stricter-than-name
+          expectation: A DNS name can be valid while failing the stricter HostName contract.
+        - id: dns-idna2008
+          expectation: Valid IDNA2008 names convert to A-label form and invalid/codepoint/bidi cases are rejected.
+        - id: dns-registry-open-values
+          expectation: Unknown RR/RCODE/EDNS/DNSSEC registry values remain representable.
+        - id: dns-registry-iana-sync
+          expectation: Known assigned constants match the synchronized IANA registry values.
+        - id: dns-compression-loop
+          expectation: Compression pointer loops are rejected without unbounded traversal or stack exhaustion.
+        - id: dns-compression-range
+          expectation: Out-of-range compression pointers are rejected safely.
+        - id: dns-count-allocation
+          expectation: Malicious header counts cannot force unchecked large allocations.
+        - id: dns-unknown-rr
+          expectation: Unknown RR type and RDATA survive decode/encode without semantic reinterpretation.
+        - id: dns-edns-opt
+          expectation: EDNS0 is extracted semantically and duplicate OPT records are rejected.
+        - id: dns-edns-default-size
+          expectation: Standard resolver queries advertise the revision-0.1 default 1232-byte EDNS UDP payload size.
+        - id: dns-edns-ecs-default-off
+          expectation: EDNS Client Subnet is absent unless explicitly requested.
+        - id: dns-extended-rcode
+          expectation: Header low RCODE and EDNS extended RCODE combine/split correctly.
+        - id: dns-udp-response-match
+          expectation: UDP client validates server endpoint, transaction ID, and question before accepting a response.
+        - id: dns-udp-truncated-fallback
+          expectation: UdpThenTcp retries a truncated UDP DNS answer using TCP.
+        - id: dns-tcp-framing
+          expectation: TCP transport correctly handles two-octet framing and messages split across multiple reads.
+        - id: dns-tcp-reuse
+          expectation: Reusable TCP state can serve multiple sequential DNS queries without conflating responses.
+        - id: dns-client-nonzero-rcode
+          expectation: Direct Client returns a valid response Message with nonzero RCODE rather than translating it into a transport failure.
+        - id: dns-resolver-nxdomain-vs-nodata
+          expectation: Resolver distinguishes NXDOMAIN from existing-name/no-data responses.
+        - id: dns-cache-positive-expiry
+          expectation: Positive cache entries expire according to DNS TTL semantics.
+        - id: dns-cache-negative-expiry
+          expectation: Negative caching follows RFC 2308 and does not become permanent.
+        - id: dns-reverse-ipv4
+          expectation: IPv4 reverse names are generated correctly under in-addr.arpa.
+        - id: dns-reverse-ipv6
+          expectation: IPv6 reverse names use nibble-reversed ip6.arpa representation.
+        - id: dns-cancel-no-cache
+          expectation: Cancelled/incomplete resolver operations do not insert successful cache entries.
+        - id: dns-no-http-base-dependency
+          expectation: Base net/dns has no dependency on net/http; DoH is isolated to its child package.

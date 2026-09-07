@@ -3158,7 +3158,7 @@ func TestCompletionSeparatesStaticAndInstanceMembers(t *testing.T) {
 type Counter struct { value: int }
 
 impl Counter {
-	let Maximum: int := 100
+	static let Maximum: int := 100
     static property Current: int { get { return Counter.Maximum } }
     property Value: int { get { return self.value } }
     static fn Make() Counter { return Counter { value: 0 } }
@@ -3173,9 +3173,8 @@ impl Counter {
 	assertCompletionLabels(t, completeSource("", source, instanceOffset), []string{"Read", "SizeOf", "Value", "value"})
 }
 
-// rules/declarations/static.md section 6: compatibility static let produces
-// one information diagnostic and canonical associated let shares completion.
-func TestAssociatedLetCompletionAndRedundantStaticInformation(t *testing.T) {
+// Rules: static.md section 6: only explicit static bindings enter type completion.
+func TestOnlyStaticLetEntersTypeCompletion(t *testing.T) {
 	source := `module main
 
 type Program string
@@ -3190,20 +3189,17 @@ fn Use() void {
 }
 `
 	offset := strings.Index(source, "Program.\n") + len("Program.")
-	assertCompletionLabels(t, completeSource("", source, offset), []string{"OneCare", "SizeOf", "VIQ"})
+	assertCompletionLabels(t, completeSource("", source, offset), []string{"SizeOf", "VIQ"})
 
-	items := analyze("", source)
-	found := false
-	for _, item := range items {
-		if item.Code == diagnostics.RedundantAssociatedStatic {
-			found = true
-			if item.Severity != 3 || !strings.Contains(item.Message, "static is redundant on immutable associated declaration VIQ") {
-				t.Fatalf("wrong redundant-static LSP diagnostic: %+v", item)
-			}
+	for _, item := range completeSource("", source, offset) {
+		if item.Label == "OneCare" {
+			t.Fatal("instance binding offered on type")
 		}
 	}
-	if !found {
-		t.Fatalf("missing redundant-static LSP diagnostic: %+v", items)
+	for _, item := range analyze("", source) {
+		if item.Code == diagnostics.RedundantAssociatedStatic {
+			t.Fatalf("incorrect static rewrite diagnostic: %+v", item)
+		}
 	}
 }
 

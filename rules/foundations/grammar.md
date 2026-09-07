@@ -735,18 +735,9 @@ Still partial:
 
 Methods, properties, events, static members, and nested declarations are parsed.
 
-A direct immutable `let` in an `impl` is the canonical syntax for a
-type-associated immutable value:
-
-```sec
-impl Program {
-    let OneCare := "Zebra OneCare"
-}
-```
-
-`static let` in the same position is accepted as an equivalent compatibility
-spelling and canonical formatting removes `static`. Mutable associated storage
-continues to require `static let mut`; bare `let mut` in an `impl` is invalid.
+A direct `let` or `let mut` in an `impl` declares an instance-bound member.
+`static let` or `static let mut` declares a type-owned member. The modifier must
+be retained in the AST and by formatting; the two forms are not equivalent.
 
 Still partial:
 
@@ -1033,7 +1024,7 @@ impl Car implements Vehicle {
 
 The parser creates an invalid statement and reports that it is not implemented.
 
-Custom destruction remains governed by `destruction.txt` and future compiler
+Custom destruction remains governed by `destruction.md` and future compiler
 work.
 
 ## Panic and assertion statements
@@ -1171,7 +1162,8 @@ Array literals and empty list literal syntax are defined separately.
 
 ## Process execution
 
-`spawn process` is parsed but process spawning is intentionally deferred.
+`spawn process` is parsed as the canonical process creation form whose result
+and lifecycle semantics are defined by `rules/concurrency/processes.md`.
 
 ## Complete module grammar
 
@@ -2131,7 +2123,7 @@ ImplBody
 ImplMember
     ::= FunctionDeclaration
       | StaticFunctionDeclaration
-      | AssociatedLetDeclaration
+      | InstanceLetDeclaration
       | StaticLetDeclaration
       | StaticPropertyDeclaration
       | PropertyDeclaration
@@ -2144,13 +2136,12 @@ ImplMember
       | NestedImplDeclaration
       | UnitMetadataDeclaration
 
-AssociatedLetDeclaration
-    ::= "let" Identifier [ ":" TypeReference ] ":=" Expression
+InstanceLetDeclaration
+    ::= "let" [ "mut" ] Identifier [ ":" TypeReference ] ":=" Expression
 ```
 
-`AssociatedLetDeclaration` is immutable. `let mut` does not match this
-production and is invalid directly inside `impl`; mutable associated storage
-uses `StaticLetDeclaration` with `let mut`.
+`InstanceLetDeclaration` requires an instance; `mut` controls mutability.
+`StaticLetDeclaration` requires explicit `static` and is type-owned.
 
 Lifecycle and construction syntax:
 
@@ -2524,10 +2515,8 @@ same mandatory explicit identifier as instance setters:
 
 There is no implicit setter-value binding.
 
-Inside `impl`, immutable `StaticLetDeclaration` is compatibility syntax for
-`AssociatedLetDeclaration`. It has identical semantics, and the canonical
-formatter removes `static`. `static let mut` remains the only mutable
-type-associated storage form.
+Inside `impl`, `StaticLetDeclaration` and `InstanceLetDeclaration` are
+distinct. Canonical formatting must preserve the `static` modifier.
 
 Compile-time static dependency order belongs to `rules/declarations/static.md`.
 Executable startup and shutdown planning belong to

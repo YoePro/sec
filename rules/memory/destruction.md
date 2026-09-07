@@ -1244,3 +1244,11 @@ Semantic IR and Sec MLIR must carry resolved destruction semantics rather than l
 **§ 39(2)** A test outcome transition does not waive exact-once destruction, skip registered `defer`, or convert owned values into leaked test-runner state.
 
 **§ 39(3)** Each subtest is a separate invocation cleanup boundary. The parent resumes only after child cleanup completes. Source-level testing semantics are owned by `rules/tooling/testing.md`.
+
+## § 40 Compile-time evaluation
+
+**§ 40(1)** CTE-local transient values perform ordinary deterministic
+destruction and `defer` when those paths are semantically reached; evaluator
+storage reclamation is compiler-internal. A separately materialized
+static/runtime object follows ordinary program destruction rules. Computing its
+value during CTE does not remove or redefine that runtime destruction category.

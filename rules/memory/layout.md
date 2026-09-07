@@ -158,7 +158,7 @@ selected descriptor representation
 
 ## § 7 Size
 
-§ 7(1) `SizeOf(T)`/`T.SizeOf` returns the byte size of the complete materialized representation of `T` for the active plan where the query is canonical.
+§ 7(1) `T.SizeOf` returns the byte size of the complete materialized representation of `T` for the active plan.
 
 § 7(2) Size excludes separate backing storage unless that storage is embedded in the value representation.
 
@@ -370,7 +370,7 @@ decimal128:
 
 § 20(2) The materialized string descriptor representation is selected by the canonical string/reference/layout model for the plan.
 
-§ 20(3) A string descriptor does not include separate backing storage in `SizeOf(string)`.
+§ 20(3) A string descriptor does not include separate backing storage in `string.SizeOf`.
 
 § 20(4) Static literal storage, borrowed/view storage, and owning materialized storage may have different storage contracts without changing semantic string type identity where allowed.
 

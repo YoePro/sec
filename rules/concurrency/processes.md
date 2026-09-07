@@ -6,7 +6,7 @@
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Canonical path:** `rules/concurrency/processes.md`
-- **Replaces:** `rules/concurrency/processes.txt`
+- **Replaces:** Earlier placeholder process rulebook
 
 ## 1. Purpose
 

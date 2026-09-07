@@ -1451,7 +1451,7 @@ whether the user wants advisories.
 Recommendation policy may consume additional facts such as:
 
 ```text
-SizeOf(T)
+T.SizeOf
 AlignOf(T)
 copy/move cost
 construction/destruction cost

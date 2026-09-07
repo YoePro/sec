@@ -166,6 +166,30 @@ compiler-known-member registry.
 
 A member registry entry has one of these semantic categories.
 
+The registry's canonical authority categories are:
+
+```text
+CompilerProvidedFallbackMember
+AuthoritativeCompilerSemanticProperty
+CompilerKnownOperation
+PrivilegedCoreMember
+OrdinaryUserMember
+```
+
+These are compiler-semantic categories, not Sec enum declarations. A
+compiler-known Sec declaration must be specified in complete canonical syntax
+(module, name, generic parameters, variants/members, parameter and result/error
+types, modifiers, visibility, availability, and target dependence as
+applicable), or explicitly cross-reference the owner that does so. A
+compiler-only request, diagnostic, dependency record, or IR structure must
+instead be marked as not a Sec declaration and fully specified as compiler
+semantics.
+
+Compiler-facing versus user-facing is an authority boundary independent of
+source spelling. Real `_` and `__` declarations retain the ordinary Sec
+visibility rules; compiler metadata neither needs those spellings nor gains
+source visibility from them.
+
 ## Intrinsic property
 
 A property whose value is derived directly from compiler-known representation or
@@ -486,11 +510,15 @@ overloaded by user code.
 `ToString` is different:
 
 ```text
-built-in and related types may receive compiler/core-defined ToString;
-user-defined nominal types may define their own ToString implementation;
-an explicit user implementation takes precedence over eligible inherited
-underlying-type behavior.
+category: CompilerProvidedFallbackMember
+canonical shape: fn ToString() string
+exact user replacement: permitted on eligible user-owned nominal types
 ```
+
+An exact user-owned `ToString() string` replaces the fallback without becoming
+an ambiguous overload. A differently shaped overload does not replace it.
+`SizeOf`, by contrast, is an `AuthoritativeCompilerSemanticProperty`; user
+code cannot override it where the canonical property applies.
 
 String conversion-array methods are reserved on built-in `string`.
 
@@ -1134,7 +1162,7 @@ The represented byte payload may be computed from layout only when safe checked
 multiplication is valid:
 
 ```text
-view.Len * SizeOf(T)
+view.Len * T.SizeOf
 ```
 
 ---
@@ -1274,7 +1302,6 @@ Required forms:
 ```sec
 let valueSize := value.SizeOf
 let typeSize := TypeName.SizeOf
-let queriedSize := SizeOf(TypeName)
 ```
 
 The result type is:
@@ -1283,9 +1310,24 @@ The result type is:
 uint
 ```
 
-The associated type property and the global type query return physical storage
-size for one value of the type. The instance property follows the category
-rules below.
+The associated type property returns physical storage size for one value of the
+type. The instance property follows the category rules below. There is no
+canonical global `SizeOf(TypeName)` form in Sec 0.1.
+
+The registry shapes are equivalent to:
+
+```sec
+property SizeOf: uint {
+    get
+}
+
+static property SizeOf: uint {
+    get
+}
+```
+
+Both are authoritative compiler semantic properties and cannot be replaced by
+user members on receiver categories where they apply.
 
 The semantic size comes from `layout.md`.
 
@@ -1362,17 +1404,17 @@ stride.
 
 ## Owning dynamic array
 
-Returns `value.Len * SizeOf(T)`: the initialized element payload bytes. It does
+Returns `value.Len * T.SizeOf`: the initialized element payload bytes. It does
 not return descriptor size or reserved capacity.
 
 ## Slice
 
-Returns `value.Len * SizeOf(T)`: the represented payload bytes. It does not
+Returns `value.Len * T.SizeOf`: the represented payload bytes. It does not
 return the slice/reference descriptor size.
 
 ## List
 
-Returns `value.Len * SizeOf(T)`: the initialized contiguous payload bytes. It
+Returns `value.Len * T.SizeOf`: the initialized contiguous payload bytes. It
 does not include capacity, allocation headers, or the owner descriptor.
 
 ## String
@@ -1515,8 +1557,15 @@ Internal `AlignOf` must not be exposed accidentally through LSP completion.
 
 # `ToString()`
 
-`ToString()` is a required compiler-known core method on fundamental printable
-types.
+`ToString()` is the universal compiler-provided fallback member on every Sec
+type that can produce an ordinary value:
+
+```sec
+fn ToString() string
+```
+
+Each concrete type family must define or cross-reference its canonical fallback
+formatting semantics before that family's support is implementation-complete.
 
 The compiler knows:
 
@@ -3399,8 +3448,8 @@ scalar element count.
 
 On a shaped instance, `SizeOf` is the represented logical payload byte count,
 conceptually `value.Len * element payload size`. It is not descriptor size,
-storage span, or unique backing-byte count. Associated `Type.SizeOf` and global
-`SizeOf(Type)` remain physical layout queries.
+storage span, or unique backing-byte count. Associated `Type.SizeOf` remains
+the physical complete-type layout query.
 
 The registry provides stable semantic identities for `Reshape`, `ToShape`,
 `Materialize`, `TransferTo`, `Relayout`, `Permute`, `Transpose`, `BroadcastTo`,
@@ -3456,7 +3505,9 @@ String `Len` is encoded byte length.
 
 Array and slice `Len` is element count.
 
-`ToString()` is compiler-known on fundamental printable types.
+`ToString() string` is a universal compiler-provided fallback on every Sec
+type that can produce an ordinary value; eligible user-owned nominal types may
+replace it with the exact canonical shape.
 
 `string.ToString()` is identity.
 

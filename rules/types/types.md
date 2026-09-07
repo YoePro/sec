@@ -206,6 +206,9 @@ Result
 Option
 Task
 Thread
+Atomic
+MemoryOrder
+CompareExchangeResult
 Shape
 Strides
 TensorLayout
@@ -214,6 +217,10 @@ RawPtr
 ```
 
 They are not made lowercase merely because the compiler knows about them.
+
+`Atomic[T]`, `MemoryOrder`, and `CompareExchangeResult[T]` are canonical
+nominal core types. Exact atomic type eligibility and operation semantics belong
+to `rules/concurrency/atomics.md`.
 
 ---
 

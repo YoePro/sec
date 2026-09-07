@@ -501,7 +501,7 @@ transferability.md
 cancellation.md
 concurrency_runtime_model.md
 concurrency.md
-concurrency_memory_model.txt
+concurrency_memory_model.md
 static.md
 properties.md
 types.md
@@ -510,7 +510,7 @@ ownership.md
 borrowing.md
 references.md
 lifetime_analysis.md
-destruction.txt
+destruction.md
 platform/ffi.md
 compiler_analysis.md
 semantic_ir.md

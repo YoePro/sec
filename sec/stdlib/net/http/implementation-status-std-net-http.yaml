@@ -1,0 +1,257 @@
+fragment:
+  id: stdlib-net-http-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/http/std-net-http.md
+  parent_rulebook: sec/stdlib/net/std-net.md
+  latest_verified_repository_main: 0f5027d
+  repository_http_tree_rechecked: "2026-09-07"
+  standards_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track Sec net/http: current HTTP semantics and registries, headers,
+    Structured Fields, requests/responses, streaming bodies, redirects,
+    caching, cookies, client/server/router, HTTP/1.1, HTTP/2+HPACK,
+    HTTP/3+QPACK, integration with URL/DNS/IP/TLS/QUIC, migration of existing
+    HTTP dogfooding code, security/resource bounds, and tests.
+
+  codex_instructions:
+    - Treat sec/stdlib/net/http/std-net-http.md as normative.
+    - Inspect current files before modifying them and preserve useful implementation.
+    - Use RFC 9110/9111/9112/9113/9114 as the core HTTP standards.
+    - Use RFC 9651, not obsolete RFC 8941, for Structured Fields.
+    - Use RFC 9530 for current HTTP digest fields.
+    - Add RFC 10008 QUERY.
+    - Support RFC 10036 Incremental through current field/structured semantics.
+    - Use RFC 10025 as the current cookie specification; it obsoletes RFC 6265.
+    - Keep Method, Status, and field-name registries open.
+    - Remove Method.PRI from the public Method namespace.
+    - Remove Status.Uninitialized and default sentinel 199.
+    - Validate HeaderName/HeaderValue to prevent injection.
+    - Preserve repeated Set-Cookie lines.
+    - Use streaming owned Body.
+    - Replace client Get/Post/Head void stubs with reusable @noCopy Client.
+    - Reuse net/url, net/dns, net/ip, canonical TLS, and net/quic.
+    - Move URL encoding out of http/encode.sec to net/url.
+    - Move WebSocket protocol out of http/websockets.sec to net/websocket.
+    - Implement smuggling-safe HTTP/1.1 framing.
+    - Implement HTTP/2 with HPACK.
+    - Implement HTTP/3 with QPACK over net/quic.
+    - Bound all attacker-influenced parser/compression/body/cache/stream state.
+    - Treat cookie_security.sec as nonstandard/provisional until a versioned crypto envelope is specified.
+    - Add standards URLs to all source files.
+    - Add required tests.
+    - Reconcile implementation-status.yaml without replacing stronger/newer evidence.
+
+  governance_tags_used:
+    - stdlib.net.http
+    - stdlib.net.http.method
+    - stdlib.net.http.status
+    - stdlib.net.http.header
+    - stdlib.net.http.structured
+    - stdlib.net.http.body
+    - stdlib.net.http.request
+    - stdlib.net.http.response
+    - stdlib.net.http.client
+    - stdlib.net.http.server
+    - stdlib.net.http.cache
+    - stdlib.net.http.cookie
+    - stdlib.net.http.http1
+    - stdlib.net.http.http2
+    - stdlib.net.http.http3
+    - security.http
+    - platform.net.http
+
+  integrations:
+    - id: stdlib.net.http
+      status: partial
+      rulebook: sec/stdlib/net/http/std-net-http.md
+
+      confirmed_existing:
+        - client.sec contains Get/Post/Head void stubs.
+        - cookie.sec contains substantial RFC 10025-oriented Cookie/SetCookie scaffolding.
+        - cookie_jar.sec contains StoredCookie/CookieJar scaffolding.
+        - cookie_parse.sec contains SetCookie parsing scaffolding.
+        - cookie_security.sec contains signed/private cookie codec scaffolding.
+        - header.sec contains a repeated field collection with lowercase name normalization.
+        - methods.sec contains open `type Method string` and many IANA methods.
+        - request.sec contains an initial Request plus Major/Minor Version struct.
+        - response.sec contains empty Response/ResponseWriter stubs.
+        - router.sec and server.sec are one-line module stubs.
+        - status.sec contains open Status values plus an internal sentinel/default that must be removed.
+        - encode.sec contains empty URL encode/decode placeholders.
+        - websockets.sec is a one-line module stub.
+
+      normative:
+        - Canonical package path is net/http.
+        - HTTP/1.1, HTTP/2, and HTTP/3 share the same public semantic package.
+        - Core standards are RFC 9110/9111/9112/9113/9114.
+        - Method is an open nominal string type.
+        - RFC 10008 QUERY is a named Method value.
+        - PRI is not a public HTTP Method.
+        - Status is open over 100..999.
+        - No HTTP status value is used as an uninitialized sentinel.
+        - Header names are case-insensitive and safely normalized.
+        - Header names/values reject injection.
+        - Repeated field occurrences are preserved.
+        - Set-Cookie must not be comma-combined.
+        - RFC 9651 Structured Fields are supported.
+        - RFC 9530 digest fields are supported.
+        - RFC 10036 Incremental is representable/current.
+        - Request and Response use streaming owned Body.
+        - Client is reusable and @noCopy.
+        - Caching defaults disabled.
+        - Cookie persistence requires an explicit jar.
+        - RFC 10025 is the current cookie standard.
+        - Cookie and SetCookie remain separate.
+        - Unknown Set-Cookie extensions are preserved.
+        - HTTP/1.1 parsing rejects ambiguous framing.
+        - HTTP/2 uses HPACK.
+        - HTTP/3 uses QPACK over net/quic.
+        - URL encoding belongs to net/url.
+        - WebSocket belongs to net/websocket.
+        - DNS uses net/dns.
+        - HTTPS uses canonical TLS.
+        - All attacker-influenced state is bounded.
+
+      source_manifest:
+        - sec/stdlib/net/http/error.sec
+        - sec/stdlib/net/http/version.sec
+        - sec/stdlib/net/http/methods.sec
+        - sec/stdlib/net/http/status.sec
+        - sec/stdlib/net/http/header.sec
+        - sec/stdlib/net/http/structured.sec
+        - sec/stdlib/net/http/body.sec
+        - sec/stdlib/net/http/request.sec
+        - sec/stdlib/net/http/response.sec
+        - sec/stdlib/net/http/auth.sec
+        - sec/stdlib/net/http/digest.sec
+        - sec/stdlib/net/http/priority.sec
+        - sec/stdlib/net/http/redirect.sec
+        - sec/stdlib/net/http/cache.sec
+        - sec/stdlib/net/http/cookie.sec
+        - sec/stdlib/net/http/cookie_parse.sec
+        - sec/stdlib/net/http/cookie_jar.sec
+        - sec/stdlib/net/http/cookie_security.sec
+        - sec/stdlib/net/http/client.sec
+        - sec/stdlib/net/http/transport.sec
+        - sec/stdlib/net/http/server.sec
+        - sec/stdlib/net/http/router.sec
+        - sec/stdlib/net/http/http1.sec
+        - sec/stdlib/net/http/http2.sec
+        - sec/stdlib/net/http/hpack.sec
+        - sec/stdlib/net/http/http3.sec
+        - sec/stdlib/net/http/qpack.sec
+
+      migration_remove:
+        - path: sec/stdlib/net/http/encode.sec
+          reason: URL encoding/decoding belongs to net/url.
+        - path: sec/stdlib/net/http/websockets.sec
+          reason: WebSocket protocol belongs to net/websocket.
+
+      required_existing_corrections:
+        - Add Method.QUERY and synchronize current IANA method registry.
+        - Remove Method.PRI from public method values.
+        - Remove Status default 199 and Status.Uninitialized.
+        - Recheck temporary Status 104 after current IANA registration period.
+        - Harden Header with typed/validated HeaderName/HeaderValue and allocation-explicit GetAllToArray.
+        - Replace Request Major/Minor Version struct with semantic Version and RequestTarget.
+        - Expand Response/ResponseWriter.
+        - Replace global client void stubs with @noCopy Client.
+        - Remove NotImplemented scaffolding variants from stable cookie error APIs as implementations land.
+        - Update cookie URL placeholders to canonical net/url.
+        - Keep Partitioned documented as an extension, not RFC 10025 core.
+        - Keep cookie-security codec format unstable until its application crypto envelope is specified.
+
+      remaining:
+        - Create std-net-http.md and missing files.
+        - Implement error/version types.
+        - Synchronize methods/status/fields with current IANA registries.
+        - Harden Header.
+        - Implement RFC 9651 Structured Fields.
+        - Implement streaming Body.
+        - Redesign Request.
+        - Implement Response/ResponseWriter.
+        - Complete RFC 10025 Cookie/SetCookie parser/serializer.
+        - Complete CookieJar including public-suffix and SameSite context.
+        - Implement auth/digest/priority helpers.
+        - Implement redirects.
+        - Implement bounded RFC 9111 cache.
+        - Implement HTTP/1.1 parser/transport.
+        - Implement reusable client/server.
+        - Implement minimal Router.
+        - Implement HPACK and HTTP/2.
+        - Implement QPACK and HTTP/3 after net/quic API exists.
+        - Migrate URL encoding to net/url and delete encode.sec.
+        - Delete websockets.sec after net/websocket package exists.
+        - Resolve TLS package path.
+        - Resolve HeaderValue opaque-byte representation.
+        - Resolve URL type naming and request-target integration.
+        - Resolve Body integration with common io.Reader/io.Writer.
+        - Resolve Public Suffix List update strategy.
+
+      required_tests:
+        - id: http-method-query
+          expectation: RFC 10008 QUERY is present, safe, idempotent, and may carry content.
+        - id: http-method-extension
+          expectation: unknown valid method tokens preserve case/value and have unknown safety/idempotence.
+        - id: http-no-pri-method
+          expectation: HTTP/2 PRI preface is not exposed as an application Method.
+        - id: http-status-no-sentinel
+          expectation: no protocol Status value is reserved as internal Uninitialized/default state.
+        - id: http-status-iana
+          expectation: named status constants match synchronized IANA values.
+        - id: http-header-case
+          expectation: field names compare case-insensitively and store canonical lowercase form.
+        - id: http-header-injection
+          expectation: CR/LF/invalid field names or values are rejected.
+        - id: http-set-cookie-repeat
+          expectation: repeated Set-Cookie field lines are preserved separately and never generic-combined.
+        - id: http-structured-rfc9651
+          expectation: RFC 9651 vectors parse/serialize strictly.
+        - id: http-body-bounded
+          expectation: ReadAllToArray enforces caller limit while streaming.
+        - id: http-query-body
+          expectation: safe QUERY requests can carry content without generic safe-method rejection.
+        - id: http-h1-smuggling
+          expectation: ambiguous Content-Length/Transfer-Encoding/framing is rejected according to RFC 9112.
+        - id: http-h2
+          expectation: HTTP/2 frames, pseudo-fields, flow control, and HPACK follow RFC 9113/7541.
+        - id: http-h3
+          expectation: HTTP/3 mapping and QPACK follow RFC 9114/9204 over canonical net/quic.
+        - id: http-cookie-rfc10025
+          expectation: cookie parsing/storage/serialization follows RFC 10025 rather than obsolete RFC 6265 assumptions.
+        - id: http-cookie-no-auto-url-decode
+          expectation: cookie values are not silently URL-decoded.
+        - id: http-cookie-jar-opt-in
+          expectation: generic Client does not persist cookies without configured CookieJar.
+        - id: http-cache-default-off
+          expectation: generic Client performs no hidden reusable HTTP cache when default constructed.
+        - id: http-client-pool
+          expectation: Client reuses eligible connections without crossing authentication/origin boundaries improperly.
+        - id: http-cancel-commit
+          expectation: cancellation/retry honors request commit and body replayability.
+        - id: http-websocket-separated
+          expectation: full WebSocket protocol is not implemented in net/http.
+        - id: http-url-encoding-separated
+          expectation: URL percent encoding is provided by net/url rather than duplicate http.URLEncode/URLDecode.
+
+      standards:
+        - {name: RFC 9110, url: https://www.rfc-editor.org/rfc/rfc9110}
+        - {name: RFC 9111, url: https://www.rfc-editor.org/rfc/rfc9111}
+        - {name: RFC 9112, url: https://www.rfc-editor.org/rfc/rfc9112}
+        - {name: RFC 9113, url: https://www.rfc-editor.org/rfc/rfc9113}
+        - {name: RFC 9114, url: https://www.rfc-editor.org/rfc/rfc9114}
+        - {name: RFC 7541, url: https://www.rfc-editor.org/rfc/rfc7541}
+        - {name: RFC 9204, url: https://www.rfc-editor.org/rfc/rfc9204}
+        - {name: RFC 9218, url: https://www.rfc-editor.org/rfc/rfc9218}
+        - {name: RFC 9651, url: https://www.rfc-editor.org/rfc/rfc9651}
+        - {name: RFC 9530, url: https://www.rfc-editor.org/rfc/rfc9530}
+        - {name: RFC 10008, url: https://www.rfc-editor.org/rfc/rfc10008}
+        - {name: RFC 10025, url: https://www.rfc-editor.org/info/rfc10025}
+        - {name: RFC 10036, url: https://www.rfc-editor.org/rfc/rfc10036}
+        - {name: IANA HTTP Method Registry, url: https://www.iana.org/assignments/http-methods}
+        - {name: IANA HTTP Status Code Registry, url: https://www.iana.org/assignments/http-status-codes}
+        - {name: IANA HTTP Field Name Registry, url: https://www.iana.org/assignments/http-fields}

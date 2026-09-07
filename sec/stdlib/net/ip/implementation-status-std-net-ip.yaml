@@ -1,0 +1,142 @@
+fragment:
+  id: stdlib-net-ip-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/ip/std-net-ip.md
+  repository_baseline: afb0bed
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track migration and implementation of the typed net/ip standard-library
+    package, including IPv4/IPv6 values, prefixes, endpoints, raw IP parsing,
+    TCP, UDP, ICMP foundations, multicast, interface identity/enumeration,
+    platform socket adapters, tests, and capability behavior.
+
+  codex_instructions:
+    - Reconcile with existing implementation-status.yaml entries; do not duplicate stronger or newer evidence.
+    - Treat sec/stdlib/net/ip/std-net-ip.md as the normative package/API source for this fragment.
+    - Preserve useful implementation from sec/stdlib/net/ip.sec while splitting it into the new package layout.
+    - Do not preserve obsolete prototype API solely for source compatibility.
+    - Do not expose native socket handles, errno values, socket option integers, or protocol magic strings in the safe public API.
+    - Reuse the existing shared TransportProtocol where its semantic domain applies; do not duplicate it in net/ip.
+    - Keep IpProtocol distinct as the open IANA 8-bit IP Protocol / IPv6 Next Header namespace.
+    - Do not add DNS resolution to TcpStream.Connect.
+    - Do not fake active networking on targets without a networking capability.
+    - Keep packet parsing allocation-free and borrow-based.
+    - Add authoritative standards URLs to protocol source files.
+    - Update tests and this status fragment as implementation advances.
+
+  governance_tags_used:
+    - stdlib.net
+    - stdlib.net.ip
+    - stdlib.net.ip.address
+    - stdlib.net.ip.packet
+    - stdlib.net.ip.tcp
+    - stdlib.net.ip.udp
+    - stdlib.net.ip.icmp
+    - stdlib.net.ip.multicast
+    - stdlib.net.ip.interface
+    - platform.net.ip
+
+  integrations:
+    - id: stdlib.net.ip
+      area: standard-library-networking
+      rulebook: sec/stdlib/net/ip/std-net-ip.md
+      status: partial
+      repository_baseline: afb0bed
+
+      confirmed_existing:
+        - sec/stdlib/net/ip.sec contains an open IANA-backed IpProtocol bit[8] enum.
+        - sec/stdlib/net/ip.sec contains IpEcn, Ipv4Flags, Ipv4Address, Ipv4WireHeader, Ipv6Address, and Ipv6WireHeader prototypes.
+        - sec/stdlib/net/ip.sec contains borrowed Ipv4Packet/Ipv6Packet/IpPacket prototypes and a partial ParseIpPacket implementation.
+        - sec/stdlib/net/ip.sec contains an early @noCopy TcpStream prototype.
+        - sec/stdlib/net/interfaces.sec exists but is empty at this baseline.
+        - sec/stdlib/net/sockets.sec exists only as a stub module declaration.
+
+      normative:
+        - The canonical public package path is net/ip and the imported qualifier is ip.
+        - IPv4, IPv6, TCP, UDP, ICMP, multicast, and basic network-interface facilities are initially one ip package.
+        - Address is a typed union of Ipv4Address and Ipv6Address.
+        - Endpoint is family-aware and IPv6 endpoints can preserve an InterfaceIndex zone.
+        - Port is a nominal uint16 and value zero remains representable.
+        - IpProtocol is an open bit[8] enum governed by the IANA protocol-number registry.
+        - Existing shared TransportProtocol is reused and is not duplicated here.
+        - TcpStream, TcpListener, UdpSocket, and InterfaceIterator are move-only owning resources.
+        - TcpStream.Connect accepts a concrete IP Endpoint and performs no DNS resolution.
+        - UDP receive semantics preserve datagram boundaries and expose truncation.
+        - Native socket handles/constants/errors remain behind platform adapters.
+        - Blocking networking operations integrate with Sec cancellation/context semantics.
+        - Raw IP packet parsing is allocation-free and returns borrows into caller-owned packet storage.
+        - Active networking requires target/platform networking capability.
+
+      migration:
+        - Split sec/stdlib/net/ip.sec into error.sec, protocol.sec, ipv4.sec, ipv6.sec, packet.sec, tcp.sec and related new files.
+        - Replace NetError with the new NetworkError, AddressError, and PacketError responsibility split.
+        - Replace the uint32-address TcpStream prototype with typed Endpoint-based connection semantics.
+        - Remove the prototype TerminateConnection helper and NetworkTask example from the public stdlib API.
+        - Replace sec/stdlib/net/interfaces.sec with sec/stdlib/net/ip/interface.sec.
+        - Replace sec/stdlib/net/sockets.sec with typed tcp/udp APIs plus private socket.<target>.sec adapters.
+        - Remove the old root IP/interface/socket files only after useful content and references have been migrated.
+        - Leave sec/stdlib/net/email.sec and sec/stdlib/net/uri.sec for their later package migrations.
+
+      remaining:
+        - Create sec/stdlib/net/ip/ and the canonical source-file manifest.
+        - Add std-net-ip.md to the package directory.
+        - Implement error.sec.
+        - Migrate and verify protocol.sec against the current IANA protocol-number registry.
+        - Implement address.sec, prefix.sec, and endpoint.sec.
+        - Split and complete ipv4.sec and ipv6.sec.
+        - Complete zero-copy packet parsing in packet.sec once endian-aware register decoding is available.
+        - Implement first hosted platform socket adapter.
+        - Implement TcpStream and TcpListener.
+        - Implement UdpSocket with truncation-aware receive semantics.
+        - Implement InterfaceIndex, NetworkInterface, and enumeration APIs.
+        - Implement multicast membership operations.
+        - Implement ICMP registry-backed foundational wire types.
+        - Add target capability diagnostics for unavailable active networking.
+        - Add full address/prefix/packet/TCP/UDP/interface/multicast test families.
+        - Add further target adapters as platform support expands.
+        - Reconcile the exact ReadExact EOF error with the common io model.
+        - Resolve the connected UDP public state model.
+        - Resolve packet encoding/checksum helper surface after required compiler lowering exists.
+
+      required_tests:
+        - id: ip-address-v4-parse-format
+          expectation: Valid IPv4 literals parse and format canonically; malformed forms are rejected.
+        - id: ip-address-v6-parse-format
+          expectation: Valid RFC 4291 forms parse and RFC 5952 canonical formatting is produced.
+        - id: ip-address-no-dns
+          expectation: Address.Parse rejects host names and performs no resolver operation.
+        - id: ip-prefix-contracts
+          expectation: IPv4 prefix lengths are 0..32 and IPv6 prefix lengths are 0..128.
+        - id: ip-network-canonicalization
+          expectation: Network constructors/parsers clear host bits and Contains is family-correct.
+        - id: ip-endpoint-ipv6-zone
+          expectation: IPv6 endpoints preserve optional InterfaceIndex scope identity.
+        - id: ip-protocol-open-enum
+          expectation: Known IANA protocol numbers have correct symbols while unknown bit[8] values remain representable.
+        - id: ip-packet-zero-copy
+          expectation: Parsed payload/options borrow caller storage and do not allocate or copy solely for parsing.
+        - id: tcp-loopback
+          expectation: A supported hosted target can bind, connect, accept, read, write, shutdown, and close on loopback.
+        - id: tcp-port-zero
+          expectation: Binding Port(0) reports the actual selected LocalEndpoint.
+        - id: tcp-eof
+          expectation: Orderly stream EOF is distinguishable from a normal nonzero read and from a network error.
+        - id: tcp-close-idempotent
+          expectation: Repeated Close succeeds idempotently and later operations report Closed.
+        - id: udp-datagram-boundary
+          expectation: ReceiveFrom returns at most one datagram and preserves source endpoint.
+        - id: udp-zero-length
+          expectation: A zero-length datagram is valid and is not treated as EOF.
+        - id: udp-truncation
+          expectation: A receive buffer smaller than the datagram reports Truncated rather than silently losing that fact.
+        - id: multicast-typed-membership
+          expectation: Multicast joins/leaves use Address and optional InterfaceIndex; non-multicast groups are rejected.
+        - id: interface-enumeration
+          expectation: Interface iteration terminates with None and index/name lookups distinguish no match from operational failure.
+        - id: networking-capability
+          expectation: Active networking use is rejected for a target proven to lack the required networking capability instead of returning a fake success.
+        - id: no-public-native-socket
+          expectation: Public API exposes no native descriptor, errno, address-family integer, or generic string socket-option surface.

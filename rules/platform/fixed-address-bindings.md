@@ -80,6 +80,12 @@ reclamation authority
 lifetime or availability contract
 ```
 
+Compile-time target address metadata is distinct from evaluator-local
+object/address identity and from an actual target-memory access. An owning
+attribute/address rule may admit target metadata as a plan-time input, but
+semantic CTE may not materialize an evaluator-local address into the binding or
+dereference target hardware memory.
+
 Fixed address placement is not itself an origin and does not by itself imply
 volatility, mutability, atomicity, thread safety, or unlimited lifetime.
 

@@ -1,432 +1,592 @@
 # Atomics
 
-## Purpose
-
-Atomics provide synchronized access to small values without using a mutex.
-
-Atomic operations are indivisible with respect to other atomic operations on the
-same storage location.
-
-Atomics are intended for values such as:
-
-- flags
-- counters
-- state markers
-- generation values
-- reference counters
-- sequence numbers
-- lock-free coordination primitives
-
-Atomics are not a general replacement for `Mutex[T]`.
+- **Status:** Normative
+- **Created:** 2026-09-06
+- **Last updated:** 2026-09-06
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/concurrency/atomics.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `0f5027d`
+- **Related rulebooks:** `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/mutex.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/types/types.md`, `rules/declarations/impl.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_analysis.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/interrupts.md`, `rules/tooling/lsp.md`
 
 ---
 
-## Type classification
+## § 1. Purpose and authority
 
-Atomic types are compiler-known types.
+**Governance tags:** `concurrency.atomics-v2`
 
-The initial generic form is:
+§ 1(1) This rulebook defines the Sec 0.1 atomic type family, its public source surface, the legal atomic value types, the legal operation families, memory-order selection, target capability validation, tooling requirements, and the semantic facts that must survive into Semantic IR and lowering.
+
+§ 1(2) Atomic memory-order semantics such as acquire, release, sequential consistency, modification order, release sequences, fences, and happens-before are owned by `concurrency_memory_model.md`.
+
+§ 1(3) This rulebook owns the source-visible atomic API and the semantic classification of atomic operations.
+
+§ 1(4) Mutable implementation status does not belong in this normative rulebook.
+
+§ 1(5) Implementation status is maintained through `implementation-status.yaml`.
+
+---
+
+## § 2. Core design
+
+**Governance tags:** `concurrency.atomics-v2`, `compiler.platform-model`
+
+§ 2(1) `Atomic[T]` provides atomic access to one small scalar value of type `T`.
+
+§ 2(2) Atomics are intended for flags, counters, state markers, generation values, reference counters, sequence numbers, pointer coordination, and lock-free or low-lock coordination primitives.
+
+§ 2(3) Atomics are not a general replacement for `Mutex[T]`.
+
+§ 2(4) Atomicity applies to one atomic storage identity at a time.
+
+§ 2(5) Atomic operations do not make a group of unrelated fields transactional.
+
+§ 2(6) Atomic eligibility is a language-level semantic rule.
+
+§ 2(7) Target capability is a separate `CompilationPlan` question.
+
+§ 2(8) Sec must not hard-code a machine bit width as the language definition of atomic eligibility.
+
+§ 2(9) A semantically valid `Atomic[T]` may therefore exist even when a selected target cannot implement one or more operations for that concrete `T`.
+
+§ 2(10) An unsupported concrete operation is rejected through target capability validation; the compiler must not silently replace it with non-atomic access.
+
+---
+
+## § 3. Public naming
+
+**Governance tags:** `concurrency.atomics-v2`, `tooling.atomics-v2`
+
+§ 3(1) All public atomic functions, methods, and properties use the canonical Sec public-member naming convention.
+
+§ 3(2) Public methods defined by this rulebook therefore use names such as:
+
+```text
+Load
+Store
+Swap
+CompareExchange
+FetchAdd
+FetchSub
+FetchAnd
+FetchOr
+FetchXor
+```
+
+§ 3(3) The public fence function is:
+
+```text
+atomic.Fence
+```
+
+§ 3(4) Lowercase spellings such as `load`, `store`, `swap`, `compareExchange`, `fetchAdd`, or `fence` are not canonical public API spellings.
+
+§ 3(5) Compiler diagnostics, LSP completion, hover, documentation generation, formatter fixtures, and tests must use the canonical public spellings.
+
+---
+
+## § 4. Compiler-known and source-visible core types
+
+**Governance tags:** `concurrency.atomics-v2`, `tooling.atomics-v2`
+
+§ 4(1) `Atomic[T]`, `MemoryOrder`, and `CompareExchangeResult[T]` are compiler-known core concepts.
+
+§ 4(2) Compiler-known status means that the compiler recognizes their canonical identity and special semantics.
+
+§ 4(3) Compiler-known status does not permit the compiler to implement only a hidden internal name while omitting the source-visible type surface.
+
+§ 4(4) The source-visible declarations that can be represented directly in Sec source must exist in module `core` in Sec 0.1.
+
+§ 4(5) File placement inside `sec/core/` is organizational and may remain pragmatic in Sec 0.1.
+
+§ 4(6) The compiler, parser/Sema, LSP, formatter, documentation tooling, Semantic IR, and backend must agree on the same canonical declarations and member surface.
+
+§ 4(7) A core declaration must not be replaced by a second incompatible compiler-private declaration.
+
+---
+
+## § 5. Exact `MemoryOrder` declaration
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`, `tooling.atomics-v2`
+
+§ 5(1) The exact Sec 0.1 source declaration is:
+
+```sec
+enum MemoryOrder {
+    Relaxed
+    // Atomicity for the atomic operation itself.
+    // Does not add acquire or release ordering for surrounding ordinary memory.
+
+    Acquire
+    // Acquire ordering.
+    // Used by operations that read from the atomic object.
+
+    Release
+    // Release ordering.
+    // Used by operations that publish through a write to the atomic object.
+
+    AcqRel
+    // Combined acquire and release ordering.
+    // Used by read-modify-write operations.
+
+    SeqCst
+    // Sequentially consistent ordering.
+    // Also participates in the global SeqCst order.
+}
+```
+
+§ 5(2) `enum` declares a nominal Sec enum type.
+
+§ 5(3) `MemoryOrder` is the canonical type name.
+
+§ 5(4) `Relaxed`, `Acquire`, `Release`, `AcqRel`, and `SeqCst` are the complete Sec 0.1 variant set.
+
+§ 5(5) These variants have no payload.
+
+§ 5(6) The enum is predeclared/core-visible and requires no ordinary user import.
+
+§ 5(7) User code must not shadow or replace the compiler-known core identity in a way that changes atomic semantics.
+
+---
+
+## § 6. Exact `CompareExchangeResult[T]` declaration
+
+**Governance tags:** `concurrency.atomics-v2`, `tooling.atomics-v2`
+
+§ 6(1) The exact Sec 0.1 source declaration is:
+
+```sec
+enum CompareExchangeResult[T] {
+    Exchanged
+    // The comparison matched `expected` and `desired` was stored.
+    // No payload is required because the observed value is known
+    // to have been equal to `expected`.
+
+    NotExchanged(T)
+    // The exchange did not occur.
+    // The payload is the value observed atomically by CompareExchange.
+}
+```
+
+§ 6(2) `[T]` declares one generic type parameter.
+
+§ 6(3) `Exchanged` is a payload-less enum variant.
+
+§ 6(4) `NotExchanged(T)` is an associated-value enum variant carrying exactly one payload of the same `T` used by the atomic object.
+
+§ 6(5) `CompareExchangeResult[T]` is not an error type.
+
+§ 6(6) `NotExchanged(T)` represents normal compare-exchange control flow, not a Sec error.
+
+§ 6(7) The representation intentionally does not use `Result[void, E]`.
+
+§ 6(8) The representation intentionally does not use `Option[T]`, because Sec names both semantic outcomes directly rather than making absence mean success.
+
+§ 6(9) The result representation also remains suitable for a future weak compare-exchange operation because `NotExchanged(expected)` can represent a spurious failure if weak compare-exchange is later standardized.
+
+§ 6(10) Weak compare-exchange itself is not defined by this revision.
+
+---
+
+## § 7. `Atomic[T]` generic type use
+
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`
+
+§ 7(1) The exact generic type-use syntax is:
 
 ```sec
 Atomic[T]
 ```
 
-Examples:
+§ 7(2) `Atomic` is the compiler-known nominal generic type family.
 
-```sec
-Atomic[bool]
-Atomic[int]
-Atomic[uint64]
-Atomic[RawPtr[Node]]
+§ 7(3) `[T]` supplies exactly one contained value type.
+
+§ 7(4) `Atomic[T]` owns one atomic storage identity containing one value of type `T`.
+
+§ 7(5) The physical representation and any stronger alignment required by the target are compiler/platform concerns and are not exposed as ordinary source fields.
+
+§ 7(6) User code must not access an internal storage field of `Atomic[T]`.
+
+§ 7(7) The compiler must not model the source-facing type as an ordinary public struct containing a directly accessible `T`.
+
+§ 7(8) The LSP hover surface for `Atomic[T]` must identify the generic type parameter and the public operations applicable to the resolved concrete `T`.
+
+---
+
+## § 8. Atomic-compatible types in Sec 0.1
+
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`, `compiler.platform-model`
+
+§ 8(1) The Sec 0.1 atomic-compatible type set is intentionally conservative.
+
+§ 8(2) The following categories are semantically eligible for `Atomic[T]`:
+
+```text
+bool
+primitive signed integer types
+primitive unsigned integer types
+RawPtr[T]
+integer-backed enums
+named types whose underlying type is atomic-compatible under this section
 ```
 
-The compiler, language server and backend must understand atomic semantics
-directly.
+§ 8(3) The primitive signed integer family includes the signed integer types defined by `types.md`.
 
-`Atomic[T]` is handled similarly to compiler-known generic types such as:
+§ 8(4) The primitive unsigned integer family includes the unsigned integer types defined by `types.md`.
 
-```sec
+§ 8(5) `int` and `uint` are semantically eligible even though their concrete width is selected by the target.
+
+§ 8(6) Explicit-width integer eligibility is not limited by a hard-coded maximum bit width in this language rule.
+
+§ 8(7) The selected `CompilationPlan` determines whether a concrete atomic operation is implementable for the resolved width, alignment, execution context, and memory order.
+
+§ 8(8) Integer-backed enums are eligible only for the operation families allowed for enums by this rulebook.
+
+§ 8(9) Named types are eligible only when their underlying type is atomic-compatible and the requested operation preserves the named type's semantic contracts.
+
+---
+
+## § 9. Types excluded from `Atomic[T]` in Sec 0.1
+
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`
+
+§ 9(1) The following type categories are not atomic-compatible in Sec 0.1:
+
+```text
+float
+float32
+float64
+decimal
+decimal128
+string
+ordinary structs
+ordinary unions
+arrays
+owning arrays
+slices
+collections
 Result[T, E]
 Option[T]
 Task[T]
-Mutex[T]
 Thread[T]
+arbitrary representation-compatible composite types
 ```
 
-but has distinct storage, operation and memory-order rules.
+§ 9(2) A type is not made atomic-compatible merely because its representation could theoretically fit in one or more atomic machine words.
+
+§ 9(3) A struct is not made atomic-compatible merely because its total size matches a target atomic width.
+
+§ 9(4) Floating-point types are omitted because Sec 0.1 has no demonstrated requirement strong enough to justify additional atomic equality, representation, and arithmetic semantics.
+
+§ 9(5) Exact decimal types are omitted because they are semantically composite numeric values in Sec and do not belong to the intentionally small initial atomic surface.
+
+§ 9(6) This exclusion is a deliberate Sec 0.1 language design, not a claim that all targets are incapable of atomic operations over those representations.
 
 ---
 
-## Supported value types
+## § 10. Extensibility note
 
-Version 0.1 should support atomic storage only for types that the selected target
-can operate on atomically.
+**Governance tags:** `concurrency.atomics-v2`
 
-The initial portable set should include:
+§ 10(1) The initial atomic-compatible type set is deliberately smaller than every representation the compiler could theoretically lower atomically.
 
-```sec
-bool
-byte
-int8
-int16
-int32
-int64
-uint8
-uint16
-uint32
-uint64
-RawPtr[T]
-```
+§ 10(2) Future language revisions may add additional scalar or representation-stable categories when concrete use cases demonstrate a clear user benefit.
 
-Support for the following depends on target capability:
+§ 10(3) User and implementation feedback is explicitly relevant to such expansion.
 
-```sec
-int
-uint
-i128
-u128
-enum integer representations
-register-sized named types
-```
-
-Floating-point and decimal types are not atomic in version 0.1.
-
-Structured values are not atomic merely because their total size matches a
-machine word.
-
-Invalid examples:
-
-```sec
-Atomic[ApplicationState]
-Atomic[string]
-Atomic[decimal]
-Atomic[float64]
-Atomic[int[]]
-```
-
-Expected diagnostic:
-
-```text
-type ApplicationState is not supported by Atomic
-```
+§ 10(4) Future expansion must be specified as a language change; a backend must not independently make a currently excluded `Atomic[T]` legal merely because the target has a matching instruction width.
 
 ---
 
-## Target support
+## § 11. Construction
 
-Atomic support depends on:
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`
 
-- value size
-- alignment
-- target architecture
-- target profile
-- required operation
-- required memory order
+§ 11(1) An atomic value is initialized from one ordinary value of `T`.
 
-A target may support atomic load and store for a type without supporting all
-read-modify-write operations.
-
-The compiler must not silently lower an unsupported atomic operation to
-unsynchronized ordinary access.
-
-A target profile may:
-
-- use native atomic instructions
-- use a compiler-provided atomic intrinsic
-- use a verified platform primitive
-- reject the operation
-
-A hidden global mutex fallback is not permitted unless the target profile
-explicitly declares that implementation and preserves interrupt and blocking
-semantics.
-
----
-
-## Construction
-
-An atomic value is initialized with one ordinary value of type `T`.
-
-Example:
+§ 11(2) Canonical construction syntax is:
 
 ```sec
 let ready: Atomic[bool] := Atomic(false)
 ```
 
-Static atomic storage is valid:
+§ 11(3) `Atomic(false)` constructs one `Atomic[bool]` value from the contextual `bool` value.
+
+§ 11(4) Static atomic storage is valid:
 
 ```sec
 static let Requests: Atomic[uint64] := Atomic(0)
 ```
 
-The atomic binding is normally immutable.
+§ 11(5) The binding holding an atomic object normally remains immutable.
 
-The contained value changes through atomic operations.
+§ 11(6) Mutation of the contained value occurs through atomic methods.
 
-Preferred:
+§ 11(7) Replacing the entire `Atomic[T]` object is distinct from atomically modifying the contained `T`.
 
-```sec
-static let Counter: Atomic[uint64] := Atomic(0)
-```
-
-Usually unnecessary:
-
-```sec
-static let mut Counter: Atomic[uint64] := Atomic(0)
-```
-
-Replacing the atomic object is different from atomically changing its contained
-value.
+§ 11(8) The compiler must reject construction when the contextual `T` is not atomic-compatible.
 
 ---
 
-## Ownership
+## § 12. Common public operation surface
 
-`Atomic[T]` owns exactly one atomic storage location containing a value of type
-`T`.
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`, `tooling.atomics-v2`
 
-The protected value is not directly accessible through ordinary loads or stores.
-
-Invalid conceptual access:
+§ 12(1) Every atomic-compatible `Atomic[T]` provides the following common public signatures:
 
 ```sec
-Counter.value
-```
+impl Atomic[T] {
+    fn Load() T
+    // Reads the current atomic value using MemoryOrder.SeqCst.
 
-All access must use atomic operations.
+    fn Load(order: MemoryOrder) T
+    // Reads the current atomic value using the explicit valid load order.
 
-The ownership of the `Atomic[T]` object follows ordinary Sec ownership rules.
+    fn Store(value: T) void
+    // Replaces the current value using MemoryOrder.SeqCst.
 
-Concurrent access may occur through valid shared references to the same atomic
-storage.
+    fn Store(value: T, order: MemoryOrder) void
+    // Replaces the current value using the explicit valid store order.
 
-Atomic operations may synchronize tasks, threads and mixed task/thread users
-when they access the same valid shared atomic storage with compatible memory
-orders.
+    fn Swap(value: T) T
+    // Atomically replaces the value using MemoryOrder.SeqCst
+    // and returns the previous value.
 
-Atomic ownership and validity are not based on physical thread identity.
+    fn Swap(value: T, order: MemoryOrder) T
+    // Atomically replaces the value using an explicit valid RMW order
+    // and returns the previous value.
 
-Target validation still applies to every atomic operation and memory order.
+    fn CompareExchange(
+        expected: T,
+        desired: T
+    ) CompareExchangeResult[T]
+    // Strong compare-exchange using SeqCst for both success and failure.
 
----
-
-## Canonical operations
-
-Version 0.1 should provide at least:
-
-```sec
-load()
-store(value)
-swap(value)
-compareExchange(expected, desired)
-```
-
-Integer atomics should additionally support:
-
-```sec
-fetchAdd(value)
-fetchSub(value)
-fetchAnd(value)
-fetchOr(value)
-fetchXor(value)
-```
-
-Boolean atomics may support:
-
-```sec
-fetchAnd(value)
-fetchOr(value)
-fetchXor(value)
-```
-
-Pointer atomics should initially support:
-
-```sec
-load()
-store(value)
-swap(value)
-compareExchange(expected, desired)
-```
-
----
-
-## Load
-
-Atomic load reads the current value.
-
-```sec
-let value := Counter.load()
-```
-
-The result type is `T`.
-
-Example:
-
-```sec
-let ready: bool := Ready.load()
-```
-
-A load does not modify the atomic value.
-
----
-
-## Store
-
-Atomic store replaces the contained value.
-
-```sec
-Ready.store(true)
-```
-
-The argument must be compatible with `T`.
-
-A store does not return the previous value.
-
-Use `swap()` when the previous value is required.
-
----
-
-## Swap
-
-Atomic swap replaces the value and returns the previous value.
-
-```sec
-let previous := State.swap(newState)
-```
-
-The return type is `T`.
-
-The complete exchange is one atomic read-modify-write operation.
-
----
-
-## Fetch operations
-
-Fetch operations atomically update the stored value and return the previous
-value.
-
-Example:
-
-```sec
-let previous := Requests.fetchAdd(1)
-```
-
-If `Requests` contained `10`, the operation:
-
-- stores `11`
-- returns `10`
-
-The operation must use the arithmetic and bit-width semantics of `T`.
-
-Atomic arithmetic must not silently use different overflow rules from ordinary
-Sec arithmetic.
-
-The exact overflow behavior must follow the numeric operation selected for the
-atomic API.
-
----
-
-## Compare and exchange
-
-Compare-and-exchange conditionally replaces the value.
-
-Conceptual form:
-
-```sec
-let result := State.compareExchange(expected, desired)
-```
-
-The operation:
-
-1. atomically reads the current value
-2. compares it with `expected`
-3. stores `desired` when they are equal
-4. reports whether the exchange occurred
-5. exposes the observed value
-
-A suitable compiler-known result type is:
-
-```sec
-CompareExchangeResult[T]
-```
-
-Conceptually:
-
-```sec
-type CompareExchangeResult[T] struct {
-    exchanged: bool
-    observed: T
+    fn CompareExchange(
+        expected: T,
+        desired: T,
+        successOrder: MemoryOrder,
+        failureOrder: MemoryOrder
+    ) CompareExchangeResult[T]
+    // Strong compare-exchange using separate success and failure orders.
 }
 ```
 
-Example:
+§ 12(2) The signature-only presentation above is normative API notation.
+
+§ 12(3) Core/compiler implementation may use privileged intrinsic bodies rather than ordinary Sec bodies, but the public signatures must match exactly.
+
+§ 12(4) Ordinary instance methods have implicit `self` according to `impl.md`; no explicit `self` parameter is written.
+
+§ 12(5) The compiler derives the special shared-receiver atomic semantics from the compiler-known method identity rather than exposing an ordinary mutable borrow to the stored `T`.
+
+---
+
+## § 13. Integer public operation surface
+
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`, `tooling.atomics-v2`
+
+§ 13(1) Atomic signed and unsigned integer types additionally provide:
 
 ```sec
-let result := State.compareExchange(State.Idle, State.Running)
+impl Atomic[T] {
+    fn FetchAdd(value: T) T
+    // Atomically adds value using SeqCst and returns the previous value.
 
-if result.exchanged {
-    StartWork()
+    fn FetchAdd(value: T, order: MemoryOrder) T
+    // Atomically adds value using an explicit valid RMW order
+    // and returns the previous value.
+
+    fn FetchSub(value: T) T
+    // Atomically subtracts value using SeqCst and returns the previous value.
+
+    fn FetchSub(value: T, order: MemoryOrder) T
+    // Atomically subtracts value using an explicit valid RMW order
+    // and returns the previous value.
+
+    fn FetchAnd(value: T) T
+    // Atomically applies bitwise AND using SeqCst and returns the previous value.
+
+    fn FetchAnd(value: T, order: MemoryOrder) T
+    // Atomically applies bitwise AND using an explicit valid RMW order
+    // and returns the previous value.
+
+    fn FetchOr(value: T) T
+    // Atomically applies bitwise OR using SeqCst and returns the previous value.
+
+    fn FetchOr(value: T, order: MemoryOrder) T
+    // Atomically applies bitwise OR using an explicit valid RMW order
+    // and returns the previous value.
+
+    fn FetchXor(value: T) T
+    // Atomically applies bitwise XOR using SeqCst and returns the previous value.
+
+    fn FetchXor(value: T, order: MemoryOrder) T
+    // Atomically applies bitwise XOR using an explicit valid RMW order
+    // and returns the previous value.
 }
 ```
 
-When the exchange fails, `result.observed` contains the value that prevented the
-exchange.
+§ 13(2) These signatures apply only when `T` is an atomic-compatible signed or unsigned integer type or an eligible named type whose contracts permit the operation.
 
-This avoids requiring an in-out `expected` parameter.
+§ 13(3) Enum eligibility does not imply integer fetch arithmetic or bitwise fetch operations.
 
----
+§ 13(4) `RawPtr[T]` eligibility does not imply integer fetch arithmetic or bitwise fetch operations.
 
-## Weak compare and exchange
-
-Version 0.1 should provide only strong compare-and-exchange.
-
-A future operation may expose spurious-failure semantics:
-
-```sec
-compareExchangeWeak(expected, desired)
-```
-
-This is not required for version 0.1.
+§ 13(5) `bool` eligibility does not imply the integer fetch operation surface.
 
 ---
 
-## Memory order
+## § 14. `Load`
 
-Every atomic operation has a memory order.
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
 
-The default operation should use the safest general ordering:
+§ 14(1) `Load` atomically reads one complete `T`.
+
+§ 14(2) The return type is exactly `T`.
+
+§ 14(3) `Load()` is equivalent to `Load(MemoryOrder.SeqCst)`.
+
+§ 14(4) Valid explicit load orders are:
 
 ```text
-sequentially consistent
+MemoryOrder.Relaxed
+MemoryOrder.Acquire
+MemoryOrder.SeqCst
 ```
 
-Examples:
+§ 14(5) `MemoryOrder.Release` is invalid for `Load`.
+
+§ 14(6) `MemoryOrder.AcqRel` is invalid for `Load`.
+
+§ 14(7) `Load` does not modify the atomic object and therefore does not add a modification to its modification order.
+
+Example:
 
 ```sec
-Ready.load()
-Ready.store(true)
-Counter.fetchAdd(1)
+let ready := Ready.Load(MemoryOrder.Acquire)
 ```
-
-Explicit memory order may be provided through overloads:
-
-```sec
-Ready.load(MemoryOrder.Acquire)
-Ready.store(true, MemoryOrder.Release)
-Counter.fetchAdd(1, MemoryOrder.Relaxed)
-```
-
-The exact ordering semantics are defined in
-`concurrency_memory_model.txt`.
 
 ---
 
-## MemoryOrder
+## § 15. `Store`
 
-`MemoryOrder` is a compiler-known enum or equivalent language-defined type.
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
 
-Version 0.1 should define:
+§ 15(1) `Store` atomically replaces the contained value.
+
+§ 15(2) `Store` returns `void`.
+
+§ 15(3) `Store(value)` is equivalent to `Store(value, MemoryOrder.SeqCst)`.
+
+§ 15(4) Valid explicit store orders are:
+
+```text
+MemoryOrder.Relaxed
+MemoryOrder.Release
+MemoryOrder.SeqCst
+```
+
+§ 15(5) `MemoryOrder.Acquire` is invalid for `Store`.
+
+§ 15(6) `MemoryOrder.AcqRel` is invalid for `Store`.
+
+§ 15(7) Every successful `Store` is a modification of the atomic object and participates in that object's modification order.
+
+Example:
 
 ```sec
+Ready.Store(true, MemoryOrder.Release)
+```
+
+---
+
+## § 16. `Swap`
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 16(1) `Swap` atomically reads the old `T`, stores the supplied `T`, and returns the old `T`.
+
+§ 16(2) `Swap` is one read-modify-write operation.
+
+§ 16(3) `Swap(value)` is equivalent to `Swap(value, MemoryOrder.SeqCst)`.
+
+§ 16(4) Valid explicit `Swap` orders are all Sec 0.1 `MemoryOrder` values.
+
+§ 16(5) A `Swap` modification participates in modification order.
+
+§ 16(6) A `Swap` can extend a release sequence when the memory-model rules permit it.
+
+---
+
+## § 17. `CompareExchange`
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 17(1) `CompareExchange` is the strong compare-exchange operation in Sec 0.1.
+
+§ 17(2) It atomically observes the current `T`.
+
+§ 17(3) If the observed value equals `expected` under the atomic compare-exchange semantics of the eligible `T`, `desired` is stored and the result is:
+
+```sec
+CompareExchangeResult[T].Exchanged
+```
+
+§ 17(4) If the exchange does not occur, the result is:
+
+```sec
+CompareExchangeResult[T].NotExchanged(observed)
+```
+
+§ 17(5) `observed` is the value read by that compare-exchange operation.
+
+§ 17(6) The failure path must not perform a separate later `Load` merely to obtain the observed value.
+
+§ 17(7) A successful `CompareExchange` is one read-modify-write modification.
+
+§ 17(8) A failed `CompareExchange` is an atomic read only.
+
+§ 17(9) A successful `CompareExchange` participates in modification order and may extend a release sequence.
+
+§ 17(10) A failed `CompareExchange` does not add a modification and does not extend a release sequence.
+
+---
+
+## § 18. Compare-exchange default ordering
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 18(1) The simple overload:
+
+```sec
+State.CompareExchange(expected, desired)
+```
+
+uses:
+
+```text
+successOrder = MemoryOrder.SeqCst
+failureOrder = MemoryOrder.SeqCst
+```
+
+§ 18(2) The explicit overload accepts separate success and failure orders.
+
+§ 18(3) The success order applies only when the exchange occurs.
+
+§ 18(4) The failure order applies only when the exchange does not occur.
+
+---
+
+## § 19. Compare-exchange success order
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 19(1) Valid success orders are:
+
+```text
 MemoryOrder.Relaxed
 MemoryOrder.Acquire
 MemoryOrder.Release
@@ -434,517 +594,211 @@ MemoryOrder.AcqRel
 MemoryOrder.SeqCst
 ```
 
-Not every order is valid for every operation.
-
-Examples:
-
-```text
-load
-    Relaxed
-    Acquire
-    SeqCst
-
-store
-    Relaxed
-    Release
-    SeqCst
-
-read-modify-write
-    Relaxed
-    Acquire
-    Release
-    AcqRel
-    SeqCst
-```
-
-Invalid order combinations are semantic errors.
-
-Example:
-
-```sec
-Ready.load(MemoryOrder.Release)
-```
-
-Expected diagnostic:
-
-```text
-MemoryOrder.Release is not valid for atomic load
-```
+§ 19(2) The successful operation is read-modify-write, so all five Sec 0.1 orderings are meaningful.
 
 ---
 
-## Default ordering
+## § 20. Compare-exchange failure order
 
-Omitting the memory order is equivalent to:
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 20(1) Valid failure orders are:
+
+```text
+MemoryOrder.Relaxed
+MemoryOrder.Acquire
+MemoryOrder.SeqCst
+```
+
+§ 20(2) `MemoryOrder.Release` is invalid as a failure order.
+
+§ 20(3) `MemoryOrder.AcqRel` is invalid as a failure order.
+
+§ 20(4) The reason is semantic: the failure path performs no write and therefore cannot perform release publication.
+
+§ 20(5) Sec does not impose an additional rule that the failure order must be weaker than the success order.
+
+§ 20(6) Each path's order is validated according to the semantic work performed on that path.
+
+§ 20(7) Therefore combinations such as:
+
+```sec
+State.CompareExchange(
+    expected,
+    desired,
+    MemoryOrder.Release,
+    MemoryOrder.Acquire
+)
+```
+
+are semantically valid if the selected target can implement the requested operation.
+
+---
+
+## § 21. Fetch arithmetic
+
+**Governance tags:** `concurrency.atomics-v2`
+
+§ 21(1) `FetchAdd` and `FetchSub` are read-modify-write operations.
+
+§ 21(2) They return the value stored immediately before the operation's modification.
+
+§ 21(3) Their arithmetic semantics must be the same semantics defined for the corresponding operation on `T`.
+
+§ 21(4) Atomic arithmetic must not introduce C-style undefined signed overflow.
+
+§ 21(5) If the ordinary numeric contract for a named type would be violated by the requested fetch operation, the compiler must reject that operation unless the ordinary type rule provides a defined atomic-preservable result.
+
+§ 21(6) The compiler must not silently substitute wrapping arithmetic merely because a target atomic instruction wraps.
+
+---
+
+## § 22. Fetch bitwise operations
+
+**Governance tags:** `concurrency.atomics-v2`
+
+§ 22(1) `FetchAnd`, `FetchOr`, and `FetchXor` are integer read-modify-write operations.
+
+§ 22(2) They return the value stored immediately before the operation's modification.
+
+§ 22(3) Their bitwise semantics are exactly the ordinary bitwise semantics of the concrete integer `T`.
+
+§ 22(4) Enum atomic eligibility does not expose these operations merely because the enum has an integer representation.
+
+§ 22(5) Pointer atomic eligibility does not expose these operations merely because a pointer has an integer-like machine representation.
+
+---
+
+## § 23. RMW ordering
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 23(1) Read-modify-write operations may use any Sec 0.1 `MemoryOrder`.
+
+§ 23(2) The RMW operation set includes:
+
+```text
+Swap
+FetchAdd
+FetchSub
+FetchAnd
+FetchOr
+FetchXor
+successful CompareExchange
+```
+
+§ 23(3) A failed `CompareExchange` is not RMW.
+
+§ 23(4) RMW operations participate in modification order.
+
+§ 23(5) RMW operations may extend a release sequence even when the RMW operation itself uses `MemoryOrder.Relaxed`.
+
+---
+
+## § 24. Memory-order validation table
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`, `tooling.atomics-v2`
+
+§ 24(1) The compiler and LSP must enforce this exact operation/order matrix:
+
+| Operation category | Relaxed | Acquire | Release | AcqRel | SeqCst |
+|---|---:|---:|---:|---:|---:|
+| `Load` | yes | yes | no | no | yes |
+| `Store` | yes | no | yes | no | yes |
+| RMW success | yes | yes | yes | yes | yes |
+| `CompareExchange` failure | yes | yes | no | no | yes |
+| `atomic.Fence` | no | yes | yes | yes | yes |
+
+§ 24(2) Invalid combinations are compile-time semantic errors.
+
+§ 24(3) Target capability validation occurs after or alongside semantic order validation and must not make an otherwise semantically invalid order valid.
+
+---
+
+## § 25. Default memory order
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 25(1) Omission of an order on ordinary atomic object operations means:
 
 ```sec
 MemoryOrder.SeqCst
 ```
 
-This default prioritizes correctness and clarity.
+§ 25(2) `SeqCst` is the default because it provides the simplest portable reasoning model.
 
-Programmers may request weaker ordering only when they intentionally need it.
+§ 25(3) A programmer requests a weaker ordering explicitly.
 
-The formatter must not insert explicit `SeqCst` arguments when they were omitted.
+§ 25(4) The formatter must not insert explicit `MemoryOrder.SeqCst` arguments where source omitted them.
+
+§ 25(5) The fence operation is the deliberate exception: `atomic.Fence` requires an explicit order and has no zero-argument form.
 
 ---
 
-## Compare-exchange ordering
+## § 26. Exact fence surface
 
-Compare-and-exchange may require:
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`, `tooling.atomics-v2`
 
-- one order for success
-- one order for failure
-
-The simple overload should use sequential consistency:
+§ 26(1) Sec 0.1 provides the public function:
 
 ```sec
-State.compareExchange(expected, desired)
+atomic.Fence(order: MemoryOrder) void
+// Establishes an explicit memory-ordering fence for the current
+// execution context. It does not itself Load or Store an Atomic[T].
 ```
 
-An explicit overload may use:
+§ 26(2) `atomic` is the owning core namespace/module surface for the function.
 
-```sec
-State.compareExchange(
-    expected,
-    desired,
-    MemoryOrder.AcqRel,
-    MemoryOrder.Acquire
-)
-```
+§ 26(3) `Fence` is the public function name and follows the public CamelCase naming rule.
 
-The failure order must not include release semantics.
+§ 26(4) The `order` argument is mandatory.
 
-Invalid:
-
-```sec
-State.compareExchange(
-    expected,
-    desired,
-    MemoryOrder.AcqRel,
-    MemoryOrder.Release
-)
-```
-
-Expected diagnostic:
+§ 26(5) Valid fence orders are:
 
 ```text
-compare-exchange failure order cannot use release semantics
+MemoryOrder.Acquire
+MemoryOrder.Release
+MemoryOrder.AcqRel
+MemoryOrder.SeqCst
 ```
 
----
+§ 26(6) `MemoryOrder.Relaxed` is invalid for a fence.
 
-## Atomic flags
-
-A boolean atomic may be used as a flag.
-
-Example:
-
-```sec
-static let ShutdownRequested: Atomic[bool] := Atomic(false)
-
-fn RequestShutdown() void {
-    ShutdownRequested.store(true)
-}
-
-fn IsShutdownRequested() bool {
-    return ShutdownRequested.load()
-}
-```
-
-For task cancellation, the language-level task API remains preferred.
-
-An atomic flag does not automatically integrate with:
-
-- task cancellation
-- task shutdown
-- blocking waits
-- scheduler wakeups
+§ 26(7) Exact fence synchronization semantics are defined by `concurrency_memory_model.md`.
 
 ---
 
-## Atomic counters
+## § 27. Named integer types
 
-Atomic counters are valid when each update is independent.
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`
 
-Example:
-
-```sec
-static let Requests: Atomic[uint64] := Atomic(0)
-
-fn RecordRequest() void {
-    Requests.fetchAdd(1)
-}
-```
-
-An atomic counter is not sufficient when other values must change as one
-invariant.
-
----
-
-## Multi-field invariants
-
-Atomics protect individual operations on individual atomic locations.
-
-They do not make a group of values transactional.
-
-Invalid design:
-
-```sec
-type AccountState struct {
-    balance: Atomic[int]
-    reserved: Atomic[int]
-}
-```
-
-when correctness requires:
-
-```text
-balance + reserved == total
-```
-
-across every observation.
-
-Use:
-
-```sec
-Mutex[AccountState]
-```
-
-when multiple fields must be read or modified consistently.
-
----
-
-## Mixing atomic and ordinary access
-
-The same storage location must not be accessed both atomically and
-non-atomically while concurrent access is possible.
-
-Invalid conceptual behavior:
-
-```sec
-Counter.store(10)
-let value := raw ordinary load of Counter storage
-```
-
-The compiler must not expose an ordinary reference to the contained value.
-
-Unsafe raw-pointer access to atomic storage is explicitly unsafe and may create
-an invalid data race.
-
----
-
-## References
-
-A shared reference to an atomic value may be passed between tasks or threads
-when its lifetime is valid.
-
-Example:
-
-```sec
-fn Increment(counter: ref Atomic[uint64]) void {
-    counter.fetchAdd(1)
-}
-```
-
-An exclusive mutable reference is normally unnecessary for atomic operations.
-
-Atomic mutation occurs through a shared reference to the atomic object.
-
-This does not violate ordinary aliasing because the contained access is governed
-by atomic semantics.
-
----
-
-## Methods and receiver model
-
-Atomic methods that modify the contained value should use a shared receiver.
-
-Conceptually:
-
-```sec
-fn load() T
-fn store(value: T) void
-fn swap(value: T) T
-fn fetchAdd(value: T) T
-```
-
-The atomic object itself is not mutably borrowed by each operation.
-
-The contained storage is synchronized internally by the atomic semantics.
-
----
-
-## Moving atomics
-
-An atomic value may be moved before it is published to another task.
-
-After publication, the atomic storage location may need a stable address.
-
-The compiler should reject moves that may invalidate references or target atomic
-identity.
-
-Examples include moving:
-
-- a static atomic
-- an atomic referenced by another task
-- a struct containing a published atomic
-- an atomic used by an interrupt handler
-
-A target using address-independent atomic representation may relax physical
-movement while preserving semantic identity.
-
----
-
-## Atomics in structs
-
-A struct may own atomic fields.
-
-Example:
-
-```sec
-type Statistics struct {
-    requests: Atomic[uint64]
-    failures: Atomic[uint64]
-}
-```
-
-Each struct instance owns distinct atomic storage.
-
-The fields remain subject to:
-
-- initialization
-- movement
-- publication
-- target alignment
-- destruction
-- memory-order rules
-
-Atomic fields do not automatically make the entire struct concurrency-safe.
-
-Non-atomic fields still require ordinary synchronization.
-
----
-
-## Atomics and static storage
-
-Static atomics are suitable for globally shared counters and flags.
-
-Example:
-
-```sec
-impl Metrics {
-    static let Requests: Atomic[uint64] := Atomic(0)
-
-    static fn RecordRequest() void {
-        Metrics.Requests.fetchAdd(1)
-    }
-}
-```
-
-The static binding is immutable.
-
-The atomic contained value remains mutable through atomic operations.
-
----
-
-## Atomics and properties
-
-A property may wrap atomic operations.
-
-Example:
-
-```sec
-impl Metrics {
-    static let _requests: Atomic[uint64] := Atomic(0)
-
-    static property Requests: uint64 {
-        get {
-            return Metrics._requests.load()
-        }
-    }
-}
-```
-
-A property must not imply that a sequence of multiple atomic operations is one
-transaction.
-
----
-
-## Waiting
-
-Version 0.1 should not require general atomic wait and notify operations.
-
-Possible future APIs include:
-
-```sec
-value.wait(expected)
-value.notifyOne()
-value.notifyAll()
-```
-
-Busy-wait loops should not be the default waiting mechanism for tasks.
-
-Use task-aware synchronization where blocking or suspension is required.
-
----
-
-## Spin loops
-
-Explicit spin loops may be valid in low-level or profile-specific code.
-
-Example:
-
-```sec
-while !Ready.load(MemoryOrder.Acquire) {
-    cpu.relax()
-}
-```
-
-Such code may require:
-
-- unsafe or low-level context
-- target support
-- bounded execution
-- ISR or bare-metal justification
-
-The compiler should diagnose obvious unbounded spin loops in ordinary hosted
-task code when appropriate.
-
----
-
-## Interrupt safety
-
-Atomics may be used in interrupt-safe code when:
-
-- the target operation is lock-free or interrupt-safe
-- the type and alignment are supported
-- the memory order is valid
-- the operation does not call a blocking fallback
-
-A target profile must expose whether each atomic operation is:
-
-- always lock-free
-- sometimes lock-free
-- unsupported
-- implemented with a blocking fallback
-
-Blocking fallback atomics are invalid in interrupt-safe code.
-
----
-
-## Lock-free queries
-
-The compiler or standard reflection facilities may expose target capability.
-
-Conceptual forms:
-
-```sec
-Atomic[uint64].isAlwaysLockFree
-value.isLockFree
-```
-
-These are useful for:
-
-- embedded profiles
-- ISR validation
-- performance-critical code
-- portable low-level libraries
-
-The exact API may be finalized later.
-
----
-
-## ABA problem
-
-Compare-and-exchange on pointers or generation values may be vulnerable to the
-ABA problem.
-
-Atomic pointer equality does not prove that an object remained continuously
-alive between observations.
-
-Generational pointers or tagged values may be used to detect reuse.
-
-The compiler must not claim that atomic pointer operations alone provide memory
-reclamation safety.
-
----
-
-## Memory reclamation
-
-Atomic pointers do not define how pointed-to objects are destroyed.
-
-Lock-free structures may require an explicit reclamation strategy such as:
-
-- ownership transfer
-- generations
-- epochs
-- hazard references
-- deferred reclamation
-
-These strategies are outside the basic atomic rules.
-
-A raw atomic pointer must not outlive its pointee.
-
----
-
-## Overflow
-
-Atomic integer arithmetic follows the defined Sec arithmetic operation.
-
-Version 0.1 must not silently introduce C-style undefined signed overflow.
-
-The exact API may provide distinct operations matching ordinary numeric rules.
-
-For example, if ordinary checked addition returns an error, the atomic equivalent
-must define how failure is reported without losing atomicity.
-
-Until that model is finalized, atomic fetch arithmetic should be limited to
-well-defined wrapping-capable unsigned operations or explicitly defined
-overflow behavior.
-
-The compiler must diagnose unsupported or ambiguous overflow semantics.
-
----
-
-## Named integer types
-
-A named type with an atomic-compatible integer representation may be atomic when
-its semantic rules remain enforceable.
+§ 27(1) A named type whose underlying type is atomic-compatible may itself be atomic-compatible.
 
 Example:
 
 ```sec
 type RequestCount uint64
+
+let count: Atomic[RequestCount] := Atomic(RequestCount(0))
 ```
 
-Possible:
+§ 27(2) Atomic operations preserve the named type.
 
-```sec
-Atomic[RequestCount]
-```
+§ 27(3) `Load` returns the named type rather than its underlying primitive type.
 
-only if all atomic operations preserve the named type's contracts.
+§ 27(4) `Swap` and `CompareExchange` accept and return the named type.
 
-A ranged or constrained type must not be updated through atomic arithmetic that
-can produce an invalid value.
+§ 27(5) Fetch operations are available only when the named type's contracts remain enforceable.
 
-The compiler may restrict such types to:
-
-```sec
-load
-store
-swap
-compareExchange
-```
-
-unless contract preservation is proven.
+§ 27(6) A ranged or constrained type must not be updated through an atomic arithmetic operation that can produce an invalid named value without the ordinary type semantics providing a valid atomic failure/result model.
 
 ---
 
-## Enums
+## § 28. Integer-backed enums
 
-An enum with a supported integer representation may be atomic.
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`
+
+§ 28(1) An enum with an atomic-compatible integer underlying representation may be used in `Atomic[T]`.
 
 Example:
 
@@ -958,268 +812,517 @@ enum WorkerState uint8 {
 let state: Atomic[WorkerState] := Atomic(WorkerState.Idle)
 ```
 
-Valid operations should initially include:
+§ 28(2) The guaranteed enum atomic operation surface is the common surface:
+
+```text
+Load
+Store
+Swap
+CompareExchange
+```
+
+§ 28(3) Arithmetic fetch operations are invalid for enums.
+
+§ 28(4) Integer bitwise fetch operations are invalid for enums in Sec 0.1.
+
+§ 28(5) The compiler must preserve enum type identity and valid enum semantics.
+
+---
+
+## § 29. Raw pointer atomics
+
+**Governance tags:** `concurrency.atomics-v2`, `analysis.transferability`, `platform.atomics-v2`
+
+§ 29(1) `RawPtr[T]` is atomic-compatible in Sec 0.1.
+
+§ 29(2) The guaranteed pointer atomic operation surface is:
+
+```text
+Load
+Store
+Swap
+CompareExchange
+```
+
+§ 29(3) Atomic pointer operations do not create pointee ownership.
+
+§ 29(4) Atomic pointer operations do not extend pointee lifetime.
+
+§ 29(5) Atomic pointer operations do not solve memory reclamation.
+
+§ 29(6) Pointer arithmetic fetch operations are not part of the Sec 0.1 atomic API.
+
+§ 29(7) Bitwise fetch operations are not part of the pointer atomic API.
+
+§ 29(8) ABA safety is not implied by atomic pointer compare-exchange.
+
+---
+
+## § 30. Boolean atomics
+
+**Governance tags:** `concurrency.atomics-v2`
+
+§ 30(1) `Atomic[bool]` is valid.
+
+§ 30(2) The guaranteed Sec 0.1 boolean atomic surface is the common surface:
+
+```text
+Load
+Store
+Swap
+CompareExchange
+```
+
+§ 30(3) Boolean values do not receive integer arithmetic operations.
+
+§ 30(4) This revision does not standardize additional boolean fetch-bitwise operations as part of the required portable v0.1 surface.
+
+---
+
+## § 31. Atomic object ownership
+
+**Governance tags:** `concurrency.atomics-v2`, `frontend.transferability`
+
+§ 31(1) `Atomic[T]` owns exactly one atomic storage identity.
+
+§ 31(2) The atomic object follows ordinary Sec ownership rules.
+
+§ 31(3) Atomic interior mutation does not require an ordinary `ref mut` to the atomic object.
+
+§ 31(4) Valid shared references may invoke atomic methods.
+
+Example:
 
 ```sec
-load
-store
-swap
-compareExchange
+fn Increment(counter: ref Atomic[uint64]) void {
+    counter.FetchAdd(1)
+}
 ```
 
-Arithmetic fetch operations are not valid for enums.
+§ 31(5) This exception is specific to compiler-known atomic interior mutation.
+
+§ 31(6) It does not authorize ordinary unsynchronized mutation of surrounding storage.
 
 ---
 
-## Atomic destruction
+## § 32. No ordinary contained-value reference
 
-Atomic primitive storage normally has no special destruction behavior.
+**Governance tags:** `concurrency.atomics-v2`, `sema.data-race-analysis`
 
-If future atomic-compatible named types own resources, atomic storage must not
-permit replacement that bypasses deterministic destruction.
+§ 32(1) `Atomic[T]` must not expose an ordinary `ref T` or `ref mut T` to its contained value.
 
-Version 0.1 should therefore restrict `Atomic[T]` to trivially destructible
-values.
+§ 32(2) All concurrent access to the contained storage must use the atomic API or another explicitly defined compiler/platform operation preserving the same atomic contract.
 
-Expected rule:
+§ 32(3) Unsafe raw access to the same storage can invalidate race freedom and remains programmer responsibility.
+
+§ 32(4) The compiler must not treat unsafe ordinary access as if it participated in the atomic object's modification order.
+
+---
+
+## § 33. Moving atomics and publication
+
+**Governance tags:** `concurrency.atomics-v2`, `analysis.transferability`
+
+§ 33(1) An unpublished atomic object may be moved according to ordinary ownership rules.
+
+§ 33(2) Once references or execution contexts depend on the atomic storage identity, movement must preserve that semantic identity.
+
+§ 33(3) The compiler must reject a source-level move that can invalidate a live reference, wait structure, platform mapping, interrupt reference, or other identity-dependent use.
+
+§ 33(4) A backend may use internal indirection to preserve identity while relocating representation, provided the source semantics remain unchanged.
+
+---
+
+## § 34. Atomics in structs
+
+**Governance tags:** `concurrency.atomics-v2`
+
+§ 34(1) A struct may own `Atomic[T]` fields.
+
+Example:
+
+```sec
+type Statistics struct {
+    Requests: Atomic[uint64]
+    Failures: Atomic[uint64]
+}
+```
+
+§ 34(2) Each atomic field has its own atomic storage identity.
+
+§ 34(3) Atomic fields do not make the enclosing struct itself atomic.
+
+§ 34(4) Atomic fields do not make non-atomic fields safe for concurrent mutation.
+
+§ 34(5) Public fields follow the ordinary public naming rules; source-file-private fields may use the ordinary visibility mechanism defined elsewhere.
+
+---
+
+## § 35. Multi-field invariants
+
+**Governance tags:** `concurrency.atomics-v2`
+
+§ 35(1) Separate atomics do not provide transactional observation across multiple storage identities.
+
+§ 35(2) If correctness depends on one invariant covering several values, a mutex or another suitable higher-level synchronization mechanism is normally required.
+
+§ 35(3) Atomic operations must not be documented as protecting unrelated ordinary fields merely because the fields are nearby in memory.
+
+---
+
+## § 36. Mixing atomic and ordinary access
+
+**Governance tags:** `concurrency.atomics-v2`, `sema.data-race-analysis`
+
+§ 36(1) The same shared storage location must not be concurrently accessed through a mixture of Sec atomic operations and ordinary non-atomic operations.
+
+§ 36(2) Such mixing is not repaired by using a strong memory order on the atomic side.
+
+§ 36(3) The compiler must reject statically provable invalid mixing.
+
+§ 36(4) Unsafe code can make static proof unavailable but does not make a data race semantically valid.
+
+---
+
+## § 37. Target capability
+
+**Governance tags:** `concurrency.atomics-v2`, `compiler.platform-model`, `platform.atomics-v2`
+
+§ 37(1) The selected immutable `CompilationPlan` is the sole target/platform truth for concrete atomic capability.
+
+§ 37(2) Capability may depend on:
+
+- the concrete `T`;
+- concrete size and alignment;
+- operation kind;
+- requested memory order;
+- execution context;
+- interrupt-safety requirements;
+- target architecture;
+- runtime/profile policy.
+
+§ 37(3) Language eligibility must not be recomputed from compiler-host properties.
+
+§ 37(4) The compiler must not reject `Atomic[T]` merely because the compiler host lacks a native operation that the selected target provides.
+
+§ 37(5) The compiler must not accept an operation merely because the compiler host provides it when the selected target does not.
+
+---
+
+## § 38. Native versus emulated implementation
+
+**Governance tags:** `concurrency.atomics-v2`, `platform.atomics-v2`
+
+§ 38(1) A conforming target may implement a required atomic operation through a native instruction, compiler intrinsic, verified platform primitive, or another target-declared mechanism preserving the full atomic contract.
+
+§ 38(2) Native single-instruction implementation is not required by the language merely for `Atomic[T]` to be semantically valid.
+
+§ 38(3) A hidden blocking global mutex fallback is not automatically permitted.
+
+§ 38(4) Any emulation strategy must be declared compatible with the current execution context and target profile.
+
+§ 38(5) An emulation that blocks is invalid in a context whose contract forbids blocking.
+
+§ 38(6) An emulation that is not interrupt-safe is invalid where interrupt-safe atomicity is required.
+
+§ 38(7) When no conforming implementation exists, compilation for that `CompilationPlan` must fail with a focused capability diagnostic.
+
+---
+
+## § 39. Interrupt contexts
+
+**Governance tags:** `concurrency.atomics-v2`, `platform.atomics-v2`
+
+§ 39(1) Atomic eligibility does not automatically imply ISR suitability.
+
+§ 39(2) An ISR may use an atomic operation only when the selected `CompilationPlan` proves the concrete lowering valid for that interrupt context.
+
+§ 39(3) A blocking emulation must not satisfy an ISR-safe atomic requirement.
+
+§ 39(4) Interrupt masking may be used as a platform implementation technique only where the platform contract proves that it establishes the required exclusion and ordering.
+
+§ 39(5) Local masking must not be assumed to synchronize with another core, DMA engine, or unrelated execution domain.
+
+---
+
+## § 40. Fences
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 40(1) `atomic.Fence` is part of Sec 0.1.
+
+§ 40(2) It is a real source-level operation, not merely permission for a backend to emit a target fence.
+
+§ 40(3) The compiler must model its ordering semantics before lowering.
+
+§ 40(4) A fence does not access an `Atomic[T]` value itself.
+
+§ 40(5) Fence synchronization requires the atomic communication relationships defined by `concurrency_memory_model.md`.
+
+§ 40(6) Two fences do not synchronize merely because they are both fences.
+
+---
+
+## § 41. Modification order participation
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 41(1) Every atomic object has the per-object modification order defined by `concurrency_memory_model.md`.
+
+§ 41(2) Operations that add a modification are:
 
 ```text
-Atomic[T] requires T to be trivially copyable and trivially destructible.
+Store
+Swap
+FetchAdd
+FetchSub
+FetchAnd
+FetchOr
+FetchXor
+successful CompareExchange
 ```
 
-Pointer values may be atomic, but the atomic pointer does not own the pointee
-unless a separate ownership abstraction explicitly defines that behavior.
-
----
-
-## FFI
-
-Foreign atomic storage is not automatically equivalent to `Atomic[T]`.
-
-An FFI declaration must specify compatible:
-
-- size
-- alignment
-- representation
-- operation semantics
-- memory ordering
-- lock-free requirements
-
-C `_Atomic`, compiler intrinsics and platform APIs may require explicit adapters.
-
-The compiler must not treat a foreign `volatile` value as atomic.
-
----
-
-## Volatile
-
-Atomic and volatile are different concepts.
-
-Atomic provides:
-
-- indivisible operations
-- inter-task synchronization
-- memory ordering
-
-Volatile provides target-visible access semantics for cases such as:
-
-- memory-mapped I/O
-- hardware registers
-- externally modified storage
-
-`volatile` does not make concurrent access atomic.
-
-Atomic access does not automatically provide volatile device semantics.
-
-A future rule document should define volatile behavior separately.
-
----
-
-## Semantic analysis
-
-The compiler must validate:
-
-- exactly one atomic type argument
-- supported atomic value type
-- target size and alignment support
-- operation availability
-- valid method for `T`
-- valid memory order
-- valid compare-exchange success and failure orders
-- no ordinary access to atomic storage
-- no invalid movement after publication
-- interrupt-safety requirements
-- contract preservation for named types
-- trivial copy and destruction requirements
-- absence of unsynchronized mixed access
-
----
-
-## Semantic IR
-
-Semantic IR must represent atomic operations explicitly.
-
-At minimum:
+§ 41(3) Operations that do not add a modification are:
 
 ```text
-AtomicCreate
-AtomicLoad
-AtomicStore
-AtomicSwap
-AtomicCompareExchange
-AtomicFetchAdd
-AtomicFetchSub
-AtomicFetchAnd
-AtomicFetchOr
-AtomicFetchXor
-AtomicFence
-AtomicPublish
+Load
+failed CompareExchange
+atomic.Fence
 ```
 
-IR must record:
-
-- concrete `Atomic[T]` type
-- storage identity
-- value type
-- value width
-- alignment
-- operation
-- success memory order
-- failure memory order
-- target lock-free capability
-- source location
-
-The backend must not infer atomic semantics from ordinary loads, stores or calls.
+§ 41(4) An RMW operation observes and modifies one coherent state of the same atomic object.
 
 ---
 
-## Diagnostics
+## § 42. Release-sequence participation
+
+**Governance tags:** `concurrency.atomics-v2`, `concurrency.memory-model-v2`
+
+§ 42(1) A release sequence starts from a release modification as defined by the memory-model rulebook.
+
+§ 42(2) A contiguous chain of later RMW modifications on the same atomic object may extend that release sequence.
+
+§ 42(3) `Swap`, fetch operations, and successful `CompareExchange` may therefore extend a release sequence.
+
+§ 42(4) A failed `CompareExchange` cannot extend one because it performs no modification.
+
+§ 42(5) A plain `Store` after the head or RMW chain breaks the earlier release sequence even if that store itself is atomic.
+
+---
+
+## § 43. LSP hover requirements
+
+**Governance tags:** `tooling.atomics-v2`, `concurrency.atomics-v2`
+
+§ 43(1) LSP hover for `MemoryOrder` must expose the exact enum declaration and variant documentation.
+
+§ 43(2) LSP hover for `CompareExchangeResult[T]` must expose:
+
+- generic arity;
+- `Exchanged`;
+- `NotExchanged(T)`;
+- the payload meaning;
+- the fact that the type is not an error.
+
+§ 43(3) LSP hover for `Atomic[T]` must expose the resolved contained type and the exact public methods applicable to that concrete `T`.
+
+§ 43(4) Hover must use canonical CamelCase member names.
+
+§ 43(5) Hover must not present target-private backend intrinsics as the source API.
+
+§ 43(6) When an operation is semantically valid but unsupported by the selected target, tooling should distinguish "valid Sec operation, unavailable for this CompilationPlan" from "invalid operation for this T".
+
+---
+
+## § 44. Completion and navigation
+
+**Governance tags:** `tooling.atomics-v2`
+
+§ 44(1) Completion after an `Atomic[T]` expression must offer only the public methods semantically applicable to the resolved `T`, subject to the ordinary completion policy.
+
+§ 44(2) Completion for `MemoryOrder.` must offer exactly the five canonical variants.
+
+§ 44(3) Completion for `CompareExchangeResult[T]` pattern contexts must expose the two canonical variants.
+
+§ 44(4) Go-to-definition/navigation for source-visible core declarations must reach the canonical core declaration where the tooling supports source navigation.
+
+§ 44(5) The compiler-known identity and source declaration must be treated as one semantic symbol, not two unrelated types.
+
+---
+
+## § 45. Syntax and type checking
+
+**Governance tags:** `frontend.atomics-v2`, `tooling.atomics-v2`
+
+§ 45(1) The compiler must validate exactly one type argument for `Atomic[T]`.
+
+§ 45(2) The compiler must validate exactly one type argument for `CompareExchangeResult[T]`.
+
+§ 45(3) The compiler must validate the atomic-compatible type set.
+
+§ 45(4) The compiler must validate operation availability by concrete `T`.
+
+§ 45(5) The compiler must validate each explicit `MemoryOrder`.
+
+§ 45(6) The compiler must validate compare-exchange success and failure orders independently.
+
+§ 45(7) The compiler must reject `Release` and `AcqRel` failure orders.
+
+§ 45(8) The compiler must not impose a "failure order must be weaker than success order" rule.
+
+§ 45(9) The compiler must reject `MemoryOrder.Relaxed` for `atomic.Fence`.
+
+§ 45(10) These checks are source-language semantic checks, not backend-verifier substitutions.
+
+---
+
+## § 46. Semantic IR
+
+**Governance tags:** `analysis.semantic-ir-v2`, `semantic-ir.atomics-v2`
+
+§ 46(1) Semantic IR must preserve atomic operations explicitly enough that later lowering does not rediscover them from ordinary loads, stores, calls, or names.
+
+§ 46(2) It must preserve:
+
+- atomic storage identity;
+- concrete `Atomic[T]`;
+- concrete `T`;
+- operation kind;
+- success memory order where applicable;
+- failure memory order where applicable;
+- RMW versus read-only classification;
+- source provenance;
+- execution-context constraints;
+- target capability requirements.
+
+§ 46(3) Successful and failed `CompareExchange` paths must remain semantically distinguishable.
+
+§ 46(4) Semantic IR must preserve that only the successful compare-exchange path performs a modification.
+
+§ 46(5) Fence semantics must remain explicit.
+
+§ 46(6) Concrete Semantic IR operation names are owned by `semantic_ir.md`; this rulebook defines required semantics rather than a competing opcode vocabulary.
+
+---
+
+## § 47. Lowering
+
+**Governance tags:** `lowering.atomics-v2`, `compiler.platform-model`
+
+§ 47(1) Lowering consumes validated atomic Semantic IR plus the selected `CompilationPlan`.
+
+§ 47(2) Lowering must preserve requested ordering or a stronger ordering that is observationally compatible.
+
+§ 47(3) Lowering must never weaken requested ordering.
+
+§ 47(4) Lowering must preserve no-tearing atomicity.
+
+§ 47(5) Lowering must preserve success/failure result semantics of `CompareExchange`.
+
+§ 47(6) Lowering must return the observed value from the actual failed compare-exchange, not from a later unrelated load.
+
+§ 47(7) Lowering must preserve release-sequence and modification-order semantics required by the source memory model.
+
+§ 47(8) Backend instruction names or host atomic APIs are not the source-language definition.
+
+---
+
+## § 48. Diagnostics
+
+**Governance tags:** `tooling.atomics-v2`, `frontend.atomics-v2`
+
+§ 48(1) Diagnostics should distinguish language-type invalidity from target capability failure.
 
 Examples:
 
 ```text
-Atomic requires exactly one type argument
+type float64 is not atomic-compatible in Sec 0.1
 ```
 
 ```text
-type ApplicationState is not supported by Atomic
+FetchAdd is not available for Atomic[WorkerState]
 ```
 
 ```text
-atomic operation fetchAdd is not valid for bool
+MemoryOrder.Release is not valid for Atomic.Load
 ```
 
 ```text
-MemoryOrder.Release is not valid for atomic load
+MemoryOrder.AcqRel is not valid as a CompareExchange failure order
 ```
 
 ```text
-compare-exchange failure order cannot use release semantics
+MemoryOrder.Relaxed is not valid for atomic.Fence
 ```
 
 ```text
-target linux-arm32 does not support atomic uint64 compare-exchange
+selected CompilationPlan cannot implement Atomic[uint64].CompareExchange with the requested ordering
 ```
 
-```text
-Atomic[BoundedCount] fetchAdd may violate type contract
-```
+§ 48(2) Diagnostics for target capability should identify the selected target/profile fact when known.
 
-```text
-cannot move atomic Counter after it has been published to another task
-```
-
-```text
-atomic uint64 operation is not lock-free in interrupt-safe context
-```
-
-```text
-ordinary access to atomic storage is not permitted
-```
+§ 48(3) Diagnostics must not suggest converting an invalid ordinary shared access to volatile as a concurrency fix.
 
 ---
 
-## Restrictions
+## § 49. Restrictions
 
-`Atomic[T]` must not:
+**Governance tags:** `concurrency.atomics-v2`
 
-- accept arbitrary structured types
-- expose ordinary references to contained storage
-- silently use non-atomic access
-- silently use invalid memory ordering
-- silently fall back to a blocking lock in interrupt-safe code
-- make multiple fields transactional
-- replace `Mutex[T]` for structured invariants
-- define memory reclamation for atomic pointers
-- treat volatile as atomic
-- bypass ownership or lifetime rules
-- use C-style undefined signed overflow
-- be treated as an ordinary library wrapper by semantic analysis
+§ 49(1) `Atomic[T]` must not accept arbitrary composite types in Sec 0.1.
 
----
+§ 49(2) `Atomic[T]` must not expose ordinary direct access to its contained storage.
 
-## Future extensions
+§ 49(3) The compiler must not silently use non-atomic access.
 
-Possible future additions include:
+§ 49(4) The compiler must not silently use a weaker memory order.
 
-```sec
-Atomic[int128]
-Atomic[uint128]
-```
+§ 49(5) The compiler must not treat volatile access as atomic.
 
-when target support exists.
+§ 49(6) Atomics must not bypass ownership or lifetime rules.
 
-Other possible developments include:
+§ 49(7) Atomics must not imply memory reclamation safety for pointers.
 
-- atomic wait and notify
-- weak compare-and-exchange
-- explicit fences
-- tagged atomic pointers
-- atomic reference-count abstractions
-- epoch-based reclamation
-- hazard references
-- platform-specific lock-free requirements
+§ 49(8) Atomics must not make multiple storage identities transactional.
 
-These are not required for version 0.1.
+§ 49(9) Atomics must not use compiler-host capability as target truth.
+
+§ 49(10) The compiler must not expose lowercase alternate public method spellings.
 
 ---
 
-## Related rules
+## § 50. Non-normative future input areas
 
-Detailed behavior is defined in:
+**Governance tags:** `concurrency.atomics-v2`
 
-```text
-concurrency.txt
-concurrency_memory_model.txt
-static.txt
-mutex.txt
-tasks.md
-declarations/registers.md
-platform/fixed-address-bindings.md
-numeric_types.txt
-platform/ffi.md
-```
+The following are intentionally not part of the required Sec 0.1 portable surface in this revision and should be reconsidered only through an explicit later language decision informed by real use:
 
-## Current implementation status
+- floating-point atomic types;
+- decimal atomic types;
+- arbitrary representation-stable structs;
+- weak compare-exchange;
+- atomic wait/notify;
+- a portable public lock-free capability query API;
+- tagged atomic pointers;
+- dedicated reclamation abstractions;
+- additional boolean or byte fetch operations.
 
-Implemented:
+This section is non-normative and does not authorize implementations to expose incompatible source APIs under the same canonical names.
 
-- `Atomic[T]` is a compiler-known generic type.
-- supported element types are currently `bool`, `byte`, `int8`, `int16`,
-  `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64` and `RawPtr[T]`.
-- `Atomic(value)` constructs `Atomic[T]` from one initializer value.
-- `load()` returns `T`.
-- `store(value)` returns `void`.
-- `swap(value)` returns `T`.
-- `compareExchange(expected, desired)` returns `CompareExchangeResult[T]`.
-- integer atomics support `fetchAdd`, `fetchSub`, `fetchAnd`, `fetchOr` and
-  `fetchXor`.
-- boolean atomics support `fetchAnd`, `fetchOr` and `fetchXor`.
+---
 
-Not implemented yet:
+## § 51. Governance
 
-- `MemoryOrder`
-- validation of explicit memory-order arguments
-- target capability checks
-- atomic/non-atomic alias diagnostics
-- operation lowering to Semantic IR/MLIR/LLVM
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`, `tooling.atomics-v2`, `semantic-ir.atomics-v2`, `lowering.atomics-v2`, `platform.atomics-v2`, `concurrency.memory-model-v2`, `compiler.platform-model`, `analysis.semantic-ir-v2`, `sema.data-race-analysis`
+
+§ 51(1) Mutable implementation information for this rulebook must be maintained in `implementation-status.yaml`.
+
+§ 51(2) The primary governance integration is `concurrency.atomics-v2`.
+
+§ 51(3) Core declaration/tooling work is tracked through `tooling.atomics-v2` and frontend atomic governance.
+
+§ 51(4) Semantic IR and lowering must preserve the canonical source semantics even when current implementation coverage is partial.
+
+§ 51(5) Implementation status must not weaken the normative type set, API names, memory-order validation, compare-exchange result type, or fence semantics.
+
+§ 51(6) Cross-rulebook synchronization required by this revision is tracked in the accompanying corrections document.

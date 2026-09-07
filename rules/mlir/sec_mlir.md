@@ -98,7 +98,7 @@ layout.md
 ownership.md
 borrowing.md
 reference_model.md
-destruction.txt
+destruction.md
 effect_analysis.md
 panic.md
 runtime_checks.md
@@ -2784,3 +2784,10 @@ this rulebook.
 The detailed dialect specification must not redefine language, storage,
 ownership, lifetime, layout, effect, panic, or reference semantics.
 ```
+
+Required plan-time and semantic-CTE results needed by lowering must be resolved
+before dependent unresolved executable operations are emitted. Sec-MLIR/MLIR
+constant folding is optional optimization, not the implementation of required
+CTE. MLIR infrastructure may be reused internally only when it preserves
+canonical typed Sec and active-target semantics instead of compiler-host ABI
+behavior.

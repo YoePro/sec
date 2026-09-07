@@ -15,7 +15,11 @@ It defines how one valid generic template and one canonical complete generic sub
 
 Sec generics are compile-time specialization. They do not require runtime generic parameters, universal generic type descriptors, generic dictionaries, implicit boxing, type erasure, or runtime generic dispatch.
 
-This rulebook governs Sec 0.1 type-generic specialization. It does not introduce const/value generics or user-defined compile-time execution.
+This rulebook governs Sec 0.1 type-generic specialization. It does not introduce
+const/value generics or a separate CTE syntax. An ordinary concrete generic
+callable may nevertheless execute during semantic CTE under
+`rules/compiler/compile_time_evaluation.md`, using the same canonical
+specialization identity as runtime demand.
 
 This rulebook does not redefine generic declaration syntax, constraint syntax, generic inference, ordinary type semantics, ownership, destruction, layout, ABI classification, FFI legality, linker mechanics, effect domains, or stack algorithms. Those remain owned by their canonical rulebooks.
 

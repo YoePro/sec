@@ -432,7 +432,7 @@ A live `MutexGuard[T]` may not cross `await`.
 Invalid:
 
 ```sec
-let mut state := State.lock()
+let mut state := State.Lock()
 state.running = true
 
 let value := await worker
@@ -454,7 +454,7 @@ The programmer must end the guard scope first:
 
 ```sec
 {
-    let mut state := State.lock()
+    let mut state := State.Lock()
     state.running = true
 }
 
@@ -499,7 +499,7 @@ Observers may inspect:
 - done
 - cancelled
 - failed
-- cancelRequested
+- CancelRequested
 
 Observer completion waits must not transfer `T`.
 
@@ -620,7 +620,7 @@ for the awaiting task to observe the completed task's published result.
 The precise happens-before and ordering rules are defined in:
 
 ```text
-concurrency_memory_model.txt
+concurrency_memory_model.md
 ```
 
 Reading `task.done` alone does not replace join or await synchronization.
@@ -740,6 +740,6 @@ Detailed behavior is defined in:
 tasks.md
 spawn.txt
 concurrency.txt
-mutex.txt
-concurrency_memory_model.txt
+mutex.md
+concurrency_memory_model.md
 ```

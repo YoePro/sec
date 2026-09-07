@@ -129,6 +129,12 @@ destruction, ownership, and panic rules.
 Static initialization is governed by the canonical static and compile-time
 evaluation rules.
 
+An initializer whose declaration requires compilation-time establishment is a
+`SemanticCompileTimeRequiredContext`. It is resolved before runtime/startup
+initialization, and the artifact encodes its materialized result through
+ordinary storage/layout lowering. Failure of required semantic CTE never
+authorizes an undeclared startup action.
+
 For example:
 
 ```sec

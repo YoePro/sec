@@ -875,7 +875,7 @@ layout and access contract.
 It is not inferred merely from:
 
 ```text
-SizeOf(T)
+T.SizeOf
 ordinary Sec struct layout
 field count
 ```

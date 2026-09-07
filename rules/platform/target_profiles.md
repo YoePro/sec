@@ -682,3 +682,11 @@ This rulebook does not require:
 - BuildProfile-based weakening of mandatory Sec safety;
 - program requirements automatically enabling disabled capabilities;
 - downstream target-specific ad hoc profile reconstruction.
+
+Semantic `Atomic[T]` eligibility is target-independent language validation.
+The frozen `CompilationPlan` separately records concrete `T`
+layout/alignment, operation and requested-order capability, native/emulated
+realization, blocking behavior, and interrupt safety. A semantically valid
+`Atomic[uint64]` may therefore fail a selected target operation capability
+without becoming an invalid Sec type. Compiler-host capabilities and target word
+size never define language eligibility.

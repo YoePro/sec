@@ -10,6 +10,30 @@ type _HeaderField struct {
     Value: string,
 }
 
+type HeaderName string
+
+impl HeaderName {
+    static fn Parse(value: string) Result[HeaderName, HeaderError] {
+        return Ok(new HeaderName())
+    }
+
+    fn ToString() string {
+        return "HeaderName"
+    }
+}
+
+type HeaderValue string
+
+impl HeaderValue {
+    static fn Parse(value: string) Result[HeaderValue, HeaderError] {
+        return Ok(new HeaderValue())
+    }
+
+    fn ToString() string {
+        return "HeaderValue"
+    }
+}
+
 // HTTP message fields.
 //
 // Mutation can grow an owning collection and is therefore explicitly
@@ -142,4 +166,18 @@ impl Header {
     static fn NormalizeName(Name: string) string {
         return Name.ToLower()
     }
+
+    fn GetAllToArray(name: HeaderName) Result[HeaderValue[], CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    fn Contains(name: HeaderName) bool {
+        return false
+    }
+
+    fn Remove(name: HeaderName) bool {
+        return false
+    }
+
+    property Count: uint { get { return 0 } }
 }

@@ -1,0 +1,274 @@
+fragment:
+  id: stdlib-net-dns-doq-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/dns/doq/std-net-dns-doq.md
+  parent_rulebook: sec/stdlib/net/dns/std-net-dns.md
+  latest_verified_repository_main: 0f5027d
+  standards_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track DNS over Dedicated QUIC Connections: DoQ ALPN/error codes,
+    server/bootstrap/options, one bidirectional QUIC stream per DNS query,
+    two-byte DNS framing, Message ID zero, multi-response transaction streams,
+    cancellation, connection reuse/concurrency, padding, 0-RTT, migration
+    privacy, server transport, zone-transfer capability, resolver integration,
+    discovery boundaries, and tests.
+
+  codex_instructions:
+    - Treat sec/stdlib/net/dns/doq/std-net-dns-doq.md as the normative DoQ specification.
+    - Reconcile this fragment with canonical implementation-status.yaml without duplicating stronger/newer evidence.
+    - Reuse net/dns message, record, codec, and resolver semantics.
+    - Reuse canonical net/quic; do not implement a private QUIC/TLS stack in DoQ.
+    - Use ALPN doq and typed default UDP port ip.Port(853).
+    - DoQ must not use UDP port 53.
+    - Open one client-initiated bidirectional QUIC stream for each DNS query.
+    - Do not use DoQ unidirectional application streams or server-initiated transaction streams.
+    - Prefix every DoQ DNS message with the RFC 1035 two-octet DNS message length.
+    - Force DNS Message ID zero on DoQ and reject nonzero received IDs as protocol violations.
+    - Require client FIN after the query and server FIN after the final response.
+    - Preserve multi-response stream capability for zone transfer.
+    - Map transaction cancellation to QUIC STOP_SENDING with DOQ_REQUEST_CANCELLED.
+    - Model DoQ application error codes as an open numeric namespace.
+    - Support reusable QUIC connections and bounded concurrent transaction streams.
+    - Do not send EDNS TCP Keepalive over DoQ.
+    - Ignore EDNS UDP payload size for DoQ transport sizing and enforce the 65535-byte DNS message maximum.
+    - Implement RFC 9250-compliant traffic-analysis padding; do not expose a normal all-padding-disabled mode.
+    - Default stub authentication policy to Strict.
+    - Default 0-RTT to Disabled; explicit 0-RTT may carry only RFC 9250 replayable QUERY/NOTIFY OPCODEs.
+    - Default migration policy to a new session on connectivity change.
+    - Never silently fall back to DoT, DoH, or classic DNS.
+    - Integrate with the common parent DNS resolver engine; do not create doq.Resolver.
+    - Keep RFC 9461/9462 discovery common across encrypted DNS transports.
+    - Support QUIC version 2 through net/quic when available.
+    - Add standards URLs to all protocol files.
+    - Add required tests and update this fragment as implementation advances.
+
+  governance_tags_used:
+    - stdlib.net
+    - stdlib.net.dns
+    - stdlib.net.dns.doq
+    - stdlib.net.dns.doq.protocol
+    - stdlib.net.dns.doq.bootstrap
+    - stdlib.net.dns.doq.framing
+    - stdlib.net.dns.doq.padding
+    - stdlib.net.dns.doq.stream
+    - stdlib.net.dns.doq.client
+    - stdlib.net.dns.doq.server
+    - stdlib.net.dns.transport
+    - stdlib.net.quic.integration
+    - security.dns.doq
+    - privacy.dns.doq
+
+  integrations:
+    - id: stdlib.net.dns.doq
+      area: standard-library-networking
+      rulebook: sec/stdlib/net/dns/doq/std-net-dns-doq.md
+      status: specified
+      latest_verified_repository_main: 0f5027d
+
+      normative:
+        - Canonical package path is net/dns/doq with qualifier doq.
+        - RFC 9250 is the primary DoQ specification.
+        - The package reuses net/dns, net/ip, and canonical net/quic.
+        - DoQ is direct DNS over QUIC and has no HTTP semantics.
+        - Registered ALPN identifier is doq.
+        - Default DoQ service uses UDP port 853 through typed ip.Port.
+        - UDP port 53 must not be used for DoQ.
+        - Port 443 is only an explicitly configured/discovered alternative, not an implicit default.
+        - One DNS query uses one new client-initiated bidirectional QUIC stream.
+        - Server-initiated transaction streams and unidirectional DoQ application streams are protocol errors.
+        - Every DoQ DNS message uses a two-octet DNS message length prefix.
+        - DNS Message ID is zero for DoQ queries and responses.
+        - DoQ DNS messages are limited to 65535 bytes.
+        - EDNS UDP payload size does not constrain DoQ messages.
+        - EDNS TCP Keepalive must not be sent on DoQ.
+        - Transaction supports multiple response messages for zone-transfer transport semantics.
+        - Query and Exchange are ordinary one-response convenience operations.
+        - Transaction cancellation uses STOP_SENDING and DOQ_REQUEST_CANCELLED.
+        - DoQ error codes are an open wire namespace and unknown values remain representable.
+        - Reusable QUIC connections carry many concurrent query streams.
+        - Valid DNS responses with nonzero RCODE remain successful DNS messages at the direct client layer.
+        - Stub client authentication defaults to Strict.
+        - Revision 0.1 defaults 0-RTT off.
+        - Explicit 0-RTT is limited to RFC 9250 replayable QUERY and NOTIFY OPCODEs.
+        - Session resumption is enabled where safely supported.
+        - Default migration policy starts a new session on connectivity change.
+        - QUIC connection migration is opt-in.
+        - RFC 9250 traffic-analysis padding is mandatory.
+        - Automatic padding prefers QUIC packet padding and otherwise uses EDNS padding.
+        - There is no ordinary safe all-padding-disabled option.
+        - DoQ never silently falls back to another DNS transport.
+        - DoQ uses the common parent DNS resolver engine and does not define doq.Resolver.
+        - AXFR/IXFR high-level semantics remain owned by net/dns/zone.
+        - RFC 9461/9462 discovery is shared across DoQ/DoT/DoH.
+        - QUIC version selection is owned by net/quic.
+        - The DoQ ALPN operates over QUIC version 2 according to RFC 9369.
+
+      source_manifest:
+        - sec/stdlib/net/dns/doq/error.sec
+        - sec/stdlib/net/dns/doq/protocol.sec
+        - sec/stdlib/net/dns/doq/server.sec
+        - sec/stdlib/net/dns/doq/bootstrap.sec
+        - sec/stdlib/net/dns/doq/options.sec
+        - sec/stdlib/net/dns/doq/framing.sec
+        - sec/stdlib/net/dns/doq/padding.sec
+        - sec/stdlib/net/dns/doq/stream.sec
+        - sec/stdlib/net/dns/doq/connection.sec
+        - sec/stdlib/net/dns/doq/client.sec
+        - sec/stdlib/net/dns/doq/listener.sec
+        - sec/stdlib/net/dns/doq/transport.sec
+
+      required_parent_correction:
+        - Parent net/dns must expose transport-neutral resolver semantics or equivalent QueryTransport integration.
+        - Base net/dns must not import net/dns/doq.
+        - Ordinary resolver cache/CNAME/address/reverse logic must not be duplicated in DoQ.
+        - Cross-transport fallback must be explicit resolver policy outside doq.Client.
+
+      quic_requirements:
+        - ALPN selection.
+        - QUIC version negotiation.
+        - Client/server connection setup.
+        - Client-initiated bidirectional streams.
+        - STREAM FIN.
+        - STOP_SENDING.
+        - RESET_STREAM.
+        - Application CONNECTION_CLOSE error codes.
+        - Flow-control configuration.
+        - Session resumption.
+        - Optional 0-RTT.
+        - Address validation and Retry.
+        - Optional packet padding controls.
+        - Connection migration controls.
+        - QUIC version 1.
+        - QUIC version 2 where implemented.
+
+      remaining:
+        - Create net/dns/doq package directory and source manifest.
+        - Implement protocol/error constants and open error-code representation.
+        - Implement Server/Bootstrap/ClientOptions.
+        - Implement DNS two-byte frame codec.
+        - Integrate canonical net/quic ALPN and connection setup.
+        - Implement Strict authenticated DoQ connection.
+        - Implement Transaction with multi-response NextResponse.
+        - Implement STOP_SENDING transaction cancellation.
+        - Implement reusable Connection.
+        - Implement Client.Query and Client.Exchange.
+        - Implement bounded concurrent query streams.
+        - Implement mandatory padding policy.
+        - Implement session resumption privacy controls.
+        - Implement opt-in replayable-only 0-RTT.
+        - Implement privacy-first connectivity-change policy.
+        - Implement Listener/ServerConnection/ServerTransaction.
+        - Integrate parent DNS QueryTransport.
+        - Integrate net/dns/zone AXFR/IXFR streams.
+        - Integrate shared RFC 9461/9462 discovery.
+        - Test QUIC version 1 and version 2.
+        - Resolve final canonical net/quic type names after std-net-quic.md is locked.
+
+      required_tests:
+        - id: doq-alpn
+          expectation: The QUIC handshake negotiates registered ALPN doq.
+        - id: doq-default-port
+          expectation: Default DoQ service uses typed ip.Port(853).
+        - id: doq-no-port53
+          expectation: DoQ does not use UDP port 53 as a default or implicit transport.
+        - id: doq-stream-per-query
+          expectation: Every DNS query uses a distinct client-initiated bidirectional QUIC stream.
+        - id: doq-no-unidirectional
+          expectation: DoQ transaction traffic on unidirectional streams is rejected as a protocol error.
+        - id: doq-no-server-stream
+          expectation: Server-initiated bidirectional DNS transaction streams are rejected.
+        - id: doq-two-byte-frame
+          expectation: Every query/response DNS message carries the RFC 1035 two-octet message length prefix.
+        - id: doq-message-id-zero
+          expectation: Generated DoQ queries and all accepted responses use DNS Message ID zero.
+        - id: doq-nonzero-id-protocol-error
+          expectation: A received nonzero DoQ DNS Message ID triggers protocol-error handling.
+        - id: doq-fin
+          expectation: Client FIN follows the query and server FIN follows the final response.
+        - id: doq-multi-response
+          expectation: Transaction.NextResponse can receive multiple framed responses before final FIN.
+        - id: doq-message-max
+          expectation: 65535-byte DNS message is the maximum and EDNS UDP size is ignored for DoQ sizing.
+        - id: doq-no-edns-tcp-keepalive
+          expectation: EDNS TCP Keepalive is neither emitted nor accepted on DoQ.
+        - id: doq-cancel-stop-sending
+          expectation: Transaction cancellation uses STOP_SENDING with DOQ_REQUEST_CANCELLED and abandons only that DNS transaction.
+        - id: doq-error-open
+          expectation: Unknown DoQ application error codes remain numerically representable and are semantically treated as unspecified where required.
+        - id: doq-concurrent
+          expectation: Multiple independent DNS queries execute concurrently on separate streams over one QUIC connection.
+        - id: doq-nonzero-rcode
+          expectation: NXDOMAIN/SERVFAIL/REFUSED remain valid returned dns.Message values.
+        - id: doq-zero-rtt-default-off
+          expectation: ClientOptions.Default does not send DNS queries in QUIC 0-RTT.
+        - id: doq-zero-rtt-query-notify
+          expectation: Explicit replayable 0-RTT permits QUERY and NOTIFY but blocks other OPCODEs.
+        - id: doq-padding
+          expectation: Automatic policy provides QUIC packet padding or EDNS padding and never silently disables all traffic-analysis mitigation.
+        - id: doq-migration-default
+          expectation: Default policy starts a new DoQ session after connectivity change instead of migrating the existing connection.
+        - id: doq-no-fallback
+          expectation: DoQ connection failure does not silently retry through DoT, DoH, DNS/TCP, or DNS/UDP.
+        - id: doq-zone-transfer
+          expectation: Multiple concurrent AXFR/IXFR transaction streams can coexist on one DoQ connection once net/dns/zone is integrated.
+        - id: doq-shared-resolver
+          expectation: DoQ uses the common net/dns resolver engine rather than a duplicate doq.Resolver.
+        - id: doq-quic-v2
+          expectation: DoQ operates over QUIC version 2 when canonical net/quic supports RFC 9369.
+
+      standards:
+        - name: RFC 9250
+          url: https://www.rfc-editor.org/rfc/rfc9250
+          role: primary DNS over Dedicated QUIC Connections specification
+        - name: RFC 9000
+          url: https://www.rfc-editor.org/rfc/rfc9000
+          role: QUIC transport
+        - name: RFC 9001
+          url: https://www.rfc-editor.org/rfc/rfc9001
+          role: TLS 1.3 integration for QUIC
+        - name: RFC 9002
+          url: https://www.rfc-editor.org/rfc/rfc9002
+          role: QUIC loss detection and congestion control
+        - name: RFC 9369
+          url: https://www.rfc-editor.org/rfc/rfc9369
+          role: QUIC version 2; doq ALPN compatibility
+        - name: RFC 1035
+          url: https://www.rfc-editor.org/rfc/rfc1035
+          role: DNS wire format and two-byte stream framing
+        - name: RFC 7766
+          url: https://www.rfc-editor.org/rfc/rfc7766
+          role: applicable DNS connection reuse/resource guidance
+        - name: RFC 8310
+          url: https://www.rfc-editor.org/rfc/rfc8310
+          role: encrypted DNS usage/authentication profile referenced by DoQ
+        - name: RFC 7830
+          url: https://www.rfc-editor.org/rfc/rfc7830
+          role: EDNS padding
+        - name: RFC 8467
+          url: https://www.rfc-editor.org/rfc/rfc8467
+          role: deployed EDNS padding policy guidance
+        - name: RFC 8932
+          url: https://www.rfc-editor.org/rfc/rfc8932
+          role: DNS privacy service operator guidance
+        - name: RFC 9076
+          url: https://www.rfc-editor.org/rfc/rfc9076
+          role: DNS privacy considerations
+        - name: RFC 9103
+          url: https://www.rfc-editor.org/rfc/rfc9103
+          role: zone transfer security/connection guidance applied analogously by RFC 9250
+        - name: RFC 9461
+          url: https://www.rfc-editor.org/rfc/rfc9461
+          role: SVCB mapping with alpn=doq and default port 853
+        - name: RFC 9462
+          url: https://www.rfc-editor.org/rfc/rfc9462
+          role: Discovery of Designated Resolvers shared across encrypted DNS transports
+        - name: IANA TLS ALPN Protocol IDs
+          url: https://www.iana.org/assignments/tls-extensiontype-values
+          role: doq ALPN registration
+        - name: IANA Service Name and Transport Protocol Port Number Registry
+          url: https://www.iana.org/assignments/service-names-port-numbers
+          role: UDP port 853 domain-s service

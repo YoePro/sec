@@ -1,0 +1,13 @@
+module main
+
+type Program string
+
+impl Program {
+    let Instance: string := "per instance"
+    let mut MutableInstance: int := 1
+    static let Shared: string := "type owned"
+}
+
+fn Read() string {
+    return Program.Shared
+}

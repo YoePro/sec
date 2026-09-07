@@ -45,7 +45,11 @@ Two register types are distinct even when they have the same width and identical
 
 ## 3. Width
 
-The width expression in `register[N]` is a compile-time constant positive integer.
+The width expression in `register[N]` is a
+`SemanticCompileTimeRequiredContext` that must produce a positive integer.
+The register rule remains the owner of width/range/domain validation; a
+successfully evaluated but invalid value is a register semantic error rather
+than evaluator failure. Semantic CTE never reads register/MMIO state.
 
 The sum of the widths of all declared fields, including reserved fields, must equal `N` exactly.
 

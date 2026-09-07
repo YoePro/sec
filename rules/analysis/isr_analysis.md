@@ -592,7 +592,7 @@ Generic requirement summaries may remain symbolic.
 Examples of symbolic requirements include:
 
 ```text
-StackRequirement = SizeOf(T) + K
+StackRequirement = T.SizeOf + K
 RequiresDestructor(T)
 RequiresOperation(T, Op)
 ```

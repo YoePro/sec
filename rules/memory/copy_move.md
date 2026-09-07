@@ -1002,3 +1002,9 @@ rules/tooling/formatter.md
 ```
 
 **§ 32(2)** If an older companion rulebook conflicts with this revision on explicit reusable-source consumption, the revision-2 ownership/copy-move rule takes precedence until the companion book is synchronized through governance/corrections.
+
+## § 33 Compile-time evaluation
+
+**§ 33(1)** A compile-time value follows the ordinary copy/move semantics of
+its concrete Sec type. CTE may hold move-only transient values; neither
+compile-time availability nor materializability implies copyability.

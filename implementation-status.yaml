@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-09-06"
+updated: "2026-09-07"
 purpose: >-
   Canonical implementation ledger for compiler and tooling work. Normative
   language behavior remains in rules/, while implementation status is migrated
@@ -2447,20 +2447,16 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-09-01"
-    document_revision: "2.1"
+    revised: "2026-09-07"
+    document_revision: "2.2"
     summary: >-
-      Tracks revision-2.0 static storage and type-associated member semantics.
-      The frontend recognizes static storage, functions, and properties,
-      separates instance and type-qualified access, validates interface
-      property category and static initialization dependencies, and rejects
-      hidden runtime initialization. Generic specialization, concurrency
-      proofs, deterministic destruction, and explicit backend representation
-      remain incomplete. Revision 2.1 direct immutable let and compatibility
-      static let now share one frontend associated-value category, including
-      parsing, Sema, type-qualified lookup, formatting, CLI/LSP information
-      diagnostics, and completion. Semantic IR and backend representation of
-      associated values remain incomplete.
+      Explicit static impl bindings are type-owned; non-static impl bindings
+      are instance-owned. The previous immutable-let equivalence is corrected.
+      Static frontend registration and qualification remain integrated, and
+      formatting preserves impl static. Per-instance impl binding storage and
+      initialization are not implemented; Sema diagnoses this explicitly and
+      never reinterprets instance declarations as static members. General
+      static Semantic IR, lowering, specialization and destruction remain partial.
     rules:
       - rules/declarations/static.md
       - rules/declarations/impl.md
@@ -2476,6 +2472,8 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/static.go
+      - internal/diagnostics/diagnostics.go
       - internal/sema/types.go
       - internal/sema/call_graph.go
       - internal/formatter/formatter.go
@@ -2490,14 +2488,15 @@ integrations:
       - internal/sema/concurrency_test.go
       - cmd/lsp/main_test.go
       - testdata/associated_values_valid.sec
+      - testdata/impl_instance_let_invalid.sec
+      - internal/formatter/formatter_test.go
+      - cmd/compiler/diagnostic_catalog_test.go
     normative_delta:
-      - direct immutable let in a primary impl or same-module impl extends fragment declares a readonly type-associated member
-      - immutable impl let and immutable impl static let have identical member identity, type, lifetime, initialization, visibility, qualification, and lowering semantics
-      - direct immutable let is canonical source and immutable static let is accepted compatibility syntax with a redundant-modifier rewrite
-      - bare let mut remains invalid in impl and cannot be interpreted as an instance field or implicit shared storage
-      - mutable associated storage continues to require explicit static let mut
-      - canonical and compatibility spellings participate in one combined member namespace and conflict across all impl fragments
-      - associated immutable values use Type.Name access and are never offered or resolved through an instance
+      - static let is type-owned and accessed through Type.Name; bare let is instance-owned and requires an instance
+      - mutability is independent of ownership category; let mut is mutable instance storage and static let mut is mutable type storage
+      - immutable static let is not redundant and must never be rewritten to let
+      - instance initializers belong to construction rather than the static dependency graph
+      - static and instance names share the combined member-name namespace but are different semantic categories
     implemented:
       - static keyword tokenization and declaration-position parsing
       - static let and static let mut parsing at module, function, and impl-member positions
@@ -2517,20 +2516,18 @@ integrations:
       - explicitly typed module storage is predeclared independently of source order for frontend dependency analysis
       - known runtime calls and invocation-local captures are rejected in static initializers, and static dependency cycles receive deterministic diagnostics
       - function-local static declarations retain Static storage classification rather than automatic Inline classification in Sema
-      - direct immutable let parses as an impl member while bare let mut is retained for the dedicated mutable-associated-storage error
-      - canonical let and compatibility static let resolve through the same qualified static-origin symbol category and compile-time initialization graph
-      - immutable static let emits S1026 as information with canonical remove-static help in CLI and LSP
-      - canonical formatting removes redundant static only from direct immutable impl members while preserving static let mut, static fn, static property, and function-local static
-      - canonical and compatibility associated values participate in type-qualified completion and remain absent from instance completion
-      - duplicate canonical and compatibility spellings resolve to the same qualified identity and are rejected by the existing duplicate-symbol boundary
-      - testdata/associated_values_valid.sec exercises canonical, compatibility, and mutable-static forms through the compiler CLI
+      - non-static impl lets retain Static=false and are explicitly rejected pending per-instance storage/initialization support rather than registered as static symbols
+      - impl static let is preserved by ordinary and fix-enabled formatting
+      - S1026 redundant-static information diagnostic is retired and no longer emitted
+      - only explicit static impl bindings enter type-qualified completion and the static initializer dependency graph
+      - testdata/associated_values_valid.sec uses explicit static for every type-owned binding
     remaining:
-      - represent associated immutable values unambiguously in Semantic IR and retain one representation independent of source spelling
+      - implement per-instance impl let and let mut storage, construction-time initialization, self/instance lookup, ownership, destruction, layout and lowering before accepting those declarations
+      - represent associated immutable values unambiguously in Semantic IR and retain one representation with explicit static identity
       - lower compile-time associated values and addressable immutable associated storage consistently through Sec MLIR and every backend
       - complete focused nested-impl and generic-specialization identity tests for associated immutable values
       - complete cross-category duplicate diagnostics against fields, properties, methods, events, and nested types in every impl fragment ordering
-      - add a dedicated LSP code action rather than relying only on canonical document formatting for the remove-static rewrite
-      - complete hover, references, document-symbol, and semantic-token regression coverage for both associated-value spellings
+      - complete hover, references, document-symbol, and semantic-token regression coverage for static and instance member categories
       - prevent static fn bodies from receiving implicit self or unqualified instance-member access
       - classify ordinary module-level bindings as static storage and reject static fn outside valid impl/interface contexts
       - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
@@ -2548,23 +2545,15 @@ integrations:
       - verify that static never implies linker section, absolute address, MMIO, memory space, or another physical placement policy
       - add the revision-2.0 parser, Sema, formatter, LSP, concurrency, Semantic IR, and backend regression matrix recorded by the static rulebook
     required_tests:
-      - canonical impl let parses and resolves as Type.Name
-      - compatibility impl static let resolves to the same semantic member category
-      - canonical formatting rewrites immutable impl static let to let and is idempotent
-      - static let mut, static fn, and static property are never stripped
-      - bare impl let mut is rejected with the dedicated shared-storage diagnostic
-      - impl let is absent from instance member lookup and completion
-      - canonical and compatibility spellings conflict across primary and extension fragments
-      - associated immutable values work in nested and generic impls with correct specialization identity
-      - initializer type inference, explicit type checking, forward dependency, cycle, ownership, and visibility behavior agree for both spellings
-      - Semantic IR, Sec MLIR, and backend output are identical for both accepted source spellings
+      - static let resolves as Type.Name and is not offered on instance receivers
+      - bare let never resolves as Type.Name or enters static storage/dependency analysis
+      - formatter preserves static in primary and extended impl bindings and remains idempotent
+      - no S1026 diagnostics or remove-static quick fixes for impl bindings
+      - once instance storage is implemented, independent instances retain independent member state with correct initialization and cleanup
+      - combined static/instance name conflicts are rejected across implementation fragments
     verification:
-      - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./internal/sema ./cmd/lsp -run 'Static|static' -count=1
-        result: passed on 2026-08-27; confirms the pre-revision-2.1 integrated subset and does not verify the new associated-let delta
-      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./internal/diagnostics ./cmd/lsp ./cmd/compiler -count=1
-        result: passed on 2026-09-01 with associated let parsing, S1026 information severity, formatter normalization, qualified completion, and CLI coverage
-      - command: go run ./cmd/compiler sema testdata/associated_values_valid.sec
-        result: passed on 2026-09-01 with 0 errors, 0 warnings, and 1 information diagnostic
+      - command: go test ./...
+        result: passed for corrected static/instance distinction; per-instance storage remains explicitly unsupported
 
   - id: frontend.generics-v2
     area: frontend-analysis-and-lowering
@@ -3162,6 +3151,7 @@ integrations:
       - structured recovery events for skipped statement token ranges
       - InvalidStatement nodes retained at top level and in ordinary statement blocks
       - unterminated ordinary statement blocks retain parsed statements and enclosing function/control-flow nodes at EOF while parser errors still block code generation
+      - unterminated switch bodies retain their subject, ordered case/default clauses and clause bodies, including empty switches, while parser errors still block code generation
       - InvalidExpression nodes for missing Pratt prefix parsers
       - invalid TypeReference marking with recovery metadata on selected type paths
       - InvalidDeclaration nodes for failed declaration-shaped top-level statements
@@ -3189,12 +3179,17 @@ integrations:
       - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
       - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
     tests:
+      - internal/parser/switch_recovery_test.go
+      - testdata/parser/unterminated_switch_invalid.sec
+      - testdata/parser/unterminated_empty_switch_invalid.sec
       - internal/parser/parser_test.go
       - testdata/parser/unterminated_function_invalid.sec
       - testdata/parser/unterminated_empty_block_invalid.sec
       - testdata/parser/unterminated_nested_blocks_invalid.sec
       - testdata/parser/unterminated_recovered_block_invalid.sec
     verification:
+      - command: go test ./internal/parser -run TestUnterminatedSwitchRetainsClauses -count=1
+        result: passed; empty switch and ordered case/default bodies survive EOF with a parser error
       - command: go test ./...
         result: passed
       - command: emit-mlir --verify over testdata/ir
@@ -3215,7 +3210,7 @@ integrations:
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention in specialized parsers beyond ordinary statement blocks, including switch/select bodies and match/try handlers
+      - partial unterminated-construct retention beyond ordinary statement blocks and switch bodies, including select bodies and match/try handlers
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
 
@@ -6168,7 +6163,7 @@ integrations:
     implemented:
       - "Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure."
       - "Formatter preserves established ref/ref mut syntax in functions and supported patterns."
-      - "Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.txt rulebook has been removed."
+      - "Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.md rulebook has been removed."
     remaining:
       - "register stable mentor-oriented diagnostic IDs for shared/mutable conflicts, owner-read conflict, mutation/replacement conflict, move/discard/destruction while borrowed, loop-carried conflict, invalid mutable authority, unknown provenance, and borrow escape"
       - "ensure diagnostics point to both borrow origin/holder and conflicting action and explain why Places overlap"
@@ -6411,7 +6406,7 @@ integrations:
       - "surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful"
       - "add navigation from destruction/use-after-move diagnostics to move/discard/return/transfer origin"
       - "preserve source-level discard/defer/free/move syntax in formatter and never insert/remove semantic cleanup operations purely as formatting"
-      - "update stale rulebook paths from destruction.txt to destruction.md opportunistically without creating fake normative corrections"
+      - "update stale rulebook paths from destruction.md to destruction.md opportunistically without creating fake normative corrections"
       - "support compiler source comments/traceability references to stable destruction § clauses"
     required_tests:
       - "use-after-destruction/move diagnostic links to earlier terminal ownership action"
@@ -6620,6 +6615,7 @@ integrations:
       - rules/concurrency/concurrency.md
     governance_reconciliation:
       - concurrency.md owns the invariant that ordinary data races are invalid; data_races.md owns analysis, classifications, and diagnostics.
+      - race analysis consumes canonical program-order, publication, synchronizes-with, modification-order, release-sequence, fence, atomic-identity and completion facts from concurrency_memory_model.md
     remaining:
       - add canonical semantic memory-access events carrying Place/provenance, access kind, execution context, atomicity, and source location
       - consume canonical Place/provenance rather than coarse variable identity so fields, constant indices, dynamic indices, slices, and disjoint backing ranges retain precision
@@ -7160,6 +7156,7 @@ integrations:
       - rules/tooling/diagnostics.txt
     governance_reconciliation:
       - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
+      - semantic Atomic[T] eligibility is distinct from concrete layout, operation, order, native/emulated, blocking and interrupt-safety capability in the selected CompilationPlan
     remaining:
       - add canonical Target and Variant platform-resolution integration that produces one concrete CompilationPlan for each requested Target x Variant pair
       - keep Target as the logical product and Variant as the concrete platform-specific build configuration throughout compiler and tooling APIs
@@ -10901,8 +10898,8 @@ integrations:
   - id: frontend.panic
     area: panic-assert-unreachable-frontend
     status: partial
-    document_revision: "2.0"
-    reviewed: "2026-09-01"
+    document_revision: "2.1"
+    reviewed: "2026-09-07"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -10914,6 +10911,9 @@ integrations:
       - semantic analysis requires the assertion condition to have exact bool type without truthiness conversion
       - focused parser and semantic tests cover accepted forms and the locked syntax/type diagnostics
     remaining:
+      - add exact compiler-known/core PanicID uint32 and PanicInfo { ID, File, Line, Column, Function } declarations with one shared Sema/LSP identity
+      - implement stable panic-reason registry assignments and allocation-free canonical PanicInfo construction
+      - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
       - represent assertion source metadata/message and AssertionFailed reason
       - implement assertion refinement using canonical semantic facts
       - classify unproven assertions as MayPanic and remove panic effect after complete proof
@@ -11821,6 +11821,7 @@ integrations:
     - rules/concurrency/concurrency.md
     governance_reconciliation:
     - Concurrency facts survive into Semantic IR while the concrete operation vocabulary remains owned by semantic_ir.md.
+    - Preserve atomic identity/order/outcome/fence, mutex/guard/context, cancellation-effect/commit, and process-transfer/lifecycle facts without duplicating source Sema.
     remaining:
     - make all builders consume immutable resolved Sema/analysis plans rather than rerun AST resolution
     - bridge canonical Place/storage/reference identities into Semantic IR
@@ -12035,6 +12036,10 @@ integrations:
     status: partial
     repository_baseline: 998d8d1
     remaining:
+    - classify ToString as a universal CompilerProvidedFallbackMember with exact eligible user replacement and complete per-type-family fallback semantics
+    - expose value.SizeOf and TypeName.SizeOf as AuthoritativeCompilerSemanticProperty entries and remove global SizeOf(TypeName)
+    - audit every compiler-known Sec declaration for complete canonical syntax/owning module and mark compiler-only structures explicitly
+    - keep compiler authority distinct from ordinary _/__ source visibility
     - expose compiler-known Iterator[T] through one canonical interface registry/conformance path
     - share compiler-known member/interface identities between compiler and LSP
     - route compiler-known platform/resource identities from the frozen CompilationPlan
@@ -12144,3 +12149,646 @@ integrations:
     remaining:
     - map P1-P14 package records to the new pipeline boundaries without changing their historical completion claims
     - add remaining work when newer canonical rules such as Iterator[T] extend a previously implemented package assumption
+  - id: concurrency.atomics-v2
+    area: atomic-language-surface
+    rulebook: rules/concurrency/atomics.md
+    status: partial
+    normative:
+    - Atomic[T] is a compiler-known nominal generic atomic-storage type.
+    - Atomic eligibility is semantic and separate from concrete CompilationPlan capability.
+    - The v0.1 compatible set is bool, primitive signed/unsigned integers, RawPtr[T], integer-backed enums, and compatible named types.
+    - float/float32/float64, decimal/decimal128, arbitrary structs/unions/collections and other composites are not atomic-compatible in v0.1.
+    - All public atomic methods use CamelCase.
+    - MemoryOrder is exactly Relaxed, Acquire, Release, AcqRel, SeqCst.
+    - CompareExchangeResult[T] is exactly Exchanged | NotExchanged(T).
+    - CompareExchange mismatch is normal control flow, not an error.
+    - CompareExchange failure orders are Relaxed/Acquire/SeqCst only.
+    - Failure ordering is not required to be weaker than success ordering.
+    - SeqCst is the default for ordinary atomic object operations.
+    - 'atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed.'
+    remaining:
+    - Implement/source-register the canonical core MemoryOrder enum.
+    - Implement/source-register the canonical generic CompareExchangeResult[T] enum.
+    - Ensure Atomic[T] compiler-known identity exposes the exact public API through compiler and LSP.
+    - Synchronize parser/Sema member lookup to CamelCase public atomic names.
+    - Implement exact per-T method applicability.
+    - Implement exact MemoryOrder operation matrix.
+    - Implement CompareExchange success/failure typing and observed-value transfer.
+    - Implement fence parsing/name resolution/Sema/IR/lowering.
+    - Separate semantic Atomic[T] eligibility from CompilationPlan capability.
+    - Add target diagnostics for unsupported concrete operation/order combinations.
+    - Synchronize documentation, formatter fixtures, hover, completion and navigation.
+    required_tests:
+    - id: memory-order-core-enum
+      expectation: Core exposes exactly Relaxed, Acquire, Release, AcqRel, SeqCst and LSP hover shows the declaration.
+    - id: compare-exchange-result-core-enum
+      expectation: Core exposes generic Exchanged and NotExchanged(T); LSP and Sema recognize payload typing.
+    - id: atomic-public-naming
+      expectation: Load/Store/Swap/CompareExchange/FetchAdd/FetchSub/FetchAnd/FetchOr/FetchXor are canonical; lowercase alternates are rejected/not offered.
+    - id: atomic-type-eligibility
+      expectation: Conservative v0.1 eligible set is enforced independently of target bit width.
+    - id: atomic-float-reject
+      expectation: Atomic[float64] is rejected as a language type in v0.1 even if target representation could be atomic.
+    - id: atomic-decimal-reject
+      expectation: Atomic[decimal] is rejected as a language type in v0.1.
+    - id: atomic-struct-reject
+      expectation: Arbitrary struct does not become atomic-compatible from matching machine width.
+    - id: atomic-target-separation
+      expectation: Semantically valid Atomic[uint64] can still produce target operation capability failure without being reclassified as an invalid type.
+    - id: compare-exchange-failure-orders
+      expectation: Relaxed/Acquire/SeqCst accepted; Release/AcqRel rejected.
+    - id: compare-exchange-independent-orders
+      expectation: Valid failure order is not rejected merely for being stronger than success order.
+    - id: atomic-fence
+      expectation: atomic.Fence requires explicit Acquire/Release/AcqRel/SeqCst and rejects Relaxed.
+    corrections_applied:
+    - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
+  - id: frontend.atomics-v2
+    area: parser-sema-atomic-surface
+    status: partial
+    rules:
+    - rules/concurrency/atomics.md
+    - rules/concurrency/concurrency_memory_model.md
+    remaining:
+    - Register canonical core symbols and generic arity.
+    - Implement per-T member availability.
+    - Implement exact order matrix before lowering.
+    - Preserve successful versus failed CompareExchange semantic paths.
+  - id: tooling.atomics-v2
+    area: lsp-format-docs-atomic-surface
+    status: planned
+    rules:
+    - rules/concurrency/atomics.md
+    remaining:
+    - Hover shows exact core enum/type/member shapes and comments.
+    - Completion uses canonical CamelCase members.
+    - Navigation reaches canonical core declarations where source navigation applies.
+    - Tooling distinguishes semantic invalidity from CompilationPlan capability failure.
+  - id: semantic-ir.atomics-v2
+    area: semantic-ir-atomic-facts
+    status: planned
+    rules:
+    - rules/concurrency/atomics.md
+    - rules/concurrency/concurrency_memory_model.md
+    - rules/compiler/semantic_ir.md
+    remaining:
+    - Preserve storage identity, T, operation kind, success/failure order, RMW classification, fence semantics, execution context and source provenance.
+    - Preserve successful CompareExchange as modification/RMW and failure as read-only.
+  - id: lowering.atomics-v2
+    area: atomic-lowering
+    status: planned
+    rules:
+    - rules/concurrency/atomics.md
+    - rules/concurrency/concurrency_memory_model.md
+    remaining:
+    - Consume immutable CompilationPlan capability facts.
+    - Preserve or strengthen requested order; never weaken.
+    - Return failed CompareExchange observed value from the same atomic operation.
+    - Preserve fence and release-sequence semantics.
+  - id: platform.atomics-v2
+    area: compilation-plan-atomic-capability
+    status: planned
+    rules:
+    - rules/concurrency/atomics.md
+    - rules/platform/target_profiles.md
+    - rules/platform/platform_model.md
+    remaining:
+    - Model capability by concrete T, size/alignment, operation, ordering and execution context.
+    - Separate semantic eligibility from native/lock-free/emulated capability.
+    - Reject blocking or ISR-incompatible emulation where context forbids it.
+  - id: concurrency.memory-model-v2
+    area: shared-memory-ordering
+    rulebook: rules/concurrency/concurrency_memory_model.md
+    status: partial
+    normative:
+    - Happens-before is built from program order and canonical synchronizes-with edges.
+    - Every atomic object has its own total modification order.
+    - Modification order is per atomic object, not one global atomic modification order.
+    - Successful RMW operations participate as modifications.
+    - Failed CompareExchange is read-only and does not participate as a modification.
+    - A release sequence begins with a release modification and continues only through a contiguous RMW chain on the same atomic object.
+    - A plain Store breaks the preceding release sequence.
+    - Acquire can synchronize through a release sequence when it observes a value carried by that sequence.
+    - atomic.Fence(Acquire/Release/AcqRel/SeqCst) is normative in v0.1; Relaxed fence is invalid.
+    - Fence synchronization requires qualifying atomic communication; fences do not synchronize merely by existing.
+    - SeqCst operations/fences participate in one global SeqCst order.
+    - Volatile is not synchronization.
+    - Task/thread completion synchronization publishes valid prior effects.
+    - Ordinary unsynchronized data races are invalid Sec behavior.
+    remaining:
+    - Represent per-atomic modification order and RMW coherence in analysis/IR facts.
+    - Represent release-sequence head and RMW-chain semantics.
+    - Implement fence/atomic, atomic/fence and fence/fence synchronization patterns.
+    - Preserve SeqCst total-order constraints through optimization/lowering.
+    - Preserve spawn and task/thread completion publication.
+    - Integrate canonical memory-model facts into data-race analysis.
+    - Preserve FFI/platform synchronization without name-based inference.
+    required_tests:
+    - id: per-atomic-modification-order
+      expectation: Each atomic object has coherent total modification order independent from unrelated atomics.
+    - id: successful-cas-rmw
+      expectation: Successful CompareExchange is a modification/RMW.
+    - id: failed-cas-read-only
+      expectation: Failed CompareExchange adds no modification and does not extend release sequence.
+    - id: release-sequence-rmw
+      expectation: Relaxed RMW can extend a release sequence headed by release modification.
+    - id: release-sequence-store-break
+      expectation: Plain Store terminates the preceding release sequence.
+    - id: release-fence-acquire
+      expectation: Release fence can synchronize through qualifying atomic write/read communication.
+    - id: release-acquire-fence
+      expectation: Acquire fence can synchronize when preceding atomic read observes qualifying release-carried value.
+    - id: fence-fence-carrier
+      expectation: Fence-to-fence synchronization requires qualifying atomic carrier.
+    - id: relaxed-fence-invalid
+      expectation: MemoryOrder.Relaxed is rejected for atomic.Fence.
+    - id: seqcst-order
+      expectation: SeqCst atomics/fences remain consistent with one global sequentially consistent order.
+    - id: volatile-not-sync
+      expectation: Volatile never establishes Sec synchronizes-with by itself.
+    - id: completion-publication
+      expectation: Successful task/thread completion wait observes validly published prior effects.
+    corrections_applied:
+    - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
+  - id: concurrency.mutex-v2
+    area: mutex-language-surface
+    rulebook: rules/concurrency/mutex.md
+    status: partial
+    normative:
+    - Mutex[T] and MutexGuard[T] are @noCopy compiler-known/source-visible generic types.
+    - Mutex[T] owns exactly one protected T and one synchronization identity.
+    - MutexGuard[T] represents exactly one exclusive acquisition and releases on deterministic destruction.
+    - Public acquisition surface is Lock(), TryLock(), Lock(duration), Lock(ref Context).
+    - Lock() returns MutexGuard[T].
+    - TryLock() returns Option[MutexGuard[T]].
+    - Lock(duration) returns Option[MutexGuard[T]].
+    - Lock(ref Context) returns Result[MutexGuard[T], ContextError].
+    - There is no portable LockError and no Lock(timeout, context) overload in v0.1.
+    - MutexGuard[T] forwards accessible members to protected T.
+    - Guard-specific lookup precedes protected-T lookup.
+    - The complete protected T cannot be moved out.
+    - No public Unlock/Value/Get guard API exists.
+    - Mutex is non-reentrant.
+    - Live guards cannot cross spawn/await/suspending join/select.
+    remaining:
+    - Synchronize canonical CamelCase method registration and legacy lowercase call sites/tests.
+    - Implement/verify @noCopy semantic declarations for Mutex[T] and MutexGuard[T].
+    - Implement exact timeout/context overload resolution.
+    - Implement deterministic guard destruction/release lowering.
+    - Implement execution-entity-bound guard escape analysis.
+    - Implement await/join/select/spawn live-guard diagnostics.
+    - Implement same-execution repeated-lock detection.
+    - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
+    - Reject consuming complete-T forwarded operations.
+    - Integrate acquire/release synchronization with memory-model facts.
+    - Integrate target/platform lock capability through CompilationPlan.
+    required_tests:
+    - id: mutex-camelcase-api
+      expectation: Lock and TryLock are canonical; legacy lowercase public spellings are not offered as the public source API.
+    - id: mutex-basic-lock-type
+      expectation: Lock() has static type MutexGuard[T].
+    - id: mutex-try-lock-type
+      expectation: TryLock() has static type Option[MutexGuard[T]].
+    - id: mutex-timeout-type
+      expectation: Lock(duration) has static type Option[MutexGuard[T]].
+    - id: mutex-context-type
+      expectation: Lock(ref Context) has static type Result[MutexGuard[T], ContextError].
+    - id: mutex-no-lockerror
+      expectation: Ordinary portable lock acquisition does not synthesize LockError.
+    - id: guard-forwarding
+      expectation: Accessible fields/properties/non-consuming methods resolve through MutexGuard[T] with correct mutability/lifetime.
+    - id: guard-no-complete-move
+      expectation: Complete protected T cannot be consumed/moved through a guard.
+    - id: guard-no-unlock-member
+      expectation: Completion does not expose public Unlock/Value/Get on MutexGuard[T].
+    - id: guard-suspension-reject
+      expectation: Live guard across await/suspending join/select is rejected.
+    - id: guard-spawn-reject
+      expectation: Move/borrow/capture of live guard across spawn is rejected.
+    - id: mutex-nonreentrant
+      expectation: Statically provable same-execution reacquisition while guard is live is rejected.
+    corrections_applied:
+    - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
+  - id: frontend.temporal-duration
+    area: timeout-conversion
+    status: partial
+    normative:
+    - duration is the canonical timeout parameter type.
+    - Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced.
+    - Time-unit quantities may materialize as duration at compatible call boundaries under canonical temporal/unit rules.
+    remaining:
+    - Define/verify compiler-known conversion from time-dimension unit quantity to duration.
+    - Avoid mutex-specific hard-coded unit spellings.
+  - id: frontend.temporal-instant
+    area: monotonic-deadline-type
+    status: planned
+    normative:
+    - Instant is a source-visible compiler-known copyable monotonic point-in-time type.
+    - Instant is not wall-clock/calendar time.
+    remaining:
+    - Add canonical core Instant declaration/identity.
+    - Define general monotonic clock acquisition/arithmetic in the owning temporal rulebook.
+  - id: semantic-ir.mutex-v2
+    area: semantic-ir-mutex-context-facts
+    status: planned
+    remaining:
+    - Preserve mutex identity, protected T, acquisition mode, duration/context, commit outcome, guard identity/owner, forwarded access, release, cancellation/deadline registration and source provenance.
+    - Keep ContextError distinct from terminal execution cancellation.
+    - Use semantic_ir.md as owner of concrete opcode names.
+  - id: lowering.mutex-v2
+    area: mutex-context-lowering
+    status: planned
+    remaining:
+    - Implement exactly-once acquisition/release and acquire/release synchronization.
+    - Implement one-winner semantics among acquisition, timeout/context event and current-execution cancellation.
+    - Implement ContextSource registration cleanup.
+    - Consume CompilationPlan lock/cancellation capabilities.
+  - id: concurrency.cancellation-v2
+    area: cooperative-execution-cancellation
+    rulebook: rules/concurrency/cancellation.md
+    status: partial
+    normative:
+    - Task[T] and Thread[T] owning handles expose fn RequestCancel() void.
+    - RequestCancel is idempotent, non-consuming, and has no effect after terminal completion.
+    - Task.Current().CancelRequested observes logical task cancellation.
+    - Thread.Current().CancelRequested observes physical thread cancellation.
+    - Task and Thread cancellation identities remain distinct.
+    - bare cancel is a terminating statement and runs deterministic cleanup.
+    - bare cancel targets the current logical Task when one exists, otherwise an explicit cancellable Thread.
+    - cancel is invalid outside cancellable execution and inside defer.
+    - cancellation points preserve exactly-one operation/cancellation commit.
+    - current-execution cancellation is terminal control flow rather than a generic runtime error.
+    remaining:
+    - Implement exact RequestCancel member registration on Task[T] and Thread[T].
+    - Implement Task.Current and TaskContext cancellation observation.
+    - Synchronize Thread.Current/ThreadContext to CancelRequested CamelCase.
+    - Implement runtime request/observation state and wakeup integration.
+    - Implement cancellation-point registration and commit races.
+    - Integrate deterministic cleanup and terminal outcome publication.
+    - Integrate completion synchronization after cancelled termination.
+    required_tests:
+    - id: task-request-cancel
+      expectation: Task[T].RequestCancel() is void, idempotent, non-consuming and distinct from terminal completion.
+    - id: thread-request-cancel
+      expectation: Thread[T].RequestCancel() has symmetric cooperative semantics.
+    - id: task-current-cancel-requested
+      expectation: Task.Current().CancelRequested follows logical task identity across permitted worker migration.
+    - id: thread-current-cancel-requested
+      expectation: Thread.Current().CancelRequested observes the physical thread identity and remains distinct from task cancellation.
+    - id: cancel-cleanup
+      expectation: cancel executes defer/destruction cleanup and yields terminal Cancelled rather than normal T.
+    - id: cancel-in-defer-reject
+      expectation: cancel inside defer is rejected specifically.
+    - id: cancellation-point-single-winner
+      expectation: operation commit and current-execution cancellation cannot both win or lose ownership state.
+    corrections_applied:
+    - rules/corrections/applied/cancellation-v2-cross-rulebook-correction-20260907.md
+  - id: frontend.cancellation-effect-v1
+    area: inferred-cancellable-execution-effect
+    status: planned
+    normative:
+    - Functions containing cancel require current cancellable execution.
+    - The requirement propagates transitively through calls.
+    - The requirement is compiler-inferred with no @cancellable source annotation in v0.1.
+    - Callable/function values preserve the requirement and cannot erase it.
+    - Task.Current carries a specific current-logical-task requirement.
+    - Thread.Current carries a physical-thread capability requirement.
+    remaining:
+    - Add effect field/facts to callable semantic representation.
+    - Propagate through direct calls, recursion/SCCs, generics and indirect callable values.
+    - Add context-validity diagnostics at call sites.
+    - Preserve effect into Semantic IR indirect-call metadata.
+    required_tests:
+    - id: direct-cancel-effect
+      expectation: Function containing cancel is callable only from valid cancellable execution.
+    - id: transitive-cancel-effect
+      expectation: Caller of cancellation-dependent helper inherits the requirement.
+    - id: callable-cancel-effect
+      expectation: Storing a cancellation-dependent function in a callable does not erase the requirement.
+    - id: task-current-specific-effect
+      expectation: Task.Current cannot be satisfied merely by a physical Thread context.
+  - id: concurrency.context-v1
+    area: context-cancellation-surface
+    status: planned
+    normative:
+    - Context and ContextSource are @noCopy.
+    - Context does not expose Cancel().
+    - ContextSource owns one child Context, cancellation authority and registrations.
+    - ContextSource.Context is ref Context and cannot outlive the source.
+    - ContextSource.Cancel() is idempotent and leaves Context/source alive.
+    - Context.Error is Option[ContextError].
+    - ContextError is exactly Cancelled | DeadlineExceeded.
+    - Context terminal cause is first-wins and immutable.
+    - Parent cancellation propagates downward; child cancellation does not propagate upward.
+    - ContextSource destruction is not itself a cancellation event.
+    remaining:
+    - Create/register source-visible Context, ContextSource, ContextError and relevant temporal identities.
+    - Implement ownership/borrow/lifetime checks.
+    - Implement first-wins terminal state and coherent IsCancelled/Error observation.
+    - Implement parent-child cancellation propagation and deadline registration.
+    - Implement LSP hover/completion/navigation.
+    required_tests:
+    - id: context-first-terminal-cause
+      expectation: Whichever of cancellation/deadline commits first remains Context.Error permanently.
+    - id: context-error-coherence
+      expectation: After terminal commit, IsCancelled is true and Error is the committed Some(ContextError).
+    - id: context-no-cancel-method
+      expectation: Context has no Cancel completion/member; ContextSource does.
+    - id: contextsource-destruction-not-cancel
+      expectation: Destroying ContextSource ends child lifetime without synthesizing ContextError.Cancelled.
+  - id: semantic-ir.cancellation-v2
+    area: semantic-ir-cancellation-facts
+    status: planned
+    remaining:
+    - Preserve task/thread identity, request/observe/cancel operations, inferred callable effect, cancellation-point commit, Context identity/cause/hierarchy/deadline and source provenance.
+    - Keep current-execution terminal cancellation distinct from ContextError and unsafe termination.
+    - Let semantic_ir.md own concrete operation names.
+  - id: lowering.cancellation-v2
+    area: cancellation-runtime-lowering
+    status: planned
+    remaining:
+    - Implement cooperative request/observation/wakeup using CompilationPlan capabilities.
+    - Preserve deterministic cleanup and exactly-one terminal execution outcome.
+    - Preserve exactly-one Context terminal cause.
+    - Preserve cancellation-point ownership commit semantics.
+  - id: compiler.compile-time-evaluation
+    area: compiler-semantic-evaluation
+    status: partial
+    integrated: null
+    document_revision: '1.0'
+    repository_baseline: 0f5027d
+    summary: 'Tracks canonical Sec 0.1 compile-time evaluation: restricted plan-time contexts plus typed semantic CTE over canonical Sec semantics, including ordinary user functions, path-sensitive effect legality, loops/recursion, transient allocation, ownership/borrowing/destruction, cross-module semantic execution, generic concrete callables, dependency tracking, resource limits, typed compile-time values, static materialization, diagnostics, caching, and integration around the Semantic IR -> Sec MLIR -> MLIR -> LLVM -> artifact pipeline. The repository already contains partial compile-time/constant evaluation behavior for several declaration and folding paths, but the complete semantic CTE service is not yet implemented.'
+    rules:
+    - rules/compiler/compile_time_evaluation.md
+    - rules/foundations/attributes.md
+    - rules/declarations/static.md
+    - rules/declarations/generics.md
+    - rules/compiler/generics_lowering.md
+    - rules/compiler/monomorphization.md
+    - rules/compiler/compiler_known_members.md
+    - rules/compiler/semantic_ir.md
+    - rules/compiler/compiler_pipeline.md
+    - rules/projects/modules.md
+    - rules/memory/layout.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/copy_move.md
+    - rules/memory/destruction.md
+    - rules/memory/raw_pointers.md
+    - rules/analysis/effect_analysis.md
+    - rules/errors/panic.md
+    - rules/errors/runtime_checks.md
+    - rules/mlir/sec_mlir.md
+    - rules/mlir/sec_mlir_dialect.md
+    - rules/mlir/sec_mlir_lowering.md
+    implemented:
+    - parser/Sema infrastructure already recognizes multiple compile-time-required declaration facts such as enum values, fixed sizes/extents, static facts, attributes, and compiler-known layout/member queries
+    - compiler-known SizeOf already resolves target-plan-dependent layout information in value/type/global forms prior to the property-only correction
+    - current frontend and semantic analyses already perform constant propagation/folding and static validation in several narrow language paths
+    - generic frontend and Semantic IR infrastructure can represent concrete generic identities required by future generic CTE execution
+    - module and separate-compilation infrastructure already defines canonical declaration identities and semantic artifacts that can be extended for CTE bodies/dependencies
+    - effect analysis already provides canonical effect facts that CTE can consume for permitted-effect decisions
+    - ownership, borrowing, destruction, layout, and Semantic IR rulebooks already define the semantic facts the CTE service must preserve
+    remaining:
+    - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state
+    - preserve the existing restricted plan-time evaluator for attributes/source selection and prevent ordinary semantic function calls from creating phase cycles
+    - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
+    - execute ordinary user-defined functions during semantic CTE without requiring const-fn/comptime source modifiers
+    - implement nested calls, if/switch/match/for/while execution, recursion, and mutual recursion
+    - implement path-sensitive CTE effect legality so forbidden effects on unexecuted branches do not invalidate the concrete evaluation
+    - reject executed filesystem, network, environment, clock, ambient-random, target-memory, volatile, atomic, barrier, concurrency, foreign-call, and unsupported-runtime operations
+    - support deterministic transient evaluator-local allocation independently of runtime target allocators
+    - execute ordinary Sec ownership, move, borrow, destruction, defer, Result/Option, try, assert, and panic semantics during CTE
+    - represent evaluator-local references/raw pointers using deterministic semantic identity independent of compiler-host addresses
+    - prevent transient addresses and generational/liveness identities from escaping materialization
+    - implement typed CompileTimeValue representation with canonical Sec TypeIdentity and SemanticValue
+    - separate evaluation, owning-context validation, and static materialization
+    - materialize supported scalar, fixed aggregate, enum/union/Option/Result, and immutable string values through ordinary target storage/layout lowering
+    - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
+    - implement recursive materialization graph validation and explicit materialization-failure reasons
+    - detect compile-time value/type/layout dependency cycles without conflating them with ordinary terminating function recursion
+    - implement finite ExecutionSteps, CallDepth, TransientMemory, and AggregateValueSize evaluator budgets
+    - distinguish resource exhaustion from semantic nontermination and from target runtime out-of-memory
+    - implement cross-module CTE body availability using compatible canonical semantic artifacts
+    - preserve origin scope for private/sourcefile-only helper execution without leaking source visibility to importers
+    - request and execute canonical generic concrete instances through the monomorphization/generic-lowering contracts
+    - implement conservative CTE dependency tracking for declaration semantics, immutable values, generic concrete instances, type facts, layout facts, CompilationPlan facts, and imported semantic artifacts
+    - implement deterministic CTE result memoization and correct invalidation
+    - prevent resource-limit and cancellation outcomes from becoming permanent semantic negative caches
+    - implement CompileTimeProvenance including RequiredBy, RootExpression, CurrentCallStack, GenericInstantiationContext, and OriginModule
+    - distinguish NotEvaluable, EvaluationFailed, DependencyCycle, ResourceLimit, ResultNotMaterializable, ImplementationGap, Cancelled, and CompilerInvariantFailure
+    - rename/standardize ordinary semantic operation failure classification as SemanticOperationFailed
+    - make required CTE fail closed rather than silently emitting runtime initializers or host-executed substitutes
+    - permit optional optimizer early evaluation to reuse evaluator machinery without turning optional failure into source diagnostics
+    - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
+    - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
+    - ensure required CTE does not depend on optional MLIR/LLVM constant folding
+    - synchronize compiler-known SizeOf to property-only value.SizeOf and TypeName.SizeOf forms
+    - remove canonical global SizeOf(TypeName) from parser/Sema/registry/tooling/tests/docs
+    - synchronize compiler-known ToString fallback/replacement governance through the companion correction
+    - audit every compiler-known Sec declaration for complete canonical declaration and owning module
+    - update language-rulebook-status.md from Planned to Written and remove resolved CTE closure questions
+    - narrow the Sec 0.1 reflection exclusion to general-purpose structural compile-time reflection and declaration metaprogramming
+    - expose compiler CTE values/provenance/diagnostics through LSP without a separate editor evaluator
+    required_tests:
+    - plan-time attribute expression accepts permitted plan inputs and rejects ordinary semantic user-function dependency
+    - semantic CTE executes an ordinary user function without const-fn/comptime syntax
+    - same ordinary function executes at runtime when used from an ordinary local runtime context
+    - ordinary local constant expression remains valid when optional folding is disabled
+    - required static initializer fails compilation when semantic CTE cannot produce a value
+    - required static initializer never falls back to hidden runtime initialization
+    - path-sensitive CTE succeeds when a forbidden-effect branch is not executed
+    - path-sensitive CTE rejects the same function when the forbidden-effect branch is executed
+    - immutable compile-time value may be read during CTE
+    - mutable runtime static may not be read or mutated during CTE
+    - filesystem, network, environment, clock, ambient random, MMIO, volatile, atomic, barrier, concurrency, and foreign operations are rejected when executed by required CTE
+    - explicit deterministic PRNG state using only compile-time values remains ordinary deterministic computation
+    - unsafe block does not grant extra CTE capability
+    - transient allocation succeeds without using target runtime heap state
+    - explicit runtime allocator resource is not silently replaced by evaluator allocation
+    - move-only value preserves move semantics during CTE
+    - borrow/reborrow/lifetime rules remain valid during CTE
+    - destruction and defer ordering follow ordinary Sec execution during successful CTE
+    - assert failure becomes required CTE evaluation failure with provenance
+    - panic reached during required CTE becomes evaluation failure without crashing the compiler
+    - Result.Err remains a successfully evaluated Result value
+    - semantic operation failure uses owning language diagnostic plus SemanticOperationFailed category
+    - ordinary recursion can succeed during CTE
+    - compile-time value dependency cycle is rejected distinctly from function recursion
+    - type/layout/value dependency cycle is diagnosed with the semantic cycle
+    - ExecutionSteps limit exhaustion reports resource limit rather than semantic nontermination
+    - larger evaluation budget may retry an earlier resource-limited evaluation
+    - transient-memory exhaustion is not target runtime OOM
+    - scalar/fixed-array/struct/enum/union/Option/Result values materialize when their owning rules permit
+    - CTE-generated immutable string materializes without preserving evaluator-host address
+    - dynamic list may be used transiently to compute a scalar result
+    - dynamic list result without static materialization reports ResultNotMaterializable rather than NotEvaluable
+    - transient safe-reference address cannot escape static materialization
+    - transient raw-pointer numeric host address cannot escape static materialization
+    - target platform address metadata is distinct from evaluator-local address identity
+    - public cross-module function executes under semantic CTE
+    - public cross-module function may execute its already-resolved private origin-module helper without exposing that helper to importing source
+    - sourcefile-only origin helper remains inaccessible to other source files/importers
+    - generic concrete callable uses the same canonical specialization identity for CTE and runtime demand
+    - unresolved generic parameter never executes as runtime-like CTE generic state
+    - SizeOf result uses active CompilationPlan and cross-target tests do not use host size
+    - TypeName.SizeOf and value.SizeOf resolve as canonical properties
+    - global SizeOf(TypeName) is rejected after correction migration
+    - CTE cache invalidates on relevant body/helper/immutable-value/layout/CompilationPlan changes
+    - cancellation does not produce a source diagnostic or permanent negative cache
+    - optional early evaluation resource failure leaves ordinary runtime code intact
+    - valid-but-unimplemented semantic CTE path reports implementation gap
+    - impossible evaluator type/value mismatch reports compiler invariant failure
+    - LSP displays compiler-established CTE result/provenance without re-evaluating source independently
+    excluded:
+    - source-level const fn or comptime fn modifiers
+    - source-level comptime expression or block syntax
+    - a source-visible CTE namespace or IsCompileTime-style query
+    - first-class Sec Type/TypeInfo values introduced solely by this rulebook
+    - TypeOf introduced by this rulebook
+    - arbitrary value/const generic parameters
+    - general-purpose structural compile-time reflection
+    - declaration generation, AST rewriting, source-string reparsing, or Zig-style compiler-language metaprogramming
+    - runtime generic dictionaries, type erasure, hidden reflection metadata, or runtime specialization as CTE fallback
+    - ambient host filesystem/environment/time/random/network as implicit semantic CTE input
+    - target hardware execution or MMIO reads during CTE
+    - optional MLIR/LLVM constant folding as the semantic implementation of required CTE
+    corrections_applied:
+    - rules/corrections/applied/compile-time-evaluation-cross-rulebook-correction-20260907.md
+    - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+  - id: concurrency.processes-v2
+    area: process-execution-and-lifecycle
+    status: planned
+    reviewed: '2026-09-06'
+    document_revision: '2.0'
+    repository_baseline: 0f5027d
+    summary: 'Implements the canonical Sec 0.1 process model defined by rules/concurrency/processes.md: isolated Sec-callable subprocesses through spawn process, external executable launch through Command, complete compiler-known process/core types, transactional startup transfer, typed completion transfer, process observation, join/detach/termination, standard-I/O launch modes and pipes, target capability validation, process lifecycle analysis, Semantic IR, lowering, diagnostics, and deterministic native cleanup/reaping. The previous processes.txt file was only a placeholder and does not represent an implementation baseline.'
+    rules:
+    - rules/concurrency/processes.md
+    - rules/concurrency/spawn.md
+    - rules/concurrency/select.md
+    - rules/concurrency/blocking.md
+    - rules/concurrency/concurrency.md
+    - rules/concurrency/threads.md
+    - rules/concurrency/tasks.md
+    - rules/concurrency/channels.md
+    - rules/concurrency/cancellation.md
+    - rules/concurrency/concurrency_memory_model.md
+    - rules/memory/transferability.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/destruction.md
+    - rules/errors/panic.md
+    - rules/compiler/semantic_ir.md
+    - rules/platform/target_profiles.md
+    - rules/platform/platform_model.md
+    - rules/ipc.md
+    implemented: []
+    remaining:
+    - add compiler-known/core declarations for Process[T], ProcessID, ProcessStatus, ExitStatus, ProcessTerminationKind, ProcessTermination, ProcessCompletionError, ProcessSpawnError, ProcessTerminationError, ProcessObserver, Command, CommandConfigurationError, CommandValidationError, CommandStartError, CommandInputMode, CommandOutputMode, and ProcessPlatform
+    - make every process/core declaration expose exactly the properties, methods, modifiers, enum variants, return types, and availability constraints defined by processes.md
+    - add parser and AST preservation for the process spawn modifier without allowing it to degrade to task/thread execution
+    - type spawn process Callable(...) as Result[Process[T], ProcessSpawnError] while preserving the callable's complete declared return type T
+    - make spawn process eager and reject any implementation that exposes an unstarted Process[T] or hidden ProcessConfig semantics
+    - implement process-callable materialization for named functions, concrete generic specializations, eligible methods, and eligible callable values/lambdas
+    - transfer instance-method receiver state into child-local storage while keeping impl/method code as compiler/linker materialization rather than runtime object payload
+    - reject ordinary ref, ref mut, process-invalid RawPtr, and process-local capabilities at process boundaries unless a canonical process-transfer adapter proves validity
+    - require explicit <- for every existing named argument, receiver, or capture whose ownership is consumed by process startup
+    - preserve fresh-temporary forwarding without synthetic move markers
+    - implement transactional startup transfer so ownership commits only after successful process bootstrap and is preserved on every pre-commit ProcessSpawnError path
+    - implement child bootstrap with all startup arguments/captures materialized before user callable entry
+    - guarantee that failed spawn never leaves a hidden running child, unreaped child, leaked bootstrap object, or half-committed ownership state
+    - implement ProcessID allocation with target-sized unsigned representation and no reuse during one Sec program execution
+    - implement ProcessStatus Created, Running, Completed, CompletionFailed, Panicked, and Terminated with the exact terminal/nonterminal meanings in processes.md
+    - implement one typed terminal completion payload for Process[T] and ExitStatus completion for Command
+    - implement ProcessCompletionError and owner-side completion-transfer failure semantics distinct from spawn failure, panic, and abnormal termination
+    - integrate canonical PanicInfo transport for process panic without fabricating panic metadata when the child panic report cannot be established
+    - implement ProcessObserver as copyable non-owning observation state with ID, Name, Status, Platform, and repeatable Wait()
+    - implement process join as one-shot lifecycle synchronization that preserves the resolved owner for terminal inspection and unconsumed result ownership
+    - ensure process join proves child quiescence and reaps/collects native terminal state without publishing arbitrary child memory
+    - implement selectable process join and ProcessObserver.Wait readiness/commit semantics
+    - implement detach for Process[T] and Command with explicit discard for non-void/non-ignored completion values where required
+    - transfer native reaping responsibility on detach without implicitly terminating the detached child
+    - guarantee that ordinary owner termination does not itself terminate a detached child on targets that support canonical detach, while preserving external platform policy as outside Sec semantics
+    - implement Terminate() as safe hard process termination in the Sec memory-safety sense, with ProcessTerminationError and no child cleanup guarantee
+    - keep Terminate() distinct from join and require join for terminal synchronization/reaping
+    - normalize abnormal termination into ProcessTerminationKind Requested, External, Fault, or Unknown without inventing a universal signal/native-code field
+    - implement Command as a move-only external-executable launch description and lifecycle owner after successful Start()
+    - implement infallible Command construction, optional Validate() preflight, and fallible Start() with complete rollback to Created on failure
+    - implement Command executable resolution, arguments, working-directory configuration, environment inheritance/overrides/removals, and Start-time snapshot semantics
+    - make SetWorkingDirectory() eagerly verify current existence, directory kind, and usable permissions while retaining Validate()/Start() revalidation
+    - implement CommandInputMode Inherit/Closed/Pipe and CommandOutputMode Inherit/Discard/Pipe
+    - implement anonymous process standard-I/O pipe creation atomically as part of successful Command.Start()
+    - implement Command TakeStdinPipe(), TakeStdoutPipe(), and TakeStderrPipe() through internal optional ownership slots rather than direct aggregate partial-move state
+    - keep join and lifecycle Drain from reading or buffering stdout/stderr
+    - implement resolved Command and Process[T] destruction with internal infallible lifecycle Drain that releases retained native/runtime bookkeeping without implicit join, terminate, detach, or standard-I/O draining
+    - reject unresolved process lifecycle owners at scope exit rather than silently invoking lifecycle-changing destruction behavior
+    - allow child processes to replace/close/redirect their own standard streams after start without mutating parent-side Command launch configuration or retargeting existing pipe endpoints
+    - add target/CompilationPlan facts ProcessExecution, ExternalProcessExecution, ProcessDetach, ProcessTermination, ProcessStandardIOInheritance, and ProcessPipes
+    - reject statically unsupported process capabilities at compile time instead of converting them into runtime errors
+    - ensure bare-metal, scheduler-only, and RTOS task facilities do not satisfy Sec process semantics without the required isolation, transfer, lifecycle, and cleanup model
+    - provide a complete concrete ProcessPlatform implementation for every process-capable target, including a target-native read-only ID type
+    - keep raw owning/mutating native process capabilities outside the portable ProcessPlatform surface and require unsafe for target-specific lifecycle escape hatches
+    - integrate process waits with blocking/effect analysis so Tasks suspend where supported and physical Threads may park/block according to the selected profile
+    - make Command.Validate() and SetWorkingDirectory() participate in filesystem/I/O/blocking analysis according to their eager checks
+    - reject process control/wait operations from ISR contexts where processes.md marks them non-ISR-safe
+    - preserve process cancellation independence so cancellation does not implicitly terminate or detach owned child processes
+    - integrate process edges into deadlock analysis and keep ordinary parent/child memory out of data-race sharing unless explicit IPC/shared-memory types introduce sharing
+    - add explicit Semantic IR operations/facts for process spawn, command create/configure/validate/start, owner movement, observers, wait, join, termination request, detach, pipe extraction, completion states, lifecycle Drain, and process-transfer prepare/commit/rollback
+    - lower process operations only after ownership, transferability, lifecycle, completion, and target capability facts have been verified
+    - synchronize spawn.md, select.md, blocking.md, concurrency.md, panic.md, language-rulebook-status.md, and implementation-status.yaml with the process v2 model
+    - resolve existing File/socket/native-capability standard-I/O binding against the canonical IPC capability-transfer model before declaring that extension complete
+    governance_reconciliation:
+    - rules/concurrency/processes.md is the sole canonical owner of Process[T], Command process lifecycle, process join/detach/termination, process completion, and process-specific target semantics
+    - rules/memory/transferability.md remains the canonical owner of ProcessTransferable proof and adapter validity; processes.md consumes that proof
+    - rules/ipc.md owns PipeReader, PipeWriter, general IPC, shared memory, and general handle/capability transfer
+    - rules/concurrency/spawn.md owns generic spawn syntax and common execution-kind dispatch but must delegate process-specific transfer/lifecycle semantics to processes.md
+    - rules/concurrency/select.md owns generic select source-order/readiness/commit rules while processes.md owns process-join and ProcessObserver.Wait readiness semantics
+    - rules/concurrency/blocking.md owns generic blocking/suspension/effect rules while processes.md classifies process operations under those rules
+    - rules/errors/panic.md remains the canonical owner of PanicInfo/PanicID and panic-domain semantics; processes.md only transports/observes canonical panic information
+    - implementation-status.yaml remains mutable implementation state and must not be copied into the normative process rulebook
+    required_tests:
+    - spawn process returning T has raw type Result[Process[T], ProcessSpawnError]
+    - spawn process preserves nested Result as Process[Result[T, E]]
+    - successful spawn process never exposes Created state
+    - target without ProcessExecution rejects spawn process at compile time
+    - target without ExternalProcessExecution rejects Command.Start() at compile time
+    - target scheduler/RTOS task without isolation is not accepted as process support
+    - named consumed startup argument requires <- and becomes unavailable only on successful spawn commit
+    - omitted <- for required consumed named startup argument is diagnosed
+    - fresh temporary may transfer to consuming process startup without synthetic <-
+    - failed process startup preserves ownership of every not-yet-committed consumed source value
+    - failed spawn after native child creation cleans up and reaps the bootstrap child
+    - process method receiver is transferred into child-local self and parent ordinary storage is not aliased
+    - borrowed receiver/capture/argument with ordinary ref is rejected across process boundary
+    - Process[T] is move-only even when T is copyable
+    - Command is move-only before and after Start()
+    - ProcessID width follows selected target uint width and does not reuse an ID during one program execution
+    - Command.ID, Command.Platform, and Command.Observe() are absent/None before successful Start and present afterward
+    - Command.Validate() does not change lifecycle state and does not guarantee later Start success
+    - SetWorkingDirectory() performs eager existence/directory/permission validation and Start rechecks later
+    - failed Command.Start() returns to Created with launch configuration intact and no observable pipe endpoint
+    - CommandInputMode.Closed produces end-of-input semantics without introducing Sec null/nil
+    - CommandOutputMode.Discard discards output without introducing Sec null/nil
+    - piped stdin yields parent PipeWriter and piped stdout/stderr yield parent PipeReader
+    - Take*Pipe() transfers endpoint ownership without making Command an ordinary partially moved aggregate
+    - join never drains piped stdout/stderr and pipe backpressure can participate in deadlock analysis
+    - successful process join is one-shot, preserves terminal owner inspection, reaps native state, and proves child quiescence
+    - status polling does not unlock terminal payload before join
+    - ProcessObserver.Wait() is repeatable, non-owning, and selectable
+    - selected join branch commits join while non-selected join branch preserves lifecycle ownership
+    - selected observer Wait branch performs observation only and does not join
+    - Terminate() does not imply terminal state or reaping until join
+    - hard termination never promises child defer/destruction/buffer-flush execution
+    - detach does not terminate the child and moves reaping responsibility to runtime/platform facilities
+    - detached child survives ordinary Sec owner termination when the target provides canonical detach, subject to external platform policy
+    - internal lifecycle Drain never joins, terminates, detaches, or reads standard-I/O pipes
+    - process panic yields Panicked only when canonical PanicInfo is established; otherwise abnormal loss is Terminated
+    - ordinary child-local memory is not treated as shared after join
+    - shared-memory visibility follows IPC/shared-memory synchronization rather than generic process join
+    - raw ProcessPlatform native lifecycle access is unavailable from the portable safe surface
+    - Semantic IR preserves process execution kind and transfer prepare/commit/rollback before lowering
+    corrections_applied:
+    - rules/corrections/applied/processes-cross-rulebook-correction-20260907.md
+    - rules/corrections/applied/panic-info-compiler-known-correction-20260907.md

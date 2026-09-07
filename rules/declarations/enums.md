@@ -168,8 +168,8 @@ enum HttpStatus int {
 For an integer-backed enum, the initializer must be an integer constant
 expression representable by the enum's underlying representation.
 
-For a string-backed enum, every member must have an explicit initializer and
-that initializer must be a compile-time `string` constant. Omitted initializers
+For a string-backed enum, every member must have an explicit initializer in a
+`SemanticCompileTimeRequiredContext` that produces `string`. Omitted initializers
 are invalid because string enums have no implicit sequence or repetition rule:
 
 ```sec
@@ -192,6 +192,11 @@ as recovery syntax so diagnostics or the formatter can rewrite it to `=`.
 `iota` is a compile-time integer constant available only while evaluating
 integer-backed enum member initializers. It is not available in a string-backed
 enum.
+
+Explicit enum initializers required by enum declaration semantics are semantic
+compile-time values. This rulebook continues to own the permitted expression
+forms, backing-compatible result, alias/duplicate policy, and range validation;
+CTE neither creates nor changes generic enum identity.
 
 For each enum declaration:
 

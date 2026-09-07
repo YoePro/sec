@@ -669,7 +669,7 @@ after successful receive.
 
 Rendezvous handoff establishes the same synchronization.
 
-Detailed ordering is defined in `concurrency_memory_model.txt`.
+Detailed ordering is defined in `concurrency_memory_model.md`.
 
 ## Detached tasks
 
@@ -924,11 +924,11 @@ spawn.txt
 await.txt
 concurrency.txt
 select.txt
-mutex.txt
-atomics.txt
+mutex.md
+atomics.md
 static.txt
-concurrency_memory_model.txt
+concurrency_memory_model.md
 allocation.md
-processes.txt
+processes.md
 ipc.txt
 ```

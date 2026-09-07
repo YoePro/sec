@@ -1,0 +1,220 @@
+fragment:
+  id: stdlib-net-dns-dot-v1
+  merge_target: implementation-status.yaml
+  generated_for_rulebook: sec/stdlib/net/dns/dot/std-net-dns-dot.md
+  parent_rulebook: sec/stdlib/net/dns/std-net-dns.md
+  latest_verified_repository_main: 0f5027d
+  standards_rechecked: "2026-09-07"
+  document_revision: "0.1"
+  sec_language_version: "0.1"
+  generated_at: "2026-09-07"
+
+  purpose: >-
+    Track the DNS over TLS child package: DoT server identity and bootstrap,
+    RFC 8310 privacy profiles, authentication, DNS-over-TCP framing inside
+    TLS, reusable/concurrent client connections, server-side DoT transport,
+    common resolver integration, current TLS security guidance, discovery
+    boundaries, and tests.
+
+  codex_instructions:
+    - Treat sec/stdlib/net/dns/dot/std-net-dns-dot.md as the normative DoT specification.
+    - Reconcile this fragment with canonical implementation-status.yaml without duplicating stronger/newer evidence.
+    - Reuse net/dns message, record, resolver, and codec semantics.
+    - Reuse net/ip TCP, Endpoint, Address, Port, and NetworkError.
+    - Reuse the canonical TLS package; do not implement or fork TLS inside DoT.
+    - Follow RFC 7858 and RFC 8310 for DoT semantics and privacy profiles.
+    - Follow current BCP 195 TLS guidance rather than obsolete RFC 7525 guidance.
+    - Expose port 853 as a typed ip.Port constant, not a magic integer.
+    - Preserve Authentication Domain Name separately from bootstrap IP addresses.
+    - Default PrivacyProfile to Strict.
+    - Never send cleartext DNS on a DoT connection or DoT-designated port.
+    - Never silently fall back from DoT to classic DNS.
+    - Disable TLS 0-RTT DNS application data in revision 0.1.
+    - Support connection reuse and plan bounded concurrent outstanding queries.
+    - Keep valid nonzero DNS RCODEs as DNS responses, not transport errors.
+    - Do not create dot.Resolver; integrate with the common parent DNS resolver engine.
+    - Keep DDR/SVCB encrypted-DNS discovery common across DoT/DoH/DoQ.
+    - Defer DANE until the DNSSEC validation and TLSA trust contract is correct.
+    - Add authoritative standards URLs to all source files.
+    - Add required tests and update this fragment as implementation advances.
+
+  governance_tags_used:
+    - stdlib.net
+    - stdlib.net.dns
+    - stdlib.net.dns.dot
+    - stdlib.net.dns.dot.profile
+    - stdlib.net.dns.dot.authentication
+    - stdlib.net.dns.dot.bootstrap
+    - stdlib.net.dns.dot.framing
+    - stdlib.net.dns.dot.client
+    - stdlib.net.dns.dot.server
+    - stdlib.net.dns.transport
+    - security.dns.dot
+    - security.tls.integration
+
+  integrations:
+    - id: stdlib.net.dns.dot
+      area: standard-library-networking
+      rulebook: sec/stdlib/net/dns/dot/std-net-dns-dot.md
+      status: specified
+      latest_verified_repository_main: 0f5027d
+
+      normative:
+        - Canonical package path is net/dns/dot with qualifier dot.
+        - RFC 7858 is the primary DNS-over-TLS protocol specification.
+        - RFC 8310 defines/updates Strict and Opportunistic privacy profiles and authentication guidance.
+        - Current BCP 195 TLS guidance supersedes obsolete RFC 7525 guidance referenced by older DoT documents.
+        - DoT reuses net/dns, net/ip, and the canonical TLS package.
+        - The dedicated DoT TCP service port is 853 and must be represented through ip.Port.
+        - The registered TLS ALPN identifier is dot.
+        - AuthenticationName is a typed DNS HostName, distinct from connection/bootstrap IP addresses.
+        - Bootstrap supports system resolution or explicit IP addresses.
+        - Explicit bootstrap addresses never replace the TLS authentication name.
+        - PrivacyProfile has Strict and Opportunistic.
+        - Strict is the Sec default.
+        - Strict requires an encrypted and authenticated DoT connection.
+        - Opportunistic may yield EncryptedUnauthenticated, but dot.Client itself never becomes cleartext DNS.
+        - DoT never sends cleartext DNS after TLS failure or on the DoT connection.
+        - No silent fallback from DoT to classic DNS exists in this package.
+        - PKIX is the default authentication mechanism.
+        - SPKI pinning is part of the design when canonical crypto/TLS types are available.
+        - DANE remains deferred until DNSSEC/TLSA validation can be trusted without circular bootstrap.
+        - DNS messages use ordinary two-octet DNS-over-TCP framing inside TLS.
+        - TLS 0-RTT DNS application data is disabled in revision 0.1.
+        - Session resumption is enabled by default where safely supported.
+        - One DoT connection is reusable for multiple queries.
+        - Bounded concurrent outstanding queries are a required performance target.
+        - Direct Client.Query/Exchange returns valid DNS responses regardless of nonzero RCODE.
+        - Client, Connection, Listener, and ServerConnection are @noCopy owning resources.
+        - Server-side DoT performs TLS immediately after accept and never accepts cleartext DNS on the DoT port.
+        - DoT integrates with the common parent DNS QueryTransport/resolver architecture.
+        - No dot.Resolver is introduced.
+        - RFC 9461/9462 encrypted-DNS discovery remains a shared concern across DoT/DoH/DoQ.
+        - The canonical TLS package path remains open until the stdlib TLS ownership decision is locked.
+
+      source_manifest:
+        - sec/stdlib/net/dns/dot/error.sec
+        - sec/stdlib/net/dns/dot/profile.sec
+        - sec/stdlib/net/dns/dot/server.sec
+        - sec/stdlib/net/dns/dot/bootstrap.sec
+        - sec/stdlib/net/dns/dot/authentication.sec
+        - sec/stdlib/net/dns/dot/options.sec
+        - sec/stdlib/net/dns/dot/framing.sec
+        - sec/stdlib/net/dns/dot/connection.sec
+        - sec/stdlib/net/dns/dot/client.sec
+        - sec/stdlib/net/dns/dot/listener.sec
+        - sec/stdlib/net/dns/dot/transport.sec
+
+      required_parent_correction:
+        - Parent net/dns must expose a transport-neutral resolver engine or equivalent QueryTransport contract.
+        - Base net/dns must not import net/dns/dot.
+        - DNS cache/CNAME/address/reverse-resolution logic must not be duplicated in dot.
+        - Resolver fallback from encrypted DNS to classic DNS must be an explicit higher-level policy, never implicit dot.Client behavior.
+
+      remaining:
+        - Create net/dns/dot package directory and source manifest.
+        - Implement privacy profile and errors.
+        - Implement AuthenticationName/Server.
+        - Implement bootstrap handling.
+        - Integrate canonical TLS configuration and PKIX validation.
+        - Implement SPKI pinning once canonical crypto/TLS types exist.
+        - Implement DNS-over-TCP frame codec.
+        - Implement @noCopy Connection.
+        - Implement reusable @noCopy Client.
+        - Implement bounded reconnect policy.
+        - Implement TLS session resumption.
+        - Implement Opportunistic security-state reporting.
+        - Implement server Listener and ServerConnection.
+        - Implement bounded concurrent outstanding request matching.
+        - Integrate common DNS resolver transport contract.
+        - Integrate shared RFC 9461/9462 discovery when designed.
+        - Add DANE only after DNSSEC/TLSA validation contract exists.
+        - Resolve final canonical TLS package path/type names.
+
+      required_tests:
+        - id: dot-default-strict
+          expectation: ClientOptions.Default selects Strict Privacy and PKIX authentication.
+        - id: dot-strict-auth-required
+          expectation: Strict profile cannot succeed without successful resolver authentication.
+        - id: dot-opportunistic-state
+          expectation: Opportunistic mode exposes Authenticated or EncryptedUnauthenticated state explicitly.
+        - id: dot-no-cleartext-state
+          expectation: No dot.Client success state represents cleartext DNS.
+        - id: dot-default-port
+          expectation: Default DoT endpoint uses typed ip.Port(853).
+        - id: dot-bootstrap-auth-name
+          expectation: Explicit bootstrap IP changes routing only and does not replace Authentication Domain Name.
+        - id: dot-immediate-tls
+          expectation: TLS handshake starts immediately after TCP connect/accept before any DNS bytes are exchanged.
+        - id: dot-no-cleartext-fallback
+          expectation: TLS failure never causes dot.Client to send DNS in cleartext.
+        - id: dot-pkix-name
+          expectation: PKIX Strict mode validates the TLS peer against the configured Authentication Domain Name.
+        - id: dot-spki-pin
+          expectation: Configured SPKI pin success/failure is enforced once canonical pin types are available.
+        - id: dot-zero-rtt-off
+          expectation: DNS application query bytes are not sent as TLS 1.3 0-RTT data in revision 0.1.
+        - id: dot-session-resumption
+          expectation: Safe TLS session resumption can be used for reconnects without weakening identity validation.
+        - id: dot-frame-split
+          expectation: Two-byte framing and DNS payload may span arbitrary TLS reads.
+        - id: dot-frame-max
+          expectation: 65535-byte DNS payload is representable and larger framed payloads are rejected.
+        - id: dot-nonzero-rcode
+          expectation: NXDOMAIN/SERVFAIL/REFUSED remain valid returned dns.Message values at direct client layer.
+        - id: dot-connection-reuse
+          expectation: One authenticated DoT connection carries multiple sequential DNS exchanges.
+        - id: dot-out-of-order
+          expectation: Concurrent responses can be matched to outstanding queries by DNS transaction identity without relying on arrival order.
+        - id: dot-cancel-safe
+          expectation: Cancellation removes/completes only the affected pending operation and does not corrupt other exchanges.
+        - id: dot-server-no-plain
+          expectation: DoT listener rejects cleartext DNS and exposes ServerConnection only after TLS establishment.
+        - id: dot-shared-resolver
+          expectation: DoT uses the common DNS resolver engine rather than a duplicate dot.Resolver.
+        - id: dot-discovery-alpn
+          expectation: Shared RFC 9461 discovery recognizes alpn=dot and default port 853 once discovery support exists.
+
+      standards:
+        - name: RFC 7858
+          url: https://www.rfc-editor.org/rfc/rfc7858
+          role: primary DNS over TLS protocol
+        - name: RFC 8310
+          url: https://www.rfc-editor.org/rfc/rfc8310
+          role: Strict/Opportunistic privacy profiles and authentication
+        - name: RFC 7766
+          url: https://www.rfc-editor.org/rfc/rfc7766
+          role: DNS over TCP framing, reuse, and concurrency requirements
+        - name: RFC 1035
+          url: https://www.rfc-editor.org/rfc/rfc1035
+          role: DNS wire message format
+        - name: RFC 8446
+          url: https://www.rfc-editor.org/rfc/rfc8446
+          role: TLS 1.3
+        - name: RFC 9325
+          url: https://www.rfc-editor.org/rfc/rfc9325
+          role: current TLS BCP 195 security guidance
+        - name: RFC 9852
+          url: https://www.rfc-editor.org/rfc/rfc9852
+          role: 2026 BCP 195 update favoring/mandating TLS 1.3 for new protocols
+        - name: RFC 10015
+          url: https://www.rfc-editor.org/rfc/rfc10015
+          role: 2026 restrictions for obsolete TLS 1.2 key exchange methods
+        - name: RFC 9461
+          url: https://www.rfc-editor.org/rfc/rfc9461
+          role: DNS SVCB mapping, alpn=dot, default port 853
+        - name: RFC 9462
+          url: https://www.rfc-editor.org/rfc/rfc9462
+          role: Discovery of Designated Resolvers; shared across encrypted DNS transports
+        - name: RFC 6698
+          url: https://www.rfc-editor.org/rfc/rfc6698
+          role: TLSA/DANE foundation
+        - name: RFC 7671
+          url: https://www.rfc-editor.org/rfc/rfc7671
+          role: DANE operational guidance
+        - name: IANA Service Name and Transport Protocol Port Number Registry
+          url: https://www.iana.org/assignments/service-names-port-numbers
+          role: domain-s TCP port 853
+        - name: IANA TLS ALPN Protocol IDs
+          url: https://www.iana.org/assignments/tls-extensiontype-values
+          role: registered dot ALPN identifier

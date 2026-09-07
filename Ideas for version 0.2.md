@@ -3,8 +3,44 @@
 
 
 ## Declarations
-Semantic byrocracy in let col := getColor()
-should be changed to col := getColor()
+
+### let go of let (in many cases)
+Semantic byrocracy in
+```sec
+let col := getColor()
+```
+should be changed to
+```sec
+col := getColor()
+```
+
+### type x union T
+Enum can be declared with
+```sec
+enum Enu [type] {
+    A,
+    B,
+    C,
+}
+```
+
+but neither struct nor union may be declared thay way. I therefore suggest that we accept
+```sec
+union Uni [T] {
+    E,
+    F,
+    G,
+}
+```
+and
+
+```sec
+struct Stru {
+    X: int,
+    Y: int,
+    Z: int,
+}
+```
 
 ## Type inference
 Let us update to support type inference.

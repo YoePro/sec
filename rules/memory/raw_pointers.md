@@ -1112,3 +1112,9 @@ pointer.Difference(other)
 § 39(11) Target pointer representation and address spaces are target facts; the compiler must never substitute compiler-host assumptions.
 
 § 39(12) Fixed-address declarations and checked hardware mappings are preferred when the platform can provide stronger verified semantics than an arbitrary raw address.
+
+§ 39(13) Semantic CTE represents transient raw pointers with deterministic
+evaluator-local identity rather than compiler-host addresses. That identity
+cannot escape static materialization and remains distinct from compile-time
+target address metadata used by canonical fixed-address bindings. CTE never
+dereferences target hardware memory.

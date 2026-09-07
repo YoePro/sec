@@ -1,13 +1,5 @@
 module http
 
-/** HTTP protocol version.
-*
-* Kept as a separate nominal type because Request should not carry */
-type Version struct {
-    Major: uint8,
-    Minor: uint8,
-}
-
 // HTTP request.
 //
 // Request represents the protocol-level HTTP message.
@@ -32,7 +24,7 @@ type Request struct {
     Target: string,
 
     // HTTP protocol version.
-    Version: Version,
+    Version: VersionNumber,
 
     // Request headers.
     //

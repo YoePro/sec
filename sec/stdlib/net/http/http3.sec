@@ -1,1 +1,25 @@
 module http
+
+/*
+* Sec Standard Library - net/http - HTTP/3 framing and semantic mapping over QUIC
+*
+* File:        stdlib/net/http/http3.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP/3 framing and semantic mapping over QUIC.
+*
+* Standards:
+*   - RFC 9114
+*     https://www.rfc-editor.org/rfc/rfc9114
+*   - RFC 9204
+*     https://www.rfc-editor.org/rfc/rfc9204
+*   - RFC 9218
+*     https://www.rfc-editor.org/rfc/rfc9218
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/

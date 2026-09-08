@@ -7,7 +7,7 @@ module http
 * Module:      http
 * Revision:    1
 * Created:     2026-08-30
-* Updated:     2026-08-30
+* Updated:     2026-09-08
 * Author:      Jonas Engström
 *
 * Purpose:
@@ -101,16 +101,54 @@ impl Method {
     // RFC 10008
     static let QUERY: Method := "QUERY"
 
-    // TODO: Implement http.Method.IsSafe Property
-    property IsSafe: Option[bool] { get { return None } }
-    // TODO: Implement http.Method.IsIdempotent Property
-    property IsIdempotent: Option[bool] { get { return None } }
+    static let ASTERISK: Method := "*"
 
-    // TODO: Implement: http.Method.ToString()
+    // TODO: Verify http.Method.IsSafe Property
+    property IsSafe: Option[bool] {
+        get {
+            if self in [Method.GET, Method.HEAD, Method.OPTIONS, Method.PRI, Method.PROPFIND, Method.QUERY, Method.REPORT,
+                Method.SEARCH, Method.TRACE] {
+                return Some(true)
+            }
+            return None
+        }
+    }
+
+    // TODO: Validate http.Method.IsIdempotent Property
+    property IsIdempotent: Option[bool] {
+        get {
+            if self in [Method.CONNECT, Method.LOCK, Method.PATCH, Method.POST, Method.ASTERISK] {
+                return None
+            }
+            return Some(true)
+        }
+    }
+
+    // TODO: Validate http.Method.IsRegistered
+    property IsRegistered: bool {
+        get {
+            return self in [Method.ACL, Method.ASTERISK, Method.BASELINE_CONTROL, Method.BIND, Method.CHECKIN, Method.CHECKOUT,
+                Method.CONNECT, Method.COPY, Method.DELETE, Method.GET, Method.HEAD, Method.LABEL, Method.LINK, Method.LOCK,
+                Method.MERGE, Method.MKACTIVITY, Method.MKCALENDAR, Method.MKCOL, Method.MKREDIRECTREF, Method.MKWORKSPACE, Method.MOVE,
+                Method.OPTIONS, Method.ORDERPATCH, Method.PATCH, Method.POST, Method.PRI, Method.PROPFIND, Method.PROPPATCH, Method.PUT,
+                Method.QUERY, Method.REBIND, Method.REPORT, Method.SEARCH, Method.TRACE, Method.UNBIND, Method.UNCHECKOUT, Method.UNLINK,
+                Method.UNLOCK, Method.UPDATE, Method.UPDATEREDIRECTREF, Method.VERSION_CONTROL]
+        }
+    }
+
+    // TODO: Validate http.Method.IsReserved
+    property IsReserved: bool {
+        get {
+            return self in [Method.ASTERISK, Method.PRI]
+        }
+    }
+
+    // TODO: Validate: http.Method.ToString()
     fn ToString() string {
         return string(self)
     }
 
+    // TODO: Validate: http.Method.FromString()
     static fn FromString(In: string) Method {
         let normalized := In.ToLower()
 
@@ -234,6 +272,9 @@ impl Method {
 
             case "query":
                 return Method.QUERY
+
+            case "*":
+                return Method.ASTERISK
 
             default:
                 // Unknown extension methods remain valid and preserve their

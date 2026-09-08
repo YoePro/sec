@@ -32,22 +32,24 @@ func ReadSource(path string, overlay SourceOverlay) ([]byte, error) {
 }
 
 // ParseSource runs the canonical compiler lexer/parser over an overlay or the
-// on-disk source. Incomplete siblings are excluded from the combined module;
-// their own document analysis remains responsible for recovery diagnostics.
+// on-disk source. Recoverable siblings retain their valid declarations; their
+// own document analysis remains responsible for recovery diagnostics.
+// Rules: rules/projects/modules.md — "Source directory and module membership";
+// rules/compiler/parser_recovery.md — "Recovery goals".
 func ParseSource(path string, overlay SourceOverlay) (*ast.Program, bool) {
 	data, err := ReadSource(path, overlay)
 	if err != nil {
 		return nil, false
 	}
 	result := parser.New(lexer.NewWithFile(string(data), path)).Parse()
-	if result.HasErrors {
+	if result.Fatal {
 		return nil, false
 	}
 	return result.Program, true
 }
 
 // AssembleModule replaces the active single-file statement list with the
-// deterministic set of valid sibling files declaring the same module.
+// deterministic set of recoverable sibling files declaring the same module.
 func AssembleModule(active *ast.Program, sourceFile string, overlay SourceOverlay) {
 	module := ProgramModule(active)
 	if active == nil || module == "" || filepath.Ext(sourceFile) != ".sec" {

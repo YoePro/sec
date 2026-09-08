@@ -1,1 +1,25 @@
 module http
+
+/*
+* Sec Standard Library - net/http - HTTP/2 framing and semantic mapping
+*
+* File:        stdlib/net/http/http2.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP/2 framing and semantic mapping.
+*
+* Standards:
+*   - RFC 9113
+*     https://www.rfc-editor.org/rfc/rfc9113
+*   - RFC 7541
+*     https://www.rfc-editor.org/rfc/rfc7541
+*   - RFC 9218
+*     https://www.rfc-editor.org/rfc/rfc9218
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/

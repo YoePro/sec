@@ -1,5 +1,25 @@
 module http
 
+/*
+* Sec Standard Library - net/http - Cookie and Set-Cookie value types
+*
+* File:        stdlib/net/http/cookie.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Cookie and Set-Cookie value types.
+*
+* Standards:
+*   - RFC 10025
+*     https://www.rfc-editor.org/info/rfc10025
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
 // HTTP cookie value types.
 //
 // Cookie is the common name/value pair carried by both Cookie and Set-Cookie.
@@ -19,21 +39,6 @@ enum SameSite {
     None,
 }
 
-// CookieError reports cookie validation and serialization errors.
-// NotImplemented is temporary dogfooding scaffolding and must be removed once
-// the corresponding operation exists.
-enum CookieError error {
-    NotImplemented,
-    InvalidName,
-    InvalidValue,
-    InvalidDomain,
-    InvalidPath,
-    InvalidPrefix,
-    SecureRequired,
-    PartitionedRequiresSecure,
-    AllocationFailed,
-}
-
 // Cookie is the name/value pair visible in an HTTP Cookie request header.
 // Response-only attributes are intentionally absent because the request header
 // does not carry them.
@@ -44,52 +49,54 @@ type Cookie struct {
 
 impl Cookie {
     /**
-     * Creates a cookie pair from a name and value.
-     *
-     * Construction does not imply HTTP validity. Validate() performs protocol
-     * validation before serialization.
-     *
-     * Specification:
-     *   - RFC 10025 — cookie-pair
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — Cookie construction
-     */
+    * Creates a cookie pair from a name and value.
+    *
+    * Construction does not imply HTTP validity. Validate() performs protocol
+    * validation before serialization.
+    *
+    * Specification:
+    *   - RFC 10025 — cookie-pair
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — Cookie construction
+    */
     init(name: string, value: string) {
         self.Name = name
         self.Value = value
     }
 
     /**
-     * Validates this cookie pair for HTTP serialization.
-     *
-     * Only the common name/value pair is validated here. Set-Cookie-specific
-     * attributes are validated by SetCookie.Validate().
-     *
-     * Specification:
-     *   - RFC 10025 — cookie-pair
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — Cookie validation
-     */
+    * Validates this cookie pair for HTTP serialization.
+    *
+    * Only the common name/value pair is validated here. Set-Cookie-specific
+    * attributes are validated by SetCookie.Validate().
+    *
+    * Specification:
+    *   - RFC 10025 — cookie-pair
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — Cookie validation
+    */
     fn Validate() Result[void, CookieError] {
-        return Err(CookieError.NotImplemented)
+        // TODO: Implement http.Cookie.Validate
+        return Err(CookieError.InvalidName)
     }
 
     /**
-     * Serializes this cookie pair as "name=value".
-     *
-     * The operation must not silently apply URL decoding or reinterpret the
-     * stored value.
-     *
-     * Specification:
-     *   - RFC 10025 — Cookie header field
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — Cookie serialization
-     */
+    * Serializes this cookie pair as "name=value".
+    *
+    * The operation must not silently apply URL decoding or reinterpret the
+    * stored value.
+    *
+    * Specification:
+    *   - RFC 10025 — Cookie header field
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — Cookie serialization
+    */
     fn ToString() Result[string, CookieError] {
-        return Err(CookieError.NotImplemented)
+        // TODO: Implement http.Cookie.ToString()
+        return Err(CookieError.InvalidName)
     }
 }
 
@@ -121,17 +128,17 @@ type SetCookie struct {
 
 impl SetCookie {
     /**
-     * Creates a Set-Cookie value with only a cookie name and value.
-     *
-     * Optional attributes are absent and flag attributes are disabled until
-     * explicitly configured by the caller.
-     *
-     * Specification:
-     *   - RFC 10025 — Set-Cookie header field
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — SetCookie construction
-     */
+    * Creates a Set-Cookie value with only a cookie name and value.
+    *
+    * Optional attributes are absent and flag attributes are disabled until
+    * explicitly configured by the caller.
+    *
+    * Specification:
+    *   - RFC 10025 — Set-Cookie header field
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — SetCookie construction
+    */
     init(name: string, value: string) {
         self.Pair = new Cookie(name, value)
         self.Path = None
@@ -158,35 +165,37 @@ impl SetCookie {
     }
 
     /**
-     * Validates the complete Set-Cookie value.
-     *
-     * Validation includes the cookie pair, response attributes, security
-     * prefix requirements, and cross-attribute requirements.
-     *
-     * Specification:
-     *   - RFC 10025 — Set-Cookie processing and cookie name prefixes
-     *   - Partitioned cookie extension requirements
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — SetCookie validation
-     */
+    * Validates the complete Set-Cookie value.
+    *
+    * Validation includes the cookie pair, response attributes, security
+    * prefix requirements, and cross-attribute requirements.
+    *
+    * Specification:
+    *   - RFC 10025 — Set-Cookie processing and cookie name prefixes
+    *   - Partitioned cookie extension requirements
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — SetCookie validation
+    */
     fn Validate() Result[void, CookieError] {
-        return Err(CookieError.NotImplemented)
+        // TODO: Implement http.SetCookie.Validate
+        return Err(CookieError.InvalidName)
     }
 
     /**
-     * Serializes this value for one Set-Cookie response header field.
-     *
-     * Serialization is strict. Sec must not knowingly emit an invalid
-     * Set-Cookie value by silently dropping or rewriting invalid attributes.
-     *
-     * Specification:
-     *   - RFC 10025 — Set-Cookie header field
-     *
-     * Sec:
-     *   - TODO: net/http cookie rulebook — SetCookie serialization
-     */
+    * Serializes this value for one Set-Cookie response header field.
+    *
+    * Serialization is strict. Sec must not knowingly emit an invalid
+    * Set-Cookie value by silently dropping or rewriting invalid attributes.
+    *
+    * Specification:
+    *   - RFC 10025 — Set-Cookie header field
+    *
+    * Sec:
+    *   - TODO: net/http cookie rulebook — SetCookie serialization
+    */
     fn ToString() Result[string, CookieError] {
-        return Err(CookieError.NotImplemented)
+        // TODO: Implement http.SetCookie.ToString()
+        return Err(CookieError.InvalidName)
     }
 }

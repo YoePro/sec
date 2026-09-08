@@ -1,0 +1,191 @@
+module http
+/*
+* Sec Standard Library - net/http - HTTP error and result types
+*
+* File:        stdlib/net/http/results.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP error and result types.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+enum HeaderError error {
+    InvalidName,
+    InvalidValue,
+    InvalidEncoding,
+    InjectionAttempt,
+    TooManyFields,
+    FieldsTooLarge,
+    AllocationFailed,
+}
+
+enum StructuredFieldError error {
+    InvalidSyntax,
+    InvalidKey,
+    InvalidBareItem,
+    InvalidInteger,
+    InvalidDecimal,
+    InvalidString,
+    InvalidToken,
+    InvalidByteSequence,
+    InvalidBoolean,
+    InvalidDate,
+    InvalidDisplayString,
+    DuplicateKey,
+    DuplicateParameter,
+    OutOfRange,
+    AllocationFailed,
+}
+
+type BodyError union error {
+    Closed,
+    TooLarge,
+    UnexpectedEof,
+    LengthMismatch,
+    NotReplayable,
+    Source(error),
+    Sink(error),
+    Allocation(error),
+}
+
+enum MessageError error {
+    InvalidMethod,
+    ReservedMethod,
+    InvalidStatus,
+    InvalidVersion,
+    InvalidTarget,
+    InvalidFraming,
+    InvalidContentLength,
+    ConflictingContentLength,
+    InvalidTransferEncoding,
+    InvalidTrailer,
+    HeaderTooLarge,
+    BodyTooLarge,
+    MalformedMessage,
+    UnsupportedProtocol,
+}
+
+enum AuthError error {
+    InvalidScheme,
+    InvalidSyntax,
+    InvalidToken68,
+    InvalidParameter,
+    DuplicateParameter,
+    InvalidCredentials,
+    InvalidBase64,
+    InvalidUtf8,
+    UnsupportedScheme,
+    AllocationFailed,
+}
+
+enum DigestError error {
+    InvalidSyntax,
+    DuplicateAlgorithm,
+    InvalidDigestValue,
+    InvalidPreference,
+    UnsupportedAlgorithm,
+    DeprecatedAlgorithm,
+    Mismatch,
+    AllocationFailed,
+}
+
+enum RedirectError error {
+    TooManyRedirects,
+    InvalidLocation,
+    BodyNotReplayable,
+    CrossOriginRejected,
+    PolicyRejected,
+}
+
+enum CacheError error {
+    InvalidMetadata,
+    EntryTooLarge,
+    StorageLimit,
+    RevalidationFailed,
+    AllocationFailed,
+}
+
+/** CookieError reports cookie validation and serialization errors.
+// NotImplemented is temporary dogfooding scaffolding and must be removed once
+// the corresponding operation exists. */
+enum CookieError error {
+    InvalidName,
+    InvalidValue,
+    InvalidDomain,
+    InvalidPath,
+    InvalidPrefix,
+    SecureRequired,
+    SameSiteNoneRequiresSecure,
+    PartitionedRequiresSecure,
+    AllocationFailed,
+}
+
+enum CookieParseError error {
+    InvalidCookiePair,
+    InvalidAttribute,
+    InvalidDate,
+    InvalidMaxAge,
+    DuplicateAttribute,
+    TooLarge,
+    AllocationFailed,
+}
+
+enum CookieJarError error {
+    InvalidOrigin,
+    InvalidCookie,
+    DomainMismatch,
+    PublicSuffixRejected,
+    InsecureSecureCookie,
+    SameSiteRejected,
+    PartitionRejected,
+    StorageLimit,
+    AllocationFailed,
+}
+
+enum RouterError error {
+    InvalidPattern,
+    DuplicateRoute,
+    ConflictingRoute,
+    AllocationFailed,
+}
+
+type ClientError union error {
+    Url(error),
+    Dns(error),
+    Network(error),
+    Tls(error),
+    Quic(error),
+    Message(MessageError),
+    Header(HeaderError),
+    Body(BodyError),
+    Redirect(RedirectError),
+    Cache(CacheError),
+    Cookie(CookieJarError),
+    ConnectionClosed,
+    NoProtocolAvailable,
+    ResourceLimitExceeded,
+    Closed,
+}
+
+type ServerError union error {
+    Network(error),
+    Tls(error),
+    Quic(error),
+    Message(MessageError),
+    Header(HeaderError),
+    Body(BodyError),
+    Handler(error),
+    ConnectionClosed,
+    ResourceLimitExceeded,
+    Closed,
+}

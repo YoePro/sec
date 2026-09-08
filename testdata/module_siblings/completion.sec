@@ -1,0 +1,9 @@
+module module_siblings
+
+fn BasicAuthorization(username: string, password: string) Result[string, AuthError] {
+    return Err(AuthError.Invalid)
+}
+
+fn Wrap(value: Reply) Reply { return value }
+fn Build() Reply { return Wrap(Reply.Empty) }
+fn ReadHeader(header: Header) Result[string, AuthError] { return Ok(header.Value) }

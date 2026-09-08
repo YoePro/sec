@@ -1039,6 +1039,13 @@ func analyzeProgramWithSources(program *ast.Program, target CompilerTarget, sour
 }
 
 func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool) *sema.Analyzer {
+	siblings := assembleCLIModuleSources(program, target)
+	summary.Errors += siblings.Errors
+	summary.Warnings += siblings.Warnings
+	if siblings.Errors > 0 {
+		printDiagnosticSummary(summary)
+		os.Exit(2)
+	}
 	if err := validateProgramTarget(program, target); err != nil {
 		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
 		summary.Errors++

@@ -1,9 +1,75 @@
 module http
 
+/*
+* Sec Standard Library - net/http - Version-independent HTTP responses and server response writing
+*
+* File:        stdlib/net/http/response.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Version-independent HTTP responses and server response writing.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+@noCopy
 type Response struct {
+    Status: Status,
+    Header: Header,
+    Body: Body,
+    Version: Version,
+}
+
+impl Response {
+    init(status: Status) {
+        self.Status = status
+    }
+
+    // TODO: Implement http.Response.Close
+    fn Close() Result[void, BodyError] {
+        return self.Body.Close()
+    }
 
 }
 
+@noCopy
 type ResponseWriter struct {
+    // Private active server stream state.
+}
 
+impl ResponseWriter {
+    //property Header: ref mut Header { get { ... } }
+
+    // TODO: Implement http.ResponseWriter.WriteStatus
+    fn WriteStatus(status: Status) Result[void, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+
+    // TODO: Implement http.ResponseWriter.Write
+    fn Write(data: ref byte[]) Result[uint, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+
+    // TODO: Implement http.ResponseWriter.WriteAll
+    fn WriteAll(data: ref byte[]) Result[void, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+
+    // TODO: Implement http.ResponseWriter.Flush()
+    fn Flush() Result[void, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+
+    // TODO: Implement http.ResponseWriter.Finish()
+    fn Finish() Result[void, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
 }

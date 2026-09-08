@@ -1,0 +1,9 @@
+module module_siblings
+
+type Response struct {
+    Status: Status,
+}
+
+fn Read(response: Response) Status {
+    return response.Status
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -295,7 +296,9 @@ func TestDidCloseRemovesSnapshotAndClearsDiagnostics(t *testing.T) {
 		out:               &out,
 		documentSnapshots: lspserver.NewDocuments(),
 		diagnosticTimers:  map[string]*time.Timer{},
+		diagnosticDelay:   time.Hour,
 	}
+	defer s.stopDiagnosticTimers()
 	uri := "file:///tmp/main.sec"
 	s.documentSnapshots.Open(uri, 1, "module main\n")
 	params, err := json.Marshal(didCloseParams{TextDocument: textDocumentIdentifier{URI: uri}})
@@ -325,7 +328,9 @@ func TestDidOpenRepublishesSameModuleDiagnosticsWithOverlay(t *testing.T) {
 		out:               &out,
 		documentSnapshots: lspserver.NewDocuments(),
 		diagnosticTimers:  map[string]*time.Timer{},
+		diagnosticDelay:   time.Hour,
 	}
+	defer s.stopDiagnosticTimers()
 	s.documentSnapshots.Open(useURI, 1, useSource)
 	params, err := json.Marshal(didOpenParams{TextDocument: textDocumentItem{
 		URI:     uriFromPath(errorPath),
@@ -338,6 +343,13 @@ func TestDidOpenRepublishesSameModuleDiagnosticsWithOverlay(t *testing.T) {
 	if err := s.handle(rpcMessage{JSONRPC: "2.0", Method: "textDocument/didOpen", Params: params}); err != nil {
 		t.Fatal(err)
 	}
+	if out.Len() != 0 {
+		t.Fatal("didOpen performed synchronous diagnostics")
+	}
+	if err := s.publishModuleDiagnostics(useURI); err != nil {
+		t.Fatal(err)
+	}
+
 	if !strings.Contains(out.String(), useURI) {
 		t.Fatalf("opening a sibling did not republish the existing document: %q", out.String())
 	}
@@ -3340,6 +3352,45 @@ func TestLSPAnalysisDepthFromProjectManifest(t *testing.T) {
 		}
 		if got := lspAnalysisDepth(sourcePath); got != test.want {
 			t.Fatalf("lspAnalysisDepth with %q = %q, want %q", test.config, got, test.want)
+		}
+	}
+}
+
+func TestCompletionNestedMembersFromSibling(t *testing.T) {
+	active, err := os.ReadFile("../../testdata/module_siblings/completion.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling, err := os.ReadFile("../../testdata/module_siblings/completion_types.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, overlay := range []bool{false, true} {
+		for _, tc := range []struct {
+			selector string
+			labels   []string
+		}{
+			{"AuthError.Invalid", []string{"Invalid", "InvalidCredentials", "Unimplemented"}},
+			{"Reply.Empty", []string{"Empty", "Text"}},
+			{"header.Value", []string{"SizeOf", "Value"}},
+		} {
+			t.Run(fmt.Sprintf("%s/overlay=%t", tc.selector, overlay), func(t *testing.T) {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "completion.sec")
+				siblingPath := filepath.Join(dir, "types.sec")
+				snapshots := sourceOverlay{}
+				if overlay {
+					snapshots[siblingPath] = string(sibling)
+				} else if err := os.WriteFile(siblingPath, sibling, 0644); err != nil {
+					t.Fatal(err)
+				}
+				dot := strings.Index(tc.selector, ".")
+				source := strings.Replace(string(active), tc.selector, tc.selector[:dot+1], 1)
+				offset := strings.Index(source, tc.selector[:dot+1]) + dot + 1
+				assertCompletionLabels(t, completeSource(uriFromPath(path), source, offset, snapshots), tc.labels)
+				// A separate bodyless declaration must not disable recovered completion.
+				assertCompletionLabels(t, completeSource(uriFromPath(path), source+"\nfn Pending() void\n", offset, snapshots), tc.labels)
+			})
 		}
 	}
 }

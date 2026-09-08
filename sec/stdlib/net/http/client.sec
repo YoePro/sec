@@ -1,7 +1,88 @@
 module http
 
-fn Get(url: string) void { }
+/*
+* Sec Standard Library - net/http - Reusable HTTP client API
+*
+* File:        stdlib/net/http/client.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Reusable HTTP client API.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*   - RFC 9111
+*     https://www.rfc-editor.org/rfc/rfc9111
+*   - RFC 9112
+*     https://www.rfc-editor.org/rfc/rfc9112
+*   - RFC 9113
+*     https://www.rfc-editor.org/rfc/rfc9113
+*   - RFC 9114
+*     https://www.rfc-editor.org/rfc/rfc9114
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+import (
+    "net/dns"
+    "net/url"
+)
+
+fn Get(url: string) void {}
 
 fn Post(url: string) void {}
 
 fn Head(url: string) void {}
+
+type ClientOptions struct {
+    Protocols: Protocols,
+    Redirects: RedirectPolicy,
+    Cache: CacheOptions,
+    MaxResponseHeaderBytes: uint,
+    MaxResponseBodyBytes: Option[uint64],
+}
+
+@noCopy
+type Client struct {
+    // Private resolver, connection pools, optional cookie jar/cache,
+    // HTTP/1.1/2/3 transports, TLS/QUIC state.
+}
+
+impl Client {
+    init(options: ClientOptions) Result[Client, ClientError] {
+
+    }
+
+    static fn WithResolver(->resolver: dns.Resolver, options: ClientOptions) Result[Client, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+
+    fn SetCookieJar(->jar: CookieJar) Result[void, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+
+    fn Do(->request: Request) Result[Response, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+
+    fn Get(url: url.URL) Result[Response, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+
+    fn Head(url: url.URL) Result[Response, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+
+    fn Post(url: url.URL, -> body: Body) Result[Response, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+
+    fn Close() Result[void, ClientError] {
+        return Err(ClientError.NoProtocolAvailable)
+    }
+}

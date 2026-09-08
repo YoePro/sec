@@ -1,1 +1,35 @@
 module http
+
+/*
+* Sec Standard Library - net/http - Bounded client redirect policy and redirect semantics
+*
+* File:        stdlib/net/http/redirect.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Bounded client redirect policy and redirect semantics.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+type RedirectPolicy struct {
+    MaxRedirects: uint8,
+    AllowCrossOrigin: bool,
+    PreserveSensitiveHeaders: bool,
+}
+
+impl RedirectPolicy {
+
+    // TODO: Implement http.RedirectPolicy.Default()
+    static fn Default() RedirectPolicy {
+        return new RedirectPolicy()
+    }
+}

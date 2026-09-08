@@ -1,1 +1,28 @@
 module http
+
+/*
+* Sec Standard Library - net/http - Extensible HTTP priority values
+*
+* File:        stdlib/net/http/priority.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Extensible HTTP priority values.
+*
+* Standards:
+*   - RFC 9218
+*     https://www.rfc-editor.org/rfc/rfc9218
+*   - RFC 9651
+*     https://www.rfc-editor.org/rfc/rfc9651
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+type Priority struct {
+    Urgency: uint8,
+    Incremental: bool,
+}

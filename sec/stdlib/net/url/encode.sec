@@ -7,3 +7,5 @@ fn URLEncode(raw: string) string {
 fn URLDecode(raw: string) string {
     return ""
 }
+
+type URL string

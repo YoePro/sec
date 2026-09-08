@@ -1,1 +1,23 @@
 module http
+
+/*
+* Sec Standard Library - net/http - QPACK field compression
+*
+* File:        stdlib/net/http/qpack.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   QPACK field compression.
+*
+* Standards:
+*   - RFC 9204
+*     https://www.rfc-editor.org/rfc/rfc9204
+*   - RFC 9114
+*     https://www.rfc-editor.org/rfc/rfc9114
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/

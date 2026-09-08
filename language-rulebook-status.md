@@ -546,7 +546,7 @@ as one compatible model.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `projects/projects.txt` | **Written** | Repository manifest, targets, outputs, internal directories, and build structure; module semantics are delegated to `projects/modules.md`. |
-| `projects/modules.md` | **Written** | Canonical module identity, membership, imports, cycles, visibility, resolution, surfaces, separate compilation, and incremental-tooling model. Implementation progress is tracked by `frontend.modules`. |
+| `projects/modules.md` | **Written** | Canonical module identity, membership, imports, cycles, visibility, resolution, surfaces, separate compilation, and incremental-tooling model. Implementation progress is tracked by `frontend.modules`. CLI assembles canonical directory-module siblings before Sema; LSP retains declarations from recoverable sibling files. |
 | `compiler/initialization.md` | **Written** | Canonical executable entry, runtime-free startup, initialization/shutdown plans, dependency ordering, startup rollback, static-destruction integration, target termination, and lowering/linking boundaries. Implementation is tracked by `compiler.program-initialization`. |
 | `compiler/linking.md` | **Written** | Canonical link planning and final artifact semantics; implementation is tracked by `compiler.linking`. |
 
@@ -578,7 +578,7 @@ multiple target outputs
 | `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
-| `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; static and instance bindings are distinct, and impl static-removal advice is withdrawn. Implementation remains partial as detailed in governance. |
+| `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; static and instance bindings are distinct, and impl static-removal advice is withdrawn. Nested member completion uses the active cursor and recoverable same-module declarations. Diagnostic refreshes are coalesced per module with obsolete-result rejection; in-flight analysis cancellation and cross-feature caching remain pending. Implementation remains partial as detailed in governance. |
 
 ---
 

@@ -1,6 +1,24 @@
-// Sec Standard Library: net/http
-// File: structured.sec
 module http
+
+/*
+* Sec Standard Library - net/http - HTTP Structured Fields parsing and serialization
+*
+* File:        stdlib/net/http/structured.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP Structured Fields parsing and serialization.
+*
+* Standards:
+*   - RFC 9651
+*     https://www.rfc-editor.org/rfc/rfc9651
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
 
 type StructuredBareItem union {
     Integer(int64),
@@ -46,8 +64,8 @@ type StructuredDictionary struct {
     Members: StructuredDictionaryMember[],
 }
 
-fn ParseStructuredItem(value: HeaderValue) Result[StructuredItem, StructuredFieldError]
+// fn ParseStructuredItem(value: HeaderValue) Result[StructuredItem, StructuredFieldError]
 
-fn ParseStructuredList(value: HeaderValue) Result[StructuredList, StructuredFieldError]
+// fn ParseStructuredList(value: HeaderValue) Result[StructuredList, StructuredFieldError]
 
-fn ParseStructuredDictionary(value: HeaderValue) Result[StructuredDictionary, StructuredFieldError]
+// fn ParseStructuredDictionary(value: HeaderValue) Result[StructuredDictionary, StructuredFieldError]

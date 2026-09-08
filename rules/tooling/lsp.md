@@ -312,6 +312,9 @@ Implemented:
 - same-directory, same-module source assembly through the compiler lexer,
   parser, AST, and Sema pipeline;
 - open-document overlays for active and sibling module files;
+- preservation of valid declarations from sibling files with recoverable syntax
+  errors, including bodyless function stubs; sibling syntax errors are reported
+  on their own document instead of hiding their declarations from other files;
 - dependent diagnostic refresh when a sibling module document opens, changes,
   saves, or closes;
 - project import loading;
@@ -1074,6 +1077,12 @@ target set or complete cause path.
 
 The LSP must remain interactive while deep analysis continues.
 
+Diagnostic refreshes for open siblings are coalesced into one module job.
+A job analyzes one captured overlay and routes compiler diagnostics to each
+source document; it must not repeat whole-module analysis for each open file.
+Superseded jobs and results are discarded, publications carry document versions,
+and shutdown prevents pending diagnostic publication.
+
 ## Immediate tier
 
 Target response:
@@ -1523,6 +1532,11 @@ target variants affected
 # Completion
 
 Completion must be semantic and context-sensitive.
+
+Member completion uses the receiver at the active document cursor, including
+selectors nested in calls and `Ok(...)` / `Err(...)`. Same-module declarations
+from disk and unsaved overlays participate even when other declarations have
+recoverable syntax errors.
 
 It considers:
 

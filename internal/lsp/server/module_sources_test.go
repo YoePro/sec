@@ -3,11 +3,13 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
 	"sec/internal/parser"
+	"sec/internal/sema"
 )
 
 func TestAssembleModuleUsesSameModuleOverlay(t *testing.T) {
@@ -47,5 +49,36 @@ func TestAssembleModuleUsesSameModuleOverlay(t *testing.T) {
 	}
 	if functions["Disk"] || functions["Foreign"] {
 		t.Fatalf("combined module included stale or foreign declarations: %+v", functions)
+	}
+}
+
+func TestAssembleModuleRetainsTypesInIncompleteSibling(t *testing.T) {
+	activePath := filepath.Join(t.TempDir(), "active.sec")
+	activeData, err := os.ReadFile("../../../testdata/module_siblings/active.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siblingData, err := os.ReadFile("../../../testdata/module_siblings/sibling.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siblingText := strings.Replace(string(siblingData), "{ return Status(200) }", "", 1)
+	overlay := SourceOverlay{NormalizeSourcePath(filepath.Join(filepath.Dir(activePath), "sibling.sec")): siblingText}
+	active := parser.New(lexer.NewWithFile(string(activeData), activePath)).Parse().Program
+	AssembleModule(active, activePath, overlay)
+	a := sema.NewAnalyzer()
+	for _, err := range a.Analyze(active) {
+		if err.File == activePath {
+			t.Fatalf("active document lost sibling type: %+v", err)
+		}
+	}
+	found := false
+	for _, s := range active.Statements {
+		if typ, ok := s.(*ast.TypeDeclStatement); ok && typ.Name.Value == "Status" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("sibling type discarded because its method was a stub")
 	}
 }

@@ -1,5 +1,30 @@
 module http
 
+/*
+* Sec Standard Library - net/http - Version-independent HTTP request values and server request metadata
+*
+* File:        stdlib/net/http/request.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Version-independent HTTP request values and server request metadata.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+import (
+    "net/url"
+    "net/ip"
+)
+
 // HTTP request.
 //
 // Request represents the protocol-level HTTP message.
@@ -184,4 +209,24 @@ impl Request {
 type BasicAuthentication struct {
     Username: string,
     Password: string,
+}
+
+type RequestTarget union {
+    Origin(string),
+    Absolute(url.URL),
+    Authority(string),
+    Asterisk,
+}
+
+type ConnectionInfo struct {
+    LocalEndpoint: ip.Endpoint,
+    RemoteEndpoint: ip.Endpoint,
+    Version: Version,
+    Secure: bool,
+}
+
+@noCopy
+type ServerRequest struct {
+    Message: Request,
+    Connection: ConnectionInfo,
 }

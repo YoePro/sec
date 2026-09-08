@@ -1052,7 +1052,7 @@ integrations:
     status: implemented
     integrated: "2026-08-24"
     summary: >-
-      Analyzes every valid sibling source declaring the active file's module
+      Analyzes every recoverable sibling source declaring the active file's module
       as one compiler-owned semantic program, including unsaved editor
       snapshots, so declarations resolve consistently across module files.
     rules:
@@ -1074,36 +1074,11 @@ integrations:
       - cross-file definition locations retain the declaring file URI and range
       - diagnostics are published only for the requested source while sibling declarations contribute semantic facts
       - opening, changing, saving, or closing one module document refreshes diagnostics for open sibling documents
-      - malformed siblings are isolated until their own document analysis instead of poisoning every open file in the module
+      - recoverable sibling parser errors retain parsed declarations, including types and bodyless function signatures; only fatal parser results are excluded, and syntax diagnostics remain owned by the sibling document
     verification:
+      - command: go test ./internal/lsp/server -count=1
+        result: passed; partial unsaved sibling declarations remain visible and supersede disk contents
       - command: go test ./cmd/lsp -run 'SameModule|CoreInt|OpenSibling|DifferentModule' -count=1
-        result: passed
-
-  - id: tooling.lsp-type-member-completion
-    area: tooling
-    status: implemented
-    integrated: "2026-08-29"
-    summary: >-
-      Completes type-qualified aggregate member discovery so enum namespaces
-      expose every declared enum member and union namespaces expose every
-      declared variant while preserving the language's static/instance split.
-    rules:
-      - rules/tooling/lsp.md
-      - rules/declarations/enums.md
-      - rules/declarations/unions.md
-      - rules/declarations/static.md
-    code:
-      - cmd/lsp/main.go
-    tests:
-      - cmd/lsp/main_test.go
-    implemented:
-      - Method. completion returns all compiler-resolved enum members with EnumMember kind and the owning enum as detail
-      - union type completion returns payload-less, single-payload, and struct-like declared variants from Sema type facts
-      - stored struct and register fields remain instance-only while legal static properties, methods, storage, and compiler-known members remain type-qualified
-      - enum members and union variants are no longer incorrectly offered on value receivers
-      - prefix filtering and deterministic completion sorting remain shared with ordinary member completion
-    verification:
-      - command: go test ./cmd/lsp -run 'TestCompletion(ReturnsEnumMembersAndUnionVariantsAfterTypeDot|SeparatesStaticAndInstanceMembers|ReturnsStructMembersAfterDot)' -count=1
         result: passed
 
   - id: frontend.modules
@@ -1130,6 +1105,7 @@ integrations:
       - rules/tooling/diagnostics.txt
       - rules/tooling/lsp.md
     code:
+      - cmd/compiler/module_sources.go
       - internal/modules/model.go
       - internal/modules/graph.go
       - internal/modules/instance_graph.go
@@ -1138,6 +1114,9 @@ integrations:
       - cmd/compiler/main.go
       - cmd/lsp/main.go
     tests:
+      - cmd/compiler/module_sources_test.go
+      - testdata/module_siblings/active.sec
+      - testdata/module_siblings/sibling.sec
       - internal/modules/model_test.go
       - internal/modules/graph_test.go
       - internal/modules/instance_graph_test.go
@@ -1146,6 +1125,9 @@ integrations:
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - CLI semantic and build/emit entry paths assemble unselected same-module sibling files for canonical directory modules and manifest-bearing project roots before Sema; existing input files are deduplicated
+      - sibling selection is non-recursive, ordered, target-filtered, excludes automatically discovered test sources, and retains original source paths
+      - sibling parser errors block CLI compilation rather than causing misleading single-file unknown-type errors; legacy standalone paths outside canonical directory/root module naming remain isolated
       - root-qualified canonical ModuleIdentity distinct from short source ModuleName
       - CompilationPlan-qualified ModuleInstance identity without changing logical ModuleIdentity
       - host-independent canonical import-path validation rejecting empty components, traversal, absolute paths, backslashes, and trailing separators
@@ -1190,6 +1172,8 @@ integrations:
       - module graph as an implicit initialization or deinitialization order
       - ABI, mangling, or linker spelling defined by ModuleSurface
     verification:
+      - command: go test ./cmd/compiler -run TestSingleFileAnalysisLoadsModuleSiblings -count=1
+        result: passed; same-directory types resolve from a single-file input and assembly is idempotent
       - command: go test ./internal/modules ./internal/parser -run 'Module|Import' -count=1
         result: passed
       - command: go test ./internal/modules -run 'CrossModuleDeclarationIdentity|ModuleCycleDiagnostic' -count=1

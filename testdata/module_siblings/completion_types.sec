@@ -1,0 +1,16 @@
+module module_siblings
+
+enum AuthError error {
+    Unimplemented,
+    InvalidCredentials,
+    Invalid,
+}
+
+type Reply union {
+    Empty,
+    Text(string),
+}
+
+type Header struct {
+    Value: string,
+}

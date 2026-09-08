@@ -1,5 +1,25 @@
 module http
 
+/*
+* Sec Standard Library - net/http - Cookie storage and request selection
+*
+* File:        stdlib/net/http/cookie_jar.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Cookie storage and request selection.
+*
+* Standards:
+*   - RFC 10025
+*     https://www.rfc-editor.org/info/rfc10025
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
 import "net/url"
 
 // Client-side cookie storage and request selection.
@@ -22,15 +42,6 @@ import "net/url"
 // Sec rulebook:
 //     TODO: create the canonical net/http cookie-jar rulebook before this API
 //     is declared stable.
-
-enum CookieJarError error {
-    NotImplemented,
-    RejectedByPolicy,
-    InvalidDomain,
-    PublicSuffixRejected,
-    InvalidPartition,
-    AllocationFailed,
-}
 
 // Internal cookie-jar state.
 //
@@ -74,8 +85,9 @@ impl CookieJar {
     * Sec:
     *   - TODO: net/http cookie-jar rulebook — Store
     */
-    fn Store(origin: URL, cookie: SetCookie) Result[void, CookieJarError] {
-        return Err(CookieJarError.NotImplemented)
+    fn Store(origin: url.URL, cookie: SetCookie) Result[void, CookieJarError] {
+        // TODO: Implement http.CookieJar.Store
+        return Err(CookieJarError.DomainMismatch)
     }
 
     /**
@@ -93,8 +105,9 @@ impl CookieJar {
     * Sec:
     *   - TODO: net/http cookie-jar rulebook — Request cookie selection
     */
-    fn Cookies(url: URL) Result[Cookie[], CookieJarError] {
-        return Err(CookieJarError.NotImplemented)
+    fn Cookies(url: url.URL) Result[Cookie[], CookieJarError] {
+        // TODO: Implement http.CoockeJar.Cookies
+        return Err(CookieJarError.DomainMismatch)
     }
 
     /**
@@ -109,8 +122,9 @@ impl CookieJar {
     * Sec:
     *   - TODO: net/http cookie-jar rulebook — CookieHeader
     */
-    fn CookieHeader(url: URL) Result[string, CookieJarError] {
-        return Err(CookieJarError.NotImplemented)
+    fn CookieHeader(url: url.URL) Result[string, CookieJarError] {
+        // TODO: Implement http.CookieJar.CookieHeader
+        return Err(CookieJarError.DomainMismatch)
     }
 
     /**
@@ -126,6 +140,7 @@ impl CookieJar {
     *   - TODO: net/http cookie-jar rulebook — Expiry
     */
     fn RemoveExpired(now: datetime) Result[uint, CookieJarError] {
-        return Err(CookieJarError.NotImplemented)
+        // TODO: Implement http.CookieJar.RemoveExpired
+        return Err(CookieJarError.DomainMismatch)
     }
 }

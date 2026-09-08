@@ -1,0 +1,5 @@
+module module_siblings
+
+type Status int
+
+fn Code() Status { return Status(200) }

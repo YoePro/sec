@@ -1,1 +1,61 @@
 module http
+
+/*
+* Sec Standard Library - net/http - HTTP server and handler API
+*
+* File:        stdlib/net/http/server.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP server and handler API.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*   - RFC 9112
+*     https://www.rfc-editor.org/rfc/rfc9112
+*   - RFC 9113
+*     https://www.rfc-editor.org/rfc/rfc9113
+*   - RFC 9114
+*     https://www.rfc-editor.org/rfc/rfc9114
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+import (
+    "net/ip"
+)
+
+type ServerOptions struct {
+    Protocols: Protocols,
+    MaxRequestHeaderBytes: uint,
+    MaxRequestBodyBytes: Option[uint64],
+    MaxConcurrentRequests: uint,
+}
+
+interface Handler {
+    fn Handle(->request: ServerRequest, response: ref mut ResponseWriter) Result[void, error]
+}
+
+@noCopy
+type Server struct {
+    // Private listeners/transports/handler/connections.
+}
+
+impl Server {
+    static fn Bind(endpoint: ip.Endpoint, -> handler: Handler, options: ServerOptions) Result[Server, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+
+    fn Serve() Result[void, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+
+    fn Close() Result[void, ServerError] {
+        return Err(ServerError.ResourceLimitExceeded)
+    }
+}

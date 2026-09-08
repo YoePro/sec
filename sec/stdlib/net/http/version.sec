@@ -1,5 +1,29 @@
 module http
 
+/*
+* Sec Standard Library - net/http - HTTP protocol-version identity and enabled protocol sets
+*
+* File:        stdlib/net/http/version.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP protocol-version identity and enabled protocol sets.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*   - RFC 9113
+*     https://www.rfc-editor.org/rfc/rfc9113
+*   - RFC 9114
+*     https://www.rfc-editor.org/rfc/rfc9114
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
 type VersionNumber struct {
     Major: uint8,
     Minor: uint8,
@@ -12,6 +36,32 @@ enum Version {
     Http3,
 }
 
+impl Version {
+    fn ToString() string {
+        switch self {
+            case Version.Http10:
+                return "HTTP/1.0"
+            case Version.Http11:
+                return "HTTP/1.1"
+            case Version.Http2:
+                return "HTTP/2"
+            case Version.Http3:
+                return "HTTP/3"
+            default:
+                return "UNKNOWN"
+        }
+    }
+
+    property IsMultiplexed: bool {
+        get {
+            if self == Version.Http10 || self == Version.Http11 {
+                return false
+            }
+            return true
+        }
+    }
+}
+
 type Protocols struct {
     Http11: bool,
     Http2: bool,
@@ -19,6 +69,26 @@ type Protocols struct {
 }
 
 impl Protocols {
+
+    init() {
+        self.Http11 = true
+        self.Http2 = true
+        self.Http3 = true
+    }
+
+    // TODO: Validate http.Protocols.Validate()
+    fn Validate() Result[void, MessageError] {
+        if !self.Http11 && !self.Http2 && !self.Http3 {
+            return Err(MessageError.UnsupportedProtocol)
+        }
+        return Ok()
+    }
+
+    property Any: bool {
+        get {
+            return self.Http11 || self.Http2 || self.Http3
+        }
+    }
 
     static fn ClientDefault() Protocols {
         return Protocols{}

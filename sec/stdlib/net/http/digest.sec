@@ -1,1 +1,23 @@
 module http
+
+/*
+* Sec Standard Library - net/http - HTTP Content-Digest, Repr-Digest, and digest preferences
+*
+* File:        stdlib/net/http/digest.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP Content-Digest, Repr-Digest, and digest preferences.
+*
+* Standards:
+*   - RFC 9530
+*     https://www.rfc-editor.org/rfc/rfc9530
+*   - RFC 9651
+*     https://www.rfc-editor.org/rfc/rfc9651
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/

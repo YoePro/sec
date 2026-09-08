@@ -1,6 +1,24 @@
-// Sec Standard Library: net/http
-// File: body.sec
 module http
+
+/*
+* Sec Standard Library - net/http - Owned streaming HTTP message bodies
+*
+* File:        stdlib/net/http/body.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Owned streaming HTTP message bodies.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
 
 @noCopy
 type Body struct {
@@ -9,7 +27,11 @@ type Body struct {
 
 impl Body {
     init(data: byte[]) {
-        // TODO: Implement http.Body.init
+        // TODO: Implement http.Body.init(byte[])
+    }
+
+    init(data: string) {
+        // TODO: Implement http.Body.init(string)
     }
 
     static fn Empty() Body { return new Body() }
@@ -19,14 +41,29 @@ impl Body {
         return new Body(<-data)
     }
 
-    static fn FromString(text: string) Result[Body, BodyError]
+    // TODO: Implement http.Body.FromString()
+    static fn FromString(text: string) Result[Body, BodyError] {
+        return Ok(new Body())
+    }
 
+    // TODO: Implement http.Body.Length
     property Length: Option[uint64] { get { return 0u } }
+
+    // TODO: Implement http.Body.Replayable
     property Replayable: bool { get { return false } }
 
-    fn Read(buffer: ref mut byte[]) Result[uint, BodyError]
+    // TODO: Implement http.Body.Read()
+    fn Read(buffer: ref mut byte[]) Result[uint, BodyError] {
+        return Ok(0)
+    }
 
-    fn ReadAllToArray(limit: uint64) Result[byte[], BodyError]
+    // TODO: Implement http.Body.ReadAllToArray()
+    fn ReadAllToArray(limit: uint64) Result[byte[], BodyError] {
+        return Err(BodyError.Closed)
+    }
 
-    fn Close() Result[void, BodyError]
+    // TODO: Implement http.Body.Close()
+    fn Close() Result[void, BodyError] {
+        return Err(BodyError.Closed)
+    }
 }

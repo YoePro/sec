@@ -1,1 +1,23 @@
 module http
+
+/*
+* Sec Standard Library - net/http - HTTP/1.0 compatibility and HTTP/1.1 framing
+*
+* File:        stdlib/net/http/http1.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   HTTP/1.0 compatibility and HTTP/1.1 framing.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*   - RFC 9112
+*     https://www.rfc-editor.org/rfc/rfc9112
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/

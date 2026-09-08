@@ -274,14 +274,17 @@ type position struct {
 }
 
 type server struct {
-	in                *bufio.Reader //
-	out               io.Writer     //
-	documentSnapshots *lspserver.Documents
-	diagnosticTimers  map[string]*time.Timer //
-	diagnosticDelay   time.Duration          //
-	writeMu           sync.Mutex             //
-	timerMu           sync.Mutex             //
-	shutdown          bool                   //
+	in                   *bufio.Reader //
+	out                  io.Writer     //
+	documentSnapshots    *lspserver.Documents
+	diagnosticTimers     map[string]*time.Timer //
+	diagnosticGeneration map[string]uint64
+	diagnosticWorkMu     sync.Mutex
+	diagnosticsStopped   bool
+	diagnosticDelay      time.Duration //
+	writeMu              sync.Mutex    //
+	timerMu              sync.Mutex    //
+	shutdown             bool          //
 }
 
 type sourceOverlay = lspserver.SourceOverlay
@@ -321,6 +324,7 @@ func main() {
 }
 
 func (s *server) run() error {
+	defer s.stopDiagnosticTimers()
 	for {
 		message, err := protocol.ReadMessage(s.in)
 		if err == io.EOF {
@@ -401,7 +405,8 @@ func (s *server) handle(message rpcMessage) error {
 			return err
 		}
 		s.documentSnapshots.Open(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
-		return s.publishModuleDiagnostics(params.TextDocument.URI)
+		s.scheduleModuleDiagnostics(params.TextDocument.URI)
+		return nil
 	case "textDocument/didChange":
 		var params didChangeParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -429,7 +434,8 @@ func (s *server) handle(message rpcMessage) error {
 		}); err != nil {
 			return err
 		}
-		return s.publishModuleDiagnostics(params.TextDocument.URI)
+		s.scheduleModuleDiagnostics(params.TextDocument.URI)
+		return nil
 	case "textDocument/didSave":
 		var params didSaveParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -439,7 +445,8 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return nil
 		}
-		return s.publishModuleDiagnostics(snapshot.URI)
+		s.scheduleModuleDiagnostics(snapshot.URI)
+		return nil
 	case "textDocument/willSave":
 		var params willSaveParams
 		return json.Unmarshal(message.Params, &params)
@@ -989,6 +996,9 @@ func definitionTokenRange(token lexer.Token) lspRange {
 	return rng
 }
 
+// completeSource uses compiler type facts from the recoverable module AST to
+// complete the active cursor receiver, including incomplete source.
+// Rules: rules/tooling/lsp.md — "Completion" and "Recovery nodes".
 func completeSource(uri string, text string, offset int, overlays ...sourceOverlay) []completionItem {
 	context := completionContextAt(text, offset)
 	parseText := completionParseText(text, offset, context)
@@ -1000,10 +1010,14 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 	p := parser.New(l)
 	parseResult := p.Parse()
 	fileAST := parseResult.Program
+	var targetExpr ast.Expression
+	if context.Member {
+		targetExpr = findSelectorLHS(fileAST, text, context.DotOffset)
+	}
 
 	analyzer := newLSPAnalyzer(uri)
 	analyzed := false
-	if fileAST != nil && !parseResult.HasErrors {
+	if fileAST != nil && !parseResult.Fatal {
 		prepareProgramForLSP(fileAST, pathFromURI(uri), firstSourceOverlay(overlays))
 		analyzer.Analyze(fileAST)
 		analyzed = true
@@ -1016,7 +1030,6 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		if fileAST == nil || !analyzed {
 			return []completionItem{}
 		}
-		targetExpr := findSelectorLHS(fileAST, text, context.DotOffset)
 		if targetExpr == nil {
 			return []completionItem{}
 		}
@@ -2924,58 +2937,60 @@ func sortCompletionItems(items []completionItem) {
 	})
 }
 
-func (s *server) scheduleDiagnostics(uri string, text string) {
-	s.timerMu.Lock()
-	defer s.timerMu.Unlock()
-
-	if timer := s.diagnosticTimers[uri]; timer != nil {
-		timer.Stop()
-	}
-	s.diagnosticTimers[uri] = time.AfterFunc(s.diagnosticDelay, func() {
-		s.timerMu.Lock()
-		delete(s.diagnosticTimers, uri)
-		s.timerMu.Unlock()
-		_ = s.publishDiagnostics(uri, text)
-	})
-}
-
+// scheduleModuleDiagnostics coalesces all open siblings into one delayed job.
+// Rules: rules/tooling/lsp.md — "Responsiveness model".
 func (s *server) scheduleModuleDiagnostics(uri string) {
 	if s == nil || s.documentSnapshots == nil {
 		return
 	}
 	dir := normalizedSourcePath(filepath.Dir(pathFromURI(uri)))
-	for _, snapshot := range s.documentSnapshots.Snapshots() {
-		if normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI))) == dir {
-			s.scheduleDiagnostics(snapshot.URI, snapshot.Text)
-		}
+	s.timerMu.Lock()
+	defer s.timerMu.Unlock()
+	if s.diagnosticsStopped {
+		return
 	}
+	generation := s.invalidateDiagnosticJob(dir)
+	s.diagnosticTimers[dir] = time.AfterFunc(s.diagnosticDelay, func() {
+		if err := s.publishDiagnosticBatch(dir, generation); err != nil {
+			fmt.Fprintf(os.Stderr, "lsp diagnostics error: %v\n", err)
+		}
+		s.timerMu.Lock()
+		if s.diagnosticGeneration[dir] == generation {
+			delete(s.diagnosticTimers, dir)
+		}
+		s.timerMu.Unlock()
+	})
+}
+
+// invalidateDiagnosticJob requires timerMu and invalidates queued/running work.
+func (s *server) invalidateDiagnosticJob(dir string) uint64 {
+	if s.diagnosticTimers == nil {
+		s.diagnosticTimers = map[string]*time.Timer{}
+	}
+	if s.diagnosticGeneration == nil {
+		s.diagnosticGeneration = map[string]uint64{}
+	}
+	if timer := s.diagnosticTimers[dir]; timer != nil {
+		timer.Stop()
+		delete(s.diagnosticTimers, dir)
+	}
+	s.diagnosticGeneration[dir]++
+	return s.diagnosticGeneration[dir]
 }
 
 func (s *server) stopDiagnosticTimers() {
 	s.timerMu.Lock()
 	defer s.timerMu.Unlock()
-
-	for uri, timer := range s.diagnosticTimers {
-		timer.Stop()
-		delete(s.diagnosticTimers, uri)
+	s.diagnosticsStopped = true
+	for dir := range s.diagnosticGeneration {
+		s.invalidateDiagnosticJob(dir)
 	}
 }
 
 func (s *server) stopDiagnosticTimer(uri string) {
 	s.timerMu.Lock()
 	defer s.timerMu.Unlock()
-	if timer := s.diagnosticTimers[uri]; timer != nil {
-		timer.Stop()
-		delete(s.diagnosticTimers, uri)
-	}
-}
-
-func (s *server) publishDiagnostics(uri string, text string) error {
-	diagnostics := analyze(uri, text, s.sourceOverlay())
-	return s.notify("textDocument/publishDiagnostics", map[string]any{
-		"uri":         uri,
-		"diagnostics": diagnostics,
-	})
+	s.invalidateDiagnosticJob(normalizedSourcePath(filepath.Dir(pathFromURI(uri))))
 }
 
 func (s *server) publishModuleDiagnostics(uri string) error {
@@ -2983,22 +2998,21 @@ func (s *server) publishModuleDiagnostics(uri string) error {
 		return nil
 	}
 	dir := normalizedSourcePath(filepath.Dir(pathFromURI(uri)))
-	for _, snapshot := range s.documentSnapshots.Snapshots() {
-		if normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI))) != dir {
-			continue
-		}
-		if err := s.publishDiagnostics(snapshot.URI, snapshot.Text); err != nil {
-			return err
-		}
-	}
-	return nil
+	s.timerMu.Lock()
+	generation := s.invalidateDiagnosticJob(dir)
+	s.timerMu.Unlock()
+	return s.publishDiagnosticBatch(dir, generation)
 }
 
 func (s *server) republishOpenDiagnostics() error {
+	seen := map[string]bool{}
 	for _, snapshot := range s.documentSnapshots.Snapshots() {
-		if err := s.publishDiagnostics(snapshot.URI, snapshot.Text); err != nil {
-			return err
+		dir := normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI)))
+		if seen[dir] {
+			continue
 		}
+		seen[dir] = true
+		s.scheduleModuleDiagnostics(snapshot.URI)
 	}
 	return nil
 }
@@ -4080,179 +4094,49 @@ func readLSPAnalysisDepth(manifest string) (sema.AnalysisDepth, error) {
 	return sema.AnalysisInteractive, nil
 }
 
-// findSelectorLHS walks the AST and returns the expression that matches the selector
-// written immediately before the cursor, such as the "foo" in "foo.".
+// findSelectorLHS locates the receiver at the cursor's exact dot token in the
+// active AST, including nested calls and Result constructors. It runs before
+// module assembly so sibling source positions cannot select a different receiver.
+// Rules: rules/tooling/lsp.md — "Completion" and "Recovery nodes".
 func findSelectorLHS(node any, text string, dotOffset int) ast.Expression {
-	if isNilASTValue(node) {
+	if dotOffset < 0 || dotOffset >= len(text) || text[dotOffset] != '.' {
 		return nil
 	}
-
-	selectorText := selectorTextBeforeCursor(text, dotOffset)
-	if selectorText == "" {
-		return nil
-	}
-	if selectorText == "" {
-		return nil
-	}
-
-	switch n := node.(type) {
-	case *ast.Program:
-		for _, stmt := range n.Statements {
-			if found := findSelectorLHS(stmt, text, dotOffset); found != nil {
-				return found
+	var found ast.Expression
+	var visit func(reflect.Value)
+	visit = func(value reflect.Value) {
+		if found != nil || !value.IsValid() {
+			return
+		}
+		switch value.Kind() {
+		case reflect.Interface, reflect.Pointer:
+			if value.IsNil() {
+				return
 			}
-		}
-	case *ast.FunctionDeclaration:
-		if n == nil {
-			return nil
-		}
-		return findSelectorLHS(n.Body, text, dotOffset)
-	case *ast.ImplStatement:
-		if n == nil {
-			return nil
-		}
-		for _, member := range n.Members {
-			if found := findSelectorLHS(member, text, dotOffset); found != nil {
-				return found
-			}
-		}
-	case *ast.PropertyDeclaration:
-		if n == nil {
-			return nil
-		}
-		if found := findSelectorLHS(n.Getter, text, dotOffset); found != nil {
-			return found
-		}
-		if n.Setter != nil {
-			return findSelectorLHS(n.Setter.Body, text, dotOffset)
-		}
-	case *ast.InitDeclaration:
-		if n == nil {
-			return nil
-		}
-		return findSelectorLHS(n.Body, text, dotOffset)
-	case *ast.BlockStatement:
-		for _, stmt := range n.Statements {
-			if found := findSelectorLHS(stmt, text, dotOffset); found != nil {
-				return found
-			}
-		}
-	case *ast.LetStatement:
-		return findSelectorLHS(n.Value, text, dotOffset)
-	case *ast.ExpressionStatement:
-		return findSelectorLHS(n.Expression, text, dotOffset)
-	case *ast.AssertStatement:
-		return findSelectorLHS(n.Condition, text, dotOffset)
-	case *ast.AssignmentStatement:
-		return findSelectorLHS(n.Value, text, dotOffset)
-	case *ast.ReturnStatement:
-		return findSelectorLHS(n.Value, text, dotOffset)
-	case *ast.ImportStatement:
-		return nil
-	case *ast.IfStatement:
-		if found := findSelectorLHS(n.Condition, text, dotOffset); found != nil {
-			return found
-		}
-		if found := findSelectorLHS(n.Consequence, text, dotOffset); found != nil {
-			return found
-		}
-		return findSelectorLHS(n.Alternative, text, dotOffset)
-	case *ast.ForStatement:
-		if found := findSelectorLHS(n.Iterable, text, dotOffset); found != nil {
-			return found
-		}
-		if found := findSelectorLHS(n.Step, text, dotOffset); found != nil {
-			return found
-		}
-		return findSelectorLHS(n.Body, text, dotOffset)
-	case *ast.WhileStatement:
-		if found := findSelectorLHS(n.Condition, text, dotOffset); found != nil {
-			return found
-		}
-		return findSelectorLHS(n.Body, text, dotOffset)
-	case *ast.SwitchStatement:
-		if found := findSelectorLHS(n.Subject, text, dotOffset); found != nil {
-			return found
-		}
-		for _, clause := range n.Cases {
-			if clause != nil {
-				if found := findSelectorLHS(clause.Body, text, dotOffset); found != nil {
-					return found
+			if value.CanInterface() {
+				if member, ok := value.Interface().(*ast.MemberExpression); ok && member != nil {
+					if textPositionOffset(text, member.Token.Line, member.Token.Column) == dotOffset {
+						found = member.Object
+						return
+					}
 				}
 			}
-		}
-		if n.Default != nil {
-			return findSelectorLHS(n.Default.Body, text, dotOffset)
-		}
-	case *ast.SelectStatement:
-		for _, branch := range n.Branches {
-			if branch == nil {
-				continue
+			visit(value.Elem())
+		case reflect.Struct:
+			if value.Type().PkgPath() != "sec/internal/ast" {
+				return
 			}
-			if found := findSelectorLHS(branch.Value, text, dotOffset); found != nil {
-				return found
+			for i := 0; i < value.NumField(); i++ {
+				visit(value.Field(i))
 			}
-			if found := findSelectorLHS(branch.Body, text, dotOffset); found != nil {
-				return found
+		case reflect.Slice, reflect.Array:
+			for i := 0; i < value.Len(); i++ {
+				visit(value.Index(i))
 			}
 		}
-	case *ast.UnsafeStatement:
-		return findSelectorLHS(n.Body, text, dotOffset)
 	}
-
-	if expr, ok := node.(ast.Expression); ok {
-		if expr == nil {
-			return nil
-		}
-		if ident, ok := expr.(*ast.Identifier); ok && ident != nil && ident.Value == selectorText {
-			return expr
-		}
-		if member, ok := expr.(*ast.MemberExpression); ok && member != nil {
-			if member.Object != nil && member.Object.String() == selectorText {
-				return member.Object
-			}
-			if member.String() == selectorText {
-				return expr
-			}
-		}
-		if expr.String() == selectorText {
-			return expr
-		}
-	}
-
-	return nil
-}
-
-func isNilASTValue(node any) bool {
-	if node == nil {
-		return true
-	}
-	value := reflect.ValueOf(node)
-	return value.Kind() == reflect.Ptr && value.IsNil()
-}
-
-func selectorTextBeforeCursor(text string, dotOffset int) string {
-	if dotOffset < 0 || dotOffset > len(text) {
-		return ""
-	}
-	prefix := text[:dotOffset]
-	start := len(prefix)
-	for start > 0 {
-		ch := prefix[start-1]
-		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '.' {
-			start--
-			continue
-		}
-		break
-	}
-	selector := strings.TrimSpace(prefix[start:])
-	if selector == "" {
-		return ""
-	}
-	if lastDot := strings.LastIndex(selector, "."); lastDot >= 0 {
-		return selector[:lastDot]
-	}
-	return selector
+	visit(reflect.ValueOf(node))
+	return found
 }
 
 func importQualifier(stmt *ast.ImportStatement) string {

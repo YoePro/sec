@@ -1,1 +1,54 @@
 module http
+
+/*
+* Sec Standard Library - net/http - Small HTTP routing convenience layer
+*
+* File:        stdlib/net/http/router.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Small HTTP routing convenience layer.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+enum RouterError error {
+    InvalidPattern,
+    DuplicateRoute,
+    ConflictingRoute,
+}
+
+type RouteParam struct {
+    Name: string,
+    Value: string,
+}
+
+type RouteParams struct {
+    Values: RouteParam[],
+}
+
+@noCopy
+type Router struct {
+    // Private route table and owned handlers.
+}
+
+impl Router {
+    // TODO: Implement http.Router.Handle
+    fn Handle(method: Method, pattern: string, ->handler:  Handler) Result[void, RouterError] {
+        return Err(RouterError.InvalidPattern)
+    }
+
+    // TODO: Implement http.Router.HandleAny
+    fn HandleAny(pattern: string, ->handler: Handler) Result[void, RouterError] {
+        return Err(RouterError.InvalidPattern)
+    }
+
+}

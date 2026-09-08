@@ -1,5 +1,25 @@
 module http
 
+/*
+* Sec Standard Library - net/http - Cookie and Set-Cookie parsing
+*
+* File:        stdlib/net/http/cookie_parse.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Cookie and Set-Cookie parsing.
+*
+* Standards:
+*   - RFC 10025
+*     https://www.rfc-editor.org/info/rfc10025
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
 // Cookie parsing.
 //
 // Parsing is separated from cookie.sec because tolerant Internet input handling
@@ -16,16 +36,6 @@ module http
 // Sec rulebook:
 //     TODO: create the canonical net/http cookie parsing rulebook before this
 //     API is declared stable.
-
-enum CookieParseError error {
-    NotImplemented,
-    InvalidCookiePair,
-    InvalidSetCookie,
-    InvalidAttribute,
-    InvalidDate,
-    InvalidMaxAge,
-    AllocationFailed,
-}
 
 // Lazily parses cookie-pairs from one Cookie header value.
 //
@@ -87,7 +97,8 @@ impl extends SetCookie {
     *   - TODO: net/http cookie rulebook — Set-Cookie parsing
     */
     static fn Parse(value: string) Result[SetCookie, CookieParseError] {
-        return Err(CookieParseError.NotImplemented)
+        // TODO: Implement http.SetCookie.Parse
+        return Err(CookieParseError.TooLarge)
     }
 }
 

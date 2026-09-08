@@ -53,7 +53,7 @@ enum StatusClass {
 }
 
 /** HTTP Reply Status */
-type Status int range 100..999
+type Status int range 100..999 default 500
 
 impl Status {
 
@@ -137,160 +137,230 @@ impl Status {
     static let NotExtended: Status := 510
     static let NetworkAuthenticationRequired: Status := 511
 
-    property Class: StatusClass {
+    // TODO: Implement http.Status.ReasonPhrase
+    property ReasonPhrase: Option[string] {
         get {
-            return StatusClass.ServerError
+            return None
         }
     }
 
-    property IsInformational: bool { get { return false } }
-    property IsSuccess: bool { get { return false } }
-    property IsRedirection: bool { get { return false } }
-    property IsClientError: bool { get { return false } }
-    property IsServerError: bool { get { return false } }
+    // TODO: Validate http.Status.Class
+    property Class: StatusClass {
+        get {
+            switch self {
+                case 100..199:
+                    return StatusClass.Informational
+                case 200..299:
+                    return StatusClass.Success
+                case 300..399:
+                    return StatusClass.Redirection
+                case 400..499:
+                    return StatusClass.ClientError
+                case 500..599:
+                    return StatusClass.ServerError
+                default:
+                    return StatusClass.Extension
+            }
+        }
+    }
+
+    // TODO: Implement http.Status.IsRegistered
+    property IsRegistered: bool {
+        get {
+            return false
+        }
+    }
+
+    // TODO: Implement http.Status.IsTemporary
+    property IsTemporary: bool {
+        get {
+            return false
+        }
+    }
+
+    // TODO: Implement http.Status.IsObsolete
+    property IsObsolete: bool {
+        get {
+            return self == 510
+        }
+    }
+
+    // TODO: Validate http.Status.IsInformational
+    property IsInformational: bool {
+        get {
+            return self in 100..199
+        }
+    }
+    // TODO: Validate http.Status.IsSuccessful
+    property IsSuccess: bool {
+        get {
+            return self in 200..299
+        }
+    }
+
+    // TODO: Validate http.Status.IsRedirection
+    property IsRedirection: bool {
+        get {
+            return self in 300..399
+        }
+    }
+
+    // TODO: Validate http.Status.IsClientError
+    property IsClientError: bool {
+        get {
+            return self in 400..499
+        }
+    }
+
+    // TODO: Validate http.Status.IsServerError
+    property IsServerError: bool {
+        get {
+            return self in 500..599
+        }
+    }
 
     fn ToString() string {
         switch int(self) {
             // Informational
             case 100:
-                return "Continue"
+                return "100 Continue"
             case 101:
-                return "Switching Protocols"
+                return "101 Switching Protocols"
             case 102:
-                return "Processing"
+                return "102 Processing"
             case 103:
-                return "Early Hints"
+                return "103 Early Hints"
             case 104:
-                return "Upload Resumption Supported"
+                return "104 Upload Resumption Supported"
 
                 // Successful
             case 200:
-                return "Ok"
+                return "200 Ok"
             case 201:
-                return "Created"
+                return "201 Created"
             case 202:
-                return "Accepted"
+                return "202 Accepted"
             case 203:
-                return "Non-Authoritative Information"
+                return "203 Non-Authoritative Information"
             case 204:
-                return "No Content"
+                return "204 No Content"
             case 205:
-                return "Reset Content"
+                return "205 Reset Content"
             case 206:
-                return "Partial Content"
+                return "206 Partial Content"
             case 207:
-                return "Multi-Status"
+                return "207 Multi-Status"
             case 208:
-                return "Already Reported"
+                return "208 Already Reported"
             case 226:
-                return "IM Used"
+                return "226 IM Used"
 
                 // Redirection
             case 300:
-                return "Multiple Choices"
+                return "300 Multiple Choices"
             case 301:
-                return "Moved Permanently"
+                return "301 Moved Permanently"
             case 302:
-                return "Found"
+                return "302 Found"
             case 303:
-                return "See Other"
+                return "303 See Other"
             case 304:
-                return "Not Modified"
+                return "304 Not Modified"
             case 305:
-                return "Use Proxy"
+                return "305 Use Proxy"
             case 306:
-                return "Unused"
+                return "306 Unused"
             case 307:
-                return "Temporary Redirect"
+                return "307 Temporary Redirect"
             case 308:
-                return "Permanent Redirect"
+                return "308 Permanent Redirect"
 
                 // Client errors
             case 400:
-                return "Bad Request"
+                return "400 Bad Request"
             case 401:
-                return "Unauthorized"
+                return "401 Unauthorized"
             case 402:
-                return "Payment Required"
+                return "402 Payment Required"
             case 403:
-                return "Forbidden"
+                return "403 Forbidden"
             case 404:
-                return "Not Found"
+                return "404 Not Found"
             case 405:
-                return "Method Not Allowed"
+                return "405 Method Not Allowed"
             case 406:
-                return "Not Acceptable"
+                return "406 Not Acceptable"
             case 407:
-                return "Proxy Authentication Required"
+                return "407 Proxy Authentication Required"
             case 408:
-                return "Request Timeout"
+                return "408 Request Timeout"
             case 409:
-                return "Conflict"
+                return "409 Conflict"
             case 410:
-                return "Gone"
+                return "410 Gone"
             case 411:
-                return "Length Required"
+                return "411 Length Required"
             case 412:
-                return "Precondition Failed"
+                return "412 Precondition Failed"
             case 413:
-                return "Content Too Large"
+                return "413 Content Too Large"
             case 414:
-                return "URI Too Long"
+                return "414 URI Too Long"
             case 415:
-                return "Unsupported Media Type"
+                return "415 Unsupported Media Type"
             case 416:
-                return "Range Not Satisfiable"
+                return "416 Range Not Satisfiable"
             case 417:
-                return "Expectation Failed"
+                return "417 Expectation Failed"
             case 418:
-                return "Teapot"
+                return "418 Teapot"
             case 421:
-                return "Misdirected Request"
+                return "421 Misdirected Request"
             case 422:
-                return "Unprocessable Content"
+                return "422 Unprocessable Content"
             case 423:
-                return "Locked"
+                return "423 Locked"
             case 424:
-                return "Failed Dependency"
+                return "424 Failed Dependency"
             case 425:
-                return "Too Early"
+                return "425 Too Early"
             case 426:
-                return "Upgrade Required"
+                return "426 Upgrade Required"
             case 428:
-                return "Precondition Required"
+                return "428 Precondition Required"
             case 429:
-                return "Too Many Requests"
+                return "429 Too Many Requests"
             case 431:
-                return "Request Header Fields Too Large"
+                return "431 Request Header Fields Too Large"
             case 451:
-                return "Unavailable For Legal Reasons"
+                return "451 Unavailable For Legal Reasons"
 
                 // Server errors
             case 500:
-                return "Internal Server Error"
+                return "500 Internal Server Error"
             case 501:
-                return "Not Implemented"
+                return "501 Not Implemented"
             case 502:
-                return "Bad Gateway"
+                return "502 Bad Gateway"
             case 503:
-                return "Service Unavailable"
+                return "503 Service Unavailable"
             case 504:
-                return "Gateway Timeout"
+                return "504 Gateway Timeout"
             case 505:
-                return "HTTP Version Not Supported"
+                return "505 HTTP Version Not Supported"
             case 506:
-                return "Variant Also Negotiates"
+                return "506 Variant Also Negotiates"
             case 507:
-                return "Insufficient Storage"
+                return "507 Insufficient Storage"
             case 508:
-                return "Loop Detected"
+                return "508 Loop Detected"
             case 510:
-                return "Not Extended"
+                return "510 Not Extended"
             case 511:
-                return "Network Authentication Required"
+                return "511 Network Authentication Required"
 
             default:
-                return ""
+                return self.ToString()
         }
     }
 

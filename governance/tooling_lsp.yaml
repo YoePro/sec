@@ -1,4 +1,80 @@
 schema_version: 1
 area: tooling-lsp
 purpose: Language-server behavior, protocol integration, and editor actions.
-integrations: []
+integrations:
+  - id: tooling.lsp-type-member-completion
+    area: tooling
+    status: implemented
+    integrated: "2026-08-29"
+    summary: >-
+      Completes type-qualified aggregate member discovery so enum namespaces
+      expose every declared enum member and union namespaces expose every
+      declared variant while preserving the language's static/instance split.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/declarations/enums.md
+      - rules/declarations/unions.md
+      - rules/declarations/static.md
+    code:
+      - cmd/lsp/main.go
+    tests:
+      - cmd/lsp/main_test.go
+      - testdata/module_siblings/completion.sec
+      - testdata/module_siblings/completion_types.sec
+    implemented:
+      - Method. completion returns all compiler-resolved enum members with EnumMember kind and the owning enum as detail
+      - union type completion returns payload-less, single-payload, and struct-like declared variants from Sema type facts
+      - stored struct and register fields remain instance-only while legal static properties, methods, storage, and compiler-known members remain type-qualified
+      - enum members and union variants are no longer incorrectly offered on value receivers
+      - prefix filtering and deterministic completion sorting remain shared with ordinary member completion
+      - nested selectors inside Result constructors and calls resolve by the exact active-file dot token before sibling assembly
+      - recovered active source and disk or unsaved sibling declarations retain compiler-owned enum, union, and struct completion
+    verification:
+      - command: go test ./cmd/lsp -run 'TestCompletion(ReturnsEnumMembersAndUnionVariantsAfterTypeDot|SeparatesStaticAndInstanceMembers|ReturnsStructMembersAfterDot)' -count=1
+        result: passed
+
+      - command: go test ./cmd/lsp -run 'TestCompletion|TestFindSelector' -count=1
+        result: passed, including nested same-module members and recovered active declarations
+      - command: go test ./...
+        result: passed
+
+  - id: tooling.lsp-module-diagnostic-scheduling
+    area: tooling
+    status: partial
+    integrated: "2026-09-08"
+    summary: >-
+      Coalesces open-document diagnostics by directory module and analyzes each
+      represented module once, avoiding repeated whole-module Sema work for every
+      open sibling. Diagnostic work is serialized and obsolete jobs are rejected.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/projects/modules.md
+    code:
+      - cmd/lsp/main.go
+      - cmd/lsp/diagnostics_batch.go
+    tests:
+      - cmd/lsp/main_test.go
+      - cmd/lsp/diagnostics_batch_test.go
+      - testdata/module_siblings/completion_types.sec
+    implemented:
+      - open, change, save, close and configuration refresh use a debounced module job without blocking the protocol loop on diagnostic analysis
+      - one Sema pass per directory/module routes errors and warnings to all open source documents while keeping parser recovery suppression source-local
+      - jobs run serially and generation checks reject obsolete queued jobs before analysis and obsolete results before publication
+      - changes to any captured open document invalidate publication, and diagnostics include the captured document version
+      - shutdown and transport EOF stop pending jobs and prevent later diagnostic publication
+      - foreign modules remain separate and unsaved overlays remain authoritative
+    remaining:
+      - cooperative cancellation inside an already-running compiler analysis
+      - shared immutable analysis caching across completion, hover, navigation and semantic-token requests
+      - complete CompilationPlan-aware dependency invalidation and scheduling
+    verification:
+      - command: go test ./cmd/lsp -run 'TestDiagnosticBatch|TestModuleDiagnostics' -bench BenchmarkModuleDiagnostics -benchtime=1x -count=1
+        result: passed; 16-document fixture measured 1042 ms for individual analyses versus 65 ms for the batch in one local run
+      - command: temporary TestHTTPDiagnosticsProbe against current sec/stdlib/net/http sources
+        result: passed; 27 documents analyzed in one batch in 153 ms without a crash
+      - command: go test -race ./cmd/lsp ./internal/lsp/server
+        result: passed
+      - command: go test ./...
+        result: passed
+      - command: temporary stdio protocol probe against rebuilt bin/lsp-sec
+        result: 27 HTTP file opens plus 20 rapid changes produced 27 versioned publications in 0.75 seconds including debounce; shutdown and exit succeeded with empty stderr

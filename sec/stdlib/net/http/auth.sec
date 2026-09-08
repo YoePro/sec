@@ -1,1 +1,48 @@
 module http
+
+/*
+* Sec Standard Library - net/http - Generic HTTP authentication values plus Basic and Bearer helpers
+*
+* File:        stdlib/net/http/auth.sec
+* Module:      http
+* Revision:    2
+* Updated:     2026-09-08
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Generic HTTP authentication values plus Basic and Bearer helpers.
+*
+* Standards:
+*   - RFC 9110
+*     https://www.rfc-editor.org/rfc/rfc9110
+*   - RFC 7617
+*     https://www.rfc-editor.org/rfc/rfc7617
+*   - RFC 6750
+*     https://www.rfc-editor.org/rfc/rfc6750
+*   - IANA HTTP Authentication Scheme Registry
+*     https://www.iana.org/assignments/http-authschemes
+*
+* Registry:
+*   IANA HTTP Authentication Scheme Registry — https://www.iana.org/assignments/http-authschemes
+*   Registry synchronized: 2026-09-08
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+
+type AuthScheme string
+
+impl AuthScheme {
+    static let Basic := "Basic"
+    static let Digest := "Digest"
+    static let Bearer := "Bearer"
+}
+
+type AuthChallenge struct {
+    Scheme: AuthScheme,
+    Parameters: HeaderValue,
+}
+
+fn BasicAuthorization(username: string, password: string) Result[HeaderValue, AuthError] {
+    return Err(AuthError.)
+}

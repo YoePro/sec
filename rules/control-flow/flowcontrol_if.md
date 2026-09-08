@@ -8,6 +8,7 @@
 - **Canonical path:** `rules/control-flow/flowcontrol_if.md`
 - **Replaces:** `rules/control-flow/flowcontrol_if.txt`
 - **Repository baseline reviewed:** `0f92cf4`
+- **Implementation governance:** `governance/control_flow.yaml`
 
 ## 1. Purpose
 

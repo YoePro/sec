@@ -8,6 +8,7 @@
 - **Canonical path:** `rules/types/units.md`
 - **Replaces:** `rules/types/units.txt`
 - **Repository baseline reviewed:** `20b3606`
+- **Implementation governance:** `governance/types.yaml`
 
 ---
 

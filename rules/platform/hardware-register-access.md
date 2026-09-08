@@ -7,6 +7,7 @@
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `6a63b37`
 - **Canonical path:** `rules/platform/hardware-register-access.md`
+- **Implementation governance:** `governance/platform.yaml`
 - **Related rulebooks:** `rules/declarations/registers.md`, `rules/platform/volatile.md`, `rules/platform/fixed-address-bindings.md`, `rules/platform/target_profiles.md`, `rules/memory/storage.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/memory/raw_pointers.md`
 
 ## 1. Purpose

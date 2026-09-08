@@ -1,4 +1,193 @@
 schema_version: 1
 area: declarations
 purpose: Declarations, members, modules, names, scopes, and visibility.
-integrations: []
+integrations:
+  - id: frontend.functions-v2
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Tracks revision-2.0 ordinary functions, parameter ownership contracts,
+      deterministic call entry, overloads, and native typed variadics. The
+      established parser and Sema cover explicit ordinary declarations,
+      signatures, bodies, calls, overloads, returns, generics, fixed-array
+      spread, and receiver contracts. Owned by-value parameter bindings now
+      have the required callee-local mutability and call ownership is committed
+      only after every source argument has analyzed successfully; consuming
+      arrow parameters and native typed variadics now have verified parser and
+      Sema slices, while complete callable/backend ownership metadata remains
+      major work.
+    rules:
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/spread.md
+      - rules/foundations/grammar.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/errors/errorhandling.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/parser/variadic_parameters_test.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/variadic_parameters_test.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/parameter_usage.go
+      - internal/formatter/formatter.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - ordinary named fn declarations with mandatory explicit return types and bodies
+      - parameter parsing including canonical name colon ref Type and name colon ref mut Type, trailing commas, duplicate diagnostics, resolved parameter and result types, and function-local scopes
+      - signature registration before body analysis, including direct and mutual recursion
+      - single-value returns, explicit void, result-type checking, and reachable-path return diagnostics
+      - basic overload sets distinguished by parameter signature with return types excluded as discriminators
+      - exact matches preferred over conversions and ambiguity and no-match diagnostics
+      - generic function templates, full explicit specialization, argument inference, expected-result inference, and concrete instance caching
+      - implicit concrete method receivers plus explicit shared, mutable, and static interface receiver contracts in the pre-ownership-v2 implementation
+      - calls retain resolved concrete callable and call-dispatch facts for Sema, LSP, and call-graph consumers
+      - call and spread-source expressions are analyzed left-to-right
+      - outer-call move transfer is applied only after all arguments analyze successfully, so a failed later argument does not consume an earlier direct binding
+      - fixed-array argument spread with exactly-once source analysis, increasing-index expansion, and copyability checks
+      - owned by-value parameters are mutable callee-local bindings while shared and mutable-reference parameter bindings remain non-rebindable
+      - "forced-consuming `-> name: T` parameter parsing and AST/Sema retention for ordinary, generic, method, interface, initializer, and lambda parameter-list consumers"
+      - forced consumption marks copyable as well as move-only caller Places unavailable only after successful outer-call argument analysis
+      - direct call arguments parse explicit `<-`, require it for reusable Places passed to ordinary move-only or explicit `->` parameters, preserve marker-free fresh temporaries, and commit explicit transfer only after complete successful outer-call analysis
+      - ordinary by-value calls copy reusable copyable Places, reject unmarked reusable move-only Places instead of silently consuming them, and permit explicit `<-` to force transfer of copyable Places
+      - consuming ref and ref mut parameter rejection with dedicated diagnostics
+      - rejection of overload pairs differing only by ordinary versus consuming parameter mode
+      - interface requirements and concrete conformance preserve consuming parameter contracts independently of receiver capability
+      - formatter preservation and canonical spacing for consuming parameter arrows
+      - "LSP function and initializer hover labels expose `-> name: T` from compiler-owned resolved signatures"
+      - parameter-usage analysis records forced-consuming call demand
+      - parameter mutability facts flow from Sema into LSP semantic-token readonly classification without LSP-owned language reconstruction
+      - ordinary move-only by-value arguments consume the caller at successful call entry while reference parameters borrow
+      - canonical type-position ref and ref mut call parameters remain borrows during successful argument transfer and do not move caller Places
+      - standalone discardable call results and compiler-known must-use result categories participate in Sema validation
+      - native final `name: ...T` parameter parsing for ordinary Sec functions, methods, and interface requirements, with parser/Sema rejection of non-final, duplicate, consuming, and reference pack forms
+      - compiler-known call-lifetime variadic pack types that remain distinct from arrays, slices, and foreign varargs and expose read-only Len, indexing, iteration, and re-spread behavior without Ptr
+      - variadic pack escape, direct pack reference exposure, mutation, and move-out rejection in Sema
+      - direct zero-or-more typed variadic arguments, generic instantiation, runtime-length array/slice/pack spread sources, multiple mixed spread sources, and fixed-arity preference over equally ranked variadic overloads
+      - variadic callable shape retained by inferred function values, callable identity, compatibility, and concrete generic instances
+    remaining:
+      - accept optional `return <-value` with the same result ownership as `return value`
+      - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
+      - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
+      - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
+      - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
+      - make receiver-capability inference distinguish shared and mutable/exclusive ordinary methods, member ownership effects, and complete interface conformance for every parameter ownership and variadic contract
+      - represent parameter modes, strict argument order, delayed transfer commit, cleanup edges, and native packs explicitly in Semantic IR
+      - lower calls and native packs through Sec MLIR and LLVM without hidden heap allocation or confusion with foreign varargs
+      - add exact revision-2.0 diagnostics and the full parser, Sema, ownership, formatter, LSP, Semantic IR, ABI, and backend test matrix from functions.md
+    excluded:
+      - ordinary bodyless prototypes
+      - multiple return values
+      - consuming native variadic parameter syntax
+      - runtime-generic callables or unresolved overload sets as function values
+      - native variadic ABI equivalence with C or foreign varargs
+    verification:
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Consuming|FunctionHoverShowsConsuming|OwnedParameters|CanonicalReferenceTypeCallArguments' -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseNativeVariadic|ParseRejectsNonFinalNativeVariadic|NativeVariadic)' -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
+        result: passed
+
+  - id: frontend.lambda-functions-v2
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Tracks revision-2.0 lambdas, first-class callable capabilities, explicit
+      capture modes, and closure ownership. Basic anonymous functions, function
+      values and calls, explicit plain captures, lambda scopes and returns, and
+      non-capturing backend lowering already exist. Owned by-value lambda
+      parameters are now mutable like ordinary function parameters. Shared,
+      mutable, and consuming callable capabilities are preserved across syntax,
+      AST, semantic type identity, formatting, and compiler-owned LSP facts.
+      Capability inference and compatibility, capture modes beyond plain value
+      capture, escaping environments, and complete closure lowering remain
+      substantial work.
+    rules:
+      - rules/declarations/lambda-functions.md
+      - rules/declarations/functions.md
+      - rules/declarations/generics.md
+      - rules/foundations/grammar.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/analysis/closure_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/types.go
+      - internal/formatter/formatter.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+      - testdata/lambda_valid.sec
+      - testdata/lambda_invalid.sec
+    implemented:
+      - anonymous `fn` expressions with explicit typed parameters, explicit result type, and block body
+      - basic `fn(ParameterTypes) ReturnType` types, named function values, target-directed overload selection, and function-value calls
+      - parser and AST retention of shared `fn`, mutable `mut fn`, and consuming `-> fn` callable type capabilities independently of parameter ownership
+      - semantic callable capability identity, exact equality, generic substitution matching, and canonical `fn`, `mut fn`, and `-> fn` display names
+      - compiler-owned normalized callable capability facts for shared, mutable/exclusive, and owned consuming invocation authority
+      - formatter preservation and canonical spacing of all three callable type prefixes without changing the plain `fn` lambda introducer
+      - LSP hover presentation of capability spelling, invocation authority, and successful-call consumption from compiler-owned Sema facts
+      - explicit plain-name capture lists with duplicate, undefined-name, parameter-conflict, and implicit-capture diagnostics
+      - exactly-once plain capture analysis for the currently represented symbol subset and compiler-owned capture facts consumed by escape analysis
+      - lambda-local scope, return validation, and control-flow boundary handling
+      - shared parser and AST retention of consuming lambda parameter syntax
+      - owned by-value lambda parameters are mutable local bindings while reference parameters remain non-rebindable
+      - selected rejection of local-reference escape through captured lambdas
+      - non-capturing lambda lowering through the maintained backends
+    remaining:
+      - infer callable capability from environment mutation and consumption and enforce capability compatibility
+      - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
+      - parse, represent, format, and expose `capture(<-value)`, `capture(ref value)`, and `capture(ref mut value)` while rejecting stale `capture(-> value)`
+      - enforce plain `capture(value)` as copy-only and reject non-copyable reusable sources instead of silently moving them
+      - make owned capture bindings mutable and connect their mutation to `mut fn` inference
+      - force transfer for consuming captures even when their values are copyable
+      - establish shared and mutable capture borrows with canonical Place, provenance, lifetime, and conflict checking
+      - classify closure copyability and movability from capture modes, captured types, and callable capability
+      - consume `-> fn` closures only after successful calls and reject reuse
+      - allow owned closure environments to escape and allow borrowed environments only within valid borrow lifetimes
+      - select compiler-managed environment storage without implicit source-level allocation semantics
+      - implement native typed variadic lambdas after the functions-v2 variadic pack model exists
+      - add dedicated rejection and diagnostics for generic lambdas, attributes, arbitrary capture expressions, shorthand bodies, and direct recursive initializer binding
+      - represent function values, captures, capability, ownership, lifetime, escape class, and closure calls in Semantic IR
+      - lower capturing environments and indirect calls through Sec MLIR and LLVM without assuming foreign callback ABI compatibility
+      - complete the revision-2.0 parser, Sema, ownership, borrow, escape, formatter, LSP, analysis, Semantic IR, and backend test matrix
+    excluded:
+      - implicit local capture
+      - generic lambda templates and contextual omission of parameter or return types
+      - expression-body or arrow-only lambda shorthand
+      - arbitrary capture expressions and lambda attributes
+      - direct recursive self-binding syntax
+      - callable equality, ordering, or null callable values
+    verification:
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Lambda|FunctionType|CallableCapability|OwnedLambdaParameter' -count=1
+        result: passed

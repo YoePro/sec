@@ -7,6 +7,7 @@
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `45e5cd4`
 - **Canonical path:** `rules/platform/target_profiles.md`
+- **Implementation governance:** `governance/platform.yaml`
 
 ## 1. Purpose
 

@@ -7,6 +7,7 @@
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `fc8d632`
 - **Canonical path:** `rules/platform/volatile.md`
+- **Implementation governance:** `governance/platform.yaml`
 
 ## 1. Purpose
 

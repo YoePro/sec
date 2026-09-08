@@ -6,6 +6,7 @@
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/platform_model.md`
+- **Implementation governance:** `governance/platform.yaml`
 
 ---
 
@@ -35,7 +36,8 @@ or runtime support, but they must not silently change the meaning of otherwise
 portable Sec source code.
 
 Mutable implementation progress does not belong in this rulebook. Repository
-implementation state is tracked by the repository-level `implementation-status.yaml`.
+implementation state for the platform model is tracked by
+`governance/platform.yaml`.
 
 ---
 

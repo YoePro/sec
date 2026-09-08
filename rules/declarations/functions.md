@@ -7,6 +7,7 @@
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions.txt`
 - **Canonical path:** `rules/declarations/functions.md`
+- **Implementation governance:** `governance/declarations.yaml`
 
 ## 1. Purpose
 

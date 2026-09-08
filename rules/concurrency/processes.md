@@ -6,6 +6,7 @@
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Canonical path:** `rules/concurrency/processes.md`
+- **Implementation governance:** `governance/concurrency_process.yaml`
 - **Replaces:** Earlier placeholder process rulebook
 
 ## 1. Purpose

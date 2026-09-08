@@ -8,6 +8,7 @@
 - **Canonical path:** `rules/control-flow/flowcontrol_while.md`
 - **Replaces:** `rules/control-flow/flowcontrol_while.txt`
 - **Repository baseline reviewed:** `56be75d`
+- **Implementation governance:** `governance/control_flow.yaml`
 
 ## 1. Purpose
 

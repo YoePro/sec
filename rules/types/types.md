@@ -6,6 +6,7 @@
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
+- **Implementation governance:** `governance/types.yaml`
 - **Replaces:** `rules/types/types.txt`
 
 ## Purpose

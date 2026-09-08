@@ -1,3 +1,17 @@
+// Sec Standard Library: net/http
+// File: header.sec
+//
+// Standards:
+//   RFC 9110 - HTTP Semantics
+//   https://www.rfc-editor.org/rfc/rfc9110
+//
+//   RFC 9651 - Structured Field Values for HTTP
+//   https://www.rfc-editor.org/rfc/rfc9651
+//
+// Registry:
+//   IANA HTTP Field Name Registry
+//   https://www.iana.org/assignments/http-fields
+//   Registry synchronized: 2026-09-07
 module http
 
 // One normalized HTTP field name/value occurrence.

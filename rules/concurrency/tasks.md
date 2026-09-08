@@ -6,6 +6,7 @@
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/tasks.md`
+- **Implementation governance:** `governance/concurrency_task.yaml`
 - **Replaces:** `rules/concurrency/tasks.txt`
 - **Repository baseline reviewed:** `777beb8`
 - **Related rulebooks:** `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/threads.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/control-flow/discard.md`

@@ -7,6 +7,7 @@
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `998d8d1`
 - **Canonical path:** `rules/platform/inline_assembly.md`
+- **Implementation governance:** `governance/platform.yaml`
 - **Related rulebooks:** `rules/memory/unsafe.md`, `rules/platform/platform_model.md`, `rules/platform/target_profiles.md`, `rules/platform/volatile.md`, `rules/platform/hardware-register-access.md`, `rules/platform/interrupts.md`, `rules/platform/ffi.md`, `rules/memory/memory_model.md`, `rules/memory/raw_pointers.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/copy_move.md`, `rules/memory/destruction.md`, `rules/analysis/effect_analysis.md`, `rules/analysis/isr_analysis.md`, `rules/analysis/stack_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`
 
 ## 1. Purpose

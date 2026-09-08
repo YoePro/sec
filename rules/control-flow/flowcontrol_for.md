@@ -8,6 +8,7 @@
 - **Canonical path:** `rules/control-flow/flowcontrol_for.md`
 - **Replaces:** `rules/control-flow/flowcontrol_for.txt`
 - **Repository baseline reviewed:** `998d8d1`
+- **Implementation governance:** `governance/control_flow.yaml`
 
 ---
 

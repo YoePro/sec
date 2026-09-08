@@ -1,4 +1,60 @@
 schema_version: 1
 area: governance
 purpose: Governance, rulebook consistency, and implementation traceability.
-integrations: []
+integrations:
+  - id: governance.source-rulebook-traceability
+    area: compiler-implementation-governance
+    status: implemented
+    introduced_by: correction25.md
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: Establish a general Sec implementation traceability rule. Where applicable, every source file and every
+      function that implements, validates, analyzes, or lowers normative Sec behavior must identify in comments the
+      canonical rulebook(s) and the specific rule/section(s) it implements. Narrow functions should cite precise rules;
+      broad cross-cutting functions may cite several books or higher-level sections. Pure non-normative infrastructure
+      may use a documented exception.
+    canonical_destination:
+    - rules/README.md
+    required_policy:
+    - file-level comments identify principal normative rulebook owners
+    - function-level comments identify the most precise practical rule or section owners
+    - multiple materially relevant rulebooks are listed rather than forcing a false single owner
+    - canonical rulebook paths are used
+    - stable rule IDs or section headings/numbers are preferred over source line numbers
+    - comments are updated in the same change when semantic ownership changes
+    - rulebook moves/replacements require source-reference migration
+    - comments are traceability metadata and never override normative rulebooks
+    - genuinely non-normative infrastructure may be exempt where no useful rule mapping exists
+    - focused semantic regression tests should cite their rule and correction where practical
+    implemented:
+    - canonical implementation traceability policy is defined in rules/README.md
+    - preferred Go and Sec source-reference forms are documented
+    - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
+    remaining:
+    - decide whether lint/CI should verify traceability on new or modified semantic functions
+    - migrate high-value semantic files incrementally
+    - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
+    - add correction references to focused regression tests where useful
+    audit_targets:
+    - source: correction28.md
+      functions:
+      - inferArenaCall
+      - Arena Reset/Release dependency validation helpers
+      - Arena generation and epoch validity helpers
+      - dependency-liveness and last-use integration
+    - source: correction29.md
+      functions:
+      - builtinTypes
+      - copyClassificationOf
+      - triviallyDestructible
+      - inferArenaConstructorCall
+      - inferArenaCall
+      - ArenaDomain creation, transfer, epoch, and borrowed-backing helpers
+    - source: correction27.md
+      functions:
+      - validateCompilerKnownGenericType
+      - validateCompilerKnownTypeArity
+      - static shaped product and Len validation
+      - contextualMatrixMultiplyAhead
+      - curPrecedence
+      - inferMatrixMultiplyExpression

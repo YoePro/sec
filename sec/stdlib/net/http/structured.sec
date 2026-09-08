@@ -1,1 +1,53 @@
+// Sec Standard Library: net/http
+// File: structured.sec
 module http
+
+type StructuredBareItem union {
+    Integer(int64),
+    Decimal(decimal),
+    String(string),
+    Token(string),
+    ByteSequence(byte[]),
+    Boolean(bool),
+    Date(datetime),
+    DisplayString(string),
+}
+
+type StructuredParameter struct {
+    Key: string,
+    Value: StructuredBareItem,
+}
+
+type StructuredItem struct {
+    Value: StructuredBareItem,
+    Parameters: StructuredParameter[],
+}
+
+type StructuredInnerList struct {
+    Items: StructuredItem[],
+    Parameters: StructuredParameter[],
+}
+
+type StructuredMember union {
+    Item(StructuredItem),
+    InnerList(StructuredInnerList),
+}
+
+type StructuredList struct {
+    Members: StructuredMember[],
+}
+
+type StructuredDictionaryMember struct {
+    Key: string,
+    Value: StructuredMember,
+}
+
+type StructuredDictionary struct {
+    Members: StructuredDictionaryMember[],
+}
+
+fn ParseStructuredItem(value: HeaderValue) Result[StructuredItem, StructuredFieldError]
+
+fn ParseStructuredList(value: HeaderValue) Result[StructuredList, StructuredFieldError]
+
+fn ParseStructuredDictionary(value: HeaderValue) Result[StructuredDictionary, StructuredFieldError]

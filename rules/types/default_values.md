@@ -6,6 +6,7 @@
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/default_values.md`
+- **Implementation governance:** `governance/types.yaml`
 
 ## Status
 
@@ -42,8 +43,8 @@ type Port int range 1..65535 default 8080
 Its grammar is `"default" ConstantExpression`, after every type contract in a
 named-type declaration.
 
-Implementation progress is tracked exclusively by `frontend.default-values` in
-`implementation-status.yaml`.
+Implementation progress is tracked by `frontend.default-values` and
+`frontend.default-values-inherited-membership` in `governance/types.yaml`.
 
 ---
 

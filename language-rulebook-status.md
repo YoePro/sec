@@ -15,11 +15,14 @@ repository-root path is written explicitly.
 
 It does not claim that a written rulebook has been implemented by the compiler.
 
-Implementation progress is governed by:
+Implementation progress is governed by the split ledger under:
 
 ```text
-implementation-status.yaml
+governance/
 ```
+
+`implementation-status.yaml` is retained as a migration source for entries that
+have not yet moved into a governance fragment.
 
 Rulebooks contain normative requirements and must not duplicate the current
 repository implementation state. Existing status sections are migrated one
@@ -111,10 +114,10 @@ These were written after the older temporary checklist was last synchronized.
 |---|---|---|
 | `foundations/language_philosophy.md` | **Written** | Core language direction and design principles. |
 | `foundations/lexical_structure.md` | **Written** | Canonical lexical rules; Go frontend NFC identifier validation and balanced interpolation-expression lexing are implemented. Interpolation AST parts, expression parsing, and source ranges are implemented; bootstrap normalization and interpolation semantic processing/lowering remain pending. Implementation status is tracked by `frontend.lexical-structure` in `implementation-status.yaml`. Lexer escape validation is implemented with L1006-L1008 diagnostics and preserved source spans. |
-| `types/types.md` | **Written** | Canonical replacement for the retired `types.txt`; implementation is tracked by `frontend.types-core`, `frontend.literal-family-suffix-v2`, `frontend.temporal-builtin-types`, and `frontend.wide-numeric-language-types`. |
-| `types/contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. |
-| `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics, including declared-member defaults for integer-, string-, and bit-backed enums. |
-| `types/units.md` | **Written** | Canonical revision 2.0 carrier-independent unit model; implementation progress is tracked by `frontend.units-v2` and `stdlib.units-catalog` in `implementation-status.yaml`. |
+| `types/types.md` | **Written** | Canonical replacement for the retired `types.txt`; implementation is tracked by `frontend.types-core`, `frontend.literal-family-suffix-v2`, `frontend.temporal-builtin-types`, `frontend.wide-numeric-language-types`, and `frontend.target-sized-integer-semantics` in `governance/types.yaml`. |
+| `types/contracts.md` | **Written** | Canonical named-type contracts; replaces the obsolete variable-contract model. Implementation progress is tracked by `frontend.type-contracts-v2` in `governance/types.yaml`. |
+| `types/default_values.md` | **Written** | Canonical primitive, constrained, aggregate, list and explicit-default semantics, including declared-member defaults for integer-, string-, and bit-backed enums. Implementation progress is tracked by `frontend.default-values` and `frontend.default-values-inherited-membership` in `governance/types.yaml`. |
+| `types/units.md` | **Written** | Canonical revision 2.0 carrier-independent unit model; implementation progress is tracked by `frontend.units-v2` and `frontend.units-declaration-authority` in `governance/types.yaml`; the standard unit catalog remains tracked by `stdlib.units-catalog` until stdlib governance migration. |
 | `foundations/grammar.md` | **Written** | Canonical grammar distinguishes instance let from explicitly static impl bindings. |
 | `foundations/operators.md` | **Written** | Canonical operator semantics; compiler progress belongs in `implementation-status.yaml`. |
 | `foundations/names_scopes_visibility.md` | **Written** | Static and instance bindings require different receivers and share the combined member-name namespace; remaining visibility audit is tracked separately. |
@@ -185,8 +188,8 @@ LSP token classification
 | `declarations/enums.md` | **Written** | Revision 2.1 adds compile-time generic nominal enum templates and concrete owner identity while retaining the closed integer/string and open bit-backed enum model. Implementation is tracked by `frontend.enums` and `frontend.generics-v2`. |
 | `declarations/unions.md` | **Written** | Canonical closed nominal unions, payload construction, explicit defaults, empty initialization state, matching, ownership, equality, generics, recursion, and representation requirements. Implementation is tracked by `frontend.unions`. |
 | `declarations/registers.md` | **Written** | Canonical nominal `register[N]` types, logical bit layout, nested registers, field access semantics, conversions, and impl eligibility. Implementation is tracked by `frontend.registers`. |
-| `declarations/functions.md` | **Written** | Canonical revision 2.0 functions, owned/borrowed/consuming parameters, call-transfer commit, overloads, and native typed variadics. Frontend and lowering progress is tracked by `frontend.functions-v2`. Ordinary bodyless signatures receive P2019 with return-sensitive help; legal extern/interface signatures are exempt. |
-| `declarations/lambda-functions.md` | **Written** | Canonical revision 2.0 lambda, capture, callable-capability, and closure rulebook. Frontend and lowering progress is tracked by `frontend.lambda-functions-v2`. |
+| `declarations/functions.md` | **Written** | Canonical revision 2.0 functions, owned/borrowed/consuming parameters, call-transfer commit, overloads, and native typed variadics. Frontend and lowering progress is tracked by `frontend.functions-v2` in `governance/declarations.yaml`. Ordinary bodyless signatures receive P2019 with return-sensitive help; legal extern/interface signatures are exempt. |
+| `declarations/lambda-functions.md` | **Written** | Canonical revision 2.0 lambda, capture, callable-capability, and closure rulebook. Frontend and lowering progress is tracked by `frontend.lambda-functions-v2` in `governance/declarations.yaml`. |
 | `lambdas.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
 | `closures.md` | **Covered** | Covered by `declarations/lambda-functions.md`; no duplicate rulebook expected. |
 | `declarations/generics.md` | **Written** | Canonical revision 2.1 compile-time type generics, now including generic enums with phantom nominal identity parameters, concrete member owners, ordinary generic impl scope, and no runtime generic machinery. Implementation progress is tracked by `frontend.generics-v2`. |
@@ -195,12 +198,12 @@ LSP token classification
 | `declarations/properties.md` | **Written** | Canonical property declarations, explicit setter parameters, fallible setters, impl fragments, static properties, and interface requirements. Frontend progress is tracked by `frontend.properties`. |
 | `control-flow/defer.md` | **Written** | Canonical revision 2.0 invocation-scoped deferred cleanup, unified LIFO ordering with automatic destruction, lifetime extension, forbidden control transfer, and callable-context boundaries. Implementation progress is tracked by `frontend.defer-v2`. |
 | `declarations/spread.md` | **Written** | Canonical postfix spread for fixed-array calls/literals and same-type struct construction. Frontend progress is tracked by `frontend.spread`. |
-| `control-flow/flowcontrol_if.md` | **Written** | Canonical revision 2.0 `if`/`else if`/`else` semantics, boolean-only conditions, short-circuiting, state-test boundaries, branch flow, and diagnostics. Implementation progress is tracked by `frontend.if-statements-v2`. |
-| `control-flow/flowcontrol_for.md` | **Written** | Revision 2.1 adds explicit compiler-known `Iterator[T]` conformance and static `Next() Option[T]` iteration without runtime dispatch; infinite, range, collection, ownership, flow, and cleanup rules remain canonical. Implementation progress is tracked by `frontend.for-loops-v2`. |
+| `control-flow/flowcontrol_if.md` | **Written** | Canonical revision 2.0 `if`/`else if`/`else` semantics, boolean-only conditions, short-circuiting, state-test boundaries, branch flow, and diagnostics. Implementation progress is tracked by `frontend.if-statements-v2` in `governance/control_flow.yaml`. |
+| `control-flow/flowcontrol_for.md` | **Written** | Revision 2.1 adds explicit compiler-known `Iterator[T]` conformance and static `Next() Option[T]` iteration without runtime dispatch; infinite, range, collection, ownership, flow, and cleanup rules remain canonical. Implementation progress is tracked by `frontend.for-loops-v2` in `governance/control_flow.yaml`. |
 | `flowcontrol_for_1.txt` | **Covered** | Merged into `control-flow/flowcontrol_for.md`; no separate rulebook remains in `rules/`. |
-| `control-flow/flowcontrol_while.md` | **Written** | Canonical revision 2.0 condition-controlled loops, boolean conditions, loop-control targets, non-continuing loops, flow merging, and explicit Sec 0.1 exclusions. Implementation progress is tracked by `frontend.while-statements-v2`. |
-| `control-flow/flowcontrol_switch.md` | **Written** | Canonical revision 2.0 subject and subjectless switches, ordered value/range/relational cases, explicit fallthrough, case flow, and statement-only boundaries. Implementation progress is tracked by `frontend.switch-statements-v2`. |
-| `control-flow/flowcontrol_match.md` | **Written** | Canonical revision 2.0 structural and variant matching, exhaustiveness, guarded ownership commit, contextual arm-block values, union empty state, and match/LSP facts. Implementation progress is tracked by `frontend.match-v2`. |
+| `control-flow/flowcontrol_while.md` | **Written** | Canonical revision 2.0 condition-controlled loops, boolean conditions, loop-control targets, non-continuing loops, flow merging, and explicit Sec 0.1 exclusions. Implementation progress is tracked by `frontend.while-statements-v2` in `governance/control_flow.yaml`. |
+| `control-flow/flowcontrol_switch.md` | **Written** | Canonical revision 2.0 subject and subjectless switches, ordered value/range/relational cases, explicit fallthrough, case flow, and statement-only boundaries. Implementation progress is tracked by `frontend.switch-statements-v2` in `governance/control_flow.yaml`. |
+| `control-flow/flowcontrol_match.md` | **Written** | Canonical revision 2.0 structural and variant matching, exhaustiveness, guarded ownership commit, contextual arm-block values, union empty state, and match/LSP facts. Implementation progress is tracked by `frontend.match-v2` in `governance/control_flow.yaml`. |
 
 ---
 
@@ -211,7 +214,7 @@ LSP token classification
 | `collections/collections.md` | **Written** | Canonical fixed-array, owning dynamic-array, slice, list, map, and set semantics. |
 | `collections/shaped-types.md` | **Written** | Canonical runtime/static shaped values, affine views, layout, storage requests and transfer, broadcasting, vector/matrix algebra, and contraction semantics. Implementation progress is tracked by `frontend.shaped-types` in `implementation-status.yaml`. |
 | `declarations/spread.md` | **Written** | Fixed-array expansion and struct construction integration. Frontend progress is tracked by `frontend.spread`. |
-| `control-flow/flowcontrol_for.md` | **Written** | Canonical compiler-known collection, shaped-value, and explicit `Iterator[T]` iteration; implementation progress is tracked by `frontend.for-loops-v2`. |
+| `control-flow/flowcontrol_for.md` | **Written** | Canonical compiler-known collection, shaped-value, and explicit `Iterator[T]` iteration; implementation progress is tracked by `frontend.for-loops-v2` in `governance/control_flow.yaml`. |
 
 The first-class language types are expected to include:
 
@@ -371,7 +374,7 @@ implementation remains tracked separately.
 | `concurrency/concurrency.md` | **Written** | Canonical revision 2.1 umbrella model synchronized with task v2, process v2, execution-kind boundaries, transferability, race/deadlock ownership, Semantic IR, and immutable `CompilationPlan`-driven lowering. Implementation is tracked by `concurrency.model-v2` and the specialist governance entries. |
 | `concurrency/concurrency_memory_model.md` | **Written** | Revision 2.0 defines exact MemoryOrder, per-atomic modification order, release sequences, compare-exchange paths, fences, completion publication, and analysis/lowering obligations. |
 | `concurrency/concurrency_runtime_model.md` | **Written** | Canonical no-required-runtime profile model, runtime capability surface, task/thread/process/context errors, and target-selected lowering boundaries. |
-| `concurrency/tasks.md` | **Written** | Canonical revision 2.0 task semantics: fallible task spawn, move-only lifecycle ownership, `TaskOutcome[T]`, cancellation, panic/execution-failure separation, observers, transferability, Semantic IR, and runtime-independent lowering. Implementation is tracked by `concurrency.tasks-v2`. |
+| `concurrency/tasks.md` | **Written** | Canonical revision 2.0 task semantics: fallible task spawn, move-only lifecycle ownership, `TaskOutcome[T]`, cancellation, panic/execution-failure separation, observers, transferability, Semantic IR, and runtime-independent lowering. Implementation is tracked by `concurrency.tasks-v2` in `governance/concurrency_task.yaml`. |
 | `concurrency/spawn.md` | **Written** | All spawn forms are fallible; `spawn process` yields `Result[Process[T], ProcessSpawnError]` with process-specific transactional transfer. |
 | `concurrency/await.md` | **Written** | Canonical task-only await semantics producing `TaskOutcome[T]`, with cancellation and panic outcomes preserved distinctly. |
 | `concurrency/threads.md` | **Written** | Canonical physical-thread model, `Thread[T]` lifecycle, `ThreadContext`, `Thread.Current().CancelRequested`, cooperative cancellation, join/detach/termination, target capability and runtime boundaries. |
@@ -388,7 +391,7 @@ implementation remains tracked separately.
 | `concurrency/select.md` | **Written** | Includes selectable owning Process join and repeatable non-owning ProcessObserver.Wait semantics. |
 | `concurrency/mutex.md` | **Written** | Revision 2.0 defines canonical Lock overloads, @noCopy guards, forwarding, Context ownership, duration/Instant, and cancellation commit semantics. |
 | `concurrency/atomics.md` | **Written** | Revision 2.0 defines canonical Atomic[T], MemoryOrder, CompareExchangeResult[T], CamelCase operations, fences, and target-capability separation. |
-| `concurrency/processes.md` | **Written** | Revision 2.0 is the normative Sec 0.1 model for Process[T], Command, lifecycle/completion, standard I/O, target capabilities, analysis, and lowering; compiler/runtime implementation remains planned. |
+| `concurrency/processes.md` | **Written** | Revision 2.0 is the normative Sec 0.1 model for Process[T], Command, lifecycle/completion, standard I/O, target capabilities, analysis, and lowering; compiler/runtime implementation remains planned and is tracked by `concurrency.processes-v2` in `governance/concurrency_process.yaml`. |
 | `ipc.md` | **Planned** | Planned owner of PipeReader/PipeWriter, general inter-process messaging, shared memory, process-aware synchronization, capability/handle transfer, and existing-resource Command standard-I/O binding. |
 
 Threads are considered design-complete for Sec 0.1.
@@ -412,14 +415,14 @@ IPC does not block the immediate language closure.
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `types/types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `implementation-status.yaml`. |
+| `types/types.md` | **Written** | Canonical fundamental, scalar, temporal, named, collection-shaped, and declaration type contract; implementation status is maintained in `governance/types.yaml`. |
 | `declarations/generics.md` | **Written** | Type-generic declarations, parameters, constraints, inference, generic enums/interfaces/named types/methods, and template-level validity. Canonical concrete specialization is owned by `compiler/monomorphization.md`; compile-time value parameters still require separate normative semantics. |
 | `declarations/interfaces.md` | **Written** | Interface declarations, generic constraints, and compiler-known `Iterator[T]`; implementation progress is tracked by `frontend.interfaces` and `frontend.for-loops-v2`. |
 | `declarations/impl.md` | **Written** | Corrected static/instance distinction: bare let is instance-owned; explicit static let is type-owned. Per-instance storage implementation remains pending. |
 | `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties`. |
 | `library/core-library.md` | **Written** | Compiler-known core declarations, privileged impl access, source-visible compiler/core identity, and required language-level core errors. |
 | `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, fallback-versus-authoritative policy, universal `ToString() string`, property-only `SizeOf`, complete compiler-known declaration governance, core boundary, and tooling behavior. Initial Sema/LSP registry integration remains partial. |
-| `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts, including the canonical `stdlib/hw` area and reserved `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart` infrastructure, plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Hardware-bus APIs, allocating complete-file APIs, and directory-list APIs remain pending. |
+| `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts, including the canonical `stdlib/hw` area and reserved `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart` infrastructure, plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Hardware-bus governance is tracked by `stdlib.hardware-bus-infrastructure` in `governance/stdlib.yaml`; allocating complete-file APIs and directory-list APIs remain pending. |
 
 Built-in lowercase types may receive privileged implementations in core.
 
@@ -521,14 +524,14 @@ from the presence of a versioned document.
 | Rulebook | Status | Notes |
 |---|---|---|
 | `platform/ffi.md` | **Written** | Canonical revision 2.0 foreign declarations, C ABI type families, data representations, callbacks, varargs, strings, ownership, effects, symbols, and legality. Implementation progress is tracked by `frontend.ffi-v2`. |
-| `platform/fixed-address-bindings.md` | **Written** | Canonical `@address`, MMIO volatility, binding mutability, validation, overlap, and addressed-access semantics. Implementation is tracked by `frontend.fixed-address-bindings`. |
+| `platform/fixed-address-bindings.md` | **Written** | Canonical `@address`, MMIO volatility, binding mutability, validation, overlap, and addressed-access semantics. Implementation is tracked by `frontend.fixed-address-bindings` in `governance/platform.yaml`. |
 | `platform/abi.md` | **Written** | Canonical Sec, C, and system ABI families; plan-selected classification, call plans, signatures, fingerprints, MLIR staging, and separate-compilation compatibility. Implementation is tracked by `lowering.abi-model`. |
-| `platform/target_profiles.md` | **Written** | Canonical Hosted, RTOS, and BareMetal profile families; capability activation, execution and safety policy, typed resource limits, derived profiles, immutable resolved identity, provenance, fingerprints, and compiler-consumer queries. Implementation is tracked by `platform.target-profiles`. |
-| `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model`. |
-| `platform/volatile.md` | **Written** | Canonical volatile physical-access semantics, mandatory `@address` region validation, explicit raw volatile operations, physical access contracts, optimizer invariants, representation eligibility, lowering, diagnostics, and tooling. Compiler-known RawPtr volatile methods, unsafe/non-void frontend validation, effect facts, and shared LSP exposure are implemented; target validation and lowering remain under `platform.volatile`. |
-| `platform/hardware-register-access.md` | **Written** | Canonical logical hardware-register access, safe implicit observation, explicit `Read()`/`Write()`, shadow state, resource/endpoint identity, transaction planning, width/alignment/footprints, ordering/completion, access context, runtime mappings, faults, and verified IR/lowering. Implementation is tracked by `platform.hardware-register-access`. |
-| `platform/inline_assembly.md` | **Written** | Canonical revision 1.0 inline-assembly operands, constraints, clobbers, effects, control-flow/stack boundaries, symbol dependencies, target restrictions, and lowering contract. Implementation progress is tracked by `platform.inline-assembly-v1`. |
-| `platform/interrupts.md` | **Written** | Canonical interrupt identities/binding, ISR roots, priority/preemption/nesting/masking, classes and lifecycle, configuration capabilities, ISR-safe execution, concurrency/stack integration, startup/linking, diagnostics, tooling, and completion. Implementation is tracked by `platform.interrupts-v1`. |
+| `platform/target_profiles.md` | **Written** | Canonical Hosted, RTOS, and BareMetal profile families; capability activation, execution and safety policy, typed resource limits, derived profiles, immutable resolved identity, provenance, fingerprints, and compiler-consumer queries. Implementation is tracked by `platform.target-profiles` in `governance/platform.yaml`. |
+| `platform/platform_model.md` | **Written** | Canonical Target/Variant terminology, immutable CompilationPlan resolution, typed platform submodels, capabilities, source selection, fingerprints, diagnostics, and LSP invalidation. Implementation is tracked by `compiler.platform-model` in `governance/platform.yaml`. |
+| `platform/volatile.md` | **Written** | Canonical volatile physical-access semantics, mandatory `@address` region validation, explicit raw volatile operations, physical access contracts, optimizer invariants, representation eligibility, lowering, diagnostics, and tooling. Compiler-known RawPtr volatile methods, unsafe/non-void frontend validation, effect facts, and shared LSP exposure are implemented; target validation and lowering remain under `platform.volatile` in `governance/platform.yaml`. |
+| `platform/hardware-register-access.md` | **Written** | Canonical logical hardware-register access, safe implicit observation, explicit `Read()`/`Write()`, shadow state, resource/endpoint identity, transaction planning, width/alignment/footprints, ordering/completion, access context, runtime mappings, faults, and verified IR/lowering. Implementation is tracked by `platform.hardware-register-access` in `governance/platform.yaml`. |
+| `platform/inline_assembly.md` | **Written** | Canonical revision 1.0 inline-assembly operands, constraints, clobbers, effects, control-flow/stack boundaries, symbol dependencies, target restrictions, and lowering contract. Implementation progress is tracked by `platform.inline-assembly-v1` in `governance/platform.yaml`. |
+| `platform/interrupts.md` | **Written** | Canonical interrupt identities/binding, ISR roots, priority/preemption/nesting/masking, classes and lifecycle, configuration capabilities, ISR-safe execution, concurrency/stack integration, startup/linking, diagnostics, tooling, and completion. Implementation is tracked by `platform.interrupts-v1` in `governance/platform.yaml`. |
 | `analysis/isr_analysis.md` | **Written** | Compiler verification for profile-scoped interrupt safety using canonical analysis results; implementation status is tracked by `sema.isr-analysis`. |
 
 This group is a central remaining language-closure block.

@@ -7,6 +7,7 @@
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `fafd8cb`
 - **Canonical path:** `rules/platform/interrupts.md`
+- **Implementation governance:** `governance/platform.yaml`
 
 ## 1. Purpose
 

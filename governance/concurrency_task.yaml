@@ -1,4 +1,102 @@
 schema_version: 1
 area: concurrency-task
 purpose: Tasks, task handles, and task outcomes.
-integrations: []
+integrations:
+  - id: concurrency.tasks-v2
+    area: concurrency
+    feature: task-language-semantics
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "2.0"
+    repository_baseline: 777beb8
+    summary: >-
+      Tracks revision-2 task creation, move-only lifecycle ownership,
+      TaskOutcome terminal semantics, observers, transferability, Semantic IR,
+      lowering, and runtime-independent target behavior. Current frontend
+      support models Task[T], TaskOutcome[T], and several lifecycle operations.
+      Spawn typing still uses the older direct-Task[T] model.
+    rules:
+      - rules/concurrency/tasks.md
+      - rules/concurrency/spawn.md
+      - rules/concurrency/await.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/concurrency_runtime_model.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/memory/ownership.md
+      - rules/memory/transferability.md
+      - rules/errors/panic.md
+      - rules/compiler/semantic_ir.md
+      - rules/control-flow/discard.md
+      - rules/concurrency/concurrency.md
+    governance_reconciliation:
+      - concurrency.md follows task v2 fallible creation and await Task[T] to TaskOutcome[T], including Panicked(PanicInfo) and Failed(TaskError).
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/ir/semantic
+      - internal/lowering/secmlir
+      - sec/core/error.sec
+      - sec/core/task.sec
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/concurrency_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    normative:
+      - "Task[T] is a move-only owning lifecycle handle."
+      - "spawn Work() and spawn task Work() have raw type Result[Task[T], TaskSpawnError]."
+      - "TaskSpawnError is distinct from failures of an already-created task."
+      - "await Task[T] always yields TaskOutcome[T]."
+      - "TaskOutcome[T] has Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError)."
+      - "A task function returning Result[V,E] completes normally as Completed(Result[V,E]); Err(E) is not task execution failure."
+      - "TaskError is the umbrella error type for execution failure of an already-created task; its complete variant set is not frozen here."
+      - "Task lifecycle ownership must be resolved through await, join, detach, or ownership transfer."
+      - "Observers are non-owning and must not duplicate lifecycle responsibility."
+      - "Task boundary ownership and borrowing are constrained by transferability analysis."
+    implemented:
+      - "Task[T] is represented as a compiler-known generic task type in the frontend model."
+      - "Task handles are treated as non-copyable and move-only in existing semantic checks."
+      - "Frontend lifecycle checking rejects unresolved local task handles on supported control-flow paths."
+      - "Detach syntax and explicit discard forms have frontend support."
+      - "Spawned callable and lambda task forms have parser and frontend support."
+      - "Current-task context has partial frontend support for spawned lambda analysis."
+      - "TaskOutcome[T], TaskSpawnError, TaskError, and PanicInfo are compiler-known frontend identities shared with LSP consumers."
+      - "Awaiting Task[T] consumes the handle and has invariant static type TaskOutcome[T]."
+      - "TaskOutcome[Result[V,E]] preserves the complete nested Result type."
+      - "TaskOutcome[void] retains four variants while Completed is normalized to a payload-less variant."
+      - "LSP hover consumes the shared Sema await type and exposes TaskOutcome[T] without a parallel task-typing path."
+      - "Core declares the canonical TaskOutcome[T] union and the closed TaskSpawnError error enum without requiring runtime support."
+      - "Only loader-proven core sources may refine the compiler-known TaskOutcome and TaskSpawnError identities."
+    remaining:
+      - "synchronize parser and Sema typing of every task-spawn form to Result[Task[T], TaskSpawnError] instead of the current direct Task[T] paths"
+      - "implement terminal outcome production for Completed, Cancelled, Panicked, and Failed"
+      - "add a core TaskError declaration after the grammar can represent its normative still-open variant inventory without inventing variants"
+      - "add a core PanicInfo declaration after panic.md fixes its exact public shape or another canonical opaque declaration form is available"
+      - "synchronize join semantics and terminal-value extraction with move-only payload rules"
+      - "complete TaskObserver semantics and non-owning restrictions"
+      - "complete path-sensitive task lifecycle analysis across every control-flow construct"
+      - "complete transferability checks for owned values, borrows, captures, detach, and migration"
+      - "represent task creation, lifecycle, outcome, cancellation, panic, failure, await, join, and detach explicitly in Semantic IR"
+      - "lower task operations through the selected target/runtime model without host leakage or a mandatory universal runtime"
+      - "add diagnostics that distinguish spawn failure, cancellation, panic, task execution failure, and Completed(Err(E))"
+    required_tests:
+      - "all task spawn expressions type as Result[Task[T], TaskSpawnError]"
+      - "try spawn Work() unwraps successful creation and propagates TaskSpawnError under ordinary Result rules"
+      - "await Task[T] types exactly as TaskOutcome[T], including when normal completion is statically proven"
+      - "normal return produces Completed(T)"
+      - "Task[Result[T,E]] returning Err(E) produces Completed(Err(E)), not Failed(TaskError)"
+      - "cooperative cancellation produces Cancelled without fabricating T"
+      - "recoverable task-boundary panic produces Panicked(PanicInfo) under the selected panic policy"
+      - "execution failure after successful creation produces Failed(TaskError)"
+      - "Task[T] cannot be copied for any T and reusable-source transfer uses canonical explicit move syntax"
+      - "owning task handles cannot silently leave scope unresolved"
+      - "observers cannot await, join as owner, detach, or take a move-only completion value"
+      - "value-returning detached tasks require the canonical explicit discard form when applicable"
+    verification:
+      - command: go test ./internal/sema ./cmd/lsp -run 'Test(Spawn|Await|TaskOutcome|HoverUsesCompilerOwnedTaskOutcomeType|SelectValidChannelBranches|SelectRejectsDuplicateTaskBranch|CancelInsideSpawnedLambdaIsAllowed)' -count=1
+        result: passed
+      - command: go test ./...
+        result: passed

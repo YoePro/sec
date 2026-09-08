@@ -1,4 +1,27 @@
 schema_version: 1
 area: stdlib
 purpose: Standard-library implementation and catalog status.
-integrations: []
+integrations:
+  - id: stdlib.hardware-bus-infrastructure
+    area: standard-library
+    status: planned
+    reviewed: "2026-08-28"
+    summary: >-
+      Tracks the canonical runtime-independent stdlib/hw area and reusable,
+      target-aware bus/controller infrastructure reserved for SPI, I2C, I2S,
+      and UART above compiler/core hardware-register semantics.
+    rules:
+      - rules/library/stdlib.md
+      - rules/platform/hardware-register-access.md
+      - rules/platform/target_profiles.md
+    remaining:
+      - define the public ownership, borrowing, failure, effect, target-availability, ordering, completion, blocking, suspension, and allocation contracts for hw/spi
+      - define the corresponding public contracts for hw/i2c
+      - define the corresponding public contracts for hw/i2s
+      - define the corresponding public contracts for hw/uart
+      - select ordinary Sec, compiler-known, intrinsic, Semantic IR/MLIR, FFI, or platform implementations per target without changing public contracts
+      - implement and test direct bare-metal/RTOS realizations without an intrinsic general-runtime dependency
+      - implement hosted realizations only where the selected target profile exposes a compatible platform/OS facility
+      - keep device-specific addressing, register indexes, command protocols, polling, reset, and initialization in drivers or device libraries
+    corrections_applied:
+      - rules/corrections/applied/stdlib-hw-correction-20260828.md

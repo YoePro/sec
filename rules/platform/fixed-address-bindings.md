@@ -6,6 +6,7 @@
 **Replaces:** `rules/platform/registers.txt`  
 **Document revision:** 2
 **Sec language version:** 0.1
+**Implementation governance:** `governance/platform.yaml`
 
 ## 1. Purpose
 

@@ -6,6 +6,7 @@
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/contracts.md`
+- **Implementation governance:** `governance/types.yaml`
 - **Replaces:** `rules/types/variable-contracts.txt`
 
 ---

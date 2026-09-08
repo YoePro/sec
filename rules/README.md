@@ -1,9 +1,11 @@
 # Sec rulebooks
 
+- **Implementation governance:** `governance/governance.yaml`
+
 This directory contains the normative Sec language and compiler rulebooks.
 `language-rulebook-status.md` in the repository root is the canonical inventory
 of written, planned, living, and deferred documents. Implementation progress
-belongs in `implementation-status.yaml`.
+belongs in the applicable canonical fragment under `governance/`.
 
 ## Directory map
 

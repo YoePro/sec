@@ -1,5 +1,11 @@
 # Sec Standard Library
 
+## Implementation governance
+
+Hardware-bus implementation status is tracked by
+`governance/stdlib.yaml`. Other standard-library status remains in its owning
+governance fragment until migrated.
+
 ## Purpose
 
 The Sec standard library provides reusable modules, nominal types, algorithms,

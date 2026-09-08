@@ -1,3 +1,5 @@
+// Sec Standard Library: net/http
+// File: header.sec
 module http
 
 enum HeaderError error {

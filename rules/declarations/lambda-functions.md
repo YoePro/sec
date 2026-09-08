@@ -7,6 +7,7 @@
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions_lambda.txt`
 - **Canonical path:** `rules/declarations/lambda-functions.md`
+- **Implementation governance:** `governance/declarations.yaml`
 
 ## 1. Purpose
 

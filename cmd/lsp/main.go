@@ -5073,6 +5073,9 @@ func parserDiagnostic(message string) diagnostic {
 
 func structuredParserDiagnostic(value parser.Diagnostic) diagnostic {
 	result := parserDiagnostic(value.Message)
+	if value.Help != "" {
+		result.Message += "\n\nhelp: " + value.Help
+	}
 	result.Code = value.ID
 	if value.ID == diagnostics.ParserSyntaxError {
 		return result

@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-atomics
+purpose: Atomic operations and concurrency memory ordering.
+integrations: []

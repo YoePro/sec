@@ -1,0 +1,173 @@
+schema_version: 1
+area: errors
+purpose: Result/error handling, panic, assertions, and unreachable behavior.
+integrations:
+  - id: frontend.panic
+    area: panic-assert-unreachable-frontend
+    status: partial
+    document_revision: "2.1"
+    reviewed: "2026-09-07"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/errors/runtime_checks.md
+      - rules/foundations/attributes.md
+    implemented:
+      - canonical assert statement AST and parsing support both Sec 0.1 forms, including optional comma plus string-literal metadata
+      - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
+      - semantic analysis requires the assertion condition to have exact bool type without truthiness conversion
+      - focused parser and semantic tests cover accepted forms and the locked syntax/type diagnostics
+    remaining:
+      - add exact compiler-known/core PanicID uint32 and PanicInfo { ID, File, Line, Column, Function } declarations with one shared Sema/LSP identity
+      - implement stable panic-reason registry assignments and allocation-free canonical PanicInfo construction
+      - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
+      - represent assertion source metadata/message and AssertionFailed reason
+      - implement assertion refinement using canonical semantic facts
+      - classify unproven assertions as MayPanic and remove panic effect after complete proof
+      - implement checked unreachable as defined panic semantics rather than backend undefined behavior
+      - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
+      - keep explicit panic syntax unimplemented until its separate grammar decision is locked
+    required_tests:
+      - assert condition parses
+      - assert condition, message-literal parses
+      - formatter preserves comma form
+      - assertion message without comma rejected
+      - non-bool assertion rejected
+      - dynamic assertion message rejected in Sec 0.1
+      - proven assertion refines later analysis
+      - unproven assertion records MayPanic
+      - reachable unreachable records MayPanic
+
+  - id: analysis.panic
+    area: panic-effects-and-no-panic-proof
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/analysis/effect_analysis.md
+      - rules/platform/interrupts.md
+    implemented:
+      - compiler-owned callable effect summaries record direct checked-arithmetic and fixed-array-bounds MayPanic sites
+      - deterministic transitive synchronous cause paths exist for the implemented checked-arithmetic and fixed-array-bounds verticals
+      - handled or propagated arithmetic and fixed-array bounds try removes only its own resolved panic path while preserving nested operand-call panic effects
+      - argument-free @noPanic on functions and methods verifies the currently modeled direct and transitive arithmetic/bounds effects with cause locations
+    remaining:
+      - integrate assertions, checked unreachable, contracts, invalid-reference generation, foreign abort, and future explicit panic into the existing canonical panic-effect model
+      - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
+      - version and validate separate-compilation panic summaries
+      - preserve detailed panic causes and source provenance
+      - distinguish child-domain contained panic from synchronous parent panic effect according to concurrency rules
+      - feed canonical panic facts into ISR analysis, target-profile validation, LSP, and call hierarchy
+    required_tests:
+      - direct assertion MayPanic
+      - transitive assertion MayPanic
+      - proven assertion removes panic effect
+      - recursive noPanic convergence
+      - unknown indirect or foreign behavior is conservative
+      - ISR root reports transitive panic path
+
+  - id: semantic-ir.panic
+    area: semantic-ir-panic
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/compiler/semantic_ir.md
+    implemented:
+      - typed arithmetic failure reasons and panic-related effect metadata exist in the maintained checked-arithmetic Semantic IR and Sec MLIR vertical
+      - fixed-array ordinary failure is represented by terminating fail.bounds with fixed-array-index provenance while fallible bounds flow remains typed IndexError
+    remaining:
+      - add canonical assertion check representation with AssertionFailed reason and static message or ID metadata
+      - add checked-unreachable representation that remains defined until proven or lowered through panic endpoint
+      - represent canonical panic reason, source provenance, and relevant execution-domain facts
+      - represent panic and noPanic verification facts needed by later stages
+      - represent cleanup and containment relationships where required
+      - verify contradictory panic/noPanic facts before lowering
+    required_tests:
+      - unproven assertion emits explicit Semantic IR check
+      - proven assertion emits no panic operation but keeps required refinement
+      - checked unreachable retains defined panic reason
+      - static assertion message or ID preserved without allocation
+      - invalid contradictory panic facts rejected
+
+  - id: lowering.panic
+    area: panic-lowering-runtime-free-endpoints
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/mlir/sec_mlir_lowering.md
+    implemented:
+      - maintained checked-integer Sec MLIR path has typed failure-reason flow and MayPanic cause information
+    remaining:
+      - lower assertion failure to selected non-returning panic endpoint without dynamic allocation
+      - lower checked unreachable through defined panic endpoint before backend unreachable unless statically eliminated
+      - preserve stable panic reason IDs and static source or message metadata
+      - implement target-profile root panic endpoint selection
+      - implement managed task or thread containment outcomes when their concurrency vertical exists
+      - preserve selected cleanup policy without introducing implicit general unwinding runtime
+      - remove panic support completely from binaries proven panic-free where linkage and reachability permit
+    required_tests:
+      - assert false reaches AssertionFailed endpoint
+      - assertion message path performs no heap allocation
+      - reachable unreachable reaches UnreachableReached endpoint
+      - backend unreachable never replaces an unmaterialized defined panic path
+      - bare-metal root panic needs no general runtime
+      - panic-free binary can omit panic endpoint
+
+  - id: platform.panic
+    area: panic-target-isr-policy
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/platform/interrupts.md
+    implemented:
+      - interrupts.md normatively requires noPanic/noAlloc/noBlock for @isr and @interruptSafe
+      - root governance tracks ISR analysis requirements including transitive panic rejection
+    remaining:
+      - resolve target-profile panic endpoint and cleanup policy into canonical CompilationPlan facts
+      - enforce ISR noPanic using the same general panic-effect summaries
+      - include generated interrupt wrappers and helpers, FFI callbacks, and cleanup paths in panic proof
+      - support freestanding trap, reset, halt, and custom endpoints without mandatory runtime
+      - keep unsafe from waiving target or ISR panic requirements
+    required_tests:
+      - ISR direct assert rejected unless proven true
+      - ISR transitive panic rejected
+      - ISR unsafe does not waive noPanic
+      - target root trap endpoint selected correctly
+      - profile declaring no root cleanup does not emit cleanup assumptions
+
+  - id: tooling.panic
+    area: panic-diagnostics-lsp-formatter
+    status: partial
+    document_revision: "2.0"
+    reviewed: "2026-09-01"
+    repository_baseline: 814a584
+    rules:
+      - rules/errors/panic.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    implemented:
+      - formatter preserves both assertion forms and canonicalizes one space after the optional message comma without confusing nested or quoted commas
+      - formatter assertion coverage verifies canonical output and idempotence
+    remaining:
+      - LSP exposes noPanic or may-panic and cause paths from canonical analysis
+      - hover exposes assertion refinement and panic causes where useful
+      - call hierarchy reveals transitive panic-capable paths
+      - mentor diagnostics explain assertion type and syntax errors, noPanic violations, ISR panic paths, unknown foreign effects, and invalid cleanup
+      - incrementally invalidate panic summaries when relevant dependencies change
+    required_tests:
+      - formatter round-trip for both assertion forms
+      - LSP and compiler agree on MayPanic
+      - noPanic diagnostic identifies transitive root cause
+      - ISR diagnostic identifies interrupt root and panic cause
+      - missing assert comma receives focused diagnostic

@@ -1,0 +1,4 @@
+schema_version: 1
+area: tooling
+purpose: Shared tooling infrastructure and cross-tooling coordination.
+integrations: []

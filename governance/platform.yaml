@@ -1,0 +1,4 @@
+schema_version: 1
+area: platform
+purpose: Target profiles, hardware access, interrupts, and inline assembly.
+integrations: []

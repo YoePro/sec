@@ -1,0 +1,4 @@
+schema_version: 1
+area: tooling-lsp
+purpose: Language-server behavior, protocol integration, and editor actions.
+integrations: []

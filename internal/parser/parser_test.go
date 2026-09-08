@@ -5576,6 +5576,24 @@ func TestParserRejectsNonNFCIdentifiers(t *testing.T) {
 	}
 }
 
+func TestParserPreservesEscapeDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/escape_diagnostics_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "escapes.sec")).Parse()
+	if !result.HasErrors || result.Fatal {
+		t.Fatalf("expected lexical rejection: %+v", result)
+	}
+	counts := map[string]int{}
+	for _, d := range result.Diagnostics {
+		counts[d.ID]++
+	}
+	if len(result.Diagnostics) != 4 || counts[diagnostics.LexerUnknownEscape] != 2 || counts[diagnostics.LexerMalformedEscape] != 1 || counts[diagnostics.LexerInvalidUnicodeEscape] != 1 {
+		t.Fatalf("duplicate or missing escape errors: %+v", result.Diagnostics)
+	}
+}
+
 func TestParserPreservesLexerDiagnosticIDs(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -1,5 +1,7 @@
 module http
 
+import "net/url"
+
 // Client-side cookie storage and request selection.
 //
 // SetCookie is an instruction received from a server.
@@ -60,69 +62,69 @@ type CookieJar struct {
 
 impl CookieJar {
     /**
-     * Stores or updates a cookie received in Set-Cookie.
-     *
-     * The response URL participates in domain, host-only, default-path,
-     * security, and partition validation. Replacement identity follows the
-     * cookie storage rules and must not compare only cookie names.
-     *
-     * Specification:
-     *   - RFC 10025 — storage model and Set-Cookie processing
-     *
-     * Sec:
-     *   - TODO: net/http cookie-jar rulebook — Store
-     */
+    * Stores or updates a cookie received in Set-Cookie.
+    *
+    * The response URL participates in domain, host-only, default-path,
+    * security, and partition validation. Replacement identity follows the
+    * cookie storage rules and must not compare only cookie names.
+    *
+    * Specification:
+    *   - RFC 10025 — storage model and Set-Cookie processing
+    *
+    * Sec:
+    *   - TODO: net/http cookie-jar rulebook — Store
+    */
     fn Store(origin: URL, cookie: SetCookie) Result[void, CookieJarError] {
         return Err(CookieJarError.NotImplemented)
     }
 
     /**
-     * Returns the request cookies applicable to a URL.
-     *
-     * Selection applies expiry, domain, path, Secure, SameSite, partition, and
-     * ordering rules before exposing cookie-pairs.
-     *
-     * The final return type may become a lazy iterator if dogfooding shows that
-     * materializing Cookie[] is the wrong allocation model.
-     *
-     * Specification:
-     *   - RFC 10025 — Cookie header generation
-     *
-     * Sec:
-     *   - TODO: net/http cookie-jar rulebook — Request cookie selection
-     */
+    * Returns the request cookies applicable to a URL.
+    *
+    * Selection applies expiry, domain, path, Secure, SameSite, partition, and
+    * ordering rules before exposing cookie-pairs.
+    *
+    * The final return type may become a lazy iterator if dogfooding shows that
+    * materializing Cookie[] is the wrong allocation model.
+    *
+    * Specification:
+    *   - RFC 10025 — Cookie header generation
+    *
+    * Sec:
+    *   - TODO: net/http cookie-jar rulebook — Request cookie selection
+    */
     fn Cookies(url: URL) Result[Cookie[], CookieJarError] {
         return Err(CookieJarError.NotImplemented)
     }
 
     /**
-     * Produces the Cookie request-header value applicable to a URL.
-     *
-     * This is a convenience operation over the jar's normal selection and
-     * ordering rules and must not bypass them.
-     *
-     * Specification:
-     *   - RFC 10025 — Cookie header generation
-     *
-     * Sec:
-     *   - TODO: net/http cookie-jar rulebook — CookieHeader
-     */
+    * Produces the Cookie request-header value applicable to a URL.
+    *
+    * This is a convenience operation over the jar's normal selection and
+    * ordering rules and must not bypass them.
+    *
+    * Specification:
+    *   - RFC 10025 — Cookie header generation
+    *
+    * Sec:
+    *   - TODO: net/http cookie-jar rulebook — CookieHeader
+    */
     fn CookieHeader(url: URL) Result[string, CookieJarError] {
         return Err(CookieJarError.NotImplemented)
     }
 
     /**
-     * Removes cookies that have expired at or before `now`.
-     *
-     * Request-cookie selection must never return an expired cookie even when
-     * cleanup has not yet run.
-     *
-     * Specification:
-     *   - RFC 10025 — expiry and storage eviction
-     *
-     * Sec:
-     *   - TODO: net/http cookie-jar rulebook — Expiry
-     */
+    * Removes cookies that have expired at or before `now`.
+    *
+    * Request-cookie selection must never return an expired cookie even when
+    * cleanup has not yet run.
+    *
+    * Specification:
+    *   - RFC 10025 — expiry and storage eviction
+    *
+    * Sec:
+    *   - TODO: net/http cookie-jar rulebook — Expiry
+    */
     fn RemoveExpired(now: datetime) Result[uint, CookieJarError] {
         return Err(CookieJarError.NotImplemented)
     }

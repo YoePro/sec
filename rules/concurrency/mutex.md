@@ -6,6 +6,7 @@
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/mutex.md`
+- **Implementation governance:** `governance/concurrency_mutex.yaml`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `0f5027d`
 - **Related rulebooks:** `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/atomics.md`, `rules/analysis/deadlock_analysis.md`, `rules/analysis/data_races.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/types/types.md`, `rules/types/units.md`, `rules/declarations/impl.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/tooling/lsp.md`
@@ -1436,7 +1437,9 @@ ContextSource.Context is borrowed from its ContextSource and cannot be moved out
 
 **Governance tags:** `concurrency.mutex-v2`, `concurrency.context-v1`, `frontend.mutex-v2`, `frontend.mutex-guard-forwarding`, `frontend.context-v1`, `frontend.temporal-duration`, `frontend.temporal-instant`, `frontend.units-v2`, `tooling.mutex-v2`, `tooling.context-v1`, `semantic-ir.mutex-v2`, `lowering.mutex-v2`, `compiler.platform-model`, `analysis.transferability`, `analysis.semantic-ir-v2`, `sema.deadlock-analysis`, `sema.data-race-analysis`, `concurrency.memory-model-v2`
 
-§ 66(1) Mutable implementation information for this rulebook must be maintained in `implementation-status.yaml`.
+§ 66(1) Mutable implementation information for the mutex language surface must
+be maintained in `governance/concurrency_mutex.yaml`. Related tagged areas
+remain owned by their respective governance fragments.
 
 § 66(2) Primary mutex governance is `concurrency.mutex-v2`.
 

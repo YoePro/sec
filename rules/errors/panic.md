@@ -6,6 +6,7 @@
 - Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/errors/panic.md`
+- Implementation governance: `governance/errors.yaml`
 - Replaces: previous revision of `rules/errors/panic.md`
 - Repository baseline reviewed: `814a584`
 

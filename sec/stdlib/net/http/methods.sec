@@ -52,58 +52,61 @@ type Method string
 
 impl Method {
     // Core HTTP semantics - RFC 9110
-    let GET: Method := "GET"
-    let HEAD: Method := "HEAD"
-    let POST: Method := "POST"
-    let PUT: Method := "PUT"
-    let DELETE: Method := "DELETE"
-    let CONNECT: Method := "CONNECT"
-    let OPTIONS: Method := "OPTIONS"
-    let TRACE: Method := "TRACE"
+    static let GET: Method := "GET"
+    static let HEAD: Method := "HEAD"
+    static let POST: Method := "POST"
+    static let PUT: Method := "PUT"
+    static let DELETE: Method := "DELETE"
+    static let CONNECT: Method := "CONNECT"
+    static let OPTIONS: Method := "OPTIONS"
+    static let TRACE: Method := "TRACE"
 
     // RFC 5789
-    let PATCH: Method := "PATCH"
+    static let PATCH: Method := "PATCH"
 
     // WebDAV and extensions
-    let ACL: Method := "ACL"
-    let BASELINE_CONTROL: Method := "BASELINE-CONTROL"
-    let BIND: Method := "BIND"
-    let CHECKIN: Method := "CHECKIN"
-    let CHECKOUT: Method := "CHECKOUT"
-    let COPY: Method := "COPY"
-    let LABEL: Method := "LABEL"
-    let LINK: Method := "LINK"
-    let LOCK: Method := "LOCK"
-    let MERGE: Method := "MERGE"
-    let MKACTIVITY: Method := "MKACTIVITY"
-    let MKCALENDAR: Method := "MKCALENDAR"
-    let MKCOL: Method := "MKCOL"
-    let MKREDIRECTREF: Method := "MKREDIRECTREF"
-    let MKWORKSPACE: Method := "MKWORKSPACE"
-    let MOVE: Method := "MOVE"
-    let ORDERPATCH: Method := "ORDERPATCH"
-    let PROPFIND: Method := "PROPFIND"
-    let PROPPATCH: Method := "PROPPATCH"
-    let REBIND: Method := "REBIND"
-    let REPORT: Method := "REPORT"
-    let SEARCH: Method := "SEARCH"
-    let UNBIND: Method := "UNBIND"
-    let UNCHECKOUT: Method := "UNCHECKOUT"
-    let UNLINK: Method := "UNLINK"
-    let UNLOCK: Method := "UNLOCK"
-    let UPDATE: Method := "UPDATE"
-    let UPDATEREDIRECTREF: Method := "UPDATEREDIRECTREF"
-    let VERSION_CONTROL: Method := "VERSION-CONTROL"
+    static let ACL: Method := "ACL"
+    static let BASELINE_CONTROL: Method := "BASELINE-CONTROL"
+    static let BIND: Method := "BIND"
+    static let CHECKIN: Method := "CHECKIN"
+    static let CHECKOUT: Method := "CHECKOUT"
+    static let COPY: Method := "COPY"
+    static let LABEL: Method := "LABEL"
+    static let LINK: Method := "LINK"
+    static let LOCK: Method := "LOCK"
+    static let MERGE: Method := "MERGE"
+    static let MKACTIVITY: Method := "MKACTIVITY"
+    static let MKCALENDAR: Method := "MKCALENDAR"
+    static let MKCOL: Method := "MKCOL"
+    static let MKREDIRECTREF: Method := "MKREDIRECTREF"
+    static let MKWORKSPACE: Method := "MKWORKSPACE"
+    static let MOVE: Method := "MOVE"
+    static let ORDERPATCH: Method := "ORDERPATCH"
+    static let PROPFIND: Method := "PROPFIND"
+    static let PROPPATCH: Method := "PROPPATCH"
+    static let REBIND: Method := "REBIND"
+    static let REPORT: Method := "REPORT"
+    static let SEARCH: Method := "SEARCH"
+    static let UNBIND: Method := "UNBIND"
+    static let UNCHECKOUT: Method := "UNCHECKOUT"
+    static let UNLINK: Method := "UNLINK"
+    static let UNLOCK: Method := "UNLOCK"
+    static let UPDATE: Method := "UPDATE"
+    static let UPDATEREDIRECTREF: Method := "UPDATEREDIRECTREF"
+    static let VERSION_CONTROL: Method := "VERSION-CONTROL"
 
     // HTTP/2 connection preface
-    let PRI: Method := "PRI"
+    static let PRI: Method := "PRI"
 
     // RFC 10008
-    let QUERY: Method := "QUERY"
+    static let QUERY: Method := "QUERY"
 
+    // TODO: Implement http.Method.IsSafe Property
     property IsSafe: Option[bool] { get { return None } }
+    // TODO: Implement http.Method.IsIdempotent Property
     property IsIdempotent: Option[bool] { get { return None } }
 
+    // TODO: Implement: http.Method.ToString()
     fn ToString() string {
         return string(self)
     }

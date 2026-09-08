@@ -6,6 +6,7 @@
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/allocation.md`
+- Implementation governance: `governance/allocation.yaml`
 - Replaces: `rules/memory/allocation.txt`
 - Repository baseline reviewed: `57cd774`
 

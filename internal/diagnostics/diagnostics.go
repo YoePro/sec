@@ -28,6 +28,9 @@ const (
 	LexerUnsupportedWhitespace   = "L1003"
 	LexerNonNFCIdentifier        = "L1004"
 	LexerIdentifierCharacter     = "L1005"
+	LexerUnknownEscape           = "L1006"
+	LexerMalformedEscape         = "L1007"
+	LexerInvalidUnicodeEscape    = "L1008"
 	ParserSyntaxError            = "P2001"
 	ParserMissingToken           = "P2002"
 	ParserUnexpectedToken        = "P2003"
@@ -46,6 +49,7 @@ const (
 	ParserUnexpectedEndOfFile    = "P2016"
 	ParserInvalidBlockMember     = "P2017"
 	ParserCompatibilitySyntax    = "P2018"
+	ParserUnimplementedFunction  = "P2019"
 	MissingModuleDeclaration     = "S1001"
 	DuplicateModuleDeclaration   = "S1002"
 	ModuleDeclarationConflict    = "S1003"
@@ -76,6 +80,9 @@ const (
 )
 
 var registry = map[string]Definition{
+	LexerUnknownEscape:        {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerMalformedEscape:      {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidUnicodeEscape: {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerNonNFCIdentifier: {
 		ID: LexerNonNFCIdentifier, Name: "lexer.non-nfc-identifier", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
 	},
@@ -113,10 +120,11 @@ var registry = map[string]Definition{
 		ParserInvalidAssignmentExpr,
 		"parser.invalid-assignment-expression",
 	),
-	ParserChainedComparison:   parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
-	ParserRecoveryLimit:       parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
-	ParserUnexpectedEndOfFile: parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
-	ParserInvalidBlockMember:  parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
+	ParserChainedComparison:     parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
+	ParserRecoveryLimit:         parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
+	ParserUnexpectedEndOfFile:   parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
+	ParserInvalidBlockMember:    parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
+	ParserUnimplementedFunction: parserDefinition(ParserUnimplementedFunction, "parser.unimplemented-function"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",

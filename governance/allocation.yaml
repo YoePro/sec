@@ -1,0 +1,148 @@
+schema_version: 1
+area: allocation
+purpose: Allocation semantics and allocation lowering.
+integrations:
+  - id: frontend.allocation
+    area: frontend-allocation-semantics
+    status: partial
+    repository_baseline: 57cd774
+    rules:
+    - rules/memory/allocation.md
+    - rules/memory/arena.md
+    - rules/memory/storage.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/memory/lifetime_analysis.md
+    - rules/memory/references.md
+    - rules/memory/destruction.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/call_graph.go
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    implemented:
+    - compiler-known Arena type and AllocationError enum in the represented frontend subset
+    - recognition for represented Arena constructors/members including Alloc, Reset and Release
+    - Arena.Alloc[T](count) validation with Result[ref mut T[], AllocationError] typing
+    - Reset/Release receiver and arity checks with represented generation mutation
+    - initial Arena identity/generation metadata on arena-backed references and slices
+    - initial allocation-context, storage-origin, allocation-effect and direct MayAllocate call-graph facts
+    - selected stale-reference rejection after represented Arena.Reset
+    remaining:
+    - classify every Sec 0.1 allocation-capable operation using one allocation-effect model
+    - enforce no hidden allocation in copy, move, borrow, parameter passing, return, reference creation, control-flow joins
+      or escape repair
+    - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect
+      calls
+    - replace lexical Arena binding identity with stable compiler-owned ArenaDomain identity
+    - integrate Arena.FromBuffer backing identity as an exclusive mutable-borrow dependency for the Arena lifetime
+    - complete size/default-initialization/destruction/overflow/alignment checks for safe manual allocation
+    - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2, references-v2 and destruction-v2 facts canonically
+    - complete failure behavior and only treat allocation as infallible when storage/capacity is proven
+    - integrate collection, string, shaped-type, closure, FFI and platform allocation-capable operations
+    required_tests:
+    - ordinary copy does not allocate
+    - explicit move does not allocate
+    - borrow/reference creation does not allocate
+    - parameter passing and return do not allocate
+    - invalid local-reference escape is rejected rather than heap-promoted
+    - closure escape is rejected rather than silently allocated
+    - Arena.Alloc count overflow rejected before allocation
+    - Arena.Alloc alignment derived from T
+    - repeated Arena allocation does not invalidate earlier allocation
+  - id: analysis.allocation
+    area: allocation-effects-context-capacity-analysis
+    status: partial
+    repository_baseline: 57cd774
+    implemented:
+    - initial synchronous MayAllocate summaries
+    - initial source-ordered direct Arena event facts
+    - initial allocation-context facts
+    remaining:
+    - infer allocation effects transitively through every callable form
+    - persist/import validated allocation-effect summaries
+    - support recursive/mutually recursive fixed points
+    - propagate allocation contexts without forcing source-level Arena threading
+    - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
+    - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
+    - keep allocation effect separate from panic, I/O, volatile, FFI, blocking, synchronization and mutation
+    - support static placement/allocation elimination proof without hidden escape repair
+    required_tests:
+    - transitive allocation effect propagation
+    - recursive allocation-effect convergence
+    - unknown indirect call conservative under noalloc
+    - ISR root rejects prohibited transitive allocation
+    - static capacity proof accounts for loops/recursion
+  - id: semantic-ir.allocation
+    area: semantic-ir-allocation
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - represent surviving dynamic allocations explicitly
+    - represent allocation context/domain, type/count/size, alignment and fallibility
+    - represent resulting storage origin/domain, lifetime/generation dependency, ownership/borrow mode and destruction responsibility
+    - keep allocation, initialization, destruction and reclamation distinct
+    - verify contradictory or incomplete allocation facts before lowering
+    required_tests:
+    - explicit allocation op
+    - context/domain preserved
+    - count/size/alignment/fallibility preserved
+    - storage origin and generation dependency preserved
+    - invalid allocation IR rejected
+  - id: lowering.allocation
+    area: allocation-lowering-backends
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - lower allocation operations through maintained Sec MLIR and LLVM paths
+    - preserve selected allocation domain and never invent allocator choice in backend
+    - lower overflow, alignment, capacity and allocation failure semantics
+    - preserve value destruction before storage reclamation
+    - implement target-specific Arena backing storage/allocator behavior
+    - eliminate allocations only after lifetime/capacity/address-stability/concurrency/failure/cleanup proof
+    - support valid stack/static placement without hidden escape promotion
+    - prove allocation-free paths contain no runtime allocation helper
+    required_tests:
+    - allocating operation lowers with correct domain
+    - allocation-free copy/move/ref path has no allocator call
+    - overflow/failure path preserved
+    - value destruction before Arena reclamation
+    - proven static placement removes allocation without semantic change
+  - id: target-policy.allocation
+    area: allocation-target-profile-policy
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - define canonical capability facts for dynamic allocation, fixed/preallocated Arena and noalloc builds
+    - enforce noalloc over complete reachable call graphs
+    - enforce ISR restrictions from shared allocation-effect facts
+    - support runtime-free bare-metal with static/fixed/preallocated storage
+    - permit statically eliminated allocation-capable operations only after complete proof
+    - keep MMIO/fixed-address storage separate from Arena allocation
+    - integrate capacity/alignment/layout guarantees supplied by target profiles
+    required_tests:
+    - hosted allocation accepted
+    - embedded preallocated Arena accepted
+    - noalloc rejects unresolved dynamic allocation
+    - ISR rejects prohibited allocating path
+    - MMIO/fixed-address access not classified as Arena allocation
+    - runtime-free bare-metal allocation-free build has no allocator dependency
+  - id: tooling.allocation
+    area: allocation-diagnostics-lsp-tooling
+    status: planned
+    repository_baseline: 57cd774
+    remaining:
+    - expose allocation-free/may-allocate/unknown callable facts from canonical analysis
+    - show allocation domain/context where useful
+    - trace transitive allocation violations to the operation/callee introducing allocation
+    - provide mentor diagnostics for noalloc, ISR, capacity, overflow, alignment, unsupported context and hidden-allocation
+      violations
+    - ensure compiler/LSP/sec analyse parity
+    - invalidate allocation summaries when bodies, profiles, imports or allocating API contracts change
+    required_tests:
+    - compiler/LSP may-allocate parity
+    - noalloc diagnostic identifies transitive source
+    - invalid escape is diagnosed instead of silently promoted
+    - capacity diagnostic explains requirement when known
+    - ISR allocation diagnostic includes ISR root/context

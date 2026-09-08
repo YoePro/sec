@@ -1,0 +1,109 @@
+schema_version: 1
+area: formatting
+purpose: Source formatting, formatting fixes, and formatter behavior.
+integrations:
+  - id: tooling.formatter-delimiter-handoff
+    area: tooling
+    status: implemented
+    integrated: "2026-08-12"
+    summary: >-
+      Preserves indentation when one continuation line closes a multiline call
+      and aggregate literal while opening an attached try-handler block.
+    rules:
+      - rules/tooling/formatter.md
+      - rules/foundations/grammar.md
+      - rules/errors/errorhandling.md
+    code:
+      - internal/formatter/formatter.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - recognize closing-heavy delimiter handoff lines such as `}) {` without discarding the newly opened handler indentation level
+      - indent try-handler arms beneath the attached handler block and restore the enclosing statement and function indentation after its closing brace
+      - ignore interpolated-string braces while determining the last structural delimiter on the continuation line
+      - verify formatting idempotence for a multiline typed struct literal passed to a fallible method under try
+    verification:
+      - command: go test ./internal/formatter -run TestFormatTryHandlerAfterStructLiteralCallArgument -v
+        result: passed
+      - command: go test ./cmd/lsp -run 'Format|Formatting' -v
+        result: passed
+  - id: tooling.formatter-single-line-call-spacing
+    area: tooling
+    status: implemented
+    integrated: "2026-08-24"
+    summary: >-
+      Normalizes whitespace and trailing commas in calls already written on one
+      physical line while preserving intentional multiline call layout.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - join single-line call arguments with one space after commas
+      - remove a trailing argument comma only from single-line calls
+      - preserve all existing multiline call boundaries and their required trailing comma
+      - leave comment-bearing and incomplete single-line syntax unchanged
+      - preserve formatter idempotence and expose the behavior through the shared LSP formatter
+    verification:
+      - command: go test ./internal/formatter ./cmd/lsp -run 'Format|Formatting' -count=1
+        result: passed
+  - id: tooling.formatter-single-line-delimiter-spacing
+    area: tooling
+    status: implemented
+    integrated: "2026-09-03"
+    summary: >-
+      Normalizes boundary trivia inside balanced parentheses, brackets, and
+      braces that stay on one physical line while preserving intentional
+      multiline delimiter layout for the future lossless CST formatter.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - remove inner boundary padding from same-line parenthesized and bracketed groups
+      - normalize top-level comma spacing and remove trailing commas in same-line parenthesized and bracketed groups
+      - retain one inner space for non-empty same-line braced groups and compact whitespace-only groups to `{}`
+      - preserve quoted contents, comment-bearing lines, incomplete syntax, and every multiline delimiter boundary
+      - expose identical behavior through sec fmt and the shared LSP formatter
+    verification:
+      - command: go test ./internal/formatter ./cmd/lsp -run 'Delimiter|SameLineMatchBlock' -count=1
+        result: passed
+  - id: tooling.formatter-declaration-comment-alignment
+    area: tooling
+    status: implemented
+    integrated: "2026-08-27"
+    summary: >-
+      Aligns trailing line comments within local nominal-declaration groups and
+      exposes the shared behavior through both LSP formatting and the initial
+      in-place sec fmt command.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/formatter/formatter_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - align trailing comments in consecutive struct, enum, register, union, and equivalent nominal declaration items to one visual column
+      - place the aligned comment column at least four spaces after the widest code item in its local group
+      - end groups at blank lines, standalone or documentation comments, multiline items, and nested block boundaries
+      - ignore comment-like text inside quoted strings, character literals, and struct tags while locating trailing line comments
+      - preserve LF or CRLF, comment text, indentation, and formatter idempotence through the shared formatter package
+      - provide in-place sec fmt formatting for one or more explicit source files with atomic replacement and permission preservation
+      - expose identical output through LSP document formatting without editor-side alignment logic
+    remaining:
+      - extend the generic alignment engine to typed declaration groups, struct field/type/tag columns, and compatible non-nominal declaration groups
+      - complete sec fmt check, stdin, recursive project, range, on-type, minimal-edit, and fix modes
+    verification:
+      - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
+        result: passed

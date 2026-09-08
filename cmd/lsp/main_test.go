@@ -875,6 +875,46 @@ func TestStructuredParserDiagnosticUsesFocusedCodeAndTokenRange(t *testing.T) {
 	}
 }
 
+func TestAnalyzePublishesEscapeDiagnosticRange(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/escape_diagnostics_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range analyze("file:///tmp/escapes.sec", string(input)) {
+		if d.Code == diagnostics.LexerUnknownEscape && d.Range.Start.Line == 3 {
+			if d.Range.Start.Character != 20 || d.Range.End.Character != 22 || d.Severity != 1 {
+				t.Fatalf("wrong escape range: %+v", d)
+			}
+			return
+		}
+	}
+	t.Fatal("missing unknown escape diagnostic")
+}
+
+func TestAnalyzePublishesUnimplementedFunctionHelp(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/function_stubs_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/stubs.sec", string(input))
+	count := 0
+	for _, item := range items {
+		if item.Code != diagnostics.ParserUnimplementedFunction {
+			continue
+		}
+		count++
+		if item.Severity != 1 || !strings.Contains(item.Message, "has been declared with a signature, but its body is missing.") {
+			t.Fatalf("wrong diagnostic: %+v", item)
+		}
+		if strings.HasPrefix(item.Message, "Unimplemented function fnName") && (item.Range.Start.Line != 2 || item.Range.Start.Character != 3 || item.Range.End.Character != 9) {
+			t.Fatalf("wrong name range: %+v", item)
+		}
+	}
+	if count != 6 {
+		t.Fatalf("expected six stub diagnostics: %+v", items)
+	}
+}
+
 func TestAnalyzePublishesInterpolationExpressionDiagnostics(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/parser/interpolation_parts_invalid.sec")
 	if err != nil {

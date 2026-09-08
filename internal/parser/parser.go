@@ -14,6 +14,7 @@ import (
 )
 
 type Diagnostic struct {
+	Help       string
 	ID         string
 	Message    string
 	Primary    lexer.Token
@@ -2356,12 +2357,33 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	}
 	fn.ReturnType = p.parseTypeReference()
 
+	p.skipPeekComments()
+	if fn.ReturnType != nil && !fn.ReturnType.Invalid && p.peekToken.Type != lexer.LBRACE {
+		p.reportUnimplementedFunction(fn)
+		return fn
+	}
 	fn.Body = p.parseFunctionBlockStatement()
 	if fn.Body == nil {
 		return nil
 	}
 
 	return fn
+}
+
+// reportUnimplementedFunction identifies a complete ordinary signature without
+// a body, retaining the declaration for tooling while rejecting compilation.
+// Rules: rules/declarations/functions.md — "4. No ordinary bodyless prototypes";
+// rules/compiler/parser_recovery.md — "Recovery goals".
+func (p *Parser) reportUnimplementedFunction(fn *ast.FunctionDeclaration) {
+	before := len(p.diagnostics)
+	p.addDiagnostic(compilerdiagnostics.ParserUnimplementedFunction, fn.Name.Token, nil, nil,
+		"Unimplemented function %s", fn.Name.Value)
+	if len(p.diagnostics) == before {
+		return
+	}
+	help := unimplementedFunctionHelp(fn)
+	p.diagnostics[len(p.diagnostics)-1].Help = help
+	p.errors[len(p.errors)-1] += "\nhelp: " + help
 }
 
 func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {

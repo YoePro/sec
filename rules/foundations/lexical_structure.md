@@ -1447,7 +1447,11 @@ It must not denote:
 - a value above `U+10FFFF`;
 - an empty digit sequence.
 
-Unknown or malformed escapes are lexical errors.
+Unknown or malformed escapes are lexical errors. The lexer reports `L1006`
+(`lexer.unknown-escape`) for unknown codes, `L1007` (`lexer.malformed-escape`)
+for malformed or incomplete syntax, and `L1008` (`lexer.invalid-unicode-escape`)
+for surrogate or out-of-range Unicode scalar values. Diagnostics identify the
+original escape span; recovery does not rewrite source text.
 
 A backslash followed by a physical newline is not a line-continuation escape in
 Sec 0.1.

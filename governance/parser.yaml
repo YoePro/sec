@@ -1,0 +1,4 @@
+schema_version: 1
+area: parser
+purpose: Grammar consumption, parser recovery, and parse diagnostics.
+integrations: []

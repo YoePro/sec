@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-task
+purpose: Tasks, task handles, and task outcomes.
+integrations: []

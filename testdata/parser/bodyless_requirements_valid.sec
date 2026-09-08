@@ -1,0 +1,11 @@
+module main
+
+interface Reader {
+    fn Read() string
+}
+
+extern "C" fn ReadByte() int32
+
+fn Complete() void
+// A comment may separate a signature from its body.
+{}

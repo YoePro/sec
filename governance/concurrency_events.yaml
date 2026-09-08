@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-events
+purpose: Event signaling, waiting, and event lifecycle.
+integrations: []

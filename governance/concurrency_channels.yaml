@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-channels
+purpose: Channels, sends, receives, and channel lifecycle.
+integrations: []

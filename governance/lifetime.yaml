@@ -1,0 +1,4 @@
+schema_version: 1
+area: lifetime
+purpose: Lifetime, reference validity, borrowing, copy/move, and destruction.
+integrations: []

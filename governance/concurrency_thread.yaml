@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-thread
+purpose: Threads and thread-creation boundaries.
+integrations: []

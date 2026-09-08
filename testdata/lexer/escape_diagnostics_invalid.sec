@@ -1,0 +1,9 @@
+module main
+
+fn main() void {
+    let unknown := "\q"
+    let malformed := '\xG1'
+    let scalar := $"\u{D800}"
+    let nested := $"{F("\q")}"
+    let following := 1
+}

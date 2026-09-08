@@ -1,0 +1,4 @@
+schema_version: 1
+area: tooling-projects
+purpose: User-project discovery, configuration, and project-file tooling.
+integrations: []

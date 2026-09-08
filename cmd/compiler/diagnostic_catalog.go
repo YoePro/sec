@@ -74,6 +74,7 @@ var semanticOccurrenceFields = []diagnosticCatalogField{
 }
 
 var parserOccurrenceFields = []diagnosticCatalogField{
+	{Name: "Help", Type: "string", Required: false, Description: "Actionable help associated with a parser diagnostic."},
 	{Name: "ID", Type: "string", Required: true, Description: "Registered parser diagnostic identifier."},
 	{Name: "Message", Type: "string", Required: true, Description: "Rendered primary diagnostic message."},
 	{Name: "Primary", Type: "Token", Required: true, Description: "Primary source token and location."},

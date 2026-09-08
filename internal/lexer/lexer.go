@@ -786,13 +786,8 @@ func (l *Lexer) readCharLiteral() Token {
 			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
 		}
 		if ch == '\\' {
-			l.advance()
-			if isPhysicalLineEnding(l.peek()) {
-				return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
-			}
-			if l.peek() != 0 {
-				l.advance()
-			}
+			// 2026-09-08 07:27 UTC: Validate Sec escapes; mirrored in bootstrap.
+			l.readEscape('\'')
 			continue
 		}
 		if ch == '\'' {
@@ -841,17 +836,8 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 			l.advance()
 			return l.token(typ, string(l.input[start:l.pos]), line, column)
 		case '\\':
-			l.advance()
-			if l.peek() == 'u' && l.peekNext() == '{' {
-				l.advance()
-				l.advance()
-				for l.peek() != '}' && l.peek() != 0 && !isPhysicalLineEnding(l.peek()) {
-					l.advance()
-				}
-			}
-			if l.peek() != 0 && !isPhysicalLineEnding(l.peek()) {
-				l.advance()
-			}
+			// 2026-09-08 07:27 UTC: Validate Sec escapes; mirrored in bootstrap.
+			l.readEscape('"')
 		case '{':
 			l.advance()
 			if l.peek() == '{' {
@@ -912,13 +898,8 @@ func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
 		}
 
 		if ch == '\\' {
-			l.advance()
-			if isPhysicalLineEnding(l.peek()) {
-				return string(l.input[start:l.pos]), false
-			}
-			if l.peek() != 0 {
-				l.advance()
-			}
+			// 2026-09-08 07:27 UTC: Validate Sec escapes; mirrored in bootstrap.
+			l.readEscape('"')
 			continue
 		}
 

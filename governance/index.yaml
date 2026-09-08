@@ -1,0 +1,104 @@
+schema_version: 1
+purpose: >-
+  Registry for the canonical split implementation-governance ledger. Each
+  integration is owned by exactly one listed fragment.
+status_values:
+  implemented: The described scope is integrated and verified.
+  partial: A usable vertical slice is integrated, with listed work remaining.
+  planned: The scope is documented but no implementation slice is integrated.
+legacy_migration:
+  source: ../implementation-status.yaml
+  policy: >-
+    The root file is a migration source only. New entries belong in a fragment;
+    moved entries must be removed from the root in the same change.
+fragments:
+  - path: allocation.yaml
+    owns: allocation semantics and allocation lowering
+  - path: analysis.yaml
+    owns: standalone and interprocedural program analyses
+  - path: ast.yaml
+    owns: abstract syntax tree structure and presentation
+  - path: attributes.yaml
+    owns: attributes, target selection, and compiler-visible metadata
+  - path: collections.yaml
+    owns: collection APIs, shaped values, and iteration semantics
+  - path: compiler.yaml
+    owns: compiler pipeline, linking, initialization, and artifacts
+  - path: concurrency_atomics.yaml
+    owns: atomic operations and concurrency memory ordering
+  - path: concurrency_await.yaml
+    owns: await expressions and task outcome observation
+  - path: concurrency_blocking.yaml
+    owns: blocking operations and blocking-context policy
+  - path: concurrency_channels.yaml
+    owns: channels, sends, receives, and channel lifecycle
+  - path: concurrency_cancellation.yaml
+    owns: cancellation model, requests, and propagation
+  - path: concurrency_events.yaml
+    owns: event signaling, waiting, and event lifecycle
+  - path: concurrency_memory_model.yaml
+    owns: shared-memory visibility and concurrency memory-model rules
+  - path: concurrency_model.yaml
+    owns: umbrella concurrency and runtime-model semantics
+  - path: concurrency_mutex.yaml
+    owns: mutexes, locking, and mutual-exclusion semantics
+  - path: concurrency_process.yaml
+    owns: process creation, lifecycle, and process boundaries
+  - path: concurrency_scheduling.yaml
+    owns: scheduling policy, execution contexts, and scheduling guarantees
+  - path: concurrency_select.yaml
+    owns: select expressions, cases, and selection semantics
+  - path: concurrency_spawn.yaml
+    owns: spawn expressions and execution creation semantics
+  - path: concurrency_structured.yaml
+    owns: structured-concurrency scopes and child-lifetime rules
+  - path: concurrency_task.yaml
+    owns: tasks, task handles, and task outcomes
+  - path: concurrency_thread.yaml
+    owns: threads and thread-creation boundaries
+  - path: concurrency_thread_local.yaml
+    owns: thread-local declarations, access, and lifetime
+  - path: control_flow.yaml
+    owns: statements, loops, matching, try, defer, and flow facts
+  - path: core.yaml
+    owns: compiler-known fundamentals and trusted core surfaces
+  - path: declarations.yaml
+    owns: declarations, members, modules, names, scopes, and visibility
+  - path: errors.yaml
+    owns: Result/error handling, panic, assertions, and unreachable behavior
+  - path: errors_diagnostics.yaml
+    owns: compiler, lexer, parser, and semantic diagnostic definitions and output
+  - path: ffi.yaml
+    owns: foreign-function interface contracts and boundary behavior
+  - path: formatting.yaml
+    owns: source formatting, formatting fixes, and formatter behavior
+  - path: generics.yaml
+    owns: generic declarations, specialization, and monomorphization
+  - path: governance.yaml
+    owns: governance, rulebook consistency, and implementation traceability
+  - path: lexer.yaml
+    owns: lexical structure, tokens, literals, and source spelling
+  - path: lifetime.yaml
+    owns: lifetime, reference validity, borrowing, copy/move, and destruction
+  - path: lowering.yaml
+    owns: Semantic IR, Sec MLIR, ABI, and target-lowering-only work
+  - path: memory.yaml
+    owns: storage, layout, allocation domains, arenas, raw pointers, and unsafe
+  - path: parser.yaml
+    owns: grammar consumption, parser recovery, and parse diagnostics
+  - path: platform.yaml
+    owns: target profiles, hardware access, interrupts, and inline assembly
+  - path: sema.yaml
+    owns: frontend semantic analysis and semantic diagnostics
+  - path: stdlib.yaml
+    owns: standard-library implementation and catalog status
+  - path: testing.yaml
+    owns: language testing infrastructure and test-tooling status
+  - path: tooling.yaml
+    owns: shared tooling infrastructure and cross-tooling coordination
+  - path: tooling_lsp.yaml
+    owns: language-server behavior, protocol integration, and editor actions
+  - path: tooling_projects.yaml
+    owns: user-project discovery, configuration, and project-file tooling
+  - path: types.yaml
+    owns: type system, type contracts, units, and built-in type semantics

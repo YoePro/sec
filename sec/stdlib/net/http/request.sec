@@ -116,18 +116,15 @@ impl Request {
         discard Value
     }
 
-    fn AddHeader(
-        Name: string,
-        Value: string,
-    ) void {
-        // TODO:
+    fn AddHeader(Name: string, Value: string) void {
+        // TODO: Implement request.AddHeader
         // Append another field value without replacing existing values.
         discard Name
         discard Value
     }
 
     fn RemoveHeader(Name: string) void {
-        // TODO:
+        // TODO: Implement request.RemoveHeaders
         discard Name
     }
 
@@ -137,14 +134,14 @@ impl Request {
 
     property UserAgent: string {
         get {
-            // TODO:
+            // TODO: Implement request.UserAgent
             return ""
         }
     }
 
     property Referer: string {
         get {
-            // TODO:
+            // TODO: Implement request.Referer
             return ""
         }
     }

@@ -6,6 +6,7 @@
 - **Document revision:** 1.1
 - **Language version:** Sec 0.1
 - **Canonical path:** `rules/compiler/generics_lowering.md`
+- **Implementation governance:** `governance/generics.yaml`
 
 ## 1. Purpose
 
@@ -172,4 +173,4 @@ for the same concrete specialization must reuse the same semantic identity.
 - concrete ABI and foreign boundaries: platform ABI and FFI rulebooks;
 - dialect-specific operations and conversions: `rules/mlir/`.
 
-Implementation progress belongs in `implementation-status.yaml`.
+Implementation progress belongs in `governance/generics.yaml`.

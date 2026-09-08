@@ -916,6 +916,7 @@ Recommended initial allocation:
 | `P2016` | `parser.unexpected-end-of-file` | source ends before required construct completion |
 | `P2017` | `parser.invalid-block-member` | declaration or statement is invalid in a body |
 | `P2018` | `parser.compatibility-syntax` | accepted noncanonical syntax requires migration |
+| `P2019` | `parser.unimplemented-function` | ordinary function signature has no body; retains signature and provides return-sensitive help |
 
 IDs identify parser rules, not severity.
 

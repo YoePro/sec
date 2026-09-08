@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-scheduling
+purpose: Scheduling policy, execution contexts, and scheduling guarantees.
+integrations: []

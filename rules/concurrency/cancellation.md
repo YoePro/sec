@@ -6,6 +6,7 @@
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/cancellation.md`
+- **Implementation governance:** `governance/concurrency_cancellation.yaml`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `0f5027d`
 - **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/mutex.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/await.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/blocking.md`, `rules/concurrency/scheduling.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/control-flow/defer.md`, `rules/compiler/semantic_ir.md`, `rules/platform/ffi.md`, `rules/platform/interrupts.md`, `rules/tooling/lsp.md`
@@ -37,7 +38,8 @@
 
 § 1(6) Mutable implementation status does not belong in this normative rulebook.
 
-§ 1(7) Mutable implementation status is maintained through `implementation-status.yaml`.
+§ 1(7) Mutable implementation status for cancellation is maintained through
+`governance/concurrency_cancellation.yaml`.
 
 ---
 
@@ -1398,7 +1400,9 @@ Context does not grant cancellation authority; cancel the owning ContextSource i
 
 **Governance tags:** `concurrency.cancellation-v2`, `concurrency.context-v1`, `frontend.cancellation-v2`, `frontend.cancellation-effect-v1`, `tooling.cancellation-v2`, `semantic-ir.cancellation-v2`, `lowering.cancellation-v2`, `concurrency.tasks-v2`, `concurrency.mutex-v2`, `concurrency.memory-model-v2`, `analysis.transferability`, `analysis.semantic-ir-v2`, `compiler.platform-model`
 
-§ 62(1) Mutable implementation information for this rulebook must be maintained in `implementation-status.yaml`.
+§ 62(1) Mutable implementation information for cancellation must be maintained
+in `governance/concurrency_cancellation.yaml`. Related tagged areas remain
+owned by their respective governance fragments.
 
 § 62(2) The primary cancellation integration is `concurrency.cancellation-v2`.
 

@@ -1,0 +1,4 @@
+schema_version: 1
+area: types
+purpose: Type system, type contracts, units, and built-in type semantics.
+integrations: []

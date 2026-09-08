@@ -1,0 +1,342 @@
+schema_version: 1
+area: generics
+purpose: Generic declarations, specialization, and monomorphization.
+integrations:
+  - id: frontend.generics-v2
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    revised: "2026-09-04"
+    document_revision: "2.2"
+    summary: >-
+      Tracks revision-2.2 compile-time type generics and demand-driven
+      monomorphization. Generic structs, functions, unions, enums, interfaces, impl
+      scopes, inference, substitution, nominal instance caching, and basic
+      constraint declaration validation have substantial frontend support;
+      multi-constraints, partial explicit prefixes, method-level generics,
+      explicit conformance checks, complete specialization identity, and
+      concrete-only backend lowering remain incomplete.
+    rules:
+      - rules/declarations/generics.md
+      - rules/declarations/enums.md
+      - rules/declarations/impl.md
+      - rules/declarations/interfaces.md
+      - rules/foundations/grammar.md
+      - rules/types/types.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/generics_lowering.md
+      - rules/compiler/monomorphization.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - cmd/lsp/main_test.go
+      - testdata/generics_valid.sec
+      - testdata/generics_invalid.sec
+    implemented:
+      - generic parameter parsing on type, function, and interface declarations
+      - generic type-argument parsing, nested generic references, and attached explicit generic calls
+      - generic declaration arity registration, parameter scopes, and duplicate parameter diagnostics
+      - generic struct template instantiation with recursive concrete field substitution and preserved nominal identity
+      - canonical caching of repeated concrete generic type instances by declaration identity and ordered arguments
+      - generic function template registration, exact full explicit argument calls, argument-based inference, and expected-result inference
+      - canonical caching of repeated concrete generic function instances within one analysis
+      - generic union template registration, concrete payload substitution, and empty and single-payload construction paths
+      - generic enum parameter parsing in direct and type-declaration forms, including concrete Enum[T].Member expressions
+      - generic enum template registration, phantom identity parameters, ordinary member semantics, arity and unknown-constraint diagnostics, canonical concrete instance caching, and distinct nominal identities by ordered argument list
+      - generic enum impl scopes make the owning type parameters available to associated declarations
+      - generic impl target correspondence, owning parameter scopes, and concrete nested type and property substitution paths
+      - generic interface declaration parsing, header registration, and use of interface-owned parameters in requirement types
+      - focused rejection of method-level generic parameters on interface requirements without follow-on unknown-type diagnostics
+      - concrete generic interface method, property, and event type substitution, exercised by compiler-known Iterator[T] conformance
+      - rejection of unknown constraints and constraints that do not name interfaces
+      - conservative copy/move treatment when a generic parameter lacks a proven copy capability
+      - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
+    remaining:
+      - apply finite-representation recursion analysis to generic union payloads and payload fields, including concrete specialization
+      - represent and validate multiple interface constraints joined by & across parser, AST, Sema, formatter, LSP, and diagnostics
+      - accept a positional prefix of explicit generic function or method arguments and infer the remainder while rejecting holes
+      - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
+      - complete generic named-type semantics for type ID[T] int and valid type Wrapped[T] T forms, including identity, conversions, contracts, and lowering
+      - complete generic interface inheritance validation and canonical cross-module specialization identity beyond the implemented concrete requirement substitution
+      - require valid explicit interface conformance when satisfying every generic constraint; matching members alone are insufficient
+      - retain ordered constraint sets in templates and recheck them for every explicit or inferred concrete substitution
+      - ensure generic templates use only operations guaranteed by their declared constraints
+      - complete generic primary and impl extends member composition for every substituted member category
+      - specialize static storage independently for every concrete generic instantiation
+      - complete generic-union layout, match, ownership, destruction, Semantic IR, and backend lowering after substitution
+      - complete generic-enum constraint revalidation, representation-dependent substitution, match and switch provenance, Semantic IR identity, deterministic symbols, Sec MLIR, ABI, FFI, and backend lowering
+      - implement the canonical InstantiationGraph termination model, distinguishing finite canonical cycles, recursive by-value layout, proven distinct-key non-convergence, and compiler resource limits; current recursive-storage diagnostics cover only represented subsets
+      - assign deterministic cross-module symbol identities to concrete types, functions, methods, and static storage
+      - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
+      - prevent unresolved generic parameters or constraints from reaching ABI, FFI, Sec MLIR, LLVM, or any representation-dependent lowering
+      - add the complete revision-2.0 parser, Sema, formatter, LSP, interface, ownership, recursion, Semantic IR, ABI, and backend regression matrix
+    excluded:
+      - runtime generic dispatch, type erasure, implicit boxing, and runtime reflection-based specialization
+      - higher-kinded types, type-parameter packs, variadic type parameters, generic argument holes, and default generic arguments
+      - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
+      - const or value generics without a separate normative rulebook and syntax
+    verification:
+      - command: go test ./internal/parser ./internal/sema -run 'Generic|Generics' -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run TestAnalyzeRejectsMethodGenericInterfaceRequirement -count=1
+        result: passed on 2026-09-03
+      - command: go test ./internal/parser ./internal/sema ./cmd/lsp -run 'Generic|Generics|Enum' -count=1
+        result: passed on 2026-09-04 with generic enum parsing, concrete member resolution, impl scope, arity checking, and nominal identity coverage
+
+  - id: compiler.generics-lowering
+    area: compiler-semantic-ir-and-mlir
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "1.1"
+    repository_baseline: "69d8b57"
+    summary: >-
+      Tracks the verified Sec 0.1 closure and lowering boundary from canonical
+      concrete specializations supplied by compiler.monomorphization into
+      representation-dependent Semantic IR and executable Sec MLIR. Concrete
+      struct/union identities already reach selected IR paths, while complete
+      generic enum, method, named-type, ownership/destruction, ABI, and
+      generic-concreteness verification remain incomplete.
+    rules:
+      - rules/compiler/generics_lowering.md
+      - rules/compiler/monomorphization.md
+      - rules/declarations/generics.md
+      - rules/declarations/enums.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/impl.md
+      - rules/declarations/properties.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/projects/modules.md
+      - rules/mlir/sec_mlir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/platform/abi.md
+    implemented:
+      - generic declaration arity, parameter scopes, and concrete type-argument parsing exist for major frontend generic categories
+      - generic struct template instantiation recursively substitutes concrete field types and preserves nominal identity
+      - repeated concrete generic struct and function instances are cached canonically within current frontend analysis scopes
+      - generic union templates substitute concrete payload types for implemented construction paths
+      - generic interface requirement types can be concretely substituted in implemented compiler-known Iterator-style paths
+      - current Semantic IR enum/union work retains concrete generic type arguments and nominal identities where represented
+      - current Sec MLIR !sec.struct and !sec.union forms retain nominal identity plus concrete type arguments
+      - current union lowering explicitly rejects unresolved generic union template values
+      - canonical rulebooks now cross-reference the concrete generic-lowering boundary without claiming complete implementation
+    remaining:
+      - consume canonical InstantiationIdentity and concrete specialization facts from compiler.monomorphization without recreating demand, identity, or substitution semantics
+      - implement method-level generic lowering for already canonical concrete method specializations
+      - complete generic named-type lowering and preserve nominal identity independently of physical representation
+      - implement canonical Sec 0.1 generic enum Semantic IR, Sec MLIR, lowering, diagnostics, and backend tests beyond the implemented parser and Sema subset
+      - ensure generic constraint lowering never introduces hidden runtime dictionaries, type descriptors, type erasure, implicit boxing, or runtime reflection
+      - lower concrete generic impl properties, methods, nested declarations, associated immutable values, and static storage while preserving canonical owner identity
+      - concretize copy/move classification, ownership actions, partial-move eligibility, destruction obligations, and cleanup requirements before ownership-sensitive executable lowering
+      - complete generic union ownership, destruction, match, layout-readiness, Semantic IR, and backend paths
+      - make concrete generic callable signatures the exclusive input to ABI classification and executable call lowering
+      - prevent unresolved generic parameters, partially specialized nominal types, and unresolved generic constraint operations from entering canonical compiler-generated executable Sec MLIR
+      - add generic-concreteness verification before representation-dependent lowering
+      - preserve generic declaration, substitution, request-site, and origin-module provenance through Semantic IR and diagnostic-capable Sec MLIR metadata
+      - preserve ordinary volatile, hardware, atomic, barrier, error, panic, ownership, and destruction effects while lowering concrete specializations
+      - distinguish TemplateError, InstantiationError, ImplementationGap, artifact compatibility failure, and CompilerInvariantFailure in diagnostics
+      - suppress duplicate downstream generic diagnostic cascades while preserving nested instantiation context
+      - ensure valid-but-unimplemented generic lowering paths fail as implementation gaps instead of language errors or weakened fallback semantics
+    required_tests:
+      - local generic function lowers with fully concrete parameter and result types
+      - nested generic function call reaches executable IR with a concrete callee specialization identity
+      - generic struct concrete field substitution preserves nominal identity
+      - two generic struct instances with identical representation but different arguments remain distinct Sec types
+      - generic union payloads are fully concrete before union executable operations
+      - generic enum instances with different arguments remain distinct nominal enum types while using ordinary enum operations
+      - generic interface requirement signatures substitute concrete arguments and explicit conformance selects the concrete requirement implementation
+      - constraint-based generic calls lower without hidden runtime dictionary or type-descriptor operands
+      - runtime interface values inside specialized generic functions retain ordinary interface dispatch semantics
+      - generic owner and method-level generic environments compose without parameter-name aliasing
+      - generic impl methods, properties, nested declarations, associated values, and static storage bind to concrete owner identity
+      - move-only generic arguments never use copy-trivial lowering
+      - non-trivially-destructible generic arguments retain required cleanup semantics
+      - compile-time generic facts do not appear as runtime generic checks
+      - runtime argument values are not constant-folded merely because their containing function is specialized
+      - volatile, hardware, atomic, and barrier effects survive generic concretization unchanged except for valid concrete refinement
+      - imported public generic template can depend on a private origin-module helper without exposing that helper to importing source
+      - generic body fingerprint change invalidates dependent imported specialization state
+      - incompatible generic semantic artifact is rejected or rebuilt rather than interpreted best-effort
+      - unresolved generic type parameter in compiler-generated executable Sec MLIR is rejected as a compiler invariant failure
+      - unresolved generic constraint operation in compiler-generated executable Sec MLIR is rejected as a compiler invariant failure
+      - generic concreteness verification does not require physical layout or LLVM representation
+      - template error is reported once at the generic declaration rather than once per concrete request
+      - invalid concrete constraint substitution reports declaration, concrete arguments, required capability, and request site
+      - valid Sec generic construct lacking current lowering coverage reports an implementation gap
+      - same canonical template, substitution, and compatible CompilationPlan produce deterministic semantic output independent of request order
+    excluded:
+      - specialization discovery, worklists, deduplication, InstantiationIdentity, physical sharing, symbol policy, code-size policy, and specialization caching owned by rules/compiler/monomorphization.md
+      - user-visible compile-time execution semantics owned by compile_time_evaluation.md
+      - runtime generic dispatch as the ordinary Sec generic implementation model
+      - type erasure, implicit generic boxing, hidden generic dictionaries, and reflection-based runtime specialization
+      - physical layout, ABI machine classification, linker symbol coalescing, LTO, and general optimizer policy
+
+  - id: compiler.monomorphization
+    area: generic-specialization-and-realization
+    status: partial
+    integrated: "2026-09-04"
+    reviewed: "2026-09-04"
+    document_revision: "1.0"
+    repository_baseline: "777beb8"
+    summary: >-
+      Tracks canonical demand-driven monomorphization from validated generic
+      templates through concrete semantic instantiation, specialization identity,
+      recursive demand, analysis integration, generic closure, physical
+      implementation sharing, separate compilation, ABI/FFI boundaries,
+      incremental reuse, diagnostics, and deterministic termination/resource
+      behavior. Existing frontend generic parsing, inference, substitution,
+      nominal instance caching, generic enums, and selected recursion diagnostics
+      provide a partial foundation; the complete cross-module specialization and
+      realization model remains incomplete.
+    rules:
+      - rules/compiler/monomorphization.md
+      - rules/declarations/generics.md
+      - rules/compiler/generics_lowering.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/linking.md
+      - rules/platform/abi.md
+      - rules/platform/ffi.md
+      - rules/analysis/call_graph.md
+      - rules/analysis/effect_analysis.md
+      - rules/analysis/stack_analysis.md
+      - rules/declarations/static.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+    implemented:
+      - generic declarations are registered as compile-time templates in the frontend
+      - repeated concrete generic type and function requests are cached canonically within current analysis scopes
+      - generic struct, union, enum, interface, impl, and function substitution has substantial frontend coverage
+      - generic enum specialization preserves distinct nominal identity by ordered argument list
+      - selected direct and changing-argument recursive generic storage cases are diagnosed
+      - unresolved generic parameters are rejected by represented concrete lowering paths where current checks exist
+    remaining:
+      - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
+      - separate generic resolution and inference ownership from canonical specialization application
+      - implement one canonical demand/provenance graph for nested concrete specialization requests
+      - guarantee template-level semantic validation from declared constraints without concrete duck typing
+      - complete method-level generic specialization and generic named-type specialization
+      - complete explicit-conformance-driven generic constraint resolution
+      - preserve distinct per-specialization static storage through all shared and separate-compilation paths
+      - carry concrete specialization identity and provenance through Semantic IR and every Sec MLIR lowering path
+      - add an explicit generic-closure verifier before representation-dependent lowering
+      - prevent unresolved generic semantics from reaching ABI, FFI, Sec MLIR, LLVM, or direct backend paths
+      - separate generic closure from CompilationPlan-dependent size, alignment, layout, and ABI realization
+      - implement canonical specialization demand across module and package boundaries
+      - serialize compiler-consumable typed generic template artifacts for later separate-compilation specialization
+      - implement semantic, template, dependency, and provenance fingerprints for generic incremental reuse
+      - distinguish semantic specialization caches from plan-realization and implementation-sharing caches
+      - implement deterministic physical implementation sharing after complete semantic specialization
+      - support shared internal generic bodies using only minimal already-resolved realization parameters
+      - prevent implementation sharing from merging type, static, ownership, effect, analysis, diagnostic, debug, or callable identity
+      - support distinct plan entries or ABI adapters converging on shared internal implementations
+      - preserve exact native ABI compatibility metadata for separately compiled concrete specializations
+      - enforce that unresolved generic extern declarations never acquire runtime ABI
+      - independently validate concrete generic types and callables for FFI compatibility
+      - implement sound non-converging specialization detection over canonical InstantiationKeys
+      - distinguish finite canonical cycles, recursive by-value layout, semantic non-convergence, and compiler resource limits
+      - ensure compiler resource thresholds never serve as proof of semantic non-convergence
+      - make structural instantiation accounting independent of cache state, duplicate requests, physical sharing, and worker scheduling
+      - implement deterministic generic instantiation traces and representative diagnostic selection
+      - expose canonical generic template and specialization facts to LSP and compiler inspection without creating build reachability
+      - add size, performance, debug, and profiling realization policies without changing semantic specialization identity
+      - add the complete identity, demand, substitution, ownership, analysis, closure, sharing, linking, ABI/FFI, incremental, termination, cost, diagnostic, and determinism regression matrix required by rules/compiler/monomorphization.md
+    required_tests:
+      - identical canonical generic requests reuse one semantic instantiation
+      - explicit and inferred arguments converge on one canonical instantiation
+      - nominal representation-equivalent arguments remain distinct semantic specializations
+      - generic method specialization preserves enclosing and method argument roles
+      - invalid unconstrained generic operations fail at template analysis
+      - cache and tooling queries do not create active program demand or LinkRoots
+      - finite recursive specialization cycles are accepted when ordinary owning rules allow the program
+      - unbounded distinct-key specialization is diagnosed independently from recursive layout and resource limits
+      - generic closure rejects unresolved runtime-relevant generic semantics before representation-dependent lowering
+      - target-dependent layout and ABI may remain unresolved at generic closure
+      - shared physical implementations preserve per-instantiation statics and semantic analysis identity
+      - realization-only parameters never perform runtime generic semantic lookup
+      - separate-compilation requests reuse canonical specialization identity across modules
+      - stale semantic and ABI generic artifacts are rejected at their correct compatibility layer
+      - unresolved generic extern declarations are rejected and concrete generic FFI compatibility is checked independently
+      - size and performance policies may select different physical sharing without changing semantic instantiation identity
+      - cold and warm cache plus parallel and sequential compilation produce equivalent canonical generic results
+
+  - id: frontend.generic-union-recursive-storage
+    area: frontend-generics-and-representation
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-14'
+    document_last_updated: '2026-08-14'
+    summary: Generic struct and union inline-storage edges are checked before type resolution for direct, fixed-array-mediated,
+      and changing-argument recursion. Concrete generic union payloads are checked again after substitution. Complete
+      cross-template forward-reference finalization and storage-cycle reporting remain partial. This entry covers
+      represented recursive storage, not the canonical InstantiationGraph or general monomorphization termination model.
+    rules:
+    - rules/declarations/generics.md
+    - rules/declarations/unions.md
+    - rules/declarations/struct.md
+    - rules/collections/collections.md
+    - rules/compiler/semantic_ir.md
+    - rules/compiler/monomorphization.md
+    - rules/memory/layout.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/generics_valid.sec
+    - testdata/generics_invalid.sec
+    implemented:
+    - generic declaration name and arity pre-registration
+    - generic struct template parameter scopes
+    - generic struct direct recursive-storage diagnostic
+    - generic struct fixed-array-mediated recursive-storage diagnostic
+    - generic struct changing-argument non-convergence diagnostic for the implemented forms
+    - generic struct selected finite-indirection cases remain accepted
+    - generic union template registration
+    - generic union ordinary payload substitution for non-recursive examples
+    - generic union direct-payload construction and payload type checking for ordinary concrete instances
+    - canonical generic type instance caching by declaration identity and ordered arguments
+    - generic union direct and named payload recursive-storage diagnostics
+    - generic union fixed-array-mediated and changing-argument recursion diagnostics
+    - post-substitution recursive-storage checks for concrete union payloads
+    partial:
+    - generic type references encountered before a referenced generic declaration has completed body analysis can
+      retain InvalidType template metadata, requiring a broader forward-template finalization audit
+    remaining:
+    - ensure no representation-dependent accepted generic instance contains unresolved InvalidType field or variant
+      metadata
+    - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete
+      predeclaration skeletons
+    - evolve recursive storage diagnostics from the current local cases to complete layout/storage dependency paths
+      without conflating them with canonical InstantiationKey non-convergence
+    - preserve finite reference/slice/container boundaries according to their owning representation rules
+    bug_reference:
+    - correction8.md
+    governance_reconciliation:
+    - Keep generic struct/union storage-cycle checks and represented payload substitution scoped to this entry.
+    - General canonical specialization demand, finite-key cycles, proven non-convergence, and compiler resource limits
+      are owned by compiler.monomorphization and must not be inferred complete from these storage checks.
+    required_tests:
+    - direct recursive generic union payload rejected
+    - recursive generic union named payload field rejected
+    - fixed-array recursive generic union payload rejected
+    - changing-argument recursive generic union rejected
+    - recursive generic union through valid ref indirection accepted
+    - recursive generic union through finite supported container boundary classified correctly
+    - concrete generic union instance contains no unresolved InvalidType payload
+    - forward generic type reference cannot leave unresolved InvalidType storage metadata
+    - existing generic struct recursion tests remain green
+    - existing Maybe[T] generic union substitution and construction tests remain green

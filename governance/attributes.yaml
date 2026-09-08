@@ -1,0 +1,4 @@
+schema_version: 1
+area: attributes
+purpose: Attributes, target selection, and compiler-visible metadata.
+integrations: []

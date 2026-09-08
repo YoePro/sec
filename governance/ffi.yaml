@@ -1,0 +1,4 @@
+schema_version: 1
+area: ffi
+purpose: Foreign-function interface contracts and boundary behavior.
+integrations: []

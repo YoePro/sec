@@ -6,6 +6,7 @@
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/raw_pointers.md`
+- Implementation governance: `governance/memory.yaml`
 - Replaces: `rules/memory/raw_pointers.txt`
 - Repository baseline reviewed: `814a584`
 

@@ -1,0 +1,15 @@
+module main
+
+fn fnName() string
+fn Following() void {}
+
+type Service struct {}
+impl Service {
+    fn Read() string
+    static fn Create() Service
+    fn Done() void {}
+}
+
+fn AtEnd() int
+fn VoidStub() void
+fn BoolStub() bool

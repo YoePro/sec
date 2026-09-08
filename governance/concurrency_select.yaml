@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-select
+purpose: Select expressions, cases, and selection semantics.
+integrations: []

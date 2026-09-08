@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-thread-local
+purpose: Thread-local declarations, access, and lifetime.
+integrations: []

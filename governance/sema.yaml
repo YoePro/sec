@@ -1,0 +1,4 @@
+schema_version: 1
+area: sema
+purpose: Frontend semantic analysis and semantic diagnostics.
+integrations: []

@@ -6,6 +6,7 @@
 - Document revision: 1.0
 - Language version: Sec 0.1
 - Canonical path: `rules/compiler/monomorphization.md`
+- Implementation governance: `governance/generics.yaml`
 
 ## 1. Purpose
 

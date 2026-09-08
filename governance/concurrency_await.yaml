@@ -1,0 +1,4 @@
+schema_version: 1
+area: concurrency-await
+purpose: Await expressions and task outcome observation.
+integrations: []

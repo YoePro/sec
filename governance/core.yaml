@@ -1,0 +1,4 @@
+schema_version: 1
+area: core
+purpose: Compiler-known fundamentals and trusted core surfaces.
+integrations: []

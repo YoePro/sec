@@ -1,0 +1,4 @@
+schema_version: 1
+area: lexer
+purpose: Lexical structure, tokens, literals, and source spelling.
+integrations: []

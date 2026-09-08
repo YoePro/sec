@@ -7,6 +7,7 @@
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/generics.txt`
 - **Canonical path:** `rules/declarations/generics.md`
+- **Implementation governance:** `governance/generics.yaml`
 
 ## 1. Purpose
 

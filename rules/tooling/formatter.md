@@ -5,6 +5,9 @@
 This document is the canonical formatter rulebook for Sec. The former legacy
 text rulebook has been replaced and is no longer canonical.
 
+Implementation governance for this rulebook is maintained in
+`governance/formatting.yaml`.
+
 The formatter follows a gofmt-like philosophy:
 
 - Sec has one canonical source style;

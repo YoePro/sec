@@ -107,6 +107,26 @@ fn Calculate(value: int) int
 
 Sec 0.1 has no C/C++-style ordinary function prototype declarations.
 
+A complete ordinary signature without a body is diagnosed as an unimplemented
+function stub, with error ID `P2019` (`parser.unimplemented-function`) on the
+function name. Its primary message is `Unimplemented function NAME`.
+The help begins with: "The function `NAME` has been declared with a signature,
+but its body is missing." It then adapts to the declared return type:
+
+- `void`: suggest a placeholder body `{}`.
+- Plain built-in integer types: suggest `{ return 0 }`.
+- `string`: suggest `{ return "" }`.
+- `bool`: suggest `{ return false }`.
+- Other return types: request a valid value of the declared return type, without
+  inventing a default for named, constrained, reference, or aggregate types.
+
+Examples use Sec syntax without semicolons. A temporary return is suggested so
+other code can compile during testing; it does not implement the intended logic.
+
+The parser retains the signature with no body for tooling and continues with
+the next declaration. This remains an error blocking compilation. An empty
+placeholder body is subject to the normal return-type and control-flow rules.
+
 Bodyless callable signatures are permitted only where another construct explicitly defines that meaning, including:
 
 - interface method requirements;

@@ -1,0 +1,80 @@
+schema_version: 1
+area: concurrency-mutex
+purpose: Mutexes, locking, and mutual-exclusion semantics.
+integrations:
+  - id: concurrency.mutex-v2
+    area: mutex-language-surface
+    rulebook: rules/concurrency/mutex.md
+    status: partial
+    normative:
+    - Mutex[T] and MutexGuard[T] are @noCopy compiler-known/source-visible generic types.
+    - Mutex[T] owns exactly one protected T and one synchronization identity.
+    - MutexGuard[T] represents exactly one exclusive acquisition and releases on deterministic destruction.
+    - Public acquisition surface is Lock(), TryLock(), Lock(duration), Lock(ref Context).
+    - Lock() returns MutexGuard[T].
+    - TryLock() returns Option[MutexGuard[T]].
+    - Lock(duration) returns Option[MutexGuard[T]].
+    - Lock(ref Context) returns Result[MutexGuard[T], ContextError].
+    - There is no portable LockError and no Lock(timeout, context) overload in v0.1.
+    - MutexGuard[T] forwards accessible members to protected T.
+    - Guard-specific lookup precedes protected-T lookup.
+    - The complete protected T cannot be moved out.
+    - No public Unlock/Value/Get guard API exists.
+    - Mutex is non-reentrant.
+    - Live guards cannot cross spawn/await/suspending join/select.
+    remaining:
+    - Synchronize canonical CamelCase method registration and legacy lowercase call sites/tests.
+    - Implement/verify @noCopy semantic declarations for Mutex[T] and MutexGuard[T].
+    - Implement exact timeout/context overload resolution.
+    - Implement deterministic guard destruction/release lowering.
+    - Implement execution-entity-bound guard escape analysis.
+    - Implement await/join/select/spawn live-guard diagnostics.
+    - Implement same-execution repeated-lock detection.
+    - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
+    - Reject consuming complete-T forwarded operations.
+    - Integrate acquire/release synchronization with memory-model facts.
+    - Integrate target/platform lock capability through CompilationPlan.
+    required_tests:
+    - id: mutex-camelcase-api
+      expectation: Lock and TryLock are canonical; legacy lowercase public spellings are not offered as the public source API.
+    - id: mutex-basic-lock-type
+      expectation: Lock() has static type MutexGuard[T].
+    - id: mutex-try-lock-type
+      expectation: TryLock() has static type Option[MutexGuard[T]].
+    - id: mutex-timeout-type
+      expectation: Lock(duration) has static type Option[MutexGuard[T]].
+    - id: mutex-context-type
+      expectation: Lock(ref Context) has static type Result[MutexGuard[T], ContextError].
+    - id: mutex-no-lockerror
+      expectation: Ordinary portable lock acquisition does not synthesize LockError.
+    - id: guard-forwarding
+      expectation: Accessible fields/properties/non-consuming methods resolve through MutexGuard[T] with correct mutability/lifetime.
+    - id: guard-no-complete-move
+      expectation: Complete protected T cannot be consumed/moved through a guard.
+    - id: guard-no-unlock-member
+      expectation: Completion does not expose public Unlock/Value/Get on MutexGuard[T].
+    - id: guard-suspension-reject
+      expectation: Live guard across await/suspending join/select is rejected.
+    - id: guard-spawn-reject
+      expectation: Move/borrow/capture of live guard across spawn is rejected.
+    - id: mutex-nonreentrant
+      expectation: Statically provable same-execution reacquisition while guard is live is rejected.
+    corrections_applied:
+    - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
+
+  - id: semantic-ir.mutex-v2
+    area: semantic-ir-mutex-context-facts
+    status: planned
+    remaining:
+    - Preserve mutex identity, protected T, acquisition mode, duration/context, commit outcome, guard identity/owner, forwarded access, release, cancellation/deadline registration and source provenance.
+    - Keep ContextError distinct from terminal execution cancellation.
+    - Use semantic_ir.md as owner of concrete opcode names.
+
+  - id: lowering.mutex-v2
+    area: mutex-context-lowering
+    status: planned
+    remaining:
+    - Implement exactly-once acquisition/release and acquire/release synchronization.
+    - Implement one-winner semantics among acquisition, timeout/context event and current-execution cancellation.
+    - Implement ContextSource registration cleanup.
+    - Consume CompilationPlan lock/cancellation capabilities.

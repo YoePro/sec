@@ -1,0 +1,6 @@
+module test
+
+type TargetSigned int multipleOf 65537 multipleOf 65539 odd
+type TargetUnsigned uint multipleOf 65537 multipleOf 65539 odd
+type FixedSigned int64 multipleOf 65537 multipleOf 65539 odd
+type FixedUnsigned uint64 multipleOf 65537 multipleOf 65539 odd

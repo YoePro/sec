@@ -11639,7 +11639,13 @@ fn Test(left: int128, right: int128, b: bool) int128 {
 }
 `
 
-	errors := analyzeSourceRaw(t, input)
+	// Batch compilation rejects the literal lexically; Sema still diagnoses
+	// its retained AST when invoked by recovery-aware tooling.
+	result := parser.New(lexer.New(input)).Parse()
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].ID != "L1009" {
+		t.Fatalf("expected character-length lexical error: %+v", result.Diagnostics)
+	}
+	errors := NewAnalyzer().Analyze(result.Program)
 
 	expected := []string{
 		"operator & requires integer operands at 6:15",
@@ -12051,7 +12057,7 @@ fn Test(
 	let arrayMismatch := text in numbers
 	let sliceMismatch := text in view
 	let nonComparableElement := holder in holders
-	let ownedDynamicArray := 1 in dynamic
+	let dynamicMismatch := text in dynamic
 	let unsupportedList := 1 in listValues
 	let unsupportedMap := 1 in mapValues
 	let unsupportedSet := 1 in setValues
@@ -12316,6 +12322,30 @@ func assertSemaErrors(t *testing.T, errors []Error, expected []string) {
 	for i, expectedError := range expected {
 		if errors[i].Error() != expectedError {
 			t.Fatalf("wrong sema error %d. got=%q want=%q", i, errors[i].Error(), expectedError)
+		}
+	}
+}
+
+func TestDynamicArrayMembership(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/dynamic_membership.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, string(source)), nil)
+}
+
+func TestDynamicArrayMembershipRejectsIncompatibleElements(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/dynamic_membership_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errors := analyzeSourceRaw(t, string(source))
+	if len(errors) != 3 {
+		t.Fatalf("expected three membership errors: %v", errors)
+	}
+	for _, err := range errors {
+		if err.ID != diagnostics.OperatorInvalidMembership || err.Help == "" {
+			t.Fatalf("missing membership diagnostic/help: %+v", err)
 		}
 	}
 }

@@ -1,0 +1,13 @@
+module main
+
+type Status int range 100..999 default 500
+
+type ViewHolder struct {
+    values: ref int[],
+}
+
+fn Invalid(status: Status, values: uint[], text: string, holder: ViewHolder, holders: ViewHolder[]) void {
+    let incompatible := text in values
+    let nominal := status in values
+    let nonComparable := holder in holders
+}

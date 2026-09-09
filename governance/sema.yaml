@@ -1,4 +1,40 @@
 schema_version: 1
 area: sema
 purpose: Frontend semantic analysis and semantic diagnostics.
-integrations: []
+integrations:
+  - id: frontend.dynamic-array-membership
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-09-09"
+    summary: >-
+      Accepts in over owning dynamic T[] arrays using the existing element
+      equality and contextual literal typing rules. The shared frontend supports
+      diagnostics and LSP analysis; dynamic array backend support remains absent.
+    rules:
+      - rules/foundations/operators.md
+      - rules/corrections/applied/operators-dynamic-array-membership-20260909.md
+    code:
+      - internal/sema/analyzer.go
+      - sec/stdlib/net/http/status.sec
+    tests:
+      - internal/sema/analyzer_test.go
+      - testdata/sema/dynamic_membership.sec
+      - testdata/sema/dynamic_membership_invalid.sec
+      - testdata/sema/dynamic_membership_lowering_deferred.sec
+    implemented:
+      - owning dynamic arrays expose their element type to membership validation
+      - membership returns bool, uses equality-compatible elements, and contextually types numeric and rune literals
+      - repeated searches preserve array availability and nominal type boundaries
+      - incompatible values and non-comparable element types retain operator membership diagnostic metadata and help
+      - HTTP Status.IsRegistered uses the user-provided table typed as Status[] to match the named receiver
+    remaining:
+      - dynamic array representation, construction, ownership and destruction in maintained backends
+      - exact-once left-to-right short-circuit dynamic-array membership lowering without allocation
+      - backend execution tests for empty arrays, first match, no match, operand effects and non-consuming search
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: sema over the dynamic membership fixtures
+        result: valid cases accepted; incompatible elements rejected
+      - command: emit-ir testdata/sema/dynamic_membership_lowering_deferred.sec
+        result: explicit unsupported array type uint[] error; no executable support claimed

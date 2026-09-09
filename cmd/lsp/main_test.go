@@ -1348,6 +1348,26 @@ fn Check() int {
 	assertSemanticTokenWithoutModifier(t, tokens, 8, 19, 7, "variable", "readonly") // mutable return use
 }
 
+// Rules: rules/tooling/lsp.md "Semantic tokens" and
+// rules/declarations/static.md "Static declarations in implementations".
+func TestSemanticTokensPreferAssociatedLetDeclarationOverSameNamedType(t *testing.T) {
+	source := `module main
+
+type HeaderName string
+
+impl HeaderName {
+    static let Cookie: HeaderName := "cookie"
+}
+`
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "cookie.sec"), []byte("module main\n\ntype Cookie struct {}\n"), 0o644); err != nil {
+		t.Fatalf("write same-module type declaration: %v", err)
+	}
+
+	tokens := decodeSemanticTokens(semanticTokensForSource(uriFromPath(filepath.Join(directory, "header.sec")), source))
+	assertSemanticTokenWithModifier(t, tokens, 5, 15, len("Cookie"), "variable", "readonly")
+}
+
 func TestSemanticTokensUseFunctionParameterBindingMutability(t *testing.T) {
 	source := `module main
 

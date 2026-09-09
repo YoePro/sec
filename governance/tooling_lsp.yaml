@@ -78,3 +78,27 @@ integrations:
         result: passed
       - command: temporary stdio protocol probe against rebuilt bin/lsp-sec
         result: 27 HTTP file opens plus 20 rapid changes produced 27 versioned publications in 0.75 seconds including debounce; shutdown and exit succeeded with empty stderr
+
+  - id: tooling.lsp-semantic-token-name-collisions
+    area: tooling
+    status: implemented
+    integrated: "2026-09-09"
+    summary: >-
+      Gives declaration locations a compiler-owned, position-exact semantic
+      token classification so an associated binding cannot be colored as an
+      unrelated same-named type from the module-wide lexical fallback map.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/declarations/static.md
+      - rules/foundations/names_scopes_visibility.md
+    code:
+      - cmd/lsp/main.go
+    tests:
+      - cmd/lsp/main_test.go
+    implemented:
+      - Sema symbol declaration tokens override same-spelled type and function fallback classifications
+      - immutable associated let declarations remain readonly variables even when their names collide with nominal types
+      - implicit instance-member declarations retain property classification
+    verification:
+      - command: go test ./cmd/lsp -run 'TestSemanticTokens(PreferAssociatedLetDeclarationOverSameNamedType|ClassifyImmutableBindingsAsReadonlyVariables)' -count=1
+        result: passed

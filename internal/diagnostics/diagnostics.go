@@ -31,6 +31,7 @@ const (
 	LexerUnknownEscape           = "L1006"
 	LexerMalformedEscape         = "L1007"
 	LexerInvalidUnicodeEscape    = "L1008"
+	LexerCharacterLiteralLength  = "L1009"
 	ParserSyntaxError            = "P2001"
 	ParserMissingToken           = "P2002"
 	ParserUnexpectedToken        = "P2003"
@@ -76,13 +77,16 @@ const (
 	OperatorDivisionByZero       = "S1024"
 	OperatorRemainderByZero      = "S1025"
 	RedundantAssociatedStatic    = "S1026"
+	InvalidGenericParameterName  = "S1027"
 	LargeValueParameter          = "A2001"
 )
 
 var registry = map[string]Definition{
-	LexerUnknownEscape:        {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerMalformedEscape:      {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerInvalidUnicodeEscape: {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidGenericParameterName: {ID: InvalidGenericParameterName, Name: "names.invalid-generic-type-parameter", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnknownEscape:          {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerMalformedEscape:        {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidUnicodeEscape:   {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerCharacterLiteralLength: {ID: LexerCharacterLiteralLength, Name: "lexer.character-literal-length", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerNonNFCIdentifier: {
 		ID: LexerNonNFCIdentifier, Name: "lexer.non-nfc-identifier", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
 	},

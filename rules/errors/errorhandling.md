@@ -6,6 +6,7 @@
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/errorhandling.md`
+- **Implementation governance:** `governance/errors.yaml`
 - **Replaces:** `rules/errors/errorhandling.txt`
 - **Repository baseline reviewed:** `b3315f6` (latest semantic source/rulebook parent: `45e5cd4`)
 
@@ -263,12 +264,26 @@ Rules:
 - concrete errors may therefore be returned from `Result[T, error]` by normal
   error widening;
 - a plain success value does not generally become `Ok(value)` implicitly.
+- an expression whose type is already assignable to the enclosing function's
+  declared `Result[T, E]` type may be returned directly;
+- directly returning a `Result[T, E]` returns the complete carrier unchanged;
+  it does not unwrap and reconstruct the active `Ok` or `Err` state;
+- this rule does not introduce an implicit conversion from `T` to
+  `Result[T, E]`.
 
 Example:
 
 ```sec
 fn Read() Result[Data, error] {
     return Err(IOError.ReadError)
+}
+
+fn ReadFromDevice() Result[Data, IOError] {
+    // ...
+}
+
+fn Read() Result[Data, IOError] {
+    return ReadFromDevice()
 }
 ```
 

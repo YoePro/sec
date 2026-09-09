@@ -1,0 +1,9 @@
+module main
+fn main() void {
+    let empty := ''
+    let pair := 'AB'
+    let escapedPair := '\n\t'
+    let mixed := 'A\u{03A9}'
+    let combining := 'é'
+    let following := 1
+}

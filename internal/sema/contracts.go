@@ -209,13 +209,22 @@ func applyRangeContract(typ Type, contract *ast.RangeContract) Type {
 	return typ
 }
 
+// checkContractSetConsistency rejects integer contract conjunctions with no
+// representable value, including inherited contracts and the resolved target's
+// bounds for int and uint.
+// Rules: rules/types/contracts.md — Composition; Integer contracts;
+// rules/types/types.md — `int` and `uint`;
+// rules/corrections/applied/correction3-20260823.md — Required correction, 1–5.
 func (a *Analyzer) checkContractSetConsistency(typ Type, contractNode ast.Contract) {
 	if contractNode == nil || !isIntegerType(typ) {
 		return
 	}
 
 	var token lexer.Token
-	var effectiveRange *RangeContract
+	effectiveRange := intersectIntegerRangeContracts(nil, RangeContract{
+		Min: typ.MinInteger,
+		Max: typ.MaxInteger,
+	})
 	var multiple *big.Int
 	hasOdd := false
 	hasEven := false
@@ -305,6 +314,10 @@ func leastCommonMultiple(left, right *big.Int) *big.Int {
 	return new(big.Int).Mul(new(big.Int).Quo(left, gcd), right)
 }
 
+// integerRangeHasSatisfyingValue proves nonempty range/divisibility/parity
+// intersection with exact arithmetic, without enumerating the range.
+// Rules: rules/types/contracts.md — Composition; Integer contracts;
+// rules/corrections/applied/correction3-20260823.md — Algorithmic note.
 func integerRangeHasSatisfyingValue(contract *RangeContract, multiple *big.Int, odd bool, even bool) bool {
 	if contract == nil || contract.Min == nil || contract.Max == nil {
 		return true
@@ -323,16 +336,16 @@ func integerRangeHasSatisfyingValue(contract *RangeContract, multiple *big.Int, 
 		step = new(big.Int).Set(multiple)
 	}
 	first := firstMultipleAtOrAbove(min, step)
-	for value := first; value.Cmp(max) <= 0; value.Add(value, step) {
-		if odd && new(big.Int).Mod(value, big.NewInt(2)).Sign() == 0 {
-			continue
-		}
-		if even && new(big.Int).Mod(value, big.NewInt(2)).Sign() != 0 {
-			continue
-		}
-		return true
+	if odd && even {
+		return false
 	}
-	return false
+	if odd && first.Bit(0) == 0 || even && first.Bit(0) != 0 {
+		if step.Bit(0) == 0 {
+			return false
+		}
+		first.Add(first, step)
+	}
+	return first.Cmp(max) <= 0
 }
 
 func firstMultipleAtOrAbove(min *big.Int, step *big.Int) *big.Int {

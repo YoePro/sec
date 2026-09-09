@@ -986,6 +986,10 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 	return stmt
 }
 
+// parseSelectStatement preserves ordered branches and their partial bodies at EOF
+// while retaining the syntax error that prevents code generation.
+// Rules: rules/concurrency/select.md — "Core syntax";
+// rules/compiler/parser_recovery.md — "Block recovery", "Compiler result".
 func (p *Parser) parseSelectStatement() ast.Statement {
 	stmt := &ast.SelectStatement{Token: p.curToken}
 	if !p.expectPeek(lexer.LBRACE) {
@@ -999,7 +1003,15 @@ func (p *Parser) parseSelectStatement() ast.Statement {
 			continue
 		}
 
+		start := p.curToken
 		branch := p.parseSelectBranch()
+		// A failed branch header can return a partial node without consuming
+		// its first token. Do not retry that same token indefinitely.
+		// rules/compiler/parser_recovery.md — "Recovery goals".
+		if p.curToken == start {
+			p.nextToken()
+			p.recordSkippedRecovery(start, start, 1, RecoveryProbable)
+		}
 		if branch != nil {
 			if branch.Kind == ast.SelectDefaultBranch {
 				if hasSelectDefault(stmt) {
@@ -1021,7 +1033,6 @@ func (p *Parser) parseSelectStatement() ast.Statement {
 
 	if p.curToken.Type == lexer.EOF {
 		p.addError("unterminated select body")
-		return nil
 	}
 	return stmt
 }

@@ -1,0 +1,12 @@
+module main
+fn main() void {
+    let ascii := 'A'
+    let unicode := 'Ω'
+    let astral := '😀'
+    let newline := '\n'
+    let zero := '\0'
+    let hex := '\xFF'
+    let scalar := '\u{10FFFF}'
+    let quote := '\''
+    let slash := '\\'
+}

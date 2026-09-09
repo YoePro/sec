@@ -1,0 +1,7 @@
+module test
+
+type ImpossibleUnsigned uint8 multipleOf 17 multipleOf 19 odd
+type ImpossibleSigned int8 multipleOf 11 multipleOf 13 odd
+type OddBase int8 odd
+type ImpossibleInherited OddBase multipleOf 11 multipleOf 13
+type ImpossibleReordered uint8 odd multipleOf 19 multipleOf 17

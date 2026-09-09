@@ -1,0 +1,5 @@
+module main
+
+fn Contains(value: uint, values: uint[]) bool {
+    return value in values
+}

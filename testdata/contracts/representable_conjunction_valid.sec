@@ -1,0 +1,7 @@
+module test
+
+type ZeroOnly uint8 multipleOf 17 multipleOf 19
+type SignedBoundary int8 multipleOf -128 even
+type UnsignedBoundary uint8 multipleOf 15 multipleOf 17 odd
+type SignedOdd int8 multipleOf 7 multipleOf 17 odd
+type AmbiguousDefault int8 odd

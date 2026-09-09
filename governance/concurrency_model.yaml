@@ -1,4 +1,112 @@
 schema_version: 1
 area: concurrency-model
 purpose: Umbrella concurrency and runtime-model semantics.
-integrations: []
+integrations:
+  - id: concurrency.model-v2
+    area: concurrency-language-model
+    feature: concurrency-umbrella-semantics
+    status: partial
+    integrated: "2026-09-05"
+    document_revision: "2.0"
+    repository_baseline: 777beb8
+    rulebook: rules/concurrency/concurrency.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - sec/core/task.sec
+    tests:
+      - internal/sema/concurrency_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    summary: >-
+      Tracks the revision-2 umbrella concurrency model across task, thread,
+      process, ISR, foreign callback, transferability, synchronization,
+      race/deadlock analysis, Semantic IR, target profiles, and lowering while
+      leaving detailed construct semantics in their specialist rulebooks.
+    normative:
+      - "Tasks, threads, processes, ISR execution, and foreign callback contexts remain semantically distinct execution kinds."
+      - "Concurrency does not weaken ownership, borrowing, deterministic destruction, or explicit failure semantics."
+      - "Execution creation is explicit; work is never silently spawned or detached."
+      - "Task creation is fallible and task await always yields TaskOutcome[T]."
+      - "TaskOutcome[T] remains distinct from a task function's own Result[T,E]."
+      - "Boundary transferability is specific to task, thread, process, ISR, and foreign contexts and is not implied by ordinary assignability or bitwise copyability."
+      - "Shared mutable state requires explicit synchronization or another concurrency-safe ownership mechanism."
+      - "Volatile access is not synchronization."
+      - "Ordinary unsynchronized data races are invalid Sec behavior."
+      - "Data-race and deadlock algorithms remain owned by their dedicated analysis rulebooks."
+      - "Semantic IR preserves concurrency meaning without making concurrency.md own concrete opcode names."
+      - "Concurrency lowering consumes validated Semantic IR and immutable CompilationPlan facts rather than compiler-host facts."
+      - "Process-specific design remains outside the umbrella book until its owning process and IPC rulebooks define it."
+    implementation_evidence:
+      existing_frontend_and_governance:
+        - "Existing parser and Sema concurrency coverage is tracked by the specialist governance entries."
+        - "Task and Thread compiler-known type and lifecycle work exists, while specialist rulebooks own detailed coverage."
+        - "Mutex[T], MutexGuard[T], and static storage have existing frontend slices tracked by their specialist entries."
+        - "Transferability, data-race analysis, deadlock analysis, Semantic IR, lowering, platform, and tooling have dedicated governance entries."
+        - "Target-profile governance distinguishes task, scheduler, native-thread, synchronization, atomic, detached-execution, and local-storage capabilities."
+      synchronization_debt_resolved_by_rulebook_revision:
+        - "The umbrella no longer presents task creation as infallible or task await as returning T directly."
+        - "Detailed mutex, data-race, deadlock, and Semantic IR inventories were returned to their owning rulebooks."
+        - "Superseded .txt references were removed except for the still-canonical unfinished process rulebook."
+        - "Process details beyond stable cross-boundary invariants were removed."
+    removed_from_normative_book:
+      - "Mutable implementation status and current code or test coverage."
+      - "Direct task-spawn examples that assume infallible Task[T] creation."
+      - "Direct task-await examples that assume await Task[T] yields T."
+      - "Detailed mutex overload design duplicated from mutex.md."
+      - "Ad-hoc race and deadlock algorithms duplicated from their analysis rulebooks."
+      - "Hard-coded Semantic IR opcode inventory duplicated from semantic_ir.md."
+      - "Stale .txt references for rulebooks now using canonical .md paths."
+      - "Process-specific design assertions owned by unfinished process and IPC rulebooks."
+    correction_dependency:
+      required: false
+      reason: >-
+        The rewrite corrects stale or duplicated umbrella material. Task and
+        await cross-rulebook semantics are already tracked by the task-v2
+        correction package, so no additional correction document is required.
+    implemented:
+      - "Frontend await consumes Task[T] and produces invariant TaskOutcome[T] through canonical shared Sema facts used by compiler and LSP."
+      - "Compiler-known TaskOutcome[T] preserves Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError) without inventing TaskError variants."
+      - "Nested Result return types remain inside TaskOutcome rather than being flattened or reclassified."
+      - "TaskOutcome[void] uses a payload-less Completed variant while retaining the complete outcome union."
+      - "LSP hover displays the same compiler-owned TaskOutcome[T] inferred by Sema."
+      - "The core surface declares TaskOutcome[T] and TaskSpawnError; trusted-core provenance prevents user code from shadowing their compiler-known identities."
+    remaining:
+      - "Synchronize all umbrella-level examples and tests with fallible task creation."
+      - "Complete canonical boundary-transfer validation through frontend.transferability and analysis.transferability."
+      - "Complete data-race and deadlock analysis through their dedicated governance integrations."
+      - "Complete Semantic IR concurrency facts and verification through analysis.semantic-ir-v2 and semantic-ir.transferability."
+      - "Complete lowering/runtime mappings without changing source semantics or relying on compiler-host facts."
+      - "Complete platform/runtime execution-capability resolution through compiler.platform-model and target-profile governance."
+      - "Keep process-specific remaining work separate until processes.md is authored."
+    required_tests:
+      - id: execution-kind-distinction
+        expectation: "Task, Thread, process-adapter, ISR, and foreign callback contexts remain semantically distinguishable."
+      - id: no-implicit-execution
+        expectation: "Ordinary calls never become implicit spawn or detach operations."
+      - id: task-spawn-fallible
+        expectation: "Task creation has type Result[Task[T], TaskSpawnError]."
+      - id: task-await-outcome
+        expectation: "await Task[T] yields TaskOutcome[T] without flow-sensitive collapse."
+      - id: nested-task-result
+        expectation: "Task[Result[T,E]] preserves Completed(Err(E)) as normal completion distinct from Failed(TaskError)."
+      - id: move-only-boundary-transfer
+        expectation: "Move-only values cross execution boundaries explicitly and are never silently cloned."
+      - id: detached-borrow-rejection
+        expectation: "Detached execution cannot retain a source-scope borrow that may expire."
+      - id: task-thread-affinity
+        expectation: "Migratable tasks cannot retain thread-affine state without a canonical proof."
+      - id: shared-mutable-requires-sync
+        expectation: "Concurrent shared mutation without synchronization or safe ownership is rejected."
+      - id: volatile-not-sync
+        expectation: "Volatile access never satisfies synchronization requirements by itself."
+      - id: mutex-guard-boundary
+        expectation: "MutexGuard restrictions are consumed from mutex.md across suspension and execution boundaries."
+      - id: data-race-analysis-owner
+        expectation: "Race findings consume canonical Place and provenance facts from the dedicated analysis."
+      - id: deadlock-analysis-owner
+        expectation: "Deadlock findings consume canonical wait and resource facts from the dedicated analysis."
+      - id: semantic-ir-concurrency
+        expectation: "Semantic IR preserves execution kind, transfer, synchronization, completion, cancellation, and outcome facts."
+      - id: compilation-plan-concurrency
+        expectation: "Concurrency validation and lowering use selected CompilationPlan facts rather than host facts."

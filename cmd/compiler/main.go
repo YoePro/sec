@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,7 +74,11 @@ func main() {
 
 	if command == "fmt" {
 		if err := runFmtCommand(flag.Args()[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "fmt error: %v\n", err)
+			if _, ok := err.(*formatCheckError); ok {
+				fmt.Fprintln(os.Stderr, err)
+			} else {
+				fmt.Fprintf(os.Stderr, "fmt error: %v\n", err)
+			}
 			os.Exit(1)
 		}
 		return
@@ -138,7 +143,8 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json]")
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
-	fmt.Fprintln(os.Stderr, "       sec fmt <file.sec>...")
+	fmt.Fprintln(os.Stderr, "       sec fmt [--check] <file.sec>...")
+	fmt.Fprintln(os.Stderr, "       sec fmt --stdin")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-ir <file.sec> [-o <file.sir|->] [--target <os-arch>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-sec-mlir <file.sec> [-o <file.mlir|->] [--target <os-arch>] [--mlir-bin <path>]")
@@ -146,13 +152,59 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
 }
 
-// runFmtCommand applies the canonical shared formatter in place. LSP document
-// formatting calls the same internal/formatter package, as required by
-// rules/tooling/formatter.md, Shared implementation.
-func runFmtCommand(paths []string) error {
+// formatCheckError reports every selected file that the shared formatter would
+// change, without classifying formatting differences as language errors.
+// Rules: rules/tooling/formatter.md — Command model, `sec fmt --check <path>`;
+// Diagnostics.
+type formatCheckError struct {
+	paths []string
+}
+
+// Error renders stable formatting diagnostic IDs and affected filenames.
+// Rules: rules/tooling/formatter.md — Diagnostics.
+func (e *formatCheckError) Error() string {
+	var lines []string
+	for _, path := range e.paths {
+		lines = append(lines, fmt.Sprintf("%s: format.noncanonical-source: formatting would change this file", path))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// runFmtCommand formats explicit files in place, checks them without writes,
+// or formats standard input to standard output.
+// Check differences return an error so the CLI exits non-zero after reporting
+// all affected files. LSP uses the same formatter.
+// Rules: rules/tooling/formatter.md — Command model, `sec fmt <path>` and
+// `sec fmt --check <path>` and `sec fmt --stdin`; Shared implementation; Diagnostics.
+func runFmtCommand(args []string) error {
+	var paths []string
+	check, stdin, literalPaths := false, false, false
+	for _, arg := range args {
+		switch {
+		case literalPaths:
+			paths = append(paths, arg)
+		case arg == "--":
+			literalPaths = true
+		case arg == "--check":
+			check = true
+		case arg == "--stdin":
+			stdin = true
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("unknown fmt option: %s", arg)
+		default:
+			paths = append(paths, arg)
+		}
+	}
+	if stdin {
+		if check || len(paths) > 0 {
+			return fmt.Errorf("--stdin cannot be combined with --check or source file paths")
+		}
+		return formatStdin(os.Stdin, os.Stdout)
+	}
 	if len(paths) == 0 {
 		return fmt.Errorf("expected at least one source file")
 	}
+	var changed []string
 	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -169,9 +221,37 @@ func runFmtCommand(paths []string) error {
 		if formatted == string(input) {
 			continue
 		}
+		if check {
+			changed = append(changed, path)
+			continue
+		}
 		if err := replaceFormattedFile(path, []byte(formatted), info.Mode().Perm()); err != nil {
 			return err
 		}
+	}
+	if len(changed) > 0 {
+		return &formatCheckError{paths: changed}
+	}
+	return nil
+}
+
+// formatStdin formats a stream through the shared formatter with LF line endings
+// and propagates read/write failures to the CLI.
+// Rules: rules/tooling/formatter.md — Command model, `sec fmt --stdin`;
+// Line endings; Shared implementation.
+func formatStdin(input io.Reader, output io.Writer) error {
+	source, err := io.ReadAll(input)
+	if err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+	text := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(string(source))
+	formatted := secformatter.Format(secformatter.Source{Text: text}, secformatter.Options{}).Text
+	n, err := io.WriteString(output, formatted)
+	if err == nil && n != len(formatted) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		return fmt.Errorf("write stdout: %w", err)
 	}
 	return nil
 }

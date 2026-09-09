@@ -376,6 +376,7 @@ integrations:
   - id: frontend.type-contracts-v2
     area: frontend-types-analysis-and-lowering
     status: partial
+    updated: '2026-09-09'
     audited: '2026-08-19'
     repository_baseline: c515862
     document_revision: inferred 2.0
@@ -414,6 +415,10 @@ integrations:
     - internal/sema/analyzer_test.go
     - internal/sema/defaults_test.go
     - internal/codegen/mlir/generator_test.go
+    - internal/sema/contract_representability_test.go
+    - testdata/contracts/representable_conjunction_valid.sec
+    - testdata/contracts/representable_conjunction_invalid.sec
+    - testdata/contracts/representable_conjunction_target.sec
     implemented:
     - contracts are represented on named semantic types and inherited contracts are copied into derived named types
     - sequential contract syntax is represented as an ordered ContractList
@@ -434,6 +439,10 @@ integrations:
     - selected provably inconsistent integer contract sets are rejected
     - all integer ranges are intersected and all nonzero multipleOf divisors combine through exact LCM
     - inherited and local range, divisibility, and parity contracts participate in one satisfiability proof
+    - integer consistency intersects the complete contract conjunction with the base type's representable bounds even without an explicit range
+    - target-sized int and uint consistency uses the selected scalar plan while fixed-width types retain target-independent bounds
+    - exact first-candidate arithmetic proves divisibility and parity consistency without range enumeration or host-width narrowing
+    - satisfiable types remain legal even when their implicit default is ambiguous; zero-only and signed-boundary domains are preserved
     - assignment to currently represented constrained storage requires try in implemented paths
     partial:
     - membership is currently restricted by implementation to primitive/scalar/enum compile-time constants rather
@@ -457,8 +466,6 @@ integrations:
     - extend in-list membership to every named type whose values support the required compile-time semantic equality,
       without memory-identity comparison or hidden coercion
     - extend contract-bound and membership constant evaluation to the complete canonical compile-time constant subset
-    - combine every range, multipleOf, odd/even, inherited, and local integer constraint into one exact satisfiability
-      proof
     - reject every obsolete variable-level and ordinary field-level contract form with focused migration diagnostics
       instead of applying a hidden storage-site contract
     - implement runtime validation for explicit conversion into constrained named types
@@ -478,8 +485,8 @@ integrations:
     - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
     - The contracts.md embedded status correctly records obsolete variable and field contracts plus incomplete runtime
       validation as known work; those are not new bugs from this audit.
-    - regex, minLen, maxLen, exactLen, the broader compile-time-equality membership domain, and complete same-family
-      consistency composition are not adequately represented in the current root governance ledger.
+    - regex, minLen, maxLen, exactLen, and the broader compile-time-equality membership domain remain incomplete;
+      represented integer range/divisibility/parity composition now includes base-type and target-sized representability.
     required_tests:
     - regex contract parses only after regex syntax is canonicalized
     - minLen, maxLen, exactLen, and notEmpty applicability
@@ -496,6 +503,13 @@ integrations:
     - runtime conversion success and contract failure
     - constrained assignment outside try rejected
     - constrained assignment inside try leaves destination unchanged on failure
+    verification:
+    - command: go test ./internal/sema -run 'TestIntegerContractRepresent' -count=1
+      result: regression tests failed before the fix because impossible fixed-width and 32-bit target-sized types were accepted
+    - command: go test ./internal/sema -run 'TestIntegerContractRepresent|Test.*ContractSetConsistency|TestInheritedMembership' -count=1
+      result: passed after the fix
+    - command: go test ./...
+      result: passed
   - id: frontend.default-values-inherited-membership
     area: frontend-default-resolution-and-contract-validation
     status: implemented

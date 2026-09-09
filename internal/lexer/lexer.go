@@ -774,10 +774,15 @@ func (l *Lexer) readPlainString() Token {
 
 // readCharLiteral implements rules/foundations/lexical_structure.md character
 // literal boundaries. Physical line endings are rejected per correction.md.
+// readCharLiteral counts each source rune or validated escape as one scalar,
+// preserving spelling and avoiding length cascades after invalid escapes.
+// Rules: rules/foundations/lexical_structure.md — "13. Character literals", "15. Escapes".
+// 2026-09-09: Validate decoded scalar count; mirrored in bootstrap readCharLiteral.
 func (l *Lexer) readCharLiteral() Token {
 	line := l.line
 	column := l.column
 	start := l.pos
+	scalars, diagnosticStart := 0, len(l.diagnostics)
 
 	l.advance()
 	for {
@@ -788,12 +793,22 @@ func (l *Lexer) readCharLiteral() Token {
 		if ch == '\\' {
 			// 2026-09-08 07:27 UTC: Validate Sec escapes; mirrored in bootstrap.
 			l.readEscape('\'')
+			scalars++
 			continue
 		}
 		if ch == '\'' {
 			l.advance()
-			return l.token(CHAR, string(l.input[start:l.pos]), line, column)
+			token := l.token(CHAR, string(l.input[start:l.pos]), line, column)
+			if scalars != 1 && len(l.diagnostics) == diagnosticStart {
+				l.diagnostics = append(l.diagnostics, Diagnostic{
+					ID:      compilerdiagnostics.LexerCharacterLiteralLength,
+					Message: "character literal must contain exactly one Unicode scalar value",
+					Primary: token,
+				})
+			}
+			return token
 		}
+		scalars++
 		l.advance()
 	}
 }

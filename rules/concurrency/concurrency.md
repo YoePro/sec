@@ -6,6 +6,7 @@
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/concurrency.md`
+- **Implementation governance:** `governance/concurrency_model.yaml`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `777beb8`
 - **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.md`, `rules/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`

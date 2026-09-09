@@ -42,6 +42,12 @@ struct Stru {
 }
 ```
 
+### Arrays
+When creating an array I would like to be able to use ranges instead of writing all numbers. Example.
+```sec
+let x: int[] := [100..104, 200..210]
+```
+
 ## Type inference
 Let us update to support type inference.
 

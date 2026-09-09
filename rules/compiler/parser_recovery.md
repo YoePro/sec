@@ -3288,7 +3288,7 @@ compilation.
 | struct field synchronization | Implemented, node retention partial |
 | malformed for-header recovery | Implemented |
 | switch case synchronization | Implemented |
-| select branch synchronization | Implemented |
+| select branch synchronization | Implemented, including a skipped-token progress guard for malformed headers |
 | impl member synchronization | Delimiter-aware with retained invalid members; start set remains incomplete |
 | target directive synchronization | Implemented |
 | generic parameter synchronization | Implemented, coarse |
@@ -3296,7 +3296,7 @@ compilation.
 | missing try-handler brace recovery | Implemented for selected starts |
 | sibling-aware match-arm recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
 | sibling-aware try-handler recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
-| partial unterminated block retention | Not implemented consistently |
+| partial unterminated block retention | Implemented for ordinary statement blocks and switch/select bodies; specialized match/try paths remain partial |
 | delimiter stack across all helpers | Shared stack implemented and used by major skip helpers; remaining ad hoc scans pending migration |
 | recovery episode suppression | Implemented at integrated stable boundaries with same-location cascade suppression; broader causal suppression pending |
 | parser diagnostic cap | Implemented at 100 diagnostics with one terminal `P2015` |

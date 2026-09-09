@@ -1,4 +1,115 @@
 schema_version: 1
 area: parser
 purpose: Grammar consumption, parser recovery, and parse diagnostics.
-integrations: []
+integrations:
+  - id: frontend.parser-recovery-result
+    area: frontend
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Introduces the canonical ParseResult migration path and retains selected
+      malformed syntax and parser repairs as structured recovery data.
+    rules:
+      - rules/compiler/parser_recovery.md
+      - rules/foundations/grammar.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/lsp.md
+    code:
+      - internal/parser/function_stub.go
+      - internal/diagnostics/diagnostics.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/parser/recovery.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/main.go
+      - cmd/compiler/diagnostic_catalog.go
+      - cmd/lsp/main.go
+    implemented:
+      - complete ordinary function signatures without bodies retain nil-body AST declarations and emit P2019 parser.unimplemented-function on the name; later functions and impl methods survive
+      - parser diagnostics carry structured Help exposed in CLI, diagnostic catalog, and LSP; function-stub help suggests an empty body for void, a temporary return for plain builtin values, and a valid declared-type value for other returns
+      - legal extern declarations and interface requirements remain exempt from unimplemented-function diagnostics
+      - ParseResult containing Program, Diagnostics, Warnings, Recovery, HasErrors, and Fatal
+      - compatibility retention of ParseProgram, Errors, Warnings, and Diagnostics
+      - structured recovery events for virtual missing-token insertion
+      - structured recovery events for skipped statement token ranges
+      - InvalidStatement nodes retained at top level and in ordinary statement blocks
+      - unterminated ordinary statement blocks retain parsed statements and enclosing function/control-flow nodes at EOF while parser errors still block code generation
+      - unterminated switch bodies retain their subject, ordered case/default clauses and clause bodies, including empty switches, while parser errors still block code generation
+      - unterminated select bodies retain ordered operation, timeout and default branches, bindings and partial branch bodies at EOF while preserving parser errors
+      - select branch parsing consumes and records a skipped token when a malformed header would otherwise retry the same token indefinitely
+      - InvalidExpression nodes for missing Pratt prefix parsers
+      - invalid TypeReference marking with recovery metadata on selected type paths
+      - InvalidDeclaration nodes for failed declaration-shaped top-level statements
+      - InvalidMember nodes and skipped ranges for disallowed impl members
+      - InvalidPattern nodes for malformed match arms and try handlers
+      - delimiter-aware later-line sibling recovery for match arms and try handlers
+      - skipped-range recovery events for impl members, match arms, and try handlers
+      - semantic ErrorType propagation for invalid expressions and type references
+      - speculative parser rollback removes associated recovery events
+      - recovery contexts and numbered episodes on structured diagnostics and recovery events
+      - diagnostic deduplication by ID, primary token, and recovery context
+      - same-location secondary diagnostic suppression within active recovery episodes
+      - speculative rollback reconstruction of deduplication and episode state
+      - shared delimiter stack preserving mismatched outer closers
+      - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
+      - skipped-range events from each migrated delimiter-aware recovery helper
+      - unsupported if expressions in initializer position retain one InvalidExpression and consume their complete if, else-if, and else bodies without losing following statements or impl members
+      - LSP diagnostics continue semantic declaration analysis after non-fatal parser recovery and suppress semantic diagnostics whose primary location belongs to a parser recovery range
+      - duplicate function and method signatures remain visible after a recovered error in an earlier function body
+      - semantic diagnostic occurrences carry explicit primary end line and exclusive end column fields, and LSP ranges use them instead of hardcoded one-character highlights
+      - fixed-arity calls with excess arguments focus the first excess argument and retain the complete expression range
+      - try handler-brace disambiguation is scoped to the outer try operand in both expression and statement parser paths, so typed struct literals remain valid inside nested call arguments and a following handler block is not misread as a struct literal on the completed call
+      - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
+      - central CLI and LSP parse paths consume ParseResult
+      - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
+      - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
+    tests:
+      - internal/parser/select_recovery_test.go
+      - testdata/parser/unterminated_select_invalid.sec
+      - testdata/parser/unterminated_empty_select_invalid.sec
+      - testdata/parser/unterminated_select_branch_invalid.sec
+      - testdata/parser/select_nonprogress_invalid.sec
+      - internal/parser/function_stub_test.go
+      - testdata/parser/function_stubs_invalid.sec
+      - testdata/parser/bodyless_requirements_valid.sec
+      - internal/parser/switch_recovery_test.go
+      - testdata/parser/unterminated_switch_invalid.sec
+      - testdata/parser/unterminated_empty_switch_invalid.sec
+      - internal/parser/parser_test.go
+      - testdata/parser/unterminated_function_invalid.sec
+      - testdata/parser/unterminated_empty_block_invalid.sec
+      - testdata/parser/unterminated_nested_blocks_invalid.sec
+      - testdata/parser/unterminated_recovered_block_invalid.sec
+    verification:
+      - command: emit-mlir with -o - over the four select recovery invalid fixtures
+        result: all rejected with parser errors before code generation (exit 2)
+      - command: go test ./internal/parser -run 'TestUnterminatedSelect|TestMalformedSelect' -count=1 -timeout=5s
+        result: passed; empty, populated and partial-branch selects retain AST contents; malformed headers make progress and retain following declarations
+      - command: go test ./internal/parser ./cmd/lsp ./cmd/compiler -run "UnimplementedFunction|BodylessRequirements|DiagnosticCatalog" -count=1
+        result: passed; named stub diagnostics, return-sensitive help, declaration retention, legal bodyless exemptions, LSP name ranges, and catalog schema
+      - command: go test ./internal/parser -run TestUnterminatedSwitchRetainsClauses -count=1
+        result: passed; empty switch and ordered case/default bodies survive EOF with a parser error
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+      - command: go test ./internal/parser -run 'TestParse.*Try.*StructLiteral' -v && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed; the bootstrap Diagnostic struct literal in the Append argument parses without treating its brace as a try-handler boundary
+      - command: GOMAXPROCS=2 go test ./cmd/lsp -count=1
+        result: passed
+      - command: GOMAXPROCS=2 go test ./internal/parser -run 'TestInvalidIfInitializerRecoveryPreservesFollowingImplMethods|TestParseResultRetainsRecoveryEventsAndInvalidNodes' -count=1
+        result: passed
+      - command: go test ./internal/parser -run TestUnterminatedStatementBlocksRetainPartialAST -count=1
+        result: passed; empty, populated, nested, and previously recovered unterminated statement blocks retain partial AST nodes and parser errors
+
+    remaining:
+      - invalid type retention on every type-reference failure path
+      - skipped-range and shared-stack migration for remaining specialized recovery helpers
+      - recovery contexts for remaining specialized parsers
+      - cross-location causal recovery-episode suppression
+      - partial unterminated-construct retention beyond ordinary statement blocks and switch/select bodies, including match/try handlers
+      - recovery-aware Sema traversal policy for every invalid subtree
+      - recovery fuzzing and mutation tests

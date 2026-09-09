@@ -1,4 +1,191 @@
 schema_version: 1
 area: lexer
 purpose: Lexical structure, tokens, literals, and source spelling.
-integrations: []
+integrations:
+  - id: frontend.lexical-structure
+    area: frontend-and-tooling
+    status: partial
+    integrated: "2026-08-09"
+    summary: >-
+      Records the current lexer, parser, formatter, diagnostic, and LSP
+      implementation baseline for the normative lexical structure rules.
+    rules:
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/foundations/attributes.md
+      - rules/foundations/operators.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+      - rules/compiler/parser_recovery.md
+    code:
+      - internal/lexer/escapes.go
+      - internal/lexer/lexer.go
+      - internal/diagnostics/diagnostics.go
+      - go.mod
+      - go.sum
+      - internal/parser
+      - internal/parser/interpolation.go
+      - cmd/compiler/main.go
+      - internal/codegen/llvm/expressions.go
+      - internal/ast
+      - internal/sema
+      - internal/formatter
+      - internal/lsp
+      - cmd/lsp
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/character_length_test.go
+      - testdata/lexer/character_length_valid.sec
+      - testdata/lexer/character_length_invalid.sec
+      - internal/lexer/escapes_test.go
+      - testdata/lexer/escape_diagnostics_invalid.sec
+      - internal/lexer/lexer_test.go
+      - internal/diagnostics/diagnostics_test.go
+      - testdata/lexer/interpolation_balanced_valid.sec
+      - testdata/lexer/interpolation_balanced_invalid.sec
+      - testdata/lexer/identifier_nfc_valid.sec
+      - testdata/lexer/identifier_nfc_invalid.sec
+      - internal/parser/parser_test.go
+      - internal/parser/interpolation_test.go
+      - internal/codegen/llvm/generator_test.go
+      - testdata/parser/interpolation_parts_valid.sec
+      - testdata/parser/interpolation_parts_invalid.sec
+      - testdata/parser/interpolation_lowering_deferred.sec
+      - internal/formatter/formatter_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - closed character literals require exactly one Unicode scalar after escape interpretation; L1009 lexer.character-literal-length preserves the original token span and suppresses cascades after malformed escapes
+      - scalar-count diagnostics survive parser propagation and roll back with lexer snapshots; bootstrap source mirrors the check
+      - escape validation in ordinary strings, character literals, and interpolation text emits L1006 for unknown codes, L1007 for malformed or incomplete escapes, and L1008 for invalid Unicode scalar values
+      - exact escape source spans and original literal tokens survive recovery; raw strings and comments are exempt, and snapshot restore rolls back diagnostics
+      - nested interpolation escape diagnostics retain original positions and deduplicate through parser results; CLI rejects lexical errors and LSP highlights escape spans
+      - bootstrap lexer source mirrors escape validation and passes parser validation; runtime equivalence remains dependent on bootstrap execution support
+      - Unicode-rune input processing
+      - one-based line and column tracking
+      - identifier starts using underscore, ASCII letters, and Unicode letters
+      - Go frontend validates identifier NFC with Unicode-version-matched golang.org/x/text/unicode/norm, rejecting non-NFC spellings with mandatory L1004 and a normalized suggestion while preserving the original lexeme
+      - combining marks are retained in malformed identifier candidates for whole-token diagnostics; NFC candidates containing marks still violate the letter/digit/underscore grammar and receive L1005
+      - NFC diagnostics preserve source positions and snapshot rollback and propagate through parser errors and LSP diagnostics without normalizing literal or comment contents
+      - ASCII digits after identifier start
+      - keyword lookup for a large current subset
+      - dedicated bare underscore tokens while underscore-prefixed names remain identifiers
+      - decimal integer literals
+      - fractional literals including leading-period forms such as .5
+      - scientific exponent literals including signed exponents and leading-period mantissas
+      - focused parser diagnostics when an exponent marker or sign lacks decimal digits
+      - binary, octal, and hexadecimal integer prefixes
+      - canonical numeric family suffixes i, u, g, m, t, and r with fractional/exponent restriction to g and m
+      - focused c/d/f to t/m/g migration diagnostics for unambiguous obsolete literals
+      - require retained as a globally reserved keyword
+      - numeric digit separators between valid digits in decimal, binary, octal, hexadecimal, fractional, and exponent components
+      - separator-containing numeric source lexemes preserved in tokens and AST while parser and semantic constant evaluation ignore separators
+      - misplaced, repeated, and trailing numeric separators rejected as one ILLEGAL numeric token for currently recognized malformed forms
+      - ordinary strings
+      - character-literal tokenization
+      - backtick raw strings
+      - interpolated-string tokenization using dollar-quoted syntax
+      - balanced interpolation-expression lexing with nested aggregate braces, ordinary/character/raw/nested interpolated literals, and comments; complete source lexemes and positions are preserved
+      - interpolation text scanning distinguishes doubled literal braces and Unicode escape braces from expression delimiters and rejects physical newlines and unmatched braces
+      - bootstrap lexer source mirrors balanced interpolation scanning and remains parser-valid
+      - interpolated-string AST retains ordered text and expression parts, original token spelling, and exclusive source ranges with original file and rune-based columns
+      - interpolation expressions use ordinary Pratt parsing, including nested interpolation, aggregate expressions, raw strings, and comment trivia
+      - interpolation text parts collapse doubled braces while preserving escape spelling for later materialization
+      - invalid interpolation expressions retain recovery metadata while later parts and enclosing statements survive; ordinary parser diagnostics reach LSP at original positions
+      - raw string literals are accepted by the expression parser without escape decoding
+      - legacy LLVM interpolation placeholder now explicitly rejects unsupported materialization instead of silently emitting source spelling and omitting expression evaluation
+      - line comments
+      - nested block comments
+      - comment tokens
+      - LF, CRLF, and bare-CR physical-line accounting, line-comment termination, and ordinary string/character newline rejection
+      - comments treated as parser trivia before, between, and after struct-literal fields, including trailing line comments after commas
+      - LSP semantic tokens for keywords, mutable variables, immutable bindings as readonly variables, types, functions, methods, comments, literals, and operators
+      - position-specific LSP member classification and hover resolution so struct fields, struct-literal field names, and same-named methods retain distinct semantic identities
+      - LSP member completion resolves self to its enclosing impl target including fields, register fields, properties, events, and instance methods
+      - LSP member completion retains inferred local types from function and method return values including while an if condition is incomplete
+      - LSP hover resolves self and self members against the enclosing impl target and displays member types, method signatures, and adjacent documentation comments where supported
+      - semantic-token fallback to lexical classification when semantic analysis encounters an incomplete editor AST
+      - LSP member-completion traversal ignores typed-nil AST nodes produced during parser recovery
+      - LSP document outline for module, type, enum, interface, function, struct, variable, and impl members
+      - LSP hover information from adjacent documentation comments above function declarations
+      - common arithmetic, logical, bitwise, range, spread, delimiter, and assignment tokens
+      - longest matching for existing multi-character punctuation
+      - ILLEGAL tokens for some unterminated literals and comments
+      - lexer snapshot and restore
+      - strict UTF-8 source decoding with L1001 diagnostics retained through parser results, including invalid bytes inside literals and comments
+      - one optional initial UTF-8 byte-order mark ignored without shifting the first token position and removed by the formatter
+      - unexpected byte-order marks rejected with L1002 at their exact source position while tokenization recovers
+      - unsupported Unicode spacing outside literals and comments rejected as one ILLEGAL token with code-point-specific L1003 diagnostics
+      - contextual set lexed as an ordinary identifier and resolved by parser context as collection type syntax, property setter syntax, or a value identifier
+      - contextual set classified positionally by LSP semantic tokens and constrained by TextMate lookahead instead of globally reserved highlighting
+      - compiler-known type names protected against replacement by user type, enum, interface, or unit declarations
+      - bootstrap lexer source synchronized with initial-BOM skipping, later-BOM and Unicode-whitespace diagnostics, diagnostic snapshot state, and a parser-valid DecodedSource boundary
+    partial:
+      - keyword inventory synchronization, including removal of the obsolete sec reservation
+      - escape decoding/materialization in downstream string and character handling; lexical escape validation is implemented
+      - interpolation expression semantic traversal, formatting contracts, ownership/effects, escape materialization, and runtime lowering remain incomplete; AST/parser expression parts and source ranges are implemented
+      - malformed base-literal diagnostics
+      - comment attachment for formatter and documentation
+      - >-
+        reserved declaration-name enforcement is incomplete: compiler-known
+        lowercase type names are protected against user type, enum, interface,
+        and unit declarations, but the normative prohibition is not enforced
+        consistently for variables, constants, functions, parameters, fields,
+        properties, events, modules, imports, generic parameters, labels, and
+        aliases where those declaration forms exist; the contextual `set`
+        exception must remain valid outside its special grammar contexts
+      - >-
+        context-specific reserved words such as task, thread, and process are
+        interpreted in spawn contexts but are not yet enforced consistently as
+        forbidden user declaration names in ordinary declaration namespaces
+      - >-
+        canonical contract words are recognized by contract grammar only where
+        implemented, but their independent status as reserved declaration names
+        is not yet enforced consistently outside contract positions
+      - parser rejection of semicolons
+      - source-position integration across lexer, parser, diagnostics, and LSP
+      - documentation-comment support in LSP hover without AST-level comment attachment
+      - downstream character escape decoding and semantic type compatibility; lexical scalar count is implemented
+      - repository keyword notes and lexer keyword switch are not yet fully synchronized
+      - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
+    remaining:
+      - lex/token CLI commands currently count ILLEGAL tokens but do not consume structured lexer diagnostics on retained literal tokens; parse and compilation do consume these diagnostics
+      - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
+      - confusable-identifier warnings
+      - maximal malformed numeric-token recovery
+      - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
+      - port interpolation AST parts and expression parsing to the bootstrap parser
+      - parser-aware formatter and semantic-token classification for contextual x
+      - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
+      - complete reserved contract-word inventory
+      - >-
+        centralize reserved-symbol validation so hard keywords, context-specific
+        reserved words, compiler-known lowercase type names, contract words, and
+        reserved modifiers receive the same declaration-name checks across every
+        applicable parser/Sema declaration namespace without globally reserving
+        contextual `set`
+      - >-
+        add focused negative tests for declarations using int, map, task, thread,
+        process, even, finite, multipleOf, notEmpty, odd, and unique, plus positive
+        tests proving that ordinary identifier uses of contextual `set` remain valid
+      - documentation-comment attachment in parser and AST
+      - dedicated lexical tests for every invalid category
+      - stable lexer diagnostic IDs for all categories
+      - formatter and complete LSP support for all contextual classifications in rules/foundations/lexical_structure.md
+      - remove or repurpose the existing unused BYTES token because it does not represent a Sec 0.1 source feature
+    verification:
+      - command: go test ./...
+        result: passed; scalar-count fixtures, escape diagnostics, snapshot rollback and retained-AST Sema validation
+      - command: parse character_length_valid.sec and character_length_invalid.sec
+        result: valid fixture accepted; invalid fixture rejected with five lexical length errors
+      - command: parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed; translated scalar-count check is parser-valid, runtime parity is not verified
+      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run Escape -count=1
+        result: passed; valid escapes, unknown codes, malformed syntax, Unicode scalar bounds, nested positions, recovery, newline rejection, snapshot rollback and LSP spans
+      - command: go test ./internal/parser ./internal/codegen/llvm ./cmd/lsp -run Interpolat -count=1
+        result: passed; AST parts, nested positions, invalid-expression recovery, LSP diagnostics, and explicit unsupported LLVM materialization
+      - command: go test ./internal/lexer ./internal/parser -run Interpolation -count=1
+        result: passed; nested literals, comments, braces, token positions, parser retention, malformed input, and LF/CR/CRLF rejection
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/lsp
+        result: passed; NFC validity, normalized suggestions, original token positions, rollback, grammar exclusions, parser rejection, and LSP publication

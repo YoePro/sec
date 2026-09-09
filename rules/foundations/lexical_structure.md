@@ -1265,7 +1265,10 @@ A character literal uses single quotes:
 ```
 
 After escape processing, a character literal must contain exactly one Unicode
-scalar value.
+scalar value. Closed literals with zero or multiple scalars receive mandatory
+`L1009` (`lexer.character-literal-length`) on the complete literal. An invalid
+escape retains its specific escape diagnostic without an additional length
+diagnostic. The original source spelling is preserved.
 
 Invalid:
 

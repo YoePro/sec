@@ -1124,7 +1124,12 @@ func (a *Analyzer) invalidTypeDeclaration(token lexer.Token) bool {
 	return a.invalidTypeDeclarations[sourceTokenLocation(token)]
 }
 
+// genericParameterNames validates declared type-parameter names and duplicates,
+// preserving parameter order for specialization.
+// Rules: rules/foundations/names_scopes_visibility.md — §15 Generic parameters;
+// rules/declarations/generics.md — §2 Generic parameter syntax.
 func (a *Analyzer) genericParameterNames(parameters []*ast.GenericParameter) []string {
+	a.validateGenericTypeParameterNames(parameters)
 	if len(parameters) == 0 {
 		return nil
 	}
@@ -1571,7 +1576,9 @@ func (a *Analyzer) enumCanAnalyzeEarly(enum *ast.EnumDeclaration) bool {
 // Rules:
 //   - rules/declarations/generics.md — "Generic enums"
 //   - rules/declarations/enums.md — "Generic enums"
+//   - rules/foundations/names_scopes_visibility.md — §15 Generic parameters
 func (a *Analyzer) analyzeEnumDeclaration(name string, enum *ast.EnumDeclaration) {
+	a.validateGenericTypeParameterNames(enum.GenericParameters)
 	if len(enum.GenericParameters) == 0 {
 		a.types[name] = a.typeFromEnumDeclaration(name, enum)
 		return
@@ -7120,6 +7127,48 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		a.recordFunctionReturnOrigin(expected, expr.Value)
 		a.markMoveSource(expr.Value)
 	default:
+		valueType, _ := a.inferExpressionWithExpected(stmt.Value, returnType)
+		if valueType.Kind == InvalidType {
+			return
+		}
+
+		// A Result-returning function may directly return an expression that
+		// already produces a compatible Result. This is an ordinary return of the
+		// complete carrier; it does not implicitly wrap a success value in Ok(...).
+		//
+		// Rules:
+		//   - rules/errors/errorhandling.md — §5 "Ok and Err"
+		//   - rules/errors/errorhandling.md — §7 "Result is must-use"
+		//   - rules/memory/copy_move.md — §9 "Return boundaries"
+		if valueType.Kind == ResultType {
+			if !canInitialize(returnType, valueType, stmt.Value) {
+				a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
+				return
+			}
+
+			if a.validateTerminalReturnConstruction(stmt.Value) {
+				return
+			}
+
+			a.recordFunctionReturnOrigin(returnType, stmt.Value)
+
+			if a.checkReturningReferenceToLocal(functionName, returnType, valueType, stmt.Value) {
+				return
+			}
+
+			if a.checkExpressionEscapesMatchPayload(functionName, stmt.Value) {
+				return
+			}
+
+			if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
+				return
+			}
+
+			a.markResourceTransfer(stmt.Value)
+			a.markMoveSource(stmt.Value)
+			return
+		}
+
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
 	}
 }
@@ -7934,6 +7983,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 		// dispatch surface finite: requirements may use the interface's generic
 		// parameters, but may not introduce method-level parameters of their own.
 		if len(method.GenericParameters) > 0 {
+			a.validateGenericTypeParameterNames(method.GenericParameters)
 			token := method.Name.Token
 			if parameter := method.GenericParameters[0]; parameter != nil && parameter.Name != nil {
 				token = parameter.Name.Token
@@ -8320,7 +8370,12 @@ func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targe
 	return implemented
 }
 
+// analyzeNestedTypeDeclaration resolves an associated nominal declaration and
+// validates its generic type-parameter names in the owner's member namespace.
+// Rules: rules/declarations/impl.md — Associated declarations;
+// rules/foundations/names_scopes_visibility.md — §15 Generic parameters.
 func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.TypeDeclStatement) {
+	a.validateGenericTypeParameterNames(stmt.GenericParameters)
 	if stmt.Union {
 		a.types[qualifiedName] = a.typeFromUnionDeclaration(qualifiedName, stmt)
 		return
@@ -9199,6 +9254,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			}
 			methods[name] = fn.Name.Token
 			if len(fn.GenericParameters) > 0 {
+				a.validateGenericTypeParameterNames(fn.GenericParameters)
 				a.addErrorAtToken(fn.Name.Token, "generic methods with additional type parameters are not supported yet")
 				continue
 			}
@@ -19444,6 +19500,10 @@ func (a *Analyzer) validateUnitComparison(expr *ast.InfixExpression, leftType, r
 	return true
 }
 
+// inferMembershipExpression checks the supported collection and element equality
+// without converting named types implicitly or consuming the searched array.
+// Rules: rules/foundations/operators.md — "Membership expression",
+// "Fixed-array membership", "Dynamic-array membership", "Slice membership".
 func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
 	rangeExpr, ok := expr.Right.(*ast.RangeExpression)
 	if ok {
@@ -19460,8 +19520,8 @@ func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType
 		a.addErrorAtTokenWithMetadata(
 			expr.Token,
 			diagnostics.OperatorInvalidMembership,
-			"Use a contextual range, a fixed array, or a slice. For other containers, call an explicit membership API such as Contains.",
-			"operator in supports ranges, fixed arrays, and slices in Sec 0.1; got %s",
+			"Use a contextual range, a fixed array, a dynamic array, or a slice. For other containers, call an explicit membership API such as Contains.",
+			"operator in supports ranges, fixed arrays, dynamic arrays, and slices in Sec 0.1; got %s",
 			typeDisplayName(rightType),
 		)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -19522,6 +19582,10 @@ func (a *Analyzer) inferRangeMembershipExpression(expr *ast.InfixExpression, ran
 	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 }
 
+// membershipElementType exposes the element equality domain for fixed arrays,
+// owning dynamic arrays and slices, without changing collection ownership.
+// Rules: rules/foundations/operators.md — "Membership expression",
+// "Dynamic-array membership".
 func membershipElementType(collection Type) (Type, bool) {
 	collection = dereferenceType(collection)
 	if collection.Element == nil {
@@ -19530,9 +19594,6 @@ func membershipElementType(collection Type) (Type, bool) {
 
 	switch collection.Kind {
 	case ArrayType:
-		if arrayShapeOf(collection) == ArrayShapeDynamic {
-			return Type{}, false
-		}
 		return *collection.Element, true
 	case SliceType:
 		return *collection.Element, true

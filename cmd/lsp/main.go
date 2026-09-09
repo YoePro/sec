@@ -1435,6 +1435,13 @@ func contextualKeywordClassifications(program *ast.Program) map[string]string {
 	return classification
 }
 
+// semanticDeclarationKinds assigns position-exact token classes to declarations
+// so a declaration name cannot inherit the class of an unrelated same-named
+// symbol through the lexical fallback map.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Semantic tokens"
+//   - rules/declarations/static.md — "Static declarations in implementations"
 func semanticDeclarationKinds(analyzer *sema.Analyzer) map[string]string {
 	kinds := map[string]string{}
 	set := func(token lexer.Token, kind string) {
@@ -1468,6 +1475,15 @@ func semanticDeclarationKinds(analyzer *sema.Analyzer) map[string]string {
 			}
 			set(function.Token, kind)
 		}
+	}
+	for _, symbol := range analyzer.Symbols() {
+		kind := "variable"
+		if symbol.ImplicitMember {
+			kind = "property"
+		} else if !symbol.Mutable {
+			kind += " readonly"
+		}
+		set(symbol.Token, kind)
 	}
 	return kinds
 }

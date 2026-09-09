@@ -2376,6 +2376,7 @@ Sec 0.1 supports membership for:
 ```text
 contextual range
 fixed array
+owning dynamic array
 slice
 ```
 
@@ -2425,6 +2426,21 @@ when `values` is a fixed array:
 The array element type must be equality-comparable.
 
 The left value must be compatible with the element type.
+
+---
+
+# Dynamic-array membership
+
+Membership in an owning dynamic array (`T[]`) follows fixed-array membership
+semantics. The search evaluates the left value first and the array expression
+once, visits initialized elements from index zero up to the current length,
+and stops at the first equal element. An empty array yields `false`.
+
+The search borrows the array for observation; it neither consumes the array nor
+its elements, allocates, nor structurally mutates storage. Element equality and
+value compatibility follow the same rules as fixed arrays and slices. Spare
+capacity is not searched. Creation of the array expression retains its own
+allocation and effect requirements.
 
 ---
 
@@ -3410,7 +3426,7 @@ error[S....]: shift count 32 is outside the valid range 0..<32
 ## Invalid membership
 
 ```text
-error[S....]: `in` supports ranges, fixed arrays, and slices in Sec 0.1
+error[S....]: `in` supports ranges, fixed arrays, dynamic arrays, and slices in Sec 0.1
 ```
 
 ## Missing concatenation allocation context
@@ -4532,7 +4548,7 @@ A normal `impl` does not disable equality.
 
 Ranges remain contextual in Sec 0.1.
 
-`in` supports ranges, fixed arrays, and slices.
+`in` supports ranges, fixed arrays, dynamic arrays, and slices.
 
 `for value in source` is iteration grammar, not membership.
 

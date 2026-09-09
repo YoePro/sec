@@ -47,8 +47,9 @@ The repository contains a working initial shared formatter in:
 internal/formatter
 ```
 
-The LSP calls this package for document formatting. The CLI and fix engine are
-not integrated yet.
+The LSP calls this package for document formatting. The CLI uses it for in-place
+formatting and check mode on explicit files, plus standard-input formatting.
+The fix engine is not integrated yet.
 
 ## Implemented
 
@@ -77,6 +78,13 @@ The current LSP formatter already implements:
   enum, register, union, and similar nominal declaration blocks;
 - initial in-place `sec fmt <file.sec>...` integration through the shared
   formatter package;
+- `sec fmt --check <file.sec>...` through the shared formatter, reporting all
+  affected files without modifying them; exit code 0 means no changes, and 1
+  means formatting differences or an input/option error;
+- `sec fmt --stdin` reads standard input and writes only formatted source to
+  standard output using LF line endings; read/write failures exit with code 1
+  and diagnostics on standard error; combinations with file paths or `--check`
+  are rejected before processing input;
 - unambiguous `func` to `fn` normalization;
 - canonical placement of an inline `@noCopy` attribute on its own line;
 - preservation of ordinary identifiers and calls named `func`;
@@ -106,10 +114,9 @@ The current formatter is partially implemented in these areas:
 The following are not yet implemented:
 
 - a shared `internal/fixes` package;
-- the complete `sec fmt` command model defined here beyond initial in-place
-  formatting of explicit source files;
+- the complete `sec fmt` command model defined here beyond in-place formatting
+  and checking of explicit source files and standard-input formatting;
 - `sec fmt --fix`;
-- `sec fmt --check`;
 - recursive directory and project formatting;
 - range formatting;
 - on-type formatting;

@@ -103,7 +103,63 @@ integrations:
       - expose identical output through LSP document formatting without editor-side alignment logic
     remaining:
       - extend the generic alignment engine to typed declaration groups, struct field/type/tag columns, and compatible non-nominal declaration groups
-      - complete sec fmt check, stdin, recursive project, range, on-type, minimal-edit, and fix modes
+      - complete sec fmt recursive project, range, on-type, minimal-edit, and fix modes; check and stdin modes are tracked by tooling.formatter-check-explicit-files and tooling.formatter-stdin
     verification:
       - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
         result: passed
+  - id: tooling.formatter-check-explicit-files
+    area: tooling
+    status: implemented
+    integrated: "2026-09-09"
+    summary: >-
+      Adds sec fmt --check for explicit source files using the same formatter
+      as in-place formatting and LSP document formatting.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - cmd/compiler/main.go
+    tests:
+      - cmd/compiler/fmt_check_test.go
+      - testdata/formatter/check_canonical.sec
+      - testdata/formatter/check_noncanonical.sec
+    implemented:
+      - return exit code 0 silently when every selected file matches the current shared formatter output
+      - report all noncanonical files with format.noncanonical-source and exit code 1 without labeling differences as language errors
+      - preserve file bytes, line endings, identity, permissions, and modification times in check mode
+      - accept --check before or after file paths and -- to terminate option parsing
+      - reject unsupported options before formatting any files and return exit code 1 for input errors
+      - verify that ordinary in-place formatting makes a subsequent check pass
+    remaining:
+      - directory and project selection and --fix remain outside this explicit-file integration; --stdin is tracked by tooling.formatter-stdin
+      - canonical-style coverage remains limited to the current shared formatter implementation
+    verification:
+      - command: go test ./cmd/compiler ./internal/formatter -count=1
+        result: passed, including subprocess checks of real CLI exit codes and diagnostics
+  - id: tooling.formatter-stdin
+    area: tooling
+    status: implemented
+    integrated: "2026-09-09"
+    summary: >-
+      Adds sec fmt --stdin using the shared formatter, emitting formatted source
+      with LF line endings on standard output.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - cmd/compiler/main.go
+    tests:
+      - cmd/compiler/fmt_stdin_test.go
+      - cmd/compiler/fmt_check_test.go
+      - testdata/formatter/check_canonical.sec
+      - testdata/formatter/check_noncanonical.sec
+    implemented:
+      - format standard input without requiring or modifying source files
+      - normalize LF, CRLF, CR, and mixed input line endings to LF
+      - preserve empty input and produce idempotent output through the shared formatter
+      - propagate read errors, write errors, and short writes; CLI failures exit with code 1 and diagnostics on standard error
+      - reject combinations with --check or file paths and reject unsupported options before processing input
+      - verify CLI standard output and standard error separately through subprocess tests
+    remaining:
+      - canonical-style coverage remains limited to the current shared formatter implementation
+    verification:
+      - command: go test ./cmd/compiler ./internal/formatter -count=1
+        result: passed, including stdin CLI and I/O failure tests

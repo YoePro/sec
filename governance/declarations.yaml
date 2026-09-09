@@ -191,3 +191,78 @@ integrations:
     verification:
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Lambda|FunctionType|CallableCapability|OwnedLambdaParameter' -count=1
         result: passed
+  - id: frontend.names-scopes-visibility
+    area: frontend-name-resolution
+    status: partial
+    audited: '2026-08-19'
+    updated: '2026-09-09'
+    repository_baseline: c515862
+    summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing,
+      visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module,
+      member, overload, and ordinary lexical-scope support, but the cross-cutting namespace and naming rules are not
+      yet enforced uniformly.
+    rules:
+    - rules/foundations/names_scopes_visibility.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/generic_naming.go
+    - internal/diagnostics/diagnostics.go
+    - internal/parser/parser.go
+    - internal/lsp/server
+    - cmd/lsp/main.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/generic_naming_test.go
+    - cmd/lsp/generic_naming_test.go
+    - testdata/names/generic_capitalization_valid.sec
+    - testdata/names/generic_capitalization_invalid.sec
+    - internal/parser/parser_test.go
+    - cmd/lsp/main_test.go
+    implemented:
+    - top-level module declaration conflict checks across types, units, enums, interfaces, function overload groups,
+      and module variables
+    - function overload groups distinguished by parameter signature with return type excluded from overload identity
+    - substantial member conflict checking across fields, properties, methods, events, and nested types
+    - function, method, property, and impl declaration surfaces are substantially registered before body analysis
+    - ordinary nested lexical scopes inherit visible value symbols, so a subset of local and loop-binding shadowing
+      is rejected
+    - duplicate generic parameter names are rejected
+    - generic type-parameter names require an uppercase initial after visibility prefixes, including Unicode uppercase letters
+    - naming checks cover function, nominal, enum, interface, and nested impl type declarations with one diagnostic per source declaration
+    - S1027 names.invalid-generic-type-parameter is a mandatory compiler diagnostic with a source range and naming guidance; LSP publishes the same Sema result
+    partial:
+    - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters,
+      members, types, generics, imports, aliases, and compiler-provided contextual bindings
+    - the compiler maintains separate symbol, type, generic-type, function, and member registries rather than one
+      uniformly collision-checked declaration namespace
+    - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed
+      across feature-specific code paths
+    remaining:
+    - enforce the no-shadowing rule uniformly for locals, parameters, loop and pattern bindings, generic parameters,
+      nested declarations, imports, aliases, visible types, visible values, and directly visible members
+    - prevent parameters and compiler-provided contextual bindings such as self and property-setter value parameters
+      from silently replacing visible declarations
+    - reject user-defined nominal type names that do not begin with an uppercase letter after any visibility prefix
+    - reject generic parameters that shadow a visible type, visible value, or directly visible member
+    - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific
+      registries and collision checks
+    - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration
+    - make LSP rename validation consume the same namespace, shadowing, reserved-name, capitalization, overload, and
+      visibility rules as Sema
+    required_tests:
+    - lowercase user-defined nominal type is rejected
+    - visibility-prefixed nominal type checks capitalization after the prefix
+    - lowercase generic type parameter is rejected
+    - generic parameter shadowing a visible type is rejected
+    - generic parameter shadowing a visible value is rejected
+    - function parameter shadowing a visible declaration is rejected
+    - local declaration shadowing a visible type is rejected
+    - compiler-provided property-setter binding cannot silently replace a visible declaration
+    - reuse of the same local name in disjoint sibling scopes remains valid
+    - overloads differing only by return type remain rejected
+
+    verification:
+    - command: go test ./internal/sema -run TestGenericParameterCapitalization -count=1
+      result: regression test failed before the implementation because nine invalid parameter names were accepted
+    - command: go test ./...
+      result: passed, including Sema naming and LSP diagnostic regressions

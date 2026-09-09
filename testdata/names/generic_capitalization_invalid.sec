@@ -1,0 +1,25 @@
+module test
+
+type Box[element] struct {
+    value: element,
+}
+impl Box[element] {}
+type Choice[item] union {
+    Some(item)
+    None
+}
+enum Order[entry] {
+    First,
+}
+interface Reader[result] {
+    fn Read() result
+}
+fn Identity[valueType](value: valueType) valueType {
+    return value
+}
+type Owner struct {}
+impl Owner {
+    type Nested[nestedType] struct {}
+}
+type Hidden[_hidden, __private] struct {}
+type Unicode[å] struct {}

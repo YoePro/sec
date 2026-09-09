@@ -1,0 +1,7 @@
+module main
+
+fn main() int {
+    select {
+        value := Receive() => { return 10 }
+        after 10 => { return 20 }
+        default => { return 30 }

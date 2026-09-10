@@ -6,6 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
+    revised: "2026-09-10"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -14,6 +15,8 @@ integrations:
       - rules/foundations/grammar.md
       - rules/foundations/attributes.md
       - rules/foundations/operators.md
+      - rules/memory/arena.md
+      - rules/compiler/rules_implementations.txt
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
@@ -22,6 +25,7 @@ integrations:
       - internal/lexer/escapes.go
       - internal/lexer/lexer.go
       - internal/diagnostics/diagnostics.go
+      - ../bootstrap/internal/lexer/lexer.sec
       - go.mod
       - go.sum
       - internal/parser
@@ -41,6 +45,13 @@ integrations:
       - internal/lexer/escapes_test.go
       - testdata/lexer/escape_diagnostics_invalid.sec
       - internal/lexer/lexer_test.go
+      - testdata/lexer/byte_string_absent.sec
+      - cmd/compiler/lexer_cli_test.go
+      - testdata/lexer/cli_diagnostics_invalid.sec
+      - testdata/lexer/malformed_base_literals_invalid.sec
+      - testdata/lexer/digit_separators_invalid.sec
+      - testdata/lexer/keyword_inventory_valid.sec
+      - testdata/parser/semicolon_invalid.sec
       - internal/diagnostics/diagnostics_test.go
       - testdata/lexer/interpolation_balanced_valid.sec
       - testdata/lexer/interpolation_balanced_invalid.sec
@@ -69,7 +80,8 @@ integrations:
       - combining marks are retained in malformed identifier candidates for whole-token diagnostics; NFC candidates containing marks still violate the letter/digit/underscore grammar and receive L1005
       - NFC diagnostics preserve source positions and snapshot rollback and propagate through parser errors and LSP diagnostics without normalizing literal or comment contents
       - ASCII digits after identifier start
-      - keyword lookup for a large current subset
+      - canonical hard-keyword lookup is synchronized across the normative lexical inventory, Go lexer, bootstrap lexer, LSP completion vocabulary, and TextMate highlighting; extends is hard while arena, sec, and contextual set remain identifiers
+      - unused ARENA, SEC, and SET token categories are removed from the Go lexer; bootstrap additionally removes its stale BYTES placeholder and adds EXTENDS
       - dedicated bare underscore tokens while underscore-prefixed names remain identifiers
       - decimal integer literals
       - fractional literals including leading-period forms such as .5
@@ -121,11 +133,15 @@ integrations:
       - contextual set classified positionally by LSP semantic tokens and constrained by TextMate lookahead instead of globally reserved highlighting
       - compiler-known type names protected against replacement by user type, enum, interface, or unit declarations
       - bootstrap lexer source synchronized with initial-BOM skipping, later-BOM and Unicode-whitespace diagnostics, diagnostic snapshot state, and a parser-valid DecodedSource boundary
+      - Sec 0.1 exposes no BYTES placeholder token; bytes and a leading b before an ordinary string remain ordinary identifier and string tokens rather than inventing byte-string syntax
+      - lex and token CLI commands print structured lexer diagnostic IDs and source positions, reject diagnostics attached to retained tokens, retain fallback counting for unstructured ILLEGAL tokens, and avoid counting a structured diagnostic within its enclosing ILLEGAL token twice
+      - the lexer retains semicolons as dedicated recovery tokens and the parser rejects ordinary statement-terminator uses with focused P2012 diagnostics while preserving following statements
+      - malformed binary, octal, and hexadecimal candidates are retained as one maximal ILLEGAL token; L1010 lexer.malformed-base-literal covers missing digits and invalid suffix tails while L1011 lexer.invalid-base-digit identifies decimal digits outside the selected base
+      - parser, lex/token CLI, diagnostic registry, and bootstrap lexer paths preserve the focused base-literal IDs; legacy c/d/f suffixes remain owned by the existing parser migration diagnostic
+      - invalid digit separators in decimal integers, fractions, exponents, and base-prefixed integers emit one L1012 lexer.invalid-digit-separator over the complete retained numeric token; parser, lex/token CLI, LSP, registry, and bootstrap paths preserve the ID
     partial:
-      - keyword inventory synchronization, including removal of the obsolete sec reservation
       - escape decoding/materialization in downstream string and character handling; lexical escape validation is implemented
       - interpolation expression semantic traversal, formatting contracts, ownership/effects, escape materialization, and runtime lowering remain incomplete; AST/parser expression parts and source ranges are implemented
-      - malformed base-literal diagnostics
       - comment attachment for formatter and documentation
       - >-
         reserved declaration-name enforcement is incomplete: compiler-known
@@ -143,17 +159,14 @@ integrations:
         canonical contract words are recognized by contract grammar only where
         implemented, but their independent status as reserved declaration names
         is not yet enforced consistently outside contract positions
-      - parser rejection of semicolons
       - source-position integration across lexer, parser, diagnostics, and LSP
       - documentation-comment support in LSP hover without AST-level comment attachment
       - downstream character escape decoding and semantic type compatibility; lexical scalar count is implemented
-      - repository keyword notes and lexer keyword switch are not yet fully synchronized
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
-      - lex/token CLI commands currently count ILLEGAL tokens but do not consume structured lexer diagnostics on retained literal tokens; parse and compilation do consume these diagnostics
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
       - confusable-identifier warnings
-      - maximal malformed numeric-token recovery
+      - maximal malformed numeric-token recovery for remaining non-base decimal, fractional, exponent, and suffix candidates
       - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
       - port interpolation AST parts and expression parsing to the bootstrap parser
       - parser-aware formatter and semantic-token classification for contextual x
@@ -173,7 +186,6 @@ integrations:
       - dedicated lexical tests for every invalid category
       - stable lexer diagnostic IDs for all categories
       - formatter and complete LSP support for all contextual classifications in rules/foundations/lexical_structure.md
-      - remove or repurpose the existing unused BYTES token because it does not represent a Sec 0.1 source feature
     verification:
       - command: go test ./...
         result: passed; scalar-count fixtures, escape diagnostics, snapshot rollback and retained-AST Sema validation
@@ -189,3 +201,19 @@ integrations:
         result: passed; nested literals, comments, braces, token positions, parser retention, malformed input, and LF/CR/CRLF rejection
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/lsp
         result: passed; NFC validity, normalized suggestions, original token positions, rollback, grammar exclusions, parser rejection, and LSP publication
+      - command: go test ./internal/lexer -run TestBytesIsOrdinaryIdentifierWithoutByteStringToken -count=1
+        result: passed; relative bytes spellings remain identifiers and no byte-string token category exists
+      - command: go test ./cmd/compiler -run TestLexerCLI -count=1
+        result: passed; lex and token reject retained-token diagnostics, print stable IDs and positions, preserve unstructured ILLEGAL counting, and deduplicate structured diagnostics throughout enclosing ILLEGAL token spans
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'MalformedBase|LegacyBase|RegistryIsValid|KnownDiagnostic|LexerCLI' -count=1
+        result: passed; maximal base candidates emit L1010/L1011 once, parser, CLI, and LSP preserve them, registry metadata is valid, and legacy suffix mentor diagnostics retain ownership
+      - command: go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed; synchronized bootstrap maximal base-literal recovery, separator-state propagation, and L1010/L1011/L1012 emission are parser-valid
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'DigitSeparator|MalformedBase|Numeric|LexerCLI|KnownDiagnostic|Registry' -count=1
+        result: passed; eight invalid separator placements emit exactly one L1012 over each full token, survive parser and CLI consumption, preserve following source, and the focused LSP path retains L1012
+      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'CanonicalKeyword|HardKeyword|ContextualKeyword|KeywordCompletion|ContextualSet|Property|ImplExtend' -count=1
+        result: passed; all canonical hard keywords map correctly, contextual spellings remain identifiers, property set and impl extends still parse, and LSP completion contains every hard word without arena or sec
+      - command: node -e 'JSON.parse(require("fs").readFileSync("vscode/syntaxes/sec.tmLanguage.json", "utf8"))'
+        result: passed; synchronized TextMate keyword changes remain valid JSON
+      - command: go run ./cmd/compiler parse testdata/lexer/keyword_inventory_valid.sec && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed; ordinary arena/sec/set bindings, impl extends, and the synchronized bootstrap lexer are parser-valid

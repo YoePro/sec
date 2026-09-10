@@ -903,6 +903,20 @@ func TestAnalyzePublishesEscapeDiagnosticRange(t *testing.T) {
 	t.Fatal("missing unknown escape diagnostic")
 }
 
+func TestAnalyzePublishesMalformedBaseLiteralDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/malformed_base_literals_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int{}
+	for _, diagnostic := range analyze("file:///tmp/malformed_base_literals_invalid.sec", string(input)) {
+		counts[diagnostic.Code]++
+	}
+	if counts[diagnostics.LexerMalformedBaseLiteral] != 2 || counts[diagnostics.LexerInvalidBaseDigit] != 2 || counts[diagnostics.LexerInvalidDigitSeparator] != 1 {
+		t.Fatalf("LSP malformed base diagnostic counts = %+v", counts)
+	}
+}
+
 func TestAnalyzePublishesUnimplementedFunctionHelp(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/parser/function_stubs_invalid.sec")
 	if err != nil {
@@ -1432,6 +1446,32 @@ fn Use() void {
 	assertSemanticToken(t, tokens, 15, 2, len("set"), "keyword")
 	assertSemanticTokenWithModifier(t, tokens, 20, 5, len("set"), "variable", "readonly")
 	assertSemanticTokenWithModifier(t, tokens, 21, 9, len("set"), "variable", "readonly")
+}
+
+func TestKeywordCompletionContainsCanonicalHardInventory(t *testing.T) {
+	available := map[string]bool{}
+	for _, keyword := range secKeywords {
+		if available[keyword] {
+			t.Errorf("duplicate keyword completion %q", keyword)
+		}
+		available[keyword] = true
+	}
+	for _, keyword := range []string{
+		"after", "asm", "assert", "await", "break", "cancel", "capture", "case", "continue", "default",
+		"defer", "discard", "else", "enum", "extends", "extern", "fallthrough", "false", "fn", "for", "free",
+		"get", "if", "impl", "implements", "import", "in", "interface", "let", "match", "module", "mut", "new",
+		"panic", "property", "range", "ref", "require", "return", "select", "self", "spawn", "static", "struct",
+		"switch", "true", "try", "type", "union", "unit", "unsafe", "where", "while",
+	} {
+		if !available[keyword] {
+			t.Errorf("canonical keyword %q missing from completion", keyword)
+		}
+	}
+	for _, identifier := range []string{"arena", "sec"} {
+		if available[identifier] {
+			t.Errorf("ordinary identifier %q appears as keyword completion", identifier)
+		}
+	}
 }
 
 func TestLifecycleInitAndNewTooling(t *testing.T) {
@@ -2577,6 +2617,42 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 	source = "module main\n\nfn Use() void {\n\tlet mut arena: Arena := Arena {}\n\tarena.\n}\n"
 	arenaItems := completeSource("", source, strings.Index(source, "arena.")+len("arena."))
 	assertCompletionLabels(t, arenaItems, []string{"Alloc", "New", "Ptr", "Release", "Reset", "SizeOf"})
+}
+
+func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
+	sourcePath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "named_string_underlying_members_valid.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(contents)
+	uri := "file://" + filepath.ToSlash(sourcePath)
+	if diagnostics := analyze(uri, source); len(diagnostics) != 0 {
+		t.Fatalf("named string Option fixture diagnostics: %+v", diagnostics)
+	}
+
+	valueSource := strings.Replace(source, `value.IndexOf("=")`, "value.", 1)
+	valueOffset := strings.Index(valueSource, "value.") + len("value.")
+	valueItems := completeSource(uri, valueSource, valueOffset)
+	assertCompletionLabels(t, valueItems, []string{
+		"ByteAt", "Compare", "Contains", "Empty", "EndsWith", "FromByteArray", "FromRuneArray",
+		"IndexOf", "LastIndexOf", "Len", "Ptr", "SizeOf", "Slice", "Split", "SplitOnce",
+		"SplitToArray", "StartsWith", "ToByteArray", "ToCharArray", "ToLower", "ToRuneArray",
+		"ToString", "ToUpper", "Trim", "TrimEnd", "TrimStart",
+	})
+
+	const selection = "StructuredFieldError.AllocationFailed"
+	selectionOffset := strings.LastIndex(source, selection)
+	if selectionOffset < 0 {
+		t.Fatal("fixture has no StructuredFieldError selection")
+	}
+	enumSource := source[:selectionOffset] + "StructuredFieldError." + source[selectionOffset+len(selection):]
+	enumOffset := selectionOffset + len("StructuredFieldError.")
+	enumItems := completeSource(uri, enumSource, enumOffset)
+	assertCompletionLabels(t, enumItems, []string{"AllocationFailed"})
 }
 
 func TestCompilerKnownMembersUseSemaFactsForTokensAndHover(t *testing.T) {

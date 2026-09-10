@@ -33,9 +33,39 @@ module http
 type AuthScheme string
 
 impl AuthScheme {
-    static let Basic := "Basic"
-    static let Digest := "Digest"
-    static let Bearer := "Bearer"
+    static let Basic: AuthScheme := "basic"
+    static let Bearer: AuthScheme := "bearer"
+    static let Concealed: AuthScheme := "concealed"
+    static let Digest: AuthScheme := "digest"
+    static let DPoP: AuthScheme := "dpop"
+    static let GNAP: AuthScheme := "gnap"
+    static let HOBA: AuthScheme := "hoba"
+    static let Mutual: AuthScheme := "mutual"
+    static let Negotiate: AuthScheme := "negotiate"
+    static let OAuth: AuthScheme := "oauth"
+    static let PrivateToken: AuthScheme := "privatetoken"
+    static let ScramSha1: AuthScheme := "scram-sha-1"
+    static let ScramSha256: AuthScheme := "scram-sha-256"
+    static let Vapid: AuthScheme := "vapid"
+
+    // TODO: Implement http.AuthScheme.Parse
+    static fn Parse(value: string) Result[AuthScheme, AuthError] {
+        return Err(AuthError.AllocationFailed)
+    }
+
+    // TODO: Validate http.AuthScheme.ToString()
+    fn ToString() string {
+        return string(self)
+    }
+
+    // TODO: Implement http.AuthScheme.IsRegistered
+    property IsRegistered: bool {
+        get {
+            let schemes: AuthScheme[14] := ["basic", "bearer", "concealed", "digest", "dpop", "gnap", "hoba", "mutual", "negotiate",
+                "oauth", "privatetoken", "scram-sha-1", "scram-sha-256", "vapid"]
+            return self in schemes
+        }
+    }
 }
 
 type AuthChallenge struct {
@@ -43,6 +73,60 @@ type AuthChallenge struct {
     Parameters: HeaderValue,
 }
 
-fn BasicAuthorization(username: string, password: string) Result[HeaderValue, AuthError] {
-    return Err(AuthError.)
+type BasicAuthentication struct {
+    Username: string,
+    Password: string,
 }
+
+impl BasicAuthentication {
+    init(username: string, password: string) {
+        self.Username = username
+        self.Password = password
+    }
+
+    // TODO: Implement http.BasicAuthentification.ToAuth()
+    fn ToAuth() Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+    // TODO: Implement http.BasicAuthentification.Parse()
+    static fn Parse(auth: ref Auth) Result[BasicAuthentication, AuthError] { return Err(AuthError.AllocationFailed) }
+}
+
+// TODO: Implement http.BasicAuthorization
+fn BasicAuthorization(username: string, password: string) Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+
+type Auth struct {
+    Scheme: AuthScheme,
+    Data: Option[string],
+}
+
+impl Auth {
+    init(scheme: AuthScheme) {
+        self.Scheme = scheme
+        self.Data = None
+    }
+
+    init(scheme: AuthScheme, data: string) {
+        self.Scheme = scheme
+        self.Data = Some(data)
+    }
+
+    // TODO: Implement http.Auth.Parse
+    static fn Parse(value: HeaderValue) Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+    // TODO: Implement http.Auth.Validate()
+    fn Validate() Result[void, AuthError] { return Err(AuthError.AllocationFailed) }
+    // TODO: Implement http.Auth.ToHeaderValue()
+    fn ToHeaderValue() Result[HeaderValue, AuthError] { return Err(AuthError.AllocationFailed) }
+    // TODO: Implement http.Auth.HasData
+    property HasData: bool {
+        get {
+            return false
+        }
+    }
+}
+
+// TODO: Implement http.ParseAuthChallenges
+fn ParseAuthChallenges(value: HeaderValue) Result[Auth[], AuthError] { return Err(AuthError.AllocationFailed) }
+
+// TODO: Implement http.BearerAuthorization
+fn BearerAuthorization(token: string) Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+// TODO: Implement http.ParseBearerAuthorization
+fn ParseBearerAuthorization(auth: ref Auth) Result[string, AuthError] { return Err(AuthError.AllocationFailed) }

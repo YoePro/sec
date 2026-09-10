@@ -1992,6 +1992,10 @@ fn OptionalExplicit(resource: Resource) Option[Resource] {
 	return Some(<-resource)
 }
 
+fn ForwardOptional(option: Option[Resource]) Option[Resource] {
+	return option
+}
+
 fn Variant(resource: Resource) Choice {
 	return Choice.Payload(resource)
 }

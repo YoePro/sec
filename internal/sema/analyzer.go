@@ -5885,6 +5885,16 @@ func switchCoversBoolLiterals(stmt *ast.SwitchStatement) bool {
 	return seen[true] && seen[false]
 }
 
+// analyzeReturnStatement validates an ordinary return and commits its terminal
+// ownership transfer. Compatible Result and Option carriers may cross the return
+// boundary unchanged; this never implicitly constructs Ok or Some around a
+// plain payload.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §5 "Ok and Err"
+//   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
+//   - rules/memory/ownership.md — §17 "Function return boundary"
+//   - rules/memory/copy_move.md — §9 "Return boundaries"
 func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
 	// A return is terminal even when reached through a match/try arm. Keeping
 	// this as analyzer context lets aggregate and union inference apply the same
@@ -14849,6 +14859,19 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 	}
 	if !ok || len(functions) == 0 {
+		if methodName, methodOK := a.inheritedCoreMethodCallName(expr); methodOK {
+			if methodFunctions := a.functions[methodName]; len(methodFunctions) > 0 {
+				methodReceiver, isMethodCall = a.methodCallReceiver(expr)
+				if !isMethodCall {
+					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
+				name = methodName
+				functions = methodFunctions
+				ok = true
+			}
+		}
+	}
+	if !ok || len(functions) == 0 {
 		if symbol, exists := a.symbols[name]; exists && symbol.Type.Kind == FunctionType {
 			// rules/declarations/lambda-functions.md: retain the callable value's
 			// resolved capability on the callee expression so LSP and later
@@ -16547,6 +16570,55 @@ func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
 	return objectType.Name + "." + member.Property.Value, true
 }
 
+// inheritedCoreMethodCallName resolves an ordinary privileged-core method
+// through a named receiver's underlying-type chain without converting the
+// receiver or erasing its nominal identity.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Lookup order", item 4
+//   - rules/compiler/compiler_known_members.md — "Named and related types"
+//   - rules/library/core-library.md — §5 "String"
+func (a *Analyzer) inheritedCoreMethodCallName(expr *ast.CallExpression) (string, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil || a.expressionNamesType(member.Object) {
+		return "", false
+	}
+	receiver, _ := a.inferExpression(member.Object)
+	receiver = dereferenceType(receiver)
+	if receiver.Kind != StringType || !receiver.Named {
+		return "", false
+	}
+	for _, owner := range a.relatedUnderlyingTypes(receiver) {
+		name := owner.Name + "." + member.Property.Value
+		for _, function := range a.functions[name] {
+			if function.ImplTarget == owner.Name && !function.Static && a.isTrustedCoreSourceToken(function.Token) {
+				return name, true
+			}
+		}
+	}
+	return "", false
+}
+
+// relatedUnderlyingTypes returns the declared underlying-type chain used only
+// for representation-compatible compiler/core member inheritance.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Named and related types"
+func (a *Analyzer) relatedUnderlyingTypes(typ Type) []Type {
+	related := []Type{}
+	seen := map[string]bool{}
+	for typ.Underlying != "" && !seen[typ.Underlying] {
+		seen[typ.Underlying] = true
+		underlying, ok := a.types[typ.Underlying]
+		if !ok || underlying.Kind == InvalidType {
+			break
+		}
+		related = append(related, underlying)
+		typ = underlying
+	}
+	return related
+}
+
 type methodReceiverInfo struct {
 	Type   Type
 	Symbol *Symbol
@@ -16596,7 +16668,20 @@ func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver met
 	if function.ImplTarget == "" {
 		return true
 	}
-	if receiver.Type.Kind == InvalidType || typeDisplayName(dereferenceType(receiver.Type)) != function.ImplTarget {
+	if receiver.Type.Kind == InvalidType {
+		return false
+	}
+	exactReceiver := typeDisplayName(dereferenceType(receiver.Type)) == function.ImplTarget
+	inheritedCoreReceiver := false
+	if !exactReceiver && dereferenceType(receiver.Type).Kind == StringType && a.isTrustedCoreSourceToken(function.Token) {
+		for _, underlying := range a.relatedUnderlyingTypes(dereferenceType(receiver.Type)) {
+			if underlying.Name == function.ImplTarget {
+				inheritedCoreReceiver = true
+				break
+			}
+		}
+	}
+	if !exactReceiver && !inheritedCoreReceiver {
 		return false
 	}
 	if function.ReceiverConsuming {

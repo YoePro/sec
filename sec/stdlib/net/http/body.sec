@@ -22,11 +22,11 @@ module http
 
 @noCopy
 type Body struct {
-    // Private streaming source/decoder state.
+    _state: _BodyState,
 }
 
 impl Body {
-    init(data: byte[]) {
+    init(->data: byte[]) {
         // TODO: Implement http.Body.init(byte[])
     }
 
@@ -47,7 +47,7 @@ impl Body {
     }
 
     // TODO: Implement http.Body.Length
-    property Length: Option[uint64] { get { return 0u } }
+    property Length: Option[uint64] { get { return Some(0u) } }
 
     // TODO: Implement http.Body.Replayable
     property Replayable: bool { get { return false } }
@@ -67,3 +67,25 @@ impl Body {
         return Err(BodyError.Closed)
     }
 }
+
+// TODO: Create and implement http._BodyState
+type _BodyState string
+
+/* _BodyState is private and implementation-defined. init() creates an empty,
+* replayable body of known length zero. init(data: <- byte[]) consumes the array
+* without requiring an additional content copy and creates a replayable body.
+* FromString UTF-8 encodes the Sec string and is fallible because it allocates.
+
+* For a non-empty read buffer, Ok(0) means EOF. ReadAllToArray always enforces
+* the supplied maximum and returns BodyError.TooLarge before returning an array
+* larger than limit. Rewind succeeds only when Replayable is true. Close is idempotent
+* and releases the underlying stream/transport ownership. free() must release the
+* resource exactly once even when Close() was not called; destructor cleanup cannot
+* propagate an ordinary Result error.
+
+* Representation rationale
+* Body is a move-only struct because it owns streaming state and potentially
+* a transport/resource lifetime. It is not an enum because the public API does not
+* expose transport-specific body source variants. The private representation may
+* use a union internally.
+*/

@@ -44,6 +44,8 @@ Implemented:
 - released Arena owners become unavailable and reset/release advance the
   tracked Arena generation
 - lowercase `arena` is an ordinary identifier in the lexer and TextMate grammar
+- Go and bootstrap keyword inventories match the canonical lexical rule: `extends`
+  is hard, while lowercase `arena`, `sec`, and contextual `set` lex as identifiers
 - LSP value/static member completion is generated from the Sema registry
 
 Partial or pending:

@@ -1,5 +1,7 @@
 module core
 
+// TODO: Implement rune correctly
+
 impl rune {
     /** Returns the textual representation of this rune. */
     fn ToString() string {
@@ -16,7 +18,21 @@ impl rune {
     /** Reports whether this rune is an ASCII letter. */
     property IsLetter: bool {
         get {
-            return (self >= 65r && self <= 90r) || (self >= 97r && self <= 122r)
+            return (self in 65r..90r) || (self in 97r..122r)
+        }
+    }
+
+    /** Reports whether this char is a lowcase ASCII letter */
+    property IsLowerLetter: bool {
+        get {
+            return self in 97r..122r
+        }
+    }
+
+    /** Reports whether this char is an uppercase ASCII letter */
+    property IsUpperLetter: bool {
+        get {
+            return self in 65r..90r
         }
     }
 

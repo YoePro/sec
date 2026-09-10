@@ -1,0 +1,11 @@
+module semicolon_invalid
+
+let first := 1; let second := 2
+
+fn Example() int {
+    let third := 3; let fourth := 4
+    return fourth;
+}
+
+fn Following() void {
+}

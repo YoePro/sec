@@ -1,0 +1,8 @@
+module malformed_base_literals_invalid
+
+let missingBinary := 0b
+let invalidOctal := 0o9
+let missingHexDigits := 0xGG
+let invalidBinaryTail := 0b102
+let malformedSeparator := 0x_FF
+let following := 7

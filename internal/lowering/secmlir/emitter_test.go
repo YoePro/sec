@@ -17,48 +17,8 @@ import (
 	"sec/internal/lexer"
 	"sec/internal/parser"
 	"sec/internal/sema"
+	"sec/internal/testsupport"
 )
-
-// configuredSecMLIROptPath implements the absolute-tool-path acceptance rule
-// shared by rules/mlir/packages/sec-mlir-dialect_package13.md section 90 and
-// the Package 14 acceptance/report workflow in sections 107-108:
-// SEC_MLIR_BIN names an absolute tool directory so tests remain independent of
-// the package working directory selected by `go test`.
-func configuredSecMLIROptPath(binDir string) (string, error) {
-	if !filepath.IsAbs(binDir) {
-		return "", fmt.Errorf("SEC_MLIR_BIN must be an absolute path, got %q", binDir)
-	}
-	return filepath.Join(binDir, "sec-mlir-opt"), nil
-}
-
-// requiredSecMLIROptPath resolves the maintained Sec MLIR verifier for package
-// acceptance tests or skips when the optional toolchain is not configured.
-func requiredSecMLIROptPath(t *testing.T) string {
-	t.Helper()
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
-		t.Skip("SEC_MLIR_BIN is not set")
-	}
-	path, err := configuredSecMLIROptPath(binDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestConfiguredSecMLIRBinRequiresAbsolutePathForPackage13And14(t *testing.T) {
-	if _, err := configuredSecMLIROptPath("build/sec-mlir/bin"); err == nil {
-		t.Fatal("relative SEC_MLIR_BIN unexpectedly accepted")
-	}
-	want := filepath.Join(string(filepath.Separator), "tmp", "sec-tools", "sec-mlir-opt")
-	got, err := configuredSecMLIROptPath(filepath.Dir(want))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("configured tool path = %q, want %q", got, want)
-	}
-}
 
 func TestEmitIsDeterministicAndPreservesSchemaMetadata(t *testing.T) {
 	module := representativeModule(t)
@@ -280,7 +240,7 @@ func TestEmitterDependencyBoundary(t *testing.T) {
 }
 
 func TestEmittedModuleVerifiesWithRealTool(t *testing.T) {
-	tool := requiredSecMLIROptPath(t)
+	tool := testsupport.RequireSecMLIROptPath(t)
 	output, err := Emit(representativeModule(t), testPlan(64))
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +256,7 @@ func TestEmittedModuleVerifiesWithRealTool(t *testing.T) {
 }
 
 func TestEmittedModuleLowersTrivialCoreWithRealTool(t *testing.T) {
-	tool := requiredSecMLIROptPath(t)
+	tool := testsupport.RequireSecMLIROptPath(t)
 	output, err := Emit(boolModule(t), testPlan(64))
 	if err != nil {
 		t.Fatal(err)
@@ -385,7 +345,7 @@ fn Read(position: Position, zero: int128) int128 {
 			if binDir == "" {
 				return
 			}
-			tool, err := configuredSecMLIROptPath(binDir)
+			tool, err := testsupport.ConfiguredSecMLIROptPath(binDir)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -468,7 +428,7 @@ func TestEmitPackage14ArraysEndToEnd(t *testing.T) {
 			if binDir == "" {
 				return
 			}
-			tool, err := configuredSecMLIROptPath(binDir)
+			tool, err := testsupport.ConfiguredSecMLIROptPath(binDir)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -751,7 +711,7 @@ func assertPackage14CanonicalArrayFacts(t *testing.T, module *semantic.Module) {
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 102, 107
 //   - rules/mlir/lowering-versions/sec_mlir_lowering_v10.md — sections 23, 25
 func TestEmitPackage14SourceModuleVerifiesOn32And64BitPlans(t *testing.T) {
-	tool := requiredSecMLIROptPath(t)
+	tool := testsupport.RequireSecMLIROptPath(t)
 	module := package14SourceIntegrationModule(t)
 	for _, width := range []uint16{32, 64} {
 		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
@@ -974,7 +934,7 @@ func assertPhysicalArrayLayoutRejected(t *testing.T, module *semantic.Module, la
 }
 
 func TestEmittedModuleLowersScalarCoreFor32And64BitPlans(t *testing.T) {
-	tool := requiredSecMLIROptPath(t)
+	tool := testsupport.RequireSecMLIROptPath(t)
 	for _, width := range []uint16{32, 64} {
 		t.Run(strconv.Itoa(int(width)), func(t *testing.T) {
 			output, err := Emit(representativeModule(t), testPlan(width))

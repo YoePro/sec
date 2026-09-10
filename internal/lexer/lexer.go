@@ -24,10 +24,8 @@ const (
 	CHAR         TokenType = "CHAR"
 	RAW_STRING   TokenType = "RAW_STRING"
 	VOID         TokenType = "VOID"
-	BYTES        TokenType = "BYTES"
 	INTERPSTRING TokenType = "INTERPSTRING"
 
-	ARENA       TokenType = "ARENA"
 	AFTER       TokenType = "AFTER"
 	ASM         TokenType = "ASM"
 	ASSERT      TokenType = "ASSERT"
@@ -66,10 +64,8 @@ const (
 	REF         TokenType = "REF"
 	RETURN      TokenType = "RETURN"
 	REQUIRE     TokenType = "REQUIRE"
-	SEC         TokenType = "SEC"
 	SELF        TokenType = "SELF"
 	SELECT      TokenType = "SELECT"
-	SET         TokenType = "SET"
 	SPAWN       TokenType = "SPAWN"
 	STATIC      TokenType = "STATIC"
 	STRUCT      TokenType = "STRUCT"
@@ -632,55 +628,40 @@ func (l *Lexer) identifierToken(literal string, line, column int) Token {
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-10 20:49 CEST: Retain maximal malformed base-prefixed candidates
+// and emit L1010/L1011/L1012 while preserving parser-owned legacy suffix migration.
 func (l *Lexer) readNumber() (string, TokenType) {
 	start := l.pos
+	line, column := l.line, l.column
 	typ := INT
 	valid := true
 
 	if l.peek() == '0' {
 		switch l.peekNext() {
 		case 'b', 'B':
-			l.advance()
-			l.advance()
-			_, valid = l.readDigitSequence(func(ch rune) bool { return ch == '0' || ch == '1' })
-			typ = l.consumeIntegerSuffix(typ)
-			if !valid {
-				return string(l.input[start:l.pos]), ILLEGAL
-			}
-			return string(l.input[start:l.pos]), typ
+			return l.readBasePrefixedInteger(start, "binary", func(ch rune) bool { return ch == '0' || ch == '1' })
 		case 'o', 'O':
-			l.advance()
-			l.advance()
-			_, valid = l.readDigitSequence(func(ch rune) bool { return ch >= '0' && ch <= '7' })
-			typ = l.consumeIntegerSuffix(typ)
-			if !valid {
-				return string(l.input[start:l.pos]), ILLEGAL
-			}
-			return string(l.input[start:l.pos]), typ
+			return l.readBasePrefixedInteger(start, "octal", func(ch rune) bool { return ch >= '0' && ch <= '7' })
 		case 'x', 'X':
-			l.advance()
-			l.advance()
-			_, valid = l.readDigitSequence(isHexDigit)
-			typ = l.consumeIntegerSuffix(typ)
-			if !valid {
-				return string(l.input[start:l.pos]), ILLEGAL
-			}
-			return string(l.input[start:l.pos]), typ
+			return l.readBasePrefixedInteger(start, "hexadecimal", isHexDigit)
 		}
 	}
 
-	_, valid = l.readDigitSequence(isDigit)
+	_, valid, invalidSeparator := l.readDigitSequence(isDigit)
 	if l.peek() == '.' && (isDigit(l.peekNext()) || l.peekNext() == '_') {
 		typ = FLOAT
 		l.advance()
-		_, fractionValid := l.readDigitSequence(isDigit)
+		_, fractionValid, fractionSeparator := l.readDigitSequence(isDigit)
 		valid = valid && fractionValid
+		invalidSeparator = invalidSeparator || fractionSeparator
 	}
 	if l.peek() == 'e' || l.peek() == 'E' {
 		typ = FLOAT
-		if !l.readDecimalExponent() {
+		exponentValid, exponentSeparator := l.readDecimalExponent()
+		if !exponentValid {
 			valid = false
 		}
+		invalidSeparator = invalidSeparator || exponentSeparator
 	}
 	if isCanonicalNumericSuffix(l.peek()) {
 		suffix := l.peek()
@@ -695,11 +676,77 @@ func (l *Lexer) readNumber() (string, TokenType) {
 		l.advance()
 		valid = false
 	}
+	lexeme := string(l.input[start:l.pos])
+	if invalidSeparator {
+		l.recordInvalidDigitSeparator(lexeme, line, column)
+		return lexeme, ILLEGAL
+	}
 	if !valid {
-		return string(l.input[start:l.pos]), ILLEGAL
+		return lexeme, ILLEGAL
 	}
 
-	return string(l.input[start:l.pos]), typ
+	return lexeme, typ
+}
+
+// readBasePrefixedInteger retains one maximal identifier-like numeric
+// candidate and emits the focused base-literal diagnostic at its full span.
+// Legacy c/d/f suffixes remain parser-owned migration diagnostics.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — "12.3 Base-prefixed integer literals"
+//   - rules/foundations/lexical_structure.md — "12.6 Digit separators"
+func (l *Lexer) readBasePrefixedInteger(start int, baseName string, validDigit func(rune) bool) (string, TokenType) {
+	line, column := l.line, l.column
+	l.advance()
+	l.advance()
+	firstAfterPrefix := l.peek()
+	sawDigit, validSequence, invalidSeparator := l.readDigitSequence(validDigit)
+	typ := INT
+	if sawDigit && validSequence {
+		typ = l.consumeIntegerSuffix(typ)
+		if typ == ILLEGAL {
+			return string(l.input[start:l.pos]), ILLEGAL
+		}
+	}
+
+	invalidDigit := rune(0)
+	if isDigit(firstAfterPrefix) && !validDigit(firstAfterPrefix) {
+		invalidDigit = firstAfterPrefix
+	} else if sawDigit && validSequence && isDigit(l.peek()) && !validDigit(l.peek()) {
+		invalidDigit = l.peek()
+	}
+	if sawDigit && validSequence && invalidDigit == 0 && !isMalformedNumericContinuation(l.peek()) {
+		return string(l.input[start:l.pos]), typ
+	}
+	for isMalformedNumericContinuation(l.peek()) {
+		l.advance()
+	}
+
+	lexeme := string(l.input[start:l.pos])
+	id := compilerdiagnostics.LexerMalformedBaseLiteral
+	message := fmt.Sprintf("malformed %s integer literal %q", baseName, lexeme)
+	if invalidSeparator {
+		id = compilerdiagnostics.LexerInvalidDigitSeparator
+		message = "digit separators must occur between valid digits of the same numeric component"
+	} else if invalidDigit != 0 {
+		id = compilerdiagnostics.LexerInvalidBaseDigit
+		message = fmt.Sprintf("digit %q is not valid in a %s integer literal", invalidDigit, baseName)
+	} else if !sawDigit {
+		message = fmt.Sprintf("%s integer literal requires at least one valid digit after its base prefix", baseName)
+	} else if !validSequence {
+		message = fmt.Sprintf("malformed %s digit sequence; separators must occur between valid digits", baseName)
+	}
+	token := l.token(ILLEGAL, lexeme, line, column)
+	l.diagnostics = append(l.diagnostics, Diagnostic{ID: id, Message: message, Primary: token})
+	return lexeme, ILLEGAL
+}
+
+// isMalformedNumericContinuation identifies the maximal source spelling owned
+// by a malformed numeric candidate without consuming punctuation or whitespace.
+//
+// Rule: rules/foundations/lexical_structure.md — "12.3 Base-prefixed integer literals".
+func isMalformedNumericContinuation(ch rune) bool {
+	return isLetter(ch) || isDigit(ch) || unicode.IsMark(ch) || ch == '_'
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
@@ -709,11 +756,13 @@ func (l *Lexer) readLeadingDotNumber() Token {
 	start := l.pos
 
 	l.advance()
-	_, valid := l.readDigitSequence(isDigit)
+	_, valid, invalidSeparator := l.readDigitSequence(isDigit)
 	if l.peek() == 'e' || l.peek() == 'E' {
-		if !l.readDecimalExponent() {
+		exponentValid, exponentSeparator := l.readDecimalExponent()
+		if !exponentValid {
 			valid = false
 		}
+		invalidSeparator = invalidSeparator || exponentSeparator
 	}
 	if isFractionalNumericSuffix(l.peek()) {
 		l.advance()
@@ -721,32 +770,39 @@ func (l *Lexer) readLeadingDotNumber() Token {
 		l.advance()
 		valid = false
 	}
+	lexeme := string(l.input[start:l.pos])
+	if invalidSeparator {
+		l.recordInvalidDigitSeparator(lexeme, line, column)
+		return l.token(ILLEGAL, lexeme, line, column)
+	}
 	if !valid {
-		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		return l.token(ILLEGAL, lexeme, line, column)
 	}
 
-	return l.token(FLOAT, string(l.input[start:l.pos]), line, column)
+	return l.token(FLOAT, lexeme, line, column)
 }
 
 // readDecimalExponent consumes an exponent marker, an optional sign, and its
 // required decimal digits. The caller retains the complete malformed token.
-func (l *Lexer) readDecimalExponent() bool {
+func (l *Lexer) readDecimalExponent() (bool, bool) {
 	l.advance()
 	if l.peek() == '+' || l.peek() == '-' {
 		l.advance()
 	}
-	digits, valid := l.readDigitSequence(isDigit)
-	return digits && valid
+	digits, valid, invalidSeparator := l.readDigitSequence(isDigit)
+	return digits && valid, invalidSeparator
 }
 
-func (l *Lexer) readDigitSequence(validDigit func(rune) bool) (bool, bool) {
+func (l *Lexer) readDigitSequence(validDigit func(rune) bool) (bool, bool, bool) {
 	sawDigit := false
 	previousWasDigit := false
 	valid := true
+	invalidSeparator := false
 	for validDigit(l.peek()) || l.peek() == '_' {
 		if l.peek() == '_' {
 			if !previousWasDigit || !validDigit(l.peekNext()) {
 				valid = false
+				invalidSeparator = true
 			}
 			previousWasDigit = false
 			l.advance()
@@ -756,7 +812,20 @@ func (l *Lexer) readDigitSequence(validDigit func(rune) bool) (bool, bool) {
 		previousWasDigit = true
 		l.advance()
 	}
-	return sawDigit, valid && sawDigit
+	return sawDigit, valid && sawDigit, invalidSeparator
+}
+
+// recordInvalidDigitSeparator emits one focused diagnostic over the complete
+// malformed numeric token retained by the lexer.
+//
+// Rule: rules/foundations/lexical_structure.md — "12.6 Digit separators".
+func (l *Lexer) recordInvalidDigitSeparator(lexeme string, line int, column int) {
+	token := l.token(ILLEGAL, lexeme, line, column)
+	l.diagnostics = append(l.diagnostics, Diagnostic{
+		ID:      compilerdiagnostics.LexerInvalidDigitSeparator,
+		Message: "digit separators must occur between valid digits of the same numeric component",
+		Primary: token,
+	})
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
@@ -1023,7 +1092,17 @@ func isPhysicalLineEnding(ch rune) bool {
 	return ch == '\n' || ch == '\r'
 }
 
+// lookupIdent implements the canonical hard-keyword inventory. Contextual
+// spellings such as arena, sec, and set deliberately fall through to IDENT.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — "7.1 General language keywords"
+//   - rules/foundations/lexical_structure.md — "9. Contextual spelling set"
+//   - rules/memory/arena.md — "§ 6 Lowercase arena"
+//
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-10 20:49 CEST: Remove obsolete sec/arena/set token reservations and
+// keep extends in the canonical hard-keyword inventory.
 func lookupIdent(s string) TokenType {
 	switch s {
 	case "after":
@@ -1104,8 +1183,6 @@ func lookupIdent(s string) TokenType {
 		return RETURN
 	case "require":
 		return REQUIRE
-	case "sec":
-		return SEC
 	case "self":
 		return SELF
 	case "select":

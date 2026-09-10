@@ -1,0 +1,16 @@
+module main
+
+type Priority uint8
+type HeaderValue string
+
+enum StructuredFieldError error {
+    AllocationFailed
+}
+
+fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
+    let n := value.IndexOf("=")
+    if n is None {
+        return Err(StructuredFieldError.AllocationFailed)
+    }
+    return Err(StructuredFieldError.AllocationFailed)
+}

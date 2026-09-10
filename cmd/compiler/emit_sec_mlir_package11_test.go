@@ -13,6 +13,7 @@ import (
 	secmlirlowering "sec/internal/lowering/secmlir"
 	"sec/internal/parser"
 	"sec/internal/sema"
+	"sec/internal/testsupport"
 )
 
 func TestPackage11SourceEmitsAndVerifiesEnumUnionValues(t *testing.T) {
@@ -61,15 +62,18 @@ func TestPackage11SourceEmitsAndVerifiesEnumUnionValues(t *testing.T) {
 		}
 	}
 
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
+	tool, configured, err := testsupport.SecMLIROptPathFromEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured {
 		return
 	}
 	path := filepath.Join(t.TempDir(), "enum-union.mlir")
 	if err := os.WriteFile(path, output, 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+	command := exec.Command(tool, path,
 		"--sec-verify-checked-integer-guards", "--sec-verify-result-guards",
 		"--sec-verify-try-handlers", "--sec-verify-union-guards", "-o", os.DevNull)
 	if combined, err := command.CombinedOutput(); err != nil {
@@ -152,15 +156,18 @@ fn Identity(value: State) State { return value }
 			if err != nil {
 				t.Fatal(err)
 			}
-			binDir := os.Getenv("SEC_MLIR_BIN")
-			if binDir == "" {
+			tool, configured, err := testsupport.SecMLIROptPathFromEnvironment()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !configured {
 				t.Skip("SEC_MLIR_BIN is not set")
 			}
 			path := filepath.Join(t.TempDir(), "target-enum.mlir")
 			if err := os.WriteFile(path, output, 0600); err != nil {
 				t.Fatal(err)
 			}
-			command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path, "--sec-lower-scalar-core")
+			command := exec.Command(tool, path, "--sec-lower-scalar-core")
 			lowered, err := command.CombinedOutput()
 			if err != nil {
 				t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, lowered, output)
@@ -205,15 +212,18 @@ func package11Plan(t *testing.T, targetName CompilerTarget) layout.ResolvedScala
 
 func verifyPackage11MLIR(t *testing.T, output []byte) {
 	t.Helper()
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
+	tool, configured, err := testsupport.SecMLIROptPathFromEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured {
 		return
 	}
 	path := filepath.Join(t.TempDir(), "package11.mlir")
 	if err := os.WriteFile(path, output, 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+	command := exec.Command(tool, path,
 		"--sec-verify-checked-integer-guards", "--sec-verify-result-guards",
 		"--sec-verify-try-handlers", "--sec-verify-union-guards", "-o", os.DevNull)
 	if combined, err := command.CombinedOutput(); err != nil {

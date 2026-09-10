@@ -1,0 +1,11 @@
+module digit_separators_invalid
+
+let trailingInteger := 100_
+let repeatedInteger := 1__000
+let prefixedLeading := 0x_FF
+let prefixedTrailing := 0xFF_
+let beforeFraction := 1_.5
+let afterFractionPoint := 1._5
+let exponentLeading := 1e_3
+let exponentTrailing := 1e3_
+let following := 7

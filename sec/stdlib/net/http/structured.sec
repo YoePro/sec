@@ -64,8 +64,39 @@ type StructuredDictionary struct {
     Members: StructuredDictionaryMember[],
 }
 
-// fn ParseStructuredItem(value: HeaderValue) Result[StructuredItem, StructuredFieldError]
+/*
+* Parsing is strict RFC 9651 parsing. Duplicate dictionary keys and duplicate parameter keys are errors rather than
+* silently overwritten. Serialization emits the canonical RFC 9651 representation and preserves list/dictionary member order.
+*
+* Representation rationale
+* StructuredBareItem and StructuredMember are unions because exactly one wire value shape is present.
+* Parameters, items, inner lists, lists, and dictionaries are structs
+* because each value consists of several simultaneously meaningful components.
+* The byte-sequence variant owns its byte array; move/copy behavior of containing values follows
+* Sec aggregate ownership rules.
+*/
 
-// fn ParseStructuredList(value: HeaderValue) Result[StructuredList, StructuredFieldError]
-
-// fn ParseStructuredDictionary(value: HeaderValue) Result[StructuredDictionary, StructuredFieldError]
+// TODO: Implement http.ParseStructuredItem()
+fn ParseStructuredItem(value: HeaderValue) Result[StructuredItem, StructuredFieldError] {
+    return Err(StructuredFieldError.InvalidKey)
+}
+// TODO: Implement http.ParseStructuredList
+fn ParseStructuredList(value: HeaderValue) Result[StructuredList, StructuredFieldError] {
+    return Err(StructuredFieldError.InvalidKey)
+}
+// TODO: Implement http.ParseStructuredDictionary
+fn ParseStructuredDictionary(value: HeaderValue) Result[StructuredDictionary, StructuredFieldError] {
+    return Err(StructuredFieldError.InvalidKey)
+}
+// TODO: Implement http.SerializeStructuredItem
+fn SerializeStructuredItem(value: ref StructuredItem) Result[HeaderValue, StructuredFieldError] {
+    return Err(StructuredFieldError.InvalidKey)
+}
+// TODO: Implement http.SerializeStructuredList
+fn SerializeStructuredList(value: ref StructuredList) Result[HeaderValue, StructuredFieldError] {
+    return Err(StructuredFieldError.InvalidKey)
+}
+// TODO: Implement http.SerializeStructuredDictionary
+fn SerializeStructuredDictionary(value: ref StructuredDictionary) Result[HeaderValue, StructuredFieldError] {
+    return Err(StructuredFieldError.InvalidKey)
+}

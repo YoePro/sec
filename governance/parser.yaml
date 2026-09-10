@@ -6,12 +6,14 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
+    revised: "2026-09-10"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
     rules:
       - rules/compiler/parser_recovery.md
       - rules/foundations/grammar.md
+      - rules/foundations/lexical_structure.md
       - rules/tooling/diagnostics.txt
       - rules/tooling/lsp.md
     code:
@@ -64,6 +66,7 @@ integrations:
       - central CLI and LSP parse paths consume ParseResult
       - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
       - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
+      - ordinary statement-terminator semicolons emit focused P2012 parser.reserved-syntax diagnostics, retain exact InvalidStatement recovery nodes, and preserve following same-line top-level and block statements; C-style for headers retain their specialized diagnostic
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -81,6 +84,7 @@ integrations:
       - testdata/parser/unterminated_empty_block_invalid.sec
       - testdata/parser/unterminated_nested_blocks_invalid.sec
       - testdata/parser/unterminated_recovered_block_invalid.sec
+      - testdata/parser/semicolon_invalid.sec
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -104,6 +108,8 @@ integrations:
         result: passed
       - command: go test ./internal/parser -run TestUnterminatedStatementBlocksRetainPartialAST -count=1
         result: passed; empty, populated, nested, and previously recovered unterminated statement blocks retain partial AST nodes and parser errors
+      - command: go test ./internal/parser -run TestSemicolonDiagnosticPreservesFollowingStatements -count=1
+        result: passed; three P2012 diagnostics retain exact invalid nodes and recovery events while preserving same-line sibling statements and the following function
 
     remaining:
       - invalid type retention on every type-reference failure path

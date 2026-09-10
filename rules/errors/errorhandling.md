@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-21
-- **Last updated:** 2026-08-24
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-10
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/errorhandling.md`
 - **Implementation governance:** `governance/errors.yaml`
@@ -288,6 +288,32 @@ fn Read() Result[Data, IOError] {
 ```
 
 is valid because `IOError` is assignable to `error`.
+
+### 5.1 Direct `Option` carrier returns
+
+`Some(value)` and `None` construct the two states of `Option[T]`. As with a
+complete `Result[T, E]` carrier, an expression whose type is already assignable
+to the enclosing function's declared `Option[T]` type may be returned directly.
+
+```sec
+fn Find() Option[Device] {
+    // ...
+}
+
+fn FindPreferred() Option[Device] {
+    // ...
+    return Find()
+}
+```
+
+Directly returning an `Option[T]` returns the complete carrier unchanged. It
+does not inspect, unwrap, or reconstruct its active `Some` or `None` state.
+Ordinary terminal return ownership applies to the carrier and its active
+payload.
+
+This rule does not introduce an implicit conversion from `T` to `Option[T]`.
+A plain payload still requires explicit `Some(value)`, and no conversion exists
+between different concrete `Option` specializations.
 
 ---
 
@@ -1541,7 +1567,7 @@ LSP should explain that the expression returns `Option[T]` and offer `Some` and
 The implementation must include focused parser, Sema, ownership, control-flow,
 Semantic IR, lowering, diagnostics, LSP, formatter, and end-to-end tests.
 
-### 37.1 Error root and Result
+### 37.1 Error root and direct carriers
 
 Test:
 
@@ -1558,6 +1584,11 @@ Result[T, error] accepted
 Result[T, non-error] rejected
 concrete identity survives widening to error
 payload survives widening to error
+compatible Result[T, E] call may be returned directly
+compatible Option[T] call may be returned directly
+bound compatible Option[T] may be returned with terminal ownership transfer
+plain T is not implicitly wrapped in Some for an Option[T] return
+different Option specializations cannot be returned as one another
 ```
 
 ### 37.2 Result projections

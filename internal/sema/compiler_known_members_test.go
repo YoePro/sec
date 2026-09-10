@@ -3,6 +3,10 @@ package sema
 import (
 	"strings"
 	"testing"
+
+	"sec/internal/ast"
+	"sec/internal/lexer"
+	"sec/internal/parser"
 )
 
 func TestCompilerKnownFundamentalMembers(t *testing.T) {
@@ -227,6 +231,44 @@ fn Test(users: list[int], entries: map[int, string], unique: set[int], other: se
 }
 `
 	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+}
+
+// rules/compiler/compiler_known_members.md "Named and related types" allows a
+// named string representation to use eligible privileged-core string methods
+// while retaining its nominal type.
+func TestNamedStringInheritsPrivilegedCoreMethods(t *testing.T) {
+	const sourceFile = "/tmp/sec-test/sec/core/string.sec"
+	input := `module main
+
+impl string {
+    fn IndexOf(value: string) Option[uint] {
+        return None
+    }
+}
+
+type Priority uint8
+type HeaderValue string
+
+enum StructuredFieldError error {
+    AllocationFailed
+}
+
+fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
+    let n: Option[uint] := value.IndexOf("=")
+    if n is None {
+        return Err(StructuredFieldError.AllocationFailed)
+    }
+    return Err(StructuredFieldError.AllocationFailed)
+}
+`
+	l := lexer.NewWithFile(input, sourceFile)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+	assertSemaErrors(t, NewAnalyzer().Analyze(program), nil)
 }
 
 func TestCompilerKnownArenaMembers(t *testing.T) {

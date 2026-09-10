@@ -21,3 +21,51 @@ module http
 * Rulebook:
 *   stdlib/net/http/std-net-http.md
 */
+
+// TODO: IMPLEMENT the Digest file.
+
+type DigestAlgorithm string
+
+impl DigestAlgorithm {
+    static let Sha512: DigestAlgorithm := "sha-512"
+    static let Sha256: DigestAlgorithm := "sha-256"
+    static let Md5: DigestAlgorithm := "md5"
+    static let Sha1: DigestAlgorithm := "sha"
+    static let UnixSum: DigestAlgorithm := "unixsum"
+    static let UnixCksum: DigestAlgorithm := "unixcksum"
+
+    static fn Parse(value: string) Result[DigestAlgorithm, DigestError] { return Err(DigestError.AllocationFailed) }
+    fn ToString() string { return string(self) }
+    property IsActive: Option[bool] {
+        get {
+            return None
+        }
+    }
+    property IsDeprecated: Option[bool] {
+        get {
+            return None
+        }
+    }
+}
+
+type DigestValue struct {
+    Algorithm: DigestAlgorithm,
+    Value: byte[],
+}
+
+type DigestPreference uint8 range 0..10 default 0
+
+type DigestPreferenceValue struct {
+    Algorithm: DigestAlgorithm,
+    Preference: DigestPreference,
+}
+
+fn ParseContentDigest(value: HeaderValue) Result[DigestValue[], DigestError] { return Err(DigestError.AllocationFailed) }
+fn ParseReprDigest(value: HeaderValue) Result[DigestValue[], DigestError] { return Err(DigestError.AllocationFailed) }
+fn ParseWantContentDigest(value: HeaderValue) Result[DigestPreferenceValue[], DigestError] { return Err(DigestError.AllocationFailed) }
+fn ParseWantReprDigest(value: HeaderValue) Result[DigestPreferenceValue[], DigestError] { return Err(DigestError.AllocationFailed) }
+
+fn SerializeContentDigest(values: ref DigestValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
+fn SerializeReprDigest(values: ref DigestValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
+fn SerializeWantContentDigest(values: ref DigestPreferenceValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
+fn SerializeWantReprDigest(values: ref DigestPreferenceValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }

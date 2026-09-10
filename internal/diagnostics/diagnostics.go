@@ -32,6 +32,9 @@ const (
 	LexerMalformedEscape         = "L1007"
 	LexerInvalidUnicodeEscape    = "L1008"
 	LexerCharacterLiteralLength  = "L1009"
+	LexerMalformedBaseLiteral    = "L1010"
+	LexerInvalidBaseDigit        = "L1011"
+	LexerInvalidDigitSeparator   = "L1012"
 	ParserSyntaxError            = "P2001"
 	ParserMissingToken           = "P2002"
 	ParserUnexpectedToken        = "P2003"
@@ -87,6 +90,9 @@ var registry = map[string]Definition{
 	LexerMalformedEscape:        {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerInvalidUnicodeEscape:   {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerCharacterLiteralLength: {ID: LexerCharacterLiteralLength, Name: "lexer.character-literal-length", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerMalformedBaseLiteral:   {ID: LexerMalformedBaseLiteral, Name: "lexer.malformed-base-literal", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidBaseDigit:       {ID: LexerInvalidBaseDigit, Name: "lexer.invalid-base-digit", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidDigitSeparator:  {ID: LexerInvalidDigitSeparator, Name: "lexer.invalid-digit-separator", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerNonNFCIdentifier: {
 		ID: LexerNonNFCIdentifier, Name: "lexer.non-nfc-identifier", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
 	},

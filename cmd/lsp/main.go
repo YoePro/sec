@@ -1035,14 +1035,14 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		}
 		if identifier, ok := targetExpr.(*ast.Identifier); ok {
 			if staticType, exists := analyzer.Types()[identifier.Value]; exists {
-				return memberCompletionItems(staticType, analyzer.Functions(), analyzer.Symbols(), context.Prefix, true)
+				return memberCompletionItems(staticType, analyzer.Types(), analyzer.Functions(), analyzer.Symbols(), context.Prefix, true)
 			}
 		}
 		exprType, ok := analyzer.TypeOf(targetExpr)
 		if !ok {
 			return []completionItem{}
 		}
-		return memberCompletionItems(exprType, analyzer.Functions(), analyzer.Symbols(), context.Prefix, false)
+		return memberCompletionItems(exprType, analyzer.Types(), analyzer.Functions(), analyzer.Symbols(), context.Prefix, false)
 	}
 
 	return globalCompletionItems(text, analyzer, context)
@@ -2533,7 +2533,14 @@ func isContractModifierContext(prefix string) bool {
 	return false
 }
 
-func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Function, symbols map[string]sema.Symbol, prefix string, static bool) []completionItem {
+// memberCompletionItems projects Sema's exact and eligible inherited member
+// facts into LSP completion while retaining the static/instance namespace split.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Built-in type member lookup"
+//   - rules/compiler/compiler_known_members.md — "Named and related types"
+//   - rules/tooling/lsp.md — "Completion"
+func memberCompletionItems(exprType sema.Type, types map[string]sema.Type, functions map[string][]sema.Function, symbols map[string]sema.Symbol, prefix string, static bool) []completionItem {
 	items := []completionItem{}
 	seen := map[string]bool{}
 	add := func(item completionItem) {
@@ -2609,8 +2616,7 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 		}
 	}
 
-	typeName := exprType.Name
-	if typeName != "" {
+	for _, typeName := range memberCompletionOwnerNames(exprType, types) {
 		methodPrefix := typeName + "."
 		for name, overloads := range functions {
 			if !strings.HasPrefix(name, methodPrefix) {
@@ -2627,7 +2633,7 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 				add(completionItem{Label: methodName, Kind: 2, Detail: functionCompletionDetail(matching)})
 			}
 		}
-		if static {
+		if static && typeName == exprType.Name {
 			staticPrefix := typeName + "."
 			for name, symbol := range symbols {
 				if !strings.HasPrefix(name, staticPrefix) {
@@ -2641,6 +2647,34 @@ func memberCompletionItems(exprType sema.Type, functions map[string][]sema.Funct
 
 	sortCompletionItems(items)
 	return items
+}
+
+// memberCompletionOwnerNames preserves exact nominal members first and then
+// exposes eligible members from the receiver's related underlying types.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Lookup order"
+//   - rules/compiler/compiler_known_members.md — "Named and related types"
+//   - rules/tooling/lsp.md — "Completion"
+func memberCompletionOwnerNames(typ sema.Type, types map[string]sema.Type) []string {
+	if typ.Name == "" {
+		return nil
+	}
+	names := []string{typ.Name}
+	if !typ.Named || typ.Kind != sema.StringType {
+		return names
+	}
+	seen := map[string]bool{typ.Name: true}
+	for typ.Underlying != "" && !seen[typ.Underlying] {
+		seen[typ.Underlying] = true
+		names = append(names, typ.Underlying)
+		underlying, ok := types[typ.Underlying]
+		if !ok {
+			break
+		}
+		typ = underlying
+	}
+	return names
 }
 
 func globalCompletionItems(text string, analyzer *sema.Analyzer, context completionContext) []completionItem {
@@ -2873,12 +2907,16 @@ func contextHasFunction(context completionContext) bool {
 	return context.FunctionStartOffset >= 0
 }
 
+// secKeywords contains canonical hard words plus separately governed contextual
+// completion spellings. Lowercase arena and sec are ordinary identifiers and
+// must not appear here.
+// Rules: rules/foundations/lexical_structure.md — sections 7 and 9.
 var secKeywords = []string{
-	"after", "asm", "assert", "await", "break", "case", "capture", "continue", "default",
-	"defer", "detach", "else", "enum", "even", "extern", "fallthrough", "false", "finite", "fn", "for",
+	"after", "asm", "assert", "await", "break", "cancel", "case", "capture", "continue", "default",
+	"defer", "detach", "discard", "else", "enum", "even", "extends", "extern", "fallthrough", "false", "finite", "fn", "for", "free",
 	"get", "if", "impl", "implements", "import", "in", "interface",
-	"let", "match", "module", "multipleOf", "mut", "notEmpty", "odd", "panic", "process",
-	"property", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
+	"let", "match", "module", "multipleOf", "mut", "new", "notEmpty", "odd", "panic", "process",
+	"property", "range", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
 	"require", "switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
 	"unsafe", "where", "while",
 }

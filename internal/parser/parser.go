@@ -355,6 +355,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.ILLEGAL:
 		return p.parseExpressionOrAssignmentStatement()
 
+	case lexer.SEMICOLON:
+		return p.parseSemicolonStatement()
+
 	case lexer.AT:
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "address" {
 			return p.parseAddressedLetStatement()
@@ -414,6 +417,38 @@ func (p *Parser) parseStatement() ast.Statement {
 			unexpected.Column,
 		)
 		return nil
+	}
+}
+
+// parseSemicolonStatement rejects the reserved separator while retaining one
+// exact invalid node, allowing a following same-line statement to be parsed.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — "4. Newlines and statements"
+//   - rules/foundations/grammar.md — "Statement termination"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
+func (p *Parser) parseSemicolonStatement() ast.Statement {
+	token := p.curToken
+	message := fmt.Sprintf("semicolon is not used as a statement terminator in Sec at %d:%d", token.Line, token.Column)
+	p.addDiagnostic(
+		compilerdiagnostics.ParserReservedSyntax,
+		token,
+		nil,
+		&token,
+		"%s",
+		message,
+	)
+	recovery := p.recordSkippedRecovery(token, token, 1, RecoveryExact)
+	return &ast.InvalidStatement{
+		Token:   token,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.ParserReservedSyntax,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
 	}
 }
 
@@ -668,6 +703,9 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	if stmt.Condition == nil {
 		return nil
 	}
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
+		stmt.Condition = p.parseOptionAbsenceIfCondition(stmt.Condition)
+	}
 
 	if p.peekToken.Type != lexer.LBRACE {
 		p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -708,6 +746,62 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+// parseOptionAbsenceIfCondition lowers the canonical `is [not] None` condition
+// to an exhaustive Option match so every later compiler stage consumes the
+// existing typed match representation rather than a spelling-only operator.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §28 "if tests for Option"
+//   - rules/control-flow/flowcontrol_if.md — conditional evaluation
+func (p *Parser) parseOptionAbsenceIfCondition(subject ast.Expression) ast.Expression {
+	p.nextToken()
+	isToken := p.curToken
+	negated := false
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "not" {
+		p.nextToken()
+		negated = true
+	}
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "None" {
+		operator := "is"
+		if negated {
+			operator = "is not"
+		}
+		p.addError("Option if test expects None after %s at %d:%d", operator, p.peekToken.Line, p.peekToken.Column)
+		return subject
+	}
+	p.nextToken()
+	noneToken := p.curToken
+	trueToken := isToken
+	trueToken.Type, trueToken.Lexeme = lexer.TRUE, "true"
+	falseToken := isToken
+	falseToken.Type, falseToken.Lexeme = lexer.FALSE, "false"
+	noneResult, fallbackResult := true, false
+	if negated {
+		noneResult, fallbackResult = false, true
+	}
+	return &ast.MatchExpression{
+		Token:   isToken,
+		Subject: subject,
+		Arms: []*ast.MatchArm{
+			{
+				Token: noneToken,
+				Pattern: &ast.MatchPattern{
+					Token: noneToken, Kind: ast.MatchPatternVariant,
+					Name: "None", NameToken: noneToken,
+				},
+				Body: &ast.BooleanLiteral{Token: trueToken, Value: noneResult},
+			},
+			{
+				Token: isToken,
+				Pattern: &ast.MatchPattern{
+					Token: isToken, Kind: ast.MatchPatternCatchAll, Name: "_",
+				},
+				Body: &ast.BooleanLiteral{Token: falseToken, Value: fallbackResult},
+			},
+		},
+	}
 }
 
 func (p *Parser) parseForStatement() ast.Statement {
@@ -2123,7 +2217,7 @@ func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 				return nil
 			}
 			property.RequiresGet = true
-		case lexer.SET, lexer.IDENT:
+		case lexer.IDENT:
 			if p.curToken.Lexeme != "set" {
 				p.addError("unexpected token %q in interface property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
 				return nil
@@ -3758,7 +3852,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 				p.skipPropertyRemainder()
 				return nil
 			}
-		case lexer.SET, lexer.IDENT:
+		case lexer.IDENT:
 			if p.curToken.Lexeme != "set" {
 				p.addError("unexpected token %q in property %s at %d:%d", p.curToken.Lexeme, property.Name.Value, p.curToken.Line, p.curToken.Column)
 				p.skipPropertyRemainder()
@@ -4743,7 +4837,7 @@ func (p *Parser) expectPeekTypeStart() bool {
 }
 
 func (p *Parser) expectPeekContextualSet() bool {
-	if (p.peekToken.Type == lexer.IDENT || p.peekToken.Type == lexer.SET) && p.peekToken.Lexeme == "set" {
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "set" {
 		p.nextToken()
 		return true
 	}
@@ -4752,11 +4846,11 @@ func (p *Parser) expectPeekContextualSet() bool {
 }
 
 func isTypeStart(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.SET || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.MUT || tokenType == lexer.CONSUME_ARROW || tokenType == lexer.REF
+	return tokenType == lexer.IDENT || tokenType == lexer.LT || tokenType == lexer.LBRACKET || tokenType == lexer.LPAREN || tokenType == lexer.VOID || tokenType == lexer.FN || tokenType == lexer.MUT || tokenType == lexer.CONSUME_ARROW || tokenType == lexer.REF
 }
 
 func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
-	return tokenType == lexer.IDENT || tokenType == lexer.SET
+	return tokenType == lexer.IDENT
 }
 
 func (p *Parser) nextToken() {

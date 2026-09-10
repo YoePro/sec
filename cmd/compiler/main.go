@@ -292,7 +292,7 @@ func runLex(input string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "LEXEME\tLINE\tCOLUMN")
 
-	summary := diagnosticSummary{}
+	illegalTokens := []lexer.Token{}
 
 	for {
 		tok := l.NextToken()
@@ -308,7 +308,7 @@ func runLex(input string) {
 		}
 
 		if tok.Type == lexer.ILLEGAL {
-			summary.Errors++
+			illegalTokens = append(illegalTokens, tok)
 		}
 
 		if tok.Type == lexer.EOF {
@@ -317,6 +317,7 @@ func runLex(input string) {
 	}
 
 	_ = w.Flush()
+	summary := reportLexerCLIDiagnostics(os.Stderr, l.Diagnostics(), illegalTokens)
 	printDiagnosticSummary(summary)
 	if summary.Errors > 0 {
 		os.Exit(2)
@@ -329,7 +330,7 @@ func runTokens(input string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "TYPE\tLEXEME\tLINE\tCOLUMN")
 
-	summary := diagnosticSummary{}
+	illegalTokens := []lexer.Token{}
 
 	for {
 		tok := l.NextToken()
@@ -344,7 +345,7 @@ func runTokens(input string) {
 		)
 
 		if tok.Type == lexer.ILLEGAL {
-			summary.Errors++
+			illegalTokens = append(illegalTokens, tok)
 		}
 
 		if tok.Type == lexer.EOF {
@@ -353,10 +354,78 @@ func runTokens(input string) {
 	}
 
 	_ = w.Flush()
+	summary := reportLexerCLIDiagnostics(os.Stderr, l.Diagnostics(), illegalTokens)
 	printDiagnosticSummary(summary)
 	if summary.Errors > 0 {
 		os.Exit(2)
 	}
+}
+
+// reportLexerCLIDiagnostics prints every structured lexer diagnostic and adds
+// uncovered ILLEGAL tokens to the error count. A diagnostic at an ILLEGAL
+// token's start already describes that token and must therefore count once.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — "20. Lexical errors"
+//   - rules/foundations/lexical_structure.md — "21. Lexer and parser boundary"
+func reportLexerCLIDiagnostics(output io.Writer, structured []lexer.Diagnostic, illegalTokens []lexer.Token) diagnosticSummary {
+	for _, diagnostic := range structured {
+		location := fmt.Sprintf("%d:%d", diagnostic.Primary.Line, diagnostic.Primary.Column)
+		if diagnostic.Primary.File != "" {
+			location = fmt.Sprintf("%s:%s", diagnostic.Primary.File, location)
+		}
+		fmt.Fprintf(output, "lex error: %s at %s: %s\n", diagnostic.ID, location, diagnostic.Message)
+	}
+
+	summary := diagnosticSummary{Errors: len(structured)}
+	for _, token := range illegalTokens {
+		if !lexerDiagnosticFallsWithinToken(structured, token) {
+			summary.Errors++
+		}
+	}
+	return summary
+}
+
+// lexerDiagnosticFallsWithinToken identifies a structured cause located within
+// an ILLEGAL recovery token. The diagnostic may point after the token's start,
+// for example at an incomplete escape inside an unterminated string.
+//
+// Rule: rules/foundations/lexical_structure.md — "20. Lexical errors".
+func lexerDiagnosticFallsWithinToken(structured []lexer.Diagnostic, token lexer.Token) bool {
+	for _, diagnostic := range structured {
+		primary := diagnostic.Primary
+		if primary.File == token.File && lexerTokenContainsPosition(token, primary.Line, primary.Column) {
+			return true
+		}
+	}
+	return false
+}
+
+// lexerTokenContainsPosition walks a token's original spelling using Sec's
+// LF, CRLF, and bare-CR physical-line rules.
+//
+// Rule: rules/foundations/lexical_structure.md — "3. Physical source lines".
+func lexerTokenContainsPosition(token lexer.Token, wantedLine int, wantedColumn int) bool {
+	line, column := token.Line, token.Column
+	previousWasCR := false
+	for _, current := range token.Lexeme {
+		if line == wantedLine && column == wantedColumn {
+			return true
+		}
+		if current == '\r' {
+			line++
+			column = 1
+		} else if current == '\n' {
+			if !previousWasCR {
+				line++
+			}
+			column = 1
+		} else {
+			column++
+		}
+		previousWasCR = current == '\r'
+	}
+	return false
 }
 
 func runParse(input string) {

@@ -7,6 +7,8 @@ import (
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+
+	compilerdiagnostics "sec/internal/diagnostics"
 )
 
 func TestIdentifierNFCValidation(t *testing.T) {
@@ -155,6 +157,30 @@ func TestNewIsHardKeyword(t *testing.T) {
 		if got := l.NextToken(); got.Type != want {
 			t.Fatalf("token %d type = %s, want %s", index, got.Type, want)
 		}
+	}
+}
+
+// Rules: rules/foundations/lexical_structure.md — §14.4 "Byte strings".
+func TestBytesIsOrdinaryIdentifierWithoutByteStringToken(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/byte_string_absent.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := New(string(input))
+	want := []Token{
+		{Type: IDENT, Lexeme: "bytes"},
+		{Type: IDENT, Lexeme: "b"},
+		{Type: STRING, Lexeme: `"data"`},
+		{Type: EOF},
+	}
+	for index, expected := range want {
+		got := l.NextToken()
+		if got.Type != expected.Type || got.Lexeme != expected.Lexeme {
+			t.Fatalf("token %d = (%s, %q), want (%s, %q)", index, got.Type, got.Lexeme, expected.Type, expected.Lexeme)
+		}
+	}
+	if diagnostics := l.Diagnostics(); len(diagnostics) != 0 {
+		t.Fatalf("ordinary identifiers and strings produced diagnostics: %+v", diagnostics)
 	}
 }
 
@@ -439,7 +465,7 @@ let μs := 1`
 	assertTokens(t, input, tests)
 }
 
-func TestKeywords(t *testing.T) {
+func TestCanonicalKeywordInventory(t *testing.T) {
 	input := `module import require sec self extern extends fn free let mut type unit struct interface impl implements for while in if else switch case default fallthrough break cancel continue match where return true false try defer discard ref unsafe asm arena after property get select set enum union spawn static await nil None Some`
 
 	tests := []struct {
@@ -449,7 +475,7 @@ func TestKeywords(t *testing.T) {
 		{MODULE, "module"},
 		{IMPORT, "import"},
 		{REQUIRE, "require"},
-		{SEC, "sec"},
+		{IDENT, "sec"},
 		{SELF, "self"},
 		{EXTERN, "extern"},
 		{EXTENDS, "extends"},
@@ -507,6 +533,60 @@ func TestKeywords(t *testing.T) {
 	}
 
 	assertTokens(t, input, tests)
+}
+
+func TestHardKeywordLookupMatchesRulebook(t *testing.T) {
+	want := map[string]TokenType{
+		"after": AFTER, "asm": ASM, "assert": ASSERT, "await": AWAIT,
+		"break": BREAK, "cancel": CANCEL, "capture": CAPTURE, "case": CASE,
+		"continue": CONTINUE, "default": DEFAULT, "defer": DEFER, "discard": DISCARD,
+		"else": ELSE, "enum": ENUM, "extends": EXTENDS, "extern": EXTERN,
+		"fallthrough": FALLTHROUGH, "false": FALSE, "fn": FN, "for": FOR,
+		"free": FREE, "get": GET, "if": IF, "impl": IMPL,
+		"implements": IMPLEMENTS, "import": IMPORT, "in": IN, "interface": INTERFACE,
+		"let": LET, "match": MATCH, "module": MODULE, "mut": MUT,
+		"new": NEW, "panic": PANIC, "property": PROPERTY, "range": RANGE_KW,
+		"ref": REF, "require": REQUIRE, "return": RETURN, "select": SELECT,
+		"self": SELF, "spawn": SPAWN, "static": STATIC, "struct": STRUCT,
+		"switch": SWITCH, "true": TRUE, "try": TRY, "type": TYPE,
+		"union": UNION, "unit": UNIT, "unsafe": UNSAFE, "where": WHERE,
+		"while": WHILE,
+	}
+	for spelling, expected := range want {
+		if got := lookupIdent(spelling); got != expected {
+			t.Errorf("lookupIdent(%q) = %s, want %s", spelling, got, expected)
+		}
+	}
+	for _, contextual := range []string{"arena", "sec", "set", "task", "thread", "process", "detach", "join", "init", "iota"} {
+		if got := lookupIdent(contextual); got != IDENT {
+			t.Errorf("contextual spelling %q = %s, want IDENT", contextual, got)
+		}
+	}
+}
+
+func TestContextualKeywordSpellingsRemainIdentifiers(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/keyword_inventory_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := New(string(input))
+	want := map[string]TokenType{"arena": IDENT, "sec": IDENT, "set": IDENT, "extends": EXTENDS}
+	found := map[string]bool{}
+	for token := l.NextToken(); token.Type != EOF; token = l.NextToken() {
+		expected, tracked := want[token.Lexeme]
+		if !tracked {
+			continue
+		}
+		if token.Type != expected {
+			t.Errorf("%q token type = %s, want %s", token.Lexeme, token.Type, expected)
+		}
+		found[token.Lexeme] = true
+	}
+	for spelling := range want {
+		if !found[spelling] {
+			t.Errorf("fixture did not exercise %q", spelling)
+		}
+	}
 }
 
 func TestNumbersAndRanges(t *testing.T) {
@@ -589,7 +669,47 @@ func TestInvalidNumericDigitSeparatorsAreIllegalTokens(t *testing.T) {
 			if next := l.NextToken(); next.Type != EOF {
 				t.Fatalf("malformed numeric token did not recover at EOF: %+v", next)
 			}
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerInvalidDigitSeparator, 1, 1, input)
 		})
+	}
+}
+
+func TestMalformedBaseLiteralsAreSingleDiagnosedTokens(t *testing.T) {
+	tests := []struct {
+		input string
+		id    string
+	}{
+		{input: "0b", id: compilerdiagnostics.LexerMalformedBaseLiteral},
+		{input: "0o9", id: compilerdiagnostics.LexerInvalidBaseDigit},
+		{input: "0xGG", id: compilerdiagnostics.LexerMalformedBaseLiteral},
+		{input: "0b102", id: compilerdiagnostics.LexerInvalidBaseDigit},
+		{input: "0x_FF", id: compilerdiagnostics.LexerInvalidDigitSeparator},
+		{input: "0b10unknown", id: compilerdiagnostics.LexerMalformedBaseLiteral},
+	}
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			l := NewWithFile(test.input+" following", "base.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != test.input {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, test.input)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), test.id, 1, 1, test.input)
+			if following := l.NextToken(); following.Type != IDENT || following.Lexeme != "following" {
+				t.Fatalf("recovery token = %+v, want following identifier", following)
+			}
+		})
+	}
+}
+
+func TestLegacyBaseLiteralSuffixKeepsMigrationDiagnosticOwnership(t *testing.T) {
+	for _, input := range []string{"0b10c", "0o10d"} {
+		l := New(input)
+		if token := l.NextToken(); token.Type != ILLEGAL || token.Lexeme != input {
+			t.Fatalf("legacy literal token = %+v", token)
+		}
+		if diagnostics := l.Diagnostics(); len(diagnostics) != 0 {
+			t.Fatalf("legacy suffix gained competing lexer diagnostic: %+v", diagnostics)
+		}
 	}
 }
 

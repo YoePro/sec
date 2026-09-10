@@ -2987,6 +2987,37 @@ fn Test(score: int) void {
 	}
 }
 
+func TestParseIfOptionNoneConditionAsExhaustiveMatch(t *testing.T) {
+	input := `
+fn Test(value: Option[uint]) void {
+	if value is None {
+		return
+	}
+	if value is not None {
+		return
+	}
+}
+`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	ifStmt := fn.Body.Statements[0].(*ast.IfStatement)
+	condition, ok := ifStmt.Condition.(*ast.MatchExpression)
+	if !ok {
+		t.Fatalf("condition is not MatchExpression. got=%T", ifStmt.Condition)
+	}
+	if len(condition.Arms) != 2 || condition.Arms[0].Pattern.Name != "None" || condition.Arms[1].Pattern.Kind != ast.MatchPatternCatchAll {
+		t.Fatalf("wrong Option absence match: %+v", condition.Arms)
+	}
+	negated := fn.Body.Statements[1].(*ast.IfStatement).Condition.(*ast.MatchExpression)
+	if negated.Arms[0].Body.(*ast.BooleanLiteral).Value || !negated.Arms[1].Body.(*ast.BooleanLiteral).Value {
+		t.Fatalf("is not None did not invert match results: %+v", negated.Arms)
+	}
+}
+
 func TestParseIfMissingConditionReportsOneError(t *testing.T) {
 	input := `
 fn MissingCondition() void {
@@ -4417,6 +4448,52 @@ func TestFocusedRecoveryDiagnosticMetadata(t *testing.T) {
 	}
 }
 
+func TestSemicolonDiagnosticPreservesFollowingStatements(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/semicolon_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := New(lexer.NewWithFile(string(input), "semicolon_invalid.sec"))
+	result := p.Parse()
+
+	if len(result.Diagnostics) != 3 {
+		t.Fatalf("diagnostics = %d, want one for each semicolon: %+v", len(result.Diagnostics), result.Diagnostics)
+	}
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID != diagnostics.ParserReservedSyntax || diagnostic.Unexpected == nil || diagnostic.Unexpected.Type != lexer.SEMICOLON {
+			t.Errorf("semicolon diagnostic = %+v", diagnostic)
+		}
+		if !strings.Contains(diagnostic.Message, "semicolon is not used as a statement terminator in Sec") {
+			t.Errorf("semicolon diagnostic lacks focused text: %q", diagnostic.Message)
+		}
+	}
+	if len(result.Recovery) != 3 {
+		t.Fatalf("recovery events = %d, want 3: %+v", len(result.Recovery), result.Recovery)
+	}
+	for _, recovery := range result.Recovery {
+		if recovery.Confidence != RecoveryExact || recovery.Skipped != 1 || recovery.Start.Type != lexer.SEMICOLON || recovery.End != recovery.Start {
+			t.Errorf("semicolon recovery = %+v", recovery)
+		}
+	}
+
+	if len(result.Program.Statements) != 6 {
+		t.Fatalf("top-level statements = %d, want module, two lets, invalid semicolon, and two functions", len(result.Program.Statements))
+	}
+	if _, ok := result.Program.Statements[2].(*ast.InvalidStatement); !ok {
+		t.Fatalf("top-level semicolon = %T, want InvalidStatement", result.Program.Statements[2])
+	}
+	example, ok := result.Program.Statements[4].(*ast.FunctionDeclaration)
+	if !ok || example.Name == nil || example.Name.Value != "Example" {
+		t.Fatalf("example declaration was not retained: %#v", result.Program.Statements[4])
+	}
+	if len(example.Body.Statements) != 5 {
+		t.Fatalf("Example body statements = %d, want two lets, return, and two invalid semicolons", len(example.Body.Statements))
+	}
+	if following, ok := result.Program.Statements[5].(*ast.FunctionDeclaration); !ok || following.Name == nil || following.Name.Value != "Following" {
+		t.Fatalf("following declaration was not retained: %#v", result.Program.Statements[5])
+	}
+}
+
 func TestReversedTypeDeclarationOrderMentorDiagnostic(t *testing.T) {
 	tests := []struct {
 		input string
@@ -5591,6 +5668,38 @@ func TestParserPreservesEscapeDiagnostics(t *testing.T) {
 	}
 	if len(result.Diagnostics) != 4 || counts[diagnostics.LexerUnknownEscape] != 2 || counts[diagnostics.LexerMalformedEscape] != 1 || counts[diagnostics.LexerInvalidUnicodeEscape] != 1 {
 		t.Fatalf("duplicate or missing escape errors: %+v", result.Diagnostics)
+	}
+}
+
+func TestParserPreservesMalformedBaseLiteralDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/malformed_base_literals_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "malformed_base_literals_invalid.sec")).Parse()
+	counts := map[string]int{}
+	for _, diagnostic := range result.Diagnostics {
+		counts[diagnostic.ID]++
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 5 || counts[diagnostics.LexerMalformedBaseLiteral] != 2 || counts[diagnostics.LexerInvalidBaseDigit] != 2 || counts[diagnostics.LexerInvalidDigitSeparator] != 1 {
+		t.Fatalf("malformed base diagnostics = %+v", result.Diagnostics)
+	}
+}
+
+func TestParserPreservesInvalidDigitSeparatorDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/digit_separators_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "digit_separators_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerInvalidDigitSeparator {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 8 || count != 8 {
+		t.Fatalf("digit separator diagnostics = %+v", result.Diagnostics)
 	}
 }
 

@@ -539,7 +539,6 @@ The general Sec keyword set includes:
 
 ```text
 after
-arena
 asm
 assert
 await
@@ -553,6 +552,7 @@ defer
 discard
 else
 enum
+extends
 extern
 fallthrough
 false
@@ -597,6 +597,10 @@ Some listed words are not yet fully implemented. A word may remain reserved when
 its language role has already been deliberately established even if implementation
 is incomplete. A spelling must not be reserved merely because it might be useful
 for unspecified future syntax.
+
+Lowercase `arena` is an ordinary identifier as required by `arena.md`. Lowercase
+`sec` names the language or tool only in prose and command contexts; it is an
+ordinary source identifier. Neither spelling has a dedicated token category.
 
 ---
 
@@ -678,7 +682,6 @@ Language modifiers are reserved declaration names.
 This includes words such as:
 
 ```text
-arena
 extern
 free
 mut
@@ -1032,6 +1035,12 @@ Invalid:
 The lexer should consume the maximal malformed numeric candidate and issue one
 focused diagnostic rather than split it into misleading tokens.
 
+A base-prefixed candidate with no valid digit, a malformed separator sequence,
+or an invalid identifier-like suffix emits `L1010`
+(`lexer.malformed-base-literal`). An ASCII decimal digit that is outside the
+selected base emits `L1011` (`lexer.invalid-base-digit`). The primary range is
+the complete malformed candidate in both cases.
+
 ---
 
 ## 12.4 Fractional literals
@@ -1133,6 +1142,10 @@ _100
 
 An underscore after a completed literal begins an identifier only when token
 separation makes that unambiguous.
+
+An underscore that is not between two valid digits of its current numeric
+component emits `L1012` (`lexer.invalid-digit-separator`). The primary range is
+the complete malformed numeric token retained by the lexer.
 
 The formatter may preserve valid digit grouping.
 

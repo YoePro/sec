@@ -6232,6 +6232,44 @@ unit s physical
 	assertSemaErrors(t, errors, nil)
 }
 
+// Rules: rules/errors/errorhandling.md — §5.1 "Direct Option carrier
+// returns"; rules/memory/copy_move.md — §9 "Return boundaries".
+func TestOptionCarrierMayBeReturnedDirectly(t *testing.T) {
+	input := `
+module main
+
+fn FindNumber() Option[int] {
+	return Some(42)
+}
+
+fn FindText() Option[string] {
+	return None
+}
+
+fn ForwardCall() Option[int] {
+	return FindNumber()
+}
+
+fn ForwardBound(found: Option[int]) Option[int] {
+	return found
+}
+
+fn RejectPlainPayload() Option[int] {
+	return 42
+}
+
+fn RejectDifferentOption() Option[int] {
+	return FindText()
+}
+`
+
+	errors := analyzeSource(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function RejectPlainPayload must return Option[int], got int at 21:9",
+		"function RejectDifferentOption must return Option[int], got Option[string] at 25:9",
+	})
+}
+
 func TestResultAndTryErrors(t *testing.T) {
 	input := `
 module main

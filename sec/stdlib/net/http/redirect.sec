@@ -27,9 +27,33 @@ type RedirectPolicy struct {
 }
 
 impl RedirectPolicy {
-
+    init() {
+        self.MaxRedirects = 10
+        self.AllowCrossOrigin = true
+        self.PreserveSensitiveHeaders = false
+    }
     // TODO: Implement http.RedirectPolicy.Default()
     static fn Default() RedirectPolicy {
         return new RedirectPolicy()
     }
+
+    fn Validate() Result[void, RedirectError] { return Err(RedirectError.BodyNotReplayable) }
 }
+
+/*
+Redirect algorithm
+A client with automatic redirects enabled follows these exact rules:
+
+301 and 302: POST is rewritten to GET and the body is dropped; other methods are preserved and require a replayable body when a body must be resent.
+303: HEAD remains HEAD; every other method becomes GET; the body is dropped.
+307 and 308: method and body semantics are preserved; a body resend requires Body.Replayable.
+Any redirect beyond MaxRedirects returns TooManyRedirects.
+A relative Location is resolved against the previous request URL through net/url.
+A cross-origin redirect is rejected when AllowCrossOrigin is false.
+Host is always recomputed for the new target.
+Cookie is never copied directly across redirect processing; it is recomputed from the configured CookieJar for the new request context.
+When PreserveSensitiveHeaders is false, Authorization and Proxy-Authorization are removed across an origin change.
+Proxy-Authorization is never forwarded to an origin server as ordinary origin credentials.
+Representation rationale
+RedirectPolicy is a struct because its limits and security switches are independent settings used together. Redirect errors are a closed payload-free enum in results.sec.
+*/

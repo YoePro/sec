@@ -18,6 +18,20 @@ impl char {
         }
     }
 
+    /** Reports whether this char is a lowcase ASCII letter */
+    property IsLowerLetter: bool {
+        get {
+            return self in 97t..122t
+        }
+    }
+
+    /** Reports whether this char is an uppercase ASCII letter */
+    property IsUpperLetter: bool {
+        get {
+            return self in 65t..90t
+        }
+    }
+
     /** Reports whether this char is an ASCII letter or decimal digit. */
     property IsLetterOrDigit: bool {
         get {

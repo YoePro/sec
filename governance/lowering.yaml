@@ -37,6 +37,7 @@ integrations:
       - internal/ir/semantic/printer.go
       - internal/ir/semantic/verifier.go
       - internal/lowering/secmlir/emitter.go
+      - internal/testsupport/sec_mlir.go
       - mlir/include/sec/Dialect/Sec/SecAttributes.td
       - mlir/include/sec/Dialect/Sec/SecTypes.td
       - mlir/include/sec/Dialect/Sec/SecOps.td
@@ -50,6 +51,7 @@ integrations:
       - cmd/lsp/main_test.go
       - internal/ir/semantic/package13_test.go
       - internal/lowering/secmlir/emitter_test.go
+      - internal/testsupport/sec_mlir_test.go
       - cmd/compiler/emit_sec_mlir_test.go
       - cmd/compiler/emit_sec_mlir_package10_test.go
       - cmd/compiler/emit_sec_mlir_package11_test.go
@@ -113,7 +115,7 @@ integrations:
         result: passed
       - command: go test ./internal/ir/semantic -run Package13 -count=1
         result: passed
-      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin' -count=1
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/testsupport ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin|SecMLIROptPath' -count=1
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (78/78)
@@ -133,3 +135,81 @@ integrations:
         result: passed
       - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
         result: passed (78/78)
+
+  - id: lowering.sec-mlir-package15
+    package: SEC-MLIR-P15
+    name: Safe Place and Direct Reference Semantic Core
+    area: semantic-ir-sec-mlir-and-lowering
+    status: partial
+    implementation_phase: reproducible-baseline-and-test-tooling
+    integrated: "2026-09-10"
+    baseline:
+      repository_head: 2c67853ee31358a9a8a486aa11fba57c6b6a7270
+      tree: 225922f80c0537e8c2b21e3388d6a068cbb032ee
+      worktree: /home/jonas/small-projects/sec-p15-baseline-2c67853ee313
+      state: clean detached HEAD; dirty primary worktree excluded from final acceptance evidence
+    predecessors:
+      - SEC-MLIR-P13 implemented with schema-9 struct values and storage
+      - SEC-MLIR-P14 implemented with schema-10 fixed arrays and exact bounds plans
+    toolchain:
+      go: go1.26.0 linux/amd64
+      sec_mlir_opt: LLVM 24.0.0git optimized build with assertions
+      llvm_lit: lit 24.0.0dev
+      sec_mlir_bin: /home/jonas/small-projects/sec/build/sec-mlir/bin
+      llvm_lit_path: /home/jonas/mlir/llvm-project/build/bin/llvm-lit
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package15.md
+      - rules/mlir/packages/sec-mlir-dialect_package15.yaml
+      - rules/mlir/normative-sync/sec_reference_sync_v1.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v11.md
+      - rules/mlir/lowering-versions/sec_mlir_lowering_v11.md
+      - rules/memory/reference_model.md
+      - rules/memory/references.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/errors/runtime_checks.md
+      - rules/errors/panic.md
+      - rules/compiler/semantic_ir.md
+      - rules/mlir/sec_mlir_dialect.md
+      - rules/mlir/sec_mlir_lowering.md
+    code:
+      - internal/testsupport/sec_mlir.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/emit_sec_mlir_package10_test.go
+      - cmd/compiler/emit_sec_mlir_package11_test.go
+    tests:
+      - internal/testsupport/sec_mlir_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/compiler/emit_sec_mlir_package10_test.go
+      - cmd/compiler/emit_sec_mlir_package11_test.go
+    implemented:
+      - clean persistent detached baseline with exact commit, tree, primary-worktree exclusion, and toolchain record
+      - repository-shared SEC_MLIR_BIN resolver that rejects relative directories
+      - optional and required sec-mlir-opt lookup usable from every repository-internal Go test package
+      - working-directory-independent resolution verified from a nested test directory
+      - Package 10/11 compiler tests and Package 13/14 lowering tests consume the shared resolver
+    remaining:
+      - synchronize the canonical reference, runtime-check, panic, Semantic IR, dialect, and lowering rulebooks
+      - establish canonical stable Place identities, projections, relationships, and arbitrary-precision indexes
+      - publish immutable compiler-resolved Place, reference-creation, and reference-use plans
+      - implement verified Semantic IR Place and direct-reference operations without physical representation choices
+      - lower source reference behavior solely from resolved plans
+      - implement schema-11 types, operations, emitter support, and all three P15 verifiers
+      - prove predecessor integration, architecture boundaries, determinism, and unsupported-feature rejection
+      - complete the section-155 acceptance matrix, isolated final gates, governance promotion, and section-156 report
+    deferred:
+      - slice values and fixed-array-to-slice borrowing to P16
+      - move-only or semantic-copy reads and non-trivial replacement or destruction to P17
+      - owning dynamic-array backing-storage transitions to P18
+      - stable and weak handles, RawPtr conversions, physical reference ABI/layout, LLVM lowering, physical epochs, pinning, and concurrent invalidation
+    verification:
+      - command: git -C /home/jonas/small-projects/sec-p15-baseline-2c67853ee313 status --porcelain=v1
+        result: passed; no output
+      - command: SEC_MLIR_BIN=/home/jonas/small-projects/sec/build/sec-mlir/bin go test ./internal/testsupport ./internal/lowering/secmlir ./cmd/compiler -run 'Test(ConfiguredSecMLIRBinRequiresAbsolutePathForPackages13Through15|SecMLIROptPathIsIndependentOfPackageWorkingDirectory|EmitPackage14ArraysEndToEnd|Package10SourceEmitsAndVerifiesResultHandlers|Package11SourceEmitsAndVerifiesEnumUnionValues)' -count=1
+        result: passed with the real sec-mlir-opt from the recorded absolute tool directory
+      - command: go vet ./internal/testsupport ./internal/lowering/secmlir ./cmd/compiler
+        result: passed

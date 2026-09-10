@@ -121,33 +121,22 @@ impl HeaderName {
     }
 
     static fn _IsTokenByte(value: byte) bool {
-        if value >= 48 && value <= 57 {
+        if value in 48..57 {
             return true
         }
 
-        if value >= 65 && value <= 90 {
+        if value in 65..90 {
             return true
         }
 
-        if value >= 97 && value <= 122 {
+        if value in 97..122 {
             return true
         }
 
-        return value == 33 ||  // !
-        value == 35 ||    // #
-        value == 36 ||    // $
-        value == 37 ||    // %
-        value == 38 ||    // &
-        value == 39 ||    // '
-        value == 42 ||    // *
-        value == 43 ||    // +
-        value == 45 ||    // -
-        value == 46 ||    // .
-        value == 94 ||    // ^
-        value == 95 ||    // _
-        value == 96 ||    // `
-        value == 124 ||   // |
-        value == 126      // ~
+        // ! # $ % & ' * + 1 . ^ _ ` | ~
+        let special: byte[15] := [33, 35, 36, 37, 38, 39, 42, 43, 45, 46, 94, 95, 96, 124, 126]
+
+        return value in special
     }
 
     // TODO: Validate http.HeaderName.ToString
@@ -174,9 +163,53 @@ impl HeaderValue {
     * scalar domain is deliberately byte-preserving. This is preferable to an ordinary
     * Unicode string contract that could not round-trip all legal HTTP field octets.
     */
-    // TODO: Implement http.HeaderValue.Parse
+
+    // TODO: Validate http.HeaderValue.Parse()
+    /**
+    * Parse validates an HTTP field value.
+    *
+    * Empty field values are valid. Visible characters, internal SP and HTAB, and
+    * RFC 9110 obs-text bytes are accepted. CR, LF, NUL, DEL, and other control
+    * characters are rejected.
+    *
+    * Leading or trailing SP and HTAB are rejected because they are not part of
+    * the normalized HTTP field value. Transport parsers must remove permitted
+    * framing whitespace before constructing HeaderValue.
+    *
+    * The value is preserved exactly; Parse does not combine, trim, decode, or
+    * otherwise reinterpret field contents.
+    *
+    * Returns HeaderError.InvalidValue when value is not a valid HTTP field value.
+    */
     static fn Parse(value: string) Result[HeaderValue, HeaderError] {
-        return Ok(new HeaderValue())
+        if value.IsEmpty {
+            return Ok(HeaderValue(value))
+        }
+
+        let first := value.ByteAt(0)
+        let last := value.ByteAt(value.Len - 1)
+
+        if first == 9 || first == 32 || last == 9 || last == 32 {
+            return Err(HeaderError.InvalidValue)
+        }
+
+        let mut index: uint := 0
+
+        while index < value.Len {
+            let current := value.ByteAt(index)
+
+            if current == 127 {
+                return Err(HeaderError.InvalidValue)
+            }
+
+            if current < 32 && current != 9 {
+                return Err(HeaderError.InvalidValue)
+            }
+
+            index += 1
+        }
+
+        return Ok(HeaderValue(value))
     }
 
     // TODO: Validate http.HeaderValue.ToString()
@@ -331,8 +364,9 @@ impl Header {
         return Ok(self.Get(headerName))
     }
 
+    // TODO: Implement http.Header.GetAllToArray(HeaderName)
     fn GetAllToArray(name: HeaderName) Result[HeaderValue[], HeaderError] {
-        return self.GetAllToArray(name)
+        return Err(HeaderError.TooManyFields)
     }
 
     /** GetAll returns a new array containing every value associated with Name.
@@ -353,6 +387,11 @@ impl Header {
         return Ok(result)
     }
 
+    // TODO: Implement http.Header.Contains(HeaderName)
+    fn Contains(name: HeaderName) bool {
+        return self.Contains(name.ToString())
+    }
+
     /** Contains reports whether at least one value is associated with Name.
     *
     * Name matching is case-insensitive. */
@@ -366,6 +405,13 @@ impl Header {
         }
 
         return false
+    }
+
+    fn Remove(name: HeaderName) bool {
+        try self.Remove(name.ToString()) {
+            Err(error) => return false
+        }
+        return true
     }
 
     /** Remove removes every value associated with Name.
@@ -398,17 +444,5 @@ impl Header {
         return Name.ToLower()
     }
 
-    fn GetAllToArray(name: HeaderName) Result[HeaderValue[], CollectionError] {
-        return Err(CollectionError.AllocationFailed)
-    }
-
-    fn Contains(name: HeaderName) bool {
-        return false
-    }
-
-    fn Remove(name: HeaderName) bool {
-        return false
-    }
-
-    property Count: uint { get { return 0 } }
+    property Count: uint { get { return self._fields.Len } }
 }

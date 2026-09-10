@@ -12,6 +12,7 @@ import (
 	secmlirlowering "sec/internal/lowering/secmlir"
 	"sec/internal/parser"
 	"sec/internal/sema"
+	"sec/internal/testsupport"
 )
 
 func TestPackage10SourceEmitsAndVerifiesResultHandlers(t *testing.T) {
@@ -77,15 +78,18 @@ fn Forward(value: int) Result[int, ArithmeticError] {
 		}
 	}
 
-	binDir := os.Getenv("SEC_MLIR_BIN")
-	if binDir == "" {
+	tool, configured, err := testsupport.SecMLIROptPathFromEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured {
 		return
 	}
 	path := filepath.Join(t.TempDir(), "handlers.mlir")
 	if err := os.WriteFile(path, output, 0600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(filepath.Join(binDir, "sec-mlir-opt"), path,
+	command := exec.Command(tool, path,
 		"--sec-verify-checked-integer-guards", "--sec-verify-result-guards",
 		"--sec-verify-try-handlers", "-o", os.DevNull)
 	if combined, err := command.CombinedOutput(); err != nil {

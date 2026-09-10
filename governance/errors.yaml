@@ -6,7 +6,8 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    document_revision: "2.0"
+    revised: "2026-09-10"
+    document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
     replaces: rules/errors/errorhandling.txt
@@ -40,6 +41,7 @@ integrations:
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
       - internal/formatter/formatter_test.go
     implemented:
       - "Result[T, E], Ok(...), Err(...), ordinary Result propagation, and local Result handlers have substantial frontend and Semantic IR support."
@@ -66,9 +68,10 @@ integrations:
       - "Result[T, E] now rejects non-error failure channels; E must be compiler-known error or a concrete enum/union declared with the error marker"
       - "invalid Result failure channels produce a programmer-facing diagnostic naming the invalid type and the explicit error marker correction"
       - "canonical compiler, stdlib, platform, and test fixtures declare their concrete Result error channels explicitly; raw Linux errno retains its numeric payload in an error union"
-      - direct-result-return:"Compatible Result[T,E] expressions may be returned directly as complete Result carriers without unwrapping or reconstruction."
+      - "direct-result-return: Compatible Result[T,E] expressions may be returned directly as complete Result carriers without unwrapping or reconstruction."
+      - "option-direct-return: Compatible Option[T] calls and bound values, including carriers with move-only payloads, may be returned directly as complete carriers with ordinary terminal ownership transfer. Plain T values are not implicitly wrapped in Some, and incompatible Option specializations remain rejected."
+      - "option-none-if-tests: Non-binding if option is None and if option is not None conditions lower in the parser to the existing exhaustive typed Option-match representation, preserving compiler analysis and later LSP completion."
     remaining:
-      - direct-result-return:"Allow an expression already typed as the compatible Result[T,E] carrier to be returned directly without requiring Ok(...) or Err(...) syntax."
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
       - "result-consuming-projections: Add consuming Result[T,E].Ok() -> Option[T] and Result[T,E].Err() -> Option[E]. The owned Result is consumed, retained move-only payload moves without hidden clone, and the non-retained active payload is destroyed exactly once."
@@ -91,13 +94,12 @@ integrations:
       - "property-setter-success-model: For try set, normal completion is implicit success, bare return is early success, return Err(error) is failure, and return Ok() is invalid. Property getters remain infallible in Sec 0.1."
       - "return-try-result-forwarding: Support return try expression in a Result[T,E]-returning context: a success value assignable to T is returned as Ok(value), and a compatible failure propagates. This is return-position forwarding only and must not become a general implicit T -> Result[T,E] conversion."
       - "if-some-binding-exception: Permit the narrow positive Option test if option is Some(value) { ... }. The binding exists only on the true path and follows ordinary copy/move rules. Keep negative binding such as is not Some(value) invalid and keep general destructuring in match."
-      - "result-err-none-tests: Accept non-binding Option state tests over Result projections, including if result.Err() is not None { ... }, with is not rather than a !is operator."
+      - "result-err-none-tests: Extend the implemented non-binding Option None test to Result projection operands once consuming Result[T,E].Err() -> Option[E] is implemented; retain is not rather than a !is operator."
       - "result-projection-ownership-diagnostics: Always diagnose use after consuming .Ok()/.Err() (and equivalent affine consumption) from compiler-owned facts. The diagnostic must identify the value, the consuming operation/location, why later use is invalid, and a practical correction."
       - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
       - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, nested failure boundaries, and return-try forwarding. Backends must not reconstruct these semantics from syntax or unused SSA."
       - "errorhandling-lsp-v2: Replace the Result-only try-hover plan with compiler-resolved Result/Option/fallible-operation facts. Show success type, handled and propagated alternate states, concrete versus widened error identity, consuming versus borrowed projections, ownership consequences, and mentor diagnostics without reimplementing Sema in the LSP."
       - "errorhandling-formatter-v2: Format direct try handlers canonically, preserve where guards and contextual handler block values, format new error declarations/setter error types/projections, and do not recreate the removed nested match wrapper or insert/remove semantic try operations."
-      - option-direct-return:"Allow an expression already typed as a compatible Option[T] to be returned directly without requiring Some(...) or None syntax."
     required_tests:
       - "error is compiler-known and import-free"
       - "enum ErrorType error declaration"
@@ -145,12 +147,17 @@ integrations:
       - "a plain T return from Result[T,E] remains invalid without explicit Ok(...)"
       - "a plain T return from Option[T] remains invalid without explicit Some(...)"
       - "an incompatible Result carrier is rejected with expected and actual Result types"
+      - "an incompatible Option carrier is rejected with expected and actual Option types"
 
     verification:
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorEnumMarker|ErrorEnumMarkerRoot' -count=1
         result: passed
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorUnion|ResultErrorChannel|ErrorEnum' -count=1
         result: passed
+      - command: go test ./internal/sema -run 'Test(OptionCarrierMayBeReturnedDirectly|TerminalReturnForwardsMoveOnlyValuesThroughConstruction)' -count=1
+        result: passed
+      - command: go test ./internal/parser -run TestParseIfOptionNoneConditionAsExhaustiveMatch -count=1
+        result: passed for positive and negated non-binding Option None tests
       - command: go test ./...
         result: passed
 

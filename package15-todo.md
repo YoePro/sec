@@ -21,6 +21,39 @@ clean Package 15 baseline. P15-01 must create and record an isolated worktree
 or commit-based snapshot before any completion command is presented as P15
 evidence.
 
+### Isolated execution baseline — 2026-09-10
+
+P15 work has a clean detached baseline at:
+
+```text
+/home/jonas/small-projects/sec-p15-baseline-2c67853ee313
+```
+
+Recorded environment:
+
+```text
+HEAD:             2c67853ee31358a9a8a486aa11fba57c6b6a7270
+tree:             225922f80c0537e8c2b21e3388d6a068cbb032ee
+tree state:       clean, detached HEAD
+primary worktree: dirty and excluded from final P15 acceptance evidence
+Go:               go1.26.0 linux/amd64
+Git:              2.53.0
+sec-mlir-opt:     LLVM 24.0.0git, optimized build with assertions
+llvm-lit:         lit 24.0.0dev
+SEC_MLIR_BIN:     /home/jonas/small-projects/sec/build/sec-mlir/bin
+llvm-lit path:    /home/jonas/mlir/llvm-project/build/bin/llvm-lit
+```
+
+Reproduction commands:
+
+```sh
+git worktree add --detach /home/jonas/small-projects/sec-p15-baseline-2c67853ee313 2c67853ee31358a9a8a486aa11fba57c6b6a7270
+git -C /home/jonas/small-projects/sec-p15-baseline-2c67853ee313 status --short --branch
+go version
+/home/jonas/small-projects/sec/build/sec-mlir/bin/sec-mlir-opt --version
+/home/jonas/mlir/llvm-project/build/bin/llvm-lit --version
+```
+
 Verified by source inventory, not by a package acceptance run:
 
 - P13 and P14 are recorded as implemented in the legacy
@@ -84,7 +117,7 @@ new entry to the legacy `implementation-status.yaml`.
 
 ## A. Establish a reproducible, rule-synchronized baseline
 
-- [ ] P15-01 — Create an isolated P15 baseline from the recorded HEAD (or a
+- [x] P15-01 — Create an isolated P15 baseline from the recorded HEAD (or a
   newer clean merged equivalent). Record HEAD, tree state, Go version,
   `sec-mlir-opt`/`llvm-lit` versions, and the absolute `SEC_MLIR_BIN` path.
   Never use the dirty primary worktree as final acceptance evidence.
@@ -109,13 +142,21 @@ new entry to the legacy `implementation-status.yaml`.
 - [ ] P15-06 — Check `rules/corrections/` for every affected rulebook, move any
   applied correction through the prescribed workflow, and update
   `language-rulebook-status.md` for every changed/superseded rulebook.
-- [ ] P15-07 — Add one `lowering.sec-mlir-package15` integration to
+- [x] P15-07 — Add one `lowering.sec-mlir-package15` integration to
   `governance/lowering.yaml` with status `partial`, baseline, rules, known
   predecessor state, deferred boundaries, code/test locations, tool versions,
   and the exact reproducible commands. Validate unique governance ownership.
-- [ ] P15-08 — Extend the shared absolute-path `SEC_MLIR_BIN` test helper for
+- [x] P15-08 — Extend the shared absolute-path `SEC_MLIR_BIN` test helper for
   P15 schema-11 source tests. It must reject relative tool directories and be
   usable from every Go package working directory.
+
+Completed 2026-09-10: `internal/testsupport` now owns the shared
+`SEC_MLIR_BIN` resolver. It rejects configured relative directories, exposes
+optional and required-tool forms to every repository-internal Go package, and
+returns one absolute `sec-mlir-opt` path independent of the package test working
+directory. Existing Package 10/11 compiler tests and Package 13/14 lowering
+tests consume the shared resolver. Focused tests cover relative rejection and a
+nested working-directory change.
 
 ## B. Make the existing Place model canonical
 

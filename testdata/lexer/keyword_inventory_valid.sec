@@ -1,0 +1,14 @@
+module keyword_inventory_valid
+
+let arena := 1
+let sec := 2
+let set := 3
+
+type Device struct {
+}
+
+impl Device {
+}
+
+impl extends Device {
+}

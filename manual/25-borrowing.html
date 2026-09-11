@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Borrowing - Sec Language Manual</title>
+    <title>Copying and Moving - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,73 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Borrowing</div>
-        <a href="#25-borrowing">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#copy-move">Copying and Moving</a>
+        <a href="#core-difference">Copy vs Move</a>
+        <a href="#semantic-not-physical">Semantic, Not Physical</a>
+        <a href="#classification">Copy Classification</a>
+        <a href="#trivial-copy">Trivially Copyable</a>
+        <a href="#semantic-copy">Semantically Copyable</a>
+        <a href="#conditional-copy">Conditionally Copyable</a>
+        <a href="#move-only">Move-Only</a>
+        <a href="#nocopy">@noCopy</a>
+        <a href="#derived-copyability">Derived Copyability</a>
+        <a href="#arrays">Arrays</a>
+        <a href="#option-result">Option and Result</a>
+        <a href="#references">References</a>
+        <a href="#string">string</a>
+        <a href="#dynamic-collections">Dynamic Collections</a>
+        <a href="#closures">Closures</a>
+        <a href="#ordinary-init">Ordinary Initialization</a>
+        <a href="#ordinary-assignment">Ordinary Assignment</a>
+        <a href="#move-init">Move Initialization</a>
+        <a href="#typed-move-init">Typed Move Initialization</a>
+        <a href="#move-assignment">Move Assignment</a>
+        <a href="#copyable-move">Moving Copyable Values</a>
+        <a href="#no-reset">Move Does Not Reset</a>
+        <a href="#visibility-rule">Reusable-Source Rule</a>
+        <a href="#temporaries">Fresh Temporaries</a>
+        <a href="#by-value-params">By-Value Parameters</a>
+        <a href="#consuming-params">Consuming Parameters</a>
+        <a href="#call-commit">Call Commit</a>
+        <a href="#returns">Return Boundary</a>
+        <a href="#return-construction">Return Construction</a>
+        <a href="#borrowed-return">Returning from Borrowed Storage</a>
+        <a href="#aggregate-transfer">Aggregate Fields</a>
+        <a href="#option-transfer">Option Payloads</a>
+        <a href="#result-transfer">Result Payloads</a>
+        <a href="#union-transfer">Union Payloads</a>
+        <a href="#captures">Closure Capture</a>
+        <a href="#replacement">Replacement</a>
+        <a href="#reinitialization">Reinitialization</a>
+        <a href="#self-move">Self-Move and Overlap</a>
+        <a href="#partial-move">Partial Moves</a>
+        <a href="#control-flow">Control Flow</a>
+        <a href="#loops">Loops</a>
+        <a href="#match">match</a>
+        <a href="#discard">discard Is Not Move</a>
+        <a href="#result-projections">Result Projections</a>
+        <a href="#methods">Methods and self</a>
+        <a href="#volatile">Volatile Storage</a>
+        <a href="#ffi-channels">FFI and Channels</a>
+        <a href="#generics">Generics</a>
+        <a href="#destruction">Copyability vs Destruction</a>
+        <a href="#performance">Large Copies</a>
+        <a href="#optimization">Optimization</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,19 +99,21 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html">Ownership</a>
-        <a href="25-borrowing.html" class="active">Borrowing</a>
+        <a href="25-copy-move.html" class="active">Copying and Moving</a>
         <a href="26-unsafe.html">Unsafe</a>
-        <a href="27-spread.html">Spread</a>
+        <a href="27-lifetimes.html">Lifetimes</a>
+        <a href="28-destruction.html">Destruction</a>
+        <a href="29-unsafe.html">Unsafe and Raw Pointers</a>
         <a href="30-modules.html">Modules and Imports</a>
         <a href="31-projects.html">Projects and sec.module</a>
         <a href="32-visibility.html">Visibility</a>
@@ -71,36 +130,1686 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
-        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Borrowing</div>
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Copying and Moving</div>
 
-        <h1 id="25-borrowing">Borrowing</h1>
+        <h1 id="copy-move">Copying and Moving</h1>
 
-        <p>Borrowing allows temporary access to a value without taking ownership.</p>
+        <p>
+            Copying duplicates a value while preserving the source.
+            Moving transfers a value or ownership responsibility and makes the consumed source Place unavailable.
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>let copied := source
+let moved :&lt;- source</code></pre>
+
+        <p>
+            These operations are intentionally different in Sec.
+            Ordinary syntax never becomes a destructive move merely because a type happens to be move-only.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Reusable source Places are never silently consumed.
+            If execution may continue in the source scope, destructive transfer must be visible at
+            the source position.
+        </div>
+
+        <section id="core-difference">
+            <h2>Copy vs Move</h2>
+
+            <h3>Copy</h3>
+
+            <pre><code>let second := first</code></pre>
+
+            <p>
+                When <code>first</code> is copyable, <code>second</code> receives an independent
+                value according to the type's copy semantics.
+            </p>
+
+            <p>After a valid copy:</p>
+
+            <pre><code>first     available
+second    available</code></pre>
+
+            <h3>Move</h3>
+
+            <pre><code>let second :&lt;- first</code></pre>
+
+            <p>
+                Ownership transfers to <code>second</code>.
+            </p>
+
+            <p>After a successful move:</p>
+
+            <pre><code>first     unavailable
+second    available</code></pre>
+
+            <p>
+                A move does not replace the source with a default value, zero, <code>None</code>
+                or null.
+            </p>
+        </section>
+
+        <section id="semantic-not-physical">
+            <h2>Copy and Move Are Semantic Operations</h2>
+
+            <p>
+                Copy and move semantics are decided before backend lowering.
+            </p>
+
+            <p>
+                A semantic copy may lower to:
+            </p>
+
+            <ul>
+                <li>register operations;</li>
+                <li><code>memcpy</code>;</li>
+                <li>vector instructions;</li>
+                <li>descriptor copying;</li>
+                <li>no machine copy after optimization.</li>
+            </ul>
+
+            <p>
+                A semantic move may lower to:
+            </p>
+
+            <ul>
+                <li>register forwarding;</li>
+                <li>destination passing;</li>
+                <li>stack-slot reuse;</li>
+                <li>pointer/descriptor transfer;</li>
+                <li>physical byte movement;</li>
+                <li>no physical movement at all.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Machine representation never decides whether the source
+                operation was Copy or Move.
+            </div>
+        </section>
+
+        <section id="classification">
+            <h2>Copy Classification</h2>
+
+            <p>
+                Every resolved Sec type has a copy classification before ordinary copy syntax is validated.
+            </p>
+
+            <p>The conceptual classifications are:</p>
+
+            <pre><code>TriviallyCopyable
+SemanticallyCopyable
+ConditionallyCopyable
+MoveOnly
+ExplicitlyNonCopyable</code></pre>
+
+            <p>
+                These names describe compiler semantics.
+                Most programs do not need to mention them directly.
+            </p>
+
+            <p>
+                What matters to normal source code is whether an ordinary copy is legal for the
+                concrete resolved type at that use site.
+            </p>
+        </section>
+
+        <section id="trivial-copy">
+            <h2>Trivially Copyable Values</h2>
+
+            <p>
+                A trivially copyable value can be duplicated without:
+            </p>
+
+            <ul>
+                <li>type-defined behavior;</li>
+                <li>allocation;</li>
+                <li>failure;</li>
+                <li>ownership transfer;</li>
+                <li>observable side effects.</li>
+            </ul>
+
+            <p>Typical examples include:</p>
+
+            <ul>
+                <li>scalar primitive values;</li>
+                <li>ordinary fieldless enums;</li>
+                <li><code>RawPtr[T]</code> as an address value;</li>
+                <li>shared references where their reference rules permit copying;</li>
+                <li>aggregates whose complete resolved contents are trivially copyable.</li>
+            </ul>
+
+            <p>
+                “Trivial” is a semantic classification.
+                A large trivial value may still be implemented with an efficient bulk-copy instruction.
+            </p>
+        </section>
+
+        <section id="semantic-copy">
+            <h2>Semantically Copyable Values</h2>
+
+            <p>
+                Some values may be safely copied even when the representation is not equivalent to
+                naïve byte duplication.
+            </p>
+
+            <p>An implicit semantic copy must remain:</p>
+
+            <ul>
+                <li>infallible;</li>
+                <li>allocation-free;</li>
+                <li>free from observable side effects;</li>
+                <li>safe with respect to ownership and mutable aliasing.</li>
+            </ul>
+
+            <p>
+                An arbitrary method named <code>Copy</code>, <code>Clone</code>,
+                <code>Duplicate</code> or similar does not define implicit copy semantics.
+            </p>
+
+            <p>
+                Explicit duplication methods remain ordinary explicit operations and may allocate,
+                fail, duplicate external resources or return a different type.
+            </p>
+        </section>
+
+        <section id="conditional-copy">
+            <h2>Conditionally Copyable Types</h2>
+
+            <p>
+                Generic and aggregate types may be copyable only for some concrete forms.
+            </p>
+
+            <pre><code>type Pair[T, U] struct {
+    First: T,
+    Second: U,
+}</code></pre>
+
+            <p>
+                Whether <code>Pair[T, U]</code> is implicitly copyable depends on the resolved
+                semantics of <code>T</code>, <code>U</code> and the nominal type itself.
+            </p>
+
+            <p>
+                The compiler resolves that classification at the concrete use site before accepting
+                ordinary copy syntax.
+            </p>
+
+            <p>
+                Lack of proof is not permission to copy.
+            </p>
+        </section>
+
+        <section id="move-only">
+            <h2>Move-Only Values</h2>
+
+            <p>
+                A move-only value can transfer ownership but cannot be implicitly duplicated.
+            </p>
+
+            <p>Examples commonly include:</p>
+
+            <ul>
+                <li>owning dynamic arrays <code>T[]</code>;</li>
+                <li>owning dynamic collection values unless their contract explicitly defines safe copy semantics;</li>
+                <li><code>ref mut T</code> reference holders;</li>
+                <li>closures that own move-only captures;</li>
+                <li>consuming callable values;</li>
+                <li>resource-owning nominal types;</li>
+                <li>types explicitly marked non-copyable.</li>
+            </ul>
+
+            <p>This is invalid for a move-only value:</p>
+
+            <pre><code>let second := first</code></pre>
+
+            <p>Use an explicit move when ownership should transfer:</p>
+
+            <pre><code>let second :&lt;- first</code></pre>
+        </section>
+
+        <section id="nocopy">
+            <h2><code>@noCopy</code></h2>
+
+            <p>
+                A nominal type may explicitly prohibit implicit copying:
+            </p>
+
+            <pre><code>@noCopy
+type FileHandle struct {
+    ...
+}</code></pre>
+
+            <p>
+                <code>@noCopy</code> means that ordinary copy syntax is forbidden for the annotated
+                type and for containing classifications that must conservatively include it.
+            </p>
+
+            <p>
+                <code>@noCopy</code> does not forbid moving.
+            </p>
+
+            <p>
+                Sec 0.1 does not define a general <code>@noMove</code> or
+                <code>@affine</code> source annotation.
+            </p>
+
+            <p>
+                Copyability is also separate from:
+            </p>
+
+            <ul>
+                <li>pinning;</li>
+                <li>address stability;</li>
+                <li>thread transferability;</li>
+                <li>destruction complexity;</li>
+                <li>physical relocatability.</li>
+            </ul>
+        </section>
+
+        <section id="derived-copyability">
+            <h2>Derived Copyability</h2>
+
+            <p>
+                Compound types derive copyability from their complete semantic contract.
+            </p>
+
+            <p>
+                Physical fields alone are not always enough.
+                A nominal type may deliberately remain non-copyable because it represents one unique
+                external identity even when its raw fields would be easy to duplicate.
+            </p>
+        </section>
+
+        <section id="arrays">
+            <h2>Fixed Arrays and Aggregates</h2>
+
+            <p>
+                A fixed array <code>T[N]</code> is implicitly copyable only when:
+            </p>
+
+            <ul>
+                <li><code>T</code> is implicitly copyable;</li>
+                <li>the array type introduces no stronger ownership restriction.</li>
+            </ul>
+
+            <pre><code>let first: int[3] := [1, 2, 3]
+let second := first</code></pre>
+
+            <p>
+                A struct containing a move-only owned field is not implicitly copyable as a complete value.
+            </p>
+
+            <pre><code>type Session struct {
+    Name: string,
+    Connection: Connection,
+}</code></pre>
+
+            <p>
+                If <code>Connection</code> is move-only, ordinary copying of
+                <code>Session</code> is not legal merely because <code>Name</code> is copyable.
+            </p>
+        </section>
+
+        <section id="option-result">
+            <h2><code>Option</code> and <code>Result</code></h2>
+
+            <p>
+                <code>Option[T]</code> is implicitly copyable only when its payload semantics
+                permit copying <code>T</code>.
+            </p>
+
+            <p>
+                <code>Result[T, E]</code> is implicitly copyable only when both active payload
+                domains are copyable.
+            </p>
+
+            <p>
+                Must-use behavior is independent from copyability.
+                A copyable <code>Result</code> may still require explicit handling.
+            </p>
+        </section>
+
+        <section id="references">
+            <h2>References and Raw Pointers</h2>
+
+            <p>
+                Shared <code>ref T</code> values may be copied when the reference rules permit it:
+            </p>
+
+            <pre><code>let first := ref item
+let second := first</code></pre>
+
+            <p>
+                This copies the reference value, not <code>item</code>.
+            </p>
+
+            <p>
+                <code>ref mut T</code> is move-only because copying an exclusive reference holder
+                would violate exclusivity.
+            </p>
+
+            <p>
+                <code>RawPtr[T]</code> is trivially copyable as an address value.
+                Copying a raw pointer never implies ownership of the pointed storage.
+            </p>
+        </section>
+
+        <section id="string">
+            <h2><code>string</code> Is Implicitly Copyable</h2>
+
+            <p>
+                Sec 0.1 defines <code>string</code> as immutable and implicitly copyable under its
+                canonical representation contract.
+            </p>
+
+            <pre><code>let first := "Sec"
+let second := first</code></pre>
+
+            <p>
+                The implicit copy must remain:
+            </p>
+
+            <ul>
+                <li>infallible;</li>
+                <li>allocation-free;</li>
+                <li>side-effect-free;</li>
+                <li>free from mutable aliasing.</li>
+            </ul>
+
+            <p>
+                The implementation may use immutable backing, a descriptor representation,
+                Arena-backed immutable storage or another representation satisfying those guarantees.
+            </p>
+
+            <p>
+                Copyable <code>string</code> does not require hidden reference counting.
+            </p>
+        </section>
+
+        <section id="dynamic-collections">
+            <h2>Dynamic Owning Collections</h2>
+
+            <p>
+                Owning dynamic collections are move-only unless their canonical type contract
+                explicitly defines an infallible, allocation-free independent copy.
+            </p>
+
+            <p>For the fundamental dynamic array:</p>
+
+            <pre><code>int[]</code></pre>
+
+            <p>
+                ordinary assignment does not silently deep-copy backing storage.
+            </p>
+
+            <p>
+                If an owning collection provides an explicit duplication operation, using that
+                operation does not make normal <code>:=</code> or <code>=</code> into implicit copies.
+            </p>
+
+            <p>
+                Non-owning slices and views follow reference/view semantics instead of owning-container
+                copy rules.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closures and Function Values</h2>
+
+            <p>
+                A plain named function value is copyable.
+            </p>
+
+            <p>
+                A closure derives copyability from:
+            </p>
+
+            <ul>
+                <li>its capture modes;</li>
+                <li>the copyability of owned captures;</li>
+                <li>its callable capability.</li>
+            </ul>
+
+            <p>
+                A closure that owns a move-only capture is move-only.
+            </p>
+
+            <p>
+                A closure capturing <code>ref mut</code> is move-only unless the operation is a
+                valid reborrow rather than a copy.
+            </p>
+
+            <p>
+                A consuming callable value is move-only even if all stored captures would otherwise
+                be copyable.
+            </p>
+        </section>
+
+        <section id="ordinary-init">
+            <h2>Ordinary Initialization Copies Reusable Sources</h2>
+
+            <pre><code>let destination := source</code></pre>
+
+            <p>
+                When <code>source</code> is an existing reusable Place, this syntax means Copy.
+            </p>
+
+            <p>
+                It is legal only when the source value is implicitly copyable in that context.
+            </p>
+
+            <p>
+                Sec never reinterpret ordinary <code>:=</code> as Move merely because the source
+                happens to be move-only.
+            </p>
+
+            <p>This is intentionally invalid:</p>
+
+            <pre><code>let destination := moveOnlySource</code></pre>
+
+            <p>
+                when an independent copy cannot be produced.
+            </p>
+        </section>
+
+        <section id="ordinary-assignment">
+            <h2>Ordinary Assignment Copies Reusable Sources</h2>
+
+            <pre><code>destination = source</code></pre>
+
+            <p>
+                For an existing reusable source, ordinary assignment uses copy semantics.
+            </p>
+
+            <p>
+                After a valid copy assignment:
+            </p>
+
+            <pre><code>source         available
+destination    owns its resulting value</code></pre>
+
+            <p>
+                If <code>destination</code> was already available, its previous value is replaced
+                according to destruction rules.
+            </p>
+
+            <p>
+                If <code>destination</code> was unavailable and mutable, the assignment reinitializes it.
+            </p>
+        </section>
+
+        <section id="move-init">
+            <h2>Move Initialization</h2>
+
+            <p>Move initialization with inferred destination type uses:</p>
+
+            <pre><code>let destination :&lt;- source</code></pre>
+
+            <p>
+                After a successful move from a reusable source:
+            </p>
+
+            <pre><code>source         unavailable
+destination    available</code></pre>
+
+            <p>
+                The source's storage may still physically exist.
+                What ended is the source Place's ownership of that value.
+            </p>
+        </section>
+
+        <section id="typed-move-init">
+            <h2>Typed Move Initialization</h2>
+
+            <p>
+                When the destination type is written explicitly, the type annotation and move
+                operator remain separate parts of the declaration:
+            </p>
+
+            <pre><code>let destination: Buffer &lt;- source</code></pre>
+
+            <p>
+                Compare the inferred-type form:
+            </p>
+
+            <pre><code>let destination :&lt;- source</code></pre>
+
+            <p>
+                In both cases the source is consumed after successful transfer.
+            </p>
+        </section>
+
+        <section id="move-assignment">
+            <h2>Move Assignment</h2>
+
+            <p>Move assignment or move replacement uses:</p>
+
+            <pre><code>destination &lt;- source</code></pre>
+
+            <p>
+                If the destination is already available, the old destination value is replaced
+                after the incoming transfer is ready to commit.
+            </p>
+
+            <p>
+                If the destination is unavailable and mutable, the move reinitializes it.
+            </p>
+
+            <p>
+                An immutable unavailable destination cannot be reinitialized.
+            </p>
+        </section>
+
+        <section id="copyable-move">
+            <h2>Copyable Values May Still Be Explicitly Moved</h2>
+
+            <p>
+                Explicit move syntax is meaningful even for a type that could have been copied:
+            </p>
+
+            <pre><code>let first := 10
+let second :&lt;- first</code></pre>
+
+            <p>
+                Because the programmer explicitly requested Move, the source becomes unavailable.
+            </p>
+
+            <p>
+                The compiler must not silently turn the operation back into Copy merely because the
+                type is copyable.
+            </p>
+
+            <p>
+                This is useful when source availability itself is part of the intended ownership flow.
+            </p>
+        </section>
+
+        <section id="no-reset">
+            <h2>Move Does Not Reset the Source</h2>
+
+            <p>
+                Moving from a source does not perform:
+            </p>
+
+            <pre><code>source = default
+source = 0
+source = None
+source = null</code></pre>
+
+            <p>
+                The source simply becomes unavailable as an owned value.
+            </p>
+
+            <p>
+                A mutable unavailable Place may later be explicitly reinitialized:
+            </p>
+
+            <pre><code>let mut resource := OpenResource()
+Consume(&lt;-resource)
+
+resource = OpenResource()</code></pre>
+        </section>
+
+        <section id="visibility-rule">
+            <h2>The Reusable-Source Visibility Rule</h2>
+
+            <p>
+                A reusable named or projected Place must never be silently consumed.
+            </p>
+
+            <p>Examples of reusable sources:</p>
+
+            <pre><code>resource
+package.Payload
+state.Connection</code></pre>
+
+            <p>
+                If ownership leaves such a source and execution may continue in the source scope,
+                the consuming source must be visibly marked.
+            </p>
+
+            <pre><code>Consume(&lt;-resource)
+
+let payload :&lt;- package.Payload
+
+destination &lt;- state.Connection</code></pre>
+
+            <p>
+                This rule applies even when the value is copyable if the programmer explicitly
+                chooses to move it.
+            </p>
+        </section>
+
+        <section id="temporaries">
+            <h2>Fresh Temporaries Do Not Need Redundant Move Syntax</h2>
+
+            <p>
+                A fresh temporary has no reusable source Place to preserve.
+            </p>
+
+            <p>Therefore:</p>
+
+            <pre><code>Consume(CreateBuffer())</code></pre>
+
+            <p>is preferred over synthetic move syntax around the temporary.</p>
+
+            <p>Likewise:</p>
+
+            <pre><code>let buffer := CreateBuffer()</code></pre>
+
+            <p>
+                receives the fresh returned value directly.
+            </p>
+
+            <p>
+                The language does not require ownership-transfer notation at both ends of an
+                already-obvious fresh-value transfer.
+            </p>
+        </section>
+
+        <section id="by-value-params">
+            <h2>Ordinary By-Value Parameters Do Not Implicitly Consume</h2>
+
+            <pre><code>fn Inspect(value: Buffer) void {
+    ...
+}</code></pre>
+
+            <p>
+                Passing an existing reusable source to an ordinary by-value parameter requires a
+                legal copy:
+            </p>
+
+            <pre><code>Inspect(buffer)</code></pre>
+
+            <p>
+                If <code>Buffer</code> is move-only, this call is invalid.
+            </p>
+
+            <p>
+                The compiler does not reinterpret the ordinary parameter as consuming merely because
+                copying is unavailable.
+            </p>
+
+            <p>
+                This keeps API ownership semantics visible in the function signature.
+            </p>
+        </section>
+
+        <section id="consuming-params">
+            <h2>Consuming Parameters</h2>
+
+            <p>
+                A parameter that intentionally takes ownership uses <code>-&gt;</code>:
+            </p>
+
+            <pre><code>fn Consume(-&gt; value: Buffer) void {
+    ...
+}</code></pre>
+
+            <p>
+                An existing reusable caller source must use <code>&lt;-</code>:
+            </p>
+
+            <pre><code>Consume(&lt;-buffer)</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>Consume(buffer)</code></pre>
+
+            <p>
+                when <code>buffer</code> is an existing reusable Place.
+            </p>
+
+            <p>
+                The call-site marker is required even when <code>Buffer</code> is copyable.
+                A consuming parameter is an API ownership contract, not merely a fallback for
+                non-copyable values.
+            </p>
+
+            <p>A fresh temporary may be passed directly:</p>
+
+            <pre><code>Consume(CreateBuffer())</code></pre>
+        </section>
+
+        <section id="call-commit">
+            <h2>Fallible Argument Evaluation and Transfer Commit</h2>
+
+            <p>
+                Function arguments evaluate left to right.
+            </p>
+
+            <p>
+                Ownership transfer from reusable caller-owned Places into the outer callee commits
+                only after all arguments required for call entry have been prepared successfully.
+            </p>
+
+            <pre><code>try Send(
+    &lt;-message,
+    ResolveDestination(),
+) {
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                If <code>ResolveDestination()</code> fails before <code>Send</code> begins,
+                the outer call has not consumed <code>message</code>.
+            </p>
+
+            <p>
+                However, ownership effects completed inside evaluation of an earlier argument
+                expression are real completed effects and are not rolled back merely because a later
+                outer argument fails.
+            </p>
+
+            <p>
+                Pending transfer also reserves the relevant source Place against conflicting sibling
+                argument use until the outer call either commits or fails.
+            </p>
+        </section>
+
+        <section id="returns">
+            <h2>Return Is an Intrinsically Transferring Boundary</h2>
+
+            <p>
+                Every non-reference return transfers or creates one result value owned by the caller.
+            </p>
+
+            <p>The canonical form is simply:</p>
+
+            <pre><code>fn Create() Buffer {
+    let buffer := CreateBuffer()
+    return buffer
+}</code></pre>
+
+            <p>
+                A move-only local may therefore be returned without a return-site move marker.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Sec does not require or use <code>&lt;-</code> at the return
+                boundary. The <code>return</code> operation itself is the ownership transfer.
+            </div>
+
+            <p>Receiving the result also needs no move marker:</p>
+
+            <pre><code>let buffer := Create()</code></pre>
+        </section>
+
+        <section id="return-construction">
+            <h2>Terminal Return Construction</h2>
+
+            <p>
+                The intrinsic return-transfer context propagates through structural construction
+                that directly forms the returned value.
+            </p>
+
+            <pre><code>return Some(resource)
+
+return Packet.Data(resource)
+
+return Response {
+    Body: resource,
+}
+
+return Ok(Response {
+    Body: resource,
+})</code></pre>
+
+            <p>
+                A reusable move-only local may flow through these direct return-construction paths
+                without an inner move marker.
+            </p>
+
+            <p>
+                This rule is specific to the terminal return boundary.
+            </p>
+
+            <p>
+                An ordinary function call inside the return expression keeps its declared parameter
+                modes:
+            </p>
+
+            <pre><code>return Transform(resource)</code></pre>
+
+            <p>
+                If <code>Transform</code> has an ordinary by-value parameter, <code>resource</code>
+                must still be copyable.
+                If it has a consuming parameter, the call still requires visible call-site transfer
+                from a reusable source.
+            </p>
+        </section>
+
+        <section id="borrowed-return">
+            <h2>Return Does Not Grant Ownership of Borrowed Storage</h2>
+
+            <p>
+                Terminal return transfer only applies to values the current function actually owns.
+            </p>
+
+            <p>From borrowed storage:</p>
+
+            <pre><code>fn ReadName(person: ref Person) string {
+    return person.Name
+}</code></pre>
+
+            <p>
+                this is valid only when <code>Name</code> can be copied under ordinary copy rules.
+            </p>
+
+            <p>
+                A move-only owned field cannot be removed from borrowed storage simply because the
+                access occurs in <code>return</code>.
+            </p>
+
+            <p>
+                Return context also does not grant ownership of:
+            </p>
+
+            <ul>
+                <li>static storage;</li>
+                <li>foreign storage;</li>
+                <li>volatile/MMIO storage;</li>
+                <li>unavailable Places;</li>
+                <li>otherwise non-movable storage.</li>
+            </ul>
+        </section>
+
+        <section id="aggregate-transfer">
+            <h2>Aggregate Field Transfer</h2>
+
+            <p>
+                Ordinary aggregate construction copies reusable sources when they are copyable:
+            </p>
+
+            <pre><code>let packet := Packet {
+    Id: id,
+    Name: name,
+}</code></pre>
+
+            <p>
+                A reusable move-only source transferred into an owning field must be explicit:
+            </p>
+
+            <pre><code>let session := Session {
+    Name: name,
+    File: &lt;-file,
+}</code></pre>
+
+            <p>
+                The compiler never infers destructive field transfer solely because
+                <code>file</code> is non-copyable.
+            </p>
+
+            <p>A fresh temporary may flow directly:</p>
+
+            <pre><code>let session := Session {
+    Name: name,
+    File: OpenFile(),
+}</code></pre>
+
+            <p>
+                When the aggregate directly forms a returned result, the terminal return rule applies.
+            </p>
+        </section>
+
+        <section id="option-transfer">
+            <h2><code>Option</code> Payload Transfer</h2>
+
+            <p>
+                Outside a terminal return boundary, a reusable move-only source transferred into
+                <code>Some</code> must be explicit:
+            </p>
+
+            <pre><code>let value := Some(&lt;-resource)</code></pre>
+
+            <p>
+                Plain:
+            </p>
+
+            <pre><code>let value := Some(resource)</code></pre>
+
+            <p>
+                copies when <code>resource</code> is copyable and is invalid when ownership transfer
+                would be required.
+            </p>
+
+            <p>Direct return construction uses the terminal return rule:</p>
+
+            <pre><code>return Some(resource)</code></pre>
+        </section>
+
+        <section id="result-transfer">
+            <h2><code>Result</code> Payload Transfer</h2>
+
+            <p>
+                Outside a terminal return boundary:
+            </p>
+
+            <pre><code>let result := Ok(&lt;-resource)</code></pre>
+
+            <p>
+                explicitly transfers a reusable move-only value into the Result payload.
+            </p>
+
+            <p>
+                The same rule applies to <code>Err</code> payloads.
+            </p>
+
+            <p>When the Result directly forms the returned value:</p>
+
+            <pre><code>return Ok(resource)</code></pre>
+
+            <p>
+                the return boundary owns the transfer.
+                No inner return-site move marker is required.
+            </p>
+        </section>
+
+        <section id="union-transfer">
+            <h2>Union Payload Transfer</h2>
+
+            <p>
+                A union owns its active owning payload according to the union contract.
+            </p>
+
+            <p>
+                A reusable move-only source transferred into a union payload uses visible transfer:
+            </p>
+
+            <pre><code>let message := Message.Data(&lt;-payload)</code></pre>
+
+            <p>
+                Moving a complete union transfers ownership of its active payload without exposing
+                or duplicating the representation.
+            </p>
+
+            <p>Direct return construction remains concise:</p>
+
+            <pre><code>return Message.Data(payload)</code></pre>
+        </section>
+
+        <section id="captures">
+            <h2>Closure Capture</h2>
+
+            <p>Plain owned capture means copy capture:</p>
+
+            <pre><code>capture(value)</code></pre>
+
+            <p>
+                The source must therefore be copyable.
+            </p>
+
+            <p>Consuming capture uses:</p>
+
+            <pre><code>capture(&lt;-value)</code></pre>
+
+            <p>
+                This consumes the source even when an ordinary copy would have been possible.
+            </p>
+
+            <p>Borrow captures are separate:</p>
+
+            <pre><code>capture(ref value)
+capture(ref mut value)</code></pre>
+
+            <p>
+                and follow borrowing and lifetime rules rather than owned-copy/move rules.
+            </p>
+        </section>
+
+        <section id="replacement">
+            <h2>Replacement Commit Ordering</h2>
+
+            <p>
+                Copy or move assignment into an already available mutable destination replaces the
+                existing destination value.
+            </p>
+
+            <p>Conceptually, Sec preserves this order:</p>
+
+            <ol>
+                <li>evaluate the source expression;</li>
+                <li>validate conversions, contracts, borrows, overlap and ownership;</li>
+                <li>complete fallible preparation;</li>
+                <li>end or destroy the old destination value;</li>
+                <li>install the new value;</li>
+                <li>establish destination ownership;</li>
+                <li>if the source was moved, commit source unavailability.</li>
+            </ol>
+
+            <p>
+                The old destination must not be destroyed before a fallible incoming operation is
+                known to be ready to commit.
+            </p>
+        </section>
+
+        <section id="reinitialization">
+            <h2>Reinitialization</h2>
+
+            <p>
+                Assignment to an unavailable mutable destination creates a new owned value there
+                without destroying a nonexistent old value.
+            </p>
+
+            <pre><code>let mut resource := OpenResource()
+Consume(&lt;-resource)
+
+resource = OpenResource()</code></pre>
+
+            <p>
+                Copy or move assignment can both reinitialize when their respective source rules
+                are satisfied.
+            </p>
+
+            <p>
+                An immutable unavailable Place cannot be reinitialized by assignment.
+            </p>
+        </section>
+
+        <section id="self-move">
+            <h2>Self-Move and Overlap</h2>
+
+            <p>
+                Copy self-assignment may be legal for copyable values and may be optimized away:
+            </p>
+
+            <pre><code>value = value</code></pre>
+
+            <p>Move self-assignment is invalid:</p>
+
+            <pre><code>value &lt;- value</code></pre>
+
+            <p>
+                More generally, a move is invalid when source and destination overlap in a way that
+                would break transfer or destruction ordering.
+            </p>
+
+            <p>
+                Backend use of <code>memcpy</code> or <code>memmove</code> does not define whether
+                an overlapping source-language operation is valid.
+            </p>
+        </section>
+
+        <section id="partial-move">
+            <h2>Partial Moves</h2>
+
+            <p>
+                A field or independently tracked sub-Place may be moved explicitly:
+            </p>
+
+            <pre><code>let payload :&lt;- package.Payload</code></pre>
+
+            <p>A partial move is legal only when:</p>
+
+            <ul>
+                <li>the source aggregate is owned;</li>
+                <li>the projected Place can be tracked precisely enough;</li>
+                <li>no conflicting borrow exists;</li>
+                <li>the storage model permits the transfer;</li>
+                <li>destruction rules permit partial ownership;</li>
+                <li>no stronger type rule forbids it.</li>
+            </ul>
+
+            <p>
+                A type with custom <code>free</code> does not permit partial moves from its fields
+                in Sec 0.1.
+            </p>
+
+            <p>
+                An immutable aggregate may still undergo a legal explicit partial move.
+                Immutability prevents later repair, not the ownership transfer itself.
+            </p>
+
+            <p>
+                Already-moved fields are never destroyed by the former aggregate owner.
+            </p>
+        </section>
+
+        <section id="control-flow">
+            <h2>Copy/Move State Is Path-Sensitive</h2>
+
+            <p>
+                Moving a value on one branch affects only paths that actually performed the move.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+
+if condition {
+    Consume(&lt;-resource)
+    return
+}
+
+Use(resource)</code></pre>
+
+            <p>
+                The consuming path terminates.
+                The continuing path still owns <code>resource</code>.
+            </p>
+
+            <p>
+                When continuing paths disagree, ownership may become conditionally available as
+                described in the Ownership chapter.
+            </p>
+        </section>
+
+        <section id="loops">
+            <h2>Moves in Loops</h2>
+
+            <p>
+                Loop ownership uses fixed-point analysis across:
+            </p>
+
+            <ul>
+                <li>the loop body;</li>
+                <li><code>continue</code> edges;</li>
+                <li>backedges;</li>
+                <li><code>break</code> exits.</li>
+            </ul>
+
+            <p>
+                A Place moved in one iteration must be reinitialized on every path that attempts to
+                use or move it on a later iteration.
+            </p>
+
+            <pre><code>for condition {
+    Consume(&lt;-resource)
+
+    resource = OpenResource()
+}</code></pre>
+
+            <p>
+                Whether this is valid depends on every path reaching the next iteration with the
+                required availability.
+            </p>
+        </section>
+
+        <section id="match">
+            <h2><code>match</code> Payloads</h2>
+
+            <p>
+                Pattern syntax determines whether a payload is copied, moved or borrowed.
+            </p>
+
+            <p>
+                Whole-payload by-value binding in <code>match</code> may move a move-only payload
+                because pattern matching itself defines that ownership mode.
+            </p>
+
+            <p>
+                This is different from ordinary construction or function-call syntax, which never
+                silently consumes a reusable source.
+            </p>
+
+            <p>
+                A guarded prospective move commits only if the guard succeeds and that arm is selected.
+            </p>
+
+            <p>
+                <code>switch</code> does not silently consume its subject.
+            </p>
+        </section>
+
+        <section id="discard">
+            <h2><code>discard</code> Is Not Move</h2>
+
+            <p>
+                <code>discard place</code> intentionally ends ownership in that Place:
+            </p>
+
+            <pre><code>discard resource</code></pre>
+
+            <p>
+                Move transfers ownership to another owner.
+                <code>discard</code> does not.
+            </p>
+
+            <p>
+                Discard may perform required destruction when the value is still owned.
+            </p>
+
+            <p>
+                It is therefore a distinct semantic operation and must not be implemented as a move
+                to an invisible temporary.
+            </p>
+        </section>
+
+        <section id="result-projections">
+            <h2>Consuming <code>Result</code> Projections</h2>
+
+            <p>
+                The compiler/core-defined:
+            </p>
+
+            <pre><code>result.Ok()
+result.Err()</code></pre>
+
+            <p>
+                are consuming transformations of an owned <code>Result[T, E]</code>.
+            </p>
+
+            <p>
+                The active retained payload transfers into the resulting <code>Option</code>.
+                The inactive side ends according to ordinary destruction rules.
+            </p>
+
+            <p>
+                No hidden clone is permitted for move-only payloads.
+            </p>
+
+            <p>
+                After consuming <code>.Ok()</code> or <code>.Err()</code> from an owned reusable
+                Result Place, that complete Result Place is unavailable unless legally reinitialized.
+            </p>
+        </section>
+
+        <section id="methods">
+            <h2>Methods and <code>self</code></h2>
+
+            <p>
+                Ordinary methods do not consume the complete <code>self</code>.
+            </p>
+
+            <p>
+                Whole-instance lifetime termination belongs to destruction and <code>free</code>.
+            </p>
+
+            <p>
+                A method with sufficient mutable/exclusive receiver authority may consume an owned
+                member when partial-move and borrowing rules permit it:
+            </p>
+
+            <pre><code>impl Package {
+    fn ReleasePayload() void {
+        Destroy(&lt;-self.Payload)
+    }
+}</code></pre>
+
+            <p>
+                Sec 0.1 does not introduce a general expression form such as:
+            </p>
+
+            <pre><code>(&lt;-resource).Method()</code></pre>
+
+            <p>
+                for consuming complete method receivers.
+            </p>
+        </section>
+
+        <section id="volatile">
+            <h2>Volatile Storage and Local Snapshots</h2>
+
+            <p>
+                Volatile is a storage-access property, not a copy/move classification of the local
+                value produced by the access.
+            </p>
+
+            <pre><code>let first := device.Status
+let second := first</code></pre>
+
+            <p>
+                If <code>device.Status</code> is a volatile register read:
+            </p>
+
+            <ul>
+                <li>the first statement performs one volatile access;</li>
+                <li><code>first</code> is then an ordinary local Sec value snapshot;</li>
+                <li>copying or moving <code>first</code> does not perform another hardware read.</li>
+            </ul>
+
+            <p>
+                The physical MMIO storage itself is not an ordinary Sec-owned reusable value that can
+                be moved out with <code>&lt;-</code>.
+            </p>
+        </section>
+
+        <section id="ffi-channels">
+            <h2>FFI, Channels and Concurrent Transfer</h2>
+
+            <p>
+                Copyability and cross-thread/process transferability are separate properties.
+            </p>
+
+            <p>
+                FFI ownership transfer must come from the foreign contract.
+                It is not inferred from ABI representation.
+            </p>
+
+            <p>
+                A channel may transfer ownership of a move-only value only when the channel operation's
+                contract says so.
+            </p>
+
+            <p>
+                Fallible transfer must define ownership on both success and failure paths.
+                A failed send must not silently lose the sender's value.
+            </p>
+
+            <p>
+                Multi-path transfer constructs such as <code>select</code> must commit ownership only
+                to the path actually selected.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generics and Copyability</h2>
+
+            <p>
+                Generic code may perform an implicit copy only when the concrete specialization
+                proves that the value is copyable.
+            </p>
+
+            <p>
+                Generic code must not treat “copyability unknown” as permission to copy.
+            </p>
+
+            <p>
+                Monomorphization may specialize the machine implementation of copy or move, but it
+                does not change the source ownership contract.
+            </p>
+
+            <p>
+                An owned erased interface value is move-only unless its concrete interface/value
+                representation contract proves a valid independent copy.
+            </p>
+
+            <p>
+                Borrowed interface references follow normal reference rules and do not transfer
+                ownership of the referent.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Copyability and Destruction Are Separate</h2>
+
+            <p>
+                Whether a type can be copied and whether a type requires non-trivial destruction are
+                separate classifications.
+            </p>
+
+            <p>A type may be:</p>
+
+            <ul>
+                <li>move-only but trivially destructible;</li>
+                <li>copyable but require representation-aware cleanup;</li>
+                <li>non-copyable because of unique identity despite simple raw storage;</li>
+                <li>trivially copyable and trivially destructible.</li>
+            </ul>
+
+            <p>
+                Copy/move lowering must always obey the independent destruction contract.
+            </p>
+        </section>
+
+        <section id="performance">
+            <h2>Legal Copies Can Still Be Expensive</h2>
+
+            <p>
+                A copy does not become semantically invalid merely because it is large.
+            </p>
+
+            <pre><code>fn Inspect(value: LargeBuffer) void {
+    ...
+}</code></pre>
+
+            <p>
+                If <code>LargeBuffer</code> is copyable, passing an existing reusable value by
+                ordinary by-value syntax remains legal.
+            </p>
+
+            <p>
+                Compiler analysis may still recommend a non-owning API:
+            </p>
+
+            <pre><code>fn Inspect(value: ref LargeBuffer) void {
+    ...
+}</code></pre>
+
+            <p>
+                or a slice/view form when an independent copy is unnecessary.
+            </p>
+
+            <p>
+                Such diagnostics are performance guidance, not ownership corrections.
+            </p>
+        </section>
+
+        <section id="optimization">
+            <h2>Copy and Move Elision</h2>
+
+            <p>
+                The compiler may eliminate physical copies and moves when all source semantics remain intact.
+            </p>
+
+            <p>Possible optimizations include:</p>
+
+            <ul>
+                <li>copy elision;</li>
+                <li>move elision;</li>
+                <li>return-value optimization;</li>
+                <li>destination passing;</li>
+                <li>buffer reuse;</li>
+                <li>in-place update;</li>
+                <li>register forwarding;</li>
+                <li>stack-slot reuse;</li>
+                <li>bulk memory operations;</li>
+                <li>target-specific transfer instructions.</li>
+            </ul>
+
+            <p>But optimization may not change:</p>
+
+            <ul>
+                <li>source availability;</li>
+                <li>destination ownership;</li>
+                <li>destruction count;</li>
+                <li>borrow validity;</li>
+                <li>external ownership;</li>
+                <li>volatile effects;</li>
+                <li>address-stability guarantees.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Copy elision may remove physical copying, but it may not
+                make the source unavailable. Move elision may remove physical movement, but it may
+                not leave the source available.
+            </div>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important copy/move diagnostics include:</p>
+
+            <ul>
+                <li>copy of a non-copyable value;</li>
+                <li>use after move;</li>
+                <li>move while borrowed;</li>
+                <li>invalid self-move;</li>
+                <li>overlapping move;</li>
+                <li>reinitialization of an immutable Place;</li>
+                <li>unsupported partial move;</li>
+                <li>move from non-owned storage;</li>
+                <li>move from fixed or volatile storage;</li>
+                <li>missing consuming call-site marker;</li>
+                <li>implicit consuming payload construction;</li>
+                <li>invalid whole-<code>self</code> consumption;</li>
+                <li>copyability not proven for a concrete generic specialization.</li>
+            </ul>
+
+            <h3>Copy of a move-only value</h3>
+
+            <pre><code>cannot copy `buffer`
+
+`Buffer` is move-only, so `let next := buffer` would require an independent copy
+
+help: move ownership with `let next :&lt;- buffer`
+help: borrow with `ref buffer` when ownership transfer is not intended</code></pre>
+
+            <h3>Missing call-site transfer</h3>
+
+            <pre><code>`Consume` takes ownership of `buffer`
+
+the argument is an existing reusable value, so the transfer must be explicit
+
+help: write `Consume(&lt;-buffer)`</code></pre>
+
+            <h3>Use after move</h3>
+
+            <pre><code>`buffer` is unavailable here
+
+ownership was moved earlier by:
+    Consume(&lt;-buffer)
+
+help: use the new owner
+help: reinitialize `buffer` if it is mutable and a new value is intended</code></pre>
+
+            <h3>Move from borrowed storage</h3>
+
+            <pre><code>cannot move this value out of borrowed storage
+
+the current access grants a borrow, not ownership
+
+help: borrow the value
+help: redesign the API to transfer ownership explicitly</code></pre>
+
+            <p>
+                LSP hover and analysis should be able to expose:
+            </p>
+
+            <ul>
+                <li>copy classification;</li>
+                <li>whether an operation is Copy or Move;</li>
+                <li>the source Place;</li>
+                <li>the ownership destination;</li>
+                <li>the consuming parameter or payload boundary;</li>
+                <li>source availability after transfer;</li>
+                <li>partial aggregate state;</li>
+                <li>safe borrow/move alternatives where provable.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use ordinary <code>:=</code> and <code>=</code> only when a reusable source is meant to be copied.</li>
+                <li>Use <code>:&lt;-</code> for inferred-type move initialization.</li>
+                <li>Use <code>Type &lt;- source</code> after an explicit type annotation for typed move initialization.</li>
+                <li>Use <code>&lt;-</code> at the reusable source position for consuming calls and owning payload construction.</li>
+                <li>Do not add move markers to fresh temporaries merely for ceremony.</li>
+                <li>Do not add a move marker at the return boundary; <code>return</code> already transfers ownership.</li>
+                <li>Prefer borrowing when a callee does not need an independent value or ownership.</li>
+                <li>Use explicit duplication methods when an owning collection or resource needs a deliberate independent duplicate.</li>
+                <li>Remember that moving a copyable value still consumes the source when explicit move syntax is used.</li>
+                <li>Do not assume moving resets the source to a default value.</li>
+                <li>Do not move values out of borrowed, static, volatile or foreign storage without an explicit ownership-taking contract.</li>
+                <li>Keep large-copy performance advice separate from semantic copy legality.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Copy duplicates a value and keeps the source available.</li>
+                <li>Move transfers a value or ownership responsibility and makes a reusable consumed source unavailable.</li>
+                <li>Copy and Move are semantic operations independent of backend instruction choice.</li>
+                <li>A move does not write a default, zero, <code>None</code> or null value back to the source.</li>
+                <li>Every resolved type has a copy classification before ordinary copy syntax is accepted.</li>
+                <li>Conceptual copy classifications include trivially copyable, semantically copyable, conditionally copyable, move-only and explicitly non-copyable.</li>
+                <li>Implicit semantic copy must be infallible, allocation-free and free from observable side effects.</li>
+                <li>Arbitrary user methods such as <code>Clone</code> do not define implicit copy semantics.</li>
+                <li><code>@noCopy</code> forbids implicit copying but does not forbid moving.</li>
+                <li>Sec 0.1 has no general <code>@noMove</code> or <code>@affine</code> annotation.</li>
+                <li>Fixed arrays derive copyability from their elements and complete type contract.</li>
+                <li>A struct containing a move-only owned field is not implicitly copyable as a whole.</li>
+                <li><code>Option[T]</code> and <code>Result[T, E]</code> derive copyability from their possible payloads.</li>
+                <li>Shared <code>ref T</code> values may be copyable; <code>ref mut T</code> is move-only.</li>
+                <li><code>RawPtr[T]</code> is trivially copyable as an address value and carries no ownership merely by being copied.</li>
+                <li><code>string</code> is immutable and implicitly copyable under its canonical allocation-free copy contract.</li>
+                <li>Owning dynamic arrays and other owning dynamic collections are move-only unless their canonical contract explicitly says otherwise.</li>
+                <li>Non-owning slices and views follow reference/view rules rather than owning-container copy rules.</li>
+                <li>Closures derive copyability from their captures and callable capability.</li>
+                <li><code>let destination := source</code> copies an existing reusable source and never silently moves it.</li>
+                <li><code>destination = source</code> uses copy/replacement semantics for an existing reusable source.</li>
+                <li>Inferred-type move initialization uses <code>let destination :&lt;- source</code>.</li>
+                <li>Typed move initialization uses <code>let destination: Type &lt;- source</code>.</li>
+                <li>Move assignment uses <code>destination &lt;- source</code>.</li>
+                <li>Explicit move syntax may consume even a copyable value.</li>
+                <li>Reusable source Places must never be silently consumed.</li>
+                <li>Fresh temporaries may forward directly into their first owner without redundant move syntax.</li>
+                <li>Ordinary by-value parameters require Copy from existing reusable arguments.</li>
+                <li>A move-only argument is not silently consumed by an ordinary by-value parameter.</li>
+                <li>Consuming parameters use <code>-&gt;</code>.</li>
+                <li>An existing reusable argument to a consuming parameter uses <code>&lt;-</code> at the call site.</li>
+                <li>The consuming call-site marker is required even for copyable values.</li>
+                <li>Fresh temporaries may be passed directly to consuming parameters.</li>
+                <li>Arguments evaluate left to right.</li>
+                <li>Outer-call ownership transfer commits only after all required arguments are ready and call entry can occur.</li>
+                <li>A later argument failure cancels uncommitted outer-call transfer reservations.</li>
+                <li>Ownership effects completed inside earlier argument expressions are not rolled back.</li>
+                <li><code>return</code> is intrinsically transferring for non-reference results.</li>
+                <li>A move-only owned local is returned as <code>return value</code>.</li>
+                <li>Sec does not use a return-site <code>&lt;-</code> marker.</li>
+                <li>Fresh returned values are received without a move marker.</li>
+                <li>Terminal return context propagates through direct structural construction such as aggregates, unions, <code>Some</code>, <code>Ok</code> and <code>Err</code>.</li>
+                <li>Ordinary function calls inside return expressions retain their declared argument ownership modes.</li>
+                <li>Return context does not grant ownership of borrowed, static, foreign, volatile, MMIO or unavailable storage.</li>
+                <li>Owning aggregate fields require explicit transfer from reusable move-only sources outside terminal return construction.</li>
+                <li><code>Some(&lt;-resource)</code>, <code>Ok(&lt;-resource)</code> and owning union payload construction visibly transfer reusable move-only values.</li>
+                <li>Plain closure capture copies and therefore requires copyability.</li>
+                <li><code>capture(&lt;-value)</code> consumes the captured source.</li>
+                <li>Borrow captures use <code>ref</code> or <code>ref mut</code> and do not transfer referent ownership.</li>
+                <li>Replacement validates the incoming operation before destroying the old destination value.</li>
+                <li>Move source unavailability commits as part of the successful replacement/transfer operation.</li>
+                <li>Assignment to an unavailable mutable Place is reinitialization.</li>
+                <li>Move self-assignment is invalid.</li>
+                <li>Overlapping moves are rejected when transfer/destruction order would be invalid.</li>
+                <li>Partial moves must be explicit at the moved sub-Place.</li>
+                <li>Partial move requires owned source, precise Place tracking, compatible borrowing and compatible destruction semantics.</li>
+                <li>Types with custom <code>free</code> do not permit partial field moves in Sec 0.1.</li>
+                <li>Immutable aggregates may be explicitly partially moved but cannot later repair the moved field by assignment.</li>
+                <li>Copy/move state is path-sensitive.</li>
+                <li>Loops require fixed-point ownership analysis across backedges and exits.</li>
+                <li><code>match</code> pattern syntax may define payload copy, move or borrow behavior directly.</li>
+                <li><code>discard</code> is a distinct terminal ownership-ending operation, not Move.</li>
+                <li><code>Result.Ok()</code> and <code>Result.Err()</code> are consuming transformations of an owned Result.</li>
+                <li>Ordinary methods cannot consume complete <code>self</code>.</li>
+                <li>Methods may consume owned members when receiver authority, borrowing and partial-move rules permit it.</li>
+                <li>Volatile access produces an ordinary value snapshot; later copy/move of the snapshot does not repeat the volatile read.</li>
+                <li>Physical volatile/MMIO storage is not an ordinary movable owner.</li>
+                <li>FFI ownership transfer must be explicit in the foreign contract.</li>
+                <li>Channel transfer commits ownership only according to the channel operation's contract.</li>
+                <li>Fallible transfer must preserve or transfer ownership correctly on every outcome.</li>
+                <li>Generic code may copy only after concrete copyability is proven.</li>
+                <li>Copyability and destruction classification are independent.</li>
+                <li>A legal copy may be expensive without becoming semantically invalid.</li>
+                <li>The compiler may recommend borrowing instead of a large legal copy.</li>
+                <li>Copy/move elision may change machine implementation but not source availability, ownership or destruction behavior.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="24-ownership.html">Previous: Ownership</a>
-            <a href="26-unsafe.html">Next: Unsafe</a>
+            <a href="24-ownership.html">Previous: Ownership</a>
+            <a href="26-borrowing.html">Next: Borrowing</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

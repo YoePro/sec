@@ -84,11 +84,13 @@ const (
 	ARROW         TokenType = "ARROW"
 	CONSUME_ARROW TokenType = "CONSUME_ARROW" // ->
 
-	PLUS     TokenType = "PLUS"
-	MINUS    TokenType = "MINUS"
-	ASTERISK TokenType = "ASTERISK"
-	SLASH    TokenType = "SLASH"
-	PERCENT  TokenType = "PERCENT"
+	PLUS      TokenType = "PLUS"
+	MINUS     TokenType = "MINUS"
+	ASTERISK  TokenType = "ASTERISK"
+	SLASH     TokenType = "SLASH"
+	PERCENT   TokenType = "PERCENT"
+	INCREMENT TokenType = "INCREMENT" // ++
+	DECREMENT TokenType = "DECREMENT" // --
 
 	PLUS_ASSIGN     TokenType = "PLUS_ASSIGN"     // +=
 	MINUS_ASSIGN    TokenType = "MINUS_ASSIGN"    // -=
@@ -367,6 +369,9 @@ func (l *Lexer) NextToken() Token {
 		return l.readOne(DOT)
 
 	case '+':
+		if l.peekNext() == '+' {
+			return l.readTwo(INCREMENT)
+		}
 		if l.peekNext() == '=' {
 			return l.readTwo(PLUS_ASSIGN)
 		}
@@ -375,6 +380,9 @@ func (l *Lexer) NextToken() Token {
 	case '-':
 		if l.peekNext() == '>' {
 			return l.readTwo(CONSUME_ARROW)
+		}
+		if l.peekNext() == '-' {
+			return l.readTwo(DECREMENT)
 		}
 		if l.peekNext() == '=' {
 			return l.readTwo(MINUS_ASSIGN)

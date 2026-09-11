@@ -26,8 +26,33 @@ type Body struct {
 }
 
 impl Body {
+
+    /**
+    * Creates an empty HTTP body.
+    *
+    * An empty Body contains no payload, has a known length of zero, and is
+    * replayable until it is closed.
+    */
+    init() {
+        self._state = _BodyState.Empty
+    }
+
+    /**
+    * Creates an HTTP body by taking ownership of a byte array.
+    *
+    * The body takes ownership of data without copying its contents. A zero-length
+    * array is normalized to the Empty state.
+    */
     init(->data: byte[]) {
-        // TODO: Implement http.Body.init(byte[])
+        if data.Len == 0 {
+            self._state = _BodyState.Empty
+            return
+        }
+
+        self._state = _BodyState.Bytes(_BodyBytesState {
+            Data: <-data,
+            Position: 0,
+        })
     }
 
     init(data: string) {
@@ -46,30 +71,247 @@ impl Body {
         return Ok(new Body())
     }
 
-    // TODO: Implement http.Body.Length
-    property Length: Option[uint64] { get { return Some(0u) } }
+    /**
+    * Reports the known total length of the HTTP body.
+    *
+    * Empty and byte-backed bodies always have a known length. A closed body
+    * preserves the length information that was known before it was closed.
+    *
+    * None is returned for body sources whose total length is unknown.
+    */
+    property Length: Option[uint64] {
+        get {
+            match self._state {
+                _BodyState.Empty => {
+                    return Some(0)
+                }
 
-    // TODO: Implement http.Body.Replayable
-    property Replayable: bool { get { return false } }
+                _BodyState.Bytes(ref state) => {
+                    return Some(uint64(state.Data.Len))
+                }
 
-    // TODO: Implement http.Body.Read()
+                _BodyState.Closed(ref state) => {
+                    return state.Length
+                }
+            }
+        }
+    }
+
+    /**
+    * Reports whether the HTTP body can be read again from the beginning.
+    *
+    * Empty and byte-backed bodies are replayable while open. A closed body is
+    * never replayable.
+    */
+    property Replayable: bool {
+        get {
+            match self._state {
+                _BodyState.Empty => {
+                    return true
+                }
+
+                _BodyState.Bytes(_) => {
+                    return true
+                }
+
+                _BodyState.Closed(_) => {
+                    return false
+                }
+            }
+        }
+    }
+
+    /**
+    * Reports whether the HTTP body has been closed.
+    *
+    * Closed bodies cannot be read or rewound.
+    */
+    property IsClosed: bool {
+        get {
+            match self._state {
+                _BodyState.Closed(_) => {
+                    return true
+                }
+
+                _ => {
+                    return false
+                }
+            }
+        }
+    }
+
+    /**
+    * Reads body data into buffer and advances the current read position.
+    *
+    * At most buffer.Len bytes are written. The returned value is the number of
+    * bytes written to buffer.
+    *
+    * Ok(0) is returned when the body has reached end-of-body or when buffer is
+    * empty. A closed body cannot be read.
+    *
+    * Returns BodyError.Closed when the body has already been closed.
+    */
     fn Read(buffer: ref mut byte[]) Result[uint, BodyError] {
-        return Ok(0)
+        if buffer.Len == 0 {
+            return Ok(0)
+        }
+
+        match self._state {
+            _BodyState.Empty => {
+                return Ok(0)
+            }
+
+            _BodyState.Bytes(ref mut state) => {
+                if state.Position >= state.Data.Len {
+                    return Ok(0)
+                }
+
+                let remaining := state.Data.Len - state.Position
+                let mut count := buffer.Len
+
+                if count > remaining {
+                    count = remaining
+                }
+
+                let mut index: uint := 0
+
+                while index < count {
+                    buffer[index] = state.Data[state.Position + index]
+                    index += 1
+                }
+
+                state.Position += count
+
+                return Ok(count)
+            }
+
+            _BodyState.Closed(_) => {
+                return Err(BodyError.Closed)
+            }
+        }
     }
 
-    // TODO: Implement http.Body.ReadAllToArray()
+    /**
+    * Reads all remaining body data into a newly allocated byte array.
+    *
+    * Parameters:
+    *   - limit: Maximum number of bytes that may be returned.
+    *
+    * Returns:
+    *   A newly allocated array containing all bytes from the current read
+    *   position to end-of-body. On success, the body is advanced to EOF.
+    *
+    * Errors:
+    *   - BodyError.Closed: The body has already been closed.
+    *   - BodyError.TooLarge: The remaining body exceeds limit.
+    *   - BodyError.Allocation: Storage for the result could not be allocated.
+    *
+    * Ownership:
+    *   The returned array is owned by the caller. The body retains ownership of
+    *   its underlying source. For byte-backed bodies, failure leaves the current
+    *   read position unchanged.
+    */
     fn ReadAllToArray(limit: uint64) Result[byte[], BodyError] {
-        return Err(BodyError.Closed)
+        match self._state {
+            _BodyState.Empty => {
+                let mut result: byte[]
+                return Ok(result)
+            }
+
+            _BodyState.Bytes(ref mut state) => {
+                let remaining := state.Data.Len - state.Position
+
+                if uint64(remaining) > limit {
+                    return Err(BodyError.TooLarge)
+                }
+
+                let mut result: byte[]
+                let mut position := state.Position
+
+                while position < state.Data.Len {
+                    try result.Append(state.Data[position]) {
+                        Err(error) => {
+                            return Err(BodyError.Allocation(error))
+                        }
+                    }
+
+                    position += 1
+                }
+
+                state.Position = position
+                return Ok(result)
+            }
+
+            _BodyState.Closed(_) => {
+                return Err(BodyError.Closed)
+            }
+        }
     }
 
-    // TODO: Implement http.Body.Close()
+    /**
+    * Closes the HTTP body and releases its owned resources.
+    *
+    * Close is idempotent. Closing an already closed body succeeds without
+    * changing its state.
+    *
+    * Known length information is preserved after close. Once closed, the body
+    * cannot be read or rewound and is no longer replayable.
+    */
     fn Close() Result[void, BodyError] {
-        return Err(BodyError.Closed)
+        if self.IsClosed {
+            return Ok()
+        }
+
+        let length := self.Length
+
+        self._state = _BodyState.Closed(_BodyClosedState {
+            Length: length,
+        })
+
+        return Ok()
+    }
+
+    /**
+    * Rewinds the HTTP body to the beginning.
+    *
+    * Empty and byte-backed bodies are replayable. Rewinding an empty body is a
+    * no-op. A closed body cannot be rewound.
+    *
+    * Returns BodyError.Closed when the body has already been closed.
+    */
+    fn Rewind() Result[void, BodyError] {
+        match self._state {
+            _BodyState.Empty => {
+                return Ok()
+            }
+
+            _BodyState.Bytes(ref mut state) => {
+                state.Position = 0
+                return Ok()
+            }
+
+            _BodyState.Closed(_) => {
+                return Err(BodyError.Closed)
+            }
+        }
     }
 }
 
 // TODO: Create and implement http._BodyState
-type _BodyState string
+type _BodyClosedState struct {
+    Length: Option[uint64],
+}
+
+type _BodyBytesState struct {
+    Data: byte[],
+    Position: uint,
+}
+
+type _BodyState union {
+    Empty,
+    Bytes(_BodyBytesState),
+    Closed(_BodyClosedState),
+}
 
 /* _BodyState is private and implementation-defined. init() creates an empty,
 * replayable body of known length zero. init(data: <- byte[]) consumes the array

@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,58 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Slices</div>
-        <a href="#20-slices">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#slices">Slices</a>
+        <a href="#model">Borrowed View Model</a>
+        <a href="#types">Slice Types</a>
+        <a href="#sources">Valid Sources</a>
+        <a href="#creation">Explicit Slice Creation</a>
+        <a href="#shared">Shared Slices</a>
+        <a href="#mutable">Mutable Slices</a>
+        <a href="#ranges">Slice Ranges</a>
+        <a href="#open-ranges">Open Ranges</a>
+        <a href="#empty">Empty Slices</a>
+        <a href="#descending">No Descending Slices</a>
+        <a href="#checked">Checked and Fallible Slicing</a>
+        <a href="#reborrowing">Reborrowing</a>
+        <a href="#lifetimes">Lifetime Bounds</a>
+        <a href="#invalidation">Invalidation</a>
+        <a href="#dynamic-arrays">Dynamic Array Backing</a>
+        <a href="#properties">Slice Properties</a>
+        <a href="#len">Len</a>
+        <a href="#isempty">IsEmpty</a>
+        <a href="#sizeof">SizeOf</a>
+        <a href="#ptr">Ptr</a>
+        <a href="#tostring">ToString</a>
+        <a href="#indexing">Indexing</a>
+        <a href="#element-borrows">Element Borrows</a>
+        <a href="#replacement">Element Replacement</a>
+        <a href="#move-only">Move-Only Elements</a>
+        <a href="#iteration">Iteration</a>
+        <a href="#reverse">Reverse</a>
+        <a href="#fill">Fill</a>
+        <a href="#no-structural">No Structural Mutation</a>
+        <a href="#parameters">Function Parameters</a>
+        <a href="#returns">Returning Slices</a>
+        <a href="#destruction">Destruction</a>
+        <a href="#equality">Equality</a>
+        <a href="#ffi">FFI</a>
+        <a href="#unsafe">Slices and unsafe</a>
+        <a href="#not-owner">What a Slice Does Not Do</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,14 +84,14 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html" class="active">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html">Ownership</a>
         <a href="25-borrowing.html">Borrowing</a>
@@ -71,36 +113,1211 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Slices</div>
 
-        <h1 id="20-slices">Slices</h1>
+        <h1 id="slices">Slices</h1>
 
-        <p>A slice is a dynamically-sized view into a contiguous sequence of elements.</p>
+        <p>
+            A slice is a non-owning borrowed view of a contiguous range of initialized elements.
+            It lets code work with part or all of an existing sequence without taking ownership
+            and without copying the elements.
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>let values: int[5] := [10, 20, 30, 40, 50]
+
+let all := ref values[..]
+let middle := ref values[1..&lt;4]</code></pre>
+
+        <p>The canonical slice types are:</p>
+
+        <pre><code>ref T[]
+ref mut T[]</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A slice borrows storage. It does not own elements,
+            capacity, backing allocation or storage lifetime.
+        </div>
+
+        <section id="model">
+            <h2>Borrowed View Model</h2>
+
+            <p>
+                A slice represents a contiguous unit-stride view into storage owned elsewhere.
+            </p>
+
+            <p>A slice:</p>
+
+            <ul>
+                <li>does not own its elements;</li>
+                <li>does not own collection capacity;</li>
+                <li>does not choose an allocator;</li>
+                <li>does not reclaim backing storage;</li>
+                <li>does not implicitly copy the represented elements;</li>
+                <li>cannot outlive the storage it borrows;</li>
+                <li>cannot survive an invalidating backing-storage transition.</li>
+            </ul>
+
+            <p>
+                A slice is therefore fundamentally different from an owning dynamic array
+                <code>T[]</code>.
+            </p>
+
+            <pre><code>T[]          // owns the dynamic sequence
+ref T[]      // shared borrowed view
+ref mut T[]  // mutable borrowed view</code></pre>
+        </section>
+
+        <section id="types">
+            <h2>Slice Types</h2>
+
+            <h3>Shared slice</h3>
+
+            <pre><code>ref T[]</code></pre>
+
+            <p>
+                A shared slice provides read access to a contiguous element range.
+            </p>
+
+            <h3>Mutable slice</h3>
+
+            <pre><code>ref mut T[]</code></pre>
+
+            <p>
+                A mutable slice provides exclusive mutable access to the represented element range.
+            </p>
+
+            <p>
+                The element type <code>T</code> is part of slice type identity.
+            </p>
+
+            <p>
+                The runtime length is not encoded as a source-level generic or fixed dimension.
+            </p>
+
+            <p>
+                The physical slice representation is compiler-defined.
+                Source code must not assume one particular descriptor layout.
+            </p>
+        </section>
+
+        <section id="sources">
+            <h2>Valid Slice Sources</h2>
+
+            <p>
+                A slice may borrow any source that guarantees:
+            </p>
+
+            <ul>
+                <li>contiguous storage;</li>
+                <li>unit-stride elements;</li>
+                <li>initialized elements;</li>
+                <li>the exact element type <code>T</code>;</li>
+                <li>a lifetime long enough for the borrow;</li>
+                <li>storage stability for the borrow duration.</li>
+            </ul>
+
+            <p>Canonical Sec 0.1 slice sources include:</p>
+
+            <pre><code>T[N]
+T[]
+list[T]
+ref T[]
+ref mut T[]</code></pre>
+
+            <p>
+                A slice is not a general borrowed view over every collection.
+            </p>
+
+            <p>These are not ordinary slice sources:</p>
+
+            <pre><code>map[K, V]
+set[T]</code></pre>
+
+            <p>
+                Shaped multidimensional views use the shaped-type view model rather than pretending
+                every shaped value is a one-dimensional slice.
+            </p>
+        </section>
+
+        <section id="creation">
+            <h2>Slice Creation Is Explicit</h2>
+
+            <p>Create a shared slice with <code>ref</code>:</p>
+
+            <pre><code>let view := ref values[..]</code></pre>
+
+            <p>Create a mutable slice with <code>ref mut</code>:</p>
+
+            <pre><code>let writable := ref mut values[..]</code></pre>
+
+            <p>Create a shared subrange:</p>
+
+            <pre><code>let middle := ref values[1..&lt;4]</code></pre>
+
+            <p>Or an inclusive subrange:</p>
+
+            <pre><code>let middle := ref values[1..3]</code></pre>
+
+            <p>
+                Sec does not require helper methods such as:
+            </p>
+
+            <pre><code>AsSlice()
+AsMutableSlice()
+Slice()</code></pre>
+
+            <p>
+                The borrow is visible directly in source.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> There is no general implicit owner-to-slice conversion.
+                Borrowing is explicit unless another language rule specifically defines a borrowing conversion.
+            </div>
+        </section>
+
+        <section id="shared">
+            <h2>Shared Slices</h2>
+
+            <pre><code>let view: ref int[] := ref values[..]</code></pre>
+
+            <p>A shared slice permits:</p>
+
+            <ul>
+                <li>reading elements;</li>
+                <li>shared element borrowing;</li>
+                <li>re-slicing into another shared slice;</li>
+                <li>read-only observations such as <code>Len</code> and <code>IsEmpty</code>;</li>
+                <li>safe iteration that does not require mutable authority.</li>
+            </ul>
+
+            <p>
+                A shared slice does not permit mutation of its represented elements.
+            </p>
+
+            <p>
+                Shared slices may be created from mutable storage:
+            </p>
+
+            <pre><code>let mut values: int[4] := [1, 2, 3, 4]
+let view := ref values[..]</code></pre>
+
+            <p>
+                Borrowing mutable storage as shared does not grant mutation through the resulting slice.
+            </p>
+        </section>
+
+        <section id="mutable">
+            <h2>Mutable Slices</h2>
+
+            <pre><code>let writable: ref mut int[] := ref mut values[..]</code></pre>
+
+            <p>
+                A mutable slice requires mutable borrowing authority over the source range.
+            </p>
+
+            <p>It may:</p>
+
+            <ul>
+                <li>read represented elements;</li>
+                <li>replace represented elements;</li>
+                <li>take shared element borrows;</li>
+                <li>take mutable element borrows;</li>
+                <li>create shared reborrows;</li>
+                <li>create mutable reborrows;</li>
+                <li>use slice mutation operations such as <code>Reverse()</code> and <code>Fill(value)</code>.</li>
+            </ul>
+
+            <p>
+                While the mutable slice is live, conflicting direct access through the owner or
+                overlapping mutable borrows is forbidden by the ordinary borrow rules.
+            </p>
+        </section>
+
+        <section id="ranges">
+            <h2>Slice Ranges</h2>
+
+            <p>
+                Slice ranges use Sec's ordinary range syntax.
+            </p>
+
+            <h3>Exclusive upper bound</h3>
+
+            <pre><code>source[start..&lt;end]</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>let part := ref values[1..&lt;4]</code></pre>
+
+            <p>
+                selects logical indices <code>1</code>, <code>2</code> and <code>3</code>.
+            </p>
+
+            <h3>Inclusive upper bound</h3>
+
+            <pre><code>source[start..end]</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>let part := ref values[1..3]</code></pre>
+
+            <p>
+                selects logical indices <code>1</code>, <code>2</code> and <code>3</code>.
+            </p>
+
+            <p>
+                For semantic analysis and borrow reasoning, valid ranges are normalized to:
+            </p>
+
+            <pre><code>[start, endExclusive)</code></pre>
+        </section>
+
+        <section id="open-ranges">
+            <h2>Open Slice Ranges</h2>
+
+            <p>Sec supports open slice forms:</p>
+
+            <pre><code>source[..]
+source[start..]
+source[..end]
+source[..&lt;end]</code></pre>
+
+            <h3>Entire sequence</h3>
+
+            <pre><code>let all := ref values[..]</code></pre>
+
+            <h3>From an index to the end</h3>
+
+            <pre><code>let tail := ref values[2..]</code></pre>
+
+            <h3>From the beginning through an inclusive endpoint</h3>
+
+            <pre><code>let head := ref values[..3]</code></pre>
+
+            <h3>From the beginning to an exclusive endpoint</h3>
+
+            <pre><code>let head := ref values[..&lt;3]</code></pre>
+
+            <p>
+                Open endpoints are resolved against the represented source range.
+            </p>
+        </section>
+
+        <section id="empty">
+            <h2>Empty Slices</h2>
+
+            <p>
+                An empty slice is valid.
+            </p>
+
+            <p>For example, a valid empty range may produce:</p>
+
+            <pre><code>Len == 0
+IsEmpty == true</code></pre>
+
+            <p>
+                No element exists in the represented range.
+            </p>
+
+            <p>
+                The empty slice still has ordinary borrow/lifetime semantics.
+                It is not an owning empty collection.
+            </p>
+        </section>
+
+        <section id="descending">
+            <h2>Slice Ranges Do Not Descend</h2>
+
+            <p>
+                Descending slice ranges are invalid.
+            </p>
+
+            <p>
+                Slicing selects a contiguous forward range from existing storage.
+                It does not reverse the sequence.
+            </p>
+
+            <p>
+                To reverse represented elements in place through a mutable slice, use:
+            </p>
+
+            <pre><code>writable.Reverse()</code></pre>
+
+            <p>
+                A reversed traversal order is a different operation from selecting a contiguous slice.
+            </p>
+        </section>
+
+        <section id="checked">
+            <h2>Checked and Fallible Slicing</h2>
+
+            <p>
+                Slice bounds remain memory-safety boundaries.
+            </p>
+
+            <p>
+                A compile-time-known invalid constant range is a compile-time error.
+            </p>
+
+            <p>
+                A runtime-dependent range uses the normal checked slicing path.
+                Fallible range access uses the canonical <code>RangeError</code> family where
+                explicit fallible access is required.
+            </p>
+
+            <p>
+                Negative range endpoints are invalid.
+            </p>
+
+            <p>
+                Safe bounds checking is still required inside an <code>unsafe</code> block.
+                <code>unsafe</code> does not turn safe slice syntax into unchecked pointer traversal.
+            </p>
+
+            <p>
+                Truly unchecked traversal belongs to raw-pointer operations and their own rules.
+            </p>
+        </section>
+
+        <section id="reborrowing">
+            <h2>Reborrowing a Slice</h2>
+
+            <p>A slice may itself be sliced again.</p>
+
+            <h3>Shared reborrow</h3>
+
+            <pre><code>let part := ref view[2..&lt;5]</code></pre>
+
+            <h3>Mutable reborrow</h3>
+
+            <pre><code>let part := ref mut writable[2..&lt;5]</code></pre>
+
+            <p>
+                A mutable reborrow requires mutable authority in the source slice.
+            </p>
+
+            <p>
+                A mutable slice may also produce a shared reborrow when only shared access is needed:
+            </p>
+
+            <pre><code>let readOnly := ref writable[2..&lt;5]</code></pre>
+
+            <p>
+                Reborrowing never creates a new owner.
+                The new slice remains tied to the same ultimate storage.
+            </p>
+        </section>
+
+        <section id="lifetimes">
+            <h2>Slice Lifetimes</h2>
+
+            <p>
+                A slice's lifetime is constrained by every storage layer it depends on.
+            </p>
+
+            <p>A reborrow cannot outlive:</p>
+
+            <ul>
+                <li>the source slice;</li>
+                <li>the ultimate storage owner;</li>
+                <li>the current backing/storage epoch.</li>
+            </ul>
+
+            <p>
+                The compiler tracks these constraints statically.
+                The programmer does not write explicit lifetime annotations.
+            </p>
+
+            <p>This is invalid in principle:</p>
+
+            <pre><code>fn Invalid() ref int[] {
+    let values: int[4] := [1, 2, 3, 4]
+    return ref values[..]
+}</code></pre>
+
+            <p>
+                The returned slice would refer to local storage destroyed when the function returns.
+            </p>
+
+            <p>
+                A returned slice must derive from storage whose lifetime remains valid after return,
+                such as an allowed incoming borrow or another valid external owner.
+            </p>
+        </section>
+
+        <section id="invalidation">
+            <h2>Borrow Invalidation</h2>
+
+            <p>
+                A slice depends not only on the owner's existence but also on the continued validity
+                of the referenced storage region.
+            </p>
+
+            <p>
+                Operations that may invalidate backing storage conflict with a live slice.
+            </p>
+
+            <p>Examples include operations that may:</p>
+
+            <ul>
+                <li>relocate dynamic backing;</li>
+                <li>replace the backing storage domain;</li>
+                <li>destroy the owner;</li>
+                <li>move an owner in a way that invalidates the referenced location;</li>
+                <li>perform structural mutation that changes the represented storage assumptions.</li>
+            </ul>
+
+            <p>
+                The compiler rejects conflicting operations while the slice remains live.
+            </p>
+
+            <p>
+                No runtime borrow counter or tracing collector is required for this model.
+            </p>
+        </section>
+
+        <section id="dynamic-arrays">
+            <h2>Slices of Dynamic Arrays</h2>
+
+            <p>
+                A slice into <code>T[]</code> depends on the dynamic array's current backing incarnation.
+            </p>
+
+            <pre><code>let mut values: int[]
+try values.Append(10)
+try values.Append(20)
+
+let view := ref values[..]</code></pre>
+
+            <p>
+                A later structural operation that may grow and relocate <code>values</code> cannot
+                proceed while <code>view</code> remains a conflicting live dependency.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>let view := ref values[..]
+try values.Append(30)</code></pre>
+
+            <p>
+                is invalid when <code>Append</code> may invalidate the backing storage required by
+                <code>view</code>.
+            </p>
+
+            <p>
+                Ordinary in-place mutation of an element does not itself imply backing relocation,
+                but the usual shared/mutable borrow conflicts still apply.
+            </p>
+        </section>
+
+        <section id="properties">
+            <h2>Slice Properties</h2>
+
+            <p>Both shared and mutable slices expose these read-only properties:</p>
+
+            <pre><code>Len
+IsEmpty
+Ptr
+SizeOf</code></pre>
+
+            <p>
+                Mutable slices expose the same observations as shared slices.
+            </p>
+        </section>
+
+        <section id="len">
+            <h2><code>Len</code></h2>
+
+            <p>
+                <code>Len</code> is the number of logical elements represented by the slice.
+            </p>
+
+            <p>Its type is:</p>
+
+            <pre><code>uint</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>let view := ref values[2..&lt;5]
+let count: uint := view.Len</code></pre>
+
+            <p>
+                <code>Len</code> never means byte size.
+            </p>
+        </section>
+
+        <section id="isempty">
+            <h2><code>IsEmpty</code></h2>
+
+            <p>
+                <code>IsEmpty</code> is a read-only <code>bool</code> property equivalent to:
+            </p>
+
+            <pre><code>Len == 0</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>if view.IsEmpty {
+    return
+}</code></pre>
+        </section>
+
+        <section id="sizeof">
+            <h2><code>SizeOf</code></h2>
+
+            <p>
+                For a slice instance, <code>SizeOf</code> is the byte extent of the represented
+                logical payload.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>payload byte size = Len * element layout stride</code></pre>
+
+            <p>
+                It is not the physical size of the compiler's internal slice descriptor.
+            </p>
+
+            <p>For FFI wrappers, these two observations commonly form an explicit pair:</p>
+
+            <pre><code>view.Ptr
+view.SizeOf</code></pre>
+        </section>
+
+        <section id="ptr">
+            <h2><code>Ptr</code></h2>
+
+            <p>
+                <code>Ptr</code> exposes the address of the represented contiguous element storage
+                under the raw-pointer rules.
+            </p>
+
+            <pre><code>let pointer := view.Ptr</code></pre>
+
+            <p><code>Ptr</code> does not:</p>
+
+            <ul>
+                <li>transfer element ownership;</li>
+                <li>extend the slice lifetime;</li>
+                <li>extend the owner's lifetime;</li>
+                <li>pin relocatable backing storage;</li>
+                <li>prevent invalidation;</li>
+                <li>produce a safe reference;</li>
+                <li>make the slice descriptor ABI-stable.</li>
+            </ul>
+
+            <p>
+                For an empty slice, the raw pointer representation is implementation-defined
+                under the raw-pointer rules and must not be dereferenced.
+            </p>
+        </section>
+
+        <section id="tostring">
+            <h2><code>ToString</code></h2>
+
+            <p>Slices may expose the common formatting methods:</p>
+
+            <pre><code>view.ToString()
+view.ToString(format)</code></pre>
+
+            <p>
+                Ordinary no-argument formatting is type-oriented rather than an implicit dump of
+                every represented element.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>ref int[].ToString() -&gt; "ref int[]"</code></pre>
+
+            <p>
+                Exact <code>char[]</code> and <code>rune[]</code> text conversions are special
+                cases defined by the string conversion rules.
+            </p>
+
+            <p>
+                Formatting that reveals data borrows it; it does not consume the underlying owner.
+            </p>
+        </section>
+
+        <section id="indexing">
+            <h2>Indexing a Slice</h2>
+
+            <p>
+                Slice indexing uses ordinary sequence indexing:
+            </p>
+
+            <pre><code>view[index]</code></pre>
+
+            <p>Valid bounds are:</p>
+
+            <pre><code>0 &lt;= index &lt; Len</code></pre>
+
+            <p>
+                Indexing a linear sequence produces an element place.
+                It does not inherently decide whether the use copies, borrows or mutates the element.
+            </p>
+
+            <p>Examples:</p>
+
+            <pre><code>let value := view[index]
+let element := ref view[index]</code></pre>
+
+            <p>For a mutable slice:</p>
+
+            <pre><code>writable[index] = replacement
+let element := ref mut writable[index]</code></pre>
+
+            <p>
+                Complete indexing and checked-access semantics are covered in the next chapter.
+            </p>
+        </section>
+
+        <section id="element-borrows">
+            <h2>Element Borrows</h2>
+
+            <p>A shared slice can yield a shared reference to an element:</p>
+
+            <pre><code>let element := ref view[index]</code></pre>
+
+            <p>A mutable slice can yield either:</p>
+
+            <pre><code>let readable := ref writable[index]
+let writableElement := ref mut writable[index]</code></pre>
+
+            <p>
+                The resulting reference lifetime cannot exceed the slice or the ultimate backing storage.
+            </p>
+
+            <p>
+                Two runtime indexes are not assumed disjoint merely because they are written as
+                different expressions.
+            </p>
+
+            <p>
+                Overlapping mutable borrows are rejected unless disjointness can be proven.
+            </p>
+        </section>
+
+        <section id="replacement">
+            <h2>Element Replacement</h2>
+
+            <p>
+                A mutable slice may replace an existing element:
+            </p>
+
+            <pre><code>writable[index] = replacement</code></pre>
+
+            <p>Replacement requires:</p>
+
+            <ul>
+                <li>a valid index;</li>
+                <li>mutable access to the element place;</li>
+                <li>an assignable replacement value;</li>
+                <li>no conflicting borrow;</li>
+                <li>successful evaluation of the replacement before the old value is destroyed.</li>
+            </ul>
+
+            <p>
+                The old owned element is destroyed exactly once after replacement is ready and
+                ownership transfer is valid.
+            </p>
+
+            <p>
+                Element replacement does not change slice <code>Len</code>.
+            </p>
+        </section>
+
+        <section id="move-only">
+            <h2>Move-Only Elements</h2>
+
+            <p>
+                A slice does not own the represented elements.
+            </p>
+
+            <p>
+                Therefore ordinary indexing never transfers ownership out of a slice merely because
+                the element type is move-only.
+            </p>
+
+            <p>This is not an implicit extraction mechanism:</p>
+
+            <pre><code>let resource := view[index]</code></pre>
+
+            <p>
+                when the operation would require moving a move-only value from borrowed storage.
+            </p>
+
+            <p>
+                Borrow the element instead:
+            </p>
+
+            <pre><code>let resource := ref view[index]</code></pre>
+
+            <p>
+                A slice has no <code>RemoveAt</code> operation because it cannot remove ownership
+                from the owner or change the owner's collection length.
+            </p>
+        </section>
+
+        <section id="iteration">
+            <h2>Iteration</h2>
+
+            <p>Slices participate directly in <code>for</code> iteration:</p>
+
+            <pre><code>for item in view {
+    Process(item)
+}</code></pre>
+
+            <p>
+                Plain iteration copies each element and therefore requires the element type to be copyable.
+            </p>
+
+            <p>Shared borrowed iteration:</p>
+
+            <pre><code>for ref item in view {
+    Inspect(item)
+}</code></pre>
+
+            <p>Mutable borrowed iteration:</p>
+
+            <pre><code>for ref mut item in writable {
+    item.Reset()
+}</code></pre>
+
+            <p>Index plus element:</p>
+
+            <pre><code>for index, ref item in view {
+    Inspect(index, item)
+}</code></pre>
+
+            <p>
+                Iteration order is increasing logical index order.
+            </p>
+
+            <p>
+                Ordinary <code>for</code> iteration is not consuming.
+                A slice never transfers ownership of represented elements through iteration.
+            </p>
+        </section>
+
+        <section id="reverse">
+            <h2><code>Reverse()</code></h2>
+
+            <p>
+                <code>Reverse()</code> is available on mutable slices:
+            </p>
+
+            <pre><code>writable.Reverse()</code></pre>
+
+            <p>It reverses the represented elements in place.</p>
+
+            <p><code>Reverse()</code>:</p>
+
+            <ul>
+                <li>does not allocate;</li>
+                <li>does not change <code>Len</code>;</li>
+                <li>does not change backing-storage identity;</li>
+                <li>does not consume the slice;</li>
+                <li>does not require <code>T</code> to be copyable.</li>
+            </ul>
+
+            <p>
+                Move-based swaps may be used internally, so <code>Reverse()</code> works for
+                move-only element types.
+            </p>
+        </section>
+
+        <section id="fill">
+            <h2><code>Fill(value)</code></h2>
+
+            <p>
+                <code>Fill(value)</code> is available on:
+            </p>
+
+            <pre><code>ref mut T[]</code></pre>
+
+            <p>
+                when <code>T</code> supports ordinary infallible semantic copying.
+            </p>
+
+            <pre><code>writable.Fill(replacement)</code></pre>
+
+            <p>The operation:</p>
+
+            <ul>
+                <li>evaluates <code>replacement</code> exactly once;</li>
+                <li>uses it as the source for each element replacement;</li>
+                <li>visits elements in increasing logical index order;</li>
+                <li>replaces every represented element;</li>
+                <li>destroys each replaced owned value exactly once through normal replacement semantics;</li>
+                <li>does not allocate;</li>
+                <li>does not change <code>Len</code>;</li>
+                <li>does not change storage identity.</li>
+            </ul>
+
+            <p>
+                <code>Fill(value)</code> is unavailable when <code>T</code> is move-only or
+                otherwise cannot be repeatedly copied.
+            </p>
+
+            <p>
+                Availability depends on the element type, not on whether the current slice happens
+                to be empty.
+            </p>
+        </section>
+
+        <section id="no-structural">
+            <h2>Slices Do Not Structurally Mutate Their Owner</h2>
+
+            <p>
+                A mutable slice may modify the values already inside its represented range.
+                It may not change the owner's sequence structure.
+            </p>
+
+            <p>Slices do not expose structural operations such as:</p>
+
+            <pre><code>Append
+Insert
+RemoveAt
+Remove
+Clear
+Reserve
+Resize</code></pre>
+
+            <p>
+                A slice cannot change the owner collection's length.
+            </p>
+
+            <p>
+                This distinction is central:
+            </p>
+
+            <pre><code>element mutation      // may be allowed through ref mut T[]
+structural mutation   // belongs to the owner</code></pre>
+        </section>
+
+        <section id="parameters">
+            <h2>Slice Function Parameters</h2>
+
+            <p>
+                Slices are the normal way to accept borrowed contiguous sequence data.
+            </p>
+
+            <p>Read-only input:</p>
+
+            <pre><code>fn Sum(values: ref int[]) int {
+    ...
+}</code></pre>
+
+            <p>Mutable borrowed input:</p>
+
+            <pre><code>fn ClearBytes(values: ref mut byte[]) void {
+    values.Fill(0)
+}</code></pre>
+
+            <p>
+                Passing a slice does not transfer ownership of the backing collection.
+            </p>
+
+            <p>
+                Slice creation at the call site remains explicit unless another rule specifically
+                introduces a borrowing conversion.
+            </p>
+
+            <p>For example, the caller may write:</p>
+
+            <pre><code>let total := Sum(ref values[..])</code></pre>
+
+            <p>
+                This makes the borrow visible at the ownership boundary.
+            </p>
+        </section>
+
+        <section id="returns">
+            <h2>Returning Slices</h2>
+
+            <p>
+                A function may return a slice only when the referenced storage remains valid after return.
+            </p>
+
+            <p>Returning a slice into local storage is invalid:</p>
+
+            <pre><code>fn Invalid() ref byte[] {
+    let bytes: byte[4] := [1, 2, 3, 4]
+    return ref bytes[..]
+}</code></pre>
+
+            <p>
+                The local array is destroyed when the function returns.
+            </p>
+
+            <p>
+                A returned slice must instead propagate an allowed reference to external storage,
+                or otherwise refer to storage with a valid longer lifetime.
+            </p>
+
+            <p>
+                The ordinary reference-origin and borrow-lifetime rules determine whether that
+                return is legal.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Slice Destruction</h2>
+
+            <p>
+                Destroying a slice does not destroy its elements.
+            </p>
+
+            <p>Slice destruction:</p>
+
+            <ul>
+                <li>destroys no represented element;</li>
+                <li>reclaims no backing storage;</li>
+                <li>does not run the owner's destructor;</li>
+                <li>ends only the reference/borrow value.</li>
+            </ul>
+
+            <p>
+                The storage owner remains responsible for element destruction and backing reclamation.
+            </p>
+        </section>
+
+        <section id="equality">
+            <h2>Equality</h2>
+
+            <p>
+                Ordinary slice <code>==</code> and <code>!=</code> are not defined as content equality.
+            </p>
+
+            <p>
+                Reference identity and content equality are different concepts.
+            </p>
+
+            <p>
+                If code needs element-by-element content comparison, use an explicitly defined
+                collection/core operation for that purpose rather than assuming ordinary slice equality.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>Slices and FFI</h2>
+
+            <p>
+                A slice's physical descriptor representation is compiler-defined and is not
+                generally FFI-stable.
+            </p>
+
+            <p>
+                Do not pass a Sec slice descriptor directly to foreign code unless a specific ABI
+                contract explicitly defines that representation.
+            </p>
+
+            <p>
+                For contiguous data, an ordinary wrapper may expose explicit components:
+            </p>
+
+            <pre><code>unsafe {
+    ForeignCall(view.Ptr, view.SizeOf)
+}</code></pre>
+
+            <p>
+                The foreign call then receives the pointer and byte extent required by its ABI.
+            </p>
+
+            <p>
+                The slice must remain valid for the entire foreign access.
+            </p>
+        </section>
+
+        <section id="unsafe">
+            <h2>Slices and <code>unsafe</code></h2>
+
+            <p>
+                Entering <code>unsafe</code> does not disable normal safe slice bounds semantics.
+            </p>
+
+            <pre><code>unsafe {
+    let part := ref values[start..&lt;end]
+}</code></pre>
+
+            <p>
+                is still a safe slice operation and must satisfy ordinary checked range rules.
+            </p>
+
+            <p>
+                Use raw pointers when deliberately performing unchecked memory traversal.
+            </p>
+
+            <p>
+                Raw pointers do not inherit slice lifetime, bounds or ownership guarantees automatically.
+            </p>
+        </section>
+
+        <section id="not-owner">
+            <h2>What a Slice Does Not Do</h2>
+
+            <p>A Sec slice does not:</p>
+
+            <ul>
+                <li>own the represented elements;</li>
+                <li>own capacity;</li>
+                <li>allocate merely by being created;</li>
+                <li>deallocate backing storage;</li>
+                <li>implicitly copy the represented sequence;</li>
+                <li>implicitly extend the owner's lifetime;</li>
+                <li>permit mutation through <code>ref T[]</code>;</li>
+                <li>permit structural collection mutation through <code>ref mut T[]</code>;</li>
+                <li>allow ownership extraction of a move-only element;</li>
+                <li>reverse data merely because a descending range was requested;</li>
+                <li>become FFI-stable merely because it contains a pointer and a length conceptually;</li>
+                <li>remove the need for borrow analysis.</li>
+            </ul>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important slice diagnostics include:</p>
+
+            <ul>
+                <li>source is not a valid contiguous slice source;</li>
+                <li>element type mismatch;</li>
+                <li>attempted implicit owner-to-slice conversion;</li>
+                <li><code>ref mut</code> requested without mutable borrowing authority;</li>
+                <li>negative slice endpoint;</li>
+                <li>descending slice range;</li>
+                <li>compile-time-known range outside bounds;</li>
+                <li>dynamic checked range failure;</li>
+                <li>mutable reborrow from a shared slice;</li>
+                <li>slice lifetime escaping the source owner;</li>
+                <li>slice returned from destroyed local storage;</li>
+                <li>owner mutation that may invalidate a live slice;</li>
+                <li>conflicting shared and mutable borrows;</li>
+                <li>overlapping mutable element borrows that cannot be proven disjoint;</li>
+                <li>assignment through a shared slice;</li>
+                <li>attempt to move a move-only element out through slice indexing;</li>
+                <li>structural mutation method used on a slice;</li>
+                <li><code>Fill(value)</code> used with a non-copyable element type;</li>
+                <li>direct foreign use of an unspecified slice descriptor layout.</li>
+            </ul>
+
+            <p>A lifetime diagnostic should explain the actual storage problem:</p>
+
+            <pre><code>cannot return this slice
+
+the slice borrows local storage that is destroyed when the function returns
+
+help: return owned storage
+help: return a slice derived from a valid external owner</code></pre>
+
+            <p>An invalid mutation diagnostic should distinguish element mutation from structure:</p>
+
+            <pre><code>cannot append through ref mut Packet[]
+
+a mutable slice may replace existing elements but cannot change the owner's length
+
+help: perform Append on the owning collection when no conflicting slice is live</code></pre>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>ref T[]</code> for read-only borrowed contiguous input.</li>
+                <li>Use <code>ref mut T[]</code> only when the callee must mutate existing elements.</li>
+                <li>Create slices explicitly with <code>ref source[range]</code> or <code>ref mut source[range]</code>.</li>
+                <li>Use <code>..<</code> when an exclusive upper bound naturally matches index arithmetic.</li>
+                <li>Use open ranges such as <code>[..]</code> and <code>[start..]</code> rather than computing redundant endpoints.</li>
+                <li>Use <code>Reverse()</code> to reverse represented elements; do not try to encode reversal as a descending slice.</li>
+                <li>Use <code>Fill(value)</code> only when repeated copying of the element type is semantically valid.</li>
+                <li>Keep slice lifetimes narrow when the owner may need structural mutation.</li>
+                <li>Prefer slice parameters when a function does not need ownership.</li>
+                <li>Do not return slices into local storage.</li>
+                <li>Do not retain <code>Ptr</code> beyond the slice/backing lifetime.</li>
+                <li>Use explicit pointer/length or pointer/byte-count wrappers at FFI boundaries instead of assuming a slice ABI.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A slice is a non-owning borrowed view of contiguous initialized elements.</li>
+                <li>Canonical slice types are <code>ref T[]</code> and <code>ref mut T[]</code>.</li>
+                <li>A slice owns neither elements, capacity nor backing storage.</li>
+                <li>The physical slice representation is compiler-defined and not generally FFI-stable.</li>
+                <li>Canonical slice sources include fixed arrays, dynamic arrays, lists and other slices.</li>
+                <li>Maps and sets are not ordinary slice sources.</li>
+                <li>Slice creation is explicit.</li>
+                <li>Use <code>ref source[..]</code> for a shared slice.</li>
+                <li>Use <code>ref mut source[..]</code> for a mutable slice.</li>
+                <li>There is no required <code>AsSlice()</code>, <code>AsMutableSlice()</code> or <code>Slice()</code> method.</li>
+                <li>There is no general implicit owner-to-slice conversion.</li>
+                <li>A shared slice may be borrowed from mutable storage without granting mutation.</li>
+                <li>A mutable slice requires mutable source authority.</li>
+                <li>Slice ranges use the same <code>..</code> and <code>..&lt;</code> range notation as Sec.</li>
+                <li>Open forms include <code>[..]</code>, <code>[start..]</code>, <code>[..end]</code> and <code>[..&lt;end]</code>.</li>
+                <li>Valid slice ranges normalize to <code>[start, endExclusive)</code>.</li>
+                <li>Negative endpoints are invalid.</li>
+                <li>Descending slice ranges are invalid.</li>
+                <li>Empty slices are valid.</li>
+                <li>Compile-time-known invalid ranges are compile-time errors.</li>
+                <li>Runtime checked slicing uses the normal range-checking path and <code>RangeError</code> where a fallible access form is required.</li>
+                <li><code>unsafe</code> does not disable safe slice bounds checking.</li>
+                <li>A slice may be re-sliced.</li>
+                <li>A mutable reborrow requires mutable authority from the source slice.</li>
+                <li>A reborrow cannot outlive the source slice, ultimate owner or current backing/storage epoch.</li>
+                <li>A live slice prevents conflicting storage-invalidating operations.</li>
+                <li>A slice into <code>T[]</code> depends on the current dynamic-array backing incarnation.</li>
+                <li>Both slice types expose <code>Len</code>, <code>IsEmpty</code>, <code>Ptr</code> and <code>SizeOf</code>.</li>
+                <li><code>Len</code> is the logical element count.</li>
+                <li><code>SizeOf</code> is logical payload byte extent, not descriptor size.</li>
+                <li><code>Ptr</code> does not extend lifetime or pin backing storage.</li>
+                <li>Slice indexing produces an element place whose use context determines copy, borrow or mutation.</li>
+                <li>A shared slice can produce shared element references.</li>
+                <li>A mutable slice can produce shared or mutable element references.</li>
+                <li>A mutable slice may replace existing elements.</li>
+                <li>A slice never transfers element ownership merely through indexing.</li>
+                <li>Move-only elements must be borrowed rather than implicitly extracted.</li>
+                <li>Slices participate directly in ordinary <code>for</code> iteration.</li>
+                <li>Plain iteration copies and therefore requires copyable elements.</li>
+                <li>Borrowed iteration uses <code>ref</code> and, for mutable slices, <code>ref mut</code>.</li>
+                <li><code>Reverse()</code> is available on mutable slices and works for move-only elements.</li>
+                <li><code>Fill(value)</code> is available on mutable slices when <code>T</code> can be repeatedly copied.</li>
+                <li><code>Fill(value)</code> evaluates its value exactly once.</li>
+                <li>Slices do not expose structural operations such as <code>Append</code>, <code>RemoveAt</code>, <code>Clear</code>, <code>Reserve</code> or <code>Resize</code>.</li>
+                <li>A slice cannot change the owner's collection length.</li>
+                <li>Slice parameters borrow rather than transfer ownership.</li>
+                <li>Returned slices must refer to storage that remains valid after return.</li>
+                <li>Destroying a slice destroys no elements and reclaims no backing storage.</li>
+                <li>Ordinary slice <code>==</code>/<code>!=</code> do not mean content equality.</li>
+                <li>FFI wrappers should pass explicit compatible pointer/size components rather than assume a stable slice descriptor ABI.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="19-arrays.html">Previous: Arrays</a>
+            <a href="19-arrays.html">Previous: Arrays</a>
             <a href="21-indexing.html">Next: Indexing</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

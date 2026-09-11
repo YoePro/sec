@@ -1,0 +1,1590 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Values, Places and Storage - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#storage">Values, Places and Storage</a>
+        <a href="#why-model">Why This Model Matters</a>
+        <a href="#value">Value</a>
+        <a href="#object">Object</a>
+        <a href="#binding">Binding</a>
+        <a href="#place">Place</a>
+        <a href="#not-place">Not Every Expression Is a Place</a>
+        <a href="#root-place">Root Places</a>
+        <a href="#sub-place">Sub-Places</a>
+        <a href="#place-capabilities">Place Capabilities</a>
+        <a href="#relationships">Place Relationships</a>
+        <a href="#storage-definition">Storage</a>
+        <a href="#object-storage">Object vs Storage Lifetime</a>
+        <a href="#initialization">Storage Is Not an Initialized Value</a>
+        <a href="#replacement">Replacement and Reinitialization</a>
+        <a href="#availability">Availability vs Storage</a>
+        <a href="#storage-identity">Storage Identity</a>
+        <a href="#numeric-address">Numeric Address Is Not Identity</a>
+        <a href="#domain">Storage Domains</a>
+        <a href="#epoch">Validity Epochs</a>
+        <a href="#backing">Backing Storage</a>
+        <a href="#backing-relations">Backing Relationships</a>
+        <a href="#origins">Storage Origins</a>
+        <a href="#automatic">Automatic Storage</a>
+        <a href="#static">Static Storage</a>
+        <a href="#threadlocal">Thread-Local Storage</a>
+        <a href="#arena">Arena Storage</a>
+        <a href="#allocator">Allocator-Backed Storage</a>
+        <a href="#addressability">Addressability</a>
+        <a href="#relocation">Relocation Is Not Move</a>
+        <a href="#address-stability">Address Stability</a>
+        <a href="#pinning">Pinning</a>
+        <a href="#memory-spaces">Memory Spaces</a>
+        <a href="#fixed-address">Fixed-Address Storage</a>
+        <a href="#destruction-reclamation">Destruction vs Reclamation</a>
+        <a href="#allocation">Allocation</a>
+        <a href="#no-hidden-allocation">No Hidden Allocation</a>
+        <a href="#temporaries">Temporaries</a>
+        <a href="#references-preview">Why References Need Storage Identity</a>
+        <a href="#ownership-preview">Why Ownership Is Separate</a>
+        <a href="#examples">Worked Examples</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-loops.html">Loops and Iteration</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-storage.html" class="active">Values, Places and Storage</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-copy-move.html">Copying and Moving</a>
+        <a href="26-borrowing.html">Borrowing</a>
+        <a href="27-lifetimes.html">Lifetimes</a>
+        <a href="28-destruction.html">Destruction</a>
+        <a href="29-unsafe.html">Unsafe and Raw Pointers</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Values, Places and Storage</div>
+
+        <h1 id="storage">Values, Places and Storage</h1>
+
+        <p>
+            Sec's memory model separates several ideas that other languages often blur together:
+            a value, the object that materializes that value, the source name used to reach it,
+            the Place being accessed, the storage that contains it, and the numeric address that
+            a backend may eventually use.
+        </p>
+
+        <p>
+            These distinctions are the foundation for references, ownership, copying and moving,
+            borrowing, lifetime analysis, destruction and unsafe memory access.
+        </p>
+
+        <pre><code>let mut point := Point {
+    X: 10,
+    Y: 20,
+}
+
+point
+point.X</code></pre>
+
+        <p>
+            In this small example, <code>point</code> is a binding and a root Place.
+            <code>point.X</code> is a sub-Place.
+            The <code>Point</code> value may be materialized as an object in storage,
+            but those concepts are not interchangeable.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Binding identity, Place identity, object identity,
+            storage identity and numeric address are distinct concepts in Sec.
+        </div>
+
+        <section id="why-model">
+            <h2>Why This Model Matters</h2>
+
+            <p>
+                The distinctions in this chapter explain behavior that otherwise looks surprising.
+            </p>
+
+            <p>For example:</p>
+
+            <ul>
+                <li>moving ownership does not necessarily move bytes;</li>
+                <li>destroying an object does not necessarily reclaim its storage;</li>
+                <li>a local value does not necessarily live on a physical stack;</li>
+                <li>two objects may reuse the same numeric address without being the same object;</li>
+                <li>a storage location may remain valid after the previous object in it has ended;</li>
+                <li>a live source binding may remain in scope while its former value is unavailable after a move;</li>
+                <li>a reference may become stale even if a later object happens to appear at the same address.</li>
+            </ul>
+
+            <p>
+                Sec keeps these differences explicit in semantic analysis so that the backend is
+                never asked to reconstruct ownership or lifetime meaning from machine addresses.
+            </p>
+        </section>
+
+        <section id="value">
+            <h2>Value</h2>
+
+            <p>
+                A value is a typed semantic entity.
+            </p>
+
+            <pre><code>10
+true
+Point { X: 10, Y: 20 }
+Status.Ready</code></pre>
+
+            <p>
+                A value does not necessarily occupy addressable memory.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>let total := left + right</code></pre>
+
+            <p>
+                the computed result may remain entirely in compiler SSA form or a machine register.
+                Sec does not require every intermediate value to have a stable memory address.
+            </p>
+
+            <p>
+                Type identity belongs to the value's semantics and is not derived from where the
+                value happens to be stored.
+            </p>
+        </section>
+
+        <section id="object">
+            <h2>Object</h2>
+
+            <p>
+                An object is a materialized value whose object lifetime has begun in storage.
+            </p>
+
+            <pre><code>let mut device := Device {
+    Id: 10,
+}</code></pre>
+
+            <p>
+                If <code>device</code> is materialized in storage, the live <code>Device</code>
+                instance is an object.
+            </p>
+
+            <p>
+                Object lifetime begins when a valid object is initialized or constructed.
+            </p>
+
+            <p>It may end through operations such as:</p>
+
+            <ul>
+                <li>replacement;</li>
+                <li>move-out where permitted;</li>
+                <li>explicit lifecycle destruction;</li>
+                <li>automatic destruction;</li>
+                <li>union variant change;</li>
+                <li>owner termination.</li>
+            </ul>
+
+            <p>
+                Ending the object's lifetime does not necessarily end the storage lifetime.
+            </p>
+        </section>
+
+        <section id="binding">
+            <h2>Binding</h2>
+
+            <p>
+                A binding associates a source name with a semantic entity.
+            </p>
+
+            <pre><code>let count := 10
+let mut connection := new Connection()</code></pre>
+
+            <p>
+                <code>count</code> and <code>connection</code> are bindings.
+            </p>
+
+            <p>
+                A binding is not the value itself and is not the storage itself.
+            </p>
+
+            <p>
+                This distinction matters after ownership transfer:
+            </p>
+
+            <pre><code>let resource := OpenResource()
+Consume(&lt;-resource)</code></pre>
+
+            <p>
+                The source name <code>resource</code> still exists lexically after the call,
+                but the value it previously owned is unavailable.
+            </p>
+
+            <p>
+                Scope and ownership state are therefore separate facts.
+            </p>
+        </section>
+
+        <section id="place">
+            <h2>Place</h2>
+
+            <p>
+                A Place is a source-level location expression that identifies a value-bearing
+                location or another addressable operation target.
+            </p>
+
+            <p>Examples include:</p>
+
+            <pre><code>value
+person.Name
+array[index]
+matrix[row, column]
+object.Property</code></pre>
+
+            <p>
+                A Place is where operations such as read, write, borrow, replacement or move may
+                be directed when that particular Place supports the operation.
+            </p>
+
+            <p>
+                Indexing chapters already use this model:
+            </p>
+
+            <pre><code>values[index]</code></pre>
+
+            <p>
+                is a Place, while the surrounding expression determines whether that Place is read,
+                borrowed or written.
+            </p>
+        </section>
+
+        <section id="not-place">
+            <h2>Not Every Expression Is a Place</h2>
+
+            <p>
+                Temporary computations do not automatically identify reusable storage.
+            </p>
+
+            <pre><code>left + right
+Compute()
+value * 2</code></pre>
+
+            <p>
+                Such expressions may produce values without producing a source-level Place.
+            </p>
+
+            <p>
+                The compiler may materialize temporary storage when a canonical operation requires
+                addressability, but materialization is not permission to invent a longer lifetime
+                or hidden dynamic allocation.
+            </p>
+        </section>
+
+        <section id="root-place">
+            <h2>Root Places</h2>
+
+            <p>
+                A root Place is a Place that is not projected from another source Place.
+            </p>
+
+            <p>Typical roots include:</p>
+
+            <ul>
+                <li>local bindings;</li>
+                <li>parameter storage;</li>
+                <li>static bindings;</li>
+                <li>thread-local bindings;</li>
+                <li>allocation roots;</li>
+                <li>foreign objects;</li>
+                <li>fixed-address platform bindings.</li>
+            </ul>
+
+            <p>Example:</p>
+
+            <pre><code>let mut packet := Packet {
+    Header: header,
+    Payload: payload,
+}</code></pre>
+
+            <p>
+                <code>packet</code> is the root Place for accesses projected from this binding.
+            </p>
+        </section>
+
+        <section id="sub-place">
+            <h2>Sub-Places</h2>
+
+            <p>
+                A sub-Place identifies a location within another Place.
+            </p>
+
+            <pre><code>packet.Header
+packet.Header.Length
+values[3]
+matrix[row, column]</code></pre>
+
+            <p>
+                The compiler conceptually tracks the root plus one or more projections.
+            </p>
+
+            <p>Projections may come from:</p>
+
+            <ul>
+                <li>fields;</li>
+                <li>constant indexes;</li>
+                <li>dynamic indexes;</li>
+                <li>ranges and slices;</li>
+                <li>union payloads;</li>
+                <li>reference dereference;</li>
+                <li>shaped views;</li>
+                <li>compiler-known access rules.</li>
+            </ul>
+
+            <p>
+                This lets Sec reason about partial moves and independent borrows without pretending
+                that an entire aggregate is always one indivisible memory location.
+            </p>
+        </section>
+
+        <section id="place-capabilities">
+            <h2>Place Capabilities Are Independent</h2>
+
+            <p>
+                A Place is not simply “valid” or “invalid”.
+                Different operations require different capabilities.
+            </p>
+
+            <p>A Place may independently be:</p>
+
+            <ul>
+                <li>readable;</li>
+                <li>writable;</li>
+                <li>addressable;</li>
+                <li>movable;</li>
+                <li>shared-borrowable;</li>
+                <li>mutable-borrowable;</li>
+                <li>volatile;</li>
+                <li>atomic;</li>
+                <li>fixed-address;</li>
+                <li>partially available;</li>
+                <li>conditionally available.</li>
+            </ul>
+
+            <p>
+                These are not one combined flag.
+            </p>
+
+            <p>
+                For example, an immutable field may be readable and borrowable but not writable.
+                A register field may be addressable only through platform-defined semantics.
+                A moved field may retain storage while no longer being readable by its previous owner.
+            </p>
+        </section>
+
+        <section id="relationships">
+            <h2>Place Relationships</h2>
+
+            <p>
+                Memory analysis must reason about whether two Places overlap.
+            </p>
+
+            <p>Conceptually, Sec may determine that two Places are:</p>
+
+            <ul>
+                <li>the same Place;</li>
+                <li>provably disjoint;</li>
+                <li>one containing the other;</li>
+                <li>possibly overlapping;</li>
+                <li>unknown.</li>
+            </ul>
+
+            <p>Separate fields are usually disjoint:</p>
+
+            <pre><code>pair.Left
+pair.Right</code></pre>
+
+            <p>Distinct constant array elements can be disjoint:</p>
+
+            <pre><code>values[0]
+values[1]</code></pre>
+
+            <p>But runtime indexes require proof:</p>
+
+            <pre><code>values[leftIndex]
+values[rightIndex]</code></pre>
+
+            <p>
+                The compiler cannot assume that these are different merely because the source
+                expressions are spelled differently.
+            </p>
+
+            <p>
+                These relationships are later consumed by borrowing, move analysis, destruction
+                and race analysis.
+            </p>
+        </section>
+
+        <section id="storage-definition">
+            <h2>Storage</h2>
+
+            <p>
+                Storage is capacity in which a materialized representation may exist.
+            </p>
+
+            <p>
+                Storage can exist without currently containing a live object.
+            </p>
+
+            <p>
+                This is why storage and object are separate concepts.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>let mut resource: Resource</code></pre>
+
+            <p>
+                depending on the type and initialization rules, there may be a storage location
+                associated with the binding before a particular object's lifetime begins.
+            </p>
+
+            <p>
+                Similarly, after an object is moved out or destroyed, the storage location may
+                continue to exist and later be reinitialized.
+            </p>
+        </section>
+
+        <section id="object-storage">
+            <h2>Object Lifetime vs Storage Lifetime</h2>
+
+            <p>
+                Object lifetime is the interval during which a valid object exists.
+                Storage lifetime is the interval during which the underlying storage domain exists.
+            </p>
+
+            <p>They are related but not identical.</p>
+
+            <pre><code>let mut value := ResourceA()
+
+value = ResourceB()</code></pre>
+
+            <p>
+                Replacing <code>value</code> ends the old object's lifetime and begins the new
+                object's lifetime.
+            </p>
+
+            <p>
+                The compiler may reuse the same underlying storage location for both objects.
+            </p>
+
+            <p>
+                A later object in the same storage is not the previous object resurrected.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Object lifetime may change without storage lifetime changing.
+            </div>
+        </section>
+
+        <section id="initialization">
+            <h2>Storage Is Not an Initialized Value</h2>
+
+            <p>
+                Merely having enough bytes for <code>T</code> does not create a valid readable
+                <code>T</code>.
+            </p>
+
+            <p>
+                A safe read requires a live initialized value with a representation valid for its type.
+            </p>
+
+            <p>
+                Default initialization is semantic and type-specific.
+                It is not automatically “all bits zero”.
+            </p>
+
+            <p>
+                Partial initialization must be tracked at the granularity required by the type.
+                Destruction may run only for subobjects whose lifetime actually began.
+            </p>
+        </section>
+
+        <section id="replacement">
+            <h2>Replacement and Reinitialization</h2>
+
+            <p>
+                Assignment to an available mutable Place performs replacement.
+            </p>
+
+            <pre><code>let mut connection := first
+connection = second</code></pre>
+
+            <p>Replacement:</p>
+
+            <ol>
+                <li>validates the new operation;</li>
+                <li>performs required cleanup of the old value;</li>
+                <li>ends the old object lifetime;</li>
+                <li>establishes the replacement value.</li>
+            </ol>
+
+            <p>
+                Assignment to an unavailable mutable Place is reinitialization rather than
+                replacement.
+            </p>
+
+            <p>
+                Reinitialization does not destroy an old object that is no longer present.
+            </p>
+
+            <p>
+                The storage identity can remain the same across both operations.
+            </p>
+        </section>
+
+        <section id="availability">
+            <h2>Availability vs Storage</h2>
+
+            <p>
+                Availability answers whether the current owner has a usable value in a Place on
+                the current path.
+            </p>
+
+            <p>
+                Storage availability is a different question.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+Consume(&lt;-resource)</code></pre>
+
+            <p>
+                After the consuming call, the source Place may still have a valid storage slot,
+                while <code>resource</code> is unavailable as an owned value.
+            </p>
+
+            <p>
+                This is one reason <code>place is available</code> is not a null check and not
+                a storage-address check.
+            </p>
+
+            <p>
+                Ownership availability is covered in detail in the Ownership chapter.
+            </p>
+        </section>
+
+        <section id="storage-identity">
+            <h2>Storage Identity</h2>
+
+            <p>
+                Sec assigns semantic identity to storage domains independently of their current
+                physical address.
+            </p>
+
+            <p>
+                Storage identity tells the compiler which storage lifetime, backing relation,
+                invalidation rules and other storage properties an access depends on.
+            </p>
+
+            <p>
+                This identity is used by references, borrowing, collection backing, mappings,
+                Arena reset, relocation and safe reclamation.
+            </p>
+        </section>
+
+        <section id="numeric-address">
+            <h2>Numeric Address Is Not Storage Identity</h2>
+
+            <p>
+                Two different storage lifetimes may use the same numeric address at different times.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>storage A at address 0x1000
+storage A ends
+
+storage B later appears at address 0x1000</code></pre>
+
+            <p>
+                Storage B is not storage A.
+            </p>
+
+            <p>
+                A stale reference to A does not become valid merely because the numeric address
+                now contains B.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Safe Sec code never derives storage identity or validity
+                from numeric address equality alone.
+            </div>
+        </section>
+
+        <section id="domain">
+            <h2>Storage Domains</h2>
+
+            <p>
+                A storage domain is the compiler-visible identity for one storage lifetime and its
+                governing properties.
+            </p>
+
+            <p>
+                A domain may correspond to concepts such as:
+            </p>
+
+            <ul>
+                <li>one activation's automatic storage;</li>
+                <li>one static storage location;</li>
+                <li>one Arena domain;</li>
+                <li>one allocator-backed allocation;</li>
+                <li>one mapping;</li>
+                <li>one collection backing store;</li>
+                <li>one fixed-address platform region.</li>
+            </ul>
+
+            <p>
+                The exact physical implementation may differ by target, but the semantic domain
+                identity must remain available to safety analysis.
+            </p>
+        </section>
+
+        <section id="epoch">
+            <h2>Validity Epochs</h2>
+
+            <p>
+                A storage domain may have multiple distinct live incarnations over time.
+                Sec models this with a validity epoch.
+            </p>
+
+            <p>Examples of events that may invalidate an earlier epoch include:</p>
+
+            <ul>
+                <li>Arena reset;</li>
+                <li>deallocation;</li>
+                <li>reusable-slot reuse;</li>
+                <li>dynamic collection backing replacement;</li>
+                <li>mapping remap or unmap;</li>
+                <li>owner-control-block invalidation.</li>
+            </ul>
+
+            <p>
+                A runtime generation number is one possible implementation of epoch validation,
+                but it is not the language definition itself.
+            </p>
+
+            <p>
+                When static proof is sufficient, no runtime generation metadata is required.
+            </p>
+        </section>
+
+        <section id="backing">
+            <h2>Backing Storage</h2>
+
+            <p>
+                Some values use storage separate from their ordinary descriptor or enclosing value.
+                That separate storage is backing storage.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>dynamic-array elements;</li>
+                <li>list elements;</li>
+                <li>map entries;</li>
+                <li>Arena allocation backing;</li>
+                <li>mapped regions;</li>
+                <li>foreign buffers.</li>
+            </ul>
+
+            <p>For a dynamic array:</p>
+
+            <pre><code>let mut values: int[]</code></pre>
+
+            <p>
+                the owning array value may contain descriptor state while live elements occupy
+                separate backing storage.
+            </p>
+
+            <p>
+                The compiler preserves the semantic relation between the owning value and that
+                backing storage.
+            </p>
+        </section>
+
+        <section id="backing-relations">
+            <h2>Backing Relationships</h2>
+
+            <p>
+                Sec distinguishes several important relationships between a value and backing storage.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Relationship</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>None</td>
+                            <td>No separate backing storage exists</td>
+                        </tr>
+                        <tr>
+                            <td>Embedded</td>
+                            <td>Storage is part of an enclosing representation</td>
+                        </tr>
+                        <tr>
+                            <td>Owned</td>
+                            <td>The value owns the separate backing relation under its type contract</td>
+                        </tr>
+                        <tr>
+                            <td>Borrowed</td>
+                            <td>Another owner or domain controls the backing storage</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Exclusive access to borrowed backing does not automatically make the borrower the
+                backing-storage owner.
+            </p>
+
+            <p>
+                A borrower cannot deallocate, relocate, reset or extend backing lifetime unless the
+                governing contract explicitly grants that authority.
+            </p>
+        </section>
+
+        <section id="origins">
+            <h2>Storage Origins</h2>
+
+            <p>
+                Sec's canonical storage model classifies the primary origin of a storage root.
+            </p>
+
+            <p>The core origin categories are:</p>
+
+            <pre><code>Automatic
+Static
+ThreadLocal
+Arena
+AllocatorBacked
+Unknown</code></pre>
+
+            <p>
+                These are semantic categories used by the compiler.
+                They are not source keywords that programmers attach to arbitrary variables.
+            </p>
+
+            <p>
+                Storage origin is only one dimension of storage.
+                It does not by itself say whether storage is mutable, volatile, atomic, pinned,
+                fixed-address, foreign or thread-safe.
+            </p>
+
+            <p>
+                In particular, “stack”, “mapped”, “device”, “volatile”, “atomic” and “pinned”
+                are not storage origins in this model.
+            </p>
+        </section>
+
+        <section id="automatic">
+            <h2>Automatic Storage</h2>
+
+            <p>
+                Automatic storage belongs to an active execution or call context.
+            </p>
+
+            <p>It may represent:</p>
+
+            <ul>
+                <li>materialized local variables;</li>
+                <li>parameters;</li>
+                <li>temporaries;</li>
+                <li>compiler-generated local storage;</li>
+                <li>caller-provided result storage associated with a call.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Important:</strong> Automatic storage does not mean “must be on the stack”.
+            </div>
+
+            <p>
+                The same source-level local may lower to:
+            </p>
+
+            <ul>
+                <li>an SSA value with no physical slot;</li>
+                <li>a machine register;</li>
+                <li>a stack slot;</li>
+                <li>caller-provided return storage;</li>
+                <li>no storage at all after optimization.</li>
+            </ul>
+
+            <p>
+                These lowering choices do not change the source-level lifetime or ownership rules.
+            </p>
+        </section>
+
+        <section id="static">
+            <h2>Static Storage</h2>
+
+            <p>
+                Static storage belongs to a static storage domain.
+            </p>
+
+            <p>It may include:</p>
+
+            <ul>
+                <li>module-level static storage;</li>
+                <li>function-local static storage where defined;</li>
+                <li>type-associated <code>static let</code>/<code>static let mut</code> storage;</li>
+                <li>target-provided static regions with explicit contracts.</li>
+            </ul>
+
+            <p>
+                Static duration does not imply:
+            </p>
+
+            <ul>
+                <li>immutability;</li>
+                <li>thread safety;</li>
+                <li>atomicity;</li>
+                <li>synchronization;</li>
+                <li>shared ownership;</li>
+                <li>one permanent object lifetime.</li>
+            </ul>
+
+            <p>
+                An object in static storage may be replaced while the storage itself remains.
+            </p>
+        </section>
+
+        <section id="threadlocal">
+            <h2>Thread-Local Storage</h2>
+
+            <p>
+                Thread-local storage has separate storage identity for each physical thread.
+            </p>
+
+            <p>
+                Its lifetime is tied to that physical thread.
+            </p>
+
+            <p>
+                A task migrating between physical threads does not carry the physical thread-local
+                storage identity with it.
+            </p>
+
+            <p>
+                References to thread-local storage therefore cannot cross suspension or migration
+                when same-thread resumption cannot be proven.
+            </p>
+        </section>
+
+        <section id="arena">
+            <h2>Arena Storage</h2>
+
+            <p>
+                Arena storage belongs to a specific Arena allocation domain.
+            </p>
+
+            <p>
+                Individual Arena-backed objects may have ordinary object lifetimes while their raw
+                bytes remain part of the larger Arena domain.
+            </p>
+
+            <p>
+                Resetting an Arena may advance its validity epoch and invalidate references to
+                objects from the previous epoch even though the Arena object itself remains live.
+            </p>
+
+            <p>
+                Releasing the Arena ends the storage domain.
+            </p>
+
+            <p>
+                Destroying one Arena-backed object does not normally reclaim its individual bytes.
+            </p>
+        </section>
+
+        <section id="allocator">
+            <h2>Allocator-Backed Storage</h2>
+
+            <p>
+                Allocator-backed storage comes from one explicit individual allocation governed by
+                an allocator or compatible provider.
+            </p>
+
+            <p>
+                The storage contract must preserve enough information to match the allocation with
+                its correct provider, extent, alignment, memory space and reclamation rules.
+            </p>
+
+            <p>
+                <code>AllocatorBacked</code> does not mean “the global heap”.
+            </p>
+
+            <p>Possible providers include:</p>
+
+            <ul>
+                <li>platform allocators;</li>
+                <li>operating-system services;</li>
+                <li>fixed-block pools;</li>
+                <li>target allocators;</li>
+                <li>verified runtime helpers;</li>
+                <li>other explicit allocation providers.</li>
+            </ul>
+
+            <p>
+                Reusing the same numeric address for a later allocation does not revive safe
+                references to the previous allocation.
+            </p>
+        </section>
+
+        <section id="addressability">
+            <h2>Addressability</h2>
+
+            <p>
+                Addressability means that a canonical operation may obtain an address or reference
+                to materialized storage.
+            </p>
+
+            <p>
+                Not every value is inherently addressable.
+            </p>
+
+            <pre><code>let total := left + right</code></pre>
+
+            <p>
+                The result may never need a physical address.
+            </p>
+
+            <p>
+                If a valid operation requires an address, the compiler may materialize storage when
+                the language semantics permit it.
+            </p>
+
+            <p>
+                Materializing automatic storage for addressability is not the same as dynamically
+                allocating memory.
+            </p>
+        </section>
+
+        <section id="relocation">
+            <h2>Physical Relocation Is Not Ownership Move</h2>
+
+            <p>
+                These are two different operations.
+            </p>
+
+            <h3>Ownership move</h3>
+
+            <p>
+                Transfers semantic ownership from one source to another.
+            </p>
+
+            <pre><code>Consume(&lt;-resource)</code></pre>
+
+            <p>
+                This may require no physical byte movement at all.
+            </p>
+
+            <h3>Physical relocation</h3>
+
+            <p>
+                Changes the physical storage location used by an object or backing store.
+            </p>
+
+            <p>
+                A dynamic array may relocate backing storage while remaining the same owning array
+                value under its collection semantics.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Move is an ownership operation.
+                Relocation is a storage operation.
+            </div>
+        </section>
+
+        <section id="address-stability">
+            <h2>Address Stability</h2>
+
+            <p>
+                Storage may have different address-stability guarantees.
+            </p>
+
+            <p>Conceptually, storage may be:</p>
+
+            <ul>
+                <li><strong>Movable</strong> — relocation is permitted by the governing contract;</li>
+                <li><strong>Stable</strong> — the address remains unchanged for a defined stability interval;</li>
+                <li><strong>Fixed</strong> — the address/location is part of the storage contract;</li>
+                <li><strong>Unknown</strong> — no positive stability guarantee exists.</li>
+            </ul>
+
+            <p>
+                Stable address does not mean permanent lifetime.
+            </p>
+
+            <p>
+                Fixed address does not mean the compiler owns the storage or may reclaim it.
+            </p>
+
+            <p>
+                A direct live reference may constrain relocation for the reference's live range.
+            </p>
+        </section>
+
+        <section id="pinning">
+            <h2>Pinning</h2>
+
+            <p>
+                Pinning is a temporary storage constraint that prevents relocation for a defined interval.
+            </p>
+
+            <p>
+                A pin may also prevent reclamation when the pin contract explicitly says so.
+            </p>
+
+            <p>Pinning does not automatically mean:</p>
+
+            <ul>
+                <li>ownership transfer;</li>
+                <li>permanent lifetime;</li>
+                <li>thread safety;</li>
+                <li>synchronization.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 does not introduce a general source-level <code>pin</code> keyword through
+                the storage model.
+            </p>
+
+            <p>
+                Specialized APIs may provide pin guards or equivalent compiler-known contracts where required.
+            </p>
+        </section>
+
+        <section id="memory-spaces">
+            <h2>Memory Spaces</h2>
+
+            <p>
+                A memory space describes storage with distinct access or transfer rules.
+            </p>
+
+            <p>Common categories include:</p>
+
+            <pre><code>Ordinary
+MMIO
+TargetDefined</code></pre>
+
+            <p>
+                Ordinary memory supports normal Sec loads, stores, references, copying, moving and
+                borrowing subject to the language rules.
+            </p>
+
+            <p>
+                MMIO may require target-defined widths, volatile behavior, ordering, barriers,
+                side-effect semantics and restrictions on ordinary references.
+            </p>
+
+            <p>
+                Targets may also define accelerator-local, secure, non-secure, GPU, DSP, foreign or
+                other memory spaces.
+            </p>
+
+            <p>
+                Crossing memory spaces must be explicit when material transfer or representation
+                changes are semantically required.
+            </p>
+        </section>
+
+        <section id="fixed-address">
+            <h2>Fixed-Address and Hardware Storage</h2>
+
+            <p>
+                Fixed-address placement is a storage/address contract, not an ownership category.
+            </p>
+
+            <pre><code>@address(Platform.GPIOA)
+let mut gpio: GpioRegisters</code></pre>
+
+            <p>
+                The fixed address does not imply:
+            </p>
+
+            <ul>
+                <li>that Sec owns the hardware region;</li>
+                <li>that scope exit should clear or deallocate it;</li>
+                <li>that the object lifetime is permanent;</li>
+                <li>that access is automatically atomic;</li>
+                <li>that volatile semantics imply synchronization.</li>
+            </ul>
+
+            <p>
+                Hardware and MMIO rules add their own platform contracts on top of the same
+                underlying storage model.
+            </p>
+        </section>
+
+        <section id="destruction-reclamation">
+            <h2>Destruction vs Reclamation</h2>
+
+            <p>
+                Destruction ends the lifecycle responsibility of an initialized object or resource.
+            </p>
+
+            <p>
+                Reclamation makes storage unavailable for its previous purpose.
+            </p>
+
+            <p>They are different operations.</p>
+
+            <p>For example, an Arena-backed object may be destroyed:</p>
+
+            <pre><code>object lifetime ends
+owned resource cleanup runs</code></pre>
+
+            <p>while its raw bytes remain part of the Arena until:</p>
+
+            <pre><code>Arena reset
+Arena release</code></pre>
+
+            <p>
+                Conversely, raw storage reclamation never replaces required destruction of live
+                initialized objects.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Allocation Creates Storage, Not Automatically an Object</h2>
+
+            <p>
+                Allocation establishes or provides storage through an allocation-capable operation.
+            </p>
+
+            <p>
+                A valid typed object exists only after its initialization or construction rules are satisfied.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>allocate storage
+initialize representation
+begin object lifetime</code></pre>
+
+            <p>
+                These steps may be combined by a higher-level operation, but the language keeps their
+                semantics distinct.
+            </p>
+        </section>
+
+        <section id="no-hidden-allocation">
+            <h2>No Hidden Allocation</h2>
+
+            <p>
+                Sec does not silently allocate merely to make an otherwise invalid lifetime work.
+            </p>
+
+            <p>
+                In particular, the compiler does not repair an escaping local reference by moving
+                the local to a heap or Arena behind the programmer's back.
+            </p>
+
+            <p>
+                Likewise, these operations do not inherently allocate:
+            </p>
+
+            <ul>
+                <li>copy;</li>
+                <li>move;</li>
+                <li>borrow;</li>
+                <li>reference creation;</li>
+                <li>parameter passing;</li>
+                <li>return;</li>
+                <li>ordinary lifetime analysis.</li>
+            </ul>
+
+            <p>
+                A particular type's explicit semantic copy or collection growth operation may allocate
+                when its own contract says so.
+            </p>
+        </section>
+
+        <section id="temporaries">
+            <h2>Temporaries</h2>
+
+            <p>
+                Compiler-created temporaries have semantic lifetimes determined by the expression
+                and control flow that require them.
+            </p>
+
+            <pre><code>Consume(BuildValue())</code></pre>
+
+            <p>
+                The result of <code>BuildValue()</code> must remain valid through the required call
+                and cleanup behavior.
+            </p>
+
+            <p>
+                The compiler may eliminate physical temporary storage entirely when the observable
+                semantics remain preserved.
+            </p>
+
+            <p>
+                Materializing a temporary does not give it permission to escape farther than its
+                semantic lifetime permits.
+            </p>
+        </section>
+
+        <section id="references-preview">
+            <h2>Why References Need Storage Identity</h2>
+
+            <p>
+                A safe reference is more than a numeric address.
+            </p>
+
+            <p>Reference validity depends on facts such as:</p>
+
+            <ul>
+                <li>where the reference originated;</li>
+                <li>whether the object lifetime is still active;</li>
+                <li>whether the storage domain still exists;</li>
+                <li>whether the relevant validity epoch is still current;</li>
+                <li>whether relocation preserved the reference contract;</li>
+                <li>whether borrow authority remains valid;</li>
+                <li>whether bounds and initialization still hold;</li>
+                <li>whether the memory space permits the access.</li>
+            </ul>
+
+            <p>
+                This is why a stale reference does not become valid again when a new object later
+                reuses the same address.
+            </p>
+
+            <p>
+                The next chapter develops the source-level <code>ref T</code> and
+                <code>ref mut T</code> model in detail.
+            </p>
+        </section>
+
+        <section id="ownership-preview">
+            <h2>Why Ownership Is Separate from Storage</h2>
+
+            <p>
+                Ownership answers who is responsible for a value or resource lifecycle.
+            </p>
+
+            <p>
+                Storage answers where a materialized representation may exist and which storage
+                lifetime/invalidation rules govern it.
+            </p>
+
+            <p>
+                The same owning semantics may be implemented using different storage origins.
+            </p>
+
+            <p>
+                Conversely, owning an object does not necessarily mean owning the physical backing bytes.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>owned object
+Arena-backed storage</code></pre>
+
+            <p>
+                the value may own its object/resource lifecycle while the Arena owns reclamation of
+                the raw storage.
+            </p>
+
+            <p>
+                Ownership is therefore never inferred merely from address possession or deallocation authority.
+            </p>
+        </section>
+
+        <section id="examples">
+            <h2>Worked Examples</h2>
+
+            <h3>Local scalar</h3>
+
+            <pre><code>let count := 10</code></pre>
+
+            <p>
+                <code>count</code> is a binding.
+                The value <code>10</code> may remain as an SSA/register value and may never need an
+                addressable object.
+            </p>
+
+            <h3>Mutable struct</h3>
+
+            <pre><code>let mut point := Point {
+    X: 10,
+    Y: 20,
+}
+
+point.X = 30</code></pre>
+
+            <p>
+                <code>point</code> is a root Place.
+                <code>point.X</code> is a sub-Place.
+                Replacement of <code>X</code> changes the object stored in that sub-Place without
+                requiring the containing storage root to change identity.
+            </p>
+
+            <h3>Dynamic array</h3>
+
+            <pre><code>let mut values: int[]
+try values.Append(10)
+try values.Append(20)</code></pre>
+
+            <p>
+                The dynamic array is an owning value.
+                Its elements may live in separate backing storage.
+                Growth may replace that backing storage while preserving the owning array's semantic identity.
+            </p>
+
+            <h3>Slice</h3>
+
+            <pre><code>let view := ref values[..]</code></pre>
+
+            <p>
+                <code>view</code> borrows the current backing storage.
+                It does not own or reclaim it.
+                Operations that would invalidate the backing conflict with the live slice.
+            </p>
+
+            <h3>Move</h3>
+
+            <pre><code>let resource := OpenResource()
+Consume(&lt;-resource)</code></pre>
+
+            <p>
+                Ownership moves to the callee.
+                The source binding remains in source scope but its former owned value is unavailable.
+                No physical byte relocation is required by the meaning of move itself.
+            </p>
+
+            <h3>Same address, different storage identity</h3>
+
+            <pre><code>// Conceptual lifecycle:
+//
+// allocation A -> address 0x1000
+// allocation A reclaimed
+// allocation B -> address 0x1000</code></pre>
+
+            <p>
+                A safe dependency on allocation A remains invalid after A ends.
+                Allocation B is a new storage identity even though the numeric address is reused.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Storage-related diagnostics should distinguish between problems such as:</p>
+
+            <ul>
+                <li>value unavailable because ownership moved;</li>
+                <li>object lifetime ended;</li>
+                <li>storage lifetime ended;</li>
+                <li>reference tied to an invalid storage epoch;</li>
+                <li>backing storage replaced or relocated;</li>
+                <li>operation requires stable address but storage is movable;</li>
+                <li>borrowed backing incorrectly treated as owned;</li>
+                <li>attempted reclamation through the wrong authority;</li>
+                <li>illegal reference escape from automatic storage;</li>
+                <li>cross-memory-space operation without the required transfer;</li>
+                <li>fixed-address or MMIO contract violation.</li>
+            </ul>
+
+            <p>
+                Diagnostics should not collapse all of these into a vague “invalid memory” message.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>cannot return this reference
+
+the referenced object uses automatic storage whose lifetime ends when this function returns
+
+help: return an owned value
+help: return a reference derived from storage that outlives the call</code></pre>
+
+            <p>Or:</p>
+
+            <pre><code>cannot grow values while view is live
+
+view depends on the current dynamic-array backing storage
+Append may replace that backing storage
+
+help: end the borrow before calling Append</code></pre>
+
+            <p>
+                The compiler and LSP may expose storage origin, backing relation, address stability,
+                memory space and invalidation cause when that information helps explain a diagnostic.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Think in terms of values and ownership first, not machine addresses.</li>
+                <li>Use Place reasoning for fields, elements and other addressable subobjects.</li>
+                <li>Do not assume every local is physically stack-allocated.</li>
+                <li>Do not assume <code>new</code> means heap allocation.</li>
+                <li>Do not assume moving a value means copying bytes to another address.</li>
+                <li>Do not assume destruction automatically reclaims the backing storage.</li>
+                <li>Do not use numeric address equality as a safe identity test.</li>
+                <li>Keep borrowed views short-lived when their owner may replace or relocate backing storage.</li>
+                <li>Keep object lifecycle and raw-storage reclamation responsibilities conceptually separate.</li>
+                <li>Use platform storage contracts rather than guessing MMIO, volatility or fixed-address behavior from ordinary values.</li>
+                <li>Let the compiler prove safe lifetimes rather than relying on hidden allocation.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A value is a typed semantic entity and need not occupy addressable storage.</li>
+                <li>An object is a materialized value whose object lifetime has begun.</li>
+                <li>A binding associates a source name with a semantic entity; it is not the value or storage itself.</li>
+                <li>A Place identifies a value-bearing source location or operation target.</li>
+                <li>Locals, parameters, statics, allocation roots and fixed-address bindings can form root Places.</li>
+                <li>Fields, indexes, ranges, payloads, dereferences and views can form sub-Places.</li>
+                <li>Place capabilities such as readable, writable, addressable, movable and borrowable are independent.</li>
+                <li>Separate Places may be same, disjoint, containing, overlapping or unknown.</li>
+                <li>Dynamic index expressions are not assumed disjoint without proof.</li>
+                <li>Storage is capacity in which a materialized representation may exist.</li>
+                <li>Storage may exist without containing a live object.</li>
+                <li>Object lifetime and storage lifetime are distinct.</li>
+                <li>A later object may occupy storage previously used by another object.</li>
+                <li>Storage alone does not make a valid initialized readable value.</li>
+                <li>Replacement ends one object lifetime and begins another.</li>
+                <li>Reinitialization creates a new object in an unavailable Place without destroying an absent old value.</li>
+                <li>Ownership availability is distinct from storage existence.</li>
+                <li>Storage identity is independent of numeric address.</li>
+                <li>Reusing the same numeric address does not resurrect an old storage identity or reference.</li>
+                <li>A storage domain identifies one semantic storage lifetime and its governing properties.</li>
+                <li>A validity epoch identifies one live incarnation of an invalidation domain.</li>
+                <li>Generation numbers are one possible runtime representation of epochs, not the language model itself.</li>
+                <li>Backing storage is separate storage used for elements, entries, payloads or other representation state.</li>
+                <li>Backing relationships distinguish none, embedded, owned and borrowed backing.</li>
+                <li>Exclusive access to borrowed backing does not make the borrower the backing owner.</li>
+                <li>Canonical storage origins include Automatic, Static, ThreadLocal, Arena, AllocatorBacked and Unknown.</li>
+                <li>Storage origin is independent of mutability, volatility, atomicity, mapping, pinning and thread safety.</li>
+                <li>Automatic storage does not mean physical stack allocation.</li>
+                <li>Automatic values may lower to SSA, registers, stack slots, caller-provided storage or no physical storage.</li>
+                <li>Static duration does not imply immutability, synchronization or permanent object lifetime.</li>
+                <li>Thread-local storage identity belongs to a physical thread.</li>
+                <li>Arena reset may invalidate an earlier storage epoch while the Arena remains live.</li>
+                <li>Allocator-backed storage does not imply one universal heap.</li>
+                <li>Addressability may require materialization but does not inherently require dynamic allocation.</li>
+                <li>Ownership move and physical relocation are different operations.</li>
+                <li>A move may require no byte movement at all.</li>
+                <li>Address stability may be movable, stable, fixed or unknown under the governing contract.</li>
+                <li>Stable address does not imply permanent lifetime.</li>
+                <li>Fixed address does not imply Sec ownership.</li>
+                <li>Pinning constrains relocation; it does not automatically transfer ownership or provide synchronization.</li>
+                <li>Memory spaces may impose different access and transfer semantics.</li>
+                <li>MMIO and fixed-address behavior are platform/storage contracts rather than ordinary ownership facts.</li>
+                <li>Destruction ends object/resource lifecycle responsibility; reclamation ends storage availability for the previous purpose.</li>
+                <li>Destroying an object does not necessarily reclaim its storage.</li>
+                <li>Reclaiming raw storage does not replace required destruction of live objects.</li>
+                <li>Allocation provides storage; valid object lifetime begins only after valid initialization/construction.</li>
+                <li>Sec does not silently allocate to repair an illegal lifetime escape.</li>
+                <li>Temporaries have semantic lifetimes even when physical storage is optimized away.</li>
+                <li>Safe references require storage identity, lifetime, provenance, borrow and validity facts beyond a numeric address.</li>
+                <li>Ownership responsibility and backing-storage reclamation authority are distinct.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="21-indexing.html">Previous: Indexing</a>
+            <a href="23-references.html">Next: References</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

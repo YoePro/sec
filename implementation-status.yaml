@@ -1911,35 +1911,6 @@ integrations:
       - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
       - allocator implementation, target-specific backing storage, capacity analysis, and runtime behavior
 
-  - id: frontend.collections
-    area: frontend
-    status: partial
-    integrated: "2026-08-07"
-    audited: "2026-08-18"
-    summary: >-
-      Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
-      against the unified collections rulebook. Parser/type recognition and
-      Place-backed indexing provide a usable slice; canonical public members,
-      allocation-aware owners, library collections, and lowering remain.
-    rules:
-      - rules/collections/collections.md
-    implemented:
-      - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
-      - Sema recognition and arity validation for compiler-known collection families
-      - loader-proven core sources may define ordinary impl members for list, map, and set through the shared
-        compiler/LSP privilege gate; stdlib and user sources remain rejected
-      - Place-backed fixed-array and slice indexing used by borrow and ownership analysis
-      - contextual collection type identities exposed to formatter and LSP registries
-      - omitted initialization of mutable owning T[] produces its canonical allocation-free empty default
-    remaining:
-      - preserve owning dynamic-array identity across copyability, destruction, equality, initialization, and ownership transfer instead of inheriting fixed-array traits through ArrayType
-      - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
-      - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
-      - full borrow and lifetime validation for slice creation, reborrowing, and returned sub-slices
-      - compiler-defined layout, overflow, alignment, and length validation
-      - explicit array and slice operations in Semantic IR and lowering through MLIR and LLVM
-      - focused valid, invalid, recovery, analysis, and backend test coverage
-
   - id: frontend.shaped-types
     area: frontend-and-lowering
     status: partial

@@ -29,6 +29,34 @@ func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
 	}
 }
 
+// rules/tooling/formatter.md "Increment" and "Decrement" require canonical
+// compound-assignment output only for parser-confirmed statement aliases.
+func TestFormatIncrementAndDecrementAliases(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/formatter/increment_decrement.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "module increment_decrement\n\nfn Update() int {\n    let mut value: int := 2\n    value += 1\n    value -= 1\n    return value\n}\n"
+	got := Format(Source{Text: string(input)}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong alias formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("postfix alias formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatterPreservesInvalidIncrementExpression(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/increment_decrement_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Format(Source{Text: string(input)}, Options{}).Text
+	if !strings.Contains(got, "let old := value++") || !strings.Contains(got, "value++ + 1") {
+		t.Fatalf("formatter rewrote invalid expression aliases:\n%s", got)
+	}
+}
+
 func TestFormatPreservesDefaultClauseAndPartialStructLiteral(t *testing.T) {
 	input := "module main\n\n" +
 		"type User string in [\"Admin\", \"User\"] default \"User\"\n\n" +

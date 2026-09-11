@@ -137,6 +137,15 @@ impl Status {
     static let NotExtended: Status := 510
     static let NetworkAuthenticationRequired: Status := 511
 
+    // None Standard but common
+    // Microsoft IIS
+    // type IIS struct {
+    //     static let LoginTimeOut: Status := 440
+    //     static let RetryWith: Status := 449
+    //     static let BlockedByWindowsParentalControls: Status := 450
+    //     static let Redirect: Status := 451
+    // }
+
     // TODO: Validate http.Status.ReasonPhrase
     property ReasonPhrase: Option[string] {
         get {

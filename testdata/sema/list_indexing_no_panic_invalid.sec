@@ -1,0 +1,6 @@
+module list_indexing_no_panic_invalid
+
+@noPanic
+fn Read(values: list[int], index: uint) int {
+    return values[index]
+}

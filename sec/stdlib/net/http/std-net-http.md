@@ -204,6 +204,7 @@ stdlib/net/http/
 ├── auth.sec
 ├── digest.sec
 ├── priority.sec
+├── structured_fields.sec
 ├── redirect.sec
 ├── cache.sec
 ├── cookie.sec
@@ -987,6 +988,37 @@ module http
  *   stdlib/net/http/std-net-http.md
  */
 ```
+
+## 6.27 `structured_fields.sec`
+```sec
+module http
+
+/*
+* Sec Standard Library - net/http - Structured Fields
+* 
+* File: stdlib/net/http/structured_fields.sec
+* Module: http
+* Revision: 1
+* Updated: 2026-09-11
+* Author: Jonas Engström
+* 
+* Purpose:
+* Internal parsing and representation support for HTTP Structured Fields.
+* 
+* This file provides the shared RFC 9651 parsing machinery used by HTTP
+* fields such as Priority. The Structured Fields implementation is kept
+* private to the http module and does not form part of the public net/http
+* API.
+* 
+* Standards:
+*   - RFC 9651
+*     https://www.rfc-editor.org/rfc/rfc9651
+*
+* Rulebook:
+*   stdlib/net/http/std-net-http.md
+*/
+```
+
 ---
 
 # Part I — Error model and protocol identity

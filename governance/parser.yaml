@@ -119,3 +119,50 @@ integrations:
       - partial unterminated-construct retention beyond ordinary statement blocks and switch/select bodies, including match/try handlers
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
+  - id: frontend.increment-decrement-aliases
+    area: frontend-and-tooling
+    status: implemented
+    integrated: "2026-09-11"
+    summary: >-
+      Implements statement-only postfix increment and decrement as parser
+      aliases for the existing compound-assignment semantics, with canonical
+      formatter and LSP token support and no new lowering operation.
+    rules:
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/foundations/operators.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/lexer/lexer.go
+      - ../bootstrap/internal/lexer/lexer.sec
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/formatter/formatter.go
+      - internal/lsp/features/semantic_tokens.go
+      - cmd/lsp/main.go
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+      - testdata/lexer/increment_decrement.sec
+      - testdata/parser/increment_decrement_valid.sec
+      - testdata/parser/increment_decrement_invalid.sec
+      - testdata/sema/increment_decrement_invalid.sec
+      - testdata/formatter/increment_decrement.sec
+    implemented:
+      - longest-match INCREMENT and DECREMENT tokens in the Go and bootstrap lexer sources
+      - parser normalization to += 1 and -= 1 assignment AST nodes while retaining the original source token
+      - same-line, complete-statement enforcement and focused rejection of expression-position aliases
+      - existing compound-assignment mutability, typing, contract, ownership, and overflow checks without a parallel semantic path
+      - parser-confirmed canonical formatter normalization that preserves invalid expression uses
+      - LSP semantic operator tokens and TextMate operator recognition
+      - no dedicated Semantic IR or lowering operation; canonical compound assignment remains the downstream representation
+    verification:
+      - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Increment|Decrement' -count=1
+        result: passed
+      - command: go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed

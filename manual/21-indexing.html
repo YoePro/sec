@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,57 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Indexing</div>
-        <a href="#21-indexing">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#indexing">Indexing</a>
+        <a href="#place-model">Indexing Produces a Place</a>
+        <a href="#valid-index-types">Valid Index Types</a>
+        <a href="#invalid-index-types">Invalid Index Types</a>
+        <a href="#zero-based">Zero-Based Indexing</a>
+        <a href="#bounds">Bounds</a>
+        <a href="#static-dynamic">Static Proof vs Runtime Check</a>
+        <a href="#ordinary-checked">Ordinary Checked Indexing</a>
+        <a href="#fallible-indexing">Fallible Indexing</a>
+        <a href="#check-elimination">Check Elimination</a>
+        <a href="#reading">Reading Elements</a>
+        <a href="#borrowing">Borrowing Elements</a>
+        <a href="#mutable-borrow">Mutable Element Borrows</a>
+        <a href="#assignment">Indexed Assignment</a>
+        <a href="#replacement-order">Replacement Order</a>
+        <a href="#move-only">Move-Only Elements</a>
+        <a href="#fixed-arrays">Fixed Arrays</a>
+        <a href="#dynamic-arrays">Dynamic Arrays</a>
+        <a href="#slices">Slices</a>
+        <a href="#lists">Lists</a>
+        <a href="#nested-arrays">Nested Arrays</a>
+        <a href="#strings">Strings Are Not Arrays</a>
+        <a href="#maps">Map Indexing</a>
+        <a href="#map-read">Map Lookup</a>
+        <a href="#map-write">Map Indexed Assignment</a>
+        <a href="#sets">Sets Are Not Indexed</a>
+        <a href="#shaped">Shaped Indexing</a>
+        <a href="#selectors">One Selector per Axis</a>
+        <a href="#shaped-scalar">Scalar Selectors</a>
+        <a href="#shaped-ranges">Range Selectors</a>
+        <a href="#shaped-step">Shaped step</a>
+        <a href="#shaped-errors">Shaped Bounds Checks</a>
+        <a href="#raw-pointers">Raw Pointers</a>
+        <a href="#unsafe">unsafe Does Not Disable Checks</a>
+        <a href="#ownership">Ownership and Lifetimes</a>
+        <a href="#evaluation-order">Evaluation Order</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,14 +83,14 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html" class="active">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html">Ownership</a>
         <a href="25-borrowing.html">Borrowing</a>
@@ -71,36 +112,1260 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Indexing</div>
 
-        <h1 id="21-indexing">Indexing</h1>
+        <h1 id="indexing">Indexing</h1>
 
-        <p>Indexing provides element access for arrays, slices, and other indexable types.</p>
+        <p>
+            Indexing selects an element or entry using square brackets.
+            For linear sequences the canonical form is:
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>target[index]</code></pre>
+
+        <p>Examples:</p>
+
+        <pre><code>let first := values[0]
+let current := values[index]
+values[index] = replacement
+
+let shared := ref values[index]
+let writable := ref mut values[index]</code></pre>
+
+        <p>
+            The square-bracket syntax is shared by several Sec abstractions, but not every indexed
+            type has the same semantics. Arrays, slices and lists use integer positions; maps use
+            keys; shaped types use one selector per axis.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> For linear sequence types, <code>target[index]</code>
+            produces an element <em>Place</em>. The surrounding context decides whether that place
+            is read, borrowed, mutated or replaced.
+        </div>
+
+        <section id="place-model">
+            <h2>Indexing Produces a Place</h2>
+
+            <p>
+                An index expression does not inherently mean “copy this value”.
+            </p>
+
+            <p>These expressions begin from the same indexed place:</p>
+
+            <pre><code>let value := values[index]
+values[index] = replacement
+let element := ref values[index]
+let element := ref mut values[index]</code></pre>
+
+            <p>The use context determines the operation:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Context</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>let value := values[index]</code></td>
+                            <td>Read the element value; ordinary copy/move rules apply</td>
+                        </tr>
+                        <tr>
+                            <td><code>ref values[index]</code></td>
+                            <td>Create a shared borrow of the element</td>
+                        </tr>
+                        <tr>
+                            <td><code>ref mut values[index]</code></td>
+                            <td>Create an exclusive mutable borrow when permitted</td>
+                        </tr>
+                        <tr>
+                            <td><code>values[index] = value</code></td>
+                            <td>Replace the element through a mutable place</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                This model is important for ownership. The compiler does not decide that every
+                indexed read is a copy, and it does not silently move a move-only value out of
+                an owning collection.
+            </p>
+        </section>
+
+        <section id="valid-index-types">
+            <h2>Valid Index Types</h2>
+
+            <p>Linear sequence indexes may use:</p>
+
+            <ul>
+                <li>built-in signed integer types;</li>
+                <li>built-in unsigned integer types;</li>
+                <li>compatible named integer types without incompatible unit dimensions.</li>
+            </ul>
+
+            <p>Examples:</p>
+
+            <pre><code>let a := values[0]
+
+let index: int := ReadIndex()
+let b := values[index]
+
+let unsignedIndex: uint := ReadUnsignedIndex()
+let c := values[unsignedIndex]
+
+type RowIndex uint
+
+let row: RowIndex := RowIndex(2)
+let d := values[row]</code></pre>
+
+            <p>
+                The index does not need to have one single mandated integer width.
+                It must belong to a valid integer index category and be representable for the
+                access being checked.
+            </p>
+        </section>
+
+        <section id="invalid-index-types">
+            <h2>Invalid Index Types</h2>
+
+            <p>These are not ordinary linear index types:</p>
+
+            <pre><code>float
+decimal
+bool
+string</code></pre>
+
+            <p>For example:</p>
+
+            <pre><code>values[1.5]       // invalid
+values[true]      // invalid
+values["first"]   // invalid</code></pre>
+
+            <p>
+                A unit-bearing numeric value is not automatically an index merely because its
+                underlying numeric representation is integer-like.
+            </p>
+
+            <p>
+                Indexing represents a logical position, not a physical quantity.
+                A named integer type may participate only when its semantic type is compatible with
+                index use.
+            </p>
+        </section>
+
+        <section id="zero-based">
+            <h2>Zero-Based Indexing</h2>
+
+            <p>
+                Linear Sec collections use zero-based indexes.
+            </p>
+
+            <p>For:</p>
+
+            <pre><code>let values: int[4] := [10, 20, 30, 40]</code></pre>
+
+            <p>the valid positions are:</p>
+
+            <pre><code>values[0]    // 10
+values[1]    // 20
+values[2]    // 30
+values[3]    // 40</code></pre>
+
+            <p>This is outside the array:</p>
+
+            <pre><code>values[4]</code></pre>
+
+            <p>
+                Negative signed indexes are also out of bounds:
+            </p>
+
+            <pre><code>values[-1]</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Sec does not use negative indexes as “from the end”
+                shorthand.
+            </div>
+        </section>
+
+        <section id="bounds">
+            <h2>Bounds</h2>
+
+            <p>For a fixed array <code>T[N]</code>:</p>
+
+            <pre><code>0 &lt;= index &lt; N</code></pre>
+
+            <p>For a dynamic array, slice or <code>list[T]</code>:</p>
+
+            <pre><code>0 &lt;= index &lt; Len</code></pre>
+
+            <p>
+                Bounds are part of Sec's safe indexing semantics.
+            </p>
+
+            <p>
+                Indexing does not become unchecked merely because the compiler eventually lowers
+                it to pointer arithmetic or target address calculations.
+            </p>
+        </section>
+
+        <section id="static-dynamic">
+            <h2>Static Proof vs Runtime Check</h2>
+
+            <p>
+                Sec follows the same “static proof first” model for indexing that it uses for
+                other checked language operations.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Compiler knowledge</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Access is provably valid</td>
+                            <td>No runtime bounds failure is possible; check may be removed</td>
+                        </tr>
+                        <tr>
+                            <td>Access is provably invalid</td>
+                            <td>Compile-time diagnostic</td>
+                        </tr>
+                        <tr>
+                            <td>Validity depends on runtime data</td>
+                            <td>Use the checked runtime path</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>For example:</p>
+
+            <pre><code>let values: int[4] := [10, 20, 30, 40]
+
+let first := values[0]    // statically valid
+let invalid := values[4]  // compile-time error</code></pre>
+
+            <p>But:</p>
+
+            <pre><code>fn Read(values: ref int[], index: int) int {
+    return values[index]
+}</code></pre>
+
+            <p>
+                requires a runtime bounds decision unless surrounding analysis has already proved
+                the index valid.
+            </p>
+        </section>
+
+        <section id="ordinary-checked">
+            <h2>Ordinary Checked Indexing</h2>
+
+            <p>The ordinary form is:</p>
+
+            <pre><code>let value := values[index]</code></pre>
+
+            <p>
+                When bounds cannot be proven statically, Sec emits a runtime check.
+            </p>
+
+            <p>
+                If the check fails, the ordinary operation follows Sec's panic-capable checked
+                operation path.
+            </p>
+
+            <p>
+                This does not imply a mandatory exception runtime.
+                The check may lower to inline branches, a target trap, a selected panic endpoint,
+                or another valid target mechanism.
+            </p>
+
+            <p>
+                The important source-level guarantee is that safe ordinary indexing never performs
+                an unchecked out-of-bounds memory access.
+            </p>
+        </section>
+
+        <section id="fallible-indexing">
+            <h2>Fallible Indexing</h2>
+
+            <p>
+                Code that must remain panic-free may make the bounds failure explicit:
+            </p>
+
+            <pre><code>let value := try values[index]</code></pre>
+
+            <p>
+                A failed bounds check produces:
+            </p>
+
+            <pre><code>IndexError.OutOfBounds</code></pre>
+
+            <p>
+                The enclosing function must be able to propagate that error, or the expression
+                must handle or map it according to the ordinary <code>try</code> rules.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>fn Read(
+    values: ref int[],
+    index: int,
+) Result[int, IndexError] {
+    let value := try values[index]
+    return Ok(value)
+}</code></pre>
+
+            <p>
+                <code>try</code> converts the language-defined bounds check into fallible control
+                flow. It is not exception catching.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Ordinary dynamic indexing is checked and panic-capable.
+                <code>try target[index]</code> selects the panic-free fallible bounds path.
+            </div>
+        </section>
+
+        <section id="check-elimination">
+            <h2>Bounds Check Elimination</h2>
+
+            <p>
+                A source-level checked access does not imply that a runtime check must remain
+                in generated code.
+            </p>
+
+            <p>The compiler may prove safety through:</p>
+
+            <ul>
+                <li>constant evaluation;</li>
+                <li>fixed array length;</li>
+                <li>range contracts;</li>
+                <li>branch refinement;</li>
+                <li>assert refinement;</li>
+                <li>loop induction;</li>
+                <li>generic specialization;</li>
+                <li>whole-program analysis.</li>
+            </ul>
+
+            <p>
+                If the compiler proves <code>0 &lt;= index &lt; Len</code>, it may remove the
+                runtime bounds check while preserving the exact source semantics.
+            </p>
+
+            <p>
+                The programmer does not need to switch to unsafe code merely to obtain efficient
+                indexing.
+            </p>
+        </section>
+
+        <section id="reading">
+            <h2>Reading an Indexed Element</h2>
+
+            <pre><code>let value := values[index]</code></pre>
+
+            <p>
+                Reading through an indexed place follows ordinary value semantics.
+            </p>
+
+            <p>
+                If the element type is implicitly copyable, a normal value read can copy the
+                element into the destination.
+            </p>
+
+            <p>
+                If the element is not copyable, ordinary indexed syntax does not gain special
+                permission to remove ownership from the source.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Borrowing an Indexed Element</h2>
+
+            <p>Create a shared element borrow with:</p>
+
+            <pre><code>let element := ref values[index]</code></pre>
+
+            <p>
+                The source must provide stable addressable element storage and shared borrow authority.
+            </p>
+
+            <p>
+                The resulting <code>ref T</code> cannot outlive the source storage or the storage
+                incarnation from which it was derived.
+            </p>
+
+            <p>
+                Normal aliasing and lifetime rules apply.
+            </p>
+        </section>
+
+        <section id="mutable-borrow">
+            <h2>Mutable Element Borrows</h2>
+
+            <p>Create an exclusive mutable element borrow with:</p>
+
+            <pre><code>let element := ref mut values[index]</code></pre>
+
+            <p>
+                The source must provide mutable authority to that element place.
+            </p>
+
+            <p>
+                While the mutable borrow is live, conflicting direct or borrowed access is rejected.
+            </p>
+
+            <p>
+                Two runtime indexes are not assumed to refer to different elements merely because
+                they are syntactically different:
+            </p>
+
+            <pre><code>let left := ref mut values[a]
+let right := ref mut values[b]</code></pre>
+
+            <p>
+                The compiler needs a valid disjointness proof before both exclusive borrows may
+                remain live together.
+            </p>
+        </section>
+
+        <section id="assignment">
+            <h2>Indexed Assignment</h2>
+
+            <p>
+                A mutable indexed place may be replaced:
+            </p>
+
+            <pre><code>values[index] = replacement</code></pre>
+
+            <p>Indexed assignment requires:</p>
+
+            <ul>
+                <li>a valid index;</li>
+                <li>a mutable element place;</li>
+                <li>a replacement assignable to the element type;</li>
+                <li>no conflicting live borrow;</li>
+                <li>valid ownership transfer for the replacement.</li>
+            </ul>
+
+            <p>This is invalid:</p>
+
+            <pre><code>let values: int[3] := [1, 2, 3]
+values[0] = 10</code></pre>
+
+            <p>
+                because the array binding does not provide the mutable authority required for replacement.
+            </p>
+
+            <p>This is also invalid:</p>
+
+            <pre><code>let mut values: int[3] := [1, 2, 3]
+values[1] = "two"</code></pre>
+
+            <p>
+                because the replacement value is not assignable to <code>int</code>.
+            </p>
+        </section>
+
+        <section id="replacement-order">
+            <h2>Replacement Evaluation Order</h2>
+
+            <p>
+                Sec does not destroy the existing element before the replacement expression is ready.
+            </p>
+
+            <p>Conceptually, indexed replacement performs:</p>
+
+            <ol>
+                <li>evaluate the target and index as required by ordinary expression order;</li>
+                <li>validate or establish the indexed place;</li>
+                <li>fully evaluate the replacement value;</li>
+                <li>validate the ownership transfer;</li>
+                <li>destroy the old owned element exactly once;</li>
+                <li>install the replacement.</li>
+            </ol>
+
+            <p>
+                This prevents a failed replacement expression from leaving a readable collection
+                element uninitialized.
+            </p>
+
+            <p>
+                For fallible bounds access, the check also occurs before destructive replacement
+                can commit.
+            </p>
+        </section>
+
+        <section id="move-only">
+            <h2>Move-Only Elements</h2>
+
+            <p>
+                Ordinary indexing never silently extracts a move-only value from an owning collection.
+            </p>
+
+            <p>For a move-only <code>Resource</code>:</p>
+
+            <pre><code>let value := resources[index]</code></pre>
+
+            <p>
+                is invalid if satisfying the read would require moving ownership out of the
+                collection element.
+            </p>
+
+            <p>Borrow instead:</p>
+
+            <pre><code>let value := ref resources[index]</code></pre>
+
+            <p>
+                For a dynamic array, explicit owning extraction is provided by:
+            </p>
+
+            <pre><code>let removed := resources.RemoveAt(index)</code></pre>
+
+            <p>
+                A slice cannot extract ownership at all because the slice does not own its elements.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Indexing never leaves a hidden uninitialized hole in a
+                safe owning collection.
+            </div>
+        </section>
+
+        <section id="fixed-arrays">
+            <h2>Fixed Array Indexing</h2>
+
+            <p>For:</p>
+
+            <pre><code>T[N]</code></pre>
+
+            <p>the valid range is:</p>
+
+            <pre><code>0..&lt;N</code></pre>
+
+            <p>
+                Because <code>N</code> is part of the type, constant indexes can often be proven
+                valid or invalid during compilation.
+            </p>
+
+            <pre><code>let values: int[4] := [10, 20, 30, 40]
+
+let first := values[0]    // valid
+let last := values[3]     // valid
+let bad := values[4]      // compile-time error</code></pre>
+
+            <p>
+                Runtime integer indexes are still permitted and use the checked indexing model.
+            </p>
+        </section>
+
+        <section id="dynamic-arrays">
+            <h2>Dynamic Array Indexing</h2>
+
+            <p>For an owning dynamic array:</p>
+
+            <pre><code>T[]</code></pre>
+
+            <p>the current valid range is:</p>
+
+            <pre><code>0..&lt;Len</code></pre>
+
+            <p>
+                Indexing does not expose internal capacity. A position between <code>Len</code>
+                and hidden capacity is not a valid element.
+            </p>
+
+            <p>
+                Dynamic arrays may relocate their backing storage during structural growth.
+                A direct element borrow therefore depends on the current backing incarnation and
+                may block operations that could invalidate it.
+            </p>
+        </section>
+
+        <section id="slices">
+            <h2>Slice Indexing</h2>
+
+            <p>For:</p>
+
+            <pre><code>ref T[]
+ref mut T[]</code></pre>
+
+            <p>the valid range is:</p>
+
+            <pre><code>0..&lt;Len</code></pre>
+
+            <p>
+                Slice indexes are relative to the slice's logical origin, not necessarily to
+                the original owner's index zero.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>let values: int[5] := [10, 20, 30, 40, 50]
+let middle := ref values[1..&lt;4]
+
+let first := middle[0]</code></pre>
+
+            <p>
+                <code>middle[0]</code> refers to the first represented slice element, which is
+                <code>values[1]</code>.
+            </p>
+
+            <p>
+                A shared slice supports reads and shared borrows.
+                A mutable slice may additionally support mutable borrows and replacement.
+            </p>
+        </section>
+
+        <section id="lists">
+            <h2><code>list[T]</code> Indexing</h2>
+
+            <p>
+                <code>list[T]</code> guarantees ordered logical element storage and supports
+                ordinary linear indexing.
+            </p>
+
+            <p>Bounds are:</p>
+
+            <pre><code>0..&lt;Len</code></pre>
+
+            <p>
+                The same integer index categories, checked access model, place semantics,
+                borrowing rules and replacement rules apply.
+            </p>
+
+            <p>
+                Structural list operations remain separate from indexed element access.
+                Indexing one element does not imply permission to insert or remove sequence elements.
+            </p>
+        </section>
+
+        <section id="nested-arrays">
+            <h2>Nested Fixed Arrays Use Chained Indexing</h2>
+
+            <p>For:</p>
+
+            <pre><code>int[2][3]</code></pre>
+
+            <p>
+                the outer element type is <code>int[3]</code>.
+            </p>
+
+            <p>Use chained indexing:</p>
+
+            <pre><code>let mut matrix: int[2][3] := [
+    [1, 2, 3],
+    [4, 5, 6],
+]
+
+matrix[0][0] = 10
+matrix[1][2] = 60</code></pre>
+
+            <p>
+                The first index selects the outer array element.
+                The second index selects an element from that inner fixed array.
+            </p>
+
+            <p>
+                This is different from shaped matrix/tensor indexing, which uses one selector
+                per axis in a single bracket expression.
+            </p>
+        </section>
+
+        <section id="strings">
+            <h2>Strings Are Not Indexable Arrays</h2>
+
+            <p>
+                <code>string</code> is not an implicit array of <code>byte</code>,
+                <code>char</code> or <code>rune</code>.
+            </p>
+
+            <p>
+                Ordinary array indexing does not apply directly:
+            </p>
+
+            <pre><code>let character := text[index]    // not ordinary string indexing</code></pre>
+
+            <p>
+                String access uses the public string API and string iteration rules.
+            </p>
+
+            <p>
+                This avoids making an ambiguous promise about whether an integer string index
+                would mean:
+            </p>
+
+            <ul>
+                <li>UTF-8 byte offset;</li>
+                <li>Unicode scalar index;</li>
+                <li>grapheme-cluster index.</li>
+            </ul>
+
+            <p>
+                When byte-oriented access is required, convert or obtain the explicitly defined
+                byte representation instead of treating <code>string</code> as <code>byte[]</code>.
+            </p>
+        </section>
+
+        <section id="maps">
+            <h2>Map Indexing</h2>
+
+            <p>
+                Maps also use bracket syntax:
+            </p>
+
+            <pre><code>users[key]</code></pre>
+
+            <p>
+                But the expression means key lookup, not integer positional indexing.
+            </p>
+
+            <p>For:</p>
+
+            <pre><code>map[K, V]</code></pre>
+
+            <p>
+                the bracket expression accepts a key compatible with <code>K</code> and selects
+                the associated <code>V</code> entry when one exists.
+            </p>
+
+            <p>
+                Map order is unspecified, so numeric map indexes have no positional sequence meaning
+                unless the map's key type itself is numeric.
+            </p>
+        </section>
+
+        <section id="map-read">
+            <h2>Map Indexed Lookup</h2>
+
+            <pre><code>let user := users[id]</code></pre>
+
+            <p>
+                A successful lookup produces the value place for the existing entry.
+                The use context then determines whether the value is copied, shared-borrowed or
+                mutable-borrowed.
+            </p>
+
+            <p>Examples:</p>
+
+            <pre><code>let user := users[id]
+let user := ref users[id]
+let user := ref mut users[id]</code></pre>
+
+            <p>
+                A missing key is a checked access failure using the canonical map key-access error family.
+            </p>
+
+            <p>
+                The panic-free form may use ordinary <code>try</code> according to the fallible-access rules.
+            </p>
+
+            <p>
+                Reading <code>users[id]</code> never inserts a missing entry.
+            </p>
+        </section>
+
+        <section id="map-write">
+            <h2>Map Indexed Assignment</h2>
+
+            <p>
+                Map insertion and replacement use indexed assignment:
+            </p>
+
+            <pre><code>try users[id] = user</code></pre>
+
+            <p>Semantics:</p>
+
+            <pre><code>existing key:
+    replace the stored value
+
+missing key:
+    insert a new key/value entry</code></pre>
+
+            <p>
+                Because inserting a missing key may require structural growth or resources,
+                the operation may be fallible.
+            </p>
+
+            <p>
+                Collection-facing structural failure uses the collection error contract.
+            </p>
+
+            <p>
+                The assignment does not use <code>:=</code>.
+                <code>:=</code> remains declaration/initialization syntax.
+            </p>
+
+            <p>
+                Where an explicit ownership move is required and permitted:
+            </p>
+
+            <pre><code>try users[id] &lt;- user</code></pre>
+
+            <p>
+                follows the ordinary move-assignment rules.
+            </p>
+        </section>
+
+        <section id="sets">
+            <h2>Sets Are Not Indexed</h2>
+
+            <p>
+                A <code>set[T]</code> stores unique values but does not define positional or
+                key-to-value indexing.
+            </p>
+
+            <p>
+                Use membership, insertion, removal and iteration operations instead.
+            </p>
+
+            <p>This is not set access syntax:</p>
+
+            <pre><code>activeUsers[0]</code></pre>
+
+            <p>
+                A set's iteration order is unspecified, so exposing a positional index would create
+                semantics the base set contract deliberately does not provide.
+            </p>
+        </section>
+
+        <section id="shaped">
+            <h2>Shaped Indexing</h2>
+
+            <p>
+                <code>vector</code>, <code>matrix</code>, <code>tensor</code> and
+                <code>tensor_view</code> use shaped indexing rules.
+            </p>
+
+            <p>
+                Unlike nested ordinary arrays, multidimensional shaped types use one bracket
+                expression with one selector per source axis.
+            </p>
+
+            <pre><code>matrix[row, column]
+tensor[channel, y, x]</code></pre>
+
+            <p>
+                A selector may be a scalar index or a range selector.
+            </p>
+        </section>
+
+        <section id="selectors">
+            <h2>One Selector per Axis</h2>
+
+            <p>For a rank-three tensor, structurally valid forms include:</p>
+
+            <pre><code>value[i, j, k]
+value[i, .., k]
+value[.., .., ..]</code></pre>
+
+            <p>
+                Sec requires exactly one selector per source axis.
+            </p>
+
+            <p>
+                It does not implicitly append omitted trailing <code>..</code> selectors.
+            </p>
+
+            <p>
+                Core shaped slicing has no ellipsis selector.
+            </p>
+
+            <p>Thus this style is not used:</p>
+
+            <pre><code>value[i, ...]</code></pre>
+        </section>
+
+        <section id="shaped-scalar">
+            <h2>Shaped Scalar Selectors</h2>
+
+            <p>
+                A scalar selector removes one axis from the result.
+            </p>
+
+            <p>If every selector is scalar:</p>
+
+            <pre><code>let element := value[i, j, k]</code></pre>
+
+            <p>
+                the result is an element <code>Place[T]</code>.
+            </p>
+
+            <p>
+                Sec does not create a rank-zero tensor merely to represent a fully scalar-indexed element.
+            </p>
+
+            <p>
+                The ordinary place rules then determine read, borrow, mutable borrow or replacement.
+            </p>
+        </section>
+
+        <section id="shaped-ranges">
+            <h2>Shaped Range Selectors</h2>
+
+            <p>
+                A range selector preserves its axis.
+            </p>
+
+            <p>Examples:</p>
+
+            <pre><code>matrix[2, ..]
+matrix[.., 2]
+tensor[1, .., 2]
+tensor[1..&lt;3, .., 4..&lt;10]</code></pre>
+
+            <p>
+                When at least one axis remains, the result is a borrowed shaped view:
+            </p>
+
+            <pre><code>ref tensor_view[T, ResultRank]</code></pre>
+
+            <p>or, when mutable authority and mapping rules permit:</p>
+
+            <pre><code>ref mut tensor_view[T, ResultRank]</code></pre>
+
+            <p>Shaped slicing:</p>
+
+            <ul>
+                <li>does not allocate;</li>
+                <li>does not copy elements;</li>
+                <li>preserves backing identity;</li>
+                <li>preserves memory-space identity;</li>
+                <li>derives new shape and strides;</li>
+                <li>recomputes contiguity.</li>
+            </ul>
+        </section>
+
+        <section id="shaped-step">
+            <h2>Shaped Range <code>step</code></h2>
+
+            <p>
+                Shaped range selectors support Sec's existing <code>step</code> syntax:
+            </p>
+
+            <pre><code>value[.. step 2]
+value[10..&lt;90 step 2]
+value[.. step -1]</code></pre>
+
+            <p>
+                Positive step creates a forward strided view.
+                Negative step creates a reverse strided view.
+            </p>
+
+            <p>
+                <code>step 0</code> is invalid.
+            </p>
+
+            <p>
+                This is deliberately different from ordinary one-dimensional slice creation,
+                whose standard slice range is contiguous and non-descending.
+            </p>
+
+            <p>
+                Shaped views can express non-unit and negative strides because the shaped view
+                model explicitly carries stride semantics.
+            </p>
+        </section>
+
+        <section id="shaped-errors">
+            <h2>Shaped Bounds and Range Checks</h2>
+
+            <p>
+                Shaped indexing follows the same static-proof-first model.
+            </p>
+
+            <p>Statically invalid examples are compile-time errors:</p>
+
+            <ul>
+                <li>out-of-bounds scalar index;</li>
+                <li>invalid static range;</li>
+                <li>wrong number of axis selectors;</li>
+                <li>known <code>step 0</code>;</li>
+                <li>invalid static axis index.</li>
+            </ul>
+
+            <p>
+                Runtime-dependent scalar indexing uses <code>IndexError</code> on the fallible path.
+            </p>
+
+            <p>
+                Runtime-dependent shaped ranges use <code>RangeError</code> on the fallible path.
+            </p>
+
+            <p>
+                The compiler may eliminate checks after proving shape and index facts.
+            </p>
+        </section>
+
+        <section id="raw-pointers">
+            <h2>Raw Pointers Do Not Use Safe Collection Indexing</h2>
+
+            <p>
+                <code>RawPtr[T]</code> is an unchecked address value, not a bounded Sec sequence.
+            </p>
+
+            <p>
+                The raw-pointer model therefore does not gain ordinary safe
+                <code>pointer[index]</code> collection semantics.
+            </p>
+
+            <p>Pointer traversal uses explicit unsafe operations such as:</p>
+
+            <pre><code>pointer.Offset(elements)
+pointer.Read()
+pointer.Write(value)</code></pre>
+
+            <p>
+                A raw pointer carries no implicit bounds merely because its pointee type is known.
+            </p>
+
+            <p>
+                If bounded safe access is desired, establish a valid safe reference or slice under
+                the raw-to-safe construction rules and use the resulting safe abstraction.
+            </p>
+        </section>
+
+        <section id="unsafe">
+            <h2><code>unsafe</code> Does Not Disable Bounds Checks</h2>
+
+            <p>
+                Safe array, slice, list and shaped indexing retain their normal bounds semantics
+                inside <code>unsafe</code>.
+            </p>
+
+            <pre><code>unsafe {
+    let value := values[index]
+}</code></pre>
+
+            <p>
+                remains an ordinary checked safe index operation.
+            </p>
+
+            <p>
+                <code>unsafe</code> accepts proof obligations for operations that are defined as unsafe;
+                it does not reinterpret safe indexing as unchecked memory access.
+            </p>
+
+            <p>
+                Truly unchecked traversal belongs to raw-pointer operations.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership, Borrowing and Lifetime Interaction</h2>
+
+            <p>
+                Indexed places participate in the same ownership model as named fields and other places.
+            </p>
+
+            <p>The compiler tracks:</p>
+
+            <ul>
+                <li>whether the source is available;</li>
+                <li>whether the element type is copyable or move-only;</li>
+                <li>shared and exclusive borrows of the selected place;</li>
+                <li>possible aliasing between runtime indexes;</li>
+                <li>storage identity and backing generation;</li>
+                <li>structural mutations that may invalidate indexed borrows;</li>
+                <li>destruction of replaced owned elements.</li>
+            </ul>
+
+            <p>
+                An indexed borrow into a relocatable dynamic collection remains tied to the current
+                backing incarnation.
+            </p>
+
+            <p>
+                A later operation that may relocate or invalidate that backing conflicts with the
+                live borrow.
+            </p>
+        </section>
+
+        <section id="evaluation-order">
+            <h2>Evaluation Order</h2>
+
+            <p>
+                Indexing follows Sec's ordinary expression evaluation order.
+            </p>
+
+            <p>For:</p>
+
+            <pre><code>GetValues()[NextIndex()] = BuildReplacement()</code></pre>
+
+            <p>
+                the compiler must preserve source-visible evaluation and side effects.
+            </p>
+
+            <p>
+                It may not duplicate:
+            </p>
+
+            <ul>
+                <li>the target expression;</li>
+                <li>the index expression;</li>
+                <li>the replacement expression.</li>
+            </ul>
+
+            <p>
+                The bounds decision and ownership checks occur at the semantic access boundary before
+                a destructive replacement commits.
+            </p>
+
+            <p>
+                Optimization may eliminate redundant checks or address calculations only when the
+                observable behavior remains unchanged.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important indexing diagnostics include:</p>
+
+            <ul>
+                <li>target type is not indexable;</li>
+                <li>invalid index type;</li>
+                <li>negative constant index;</li>
+                <li>constant index equal to or beyond the sequence length;</li>
+                <li>runtime bounds failure on the fallible path;</li>
+                <li>assignment through an immutable element place;</li>
+                <li>replacement type mismatch;</li>
+                <li>conflicting borrow of the indexed element;</li>
+                <li>attempted move of a move-only element through ordinary indexing;</li>
+                <li>use of a unit-bearing value as a logical index when incompatible;</li>
+                <li>string indexed as though it were an array;</li>
+                <li>set indexed as though it were an ordered sequence;</li>
+                <li>map key type mismatch;</li>
+                <li>map lookup missing key on a checked access path;</li>
+                <li>map indexed assignment structural/resource failure;</li>
+                <li>wrong selector count for a shaped value;</li>
+                <li>invalid shaped scalar index;</li>
+                <li>invalid shaped range;</li>
+                <li>shaped <code>step 0</code>;</li>
+                <li>safe indexing incorrectly assumed unchecked inside <code>unsafe</code>.</li>
+            </ul>
+
+            <p>A constant bounds diagnostic should be direct:</p>
+
+            <pre><code>array index 4 is out of bounds for int[4]
+
+valid indexes are 0..&lt;4</code></pre>
+
+            <p>A move-only diagnostic should explain the ownership alternative:</p>
+
+            <pre><code>cannot move Resource out through ordinary indexing
+
+help: borrow the element with `ref resources[index]`
+help: use an explicit owning extraction operation when the collection provides one</code></pre>
+
+            <p>
+                Tooling should show proven index ranges where useful and may explain why a runtime
+                bounds check was removed or remains necessary.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use direct indexing when the access naturally refers to one logical position.</li>
+                <li>Use <code>try target[index]</code> when a runtime out-of-bounds condition must be handled without panic.</li>
+                <li>Prefer branch/range facts that let the compiler prove indexes safe rather than switching to unsafe access.</li>
+                <li>Borrow move-only elements instead of trying to extract them through ordinary indexing.</li>
+                <li>Use collection-specific removal operations when ownership extraction is the real intent.</li>
+                <li>Use <code>ref mut target[index]</code> only when exclusive element mutation is required.</li>
+                <li>Do not assume two runtime indexes are disjoint without a proof.</li>
+                <li>Remember that slice indexes are relative to the slice origin.</li>
+                <li>Use chained indexing for nested ordinary arrays.</li>
+                <li>Use comma-separated axis selectors for shaped values.</li>
+                <li>Do not index <code>string</code> as an array; use the string API or explicit byte/rune conversions.</li>
+                <li>Do not assume sets have positional indexing.</li>
+                <li>Use explicit raw-pointer operations for genuinely unchecked memory traversal.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Linear sequence indexing uses <code>target[index]</code>.</li>
+                <li>For linear sequences, indexing produces an element Place.</li>
+                <li>The use context determines read, shared borrow, mutable borrow or replacement.</li>
+                <li>Valid linear index types include signed integers, unsigned integers and compatible named integer types.</li>
+                <li>Float, decimal, bool and string are not ordinary linear index types.</li>
+                <li>Incompatible unit-bearing numeric values are not logical indexes.</li>
+                <li>Linear sequence indexing is zero-based.</li>
+                <li>Negative signed indexes are out of bounds and do not mean “from the end”.</li>
+                <li>Fixed-array bounds are <code>0 &lt;= index &lt; N</code>.</li>
+                <li>Dynamic-array, slice and list bounds are <code>0 &lt;= index &lt; Len</code>.</li>
+                <li>A statically proven invalid access is a compile-time error.</li>
+                <li>A statically proven valid access may require no runtime bounds check.</li>
+                <li>A runtime-dependent ordinary access is checked and may carry a panic effect.</li>
+                <li><code>try target[index]</code> selects the panic-free fallible access path.</li>
+                <li>Fallible ordinary bounds access produces <code>IndexError.OutOfBounds</code>.</li>
+                <li>The compiler may eliminate bounds checks using range, branch, loop and specialization proofs.</li>
+                <li>A copyable indexed element may be read by value.</li>
+                <li>An indexed element may be borrowed with <code>ref</code>.</li>
+                <li>A mutable element place may be borrowed with <code>ref mut</code>.</li>
+                <li>Indexed assignment requires mutable authority, a compatible replacement and no conflicting borrow.</li>
+                <li>The replacement is fully evaluated before the old owned element is destroyed.</li>
+                <li>Ordinary indexing never silently moves a move-only value out of an owning collection.</li>
+                <li>Dynamic-array <code>RemoveAt</code> is an explicit owning extraction operation.</li>
+                <li>A slice never transfers ownership through indexing.</li>
+                <li>Fixed arrays often permit complete compile-time index validation because length is part of the type.</li>
+                <li>Dynamic-array indexes are bounded by live <code>Len</code>, not hidden capacity.</li>
+                <li>Slice indexes are relative to the slice's logical origin.</li>
+                <li><code>list[T]</code> uses the same linear indexing model.</li>
+                <li>Nested ordinary arrays use chained indexing such as <code>matrix[1][2]</code>.</li>
+                <li><code>string</code> is not implicitly indexable as byte, char or rune storage.</li>
+                <li>Map bracket syntax performs key lookup rather than positional indexing.</li>
+                <li>A successful map lookup produces the stored value Place.</li>
+                <li>A missing map key is a checked key-access failure and does not insert.</li>
+                <li>Map indexed assignment performs replacement or insertion.</li>
+                <li>Potentially structural map assignment uses explicit fallible syntax such as <code>try users[id] = user</code>.</li>
+                <li>Sets have no positional indexing.</li>
+                <li>Multidimensional shaped indexing supplies exactly one selector per source axis.</li>
+                <li>A shaped scalar selector removes one axis.</li>
+                <li>Full scalar shaped indexing yields <code>Place[T]</code>, not a rank-zero tensor.</li>
+                <li>A shaped range selector preserves an axis and yields a tensor view when at least one axis remains.</li>
+                <li>Shaped ranges may use positive or negative <code>step</code>; <code>step 0</code> is invalid.</li>
+                <li>Runtime shaped scalar access uses <code>IndexError</code> on the fallible path.</li>
+                <li>Runtime shaped range access uses <code>RangeError</code> on the fallible path.</li>
+                <li><code>RawPtr[T]</code> does not gain safe collection indexing or implicit bounds.</li>
+                <li>Raw traversal uses explicit unsafe operations such as <code>Offset</code>, <code>Read</code> and <code>Write</code>.</li>
+                <li><code>unsafe</code> does not disable bounds checks on otherwise safe indexing operations.</li>
+                <li>Indexed references remain subject to ordinary ownership, borrow, lifetime and backing-invalidation rules.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="20-slices.html">Previous: Slices</a>
-            <a href="22-constants.html">Next: Constants</a>
+            <a href="20-slices.html">Previous: Slices</a>
+            <a href="22-storage.html">Next: Values, Places and Storage</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

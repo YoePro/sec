@@ -1,0 +1,8 @@
+module increment_decrement
+
+fn Update() int {
+let mut value: int := 2
+value++
+value --
+return value
+}

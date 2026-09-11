@@ -78,6 +78,71 @@ func TestResolvedFixedArrayIndexPlans(t *testing.T) {
 	}
 }
 
+// rules/collections/collections.md §8 keeps list bounds and access-mode facts
+// separate from array facts until list-specific Semantic IR exists.
+func TestResolvedListIndexPlans(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/list_indexing_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "list_indexing_valid.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errors := a.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	indexes := []*ast.IndexExpression{}
+	for _, statement := range result.Program.Statements {
+		function, ok := statement.(*ast.FunctionDeclaration)
+		if !ok || function.Body == nil {
+			continue
+		}
+		for _, bodyStatement := range function.Body.Statements {
+			indexes = append(indexes, indexesInStatement(bodyStatement)...)
+		}
+	}
+	if len(indexes) != 6 {
+		t.Fatalf("list index expression count = %d, want 6", len(indexes))
+	}
+	wants := []struct {
+		use    ArrayIndexUseKind
+		action ResolvedArrayTransferAction
+		index  string
+	}{
+		{ArrayIndexRead, ArrayTransferCopyTrivial, "uint"},
+		{ArrayIndexRead, ArrayTransferCopyTrivial, "int"},
+		{ArrayIndexWrite, ArrayTransferConstructDirect, "uint"},
+		{ArrayIndexWrite, ArrayTransferConstructDirect, "uint"},
+		{ArrayIndexBorrow, ArrayTransferBorrowShared, "uint"},
+		{ArrayIndexMutBorrow, ArrayTransferBorrowMutable, "uint"},
+	}
+	for index, want := range wants {
+		plan, found := a.ResolvedListIndexPlanOf(indexes[index])
+		if !found || plan.ListType.Name != "list" || plan.ElementType.Name != "int" ||
+			plan.IndexType.Name != want.index || plan.CheckKind != ArrayIndexRuntimeCheck ||
+			plan.FailureMode != ArrayIndexFailureOrdinary || plan.ErrorType.Name != "IndexError" ||
+			plan.UseKind != want.use || plan.Action != want.action {
+			t.Fatalf("list plan %d = %#v, found=%t", index, plan, found)
+		}
+		if _, arrayPlan := a.ResolvedArrayIndexPlanOf(indexes[index]); arrayPlan {
+			t.Fatalf("list index %d leaked into array semantic facts", index)
+		}
+	}
+	constant, _ := a.ResolvedListIndexPlanOf(indexes[1])
+	if constant.ConstantIndex == nil || constant.ConstantIndex.Sign() != 0 || constant.CheckKind != ArrayIndexRuntimeCheck {
+		t.Fatalf("constant list index lost its mandatory runtime Len check: %#v", constant)
+	}
+	constant.ConstantIndex.SetInt64(9)
+	again, _ := a.ResolvedListIndexPlanOf(indexes[1])
+	if again.ConstantIndex == nil || again.ConstantIndex.Sign() != 0 {
+		t.Fatalf("list index query exposed analyzer-owned constant: %#v", again)
+	}
+}
+
 // TestFixedArrayIndexPlansRejectExactWideBounds covers the invalid half of
 // Package 14 section 35 without relying on int64 conversion.
 func TestFixedArrayIndexPlansRejectExactWideBounds(t *testing.T) {

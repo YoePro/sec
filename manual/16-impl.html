@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,31 +22,53 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Impl Blocks</div>
-        <a href="#16-impl">Overview</a>
-        <a href="#syntax">Syntax</a>
-        <a href="#targets">Allowed Targets</a>
-        <a href="#members">Members</a>
-        <a href="#self">Self</a>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#impl">Impl Blocks</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#targets">Eligible Targets</a>
+        <a href="#module-ownership">Defining-Module Ownership</a>
+        <a href="#primary">Primary Impl</a>
+        <a href="#extends">impl extends</a>
+        <a href="#combined-surface">Combined Member Surface</a>
+        <a href="#members">Allowed Members</a>
+        <a href="#instance-bindings">Instance let Bindings</a>
+        <a href="#static-members">Static Members</a>
+        <a href="#self">Implicit self</a>
         <a href="#methods">Methods</a>
         <a href="#properties">Properties</a>
         <a href="#nested-types">Nested Types</a>
-        <a href="#generic-impl">Generic Impl</a>
-        <a href="#interfaces">Interface Implementation</a>
+        <a href="#nested-impl">Nested Impl</a>
+        <a href="#lifecycle">Lifecycle Members</a>
+        <a href="#init">init</a>
+        <a href="#fallible-init">Fallible init</a>
+        <a href="#init-overloads">Initializer Overloads</a>
+        <a href="#construction-completion">Construction Completion</a>
+        <a href="#new">new</a>
+        <a href="#new-vs-conversion">new vs Conversion</a>
+        <a href="#allocation">new Does Not Mean Heap</a>
+        <a href="#resource-init">Resources During init</a>
+        <a href="#partial-init">Partial Initialization</a>
+        <a href="#free">free</a>
+        <a href="#cleanup-balance">Construction and Cleanup</a>
+        <a href="#generics">Generic Impl</a>
+        <a href="#interfaces">Interface Conformance</a>
         <a href="#lookup">Name Lookup</a>
-        <a href="#analysis">Analysis Order</a>
-        <a href="#restrictions">Restrictions</a>
-        <a href="#visibility">Visibility</a>
-        <a href="#runtime">Runtime Model</a>
-        <a href="#summary">Summary of Rules</a>
+        <a href="#conflicts">Duplicate and Conflict Rules</a>
+        <a href="#runtime-model">Runtime Model</a>
+        <a href="#organization">Source Organization</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#summary">Summary</a>
+
         <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -57,14 +79,14 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html" class="active">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html">Ownership</a>
         <a href="25-borrowing.html">Borrowing</a>
@@ -74,7 +96,7 @@
         <a href="31-projects.html">Projects and sec.module</a>
         <a href="32-visibility.html">Visibility</a>
         <a href="33-result-and-option.html">Result and Option</a>
-        <a href="34-try.html">Error Handling</a>
+        <a href="34-try.html">Error Propagation</a>
         <a href="35-defer.html">Deferred Cleanup</a>
         <a href="36-attributes.html">Attributes</a>
         <a href="37-build-directives.html">Build Directives</a>
@@ -86,338 +108,1427 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
+
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Impl Blocks</div>
-        <h1 id="16-impl">Impl Blocks</h1>
-        <p>An <code>impl</code> block defines behavior for an existing named type. The type declaration defines the type itself, while the impl block defines operations associated with that type.</p>
-        <pre><code>type Person struct {
-    name: string,
-    age: int,
+
+        <h1 id="impl">Impl Blocks</h1>
+
+        <p>
+            An <code>impl</code> defines the implementation surface of a named Sec type.
+            It can provide methods, properties, instance bindings, static members,
+            lifecycle behavior, nested types and explicit interface conformance.
+        </p>
+
+        <pre><code>type Counter struct {
+    value: int,
 }
 
-impl Person {
-}</code></pre>
-        <div class="rule"><strong>Rule:</strong> A type defines data and identity. An impl block defines behavior.</div>
+impl Counter {
+    static let Maximum: int := 100
+    let Label: string := "counter"
 
-        <section id="syntax">
-            <h2>Syntax</h2>
-            <pre><code>impl TypeName {
-    members
+    fn Increment() void {
+        self.value += 1
+    }
 }</code></pre>
-            <p>The target must already be a known named type. An empty impl block is valid.</p>
+
+        <p>
+            A type declaration and its implementation cooperate to define the complete type.
+            The type declaration introduces the nominal type and its direct representation.
+            The implementation supplies behavior and may also contribute explicitly declared
+            per-instance <code>let</code> storage.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A bare <code>let</code> or <code>let mut</code>
+            inside <code>impl</code> is instance-bound. Type-owned state and values use
+            explicit <code>static</code>.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                <code>impl</code> keeps a type's implementation members together while preserving
+                clear distinctions between:
+            </p>
+
+            <ul>
+                <li>direct type representation;</li>
+                <li>additional instance bindings;</li>
+                <li>instance behavior;</li>
+                <li>type-associated behavior and storage;</li>
+                <li>construction and destruction;</li>
+                <li>nested declarations;</li>
+                <li>interface conformance.</li>
+            </ul>
+
+            <p>For example:</p>
+
+            <pre><code>type Device struct {
+    id: uint64,
+}
+
+impl Device {
+    let Connected: bool := false
+    static let MaximumConnections: uint := 32
+
+    fn IsConnected() bool {
+        return self.Connected
+    }
+}</code></pre>
+
+            <p>
+                <code>id</code> is a direct struct field.
+                <code>Connected</code> is an instance binding contributed by the implementation.
+                <code>MaximumConnections</code> belongs to the type itself.
+            </p>
         </section>
 
         <section id="targets">
-            <h2>Allowed Targets</h2>
-            <p>An impl block may target structs, enums, unions, registers, named primitive-derived types, units and generic named types.</p>
-            <pre><code>impl Vehicle {
-}
+            <h2>Eligible Targets</h2>
 
-impl Color {
-}
+            <p>
+                Ordinary <code>impl</code> blocks target user-defined named nominal types.
+            </p>
 
-impl Result[T, E] {
-}
+            <p>Eligible targets include, where their specialized rules permit it:</p>
 
-impl Speed {
+            <ul>
+                <li>named scalar types;</li>
+                <li>constrained named types;</li>
+                <li>structs;</li>
+                <li>enums;</li>
+                <li>unions;</li>
+                <li>registers;</li>
+                <li>units;</li>
+                <li>generic named types;</li>
+                <li>other user-defined nominal types.</li>
+            </ul>
+
+            <pre><code>type Percent int range 0..100
+
+impl Percent {
+    fn IsHigh() bool {
+        return self &gt; Percent(80)
+    }
 }</code></pre>
-            <p>The target must exist and must be a named type.</p>
-            <pre><code>impl MissingType {
+
+            <p>
+                Interfaces are not ordinary implementation targets.
+                Interface declaration and conformance have their own rules.
+            </p>
+
+            <p>
+                User code cannot use <code>impl</code> to extend compiler-known primitive
+                types merely because those types exist in the language.
+            </p>
+        </section>
+
+        <section id="module-ownership">
+            <h2>Defining-Module Ownership</h2>
+
+            <p>
+                An ordinary implementation belongs to the module that defines the target type.
+            </p>
+
+            <p>
+                Another module cannot import a type and add ordinary members to it:
+            </p>
+
+            <pre><code>module application
+
+import graphics
+
+impl graphics.Image {
+    fn DebugDump() void {
+        ...
+    }
 }</code></pre>
+
+            <p>
+                This is invalid.
+            </p>
+
+            <p>
+                The restriction gives each named type one coherent implementation owner and prevents
+                unrelated modules from changing the member surface of imported types.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Ordinary implementation is owned by the defining module.
+                Sec does not use cross-module extension methods as part of the ordinary
+                <code>impl</code> model.
+            </div>
+        </section>
+
+        <section id="primary">
+            <h2>Primary Impl</h2>
+
+            <p>
+                A type's ordinary implementation surface has one primary implementation:
+            </p>
+
+            <pre><code>impl Device {
+    fn Start() void {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                The primary implementation is the human-facing entry point for the type's behavior.
+            </p>
+
+            <p>A second primary block is invalid:</p>
+
+            <pre><code>impl Device {
+    fn Start() void {
+        ...
+    }
+}
+
+impl Device {
+    fn Stop() void {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                Additional implementation fragments use <code>impl extends</code>.
+            </p>
+        </section>
+
+        <section id="extends">
+            <h2><code>impl extends</code></h2>
+
+            <p>
+                A type's implementation may be split across multiple source files in the same module:
+            </p>
+
+            <pre><code>impl Device {
+    fn Start() void {
+        ...
+    }
+}</code></pre>
+
+            <pre><code>impl extends Device {
+    fn Stop() void {
+        ...
+    }
+}</code></pre>
+
+            <p>The canonical spelling is:</p>
+
+            <pre><code>impl extends Device</code></pre>
+
+            <p>not:</p>
+
+            <pre><code>impl Device extends</code></pre>
+
+            <p>An extension fragment:</p>
+
+            <ul>
+                <li>belongs to the same module as the target type;</li>
+                <li>requires a primary implementation in that module;</li>
+                <li>may live in another source file in the module;</li>
+                <li>may be discovered before or after the primary block;</li>
+                <li>has the same ordinary member capabilities as the primary block.</li>
+            </ul>
+
+            <p>
+                <code>extends</code> is an organizational feature.
+                It does not create subclassing, inheritance or a weaker implementation category.
+            </p>
+        </section>
+
+        <section id="combined-surface">
+            <h2>One Combined Member Surface</h2>
+
+            <p>
+                The primary implementation and every valid extension fragment form one logical
+                member namespace.
+            </p>
+
+            <p>
+                File boundaries do not create separate method or member scopes.
+            </p>
+
+            <pre><code>impl Device {
+    fn Start() void {
+    }
+}
+
+impl extends Device {
+    fn Start() void {
+    }
+}</code></pre>
+
+            <p>
+                This is a duplicate method even when the declarations are in different source files.
+            </p>
+
+            <p>The combined surface includes:</p>
+
+            <ul>
+                <li>instance bindings;</li>
+                <li>methods and overload groups;</li>
+                <li>properties;</li>
+                <li>static members;</li>
+                <li><code>init</code> overloads;</li>
+                <li><code>free</code>;</li>
+                <li>nested type names;</li>
+                <li>other target-specific implementation members.</li>
+            </ul>
         </section>
 
         <section id="members">
-            <h2>Impl Members</h2>
-            <p>An impl block may contain methods, properties, nested named types, nested enums, nested unions, nested units and constants when implemented.</p>
+            <h2>Members Allowed in Impl</h2>
+
+            <p>Subject to the target type's own rules, an <code>impl</code> may contain:</p>
+
+            <ul>
+                <li>instance <code>let</code> bindings;</li>
+                <li>instance <code>let mut</code> bindings;</li>
+                <li>instance methods;</li>
+                <li>properties;</li>
+                <li><code>static fn</code> methods;</li>
+                <li>static properties;</li>
+                <li><code>static let</code> values;</li>
+                <li><code>static let mut</code> storage;</li>
+                <li><code>init</code> lifecycle members;</li>
+                <li>one <code>free</code> lifecycle member;</li>
+                <li>nested or associated type declarations;</li>
+                <li>nested implementations of owned nested types;</li>
+                <li>unit metadata and other target-specific associated declarations.</li>
+            </ul>
+
+            <p>
+                Some declarations remain invalid directly inside the implementation.
+            </p>
+
+            <p>For example, bare field syntax is not an implementation member:</p>
+
             <pre><code>impl Vehicle {
-    type Engine struct {
-        power: Kilowatt,
-    }
+    engine: Engine    // invalid
+}</code></pre>
 
-    enum FuelType {
-        petrol,
-        diesel,
-        electric,
-    }
+            <p>
+                When instance storage belongs in the implementation, declare it explicitly with
+                <code>let</code> or <code>let mut</code>.
+            </p>
+        </section>
 
-    property TopSpeed: Speed {
-        get {
-            return _topSpeed
-        }
-    }
+        <section id="instance-bindings">
+            <h2>Instance <code>let</code> Bindings</h2>
 
-    fn Stop(ref mut self) void {
-        self._topSpeed = Speed(0)
+            <p>
+                A non-static binding directly inside <code>impl</code> belongs to each instance.
+            </p>
+
+            <pre><code>type Counter struct {
+    value: int,
+}
+
+impl Counter {
+    let Label: string := "counter"
+    let mut Enabled: bool := true
+}</code></pre>
+
+            <p>
+                Every <code>Counter</code> instance has its own <code>Label</code> and
+                <code>Enabled</code> storage.
+            </p>
+
+            <p>Access requires an instance:</p>
+
+            <pre><code>let label := counter.Label
+counter.Enabled = false</code></pre>
+
+            <p>Inside instance behavior:</p>
+
+            <pre><code>impl Counter {
+    fn Disable() void {
+        self.Enabled = false
     }
 }</code></pre>
-            <p>An impl block cannot contain stored fields or ordinary variable declarations.</p>
-            <pre><code>impl Vehicle {
-    let currentSpeed: Speed
+
+            <p>This is invalid:</p>
+
+            <pre><code>let label := Counter.Label</code></pre>
+
+            <p>
+                because <code>Label</code> is instance-bound rather than static.
+            </p>
+
+            <h3>Representation</h3>
+
+            <p>
+                Instance implementation bindings contribute to the complete representation of
+                the owning type.
+            </p>
+
+            <p>The compiler must account for their:</p>
+
+            <ul>
+                <li>storage;</li>
+                <li>initialization;</li>
+                <li>alignment and layout;</li>
+                <li>ownership;</li>
+                <li>copy/move classification;</li>
+                <li>destruction.</li>
+            </ul>
+
+            <p>
+                All instance bindings from the primary implementation and every
+                <code>impl extends</code> fragment are known before final layout and lowering.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> <code>let</code> in <code>impl</code> is not shorthand
+                for <code>static let</code>. Instance and static bindings are different semantic categories.
+            </div>
+        </section>
+
+        <section id="static-members">
+            <h2>Static Members</h2>
+
+            <p>
+                Type-owned members use explicit <code>static</code>.
+            </p>
+
+            <pre><code>impl Counter {
+    static let Maximum: int := 100
+    static let mut Total: int := 0
+
+    static fn IsValid(value: int) bool {
+        return value &lt;= Counter.Maximum
+    }
 }</code></pre>
-            <div class="rule"><strong>Invalid:</strong> Stored data belongs in the type declaration, not in the impl block.</div>
+
+            <p>
+                Static members require no instance.
+            </p>
+
+            <pre><code>let maximum := Counter.Maximum
+let valid := Counter.IsValid(50)</code></pre>
+
+            <p>
+                Static state is not part of an ordinary instance's representation.
+            </p>
+
+            <p>
+                Static members do not receive <code>self</code>.
+            </p>
+
+            <pre><code>impl Counter {
+    static fn Invalid() void {
+        self.value = 0    // invalid
+    }
+}</code></pre>
+
+            <p>
+                Sec does not infer static membership merely because a method body happens not to
+                use <code>self</code>. A static method is written explicitly as
+                <code>static fn</code>.
+            </p>
+
+            <h3>Static vs instance binding</h3>
+
+            <pre><code>impl Counter {
+    let Label: string := "counter"
+    static let Maximum: int := 100
+}</code></pre>
+
+            <p>Then:</p>
+
+            <pre><code>counter.Label       // valid
+Counter.Label       // invalid
+
+Counter.Maximum     // valid
+counter.Maximum     // invalid</code></pre>
+
+            <p>
+                The distinction is visible in source, lifetime, storage and lookup.
+            </p>
         </section>
 
         <section id="self">
-            <h2>Self</h2>
-            <p>Instance methods declare a receiver named <code>self</code>.</p>
-            <h3>Shared receiver</h3>
-            <pre><code>impl Person {
-    fn Print(ref self) void {
-        fmt.Println(self.name)
+            <h2>Implicit <code>self</code></h2>
+
+            <p>
+                Ordinary instance methods receive compiler-provided <code>self</code>.
+            </p>
+
+            <pre><code>impl Counter {
+    fn Increment() void {
+        self.value += 1
+    }
+
+    fn Value() int {
+        return self.value
     }
 }</code></pre>
-            <p>A shared receiver may read from the value but may not mutate it.</p>
-            <h3>Mutable receiver</h3>
-            <pre><code>impl Person {
-    fn SetAge(ref mut self, age: int) void {
-        self.age = age
-    }
+
+            <p>
+                The programmer does not write <code>self</code> in the parameter list.
+            </p>
+
+            <p>These receiver forms are invalid:</p>
+
+            <pre><code>fn Read(ref self) int
+fn Update(ref mut self, value: int) void</code></pre>
+
+            <p>
+                For a concrete method, the compiler derives the required receiver access from
+                the method body and the ordinary ownership and borrowing rules.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>fn Value() int {
+    return self.value
 }</code></pre>
-            <p>A mutable receiver may modify the target value.</p>
-            <h3>Static methods</h3>
-            <pre><code>impl Person {
-    fn Create(name: string, age: int) Person {
-        return Person {
-            name: name,
-            age: age,
-        }
-    }
+
+            <p>
+                requires only the authority needed to read the instance.
+            </p>
+
+            <pre><code>fn Increment() void {
+    self.value += 1
 }</code></pre>
-            <div class="rule"><strong>Rule:</strong> <code>self</code> is available only when explicitly declared as a method receiver.</div>
+
+            <p>
+                requires mutable/exclusive receiver authority.
+            </p>
+
+            <p>
+                Interface declarations are different because they have no body from which receiver
+                capability can be inferred; interface contracts therefore spell out their receiver
+                capability separately.
+            </p>
         </section>
 
         <section id="methods">
             <h2>Methods</h2>
-            <p>Methods are functions associated with the impl target.</p>
-            <pre><code>impl Vehicle {
-    fn Drive(ref mut self, speed: Speed) void {
-        self._speed = speed
-    }
 
-    fn CurrentSpeed(ref self) Speed {
-        return self._speed
+            <p>
+                An ordinary function declaration inside <code>impl</code> is an instance method.
+            </p>
+
+            <pre><code>impl Vehicle {
+    fn Start() void {
+        ...
     }
 }</code></pre>
-            <pre><code>vehicle.Drive(Speed(50))
-let speed := vehicle.CurrentSpeed()</code></pre>
-            <p>Conceptually, methods are registered under qualified names such as <code>Vehicle.Drive</code> and <code>Vehicle.CurrentSpeed</code>.</p>
-            <p>All method signatures are registered before method bodies are analyzed, so forward references are allowed.</p>
-            <pre><code>impl Vehicle {
-    fn Start(ref mut self) void {
-        self.Prepare()
+
+            <p>Its qualified member identity is conceptually:</p>
+
+            <pre><code>Vehicle.Start</code></pre>
+
+            <p>Call it through an instance:</p>
+
+            <pre><code>vehicle.Start()</code></pre>
+
+            <p>
+                Method parameter, result, generic, ownership, fallibility and variadic semantics
+                follow the ordinary function rules.
+            </p>
+
+            <h3>Overloading</h3>
+
+            <pre><code>impl Parser {
+    fn Parse(value: string) Result[Value, ParseError] {
+        ...
     }
 
-    fn Prepare(ref mut self) void {
+    fn Parse(value: ref byte[]) Result[Value, ParseError] {
+        ...
     }
 }</code></pre>
-            <p>Additional method-level generic parameters are not part of the initial implementation.</p>
+
+            <p>
+                Methods may overload where their parameter signatures distinguish them.
+                Return type alone is not an overload discriminator.
+            </p>
+
+            <p>
+                Overloads are collected across the complete primary and extension implementation surface.
+            </p>
         </section>
 
         <section id="properties">
             <h2>Properties</h2>
-            <p>Properties are controlled or computed members declared inside an impl block.</p>
+
+            <p>
+                Properties are implementation members:
+            </p>
+
             <pre><code>impl Vehicle {
     property TopSpeed: Speed {
         get {
-            return _topSpeed
+            return self._topSpeed
         }
+    }
+}</code></pre>
 
-        try set value {
-            _topSpeed = value
-            return Ok()
-        }
-    }
-}</code></pre>
-            <p>A property may contain <code>get</code>, <code>set value</code> or <code>try set value</code>. It must contain at least one getter or setter.</p>
-            <p>A getter must return a value assignable to the property type.</p>
-            <pre><code>property Bad: Speed {
-    get {
-        return Money(5.90)
-    }
-}</code></pre>
-            <p>A fallible property assignment requires <code>try</code>:</p>
-            <pre><code>try car.TopSpeed = currentSpeed {
-    Err(error) => fmt.Println("could not set top speed")
-}</code></pre>
+            <p>
+                Properties provide behavioral access and do not create hidden storage merely because
+                a property exists.
+            </p>
+
+            <p>
+                Storage used by the property must come from direct type representation, instance
+                implementation bindings or another explicitly defined storage mechanism.
+            </p>
+
+            <p>
+                Properties may appear in the primary implementation or an extension fragment.
+                Duplicate property and member names are checked across the combined surface.
+            </p>
+
+            <p>
+                Instance property accessors receive implicit <code>self</code>.
+                Getter, setter and fallible setter semantics are covered by the Properties chapter.
+            </p>
         </section>
 
         <section id="nested-types">
-            <h2>Nested Types</h2>
-            <p>Associated nested declarations are scoped under the impl target type.</p>
-            <pre><code>type Vehicle struct {
-    engine: Vehicle.Engine,
-    fuel: Vehicle.FuelType,
-}
+            <h2>Nested and Associated Types</h2>
 
-impl Vehicle {
+            <p>
+                An implementation may declare types owned by the implementation target's namespace.
+            </p>
+
+            <pre><code>impl Vehicle {
     type Engine struct {
-        power: Kilowatt,
+        MaxPower: int,
     }
 
     enum FuelType {
-        petrol,
-        diesel,
-        electric,
+        Petrol
+        Diesel
+        Electric
+    }
+
+    type Fuel union {
+        Petrol
+        Diesel
+        Electric
+    }
+
+    type Flags register[8] {
+        Enabled: bit,
+        _: bit[7],
     }
 }</code></pre>
-            <p>Outside the impl block, nested types require qualified names such as <code>Vehicle.Engine</code>, <code>Vehicle.FuelType</code> and <code>Vehicle.FuelType.petrol</code>.</p>
-            <p>Inside <code>impl Vehicle</code>, short names such as <code>Engine</code>, <code>FuelType</code> and <code>FuelType.petrol</code> are available.</p>
-            <div class="rule"><strong>Rule:</strong> Nested declarations belong to the target type namespace.</div>
-            <p>Nested named types still use normal declaration syntax.</p>
-            <pre><code>impl Vehicle {
-    type Engine struct {
-        power: Kilowatt,
-    }
-}</code></pre>
-            <p>This form is invalid:</p>
-            <pre><code>impl Vehicle {
-    struct Engine {
-        power: Kilowatt,
-    }
-}</code></pre>
+
+            <p>Outside the implementation, use qualified names:</p>
+
+            <pre><code>Vehicle.Engine
+Vehicle.FuelType
+Vehicle.Fuel
+Vehicle.Flags</code></pre>
+
+            <p>
+                Inside <code>impl Vehicle</code> or a valid same-module extension, the short nested
+                name may be used when unambiguous.
+            </p>
+
+            <p>
+                Nested declarations do not leak their short names into the surrounding module namespace.
+            </p>
+
+            <p>
+                A nested type has its own representation. Declaring <code>Vehicle.Engine</code>
+                does not itself add an engine field to every <code>Vehicle</code>.
+            </p>
         </section>
 
-        <section id="generic-impl">
-            <h2>Generic Impl Blocks</h2>
-            <pre><code>type Stack[T] struct {
-    items: Vec[T],
-}
+        <section id="nested-impl">
+            <h2>Nested Impl</h2>
 
-impl Stack[T] {
-    fn Push(ref mut self, value: T) void {
-        self.items.Add(value)
+            <p>
+                The primary implementation of an owned nested type may be written inside the
+                enclosing implementation:
+            </p>
+
+            <pre><code>impl Vehicle {
+    type Engine struct {
+        MaxPower: int,
     }
 
-    fn Pop(ref mut self) Option[T] {
-        return self.items.Pop()
+    impl Engine {
+        fn Start() void {
+            ...
+        }
     }
 }</code></pre>
-            <p>The generic parameters must match the target declaration. Generic impl members are specialized together with the concrete target type.</p>
+
+            <p>
+                The nested block above is the primary implementation of
+                <code>Vehicle.Engine</code>.
+            </p>
+
+            <p>
+                A nested implementation must target a type owned by the enclosing type.
+                It cannot be used as a grouping device for an unrelated module-level type.
+            </p>
+
+            <p>Additional fragments may use the qualified name:</p>
+
+            <pre><code>impl extends Vehicle.Engine {
+    fn Stop() void {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                The ordinary same-module, primary/extension and duplicate rules apply to nested types too.
+            </p>
+        </section>
+
+        <section id="lifecycle">
+            <h2>Lifecycle Members</h2>
+
+            <p>
+                Sec defines two special implementation members for explicit lifecycle behavior:
+            </p>
+
+            <pre><code>init
+free</code></pre>
+
+            <p>
+                Neither is declared with <code>fn</code>.
+            </p>
+
+            <p>
+                <code>init</code> establishes a fully valid instance.
+                <code>free</code> performs cleanup that cannot be expressed completely by automatic
+                destruction of owned fields.
+            </p>
+
+            <p>
+                A type does not need either lifecycle member when ordinary construction and
+                compiler-derived destruction already express the required semantics.
+            </p>
+        </section>
+
+        <section id="init">
+            <h2><code>init</code></h2>
+
+            <p>An infallible initializer is written:</p>
+
+            <pre><code>impl Point {
+    init(x: int, y: int) {
+        self.x = x
+        self.y = y
+    }
+}</code></pre>
+
+            <p>
+                <code>init</code> has no ordinary success return type.
+                Successful completion means that construction produced a fully valid instance.
+            </p>
+
+            <p>This is not lifecycle syntax:</p>
+
+            <pre><code>fn init(x: int, y: int) void {
+    ...
+}</code></pre>
+
+            <p>
+                The lifecycle member is the bare contextual form <code>init(...)</code> inside
+                <code>impl</code>.
+            </p>
+
+            <h3>When to use init</h3>
+
+            <p>Use an explicit initializer when construction:</p>
+
+            <ul>
+                <li>establishes non-trivial invariants;</li>
+                <li>performs meaningful initialization logic;</li>
+                <li>selects between meaningful construction algorithms;</li>
+                <li>acquires resources;</li>
+                <li>can fail for a meaningful typed reason.</li>
+            </ul>
+
+            <p>
+                Do not write an empty or trivial <code>init()</code> merely to duplicate an
+                already valid implicit/default construction path.
+            </p>
+        </section>
+
+        <section id="fallible-init">
+            <h2>Fallible <code>init</code></h2>
+
+            <p>
+                A fallible initializer writes its construction error type after the parameter list:
+            </p>
+
+            <pre><code>impl Connection {
+    init(address: Address) ConnectError {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                <code>ConnectError</code> is not the return type of <code>init</code>.
+            </p>
+
+            <p>
+                It describes only the construction error channel.
+            </p>
+
+            <p>
+                Success produces the completed <code>Connection</code> instance.
+                The initializer does not return an independent success payload.
+            </p>
+
+            <p>
+                Fallible initialization may use ordinary Sec error propagation consistent with the
+                declared construction error type.
+            </p>
+        </section>
+
+        <section id="init-overloads">
+            <h2>Initializer Overloads</h2>
+
+            <p>
+                <code>init</code> may be overloaded by parameter signature:
+            </p>
+
+            <pre><code>impl Buffer {
+    init() {
+    }
+
+    init(size: uint) AllocationError {
+        ...
+    }
+
+    init(data: ref byte[]) AllocationError {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                The error type does not distinguish initializer overloads.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>impl Resource {
+    init(path: string) IOError {
+        ...
+    }
+
+    init(path: string) ParseError {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                Both declarations have the same parameter signature.
+            </p>
+        </section>
+
+        <section id="construction-completion">
+            <h2>Construction Must Complete a Valid Instance</h2>
+
+            <p>
+                Successful <code>init</code> completion must establish a fully valid target value.
+            </p>
+
+            <p>The completed value must satisfy:</p>
+
+            <ul>
+                <li>required field and instance-binding initialization;</li>
+                <li>named-type contracts and invariants;</li>
+                <li>ownership requirements;</li>
+                <li>resource ownership requirements;</li>
+                <li>target-specific validity rules.</li>
+            </ul>
+
+            <p>
+                A partially initialized outer instance cannot escape from <code>init</code>.
+            </p>
+
+            <p>
+                If ordinary/default construction already provides an unambiguous valid zero-argument
+                construction path, no explicit <code>init()</code> is required just to reproduce it.
+            </p>
+        </section>
+
+        <section id="new">
+            <h2><code>new</code></h2>
+
+            <p>
+                <code>new</code> explicitly selects lifecycle construction.
+            </p>
+
+            <p>Infallible:</p>
+
+            <pre><code>let point := new Point(10, 20)</code></pre>
+
+            <p>Fallible:</p>
+
+            <pre><code>let connection := try new Connection(address)</code></pre>
+
+            <p>
+                A successful <code>new Type(...)</code> expression has type <code>Type</code>.
+            </p>
+
+            <pre><code>let mut connection := try new Connection(address)</code></pre>
+
+            <p>binds:</p>
+
+            <pre><code>connection: Connection</code></pre>
+
+            <p>
+                It does not bind the initializer's error type.
+            </p>
+
+            <p>
+                When no explicit matching <code>init()</code> exists, <code>new Type()</code> may
+                use a permitted unambiguous implicit construction path defined by the target type's
+                construction rules.
+            </p>
+        </section>
+
+        <section id="new-vs-conversion">
+            <h2><code>new</code> vs Conversion</h2>
+
+            <p>
+                Lifecycle construction and conversion are separate operations.
+            </p>
+
+            <pre><code>let percent := Percent(50)</code></pre>
+
+            <p>
+                uses <code>Percent</code>'s conversion semantics.
+            </p>
+
+            <pre><code>let connection := try new Connection(address)</code></pre>
+
+            <p>
+                selects lifecycle construction through <code>init</code>.
+            </p>
+
+            <p>
+                The compiler must not silently substitute one form for the other.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>Type(value)</code> means conversion or the
+                target type's ordinary constructor-like conversion semantics.
+                <code>new Type(args...)</code> means lifecycle construction.
+            </div>
+        </section>
+
+        <section id="allocation">
+            <h2><code>new</code> Does Not Mean Heap Allocation</h2>
+
+            <p>
+                <code>new</code> selects a construction path.
+                It does not select a storage location.
+            </p>
+
+            <pre><code>let point := new Point(10, 20)</code></pre>
+
+            <p>
+                The resulting value may be represented in:
+            </p>
+
+            <ul>
+                <li>stack storage;</li>
+                <li>SSA values;</li>
+                <li>registers;</li>
+                <li>inline aggregate storage;</li>
+                <li>another location permitted by ordinary storage and optimization rules.</li>
+            </ul>
+
+            <p>
+                Allocation happens only when the selected construction semantics actually require it.
+            </p>
+        </section>
+
+        <section id="resource-init">
+            <h2>Resource Acquisition During <code>init</code></h2>
+
+            <p>
+                Resources acquired during construction must have a statically valid cleanup path.
+            </p>
+
+            <p>For every acquired owned resource, cleanup must exist for:</p>
+
+            <ul>
+                <li>construction failure after acquisition;</li>
+                <li>eventual destruction of the successfully constructed value.</li>
+            </ul>
+
+            <p>
+                This does not mean every resource-owning type needs a custom <code>free</code>.
+            </p>
+
+            <p>
+                When ownership is represented by ordinary owned fields whose types already have
+                correct destruction behavior, compiler-derived field destruction is sufficient.
+            </p>
+
+            <p>
+                A custom <code>free</code> is primarily for cleanup that cannot be represented by
+                ordinary owned Sec fields.
+            </p>
+        </section>
+
+        <section id="partial-init">
+            <h2>Partial Initialization and Failure</h2>
+
+            <p>
+                During <code>init</code>, fields, instance bindings and resources may become
+                initialized in stages.
+            </p>
+
+            <p>If construction fails:</p>
+
+            <ul>
+                <li>only successfully initialized owned state is cleaned up;</li>
+                <li>ordinary destruction rules determine that cleanup;</li>
+                <li>the incomplete outer value cannot escape;</li>
+                <li>the completed-value <code>free</code> member is not invoked for an object that never completed construction;</li>
+                <li>construction temporaries are cleaned up according to their ordinary ownership rules.</li>
+            </ul>
+
+            <p>
+                This makes fallible construction compatible with deterministic resource ownership
+                without requiring a half-valid sentinel object.
+            </p>
+        </section>
+
+        <section id="free">
+            <h2><code>free</code></h2>
+
+            <p>
+                <code>free</code> defines custom lifecycle cleanup:
+            </p>
+
+            <pre><code>impl ForeignBuffer {
+    free {
+        unsafe {
+            ForeignRelease(self.pointer)
+        }
+    }
+}</code></pre>
+
+            <p><code>free</code>:</p>
+
+            <ul>
+                <li>is not declared with <code>fn</code>;</li>
+                <li>receives compiler-provided destruction access to <code>self</code>;</li>
+                <li>has no ordinary return value;</li>
+                <li>is not an ordinary method;</li>
+                <li>cannot be called as <code>value.free()</code>;</li>
+                <li>must not let the complete value escape or be resurrected;</li>
+                <li>runs before automatic destruction of remaining initialized owned fields according to destruction rules;</li>
+                <li>may appear at most once across the complete merged implementation surface.</li>
+            </ul>
+
+            <p>
+                Prefer compiler-derived destruction when owned fields already express the resource model correctly.
+            </p>
+        </section>
+
+        <section id="cleanup-balance">
+            <h2>Construction and Cleanup Must Balance</h2>
+
+            <p>
+                <code>init</code> and <code>free</code> do not need to appear as a textual pair.
+            </p>
+
+            <p>
+                The real semantic requirement is:
+            </p>
+
+            <div class="rule">
+                <strong>Every owned resource established during construction must have a valid
+                cleanup path for both failed construction and successful lifetime completion.</strong>
+            </div>
+
+            <p>
+                Automatic field destruction may satisfy the successful-lifetime side entirely.
+            </p>
+
+            <p>
+                Write a custom <code>free</code> only when the necessary cleanup cannot otherwise
+                be represented by owned fields and ordinary destruction.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generic Impl</h2>
+
+            <p>
+                A generic implementation uses the parameters of its generic target:
+            </p>
+
+            <pre><code>type Holder[T] struct {
+    value: T,
+}
+
+impl Holder[T] {
+    fn Get() T {
+        return self.value
+    }
+}</code></pre>
+
+            <p>An extension uses the same target parameters:</p>
+
+            <pre><code>impl extends Holder[T] {
+    fn HasValue() bool {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                The primary block and every valid extension combine into one concrete member surface
+                for each monomorphized <code>Holder[T]</code>.
+            </p>
+
+            <p>
+                Methods may introduce additional method-level generic parameters:
+            </p>
+
+            <pre><code>impl Holder[T] {
+    fn Transform[U](transform: fn(T) U) Holder[U] {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                The method sees both the owner's <code>T</code> and its own <code>U</code>.
+            </p>
         </section>
 
         <section id="interfaces">
-            <h2>Interface Implementation</h2>
-            <p>Interfaces use a separate explicit form:</p>
-            <pre><code>impl Reader for FileReader {
-    fn Read(ref mut self, buffer: []byte) Result[int, IOError] {
+            <h2>Interface Conformance</h2>
+
+            <p>
+                Explicit interface conformance is declared on the primary implementation:
+            </p>
+
+            <pre><code>impl FileReader implements Reader, Closeable {
+    fn Read(buffer: ref mut byte[]) Result[int, IOError] {
+        ...
+    }
+
+    fn Close() void {
+        ...
     }
 }</code></pre>
-            <p>This is not the ordinary impl block for <code>FileReader</code>. A type may have one ordinary impl block and separate explicit interface implementations.</p>
+
+            <p>
+                The <code>implements</code> list belongs to the primary <code>impl</code>.
+            </p>
+
+            <p>
+                Extension fragments may contribute methods and other members that help satisfy the
+                complete implementation surface, but they do not redeclare the interface list:
+            </p>
+
+            <pre><code>impl extends FileReader {
+    fn Helper() void {
+        ...
+    }
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>impl extends FileReader implements Reader {
+    ...
+}</code></pre>
+
+            <p>
+                Interface requirement matching, receiver capabilities and interface values are
+                described in the Interfaces chapter.
+            </p>
         </section>
 
         <section id="lookup">
-            <h2>Name Lookup</h2>
-            <p>Impl members belong to the target type namespace.</p>
-            <pre><code>Vehicle.Drive
-Vehicle.TopSpeed
-Vehicle.Engine
-Vehicle.FuelType</code></pre>
-            <p>All member names are registered before bodies are analyzed. This allows methods and properties to reference members declared later.</p>
+            <h2>Name Lookup and Forward References</h2>
+
+            <p>
+                The complete implementation surface is collected before member bodies are analyzed.
+            </p>
+
+            <p>This includes:</p>
+
+            <ul>
+                <li>the primary implementation;</li>
+                <li>all valid extension fragments;</li>
+                <li>instance bindings;</li>
+                <li>nested type names;</li>
+                <li>nested implementation targets;</li>
+                <li>properties;</li>
+                <li>method overload groups;</li>
+                <li>static members;</li>
+                <li><code>init</code> overloads;</li>
+                <li><code>free</code> presence;</li>
+                <li>other target-specific implementation declarations.</li>
+            </ul>
+
+            <p>
+                Source-file discovery order therefore has no semantic effect.
+            </p>
+
+            <p>
+                A method in one valid fragment may refer to a member declared in another valid
+                fragment when normal member lookup permits it.
+            </p>
         </section>
 
-        <section id="analysis">
-            <h2>Impl Analysis Order</h2>
-            <h3>Pass 1: Register target and nested names</h3>
+        <section id="conflicts">
+            <h2>Duplicate and Conflict Rules</h2>
+
+            <p>The complete implementation must reject:</p>
+
             <ul>
-                <li>verify that the target exists</li>
-                <li>verify that the target is a named type</li>
-                <li>validate generic target arguments</li>
-                <li>register nested type names</li>
-                <li>reject duplicate nested type names</li>
+                <li>more than one primary implementation;</li>
+                <li><code>impl extends</code> without a primary implementation;</li>
+                <li>ordinary implementation outside the target's defining module;</li>
+                <li>duplicate non-overloadable member names;</li>
+                <li>duplicate method signatures;</li>
+                <li>duplicate <code>init</code> parameter signatures;</li>
+                <li>more than one <code>free</code>;</li>
+                <li>conflicts between direct type fields and implementation members;</li>
+                <li>conflicts between instance and static member names;</li>
+                <li>conflicts between nested type names and other members;</li>
+                <li>nested implementations of unrelated types;</li>
+                <li>target representation declarations using syntax not permitted inside <code>impl</code>.</li>
             </ul>
-            <h3>Pass 2: Resolve nested declarations</h3>
-            <ul>
-                <li>nested structs</li>
-                <li>nested enums</li>
-                <li>nested unions</li>
-                <li>nested units</li>
-                <li>nested aliases when supported</li>
-            </ul>
-            <h3>Pass 3: Register behavioral members</h3>
-            <ul>
-                <li>method signatures</li>
-                <li>property signatures</li>
-                <li>constants when implemented</li>
-            </ul>
-            <h3>Pass 4: Analyze member bodies</h3>
-            <ul>
-                <li>method bodies</li>
-                <li>property getters</li>
-                <li>property setters</li>
-                <li>fallible property setters</li>
-                <li>constant initializers when implemented</li>
-            </ul>
-            <div class="rule"><strong>Rule:</strong> Member bodies are never analyzed before the complete member surface is known.</div>
+
+            <p>
+                Duplicate detection operates across all files participating in the same implementation surface.
+            </p>
+
+            <p>
+                Diagnostics should identify both declarations when a conflict has two source locations.
+            </p>
         </section>
 
-        <section id="restrictions">
-            <h2>Restrictions</h2>
-            <p>An impl block must not add stored fields, contain member-level variables, contain free-standing executable statements, redefine an existing member, change the target type definition or silently implement another type.</p>
-            <pre><code>impl Vehicle {
-    let speed: Speed
-    speed = Speed(10)
-}</code></pre>
-            <p>A type may have only one ordinary impl block.</p>
-            <pre><code>impl Vehicle {
-}
-
-impl Vehicle {
-}</code></pre>
-            <div class="rule"><strong>Design rule:</strong> One ordinary impl block keeps a type's behavior in one predictable namespace.</div>
-        </section>
-
-        <section id="visibility">
-            <h2>Visibility</h2>
-            <p>Impl members follow normal visibility rules. Members and nested declarations may be public, module-visible or private.</p>
-            <p>A public member must not expose an inaccessible type in its public signature.</p>
-        </section>
-
-        <section id="runtime">
+        <section id="runtime-model">
             <h2>Runtime Model</h2>
-            <p><code>impl</code> is a compile-time construct. It does not create a runtime object, wrapper, namespace value or allocation.</p>
-            <div class="rule"><strong>Rule:</strong> <code>impl</code> has no runtime representation.</div>
+
+            <p>
+                The <code>impl</code> block itself has no runtime representation.
+            </p>
+
+            <p>Merely declaring methods or nested types does not add:</p>
+
+            <ul>
+                <li>a hidden instance field;</li>
+                <li>a method table;</li>
+                <li>a vtable;</li>
+                <li>a hidden metadata pointer;</li>
+                <li>runtime reflection metadata.</li>
+            </ul>
+
+            <p>
+                A separate interface/runtime rule may require dynamic-dispatch metadata for an
+                interface value, but ordinary methods do not create it automatically.
+            </p>
+
+            <p>
+                Instance <code>let</code> and <code>let mut</code> bindings are different:
+                they explicitly contribute per-instance state and therefore affect complete
+                representation and lifecycle.
+            </p>
+
+            <p>
+                Static storage has separate lifetime and representation from ordinary instances.
+            </p>
+
+            <p>
+                <code>new</code> does not force heap allocation.
+            </p>
+        </section>
+
+        <section id="organization">
+            <h2>Source Organization</h2>
+
+            <p>
+                Keep the primary implementation near the type declaration when practical.
+            </p>
+
+            <p>The primary block is a good place for:</p>
+
+            <ul>
+                <li>central methods;</li>
+                <li>the public conceptual entry points for the type;</li>
+                <li><code>init</code> declarations;</li>
+                <li><code>free</code> when needed;</li>
+                <li>the <code>implements</code> list;</li>
+                <li>important nested declarations.</li>
+            </ul>
+
+            <p>
+                Use <code>impl extends</code> when one type has enough behavior to justify coherent
+                source-file separation.
+            </p>
+
+            <p>Good examples of extension boundaries include:</p>
+
+            <ul>
+                <li>parsing;</li>
+                <li>serialization;</li>
+                <li>protocol support;</li>
+                <li>formatting;</li>
+                <li>specialized algorithms.</li>
+            </ul>
+
+            <p>
+                Avoid scattering unrelated methods across many fragments merely because the language permits it.
+            </p>
+
+            <h3>Instance storage</h3>
+
+            <p>
+                Use direct type fields for representation that naturally belongs with the type declaration.
+                Use implementation <code>let</code>/<code>let mut</code> where instance-bound
+                implementation storage is the intended abstraction.
+            </p>
+
+            <p>
+                Use <code>static</code> only when one member belongs to the type rather than to each instance.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>Important implementation diagnostics include:</p>
+
+            <ul>
+                <li>duplicate primary implementation;</li>
+                <li>extension without a primary implementation;</li>
+                <li>implementation outside the defining module;</li>
+                <li>explicit <code>self</code> parameter in a concrete method;</li>
+                <li><code>self</code> used from a static member;</li>
+                <li>bare field syntax inside <code>impl</code>;</li>
+                <li>invalid access to an instance binding through the type;</li>
+                <li>invalid access to a static member through an instance;</li>
+                <li>nested implementation of an unrelated type;</li>
+                <li>duplicate method signature;</li>
+                <li>duplicate initializer signature;</li>
+                <li>more than one <code>free</code>;</li>
+                <li>fallible construction used without required error handling;</li>
+                <li>partially initialized value escaping from <code>init</code>;</li>
+                <li>resource acquired during construction with no provable cleanup path;</li>
+                <li>direct call of lifecycle <code>free</code>;</li>
+                <li><code>implements</code> written on an extension fragment.</li>
+            </ul>
+
+            <p>
+                Tooling should distinguish instance and static members clearly.
+            </p>
+
+            <p>For a fallible initializer, signature help should make the lifecycle meaning explicit:</p>
+
+            <pre><code>init(address: Address)
+constructs: Connection
+construction error: ConnectError</code></pre>
+
+            <p>
+                Hover for <code>new Connection(address)</code> should report the constructed
+                type and the construction error where applicable.
+            </p>
+
+            <p>
+                Formatting must preserve the semantic distinction between:
+            </p>
+
+            <pre><code>Type(value)
+new Type(arguments)</code></pre>
+
+            <p>
+                and between:
+            </p>
+
+            <pre><code>let Member
+static let Member</code></pre>
         </section>
 
         <section id="summary">
-            <h2>Summary of Rules</h2>
+            <h2>Summary</h2>
+
             <ul>
-                <li><code>impl Type { ... }</code> defines behavior for an existing named type.</li>
-                <li>A type may have only one ordinary impl block.</li>
-                <li>Interface implementations use <code>impl Interface for Type</code>.</li>
-                <li>Impl blocks may contain methods, properties and associated nested declarations.</li>
-                <li>Stored fields and free-standing statements are not allowed.</li>
-                <li>Instance methods explicitly declare <code>ref self</code> or <code>ref mut self</code>.</li>
-                <li>Static methods do not declare <code>self</code>.</li>
-                <li>Method and property signatures are registered before bodies are analyzed.</li>
-                <li>Forward references between members are allowed.</li>
-                <li>Nested declarations belong to the target type namespace.</li>
-                <li>Nested names must be qualified outside the matching impl block.</li>
-                <li>Generic impl parameters must match the target generic type.</li>
-                <li>Duplicate members and nested names are invalid.</li>
-                <li><code>impl</code> has no runtime representation.</li>
+                <li><code>impl</code> defines implementation members for a named nominal type.</li>
+                <li>Ordinary implementation belongs to the type's defining module.</li>
+                <li>A type's implementation surface has one primary <code>impl Type</code>.</li>
+                <li>Additional same-module fragments use <code>impl extends Type</code>.</li>
+                <li>All valid fragments form one combined member namespace.</li>
+                <li>Source-file order does not affect implementation semantics.</li>
+                <li>Instance <code>let</code> and <code>let mut</code> bindings are per-instance storage.</li>
+                <li>Instance implementation bindings contribute to layout, ownership, initialization and destruction.</li>
+                <li>Bare field syntax remains invalid inside <code>impl</code>.</li>
+                <li>Type-owned values and storage use explicit <code>static</code>.</li>
+                <li><code>static let</code> is immutable type-owned state or value.</li>
+                <li><code>static let mut</code> is mutable type-owned storage.</li>
+                <li>Instance members are accessed through an instance; static members are accessed through the type.</li>
+                <li>Ordinary methods receive implicit <code>self</code>.</li>
+                <li>Concrete methods never declare <code>self</code>, <code>ref self</code> or <code>ref mut self</code> parameters.</li>
+                <li>The compiler derives concrete receiver requirements from the method body.</li>
+                <li>Only <code>static fn</code> declares a receiver-free type-level function.</li>
+                <li>Methods may overload according to normal function overload rules.</li>
+                <li>Properties belong in <code>impl</code> and do not imply hidden property storage.</li>
+                <li>Nested structs, enums, unions, registers and other permitted named types may be declared inside an implementation.</li>
+                <li>Nested declarations belong to the owning type's namespace.</li>
+                <li>A nested implementation may implement a nested type owned by the enclosing type.</li>
+                <li><code>init</code> and <code>free</code> are lifecycle members, not ordinary functions.</li>
+                <li>An infallible <code>init</code> has no return or error type.</li>
+                <li>A fallible <code>init(args...) ErrorType</code> declares a construction error channel, not a return type.</li>
+                <li><code>init</code> overload identity is determined by its parameter signature.</li>
+                <li>Successful construction must establish a fully valid instance.</li>
+                <li>A partially initialized outer value cannot escape.</li>
+                <li><code>new Type(...)</code> selects lifecycle construction.</li>
+                <li><code>Type(value)</code> conversion and <code>new Type(...)</code> construction are distinct operations.</li>
+                <li><code>new</code> does not imply heap allocation.</li>
+                <li>Fallible construction uses ordinary typed error handling such as <code>try</code>.</li>
+                <li>Resources acquired during construction require cleanup paths for both failure and successful lifetime completion.</li>
+                <li>Failed construction cleans up only state that was successfully initialized.</li>
+                <li><code>free</code> is custom lifecycle cleanup and cannot be called directly as a method.</li>
+                <li>Compiler-derived destruction is preferred when owned fields already describe the cleanup correctly.</li>
+                <li>Generic implementation parameters correspond to the generic target's parameters.</li>
+                <li>Methods inside generic implementations may introduce additional method-level generic parameters.</li>
+                <li>Explicit interface conformance belongs on the primary implementation.</li>
+                <li><code>impl extends</code> may contribute members but cannot redeclare the <code>implements</code> list.</li>
+                <li>The compiler collects the complete implementation surface before analyzing member bodies.</li>
+                <li>Duplicate and conflicting members are checked across the entire merged implementation.</li>
+                <li>The <code>impl</code> block itself has no runtime object or hidden representation.</li>
+                <li>Ordinary methods do not automatically add vtables or metadata pointers.</li>
             </ul>
         </section>
 
         <div class="page-navigation">
-            <a href="15-structs.html">Previous: Structs</a>
+            <a href="15-loops.html">Previous: Loops and Iteration</a>
             <a href="17-properties.html">Next: Properties</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

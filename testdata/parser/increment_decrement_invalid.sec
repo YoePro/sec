@@ -1,0 +1,7 @@
+module increment_decrement_invalid
+
+fn Invalid() void {
+    let mut value: int := 2
+    let old := value++
+    value++ + 1
+}

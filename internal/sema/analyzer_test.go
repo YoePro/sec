@@ -2510,16 +2510,14 @@ func TestRegister7TryAndMatchFixture(t *testing.T) {
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestRegister8FrontendFeaturesExceptKnownProgramError(t *testing.T) {
+func TestRegister8FrontendFeatures(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/register8_valid.sec")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	errors := analyzeSourceRaw(t, string(input))
-	if len(errors) != 1 || !strings.Contains(errors[0].Message, "unknown member AnyHigh on Tmp4719HighLimitStatus") {
-		t.Fatalf("register8 frontend errors = %v; want only the documented Some(status) program error", errors)
-	}
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestExplicitCharRuneIntegerConversions(t *testing.T) {
@@ -6268,6 +6266,18 @@ fn RejectDifferentOption() Option[int] {
 		"function RejectPlainPayload must return Option[int], got int at 21:9",
 		"function RejectDifferentOption must return Option[int], got Option[string] at 25:9",
 	})
+}
+
+// Rules: rules/errors/errorhandling.md — §5.1 "Direct Option carrier
+// returns"; rules/declarations/properties.md — §4 "Getter semantics".
+func TestOptionPropertyMayBeReturnedDirectly(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/property_option_direct_return.sec")
+	if err != nil {
+		t.Fatalf("read property Option return fixture: %v", err)
+	}
+
+	errors := analyzeSourceRaw(t, string(source))
+	assertSemaErrors(t, errors, nil)
 }
 
 func TestResultAndTryErrors(t *testing.T) {
@@ -12378,6 +12388,54 @@ func TestContextualNotInMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertSemaErrors(t, analyzeSourceRaw(t, string(source)), nil)
+}
+
+// rules/collections/collections.md §8 requires list indexing to use the same
+// element typing, Place mutability, borrow, and replacement rules as other
+// linear collections while retaining runtime Len bounds checks.
+func TestListIndexingFrontend(t *testing.T) {
+	valid, err := os.ReadFile("../../testdata/sema/list_indexing_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, string(valid)), nil)
+
+	invalid, err := os.ReadFile("../../testdata/sema/list_indexing_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errors := analyzeSourceRaw(t, string(invalid))
+	joined := joinedSemaErrors(errors)
+	for _, want := range []string{
+		"list index must be integer, got float64",
+		"list index -1 is out of bounds for list[int]",
+		"list index 4 is out of bounds for list[int, 4]",
+		"cannot assign through immutable index target",
+		"cannot initialize int with string",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %q in list indexing diagnostics: %v", want, errors)
+		}
+	}
+}
+
+// rules/foundations/operators.md "Increment and decrement aliases" keeps the
+// existing compound-assignment mutability checks after parser normalization.
+func TestIncrementAliasUsesCompoundAssignmentSemantics(t *testing.T) {
+	valid, err := os.ReadFile("../../testdata/parser/increment_decrement_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, string(valid)), nil)
+
+	invalid, err := os.ReadFile("../../testdata/sema/increment_decrement_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errors := analyzeSourceRaw(t, string(invalid))
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot assign to immutable variable value") {
+		t.Fatalf("postfix alias bypassed compound-assignment checks: %v", errors)
+	}
 }
 
 func TestDynamicArrayMembershipRejectsIncompatibleElements(t *testing.T) {

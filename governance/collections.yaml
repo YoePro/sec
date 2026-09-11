@@ -1,4 +1,57 @@
 schema_version: 1
 area: collections
 purpose: Collection APIs, shaped values, and iteration semantics.
-integrations: []
+integrations:
+  - id: frontend.collections
+    area: frontend
+    status: partial
+    integrated: "2026-08-07"
+    audited: "2026-08-18"
+    revised: "2026-09-11"
+    summary: >-
+      Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
+      against the unified collections rulebook. Parser/type recognition and
+      Place-backed indexing provide a usable slice; canonical public members,
+      allocation-aware owners, library collections, and lowering remain.
+    rules:
+      - rules/collections/collections.md
+    code:
+      - internal/ast
+      - internal/parser
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/compiler_known_members.go
+      - internal/formatter
+      - internal/lsp
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/effect_analysis_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/sema/compiler_known_members_test.go
+      - testdata/sema/list_indexing_valid.sec
+      - testdata/sema/list_indexing_invalid.sec
+      - testdata/sema/list_indexing_no_panic_invalid.sec
+    implemented:
+      - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
+      - Sema recognition and arity validation for compiler-known collection families
+      - loader-proven core sources may define ordinary impl members for list, map, and set through the shared
+        compiler/LSP privilege gate; stdlib and user sources remain rejected
+      - Place-backed fixed-array and slice indexing used by borrow and ownership analysis
+      - contextual collection type identities exposed to formatter and LSP registries
+      - omitted initialization of mutable owning T[] produces its canonical allocation-free empty default
+      - list[T] indexing resolves ordinary reads, shared and mutable element Places, and indexed replacement through the canonical element type
+      - list indexing accepts built-in and compatible named integer indexes, rejects invalid types and statically provable negative or bounded-capacity failures, and records mandatory runtime Len checks otherwise
+      - list index facts remain separate from array facts so unavailable list Semantic IR and lowering cannot be inferred accidentally
+    remaining:
+      - preserve owning dynamic-array identity across copyability, destruction, equality, initialization, and ownership transfer instead of inheriting fixed-array traits through ArrayType
+      - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
+      - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation
+      - full borrow and lifetime validation for slice creation, reborrowing, and returned sub-slices
+      - compiler-defined layout, overflow, alignment, and length validation
+      - explicit array, slice, and list operations in Semantic IR and lowering through MLIR and LLVM
+      - focused valid, invalid, recovery, analysis, and backend test coverage
+    verification:
+      - command: go test ./internal/sema -run 'ListIndex' -count=1
+        result: passed

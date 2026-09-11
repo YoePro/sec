@@ -804,11 +804,12 @@ func (lgs *LetGroupStatement) TokenLiteral() string {
 }
 
 type AssignmentStatement struct {
-	Token     lexer.Token
-	Target    Expression
-	Operator  string
-	Ownership OwnershipMode
-	Value     Expression
+	Token        lexer.Token
+	Target       Expression
+	Operator     string
+	Ownership    OwnershipMode
+	Value        Expression
+	PostfixAlias lexer.Token
 }
 
 func (as *AssignmentStatement) statementNode() {}

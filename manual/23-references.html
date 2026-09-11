@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,61 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">References</div>
-        <a href="#23-references">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#references">References</a>
+        <a href="#model">Reference Model</a>
+        <a href="#shared">Shared References</a>
+        <a href="#mutable">Mutable References</a>
+        <a href="#non-owning">References Are Non-Owning</a>
+        <a href="#non-null">References Are Non-Null</a>
+        <a href="#optional">Optional References</a>
+        <a href="#creation">Creating References</a>
+        <a href="#availability">Availability Requirement</a>
+        <a href="#provenance">Provenance</a>
+        <a href="#lifetime">Reference Lifetime</a>
+        <a href="#parameters">Reference Parameters</a>
+        <a href="#returns">Returning References</a>
+        <a href="#multi-origin">Multiple Returned Origins</a>
+        <a href="#aggregates">References in Aggregates</a>
+        <a href="#copying">Copying Shared References</a>
+        <a href="#moving">Moving Mutable References</a>
+        <a href="#reborrowing">Reborrowing</a>
+        <a href="#subreferences">Subreferences</a>
+        <a href="#fields">Field References</a>
+        <a href="#indexes">Element References</a>
+        <a href="#slices">Slices as Bounded References</a>
+        <a href="#spatial">Spatial Validity</a>
+        <a href="#temporal">Temporal Validity</a>
+        <a href="#storage-identity">Storage Identity</a>
+        <a href="#epochs">Epochs and Generations</a>
+        <a href="#stale">Stale References</a>
+        <a href="#relocation">Relocation</a>
+        <a href="#pinning">Pinning</a>
+        <a href="#address-spaces">Address Spaces</a>
+        <a href="#equality">Reference Equality</a>
+        <a href="#concurrency">Concurrency</a>
+        <a href="#closures">Closures and Escapes</a>
+        <a href="#isr">Interrupt Contexts</a>
+        <a href="#hardware">Hardware-Backed References</a>
+        <a href="#ffi">FFI Retention</a>
+        <a href="#raw">Raw Pointer Boundary</a>
+        <a href="#runtime-representation">Runtime Representation</a>
+        <a href="#stable-handles">Stable and Weak Handles</a>
+        <a href="#destruction">Reference Destruction</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,19 +87,21 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html" class="active">References</a>
         <a href="24-ownership.html">Ownership</a>
-        <a href="25-borrowing.html">Borrowing</a>
-        <a href="26-unsafe.html">Unsafe</a>
-        <a href="27-spread.html">Spread</a>
+        <a href="25-copy-move.html">Copying and Moving</a>
+        <a href="26-borrowing.html">Borrowing</a>
+        <a href="27-lifetimes.html">Lifetimes</a>
+        <a href="28-destruction.html">Destruction</a>
+        <a href="29-unsafe.html">Unsafe and Raw Pointers</a>
         <a href="30-modules.html">Modules and Imports</a>
         <a href="31-projects.html">Projects and sec.module</a>
         <a href="32-visibility.html">Visibility</a>
@@ -71,36 +118,1455 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / References</div>
 
-        <h1 id="23-references">References</h1>
+        <h1 id="references">References</h1>
 
-        <p>A reference provides borrowed access to a value without transferring ownership.</p>
+        <p>
+            A safe reference gives temporary, typed, non-owning access to an existing live value
+            or storage location.
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <p>Sec has two scalar safe-reference types:</p>
+
+        <pre><code>ref T
+ref mut T</code></pre>
+
+        <p>
+            A shared reference provides read authority.
+            A mutable reference provides exclusive mutable authority for its borrow live range.
+        </p>
+
+        <pre><code>fn Inspect(packet: ref Packet) uint32 {
+    return packet.Id
+}
+
+fn Increment(value: ref mut int) void {
+    value += 1
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A safe reference borrows authority to existing live storage.
+            It does not own the referent and it is not merely a numeric pointer.
+        </div>
+
+        <section id="model">
+            <h2>The Safe Reference Model</h2>
+
+            <p>
+                A valid safe reference represents more than an address.
+            </p>
+
+            <p>Depending on the access, its validity may require:</p>
+
+            <ul>
+                <li>live storage;</li>
+                <li>a live initialized value;</li>
+                <li>correct type and alignment;</li>
+                <li>correct storage identity;</li>
+                <li>valid provenance;</li>
+                <li>spatial bounds;</li>
+                <li>borrow compatibility;</li>
+                <li>access authority;</li>
+                <li>relocation correctness;</li>
+                <li>address-space compatibility;</li>
+                <li>execution-context validity;</li>
+                <li>concurrency correctness.</li>
+            </ul>
+
+            <p>
+                Satisfying one of these guarantees does not imply the others.
+            </p>
+
+            <p>
+                For example, a generation check can help prove that the expected storage incarnation
+                is still current, but it cannot prove that a mutable borrow is exclusive.
+            </p>
+        </section>
+
+        <section id="shared">
+            <h2>Shared References: <code>ref T</code></h2>
+
+            <p>
+                <code>ref T</code> is a safe, typed, non-null shared reference to one valid
+                <code>T</code>.
+            </p>
+
+            <pre><code>fn Name(user: ref User) string {
+    return user.Name
+}</code></pre>
+
+            <p>A valid <code>ref T</code> grants:</p>
+
+            <ul>
+                <li>read authority;</li>
+                <li>shared access compatible with the borrow rules;</li>
+                <li>typed access to the referenced <code>T</code> and valid subobjects;</li>
+                <li>no ownership of the referenced value.</li>
+            </ul>
+
+            <p>
+                Multiple compatible shared references may coexist.
+            </p>
+
+            <p>
+                <code>ref T</code> does not mean that the underlying storage is globally immutable.
+                It means this reference does not grant mutable authority.
+            </p>
+
+            <p>
+                Mutation through another path is legal only when the ordinary borrow, ownership,
+                concurrency and platform rules permit it.
+            </p>
+        </section>
+
+        <section id="mutable">
+            <h2>Mutable References: <code>ref mut T</code></h2>
+
+            <p>
+                <code>ref mut T</code> is a safe, typed, non-null reference with exclusive mutable
+                authority for its borrow live range.
+            </p>
+
+            <pre><code>fn Reset(counter: ref mut Counter) void {
+    counter.Value = 0
+}</code></pre>
+
+            <p>A valid mutable reference grants:</p>
+
+            <ul>
+                <li>read authority;</li>
+                <li>write authority when the underlying storage is writable;</li>
+                <li>exclusive mutable access to the overlapping Place;</li>
+                <li>the ability to create compatible shared or mutable reborrows;</li>
+                <li>no ownership of the referenced value.</li>
+            </ul>
+
+            <p>
+                While an overlapping mutable borrow is live, conflicting shared or mutable access
+                through another path is not permitted.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> <code>ref mut T</code> is mutable authority,
+                not ownership.
+            </div>
+        </section>
+
+        <section id="non-owning">
+            <h2>References Are Non-Owning</h2>
+
+            <p>
+                Creating or passing a reference does not transfer ownership of the referenced value.
+            </p>
+
+            <pre><code>let mut device := Device {
+    Enabled: true,
+}
+
+let view := ref device</code></pre>
+
+            <p>
+                <code>view</code> refers to <code>device</code>; it does not become the owner of
+                the <code>Device</code>.
+            </p>
+
+            <p>
+                Destroying the reference value does not destroy the referent.
+            </p>
+
+            <p>
+                Likewise, storing a reference inside another struct does not make that struct the
+                owner of the referenced storage.
+            </p>
+        </section>
+
+        <section id="non-null">
+            <h2>Safe References Are Non-Null</h2>
+
+            <p>
+                Scalar safe references are never null as source-level values:
+            </p>
+
+            <pre><code>ref T
+ref mut T</code></pre>
+
+            <p>
+                Code that has a <code>ref T</code> has a valid reference value under the safe
+                reference contract.
+            </p>
+
+            <p>
+                Sec does not use a null sentinel to represent “no safe reference”.
+            </p>
+
+            <p>
+                Raw pointers are different and follow their own nullable/raw-address rules.
+            </p>
+        </section>
+
+        <section id="optional">
+            <h2>Optional References</h2>
+
+            <p>
+                Optionality is explicit:
+            </p>
+
+            <pre><code>let current: Option[ref Device]</code></pre>
+
+            <p>
+                <code>None</code> means that no reference value is present.
+            </p>
+
+            <p>
+                It does not mean:
+            </p>
+
+            <ul>
+                <li>the referenced object was moved;</li>
+                <li>a generation became stale;</li>
+                <li>hardware disappeared;</li>
+                <li>a raw address became invalid;</li>
+                <li>the referent is conditionally available.</li>
+            </ul>
+
+            <p>
+                A stale ordinary safe reference is a violated reference guarantee, not an ordinary
+                <code>None</code> state.
+            </p>
+        </section>
+
+        <section id="creation">
+            <h2>Creating References</h2>
+
+            <p>Create a shared reference with:</p>
+
+            <pre><code>let packet := ref value</code></pre>
+
+            <p>Create a mutable reference with:</p>
+
+            <pre><code>let packet := ref mut value</code></pre>
+
+            <p>
+                The source must be a valid Place for the requested access.
+            </p>
+
+            <p>
+                Creating a reference does not consume the source Place.
+            </p>
+
+            <p>
+                Creating a mutable reference establishes exclusive mutable borrow authority for
+                the overlapping Place while that borrow remains live.
+            </p>
+
+            <p>
+                Reference creation does not silently allocate memory and does not extend the lifetime
+                of the referenced object.
+            </p>
+        </section>
+
+        <section id="availability">
+            <h2>The Source Place Must Be Available</h2>
+
+            <p>
+                A safe reference may be created only from a Place containing a valid live value
+                that is available on the current path.
+            </p>
+
+            <p>
+                An unavailable Place cannot be referenced.
+            </p>
+
+            <p>
+                A conditionally available Place must first be refined to an available path:
+            </p>
+
+            <pre><code>if package.Payload is available {
+    let payload := ref package.Payload
+    Use(payload)
+}</code></pre>
+
+            <p>
+                <code>is available</code> is an ownership-state test.
+            </p>
+
+            <p>It does not by itself prove:</p>
+
+            <ul>
+                <li>borrow compatibility;</li>
+                <li>reference epoch validity;</li>
+                <li>hardware access permission;</li>
+                <li>device liveness;</li>
+                <li>synchronization;</li>
+                <li>foreign retention safety.</li>
+            </ul>
+        </section>
+
+        <section id="provenance">
+            <h2>Provenance</h2>
+
+            <p>
+                Every safe reference has compiler-known provenance: evidence describing where the
+                reference came from and which storage identity and location it may access.
+            </p>
+
+            <p>Possible origins include:</p>
+
+            <ul>
+                <li>local or parameter Places;</li>
+                <li>caller-owned parameters;</li>
+                <li>static storage;</li>
+                <li>Arena or allocation identities;</li>
+                <li>fixed-address storage;</li>
+                <li>runtime mappings;</li>
+                <li>union, <code>Option</code> or <code>Result</code> payload Places;</li>
+                <li>returned-reference relationships;</li>
+                <li>valid subobjects derived from another reference.</li>
+            </ul>
+
+            <p>
+                Safe field, index, range and slice derivation preserves or narrows provenance.
+            </p>
+
+            <p>
+                Numeric address equality does not create provenance.
+            </p>
+
+            <p>
+                Ordinary safe source code does not require programmer-written provenance annotations.
+            </p>
+        </section>
+
+        <section id="lifetime">
+            <h2>Reference Lifetime</h2>
+
+            <p>
+                A reference may not outlive the live value and storage on which it depends.
+            </p>
+
+            <p>
+                A reference may have a much shorter lifetime than its owner.
+            </p>
+
+            <pre><code>let mut value := 10
+
+{
+    let view := ref value
+    Use(view)
+}
+
+value += 1</code></pre>
+
+            <p>
+                Once the reference's final proven use has ended, its borrow relationship may also
+                end even if the reference binding remains lexically in scope.
+            </p>
+
+            <p>
+                Sec does not require visible lifetime parameters in ordinary source code.
+            </p>
+
+            <p>
+                Lifetime analysis derives the valid relationship from storage origins, control flow,
+                calls, captures, returns and invalidating operations.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Reference Parameters</h2>
+
+            <p>Reference mutability is part of a function signature:</p>
+
+            <pre><code>fn Inspect(value: ref Packet) void {
+    ...
+}
+
+fn Update(value: ref mut Packet) void {
+    ...
+}</code></pre>
+
+            <p>
+                A <code>ref T</code> parameter receives shared borrowed access.
+            </p>
+
+            <p>
+                A <code>ref mut T</code> parameter receives exclusive mutable borrowed access for
+                the required live range.
+            </p>
+
+            <p>
+                Passing either reference does not transfer ownership of the referenced
+                <code>T</code>.
+            </p>
+
+            <p>
+                A callable may not retain a passed reference beyond the lifetime relationship proven
+                by its contract.
+            </p>
+
+            <p>
+                Unknown retention behavior is treated conservatively.
+            </p>
+        </section>
+
+        <section id="returns">
+            <h2>Returning References</h2>
+
+            <p>
+                Returning a reference is valid only when every possible returned origin remains valid
+                after the callee returns.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>fn Invalid() ref int {
+    let value := 42
+    return ref value
+}</code></pre>
+
+            <p>
+                <code>value</code> uses ordinary callee-local storage whose lifetime ends when the
+                function returns.
+            </p>
+
+            <p>
+                Returning a reference derived from caller-owned input is valid when the relationship
+                can be proven:
+            </p>
+
+            <pre><code>fn Identity(value: ref Item) ref Item {
+    return value
+}</code></pre>
+
+            <p>
+                Returning a reference derived from a receiver may likewise be valid when the
+                receiver-backed storage outlives the returned reference.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Sec does not silently move local storage to a heap just
+                to repair an illegal returned reference.
+            </div>
+        </section>
+
+        <section id="multi-origin">
+            <h2>References May Have Multiple Proven Origins</h2>
+
+            <p>
+                A returned reference does not need to come from exactly one syntactic source in every path.
+            </p>
+
+            <pre><code>fn Choose(
+    left: ref Item,
+    right: ref Item,
+    useLeft: bool,
+) ref Item {
+    if useLeft {
+        return left
+    }
+
+    return right
+}</code></pre>
+
+            <p>
+                This can be valid because the compiler can retain a finite set of possible returned
+                origins and prove every candidate.
+            </p>
+
+            <p>
+                Distinct origins are not inherently unsafe.
+            </p>
+
+            <p>
+                If any candidate origin cannot satisfy the required lifetime, borrow, type, spatial
+                or storage guarantees, the returned reference is rejected.
+            </p>
+        </section>
+
+        <section id="aggregates">
+            <h2>References Inside Aggregates</h2>
+
+            <p>
+                Safe references may appear inside structs, fixed arrays, unions, <code>Option</code>,
+                <code>Result</code> and other aggregate values when their referenced origins remain valid.
+            </p>
+
+            <pre><code>type Selection struct {
+    Current: ref Item,
+}</code></pre>
+
+            <p>
+                The aggregate does not become an owner of <code>Item</code>.
+            </p>
+
+            <p>
+                Copying or moving an aggregate preserves the reference semantics of the contained
+                reference value.
+            </p>
+
+            <p>
+                Returning an aggregate containing a reference is subject to the same lifetime and
+                escape rules as returning that reference directly.
+            </p>
+
+            <p>
+                A reference to callee-local storage cannot be hidden inside a caller-owned aggregate
+                to evade lifetime analysis.
+            </p>
+        </section>
+
+        <section id="copying">
+            <h2>Copying Shared Reference Values</h2>
+
+            <p>
+                A shared <code>ref T</code> reference value is copyable under the reference
+                copy/move rules.
+            </p>
+
+            <pre><code>let first := ref item
+let second := first</code></pre>
+
+            <p>
+                This copies the reference value and its provenance/validity dependencies.
+            </p>
+
+            <p>
+                It does not copy the referenced <code>Item</code>.
+            </p>
+
+            <p>
+                Both shared references remain bounded by the same underlying storage lifetime and
+                other validity requirements.
+            </p>
+        </section>
+
+        <section id="moving">
+            <h2>Moving Mutable Reference Values</h2>
+
+            <p>
+                A <code>ref mut T</code> reference value is not implicitly copyable.
+            </p>
+
+            <p>
+                Explicitly moving a reusable mutable-reference holder transfers the reference holder
+                and its active borrow obligation:
+            </p>
+
+            <pre><code>let next :&lt;- current</code></pre>
+
+            <p>
+                After the move, the moved-from reference Place is unavailable according to the
+                ordinary ownership rules.
+            </p>
+
+            <p>
+                Moving the reference value does not move the referenced <code>T</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Moving a reference holder and moving the referent are different operations.
+            </div>
+        </section>
+
+        <section id="reborrowing">
+            <h2>Reborrowing</h2>
+
+            <p>
+                An existing reference can provide temporary derived borrow authority without
+                transferring ownership of the reference holder.
+            </p>
+
+            <p>A shared reference may create another shared reference:</p>
+
+            <pre><code>fn Inspect(value: ref Item) void {
+    ...
+}</code></pre>
+
+            <p>Passing a shared reference to <code>Inspect</code> may create a shared reborrow.</p>
+
+            <p>
+                A mutable reference may create a shared reborrow:
+            </p>
+
+            <pre><code>fn Read(value: ref Item) void {
+    ...
+}
+
+fn Use(value: ref mut Item) void {
+    Read(value)
+}</code></pre>
+
+            <p>
+                During the shared child reborrow, conflicting mutable use through the parent is restricted.
+            </p>
+
+            <p>
+                A mutable reference may also create a mutable reborrow:
+            </p>
+
+            <pre><code>fn Update(value: ref mut Item) void {
+    ...
+}</code></pre>
+
+            <p>
+                Passing an existing <code>ref mut Item</code> to a borrowed
+                <code>ref mut Item</code> parameter is a reborrow, not a move of the caller's
+                reference holder.
+            </p>
+
+            <p>
+                After the call-bounded child reborrow ends, the parent mutable reference may become
+                usable again if no other validity rule prevents it.
+            </p>
+        </section>
+
+        <section id="subreferences">
+            <h2>Subreferences Narrow Access</h2>
+
+            <p>
+                A safe reference derived from another safe reference may retain or narrow:
+            </p>
+
+            <ul>
+                <li>authority;</li>
+                <li>bounds;</li>
+                <li>lifetime;</li>
+                <li>provenance;</li>
+                <li>address-space scope.</li>
+            </ul>
+
+            <p>
+                Safe derivation may never upgrade shared authority to mutable authority.
+            </p>
+
+            <p>
+                A reference to one field or element also cannot be used to reconstruct unrestricted
+                access to the entire containing object through ordinary safe semantics.
+            </p>
+        </section>
+
+        <section id="fields">
+            <h2>Field References</h2>
+
+            <p>A field may be borrowed directly:</p>
+
+            <pre><code>let identifier := ref packet.Header.Id</code></pre>
+
+            <p>
+                The resulting reference preserves the relevant storage identity and narrows access
+                to the selected field Place.
+            </p>
+
+            <p>
+                A mutable field borrow similarly requires mutable authority over that field:
+            </p>
+
+            <pre><code>let counter := ref mut state.Counter</code></pre>
+
+            <p>
+                Proven disjoint fields may be borrowed independently according to the borrowing rules.
+            </p>
+        </section>
+
+        <section id="indexes">
+            <h2>Element References</h2>
+
+            <p>Indexing may produce a borrowable element Place:</p>
+
+            <pre><code>let item := ref values[index]</code></pre>
+
+            <p>For mutable access:</p>
+
+            <pre><code>let item := ref mut values[index]</code></pre>
+
+            <p>
+                Constant indexes may allow straightforward disjointness proof.
+                Runtime indexes require the compiler to prove non-overlap before simultaneous
+                mutable references can coexist.
+            </p>
+
+            <p>
+                The reference remains limited to the authorized element and valid subobjects.
+            </p>
+        </section>
+
+        <section id="slices">
+            <h2>Slices Are Bounded Reference Views</h2>
+
+            <p>
+                A slice is a non-owning reference category whose complete valid range is part of
+                its semantic contract.
+            </p>
+
+            <pre><code>ref T[]
+ref mut T[]</code></pre>
+
+            <p>
+                Slices share the same fundamental validity requirements as scalar references while
+                additionally carrying a bounded element range.
+            </p>
+
+            <p>
+                An empty slice may use a hidden null or sentinel physical base internally when its
+                length is zero, but this representation detail does not make scalar
+                <code>ref T</code> nullable.
+            </p>
+        </section>
+
+        <section id="spatial">
+            <h2>Spatial Validity</h2>
+
+            <p>
+                Every safe reference access must remain within the spatial extent authorized by the reference.
+            </p>
+
+            <p>
+                For <code>ref T</code>, safe access is limited to the referenced <code>T</code>
+                and valid subobjects derived from it.
+            </p>
+
+            <p>
+                For slices, element access is limited to the slice bounds.
+            </p>
+
+            <p>
+                A live allocation does not make an out-of-bounds reference valid.
+            </p>
+
+            <p>
+                Spatial validity may be proven statically or preserved using the checked access
+                semantics of the relevant collection or shaped type.
+            </p>
+        </section>
+
+        <section id="temporal">
+            <h2>Temporal Validity</h2>
+
+            <p>
+                A reference must remain valid for the complete period in which it may be used.
+            </p>
+
+            <p>
+                Operations that can end the required validity include:
+            </p>
+
+            <ul>
+                <li>destruction;</li>
+                <li>deallocation;</li>
+                <li>Arena reset;</li>
+                <li>mapping removal;</li>
+                <li>backing-storage replacement;</li>
+                <li>physical relocation that cannot preserve the reference;</li>
+                <li>replacement of the referenced object;</li>
+                <li>another invalidating storage event.</li>
+            </ul>
+
+            <p>
+                A reference that is spatially in bounds may still be temporally invalid.
+            </p>
+
+            <p>
+                Likewise, temporal validity does not prove that an index or subobject access is in bounds.
+            </p>
+        </section>
+
+        <section id="storage-identity">
+            <h2>Storage Identity</h2>
+
+            <p>
+                Safe references identify semantic live storage, not merely a numeric address.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>allocation A -&gt; address 0x1000
+allocation A ends
+
+allocation B -&gt; address 0x1000</code></pre>
+
+            <p>
+                A reference to allocation A does not become a valid reference to allocation B.
+            </p>
+
+            <p>
+                The reused numeric address does not preserve the previous storage identity.
+            </p>
+        </section>
+
+        <section id="epochs">
+            <h2>Validity Epochs and Generations</h2>
+
+            <p>
+                Storage domains that may be invalidated and reused can use an epoch or generation
+                to distinguish live incarnations.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>allocator-backed allocations;</li>
+                <li>Arena resets;</li>
+                <li>reusable slots;</li>
+                <li>collection backing replacement;</li>
+                <li>runtime mappings;</li>
+                <li>owner control blocks.</li>
+            </ul>
+
+            <p>
+                A generation belongs to an invalidation domain, not merely to one numeric address.
+            </p>
+
+            <p>
+                Runtime generation metadata is not mandatory when static proof already prevents stale use.
+            </p>
+
+            <p>
+                Generation validity also does not replace:
+            </p>
+
+            <ul>
+                <li>borrow exclusivity;</li>
+                <li>bounds;</li>
+                <li>initialization;</li>
+                <li>type validity;</li>
+                <li>relocation correctness;</li>
+                <li>address-space correctness;</li>
+                <li>concurrency proof.</li>
+            </ul>
+        </section>
+
+        <section id="stale">
+            <h2>Ordinary Safe References Should Not Become Stale</h2>
+
+            <p>
+                Safe Sec code should normally prevent stale ordinary <code>ref</code> values from
+                being created or used.
+            </p>
+
+            <p>
+                The compiler uses ownership, borrowing, lifetime analysis, storage facts, Arena
+                analysis, collection rules, relocation restrictions and target knowledge to prove validity.
+            </p>
+
+            <p>
+                Runtime validation may still be used by hardened profiles or dynamic storage models.
+            </p>
+
+            <p>
+                A detected stale ordinary safe reference is not normal business failure.
+            </p>
+
+            <p>
+                Dereferencing such a stale reference follows the deterministic panic or target-trap
+                semantics of the active profile.
+            </p>
+
+            <p>
+                The programmer is not expected to write <code>try</code> around every normal safe
+                reference access.
+            </p>
+
+            <p>
+                <code>try</code> does not turn stale ordinary reference use into normal recoverable
+                application logic.
+            </p>
+        </section>
+
+        <section id="relocation">
+            <h2>Relocation</h2>
+
+            <p>
+                A live direct reference must continue to identify the correct storage if the
+                referenced object physically relocates.
+            </p>
+
+            <p>
+                If the implementation cannot preserve the direct reference through relocation,
+                relocation is forbidden while that dependency remains live.
+            </p>
+
+            <p>
+                A generation check alone does not solve relocation.
+                A perfectly matching generation attached to an old physical address would still
+                point to the wrong location.
+            </p>
+
+            <p>
+                This distinction matters for dynamic collection backing, compacting storage,
+                mappings and other relocatable domains.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Ownership move and physical relocation are separate.
+                A live reference constrains relocation only when relocation would break the
+                reference's storage relationship.
+            </div>
+        </section>
+
+        <section id="pinning">
+            <h2>Pinning</h2>
+
+            <p>
+                Pinning prevents physical relocation for a defined interval.
+            </p>
+
+            <p>Pinning may be required by operations such as:</p>
+
+            <ul>
+                <li>foreign retained access;</li>
+                <li>DMA;</li>
+                <li>OS registration;</li>
+                <li>hardware descriptors;</li>
+                <li>intrusive data structures;</li>
+                <li>self-referential layouts;</li>
+                <li>target-specific address contracts.</li>
+            </ul>
+
+            <p>Pinning does not itself imply:</p>
+
+            <ul>
+                <li>ownership;</li>
+                <li>permanent lifetime;</li>
+                <li>thread safety;</li>
+                <li>copyability;</li>
+                <li>allocation;</li>
+                <li>reference counting.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 does not define one universal source-level pin syntax in the reference model.
+                Specialized APIs may provide pin guards or equivalent contracts.
+            </p>
+        </section>
+
+        <section id="address-spaces">
+            <h2>Address Spaces</h2>
+
+            <p>
+                A safe reference belongs to a compiler- or target-recognized address space.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>ordinary RAM;</li>
+                <li>flash;</li>
+                <li>MMIO;</li>
+                <li>DMA-visible storage;</li>
+                <li>secure and non-secure memory;</li>
+                <li>device-local memory;</li>
+                <li>foreign address spaces.</li>
+            </ul>
+
+            <p>
+                Numerically equal addresses in different address spaces are not automatically interchangeable.
+            </p>
+
+            <p>
+                Safe conversion across address spaces requires compiler-known semantic compatibility.
+                Raw conversion requires the explicit unsafe boundary defined by the relevant raw-pointer
+                and platform rules.
+            </p>
+        </section>
+
+        <section id="equality">
+            <h2>Reference Equality</h2>
+
+            <p>
+                Safe-reference equality compares semantic referenced identity.
+            </p>
+
+            <p>Two safe references compare equal when they identify:</p>
+
+            <pre><code>the same live storage identity
+and
+the same semantic location within that storage</code></pre>
+
+            <p>
+                Numeric address equality alone is insufficient.
+            </p>
+
+            <p>
+                Two references to different live incarnations that reused one physical address
+                are not equal as safe references.
+            </p>
+
+            <p>
+                Raw-pointer equality is different: it follows raw-address semantics and does not
+                imply safe-reference equality.
+            </p>
+        </section>
+
+        <section id="concurrency">
+            <h2>Reference Validity Does Not Imply Race Freedom</h2>
+
+            <p>
+                A valid reference can still be used incorrectly in concurrent code.
+            </p>
+
+            <p>
+                Reference validity does not replace:
+            </p>
+
+            <ul>
+                <li>synchronization;</li>
+                <li>atomic access rules;</li>
+                <li>memory ordering;</li>
+                <li>race analysis;</li>
+                <li>safe concurrent reclamation;</li>
+                <li>ISR coordination.</li>
+            </ul>
+
+            <p>
+                A generation check followed by a load is not sufficient when another execution
+                context can reclaim or invalidate the object between the check and the access.
+            </p>
+
+            <p>
+                <code>ref mut</code> exclusivity remains required even when runtime generation
+                metadata exists.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closures, Callbacks and Escaping Execution</h2>
+
+            <p>
+                Capturing a reference preserves its lifetime dependency.
+            </p>
+
+            <p>
+                A closure may escape only when every captured reference remains valid for the
+                complete closure use.
+            </p>
+
+            <p>
+                Returning a closure that captures a reference to ordinary creator-local storage is invalid.
+            </p>
+
+            <p>
+                Passing a reference through a callback is only call-bounded when the callback
+                contract proves that the reference is not retained.
+            </p>
+
+            <p>
+                Tasks, threads, events, deferred work, callbacks and other later-execution paths are
+                escaping uses when they may execute after the creating call returns.
+            </p>
+
+            <p>
+                The compiler does not silently heap-promote local storage to repair an illegal escape.
+            </p>
+        </section>
+
+        <section id="isr">
+            <h2>References in Interrupt Contexts</h2>
+
+            <p>
+                Interrupt handlers use the ordinary Sec safe-reference model.
+            </p>
+
+            <p>
+                <code>@isr</code> and <code>@interrupt</code> do not introduce a special pointer type.
+            </p>
+
+            <p>
+                A reference used by an ISR must remain valid for the complete actual interrupt use.
+            </p>
+
+            <p>
+                A reference to handler-local storage cannot escape the handler execution lifetime.
+            </p>
+
+            <p>
+                Deferred work must not smuggle a borrow to ISR-local storage into another execution context.
+            </p>
+
+            <p>
+                A temporally valid reference may still be illegal in an ISR when the accessed
+                operation violates interrupt, synchronization, runtime or hardware-access rules.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>Fixed-Address and Hardware-Backed References</h2>
+
+            <p>
+                A physical address does not by itself prove a safe reference.
+            </p>
+
+            <p>
+                Safe access to fixed-address storage requires the platform's canonical lifetime,
+                mapping, availability and access contract.
+            </p>
+
+            <p>
+                Having a <code>ref</code> or <code>ref mut</code> does not independently grant
+                hardware-register access permission.
+            </p>
+
+            <p>
+                Volatile semantics are also separate from reference ownership and lifetime semantics.
+            </p>
+
+            <p>
+                A mapped register view must not outlive the mapping or platform contract that validates it.
+            </p>
+
+            <p>
+                External device presence, power, readiness and bus validity are not equivalent to
+                reference lifetime or Place availability.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI Retention</h2>
+
+            <p>
+                Foreign declarations must distinguish call-bounded use from retained access where
+                the ABI or foreign contract permits retention.
+            </p>
+
+            <p>
+                A non-retaining foreign call may borrow from a safe reference for the proven duration
+                of the call when the FFI conversion rules allow it.
+            </p>
+
+            <p>
+                Retained foreign access requires:
+            </p>
+
+            <ul>
+                <li>a lifetime covering the full retention period;</li>
+                <li>compatible borrow authority;</li>
+                <li>address stability where the foreign code retains a direct address;</li>
+                <li>appropriate pinning or an equivalent mechanism when required;</li>
+                <li>an explicit FFI contract.</li>
+            </ul>
+
+            <p>
+                A raw pointer returned from foreign code does not automatically establish safe provenance.
+            </p>
+
+            <p>
+                Unknown foreign retention is treated conservatively rather than assumed call-bounded.
+            </p>
+        </section>
+
+        <section id="raw">
+            <h2>Raw Pointer Boundary</h2>
+
+            <p>
+                Safe references and raw pointers are distinct types and semantic categories.
+            </p>
+
+            <pre><code>ref T
+ref mut T
+RawPtr[T]</code></pre>
+
+            <p>
+                There is no implicit conversion between them.
+            </p>
+
+            <p>
+                Converting a safe reference to a raw pointer requires the explicit unsafe/FFI
+                mechanism defined by the raw-pointer rules.
+            </p>
+
+            <p>
+                A raw pointer does not inherit safe-reference guarantees merely because it came
+                from a safe reference.
+            </p>
+
+            <p>
+                Converting <code>RawPtr[T]</code> into a safe reference requires an unsafe or
+                compiler-trusted boundary that establishes every required guarantee, including as applicable:
+            </p>
+
+            <ul>
+                <li>non-nullness;</li>
+                <li>alignment;</li>
+                <li>initialized valid representation;</li>
+                <li>bounds;</li>
+                <li>live storage;</li>
+                <li>provenance;</li>
+                <li>borrow authority;</li>
+                <li>ownership compatibility;</li>
+                <li>address-space compatibility;</li>
+                <li>foreign-retention compatibility;</li>
+                <li>relocation safety.</li>
+            </ul>
+        </section>
+
+        <section id="runtime-representation">
+            <h2>No Single Mandatory Runtime Representation</h2>
+
+            <p>
+                Sec defines safe-reference semantics independently of one physical representation.
+            </p>
+
+            <p>A compiler may represent a reference using:</p>
+
+            <ul>
+                <li>an address;</li>
+                <li>an address plus length;</li>
+                <li>an address plus expected epoch;</li>
+                <li>a slot identity plus generation;</li>
+                <li>a capability pointer;</li>
+                <li>a target-specific tagged pointer;</li>
+                <li>a side-table key;</li>
+                <li>another representation preserving the required semantics.</li>
+            </ul>
+
+            <p>
+                For a short-lived, statically proven reference, a hosted optimized target may lower
+                <code>ref T</code> to an address only.
+            </p>
+
+            <p>
+                A hardened profile may retain epoch, capability, tag or side-table validation.
+            </p>
+
+            <p>
+                Constrained bare-metal targets may omit runtime metadata when validity is statically
+                proven and reject safe patterns they cannot preserve.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A target profile may change the implementation cost of a
+                reference, but it may not weaken the source-level guarantees of <code>ref</code>.
+            </div>
+        </section>
+
+        <section id="stable-handles">
+            <h2>Stable and Weak Handles</h2>
+
+            <p>
+                The lower-level reference model also defines stable-handle and weak-handle semantics
+                for cases where direct references are not the right long-lived identity mechanism.
+            </p>
+
+            <h3>Stable handle</h3>
+
+            <p>
+                A stable handle may identify a domain, slot and expected generation and resolve the
+                current physical target address indirectly.
+            </p>
+
+            <p>
+                This can allow identity to survive target relocation.
+            </p>
+
+            <p>
+                A stable handle does not imply ownership unless its specific handle kind explicitly
+                defines retention or ownership.
+            </p>
+
+            <h3>Weak handle</h3>
+
+            <p>
+                A weak handle does not keep its target alive.
+                Resolution failure is ordinary fallible program behavior.
+            </p>
+
+            <p>Conceptually, resolution may produce something like:</p>
+
+            <pre><code>Option[ref T]
+Result[ref T, StaleReferenceError]</code></pre>
+
+            <p>
+                The exact public stable/weak-handle APIs are not fixed by the Sec 0.1 reference rulebook.
+            </p>
+
+            <p>
+                Ordinary short-lived <code>ref T</code> must not be replaced by stable handles by default.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destroying a Reference Does Not Destroy the Referent</h2>
+
+            <p>
+                Safe reference holders are non-owning.
+            </p>
+
+            <p>
+                When a <code>ref T</code> or <code>ref mut T</code> holder reaches the end of its
+                lifetime, only the reference value ends.
+            </p>
+
+            <p>
+                The referenced object remains alive according to its actual owner and storage lifetime.
+            </p>
+
+            <p>
+                Conversely, the owner cannot be destroyed or invalidated while a live safe reference
+                still requires that storage unless another canonical mechanism preserves the reference's validity.
+            </p>
+
+            <p>
+                Reinitializing a Place begins a new value lifetime and does not revive references
+                to the previous object that occupied the same storage.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Reference diagnostics should distinguish causes such as:</p>
+
+            <ul>
+                <li>attempt to reference an unavailable Place;</li>
+                <li>mutable reference requested without mutable authority;</li>
+                <li>shared-to-mutable authority upgrade;</li>
+                <li>overlapping mutable borrows;</li>
+                <li>mutable and shared borrow conflict;</li>
+                <li>returned reference to callee-local storage;</li>
+                <li>escaping reference captured by a later-running closure or task;</li>
+                <li>reference outliving a mapping or Arena epoch;</li>
+                <li>backing storage relocation while a direct reference is live;</li>
+                <li>stale reference detected by a hardened/runtime-validating profile;</li>
+                <li>invalid address-space transition;</li>
+                <li>hardware access lacking a platform contract;</li>
+                <li>unsafe raw-to-safe conversion missing a required proof;</li>
+                <li>foreign retention exceeding the proven lifetime.</li>
+            </ul>
+
+            <p>
+                Diagnostics should lead with programmer concepts rather than compiler-internal jargon.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>cannot return this reference
+
+the reference points to local value `item`
+`item` is destroyed when this function returns
+
+help: return an owned value
+help: return a reference derived from caller-owned or longer-lived storage</code></pre>
+
+            <p>Or:</p>
+
+            <pre><code>cannot grow `items` while `current` is live
+
+`current` refers directly to the current backing storage
+Append may relocate that backing storage
+
+help: end the reference before the structural mutation</code></pre>
+
+            <p>
+                LSP hover may expose reference kind, mutability, origin, borrow live range,
+                storage domain, epoch dependency and returned-reference relationship when useful.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>ref T</code> when code needs temporary read-only access without ownership transfer.</li>
+                <li>Use <code>ref mut T</code> only when exclusive mutation is genuinely required.</li>
+                <li>Keep reference lifetimes as short as practical.</li>
+                <li>Prefer borrowing over ownership transfer when the callee only needs temporary access.</li>
+                <li>Do not use <code>Option[ref T]</code> to model stale references or ownership availability.</li>
+                <li>Return references only when their origin clearly outlives the result.</li>
+                <li>Borrow fields or elements narrowly when whole-object access is unnecessary.</li>
+                <li>Remember that moving a mutable-reference holder does not move the referent.</li>
+                <li>Use reborrowing for temporary delegated access instead of moving a reusable mutable-reference holder.</li>
+                <li>Do not assume numeric address equality means safe-reference identity.</li>
+                <li>End direct references before operations that may invalidate or relocate backing storage.</li>
+                <li>Do not assume reference validity provides synchronization or race freedom.</li>
+                <li>Use the explicit raw/unsafe boundary when a required operation cannot preserve safe-reference guarantees.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>ref T</code> and <code>ref mut T</code> are safe, typed, non-null, non-owning reference values.</li>
+                <li>A safe reference provides temporary access to existing live storage.</li>
+                <li><code>ref T</code> grants shared read authority.</li>
+                <li><code>ref mut T</code> grants exclusive mutable authority for its borrow live range.</li>
+                <li>A mutable reference is not ownership.</li>
+                <li>Reference creation does not consume the source Place.</li>
+                <li>Reference creation does not silently allocate or extend referent lifetime.</li>
+                <li>Scalar safe references are never null.</li>
+                <li>Optional references use <code>Option[ref T]</code>.</li>
+                <li><code>None</code> is not a stale-reference state and is not an ownership-availability state.</li>
+                <li>A reference may be created only from an available valid Place with sufficient authority.</li>
+                <li>Safe references preserve compiler-known provenance to live storage origins.</li>
+                <li>Numeric address equality does not create provenance.</li>
+                <li>A reference may not outlive the value and storage on which it depends.</li>
+                <li>Reference live ranges may end at final proven use rather than lexical scope end.</li>
+                <li>Reference parameters borrow; they do not transfer ownership of the referent.</li>
+                <li>A callable may retain a passed reference only when the contract proves the longer lifetime.</li>
+                <li>Returning a reference to ordinary callee-local storage is invalid.</li>
+                <li>Returning a reference derived from caller-owned input may be valid.</li>
+                <li>Returning one of several finite proven origins may be valid.</li>
+                <li>Aggregates may contain safe references without becoming owners of the referents.</li>
+                <li>Copying <code>ref T</code> copies the reference value, not the referent.</li>
+                <li><code>ref mut T</code> is not implicitly copyable.</li>
+                <li>Moving a mutable-reference holder transfers the holder and borrow obligation, not the referenced object.</li>
+                <li>Passing an existing mutable reference to a borrowed mutable-reference parameter may reborrow rather than move the holder.</li>
+                <li>Subreferences preserve or narrow authority, bounds, lifetime and provenance.</li>
+                <li>A shared reference cannot become mutable through safe derivation.</li>
+                <li>Field and element references narrow access to the selected sub-Place.</li>
+                <li>Slices are bounded non-owning reference views.</li>
+                <li>Spatial and temporal validity are independent requirements.</li>
+                <li>Safe-reference identity depends on live storage identity, not only numeric address.</li>
+                <li>Validity epochs or generations may distinguish reused storage incarnations.</li>
+                <li>Runtime generation metadata is optional when static proof is sufficient.</li>
+                <li>Generation validity never replaces borrowing, bounds, initialization, relocation or concurrency proof.</li>
+                <li>Ordinary safe references should normally never become stale in valid safe code.</li>
+                <li>A detected stale ordinary reference uses deterministic panic/trap semantics rather than ordinary <code>try</code>-based business logic.</li>
+                <li>Live direct references may forbid physical relocation that would invalidate them.</li>
+                <li>Generation matching alone does not solve relocation.</li>
+                <li>Pinning constrains relocation but does not imply ownership or permanent lifetime.</li>
+                <li>References belong to recognized address spaces and cannot be safely interchanged across spaces merely by numeric address.</li>
+                <li>Safe-reference equality means same live storage identity and same semantic location.</li>
+                <li>Raw-pointer equality is not safe-reference equality.</li>
+                <li>Reference validity does not imply race freedom or synchronization.</li>
+                <li>Escaping closures, callbacks, tasks and deferred work preserve captured reference lifetime dependencies.</li>
+                <li>Interrupt handlers use the ordinary reference model.</li>
+                <li>Fixed-address hardware storage still requires platform lifetime and access contracts.</li>
+                <li>FFI retention must be explicit and lifetime-safe.</li>
+                <li>There is no implicit conversion between safe references and <code>RawPtr[T]</code>.</li>
+                <li>Raw-to-safe conversion must explicitly establish all required guarantees.</li>
+                <li>Sec does not mandate one physical runtime representation for safe references.</li>
+                <li>A proven short-lived reference may lower to an address only.</li>
+                <li>Hardened or dynamic profiles may retain epoch, generation, tag or side-table metadata.</li>
+                <li>Target profiles may change representation cost but may not weaken source-level <code>ref</code> semantics.</li>
+                <li>Stable and weak handles are separate mechanisms from ordinary direct references.</li>
+                <li>The exact public stable/weak-handle APIs are not fixed by the Sec 0.1 reference rulebook.</li>
+                <li>Destroying a reference holder never destroys its referent.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="22-constants.html">Previous: Constants</a>
+            <a href="22-storage.html">Previous: Values, Places and Storage</a>
             <a href="24-ownership.html">Next: Ownership</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

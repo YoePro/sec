@@ -1,0 +1,43 @@
+module property_option_direct_return
+
+type ClosedState struct {
+    _length: Option[uint64],
+}
+
+impl ClosedState {
+    property Length: Option[uint64] {
+        get {
+            return _length
+        }
+    }
+}
+
+type BodyState union {
+    Empty
+    Bytes(uint64)
+    Closed(ClosedState)
+}
+
+type Body struct {
+    _state: BodyState,
+}
+
+impl Body {
+    property Length: Option[uint64] {
+        get {
+            match self._state {
+                BodyState.Empty => {
+                    return Some(0)
+                }
+
+                BodyState.Bytes(length) => {
+                    return Some(length)
+                }
+
+                BodyState.Closed(ref state) => {
+                    return state.Length
+                }
+            }
+        }
+    }
+}

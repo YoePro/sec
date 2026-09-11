@@ -1514,6 +1514,8 @@ The lexer recognizes the longest valid token at the current source position.
 *       multiplication
 /       division
 %       remainder
+++      increment statement alias
+--      decrement statement alias
 ```
 
 Compound assignment:
@@ -1634,6 +1636,8 @@ Examples:
 <<= before <<
 >>= before >>
 += before +
+++ before +
+-- before -
 :<- before :
 := before :
 <- before <

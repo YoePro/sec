@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,54 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Arrays</div>
-        <a href="#19-arrays">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#arrays">Arrays</a>
+        <a href="#two-array-kinds">Two Array Kinds</a>
+        <a href="#fixed-arrays">Fixed Arrays</a>
+        <a href="#fixed-identity">Fixed Type Identity</a>
+        <a href="#fixed-layout">Fixed Layout</a>
+        <a href="#nested-arrays">Nested Arrays</a>
+        <a href="#fixed-default">Fixed Default Construction</a>
+        <a href="#literals">Array Literals</a>
+        <a href="#spread">Spread in Literals</a>
+        <a href="#dynamic-arrays">Dynamic Arrays</a>
+        <a href="#dynamic-ownership">Dynamic Ownership</a>
+        <a href="#empty-default">Dynamic Empty Default</a>
+        <a href="#capacity">Internal Capacity</a>
+        <a href="#allocation">Allocation and Growth</a>
+        <a href="#storage-identity">Storage Identity</a>
+        <a href="#shared-properties">Shared Array Properties</a>
+        <a href="#len">Len</a>
+        <a href="#isempty">IsEmpty</a>
+        <a href="#sizeof">SizeOf</a>
+        <a href="#ptr">Ptr</a>
+        <a href="#tostring">ToString</a>
+        <a href="#append">Append</a>
+        <a href="#clear">Clear</a>
+        <a href="#removeat">RemoveAt</a>
+        <a href="#indexing">Indexing</a>
+        <a href="#move-only-indexing">Move-Only Elements</a>
+        <a href="#slices">Arrays and Slices</a>
+        <a href="#iteration">Iteration</a>
+        <a href="#equality">Equality</a>
+        <a href="#parameters">Parameters and Returns</a>
+        <a href="#destruction">Destruction</a>
+        <a href="#fixed-vs-dynamic">Fixed vs Dynamic</a>
+        <a href="#not-list">Dynamic Array vs list</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,14 +80,14 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html" class="active">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html">Ownership</a>
         <a href="25-borrowing.html">Borrowing</a>
@@ -71,36 +109,1218 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Arrays</div>
 
-        <h1 id="19-arrays">Arrays</h1>
+        <h1 id="arrays">Arrays</h1>
 
-        <p>An array is a fixed-size collection of values of the same type.</p>
+        <p>
+            Sec has two owning contiguous array forms:
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>T[N]    // fixed-size owning array
+T[]     // dynamic owning array</code></pre>
+
+        <p>
+            Both store live elements of one element type <code>T</code>, use zero-based indexing,
+            support ordinary iteration, and can provide borrowed slices.
+            Their ownership and representation models are deliberately different.
+        </p>
+
+        <div class="rule">
+            <strong>Core distinction:</strong> <code>T[N]</code> owns exactly <code>N</code>
+            inline logical elements and has compile-time length.
+            <code>T[]</code> is a move-only owning dynamic sequence whose length is runtime state.
+        </div>
+
+        <section id="two-array-kinds">
+            <h2>Two Array Kinds</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Property</th>
+                            <th><code>T[N]</code></th>
+                            <th><code>T[]</code></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Length</td>
+                            <td>Compile-time</td>
+                            <td>Runtime</td>
+                        </tr>
+                        <tr>
+                            <td>Length in type identity</td>
+                            <td>Yes</td>
+                            <td>No</td>
+                        </tr>
+                        <tr>
+                            <td>Owns elements</td>
+                            <td>Yes</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Contiguous logical storage</td>
+                            <td>Yes</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Can grow</td>
+                            <td>No</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Move-only as a container</td>
+                            <td>Depends on <code>T</code></td>
+                            <td>Always</td>
+                        </tr>
+                        <tr>
+                            <td>Hidden runtime capacity state</td>
+                            <td>No</td>
+                            <td>May exist internally</td>
+                        </tr>
+                        <tr>
+                            <td>Public <code>Capacity</code></td>
+                            <td>No</td>
+                            <td>No</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Slices are not a third owning array form. A slice is a borrowed view and is
+                covered separately in the next chapter.
+            </p>
+        </section>
+
+        <section id="fixed-arrays">
+            <h2>Fixed Arrays <code>T[N]</code></h2>
+
+            <p>A fixed array uses postfix length syntax:</p>
+
+            <pre><code>byte[256]
+int[4]
+Packet[32]</code></pre>
+
+            <p>
+                <code>N</code> is the exact number of logical elements.
+            </p>
+
+            <p>
+                The element type must have a known size because the complete fixed-array layout is
+                determined at compile time.
+            </p>
+        </section>
+
+        <section id="fixed-identity">
+            <h2>Fixed Array Type Identity</h2>
+
+            <p>
+                The element type and length both participate in fixed-array type identity.
+            </p>
+
+            <p>These are distinct types:</p>
+
+            <pre><code>int[4]
+int[5]
+uint[4]</code></pre>
+
+            <p>
+                <code>N</code> must be a non-negative compile-time integer representable by
+                <code>uint</code>.
+            </p>
+
+            <p>The compiler rejects:</p>
+
+            <ul>
+                <li>negative lengths;</li>
+                <li>non-integer lengths;</li>
+                <li>runtime-dependent lengths;</li>
+                <li>constant-evaluation overflow;</li>
+                <li>lengths not representable by <code>uint</code>;</li>
+                <li>complete array layouts exceeding the target's layout limits.</li>
+            </ul>
+
+            <p>Zero-length arrays are valid:</p>
+
+            <pre><code>byte[0]</code></pre>
+        </section>
+
+        <section id="fixed-layout">
+            <h2>Fixed Array Layout</h2>
+
+            <p>
+                A <code>T[N]</code> value owns <code>N</code> contiguous elements of
+                <code>T</code>.
+            </p>
+
+            <p>The fixed array itself contains no hidden runtime:</p>
+
+            <ul>
+                <li>pointer;</li>
+                <li>length field;</li>
+                <li>capacity field;</li>
+                <li>allocator identity.</li>
+            </ul>
+
+            <p>
+                Its length comes from the type.
+            </p>
+
+            <p>
+                Complete layout arithmetic is checked. An array whose total byte layout cannot be
+                represented safely for the target is rejected.
+            </p>
+        </section>
+
+        <section id="nested-arrays">
+            <h2>Nested Arrays</h2>
+
+            <p>Fixed arrays may contain fixed arrays:</p>
+
+            <pre><code>int[3][4]</code></pre>
+
+            <p>
+                Sec writes postfix dimensions from outermost to innermost.
+            </p>
+
+            <p>The type above means:</p>
+
+            <pre><code>3 outer elements
+each outer element has type int[4]</code></pre>
+
+            <p>
+                Every dimension participates in type identity and checked layout.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>let matrix: int[3][4]</code></pre>
+
+            <p>
+                represents three <code>int[4]</code> elements.
+            </p>
+        </section>
+
+        <section id="fixed-default">
+            <h2>Fixed Array Default Construction</h2>
+
+            <p>
+                A mutable fixed array may omit its initializer when every element can be validly
+                default-constructed:
+            </p>
+
+            <pre><code>let mut values: int[4]</code></pre>
+
+            <p>
+                This creates four valid default <code>int</code> elements.
+            </p>
+
+            <p>
+                If <code>T</code> is not defaultable, a non-empty <code>T[N]</code> cannot use this form.
+            </p>
+
+            <p>
+                A zero-length array is defaultable without constructing any element:
+            </p>
+
+            <pre><code>let mut empty: Resource[0]</code></pre>
+
+            <p>
+                Safe Sec never exposes a fixed array containing readable but uninitialized elements.
+            </p>
+
+            <p>
+                If non-trivial element construction fails part-way through construction, already
+                initialized elements are tracked and cleaned up according to ordinary ownership rules.
+            </p>
+
+            <p>
+                An immutable fixed-array declaration requires an initializer.
+            </p>
+        </section>
+
+        <section id="literals">
+            <h2>Array Literals</h2>
+
+            <p>Fixed-array literal syntax is:</p>
+
+            <pre><code>[expression, expression, expression]</code></pre>
+
+            <p>A trailing comma is permitted:</p>
+
+            <pre><code>[1, 2, 3,]</code></pre>
+
+            <h3>Target-typed literals</h3>
+
+            <pre><code>let bytes: byte[3] := [1, 2, 3]
+let percentages: Percent[2] := [10, 20]</code></pre>
+
+            <p>
+                The target type supplies both the element type and required length.
+            </p>
+
+            <p>
+                Every literal element must be valid for the target element type, and the final
+                literal element count must match the target length exactly.
+            </p>
+
+            <h3>Inference without a target</h3>
+
+            <pre><code>let values := [10, 20, 30]</code></pre>
+
+            <p>infers:</p>
+
+            <pre><code>int[3]</code></pre>
+
+            <p>This inference is available when:</p>
+
+            <ul>
+                <li>the literal contains at least one element;</li>
+                <li>all elements resolve to one element type;</li>
+                <li>the inferred length is the literal element count.</li>
+            </ul>
+
+            <h3>Empty literal</h3>
+
+            <p>An empty bracket literal needs target context:</p>
+
+            <pre><code>let empty: int[0] := []</code></pre>
+
+            <p>
+                There is no element from which an unconstrained empty literal could infer its type.
+            </p>
+        </section>
+
+        <section id="spread">
+            <h2>Spread in Fixed-Array Literals</h2>
+
+            <p>
+                Fixed-array literals may use the canonical spread operator:
+            </p>
+
+            <pre><code>let middle: int[4] := [2, 3, 4, 5]
+let all: int[6] := [1, ...middle, 6]</code></pre>
+
+            <p>
+                Multiple fixed-array spreads are permitted when the complete result length is
+                known at compile time and matches the target array length exactly.
+            </p>
+
+            <p>
+                Spread does not turn a fixed array into a dynamically sized array.
+            </p>
+
+            <p>
+                Ownership and copy/move behavior of each spread source follow the general spread rules.
+            </p>
+        </section>
+
+        <section id="dynamic-arrays">
+            <h2>Dynamic Owning Arrays <code>T[]</code></h2>
+
+            <p>A dynamic owning array uses:</p>
+
+            <pre><code>T[]</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>byte[]
+Packet[]
+User[]</code></pre>
+
+            <p>
+                A dynamic array is a first-class owning value type.
+            </p>
+
+            <p>It is distinct from:</p>
+
+            <pre><code>T[N]
+ref T[]
+ref mut T[]
+list[T]</code></pre>
+
+            <p>
+                Its current length is runtime state and is not part of its type identity.
+            </p>
+        </section>
+
+        <section id="dynamic-ownership">
+            <h2>Dynamic Array Ownership</h2>
+
+            <p>Every <code>T[]</code> is:</p>
+
+            <ul>
+                <li>owning;</li>
+                <li>move-only;</li>
+                <li>non-trivially destructible;</li>
+                <li>responsible for the lifetime of every live logical element.</li>
+            </ul>
+
+            <p>
+                This remains true even if <code>T</code> itself is trivially copyable.
+            </p>
+
+            <pre><code>let mut values: int[]</code></pre>
+
+            <p>
+                is still an owning move-only collection value.
+            </p>
+
+            <p>
+                Ordinary assignment, parameter transfer, aggregate transfer and return do not
+                implicitly deep-copy a dynamic array.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>T[]</code> ownership belongs to the array object,
+                not to an implicit shared backing store.
+            </div>
+        </section>
+
+        <section id="empty-default">
+            <h2>Dynamic Array Empty Default</h2>
+
+            <p>
+                A mutable dynamic array may omit its initializer:
+            </p>
+
+            <pre><code>let mut values: int[]</code></pre>
+
+            <p>This creates a valid empty owner with:</p>
+
+            <pre><code>Len = 0
+live elements = none
+backing storage = none
+allocation = none</code></pre>
+
+            <p>
+                The empty default is valid even when <code>T</code> itself has no default value.
+            </p>
+
+            <p>
+                No element exists yet, so no <code>T</code> needs to be constructed.
+            </p>
+
+            <p>
+                An immutable <code>T[]</code> declaration requires an initializer expression
+                that produces a valid owning dynamic array.
+            </p>
+        </section>
+
+        <section id="capacity">
+            <h2>Internal Capacity Is Not Public Array State</h2>
+
+            <p>
+                A dynamic array may internally reserve more storage than its current
+                <code>Len</code>.
+            </p>
+
+            <p>
+                That capacity is an implementation detail in Sec 0.1.
+            </p>
+
+            <p><code>T[]</code> does not expose canonical members named:</p>
+
+            <pre><code>Capacity
+Reserve()
+Resize()</code></pre>
+
+            <p>
+                Nor does Sec define the exact growth factor or allocator over-allocation as
+                source-language semantics.
+            </p>
+
+            <p>The semantic invariant is:</p>
+
+            <pre><code>0 &lt;= Len &lt;= internal capacity
+live initialized elements = [0, Len)
+capacity-only slots contain no live T</code></pre>
+
+            <p>
+                A reserved but unused slot is not a default-constructed hidden element.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Allocation and Growth</h2>
+
+            <p>
+                A non-empty dynamic-array operation may require backing allocation.
+            </p>
+
+            <p>
+                Sec does not assume one hidden global heap merely because <code>T[]</code> exists.
+                A valid allocation context must be resolved before lowering an operation that needs
+                new backing storage.
+            </p>
+
+            <p>
+                Growth is transactional.
+            </p>
+
+            <p>If growth fails:</p>
+
+            <ul>
+                <li>the original array remains valid;</li>
+                <li><code>Len</code> is unchanged;</li>
+                <li>existing live elements remain owned by the original array;</li>
+                <li>partially prepared new backing does not become observable;</li>
+                <li>the incoming element is not silently lost.</li>
+            </ul>
+
+            <p>
+                Collection-facing structural/resource failures use
+                <code>CollectionError</code>.
+            </p>
+        </section>
+
+        <section id="storage-identity">
+            <h2>Storage Identity and Invalidation</h2>
+
+            <p>
+                References, raw pointers and slices derived from a dynamic array depend on its
+                current backing storage incarnation.
+            </p>
+
+            <p>
+                Ordinary in-place replacement of an element does not by itself change backing identity.
+            </p>
+
+            <p>
+                A structural operation that grows or relocates backing may invalidate dependencies
+                into the previous backing storage.
+            </p>
+
+            <p>
+                Such an operation is illegal while a conflicting live reference or slice requires
+                the old backing incarnation to remain valid.
+            </p>
+
+            <p>
+                This is enforced by static ownership, borrowing and lifetime analysis.
+                Sec does not add a runtime borrow checker to dynamic arrays.
+            </p>
+        </section>
+
+        <section id="shared-properties">
+            <h2>Shared Array Properties</h2>
+
+            <p>Both fixed and dynamic arrays expose these read-only properties:</p>
+
+            <pre><code>Len
+IsEmpty
+Ptr
+SizeOf</code></pre>
+
+            <p>
+                These are properties, not method calls.
+            </p>
+        </section>
+
+        <section id="len">
+            <h2><code>Len</code></h2>
+
+            <p><code>Len</code> has type:</p>
+
+            <pre><code>uint</code></pre>
+
+            <p>For a fixed array:</p>
+
+            <pre><code>let values: int[4] := [1, 2, 3, 4]
+let count := values.Len</code></pre>
+
+            <p>
+                <code>Len</code> is the compile-time constant <code>4</code>.
+            </p>
+
+            <p>For a dynamic array:</p>
+
+            <pre><code>let count := values.Len</code></pre>
+
+            <p>
+                <code>Len</code> is the current number of live logical elements.
+            </p>
+
+            <p>
+                It never means byte size or allocated capacity.
+            </p>
+        </section>
+
+        <section id="isempty">
+            <h2><code>IsEmpty</code></h2>
+
+            <p><code>IsEmpty</code> is a read-only <code>bool</code> property:</p>
+
+            <pre><code>if values.IsEmpty {
+    return
+}</code></pre>
+
+            <p>It is semantically equivalent to:</p>
+
+            <pre><code>values.Len == 0</code></pre>
+
+            <p>
+                For <code>T[N]</code>, the result is a compile-time constant because <code>N</code>
+                is part of the type.
+            </p>
+        </section>
+
+        <section id="sizeof">
+            <h2>Instance <code>SizeOf</code></h2>
+
+            <p>
+                For contiguous arrays, instance <code>SizeOf</code> is the represented logical
+                payload extent in bytes.
+            </p>
+
+            <pre><code>let values: int32[10]
+
+let elements := values.Len
+let bytes := values.SizeOf</code></pre>
+
+            <p>Conceptually:</p>
+
+            <pre><code>payload byte size = Len * element layout stride</code></pre>
+
+            <p>
+                Instance <code>value.SizeOf</code> is not the size of a dynamic-array descriptor.
+            </p>
+
+            <p>
+                It is also different from asking for the physical layout size of one type:
+            </p>
+
+            <pre><code>int32.SizeOf</code></pre>
+        </section>
+
+        <section id="ptr">
+            <h2><code>Ptr</code></h2>
+
+            <p>
+                Arrays have contiguous addressable element storage and therefore expose the unsafe
+                read-only <code>Ptr</code> property.
+            </p>
+
+            <pre><code>let pointer := values.Ptr</code></pre>
+
+            <p><code>Ptr</code> does not:</p>
+
+            <ul>
+                <li>transfer ownership;</li>
+                <li>extend lifetime;</li>
+                <li>pin storage;</li>
+                <li>prevent dynamic-array relocation;</li>
+                <li>create a safe Sec reference;</li>
+                <li>make an FFI descriptor stable.</li>
+            </ul>
+
+            <p>
+                A pointer obtained from relocatable dynamic-array backing becomes invalid if a later
+                legal storage transition replaces that backing.
+            </p>
+
+            <p>
+                For an empty array, the raw pointer value is implementation-defined under the
+                raw-pointer rules and must not be dereferenced.
+            </p>
+        </section>
+
+        <section id="tostring">
+            <h2><code>ToString</code></h2>
+
+            <p>Arrays may expose the common formatting members:</p>
+
+            <pre><code>value.ToString()
+value.ToString(format)</code></pre>
+
+            <p>
+                Ordinary no-argument array formatting is type-oriented rather than an implicit dump
+                of all stored elements.
+            </p>
+
+            <p>Canonical type-oriented forms include:</p>
+
+            <pre><code>int[4]  -&gt; "int[4]"
+int[]   -&gt; "int[]"</code></pre>
+
+            <p>
+                Exact <code>char[]</code> and <code>rune[]</code> text conversions are intentional
+                special cases governed by the string conversion rules.
+            </p>
+
+            <p>
+                A formatting operation that exposes array data must borrow rather than implicitly
+                consume an owning array.
+            </p>
+        </section>
+
+        <section id="append">
+            <h2>Dynamic Array <code>Append</code></h2>
+
+            <p>
+                <code>Append</code> adds one element at logical index <code>Len</code>.
+            </p>
+
+            <p>Its semantic result is:</p>
+
+            <pre><code>Result[void, CollectionError]</code></pre>
+
+            <p>Typical use:</p>
+
+            <pre><code>try values.Append(value)</code></pre>
+
+            <p>or with local handling:</p>
+
+            <pre><code>try values.Append(value) {
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                The operation may require allocation and relocation.
+            </p>
+
+            <p>
+                <code>Len</code> increases only after element transfer and any required growth
+                complete successfully.
+            </p>
+
+            <p>
+                Failure is atomic with respect to collection validity: the existing array remains
+                valid and the incoming element is not silently discarded.
+            </p>
+
+            <p>
+                The canonical method name is <code>Append</code>.
+                <code>Push</code> is not an alias.
+            </p>
+        </section>
+
+        <section id="clear">
+            <h2>Dynamic Array <code>Clear</code></h2>
+
+            <pre><code>values.Clear()</code></pre>
+
+            <p><code>Clear()</code>:</p>
+
+            <ul>
+                <li>destroys every live element;</li>
+                <li>destroys elements in reverse logical index order;</li>
+                <li>sets <code>Len</code> to zero;</li>
+                <li>may retain reusable backing storage;</li>
+                <li>does not allocate;</li>
+                <li>does not expose or return internal capacity.</li>
+            </ul>
+
+            <p>
+                <code>Clear()</code> is infallible under the ordinary destruction rules.
+            </p>
+        </section>
+
+        <section id="removeat">
+            <h2>Dynamic Array <code>RemoveAt</code></h2>
+
+            <p><code>RemoveAt</code> removes ownership of one logical element:</p>
+
+            <pre><code>let removed := values.RemoveAt(index)</code></pre>
+
+            <p>Its result is:</p>
+
+            <pre><code>Option[T]</code></pre>
+
+            <p>An invalid index returns:</p>
+
+            <pre><code>None</code></pre>
+
+            <p>
+                Ordinary absence is not an error.
+            </p>
+
+            <p>A valid index:</p>
+
+            <ul>
+                <li>moves the removed element out;</li>
+                <li>shifts every later live element one slot left;</li>
+                <li>decrements <code>Len</code>;</li>
+                <li>leaves no readable hole;</li>
+                <li>does not default-construct a replacement;</li>
+                <li>does not allocate;</li>
+                <li>returns <code>Some(removed)</code>.</li>
+            </ul>
+
+            <p>For:</p>
+
+            <pre><code>[A B C D E F G H]</code></pre>
+
+            <p>removing index <code>5</code> produces:</p>
+
+            <pre><code>[A B C D E G H]</code></pre>
+
+            <p>and returns:</p>
+
+            <pre><code>Some(F)</code></pre>
+
+            <p>
+                Order-preserving compaction is intentionally proportional to the number of later
+                elements. <code>T[]</code> is not a sparse array.
+            </p>
+        </section>
+
+        <section id="indexing">
+            <h2>Indexing</h2>
+
+            <p>
+                Arrays use zero-based indexing:
+            </p>
+
+            <pre><code>let first := values[0]</code></pre>
+
+            <p>Valid fixed-array bounds are:</p>
+
+            <pre><code>0 &lt;= index &lt; N</code></pre>
+
+            <p>Valid dynamic-array bounds are:</p>
+
+            <pre><code>0 &lt;= index &lt; Len</code></pre>
+
+            <p>
+                A statically known invalid index is a compile-time error.
+                Runtime indexing follows Sec's checked access rules.
+            </p>
+
+            <p>
+                Indexing produces a place when the source and access mode permit it, so a mutable
+                array element can be replaced through indexed assignment.
+            </p>
+
+            <p>
+                The complete indexing, checked-access, replacement and range-slicing rules are
+                covered in the Indexing chapter.
+            </p>
+        </section>
+
+        <section id="move-only-indexing">
+            <h2>Move-Only Elements Are Not Moved Out by Ordinary Indexing</h2>
+
+            <p>
+                Reading an indexed element does not silently extract ownership from the array.
+            </p>
+
+            <p>
+                If <code>T</code> is move-only, ordinary indexing cannot simply move
+                <code>values[index]</code> out and leave an uninitialized hole behind.
+            </p>
+
+            <p>
+                Borrow the element when access is needed without ownership transfer.
+            </p>
+
+            <p>
+                For <code>T[]</code>, <code>RemoveAt(index)</code> is the explicit owning
+                extraction operation defined by the collection model.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Safe arrays never gain readable holes through ordinary element access.
+            </div>
+        </section>
+
+        <section id="slices">
+            <h2>Arrays and Slices</h2>
+
+            <p>
+                Both array kinds may act as sources for borrowed contiguous slices.
+            </p>
+
+            <p>Slice types are:</p>
+
+            <pre><code>ref T[]
+ref mut T[]</code></pre>
+
+            <p>
+                Slice creation is explicit and uses reference syntax rather than helper methods.
+            </p>
+
+            <p>
+                Arrays do not require canonical methods named:
+            </p>
+
+            <pre><code>AsSlice()
+AsMutableSlice()
+Slice()</code></pre>
+
+            <p>
+                The Slices chapter defines slice creation, lifetime, mutability and invalidation
+                in detail.
+            </p>
+        </section>
+
+        <section id="iteration">
+            <h2>Iteration</h2>
+
+            <p>
+                Both fixed and dynamic arrays are directly iterable:
+            </p>
+
+            <pre><code>for item in values {
+    Process(item)
+}</code></pre>
+
+            <p>Index plus element is also available:</p>
+
+            <pre><code>for index, item in values {
+    Process(index, item)
+}</code></pre>
+
+            <p>Borrowed iteration:</p>
+
+            <pre><code>for ref item in values {
+    Inspect(item)
+}</code></pre>
+
+            <p>Mutable borrowed iteration where authority permits:</p>
+
+            <pre><code>for ref mut item in values {
+    item.Reset()
+}</code></pre>
+
+            <p>
+                Plain by-value iteration copies elements and therefore requires the element type
+                to be copyable.
+            </p>
+
+            <p>
+                Iteration never silently moves move-only elements out of an owning array.
+            </p>
+
+            <p>
+                Structural operations that may relocate or resize a dynamic array are not permitted
+                while active iteration depends on the current structure.
+            </p>
+        </section>
+
+        <section id="equality">
+            <h2>Equality</h2>
+
+            <p>
+                Fixed arrays support <code>==</code> and <code>!=</code> when the element type
+                supports equality.
+            </p>
+
+            <pre><code>let left: int[3] := [1, 2, 3]
+let right: int[3] := [1, 2, 3]
+
+if left == right {
+    ...
+}</code></pre>
+
+            <p>
+                Comparison is element-by-element in increasing index order.
+            </p>
+
+            <p>
+                Both operands must have the same fixed-array type, including the same length.
+            </p>
+
+            <p>
+                Dynamic-array content equality is not implied merely by the storage representation.
+                Do not assume <code>T[]</code> has ordinary content <code>==</code> unless a
+                relevant core/collection rule explicitly defines such an operation.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Parameters and Return Values</h2>
+
+            <h3>Fixed arrays</h3>
+
+            <p>
+                A fixed array passed by value follows the ordinary copy/move classification derived
+                from its element type.
+            </p>
+
+            <pre><code>fn Consume(values: int[4]) void {
+    ...
+}</code></pre>
+
+            <p>
+                When the complete fixed-array type is copyable, ordinary by-value transfer may copy it.
+                If its elements make it move-only, the array follows move semantics.
+            </p>
+
+            <h3>Dynamic arrays</h3>
+
+            <p>
+                A by-value <code>T[]</code> parameter receives ownership of the dynamic array:
+            </p>
+
+            <pre><code>fn ConsumeOwned(values: Packet[]) void {
+    ...
+}</code></pre>
+
+            <p>
+                Because <code>T[]</code> is move-only, reusable named owners follow the normal
+                explicit consuming-transfer rules at consuming boundaries.
+            </p>
+
+            <h3>Borrowing arrays</h3>
+
+            <p>
+                When a function only needs a borrowed contiguous sequence, use a slice parameter:
+            </p>
+
+            <pre><code>fn Sum(values: ref int[]) int {
+    ...
+}
+
+fn ClearBytes(values: ref mut byte[]) void {
+    ...
+}</code></pre>
+
+            <p>
+                This avoids transferring ownership of the array.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction</h2>
+
+            <h3>Fixed arrays</h3>
+
+            <p>
+                A fixed array destroys live elements in reverse index order.
+            </p>
+
+            <pre><code>N - 1
+...
+1
+0</code></pre>
+
+            <p>
+                Array destruction follows the element type's ordinary destruction semantics.
+            </p>
+
+            <h3>Dynamic arrays</h3>
+
+            <p>
+                A dynamic array destroys live elements in reverse logical index order.
+            </p>
+
+            <p>After element destruction, its owning storage lifetime ends and backing reclamation
+               follows the resolved allocation/reclamation policy.</p>
+
+            <p>
+                Element ownership and raw backing reclamation are separate responsibilities.
+                For example, an arena-backed dynamic array still owns and destroys its live element
+                objects even when an arena policy owns raw storage reclamation.
+            </p>
+        </section>
+
+        <section id="fixed-vs-dynamic">
+            <h2>Choosing Fixed or Dynamic Arrays</h2>
+
+            <p>Use <code>T[N]</code> when:</p>
+
+            <ul>
+                <li>the number of elements is part of the type contract;</li>
+                <li>layout must be known at compile time;</li>
+                <li>inline fixed-size representation is desirable;</li>
+                <li>the array must participate in exact binary or aggregate layout;</li>
+                <li>growth is neither required nor meaningful.</li>
+            </ul>
+
+            <p>Use <code>T[]</code> when:</p>
+
+            <ul>
+                <li>the element count is runtime state;</li>
+                <li>the collection must grow;</li>
+                <li>simple ordered contiguous ownership is sufficient;</li>
+                <li>the minimal <code>Append</code>/<code>Clear</code>/<code>RemoveAt</code> surface is appropriate.</li>
+            </ul>
+
+            <p>
+                If a richer sequence API is required, use <code>list[T]</code> rather than turning
+                <code>T[]</code> into a general-purpose collection framework.
+            </p>
+        </section>
+
+        <section id="not-list">
+            <h2>Dynamic Array vs <code>list[T]</code></h2>
+
+            <p>
+                <code>T[]</code> is intentionally a small fundamental dynamic owning array.
+            </p>
+
+            <p>Its canonical mutable surface is centered on:</p>
+
+            <pre><code>Append(value)
+Clear()
+RemoveAt(index)</code></pre>
+
+            <p>
+                It deliberately does not expose the richer sequence-management surface expected
+                from <code>list[T]</code>.
+            </p>
+
+            <p>
+                In particular, <code>T[]</code> does not expose public source-visible capacity,
+                reserve or resize operations in Sec 0.1.
+            </p>
+
+            <p>
+                This keeps the fundamental array model small while allowing <code>list[T]</code>
+                to own richer collection behavior.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important array diagnostics include:</p>
+
+            <ul>
+                <li>negative or non-integer fixed-array length;</li>
+                <li>runtime-dependent fixed-array length;</li>
+                <li>fixed-array length constant overflow;</li>
+                <li>fixed-array layout exceeding target limits;</li>
+                <li>non-defaultable element type in an uninitialized non-empty mutable fixed array;</li>
+                <li>immutable array declaration without required initialization;</li>
+                <li>array literal element-count mismatch;</li>
+                <li>array literal element-type mismatch;</li>
+                <li>empty literal without enough target context;</li>
+                <li>fixed-array spread whose final length does not match the target;</li>
+                <li>implicit copy attempt of move-only <code>T[]</code>;</li>
+                <li>dynamic-array growth without a valid allocation context;</li>
+                <li>structural mutation while a conflicting reference, slice or iteration dependency is live;</li>
+                <li>invalid array index;</li>
+                <li>attempt to move a move-only element out through ordinary indexing;</li>
+                <li>use of non-canonical members such as <code>Push</code>, <code>Reserve</code> or <code>AsSlice</code>.</li>
+            </ul>
+
+            <p>For example:</p>
+
+            <pre><code>error: Packet[] is move-only
+
+this assignment would require an implicit deep copy of the owning dynamic array
+
+help: move the owner at a consuming boundary
+help: borrow it as ref Packet[] when ownership transfer is not intended</code></pre>
+
+            <p>
+                Tooling should distinguish clearly between:
+            </p>
+
+            <pre><code>T[N]
+T[]
+ref T[]
+ref mut T[]</code></pre>
+
+            <p>
+                because they have different ownership and lifetime semantics even when all describe
+                contiguous elements.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>T[N]</code> when the element count belongs in the type contract.</li>
+                <li>Use <code>T[]</code> for simple runtime-sized owning contiguous storage.</li>
+                <li>Use <code>list[T]</code> when a richer dynamic sequence API is needed.</li>
+                <li>Use <code>ref T[]</code> or <code>ref mut T[]</code> when a function only needs borrowed contiguous access.</li>
+                <li>Prefer array literals for concise fixed-array initialization.</li>
+                <li>Remember that an inferred <code>[1, 2, 3]</code> is a fixed array, not a dynamic owner.</li>
+                <li>Use <code>Append</code>, not <code>Push</code>, for <code>T[]</code>.</li>
+                <li>Handle <code>Append</code> failure because growth may require resources.</li>
+                <li>Use <code>RemoveAt</code> when ownership of one dynamic-array element must be extracted.</li>
+                <li>Do not depend on hidden capacity or growth policy.</li>
+                <li>Do not retain raw <code>Ptr</code> across operations that may relocate dynamic-array backing.</li>
+                <li>Use explicit slices rather than helper methods such as <code>AsSlice()</code>.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec has two owning array forms: fixed <code>T[N]</code> and dynamic <code>T[]</code>.</li>
+                <li><code>T[N]</code> has compile-time length and contiguous owned elements.</li>
+                <li>The fixed length participates in type identity.</li>
+                <li>Fixed-array length must be a non-negative compile-time integer representable by <code>uint</code>.</li>
+                <li>Zero-length fixed arrays are valid.</li>
+                <li>A fixed array has no hidden pointer, length field, capacity field or allocator identity.</li>
+                <li>Nested fixed arrays use postfix dimensions from outermost to innermost.</li>
+                <li>A mutable fixed array may omit its initializer only when every element can be default-constructed.</li>
+                <li>Zero-length fixed arrays are defaultable even when the element type is not.</li>
+                <li>Immutable fixed arrays require initialization.</li>
+                <li>Bracket literals such as <code>[1, 2, 3]</code> construct fixed arrays under the fixed-array literal rules.</li>
+                <li>A non-empty literal may infer <code>T[N]</code> when all elements resolve to one type.</li>
+                <li>An empty bracket literal requires target context.</li>
+                <li>Spread is allowed in fixed-array literals when the complete resulting length is compile-time known and matches the target.</li>
+                <li><code>T[]</code> is a first-class owning dynamic array.</li>
+                <li>Dynamic-array length is runtime state and is not part of type identity.</li>
+                <li>Every <code>T[]</code> is move-only regardless of whether <code>T</code> is copyable.</li>
+                <li>A mutable <code>T[]</code> may default-construct as an empty owner without allocation.</li>
+                <li>The empty dynamic default does not require <code>T</code> to be defaultable.</li>
+                <li>Dynamic-array internal capacity is not public Sec 0.1 state.</li>
+                <li><code>T[]</code> does not expose canonical <code>Capacity</code>, <code>Reserve</code> or <code>Resize</code> members.</li>
+                <li>Growth may require allocation, but Sec does not assume one hidden global heap.</li>
+                <li>Dynamic-array growth is transactional.</li>
+                <li>Backing relocation may invalidate references, slices and raw pointers tied to the old backing.</li>
+                <li>Both array kinds expose read-only <code>Len</code>, <code>IsEmpty</code>, <code>Ptr</code> and <code>SizeOf</code>.</li>
+                <li><code>Len</code> is a logical element count of type <code>uint</code>.</li>
+                <li>Instance <code>SizeOf</code> describes logical payload bytes, not a dynamic-array descriptor size.</li>
+                <li><code>Ptr</code> is unsafe and does not extend lifetime or pin storage.</li>
+                <li>Ordinary array <code>ToString()</code> is type-oriented; exact char/rune text conversions are special cases.</li>
+                <li>Dynamic-array <code>Append</code> returns <code>Result[void, CollectionError]</code>.</li>
+                <li><code>Append</code> is atomic with respect to array validity on failure.</li>
+                <li><code>Push</code> is not an alias for <code>Append</code>.</li>
+                <li><code>Clear()</code> destroys all live elements in reverse order and resets <code>Len</code> to zero.</li>
+                <li><code>RemoveAt(index)</code> returns <code>Option[T]</code>.</li>
+                <li>A valid <code>RemoveAt</code> moves the removed element out and compacts later elements left.</li>
+                <li>An invalid <code>RemoveAt</code> index returns <code>None</code>; normal absence is not an error.</li>
+                <li>Arrays use zero-based indexing.</li>
+                <li>Ordinary indexing never silently moves a move-only element out of an owning array.</li>
+                <li>Dynamic-array <code>RemoveAt</code> is the explicit owning extraction operation.</li>
+                <li>Arrays can provide explicit borrowed slices; slices do not own their elements.</li>
+                <li>Arrays do not require <code>AsSlice()</code>, <code>AsMutableSlice()</code> or <code>Slice()</code> helpers.</li>
+                <li>Fixed and dynamic arrays are directly iterable.</li>
+                <li>Plain iteration copies elements and therefore requires copyable element values.</li>
+                <li>Borrowed iteration uses <code>ref</code> or <code>ref mut</code> where permitted.</li>
+                <li>Fixed arrays support element-wise <code>==</code>/<code>!=</code> when <code>T</code> supports equality.</li>
+                <li>Dynamic-array content equality is not implied merely by representation.</li>
+                <li>Fixed-array by-value transfer follows the complete array's ordinary copy/move classification.</li>
+                <li>Dynamic-array by-value transfer moves ownership.</li>
+                <li>Fixed and dynamic arrays destroy live elements in reverse logical index order.</li>
+                <li><code>T[]</code> is intentionally smaller than the richer <code>list[T]</code> collection.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="18-interfaces.html">Previous: Interfaces</a>
+            <a href="18-interfaces.html">Previous: Interfaces</a>
             <a href="20-slices.html">Next: Slices</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

@@ -391,6 +391,25 @@ func TestOperators(t *testing.T) {
 	assertTokens(t, input, tests)
 }
 
+// rules/foundations/lexical_structure.md §16 and
+// rules/foundations/operators.md "Increment and decrement aliases".
+func TestIncrementAndDecrementTokens(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/increment_decrement.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTokens(t, string(input), []struct {
+		typ    TokenType
+		lexeme string
+	}{
+		{IDENT, "value"},
+		{INCREMENT, "++"},
+		{IDENT, "other"},
+		{DECREMENT, "--"},
+		{EOF, ""},
+	})
+}
+
 func TestCharLiteral(t *testing.T) {
 	input := `'S' '\n' 'AB'`
 

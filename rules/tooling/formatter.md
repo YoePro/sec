@@ -88,6 +88,8 @@ The current LSP formatter already implements:
 - unambiguous `func` to `fn` normalization;
 - canonical placement of an inline `@noCopy` attribute on its own line;
 - preservation of ordinary identifiers and calls named `func`;
+- parser-confirmed `x++` and `x--` normalization to `x += 1` and `x -= 1`,
+  while invalid expression uses remain unchanged;
 - format-on-save integration in the VS Code extension;
 - tests for switch, select, grouped imports, declaration groups, function
   signatures, bootstrap lexer source, and `func` normalization.
@@ -123,8 +125,6 @@ The following are not yet implemented:
 - minimal text edits;
 - an AST- and trivia-aware printer;
 - stable formatting of all recoverable syntax;
-- `x++` to `x += 1`;
-- `x--` to `x -= 1`;
 - missing-colon repair;
 - struct-field column alignment;
 - struct-tag column alignment;

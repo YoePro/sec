@@ -1,0 +1,14 @@
+module list_indexing_valid
+
+fn Access(values: list[int], writable: ref mut list[int], index: uint, replacement: int) int {
+    let before: int := values[index]
+    let first: int := values[0]
+    writable[index] = replacement
+    writable[index] += 1
+    let shared: ref int := ref values[index]
+    let mutable: ref mut int := ref mut writable[index]
+    discard shared
+    discard mutable
+    discard first
+    return before
+}

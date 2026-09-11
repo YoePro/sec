@@ -1,0 +1,21 @@
+module list_indexing_invalid
+
+fn NonInteger(values: list[int], index: float64) void {
+    let value := values[index]
+}
+
+fn Negative(values: list[int]) void {
+    let value := values[-1]
+}
+
+fn BeyondCapacity(values: list[int, 4]) void {
+    let value := values[4]
+}
+
+fn ImmutableTarget(values: ref list[int]) void {
+    values[0] = 1
+}
+
+fn WrongReplacement(values: ref mut list[int]) void {
+    values[0] = "wrong"
+}

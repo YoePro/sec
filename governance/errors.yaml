@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-10"
+    revised: "2026-09-11"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -43,6 +43,8 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
       - internal/formatter/formatter_test.go
+      - testdata/register8_valid.sec
+      - testdata/sema/property_option_direct_return.sec
     implemented:
       - "Result[T, E], Ok(...), Err(...), ordinary Result propagation, and local Result handlers have substantial frontend and Semantic IR support."
       - "checked arithmetic already participates in language-defined try semantics and binds try to the complete following arithmetic expression."
@@ -69,7 +71,7 @@ integrations:
       - "invalid Result failure channels produce a programmer-facing diagnostic naming the invalid type and the explicit error marker correction"
       - "canonical compiler, stdlib, platform, and test fixtures declare their concrete Result error channels explicitly; raw Linux errno retains its numeric payload in an error union"
       - "direct-result-return: Compatible Result[T,E] expressions may be returned directly as complete Result carriers without unwrapping or reconstruction."
-      - "option-direct-return: Compatible Option[T] calls and bound values, including carriers with move-only payloads, may be returned directly as complete carriers with ordinary terminal ownership transfer. Plain T values are not implicitly wrapped in Some, and incompatible Option specializations remain rejected."
+      - "option-direct-return: Compatible Option[T] calls, bound values, and readable property expressions, including carriers with move-only payloads, may be returned directly as complete carriers with ordinary terminal ownership transfer. Property lookup refreshes canonical impl metadata for aggregate payload types resolved before impl registration, and a non-reference getter result does not inherit a branch-scoped receiver borrow. Plain T values are not implicitly wrapped in Some, and incompatible Option specializations remain rejected."
       - "option-none-if-tests: Non-binding if option is None and if option is not None conditions lower in the parser to the existing exhaustive typed Option-match representation, preserving compiler analysis and later LSP completion."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
@@ -144,6 +146,7 @@ integrations:
       - "a compatible Option[T] expression may be returned directly without unwrapping or reconstruction"
       - "a bound compatible Result[T,E] may be returned directly with ordinary terminal ownership transfer"
       - "a bound compatible Option[T] may be returned directly with ordinary terminal ownership transfer"
+      - "a compatible Option[T] property read may be returned directly, including through a ref-bound union payload"
       - "a plain T return from Result[T,E] remains invalid without explicit Ok(...)"
       - "a plain T return from Option[T] remains invalid without explicit Some(...)"
       - "an incompatible Result carrier is rejected with expected and actual Result types"
@@ -155,6 +158,8 @@ integrations:
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorUnion|ResultErrorChannel|ErrorEnum' -count=1
         result: passed
       - command: go test ./internal/sema -run 'Test(OptionCarrierMayBeReturnedDirectly|TerminalReturnForwardsMoveOnlyValuesThroughConstruction)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'TestOption(PropertyMayBeReturnedDirectly|CarrierMayBeReturnedDirectly)' -count=1
         result: passed
       - command: go test ./internal/parser -run TestParseIfOptionNoneConditionAsExhaustiveMatch -count=1
         result: passed for positive and negated non-binding Option None tests

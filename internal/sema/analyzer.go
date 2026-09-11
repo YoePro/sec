@@ -53,6 +53,7 @@ type Analyzer struct {
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
 	resolvedArrayLiteralPlans   map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
 	resolvedArrayIndexPlans     map[*ast.IndexExpression]ResolvedArrayIndexPlan
+	resolvedListIndexPlans      map[*ast.IndexExpression]ResolvedListIndexPlan
 	arrayIndexRefinements       []arrayIndexRefinement
 	arrayIndexMutationEpoch     uint64
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
@@ -259,6 +260,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
+	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
 	a.arrayIndexRefinements = nil
 	a.arrayIndexMutationEpoch = 0
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
@@ -559,6 +561,23 @@ func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
 // by rules/mlir/packages/sec-mlir-dialect_package14.md section 54. Proven-safe
 // and validated fallible indexes use the same boundary to remove the effect.
 func (a *Analyzer) recordArrayIndexEffect(expr *ast.IndexExpression, plan ResolvedArrayIndexPlan) {
+	if a.summaryPass || expr == nil {
+		return
+	}
+	source := expressionToken(expr)
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicBounds, source)
+	if !a.callGraphPathReachable || plan.CheckKind != ArrayIndexRuntimeCheck || plan.FailureMode != ArrayIndexFailureOrdinary {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source})
+}
+
+// recordListIndexEffect publishes the mandatory ordinary list bounds check as
+// a may-panic effect without claiming any lowering representation.
+//
+// Rules:
+//   - rules/collections/collections.md — §8.3 "Bounds"
+func (a *Analyzer) recordListIndexEffect(expr *ast.IndexExpression, plan ResolvedListIndexPlan) {
 	if a.summaryPass || expr == nil {
 		return
 	}
@@ -6581,6 +6600,13 @@ func (a *Analyzer) localReferenceOriginForExpression(value ast.Expression) (loca
 	return origin, true
 }
 
+// matchScopedReferenceOriginInExpression identifies values that would carry a
+// union-arm borrow beyond the arm. A computed property result inherits that
+// restriction only when its declared type can itself contain a reference.
+//
+// Rules:
+//   - rules/declarations/properties.md — §4 "Getter semantics"
+//   - rules/memory/ownership.md — §28.1 "Match bindings"
 func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (string, lexer.Token, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -6603,8 +6629,16 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 			}
 			return "", lexer.Token{}, false
 		}
-		if valueType, ok := a.expressionTypes[expr]; ok && typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginMatchScoped {
-			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
+		if valueType, ok := a.expressionTypes[expr]; ok {
+			// A getter may compute an ordinary value from a branch-scoped
+			// receiver. Only a member result that can itself carry reference
+			// provenance keeps the receiver's escape restriction.
+			if !typeCarriesReferenceOrigin(valueType) {
+				return "", lexer.Token{}, false
+			}
+			if valueType.ReferenceOriginMatchScoped {
+				return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
+			}
 		}
 		return a.matchScopedReferenceOriginInExpression(expr.Object)
 	case *ast.IndexExpression:
@@ -10755,12 +10789,17 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 	return true
 }
 
+// analyzeIndexAssignmentStatement validates replacement through any resolved
+// linear collection element Place, including compiler-known list[T].
+//
+// Rules:
+//   - rules/collections/collections.md — §8.4 "Replacement"
 func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression) {
 	targetType, _ := a.inferIndexExpression(index)
 	if targetType.Kind == InvalidType {
 		return
 	}
-	a.setResolvedArrayIndexUse(index, ArrayIndexWrite)
+	a.setResolvedIndexUse(index, ArrayIndexWrite)
 	if packType, _ := a.inferExpression(index.Left); variadicPackValue(packType) {
 		// rules/declarations/functions.md section 31: neither the pack nor
 		// an element reached through it is mutable source-level storage.
@@ -13346,7 +13385,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			}
 			return fieldType, true
 		}
-		if _, ok := lookupProperty(protected, expr.Property.Value); ok {
+		if _, ok := a.lookupResolvedProperty(protected, expr.Property.Value); ok {
 			returnProperty, readable := a.resolveReadableProperty(protected, expr.Property.Value, expr.Property.Token)
 			if !readable {
 				return Type{Kind: InvalidType}, false
@@ -13366,7 +13405,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return Type{Kind: InvalidType}, false
 	}
 
-	if candidate, exists := lookupProperty(objectType, expr.Property.Value); exists {
+	if candidate, exists := a.lookupResolvedProperty(objectType, expr.Property.Value); exists {
 		if candidate.Static {
 			a.addErrorAtToken(expr.Property.Token, "static property %s.%s must be accessed through type %s", typeDisplayName(objectType), expr.Property.Value, typeDisplayName(objectType))
 			return Type{Kind: InvalidType}, false
@@ -13676,6 +13715,11 @@ func arrayLiteralEntryExpression(expr *ast.ArrayLiteral, entry ResolvedArrayLite
 	return source
 }
 
+// inferIndexExpression resolves indexed reads for the canonical string,
+// array, slice, variadic-pack, and list surfaces.
+//
+// Rules:
+//   - rules/collections/collections.md — §8 "Indexing"
 func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expressionValue) {
 	if elementType, ok := a.inferStringPointerIndex(expr); ok {
 		return elementType, expressionValue{Display: expr.String()}
@@ -13712,6 +13756,17 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 	case StringType:
 		return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
 	default:
+		if isCompilerKnownListType(leftType) {
+			elementType := leftType.TypeArgs[0]
+			if !a.checkConstantListIndexBounds(expr, leftType) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			a.recordListIndexPlan(expr, leftType, elementType, indexType, ArrayIndexRead)
+			if elementType.Kind == ReferenceType {
+				elementType = a.referenceTypeWithOriginFromExpression(elementType, expr.Left)
+			}
+			return elementType, expressionValue{Display: expr.String()}
+		}
 		a.addErrorAtToken(expr.Token, "type %s is not indexable", typeDisplayName(leftType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -13773,6 +13828,11 @@ func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expres
 	}, expressionValue{Display: expr.String()}
 }
 
+// inferRefExpression preserves the shared or mutable access mode on indexed
+// element Places after their collection-specific type and bounds resolution.
+//
+// Rules:
+//   - rules/collections/collections.md — §8.1 "General rule" and §19 "Borrowing and structural mutation"
 func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expressionValue) {
 	if a.checkBorrowCreation(expr.Value, expr.Mutable, expr.Token) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -13786,7 +13846,7 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 		if expr.Mutable {
 			use = ArrayIndexMutBorrow
 		}
-		a.setResolvedArrayIndexUse(index, use)
+		a.setResolvedIndexUse(index, use)
 	}
 	originName, originToken, originLocal, originStorage, generation := a.referenceOriginForExpression(expr.Value)
 	return Type{
@@ -13810,7 +13870,15 @@ func referenceTypeName(typ Type, mutable bool) string {
 	return "ref " + typeDisplayName(typ)
 }
 
+// indexableKindName chooses the canonical collection category used by index
+// diagnostics rather than leaking an implementation TypeKind.
+//
+// Rules:
+//   - rules/collections/collections.md — §8.2 "Valid index types"
 func indexableKindName(typ Type) string {
+	if isCompilerKnownListType(typ) {
+		return "list"
+	}
 	switch typ.Kind {
 	case SliceType:
 		return "slice"
@@ -13821,6 +13889,62 @@ func indexableKindName(typ Type) string {
 	default:
 		return typeDisplayName(typ)
 	}
+}
+
+// isCompilerKnownListType recognizes only the canonical compiler-owned list
+// family after generic arity validation has produced its single element type.
+//
+// Rules:
+//   - rules/collections/collections.md — §2 and §8 "Indexing"
+func isCompilerKnownListType(typ Type) bool {
+	return typ.Name == "list" && len(typ.TypeArgs) == 1
+}
+
+// checkConstantListIndexBounds rejects bounds failures provable without
+// runtime Len: negative indexes and indexes outside a declared capacity.
+// Every other list access retains its mandatory runtime Len check.
+//
+// Rules:
+//   - rules/collections/collections.md — §8.2 "Valid index types" and §8.3 "Bounds"
+func (a *Analyzer) checkConstantListIndexBounds(expr *ast.IndexExpression, typ Type) bool {
+	index, ok := a.integerConstantValue(expr.Index)
+	if !ok {
+		return true
+	}
+	invalid := index.Sign() < 0
+	if !invalid && len(typ.ConstArgs) == 1 {
+		invalid = index.Cmp(big.NewInt(typ.ConstArgs[0])) >= 0
+	}
+	if !invalid {
+		return true
+	}
+	a.addErrorAtToken(expressionToken(expr.Index), "list index %s is out of bounds for %s", index.String(), typeDisplayName(typ))
+	return false
+}
+
+// recordListIndexPlan publishes the runtime-checked frontend decision for a
+// list element Place. It deliberately does not create an array-index fact:
+// Semantic IR must reject list lowering until it has dedicated operations.
+//
+// Rules:
+//   - rules/collections/collections.md — §8 "Indexing"
+func (a *Analyzer) recordListIndexPlan(expr *ast.IndexExpression, listType, elementType, indexType Type, use ArrayIndexUseKind) {
+	plan := ResolvedListIndexPlan{
+		ListType:    listType,
+		ElementType: elementType,
+		IndexType:   indexType,
+		IndexSigned: indexType.Kind == IntType,
+		CheckKind:   ArrayIndexRuntimeCheck,
+		UseKind:     use,
+		Action:      arrayIndexTransferAction(elementType, use),
+		FailureMode: ArrayIndexFailureOrdinary,
+		ErrorType:   a.indexErrorType(),
+	}
+	if constant, ok := a.integerConstantValue(expr.Index); ok {
+		plan.ConstantIndex = new(big.Int).Set(constant)
+	}
+	a.recordResolvedListIndexPlan(expr, plan)
+	a.recordListIndexEffect(expr, plan)
 }
 
 // checkConstantIndexBounds enforces the exact I >= 0 && I < N rule from
@@ -14143,14 +14267,24 @@ func arrayIndexTransferAction(elementType Type, use ArrayIndexUseKind) ResolvedA
 	}
 }
 
-func (a *Analyzer) setResolvedArrayIndexUse(expr *ast.IndexExpression, use ArrayIndexUseKind) {
+// setResolvedIndexUse updates access mode and transfer action on exactly the
+// collection-specific fact already established during expression inference.
+//
+// Rules:
+//   - rules/collections/collections.md — §8.1 and §8.4
+func (a *Analyzer) setResolvedIndexUse(expr *ast.IndexExpression, use ArrayIndexUseKind) {
 	plan, ok := a.resolvedArrayIndexPlans[expr]
-	if !ok {
-		return
+	if ok {
+		plan.UseKind = use
+		plan.Action = arrayIndexTransferAction(plan.ElementType, use)
+		a.recordResolvedArrayIndexPlan(expr, plan)
 	}
-	plan.UseKind = use
-	plan.Action = arrayIndexTransferAction(plan.ElementType, use)
-	a.recordResolvedArrayIndexPlan(expr, plan)
+	listPlan, listOK := a.resolvedListIndexPlans[expr]
+	if listOK {
+		listPlan.UseKind = use
+		listPlan.Action = arrayIndexTransferAction(listPlan.ElementType, use)
+		a.recordResolvedListIndexPlan(expr, listPlan)
+	}
 }
 
 func (a *Analyzer) checkSliceBounds(expr *ast.SliceExpression, typ Type) {
@@ -14338,7 +14472,7 @@ func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property,
 	if objectType.Kind == InvalidType {
 		return Property{}, false
 	}
-	property, ok := lookupProperty(objectType, expr.Property.Value)
+	property, ok := a.lookupResolvedProperty(objectType, expr.Property.Value)
 	return property, ok && !property.Static
 }
 
@@ -14448,11 +14582,47 @@ func lookupProperty(typ Type, name string) (Property, bool) {
 	return Property{}, false
 }
 
+// lookupResolvedProperty refreshes property metadata through the canonical
+// named declaration. Aggregate payloads can retain a Type value resolved
+// before impl declarations are registered; their stored fields remain valid,
+// but their copied property list is consequently stale.
+//
+// Rules:
+//   - rules/declarations/properties.md — §4 "Getter semantics"
+//   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
+func (a *Analyzer) lookupResolvedProperty(typ Type, name string) (Property, bool) {
+	typ = dereferenceType(typ)
+	declared, current := a.types[typ.Name]
+	if !current {
+		return lookupProperty(typ, name)
+	}
+	property, ok := lookupProperty(declared, name)
+	if !ok {
+		return lookupProperty(typ, name)
+	}
+	if len(declared.GenericParameters) == 0 || len(typ.TypeArgs) == 0 {
+		return property, true
+	}
+
+	substitution := make(map[string]Type, len(declared.GenericParameters))
+	for index, parameter := range declared.GenericParameters {
+		if index < len(typ.TypeArgs) {
+			substitution[parameter] = typ.TypeArgs[index]
+		}
+	}
+	property.Type = substituteGenericType(property.Type, substitution)
+	if property.Error != nil {
+		errorType := substituteGenericType(*property.Error, substitution)
+		property.Error = &errorType
+	}
+	return property, true
+}
+
 // resolveReadableProperty implements the property read boundary from
 // rules/declarations/properties.md. correction12.md requires lookup metadata to
 // remain available for writes while expression reads reject missing getters.
 func (a *Analyzer) resolveReadableProperty(typ Type, name string, token lexer.Token) (Property, bool) {
-	property, ok := lookupProperty(typ, name)
+	property, ok := a.lookupResolvedProperty(typ, name)
 	if !ok {
 		return Property{}, false
 	}

@@ -399,6 +399,26 @@ type ResolvedArrayIndexPlan struct {
 	ErrorType     Type
 }
 
+// ResolvedListIndexPlan is the frontend-only authority for list[T] indexing.
+// List length is runtime state, so every accepted access retains a runtime
+// bounds check even when the source index itself is constant. It is separate
+// from ResolvedArrayIndexPlan to prevent accidental array lowering.
+//
+// Rules:
+//   - rules/collections/collections.md — §8 "Indexing"
+type ResolvedListIndexPlan struct {
+	ListType      Type
+	ElementType   Type
+	IndexType     Type
+	IndexSigned   bool
+	ConstantIndex *big.Int
+	CheckKind     ArrayIndexCheckKind
+	UseKind       ArrayIndexUseKind
+	Action        ResolvedArrayTransferAction
+	FailureMode   ArrayIndexFailureMode
+	ErrorType     Type
+}
+
 // ResolvedStructEntryKind and the adjacent struct plan types implement the
 // read-only facts from rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md
 // sections 7-15.
@@ -741,6 +761,49 @@ func (a *Analyzer) ResolvedArrayIndexPlanOf(expr *ast.IndexExpression) (Resolved
 		return ResolvedArrayIndexPlan{}, false
 	}
 	return cloneResolvedArrayIndexPlan(plan), true
+}
+
+// ResolvedListIndexPlanOf returns a defensive snapshot of a list indexing
+// decision and never performs semantic inference.
+//
+// Rules:
+//   - rules/collections/collections.md — §8 "Indexing"
+func (a *Analyzer) ResolvedListIndexPlanOf(expr *ast.IndexExpression) (ResolvedListIndexPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedListIndexPlan{}, false
+	}
+	plan, ok := a.resolvedListIndexPlans[expr]
+	if !ok {
+		return ResolvedListIndexPlan{}, false
+	}
+	return cloneResolvedListIndexPlan(plan), true
+}
+
+// recordResolvedListIndexPlan retains an analyzer-owned copy of the resolved
+// list indexing decision.
+//
+// Rules:
+//   - rules/collections/collections.md — §8 "Indexing"
+func (a *Analyzer) recordResolvedListIndexPlan(expr *ast.IndexExpression, plan ResolvedListIndexPlan) {
+	if a == nil || expr == nil {
+		return
+	}
+	if a.resolvedListIndexPlans == nil {
+		a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
+	}
+	a.resolvedListIndexPlans[expr] = cloneResolvedListIndexPlan(plan)
+}
+
+// cloneResolvedListIndexPlan prevents read-only fact queries from exposing the
+// analyzer-owned arbitrary-precision constant index.
+//
+// Rules:
+//   - rules/collections/collections.md — §8 "Indexing"
+func cloneResolvedListIndexPlan(plan ResolvedListIndexPlan) ResolvedListIndexPlan {
+	if plan.ConstantIndex != nil {
+		plan.ConstantIndex = new(big.Int).Set(plan.ConstantIndex)
+	}
+	return plan
 }
 
 // recordResolvedArrayIndexPlan retains an analyzer-owned copy of the exact

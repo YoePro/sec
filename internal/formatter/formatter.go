@@ -112,6 +112,7 @@ func format(text string, options Options) string {
 	// columns and comment text never participates in structural indentation.
 	out = alignDeclarationTrailingComments(out)
 	result := strings.Join(out, "\n")
+	result = formatPostfixMutationAliases(result)
 	result = formatContextualMatrixOperators(result)
 	if hadFinal || result != "" {
 		result += "\n"
@@ -120,6 +121,108 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+// formatPostfixMutationAliases rewrites only parser-confirmed statement aliases
+// to their canonical compound-assignment spelling. Invalid expression uses are
+// left untouched because they do not produce an AssignmentStatement alias.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Increment" and "Decrement"
+//   - rules/foundations/operators.md — "Increment and decrement aliases"
+func formatPostfixMutationAliases(text string) string {
+	program := parser.New(lexer.New(text)).ParseProgram()
+	byLine := map[int][]lexer.Token{}
+	for _, token := range postfixMutationAliasTokens(program) {
+		if token.Line > 0 && token.Column > 0 {
+			byLine[token.Line-1] = append(byLine[token.Line-1], token)
+		}
+	}
+	if len(byLine) == 0 {
+		return text
+	}
+
+	lines := strings.Split(text, "\n")
+	for lineIndex, tokens := range byLine {
+		if lineIndex < 0 || lineIndex >= len(lines) {
+			continue
+		}
+		sort.Slice(tokens, func(i, j int) bool { return tokens[i].Column > tokens[j].Column })
+		line := []rune(lines[lineIndex])
+		for _, token := range tokens {
+			column := token.Column - 1
+			spelling := []rune(token.Lexeme)
+			if column < 0 || len(spelling) != 2 || column+len(spelling) > len(line) ||
+				string(line[column:column+len(spelling)]) != token.Lexeme {
+				continue
+			}
+			left := column
+			for left > 0 && isHorizontalFormatterSpace(line[left-1]) {
+				left--
+			}
+			replacement := " += 1"
+			if token.Type == lexer.DECREMENT {
+				replacement = " -= 1"
+			}
+			line = append(append(append([]rune{}, line[:left]...), []rune(replacement)...), line[column+2:]...)
+		}
+		lines[lineIndex] = string(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// postfixMutationAliasTokens walks the parser-owned AST and returns only alias
+// tokens attached to canonical assignment statements.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Increment" and "Decrement"
+func postfixMutationAliasTokens(program *ast.Program) []lexer.Token {
+	if program == nil {
+		return nil
+	}
+	tokens := []lexer.Token{}
+	var visit func(reflect.Value)
+	visit = func(value reflect.Value) {
+		if !value.IsValid() {
+			return
+		}
+		if value.Kind() == reflect.Interface {
+			if !value.IsNil() {
+				visit(value.Elem())
+			}
+			return
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return
+			}
+			if value.CanInterface() {
+				if assignment, ok := value.Interface().(*ast.AssignmentStatement); ok &&
+					assignment.PostfixAlias.Type != "" {
+					tokens = append(tokens, assignment.PostfixAlias)
+				}
+			}
+			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
+				visit(value.Elem())
+			}
+			return
+		}
+		switch value.Kind() {
+		case reflect.Struct:
+			if value.Type().PkgPath() != "sec/internal/ast" {
+				return
+			}
+			for index := 0; index < value.NumField(); index++ {
+				visit(value.Field(index))
+			}
+		case reflect.Slice, reflect.Array:
+			for index := 0; index < value.Len(); index++ {
+				visit(value.Index(index))
+			}
+		}
+	}
+	visit(reflect.ValueOf(program))
+	return tokens
 }
 
 // formatContextualMatrixOperators normalizes horizontal spacing only for x

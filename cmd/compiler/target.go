@@ -32,6 +32,7 @@ type TargetDefinition struct {
 	CanRun           bool
 }
 
+// Supported platforms
 var targets = []TargetDefinition{
 	{
 		OS:               "linux",

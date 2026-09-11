@@ -1377,6 +1377,21 @@ func TestSemanticTokensClassifyContextualMembershipOperators(t *testing.T) {
 	assertSemanticToken(t, tokens, 9, 21, 2, "operator") // compound operator's in
 }
 
+func TestSemanticTokensClassifyIncrementAndDecrementAliases(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", "testdata", "parser", "increment_decrement_valid.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tokens := decodeSemanticTokens(semanticTokensForSource(uriFromPath(path), string(source)))
+	assertSemanticToken(t, tokens, 4, 9, 2, "operator")
+	assertSemanticToken(t, tokens, 5, 9, 2, "operator")
+}
+
 func TestHoverUsesResolvedContextualOperatorFacts(t *testing.T) {
 	membershipPath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "contextual_membership_semantic_tokens.sec"))
 	if err != nil {

@@ -1,9 +1,24 @@
 package sema
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
+
+// rules/collections/collections.md §8.3 requires every non-provably-invalid
+// list access to retain a runtime Len check, including inside @noPanic code.
+func TestListIndexingRecordsBoundsEffect(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/list_indexing_no_panic_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, errors := analyzeSourceWithAnalyzerRaw(t, string(source))
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function Read does not satisfy @noPanic") ||
+		!strings.Contains(errors[0].Message, string(EffectMayPanicBounds)) {
+		t.Fatalf("list bounds effects = %v, want one cause-aware @noPanic violation", errors)
+	}
+}
 
 func TestArithmeticTryTransformsOnlyItsResolvedFailureEffect(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `

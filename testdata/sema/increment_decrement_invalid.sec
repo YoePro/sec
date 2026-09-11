@@ -1,0 +1,6 @@
+module increment_decrement_invalid
+
+fn Invalid() void {
+    let value: int := 2
+    value++
+}

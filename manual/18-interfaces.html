@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,56 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Interfaces</div>
-        <a href="#18-interfaces">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#interfaces">Interfaces</a>
+        <a href="#contract-model">Behavioral Contracts</a>
+        <a href="#declaration">Declaration</a>
+        <a href="#empty-interface">Empty Interfaces</a>
+        <a href="#members">Allowed Members</a>
+        <a href="#no-fields">No Stored Fields</a>
+        <a href="#receiver-capability">Receiver Capability</a>
+        <a href="#shared-receiver">Shared Receiver</a>
+        <a href="#mutable-receiver">Mutable Receiver</a>
+        <a href="#concrete-receivers">Concrete Receiver Inference</a>
+        <a href="#no-consuming-self">No Consuming self</a>
+        <a href="#parameter-ownership">Parameter Ownership</a>
+        <a href="#static-methods">Static Requirements</a>
+        <a href="#explicit-conformance">Explicit Conformance</a>
+        <a href="#primary-impl">Primary Impl Ownership</a>
+        <a href="#multiple-interfaces">Multiple Interfaces</a>
+        <a href="#conformance">Conformance Matching</a>
+        <a href="#parameter-names">Parameter Names</a>
+        <a href="#extra-members">Extra Members</a>
+        <a href="#interface-values">Interface Values</a>
+        <a href="#borrowing">Borrowing Interface Values</a>
+        <a href="#properties">Property Requirements</a>
+        <a href="#property-strengthening">Property Compatibility</a>
+        <a href="#inheritance">Interface Inheritance</a>
+        <a href="#multiple-inheritance">Multiple Inheritance</a>
+        <a href="#diamonds">Diamond Inheritance</a>
+        <a href="#conflicts">Inherited Conflicts</a>
+        <a href="#generics">Generic Interfaces</a>
+        <a href="#constraints">Interfaces as Constraints</a>
+        <a href="#no-generic-methods">No Generic Interface Methods</a>
+        <a href="#compiler-known">Compiler-Known Interfaces</a>
+        <a href="#nested">Nested Declarations</a>
+        <a href="#representation">Representation Independence</a>
+        <a href="#dispatch">Dispatch Model</a>
+        <a href="#module-ownership">Module Ownership</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,14 +82,14 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html" class="active">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html">Ownership</a>
         <a href="25-borrowing.html">Borrowing</a>
@@ -71,36 +111,1341 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Interfaces</div>
 
-        <h1 id="18-interfaces">Interfaces</h1>
+        <h1 id="interfaces">Interfaces</h1>
 
-        <p>An interface defines a contract of methods and properties that a type must implement.</p>
+        <p>
+            An interface defines a behavioral contract that a concrete Sec type may explicitly implement.
+            Interfaces describe what a value or type can do without prescribing how the implementing
+            type stores its data.
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>interface Reader {
+    fn Read(buffer: ref mut byte[]) Result[int, IOError]
+}</code></pre>
+
+        <p>A concrete type declares conformance on its primary implementation:</p>
+
+        <pre><code>type FileReader struct {
+    handle: FileHandle,
+}
+
+impl FileReader implements Reader {
+    fn Read(buffer: ref mut byte[]) Result[int, IOError] {
+        ...
+    }
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Interface conformance is explicit.
+            Sec does not use accidental structural conformance merely because a type happens
+            to contain members with matching names.
+        </div>
+
+        <section id="contract-model">
+            <h2>Behavioral Contracts</h2>
+
+            <p>
+                An interface describes observable API requirements.
+            </p>
+
+            <p>It may require:</p>
+
+            <ul>
+                <li>instance methods;</li>
+                <li>mutable instance methods;</li>
+                <li>ordinary parameters with copy, borrow or consuming modes;</li>
+                <li>static methods where meaningful;</li>
+                <li>properties;</li>
+                <li>associated or nested declarations where their own declaration rules permit them.</li>
+            </ul>
+
+            <p>
+                An interface does not extend the stored representation of an implementing type.
+            </p>
+
+            <p>
+                The implementing type decides how the required behavior is realized.
+            </p>
+        </section>
+
+        <section id="declaration">
+            <h2>Interface Declaration</h2>
+
+            <p>The basic form is:</p>
+
+            <pre><code>interface Name {
+    requirements
+}</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>interface Identified {
+    fn Identifier() Identifier
+}</code></pre>
+
+            <p>
+                Interface method declarations have signatures but no implementation bodies.
+            </p>
+
+            <p>
+                An interface is a named contract type. Different interfaces remain distinct even
+                when they happen to declare identical requirements.
+            </p>
+        </section>
+
+        <section id="empty-interface">
+            <h2>Empty Interfaces</h2>
+
+            <p>An interface may contain no members:</p>
+
+            <pre><code>interface Marker {
+}</code></pre>
+
+            <p>A concrete type may explicitly implement it:</p>
+
+            <pre><code>type MarkedValue struct {
+    value: int,
+}
+
+impl MarkedValue implements Marker {
+}</code></pre>
+
+            <p>
+                An empty interface can therefore serve as explicit semantic classification.
+            </p>
+
+            <p>
+                Empty does not mean that every type implements it automatically.
+                Conformance remains explicit.
+            </p>
+        </section>
+
+        <section id="members">
+            <h2>Interface Members</h2>
+
+            <p>A typical interface may combine several contract forms:</p>
+
+            <pre><code>interface Device {
+    fn Name() string
+    mut fn Reset() void
+
+    property Enabled: bool {
+        get
+        set enabled
+    }
+
+    static fn Parse(value: string) Result[Self, ParseError]
+}</code></pre>
+
+            <p>
+                Each requirement contributes to the complete conformance contract.
+            </p>
+
+            <p>
+                Method overload rules, parameter ownership, result types, generics and property
+                semantics retain their ordinary Sec meaning.
+            </p>
+        </section>
+
+        <section id="no-fields">
+            <h2>Interfaces Do Not Require Stored Fields</h2>
+
+            <p>This is not an interface requirement:</p>
+
+            <pre><code>interface Invalid {
+    Name: string
+}</code></pre>
+
+            <p>
+                Interfaces describe behavior rather than representation.
+            </p>
+
+            <p>
+                If a contract needs observable state, use a property:
+            </p>
+
+            <pre><code>interface Named {
+    property Name: string {
+        get
+    }
+}</code></pre>
+
+            <p>
+                An implementing type can satisfy that property with a field, computed value,
+                foreign state, register access or another valid implementation strategy.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> A stored field named <code>Name</code> does not
+                automatically satisfy a property requirement named <code>Name</code>.
+            </div>
+        </section>
+
+        <section id="receiver-capability">
+            <h2>Receiver Capability Is Part of the Contract</h2>
+
+            <p>
+                A concrete method has a body, so Sec can infer how much access to
+                <code>self</code> that method actually requires.
+            </p>
+
+            <p>
+                An interface method has no body.
+                Its receiver requirement must therefore be written explicitly in the interface contract.
+            </p>
+
+            <p>Sec distinguishes:</p>
+
+            <pre><code>fn
+mut fn
+static fn</code></pre>
+
+            <p>
+                These are contract categories, not cosmetic spellings.
+            </p>
+        </section>
+
+        <section id="shared-receiver">
+            <h2>Shared Receiver: <code>fn</code></h2>
+
+            <p>Plain <code>fn</code> requires only shared, non-mutating receiver access:</p>
+
+            <pre><code>interface Counter {
+    fn Value() int
+}</code></pre>
+
+            <p>
+                A caller holding only a shared borrow may call <code>Value()</code>.
+            </p>
+
+            <pre><code>fn Inspect(counter: ref Counter) void {
+    let value := counter.Value()
+}</code></pre>
+
+            <p>
+                A concrete implementation of this requirement may not require mutation of the
+                complete receiver because doing so would demand more authority than the interface promises.
+            </p>
+        </section>
+
+        <section id="mutable-receiver">
+            <h2>Mutable Receiver: <code>mut fn</code></h2>
+
+            <p>
+                <code>mut fn</code> requires mutable/exclusive receiver access:
+            </p>
+
+            <pre><code>interface Counter {
+    mut fn Increment() void
+}</code></pre>
+
+            <p>
+                A caller needs compatible mutable authority:
+            </p>
+
+            <pre><code>fn Update(counter: ref mut Counter) void {
+    counter.Increment()
+}</code></pre>
+
+            <p>
+                A mutable borrow may also call ordinary shared <code>fn</code> members.
+            </p>
+        </section>
+
+        <section id="concrete-receivers">
+            <h2>Concrete Implementations Infer Receiver Requirements</h2>
+
+            <p>
+                Concrete implementation methods use ordinary <code>fn</code> syntax:
+            </p>
+
+            <pre><code>impl CounterImpl implements Counter {
+    fn Value() int {
+        return self.value
+    }
+
+    fn Increment() void {
+        self.value += 1
+    }
+}</code></pre>
+
+            <p>
+                Concrete methods do not repeat <code>mut fn</code>.
+                The compiler infers receiver requirements from the body and verifies compatibility
+                with the interface contract.
+            </p>
+
+            <h3>Concrete behavior may require less authority</h3>
+
+            <pre><code>interface Observable {
+    mut fn Observe() bool
+}
+
+type Observation struct {
+    value: bool,
+}
+
+impl Observation implements Observable {
+    fn Observe() bool {
+        return self.value
+    }
+}</code></pre>
+
+            <p>
+                This is valid. The interface allows callers to supply mutable/exclusive access,
+                while this particular implementation happens not to need all of that authority.
+            </p>
+
+            <h3>Concrete behavior may not require more authority</h3>
+
+            <pre><code>interface Readable {
+    fn Read() int
+}</code></pre>
+
+            <p>
+                A concrete <code>Read()</code> body that requires mutable receiver access would
+                not satisfy this contract.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A concrete receiver requirement may be less demanding
+                than the interface contract, but never more demanding.
+            </div>
+        </section>
+
+        <section id="no-consuming-self">
+            <h2>No Whole-Self Consuming Interface Receiver</h2>
+
+            <p>
+                Ordinary interface methods do not define a receiver mode that consumes the entire
+                implementing value.
+            </p>
+
+            <p>
+                Whole-instance lifetime termination belongs to <code>free</code> and the destruction model.
+            </p>
+
+            <p>
+                A method may still mutate owned state or consume an ordinary parameter when its
+                receiver capability and parameter contract permit that operation.
+            </p>
+
+            <p>
+                There is therefore no interface form analogous to a consuming
+                <code>self</code> receiver.
+            </p>
+        </section>
+
+        <section id="parameter-ownership">
+            <h2>Receiver Capability and Parameter Ownership Are Independent</h2>
+
+            <p>
+                Receiver access does not replace ownership contracts on ordinary parameters.
+            </p>
+
+            <pre><code>interface Sender {
+    mut fn Send(-&gt; message: Message) Result[void, SendError]
+}</code></pre>
+
+            <p>This declaration means two independent things:</p>
+
+            <ul>
+                <li>the receiver requires mutable/exclusive access;</li>
+                <li><code>message</code> is consumed.</li>
+            </ul>
+
+            <p>
+                A conforming implementation must preserve both contracts.
+            </p>
+
+            <p>
+                The same applies to shared references, mutable references, variadics and other
+                parameter modes.
+            </p>
+        </section>
+
+        <section id="static-methods">
+            <h2>Static Interface Requirements</h2>
+
+            <p>
+                An interface may require a type-level member:
+            </p>
+
+            <pre><code>interface Parsable {
+    static fn Parse(value: string) Result[Self, ParseError]
+}</code></pre>
+
+            <p>
+                <code>static fn</code> has no instance receiver.
+            </p>
+
+            <p>
+                <code>Self</code> refers to the concrete implementing type in this contract.
+            </p>
+
+            <p>
+                A static implementation member must match the static requirement.
+                An instance method does not satisfy a static method requirement, and a static method
+                does not satisfy an instance method requirement.
+            </p>
+        </section>
+
+        <section id="explicit-conformance">
+            <h2>Explicit Conformance</h2>
+
+            <p>
+                A type implements an interface by naming it on the primary <code>impl</code>:
+            </p>
+
+            <pre><code>type Entity struct {
+    _identifier: Identifier,
+}
+
+impl Entity implements Identified {
+    fn Identifier() Identifier {
+        return self._identifier
+    }
+}</code></pre>
+
+            <p>
+                Merely declaring a compatible member is not enough.
+            </p>
+
+            <p>
+                Sec does not scan unrelated types and infer that they implement an interface.
+            </p>
+
+            <p>
+                This makes interface participation visible both to readers and to the compiler.
+            </p>
+        </section>
+
+        <section id="primary-impl">
+            <h2>The <code>implements</code> List Belongs to the Primary Impl</h2>
+
+            <pre><code>impl FileReader implements Reader, Closeable {
+    ...
+}</code></pre>
+
+            <p>
+                Additional same-module implementation fragments use:
+            </p>
+
+            <pre><code>impl extends FileReader {
+    fn Helper() void {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                An extension fragment contributes to the same complete implementation surface,
+                but it does not redeclare conformance.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>impl extends FileReader implements Reader {
+    ...
+}</code></pre>
+
+            <p>
+                Keeping conformance on the primary implementation gives the type one canonical
+                source location where its implemented interfaces are declared.
+            </p>
+        </section>
+
+        <section id="multiple-interfaces">
+            <h2>Implementing Multiple Interfaces</h2>
+
+            <p>
+                A primary implementation may declare several interfaces:
+            </p>
+
+            <pre><code>impl Service implements Identified, Named, Described, Resettable {
+    fn Reset() void {
+        self._resetCount = 0
+    }
+
+    property Name: string {
+        get {
+            return self._name
+        }
+    }
+
+    fn Describe() string {
+        return self._name
+    }
+
+    fn Identifier() Identifier {
+        return self._identifier
+    }
+}</code></pre>
+
+            <p>
+                Member declaration order does not need to match the interface list or the order
+                of requirements inside those interfaces.
+            </p>
+
+            <p>
+                The compiler checks the complete merged implementation surface.
+            </p>
+
+            <p>
+                Listing the same interface more than once is invalid.
+            </p>
+        </section>
+
+        <section id="conformance">
+            <h2>Conformance Matching</h2>
+
+            <p>
+                A concrete type conforms only when every required member is present and compatible.
+            </p>
+
+            <p>Conformance checks include, where applicable:</p>
+
+            <ul>
+                <li>member name;</li>
+                <li>member category;</li>
+                <li>parameter count;</li>
+                <li>parameter types and order;</li>
+                <li>shared, mutable, consuming and variadic parameter modes;</li>
+                <li>generic constraints;</li>
+                <li>result type;</li>
+                <li>fallibility;</li>
+                <li>property type and accessor contract;</li>
+                <li>receiver capability;</li>
+                <li>static versus instance membership;</li>
+                <li>ordinary ownership behavior.</li>
+            </ul>
+
+            <p>
+                A similarly named but incompatible member does not partially satisfy a requirement.
+            </p>
+
+            <pre><code>interface RequiresIntegerResult {
+    fn Measure() int
+}</code></pre>
+
+            <p>This does not conform:</p>
+
+            <pre><code>impl WrongResult implements RequiresIntegerResult {
+    fn Measure() bool {
+        return false
+    }
+}</code></pre>
+
+            <p>
+                Return type is checked for compatibility but is not itself an overload discriminator.
+            </p>
+        </section>
+
+        <section id="parameter-names">
+            <h2>Parameter Names Do Not Define Interface Signature Identity</h2>
+
+            <p>
+                The interface and implementation may use different parameter names:
+            </p>
+
+            <pre><code>interface Processor {
+    mut fn Process(value: int, limit: uint) bool
+}
+
+impl NumberProcessor implements Processor {
+    fn Process(input: int, maximum: uint) bool {
+        self._lastValue = input
+        return maximum &gt; 0
+    }
+}</code></pre>
+
+            <p>
+                What must match is the semantic signature: position, type, ownership/borrow mode,
+                variadic status, result, fallibility and receiver contract.
+            </p>
+
+            <p>
+                Renaming parameters does not change the contract.
+            </p>
+        </section>
+
+        <section id="extra-members">
+            <h2>Implementing Types May Have Extra Members</h2>
+
+            <p>
+                Conformance does not restrict the type to only interface-required members.
+            </p>
+
+            <pre><code>interface Described {
+    fn Describe() string
+}
+
+impl Service implements Described {
+    fn Describe() string {
+        return self._name
+    }
+
+    fn ResetCount() int {
+        return self._resetCount
+    }
+
+    property IsReset: bool {
+        get {
+            return self._resetCount == 0
+        }
+    }
+}</code></pre>
+
+            <p>
+                <code>ResetCount</code> and <code>IsReset</code> are ordinary additional
+                <code>Service</code> members and do not affect <code>Described</code> conformance.
+            </p>
+        </section>
+
+        <section id="interface-values">
+            <h2>Interface Values</h2>
+
+            <p>
+                An interface may be used as an abstraction boundary when a function needs behavior
+                rather than one concrete representation.
+            </p>
+
+            <pre><code>interface Counter {
+    fn Value() int
+    mut fn Increment() void
+}</code></pre>
+
+            <p>
+                Calls through an interface-typed value are restricted by the receiver capabilities
+                declared in the interface contract.
+            </p>
+
+            <p>
+                The concrete implementing representation remains owned by the concrete type.
+                The interface does not inject fields into that representation.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Borrowing Interface Values</h2>
+
+            <p>A shared interface borrow may call shared methods:</p>
+
+            <pre><code>fn Inspect(counter: ref Counter) void {
+    let value := counter.Value()
+}</code></pre>
+
+            <p>It cannot call a mutable requirement:</p>
+
+            <pre><code>fn Invalid(counter: ref Counter) void {
+    counter.Increment()    // invalid
+}</code></pre>
+
+            <p>A mutable interface borrow may call both:</p>
+
+            <pre><code>fn Update(counter: ref mut Counter) void {
+    counter.Increment()
+    let value := counter.Value()
+}</code></pre>
+
+            <p>
+                Ordinary borrow lifetimes, exclusivity and ownership rules apply to interface values
+                just as they do elsewhere.
+            </p>
+        </section>
+
+        <section id="properties">
+            <h2>Property Requirements</h2>
+
+            <p>
+                Interfaces use properties when the contract requires observable state.
+            </p>
+
+            <h3>Read-only property</h3>
+
+            <pre><code>interface Named {
+    property Name: string {
+        get
+    }
+}</code></pre>
+
+            <p>A conforming implementation may compute or store the value:</p>
+
+            <pre><code>type ReadOnlyName struct {
+    _name: string,
+}
+
+impl ReadOnlyName implements Named {
+    property Name: string {
+        get {
+            return self._name
+        }
+    }
+}</code></pre>
+
+            <h3>Read-write property</h3>
+
+            <pre><code>interface Counted {
+    property Count: CounterValue {
+        get
+        set count
+    }
+}</code></pre>
+
+            <p>
+                The setter parameter is explicit even though the interface accessor has no body.
+            </p>
+
+            <h3>Fallible property requirement</h3>
+
+            <pre><code>interface Configurable {
+    property Mode: Mode {
+        get
+        try set mode ModeError
+    }
+}</code></pre>
+
+            <p>
+                The fallible setter's error type is part of the property contract.
+            </p>
+
+            <p>
+                A property requirement checks observable behavior; it never requires one particular
+                backing field.
+            </p>
+        </section>
+
+        <section id="property-strengthening">
+            <h2>Property Compatibility</h2>
+
+            <p>
+                A concrete property must provide at least the access promised by the interface.
+            </p>
+
+            <p>
+                A getter-only requirement may be satisfied by a property that also provides a setter:
+            </p>
+
+            <pre><code>interface Named {
+    property Name: string {
+        get
+    }
+}</code></pre>
+
+            <pre><code>impl MutableName implements Named {
+    property Name: string {
+        get {
+            return self._name
+        }
+
+        set incoming {
+            self._name = incoming
+        }
+    }
+}</code></pre>
+
+            <p>
+                The extra setter does not weaken readable behavior.
+            </p>
+
+            <p>
+                The reverse is not true. A getter-only property cannot satisfy an interface that
+                requires assignment.
+            </p>
+
+            <p>
+                A stored field cannot substitute for a required property merely because the names
+                and types happen to match.
+            </p>
+        </section>
+
+        <section id="inheritance">
+            <h2>Interface Inheritance</h2>
+
+            <p>
+                An interface may implement another interface and inherit its requirements:
+            </p>
+
+            <pre><code>interface Readable {
+    fn Read() int
+}
+
+interface Writable {
+    mut fn Write(value: int) void
+}
+
+interface ReadWriter implements Readable, Writable {
+}</code></pre>
+
+            <p>
+                A type implementing <code>ReadWriter</code> must satisfy both inherited contracts:
+            </p>
+
+            <pre><code>type MemoryCell struct {
+    _value: int,
+}
+
+impl MemoryCell implements ReadWriter {
+    fn Read() int {
+        return self._value
+    }
+
+    fn Write(value: int) void {
+        self._value = value
+    }
+}</code></pre>
+
+            <p>
+                Inherited requirements are transitive.
+                A type implementing a deeply derived interface must satisfy all requirements
+                inherited through the complete chain.
+            </p>
+        </section>
+
+        <section id="multiple-inheritance">
+            <h2>Multiple Interface Inheritance</h2>
+
+            <p>
+                One interface may inherit several contracts:
+            </p>
+
+            <pre><code>interface Startable {
+    mut fn Start() void
+}
+
+interface Stoppable {
+    mut fn Stop() void
+}
+
+interface Managed implements Startable, Stoppable, Named {
+    fn IsRunning() bool
+}</code></pre>
+
+            <p>
+                An implementing type must satisfy:
+            </p>
+
+            <ul>
+                <li><code>Start()</code>;</li>
+                <li><code>Stop()</code>;</li>
+                <li>the inherited <code>Name</code> property;</li>
+                <li><code>IsRunning()</code>.</li>
+            </ul>
+
+            <p>
+                Multiple interface inheritance combines contracts.
+                It does not introduce stored base subobjects or implementation inheritance.
+            </p>
+        </section>
+
+        <section id="diamonds">
+            <h2>Diamond Inheritance</h2>
+
+            <p>
+                Reaching the same compatible requirement through several inheritance paths is valid.
+            </p>
+
+            <pre><code>interface RootValue {
+    fn Root() int
+}
+
+interface LeftBranch implements RootValue {
+}
+
+interface RightBranch implements RootValue {
+}
+
+interface Diamond implements LeftBranch, RightBranch {
+}</code></pre>
+
+            <p>
+                A concrete implementation needs only one compatible <code>Root()</code> member:
+            </p>
+
+            <pre><code>impl DiamondValue implements Diamond {
+    fn Root() int {
+        return self._root
+    }
+}</code></pre>
+
+            <p>
+                Compatible repeated requirements merge semantically rather than requiring duplicate
+                implementation methods.
+            </p>
+        </section>
+
+        <section id="conflicts">
+            <h2>Inherited Requirement Conflicts</h2>
+
+            <p>
+                Multiple inheritance is valid only when repeated requirements are semantically compatible.
+            </p>
+
+            <p>This is valid:</p>
+
+            <pre><code>interface LeftState {
+    fn State() int
+}
+
+interface RightState {
+    fn State() int
+}
+
+interface CombinedState implements LeftState, RightState {
+}</code></pre>
+
+            <p>One <code>State() int</code> satisfies both.</p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>interface IntegerState {
+    fn State() int
+}
+
+interface BooleanState {
+    fn State() bool
+}
+
+interface ConflictingState implements IntegerState, BooleanState {
+}</code></pre>
+
+            <p>
+                The inherited requirements have the same member identity but incompatible result contracts.
+            </p>
+
+            <p>
+                The same rule applies to conflicting property types, accessor requirements,
+                receiver capabilities and other contract dimensions.
+            </p>
+
+            <h3>Inheritance cycles</h3>
+
+            <p>An interface may not inherit from itself directly or indirectly:</p>
+
+            <pre><code>interface Left implements Right {
+}
+
+interface Right implements Left {
+}</code></pre>
+
+            <p>
+                The compiler diagnoses the cycle rather than constructing a recursive contract graph.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generic Interfaces</h2>
+
+            <p>An interface may declare type parameters:</p>
+
+            <pre><code>interface Container[T] {
+    property Value: T {
+        get
+    }
+
+    fn Contains(value: T) bool
+}</code></pre>
+
+            <p>
+                A concrete instantiation such as:
+            </p>
+
+            <pre><code>Container[int]</code></pre>
+
+            <p>
+                is one concrete interface contract.
+            </p>
+
+            <p>Another instantiation:</p>
+
+            <pre><code>Container[string]</code></pre>
+
+            <p>
+                is a different concrete interface type.
+            </p>
+
+            <p>
+                Generic substitution applies to method parameters, results, properties and inherited
+                interface requirements using the normal generic rules.
+            </p>
+        </section>
+
+        <section id="constraints">
+            <h2>Interfaces as Generic Constraints</h2>
+
+            <p>
+                Interfaces define the capabilities available to constrained generic code:
+            </p>
+
+            <pre><code>interface Printable {
+    fn Print() void
+}
+
+fn PrintValue[T: Printable](value: ref T) void {
+    value.Print()
+}</code></pre>
+
+            <p>
+                <code>T: Printable</code> does not declare interface conformance.
+                It requires every substituted concrete <code>T</code> to already conform explicitly.
+            </p>
+
+            <pre><code>impl Document implements Printable {
+    fn Print() void {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                Interface inheritance participates in constraint satisfaction.
+                A type implementing a derived interface also satisfies compatible inherited
+                interface requirements.
+            </p>
+        </section>
+
+        <section id="no-generic-methods">
+            <h2>No Method-Level Generic Parameters in Interface Requirements</h2>
+
+            <p>
+                A generic interface method may use the interface's own type parameters:
+            </p>
+
+            <pre><code>interface Sink[T] {
+    mut fn Write(value: T) void
+}</code></pre>
+
+            <p>
+                But an interface method does not introduce additional method-level type parameters:
+            </p>
+
+            <pre><code>interface Mapper[T] {
+    fn Map[U](value: T) U    // invalid
+}</code></pre>
+
+            <p>
+                Interface dispatch must have a finite concrete member surface.
+                Sec has no runtime generic dispatch mechanism that could instantiate arbitrary
+                new method specializations through an interface value.
+            </p>
+
+            <p>
+                Put the variation on the interface itself or use a generic concrete helper function
+                when the operation needs another independent type parameter.
+            </p>
+        </section>
+
+        <section id="compiler-known">
+            <h2>Compiler-Known Interfaces</h2>
+
+            <p>
+                The compiler may provide authoritative interface identities that follow the same
+                explicit conformance model as source-declared interfaces.
+            </p>
+
+            <p>The initial compiler-known generic interface is:</p>
+
+            <pre><code>interface Iterator[T] {
+    mut fn Next() Option[T]
+}</code></pre>
+
+            <p>
+                User code cannot redeclare the compiler-known interface identity.
+            </p>
+
+            <p>
+                A concrete type explicitly conforms to it in the normal way.
+            </p>
+
+            <p>
+                <code>Iterator[T]</code> has additional compiler-known <code>for</code>-loop
+                semantics described in the Loops and Iteration chapter.
+            </p>
+
+            <p>
+                That special loop behavior does not turn every interface into a runtime-dispatched
+                generic protocol and does not imply boxing or runtime generic dispatch.
+            </p>
+        </section>
+
+        <section id="nested">
+            <h2>Associated and Nested Declarations</h2>
+
+            <p>
+                Interfaces may own associated or nested declarations where the corresponding
+                declaration rules permit them.
+            </p>
+
+            <p>
+                Such declarations belong to the interface's namespace.
+            </p>
+
+            <p>
+                They do not add stored instance data to implementing types.
+            </p>
+
+            <p>
+                The exact syntax and semantics of each nested declaration continue to follow that
+                declaration kind's own rules.
+            </p>
+        </section>
+
+        <section id="representation">
+            <h2>Interfaces Do Not Define Concrete Representation</h2>
+
+            <p>
+                Implementing an interface does not add the interface's conceptual state to the
+                concrete type.
+            </p>
+
+            <p>
+                The concrete representation remains defined by the concrete type and its valid
+                implementation storage rules.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>interface Named {
+    property Name: string {
+        get
+    }
+}</code></pre>
+
+            <p>can be implemented by:</p>
+
+            <pre><code>type StoredName struct {
+    _name: string,
+}</code></pre>
+
+            <p>or by a type that computes the name without storing a string field at all.</p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Interfaces constrain behavior, not field layout.
+            </div>
+        </section>
+
+        <section id="dispatch">
+            <h2>Dispatch Model</h2>
+
+            <p>
+                Calling a concrete method through a concrete type uses the concrete statically
+                resolved implementation.
+            </p>
+
+            <p>
+                Interface-typed values use the interface-value semantics defined by Sec's runtime
+                interface model when dynamic abstraction is required.
+            </p>
+
+            <p>
+                This is separate from generic constraints.
+                A generic function such as:
+            </p>
+
+            <pre><code>fn PrintValue[T: Printable](value: ref T) void {
+    value.Print()
+}</code></pre>
+
+            <p>
+                is specialized for concrete <code>T</code> and does not require runtime generic dispatch.
+            </p>
+
+            <p>
+                Likewise, compiler-known <code>Iterator[T]</code> conformance used by
+                <code>for</code> is resolved to a concrete method statically and does not imply
+                interface-object dispatch for the loop protocol.
+            </p>
+        </section>
+
+        <section id="module-ownership">
+            <h2>Module Ownership</h2>
+
+            <p>
+                Ordinary <code>impl</code> ownership rules apply to interface conformance.
+            </p>
+
+            <p>
+                A concrete type's primary implementation and its <code>impl extends</code> fragments
+                belong to the type's defining module.
+            </p>
+
+            <p>
+                Therefore interface conformance declared by that primary implementation also belongs
+                to the defining module.
+            </p>
+
+            <p>
+                A different module cannot import a foreign type and attach ordinary interface
+                conformance to it through an out-of-module <code>impl</code>.
+            </p>
+
+            <p>
+                This preserves one authoritative implementation and conformance owner for each type.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important interface diagnostics include:</p>
+
+            <ul>
+                <li>missing required member;</li>
+                <li>wrong member name;</li>
+                <li>wrong member category;</li>
+                <li>static member used for an instance requirement or vice versa;</li>
+                <li>wrong parameter count;</li>
+                <li>wrong parameter order;</li>
+                <li>wrong parameter type;</li>
+                <li>wrong shared/mutable/consuming parameter mode;</li>
+                <li>wrong result type;</li>
+                <li>wrong fallibility contract;</li>
+                <li>concrete receiver requirement stronger than the interface permits;</li>
+                <li>missing required property;</li>
+                <li>field used instead of a required property;</li>
+                <li>wrong property type;</li>
+                <li>missing required getter or setter;</li>
+                <li>incompatible fallible setter contract;</li>
+                <li>duplicate interface in an <code>implements</code> list;</li>
+                <li>missing inherited requirement;</li>
+                <li>unknown or non-interface inheritance target;</li>
+                <li>duplicate inherited interface;</li>
+                <li>direct or indirect interface inheritance cycle;</li>
+                <li>conflicting inherited method or property requirements;</li>
+                <li>duplicate member requirement inside one interface;</li>
+                <li>method/property member-name conflict;</li>
+                <li><code>implements</code> declared on <code>impl extends</code>;</li>
+                <li>stored field requirement declared in an interface;</li>
+                <li>ordinary <code>impl</code> targeting an interface;</li>
+                <li>interface implementation attempted outside the concrete type's defining module.</li>
+            </ul>
+
+            <p>
+                Conformance diagnostics should identify both the interface requirement and the
+                concrete member that failed to satisfy it when both exist.
+            </p>
+
+            <pre><code>error: NumberProcessor does not satisfy Processor.Process
+
+required:
+    mut fn Process(value: int, limit: uint) bool
+
+found:
+    fn Process(enabled: bool, count: int) bool
+
+reason:
+    parameter types and order do not match</code></pre>
+
+            <p>
+                For inherited requirements, diagnostics should name the interface that originally
+                introduced the requirement when practical.
+            </p>
+
+            <p>LSP hover and navigation should make it easy to see:</p>
+
+            <ul>
+                <li>which interfaces a type explicitly implements;</li>
+                <li>where each required member is declared;</li>
+                <li>which concrete member satisfies a requirement;</li>
+                <li>whether the receiver contract is shared, mutable or static;</li>
+                <li>which requirements are inherited;</li>
+                <li>generic substitutions for concrete generic interfaces.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Keep interfaces focused on observable behavior.</li>
+                <li>Prefer several small composable interfaces over one broad unrelated contract.</li>
+                <li>Use plain <code>fn</code> when mutation is not part of the caller-visible contract.</li>
+                <li>Use <code>mut fn</code> only when callers genuinely need to provide mutable/exclusive receiver access.</li>
+                <li>Keep ordinary parameter ownership explicit independently of receiver capability.</li>
+                <li>Use properties rather than stored-field requirements.</li>
+                <li>Put the complete <code>implements</code> list on the primary implementation.</li>
+                <li>Use interface inheritance only when the semantic relationship is real.</li>
+                <li>Let one compatible concrete member satisfy compatible repeated inherited requirements.</li>
+                <li>Use generic interfaces when the contract itself varies by type.</li>
+                <li>Use interfaces as generic constraints when compile-time capability is the goal.</li>
+                <li>Do not introduce an interface merely to share implementation; interfaces define contracts, not code inheritance.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>An interface defines a behavioral contract.</li>
+                <li>Interface conformance is explicit rather than structural.</li>
+                <li>Interfaces do not add stored representation to implementing types.</li>
+                <li>An empty interface is valid and still requires explicit conformance.</li>
+                <li>Interfaces may require instance methods, mutable methods, static methods, properties and permitted nested declarations.</li>
+                <li>Interfaces may not require stored instance fields.</li>
+                <li>Use properties when a contract must expose readable or writable state.</li>
+                <li>Plain interface <code>fn</code> requires shared/non-mutating receiver capability.</li>
+                <li><code>mut fn</code> requires mutable/exclusive receiver capability.</li>
+                <li>Concrete methods use ordinary <code>fn</code> syntax and infer their receiver needs from the body.</li>
+                <li>A concrete receiver requirement may be weaker than the interface contract but never stronger.</li>
+                <li>Ordinary interface methods have no whole-self consuming receiver form.</li>
+                <li>Receiver capability and ordinary parameter ownership are independent.</li>
+                <li>Consuming parameters remain explicit with <code>-&gt;</code>.</li>
+                <li><code>static fn</code> requirements have no instance receiver.</li>
+                <li>Concrete conformance is declared with <code>impl Type implements Interface</code>.</li>
+                <li>The <code>implements</code> list belongs to the primary implementation.</li>
+                <li><code>impl extends</code> fragments contribute members but do not redeclare interfaces.</li>
+                <li>A type may implement several interfaces at once.</li>
+                <li>Conformance checks member category, types, parameter modes, result, fallibility, receiver capability and property contracts.</li>
+                <li>Parameter names do not form part of interface signature identity.</li>
+                <li>Concrete types may expose extra members beyond an interface contract.</li>
+                <li>Calls through interface values obey the receiver capability declared by the interface.</li>
+                <li>A shared interface borrow cannot call <code>mut fn</code>.</li>
+                <li>A mutable interface borrow may call shared and mutable members.</li>
+                <li>Property requirements describe observable access rather than storage.</li>
+                <li>A getter-only requirement may be satisfied by a property that also provides compatible write access.</li>
+                <li>A field does not satisfy a property requirement merely because its name and type match.</li>
+                <li>Interfaces inherit other interfaces with <code>implements</code>.</li>
+                <li>Inherited requirements are transitive.</li>
+                <li>Multiple interface inheritance combines contracts rather than stored base representations.</li>
+                <li>Compatible repeated inherited requirements merge and need only one concrete implementation.</li>
+                <li>Diamond inheritance is valid when repeated requirements are compatible.</li>
+                <li>Conflicting inherited requirements are compile-time errors.</li>
+                <li>Direct and indirect interface inheritance cycles are invalid.</li>
+                <li>Interfaces may be generic.</li>
+                <li>Each concrete generic interface instantiation is a concrete interface contract.</li>
+                <li>Interfaces may be used as generic constraints.</li>
+                <li>A generic constraint requires existing explicit conformance; it does not create conformance.</li>
+                <li>Interface methods may use their interface's generic parameters but may not introduce independent method-level generic parameters.</li>
+                <li>Compiler-known interfaces follow the same explicit-conformance model.</li>
+                <li><code>Iterator[T]</code> is a compiler-known interface with additional loop semantics.</li>
+                <li>Generic constraint dispatch and compiler-known iterator lowering do not imply runtime generic dispatch.</li>
+                <li>Associated or nested interface declarations do not add instance storage to implementing types.</li>
+                <li>Ordinary interface conformance belongs to the implementing type's defining module.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="17-properties.html">Previous: Properties</a>
+            <a href="17-properties.html">Previous: Properties</a>
             <a href="19-arrays.html">Next: Arrays</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

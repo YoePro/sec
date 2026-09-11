@@ -1328,6 +1328,48 @@ func TestParseAssignmentStatement(t *testing.T) {
 	}
 }
 
+// rules/foundations/operators.md "Increment and decrement aliases" requires
+// statement aliases to enter the existing compound-assignment semantic path.
+func TestParseIncrementAndDecrementAliases(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/increment_decrement_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := New(lexer.New(string(input)))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
+	for index, want := range []struct {
+		operator string
+		alias    lexer.TokenType
+	}{{"+=", lexer.INCREMENT}, {"-=", lexer.DECREMENT}} {
+		assignment, ok := fn.Body.Statements[index+1].(*ast.AssignmentStatement)
+		if !ok {
+			t.Fatalf("statement %d = %T, want AssignmentStatement", index+1, fn.Body.Statements[index+1])
+		}
+		if assignment.Operator != want.operator || assignment.Value.String() != "1" || assignment.PostfixAlias.Type != want.alias {
+			t.Fatalf("alias assignment %d = %+v", index, assignment)
+		}
+	}
+}
+
+func TestRejectIncrementAndDecrementExpressionUse(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/increment_decrement_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := New(lexer.New(string(input)))
+	p.ParseProgram()
+	if len(p.Errors()) != 2 {
+		t.Fatalf("parser errors = %v, want two statement-only alias errors", p.Errors())
+	}
+	for _, message := range p.Errors() {
+		if !strings.Contains(message, "statement-only") {
+			t.Fatalf("missing focused postfix-alias diagnostic: %q", message)
+		}
+	}
+}
+
 func TestRejectTryAssignmentWithoutHandlerBlock(t *testing.T) {
 	l := lexer.New(`try p += 1`)
 	p := New(l)

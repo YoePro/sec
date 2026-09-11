@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 	"strconv"
 	"strings"
@@ -354,6 +355,11 @@ func (p *Parser) parseStatement() ast.Statement {
 
 	case lexer.ILLEGAL:
 		return p.parseExpressionOrAssignmentStatement()
+
+	case lexer.INCREMENT, lexer.DECREMENT:
+		message := fmt.Sprintf("%s is a statement-only postfix alias; write a mutable target before it at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+		p.addError("%s", message)
+		return &ast.InvalidStatement{Token: p.curToken, Message: message}
 
 	case lexer.SEMICOLON:
 		return p.parseSemicolonStatement()
@@ -5349,6 +5355,9 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 	if expr == nil {
 		return nil
 	}
+	if p.isPostfixMutationAlias(p.peekToken.Type) && p.peekToken.Line == p.curToken.Line {
+		return p.parsePostfixMutationAlias(token, expr)
+	}
 
 	if !p.isAssignmentOperator(p.peekToken.Type) {
 		return &ast.ExpressionStatement{Token: token, Expression: expr}
@@ -5367,6 +5376,51 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+// parsePostfixMutationAlias converts a complete statement-only ++ or -- into
+// the same assignment AST used by += 1 or -= 1. The original alias token is
+// retained solely for source-aware formatter and tooling behavior.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Increment and decrement aliases"
+//   - rules/foundations/grammar.md — "Increment and decrement aliases"
+func (p *Parser) parsePostfixMutationAlias(token lexer.Token, target ast.Expression) ast.Statement {
+	p.nextToken()
+	alias := p.curToken
+	if p.peekToken.Type != lexer.EOF && p.peekToken.Type != lexer.RBRACE &&
+		p.peekToken.Type != lexer.COMMENT && p.peekToken.Line == alias.Line {
+		message := fmt.Sprintf("%s is a statement-only alias and cannot be followed by an expression at %d:%d", alias.Lexeme, alias.Line, alias.Column)
+		p.addError("%s", message)
+		for p.peekToken.Type != lexer.EOF && p.peekToken.Type != lexer.RBRACE &&
+			p.peekToken.Type != lexer.COMMENT && p.peekToken.Line == alias.Line {
+			p.nextToken()
+		}
+		return &ast.InvalidStatement{Token: token, Message: message}
+	}
+	operator := "+="
+	if alias.Type == lexer.DECREMENT {
+		operator = "-="
+	}
+	oneToken := alias
+	oneToken.Type = lexer.INT
+	oneToken.Lexeme = "1"
+	return &ast.AssignmentStatement{
+		Token:        token,
+		Target:       target,
+		Operator:     operator,
+		Ownership:    ast.OwnershipCopy,
+		Value:        &ast.IntegerLiteral{Token: oneToken, Value: 1, BigValue: big.NewInt(1)},
+		PostfixAlias: alias,
+	}
+}
+
+// isPostfixMutationAlias recognizes the two statement-only source aliases.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Increment and decrement aliases"
+func (p *Parser) isPostfixMutationAlias(tokenType lexer.TokenType) bool {
+	return tokenType == lexer.INCREMENT || tokenType == lexer.DECREMENT
 }
 
 func (p *Parser) parseExpressionStatement() ast.Statement {

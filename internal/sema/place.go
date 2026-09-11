@@ -298,6 +298,7 @@ func unionPayloadPlace(subject Place, variant string, payloadType Type, token le
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §11 "Canonical Place" and §13 "Constant index representation"
 //   - rules/memory/references.md — §28(4) provenance/projection tests
+//   - rules/collections/collections.md — §8 "Indexing"
 func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -365,7 +366,13 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 			containerType = base.Type
 		}
 		containerType = dereferenceType(containerType)
-		if containerType.Kind != ArrayType && containerType.Kind != SliceType || containerType.Element == nil {
+		var elementType *Type
+		if containerType.Kind == ArrayType || containerType.Kind == SliceType {
+			elementType = containerType.Element
+		} else if isCompilerKnownListType(containerType) {
+			elementType = &containerType.TypeArgs[0]
+		}
+		if elementType == nil {
 			return Place{}, false
 		}
 		projection := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expressionToken(expr.Index)}
@@ -377,7 +384,7 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 		for index := range base.AlternativeOrigins {
 			base.AlternativeOrigins[index].Projections = appendIndexProjection(base.AlternativeOrigins[index].Projections, projection)
 		}
-		base.Type = *containerType.Element
+		base.Type = *elementType
 		base.PartialMoveSafe = false
 		return base, true
 	case *ast.SliceExpression:

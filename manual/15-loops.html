@@ -1,0 +1,1487 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Loops and Iteration - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#loops">Loops and Iteration</a>
+        <a href="#for-vs-while">for vs while</a>
+        <a href="#for-forms">for Forms</a>
+        <a href="#loop-bindings">Loop Bindings</a>
+        <a href="#plain-binding">Plain Value Binding</a>
+        <a href="#shared-binding">Shared ref Binding</a>
+        <a href="#mutable-binding">Mutable ref mut Binding</a>
+        <a href="#discard">Discard Binding</a>
+        <a href="#binding-scope">Binding Scope</a>
+        <a href="#source-evaluation">Source Evaluation</a>
+        <a href="#iterables">Iterable Categories</a>
+        <a href="#sequential">Sequential Collections</a>
+        <a href="#arrays-lists">Arrays and Lists</a>
+        <a href="#slices">Slices</a>
+        <a href="#strings">Strings</a>
+        <a href="#sets">Sets</a>
+        <a href="#maps">Maps</a>
+        <a href="#ranges">Ranges</a>
+        <a href="#range-step">Range step</a>
+        <a href="#float-ranges">Float and Decimal Ranges</a>
+        <a href="#iterators">Iterator[T]</a>
+        <a href="#structural-stability">Structural Stability</a>
+        <a href="#while">while</a>
+        <a href="#while-condition">while Conditions</a>
+        <a href="#while-progression">while Progression</a>
+        <a href="#infinite-loops">Infinite Loops</a>
+        <a href="#break">break</a>
+        <a href="#continue">continue</a>
+        <a href="#nested-loops">Nested Loops</a>
+        <a href="#switch-interaction">Loops and switch</a>
+        <a href="#ownership-cleanup">Ownership and Cleanup</a>
+        <a href="#definite-assignment">Definite Assignment</a>
+        <a href="#return-analysis">Return-Path Analysis</a>
+        <a href="#no-consuming-for">No Consuming for</a>
+        <a href="#no-hidden-allocation">No Hidden Allocation</a>
+        <a href="#unsupported">Unsupported Forms</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">Introduction</a>
+        <a href="02-basic-syntax.html">Basic Syntax</a>
+        <a href="03-types.html">Types</a>
+        <a href="04-named-types.html">Named Types</a>
+        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">Functions</a>
+        <a href="07-if.html">If Statements</a>
+        <a href="08-switch.html">Switch Statements</a>
+        <a href="09-match.html">Match Expressions</a>
+        <a href="10-enums.html">Enums</a>
+        <a href="11-unions.html">Unions</a>
+        <a href="12-registers.html">Registers</a>
+        <a href="13-units.html">Units</a>
+        <a href="14-generics.html">Generics</a>
+        <a href="15-loops.html" class="active">Loops and Iteration</a>
+        <a href="16-impl.html">Impl Blocks</a>
+        <a href="17-properties.html">Properties</a>
+        <a href="18-interfaces.html">Interfaces</a>
+        <a href="19-arrays.html">Arrays</a>
+        <a href="20-slices.html">Slices</a>
+        <a href="21-indexing.html">Indexing</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
+        <a href="23-references.html">References</a>
+        <a href="24-ownership.html">Ownership</a>
+        <a href="25-borrowing.html">Borrowing</a>
+        <a href="26-unsafe.html">Unsafe</a>
+        <a href="27-spread.html">Spread</a>
+        <a href="30-modules.html">Modules and Imports</a>
+        <a href="31-projects.html">Projects and sec.module</a>
+        <a href="32-visibility.html">Visibility</a>
+        <a href="33-result-and-option.html">Result and Option</a>
+        <a href="34-try.html">Error Propagation</a>
+        <a href="35-defer.html">Deferred Cleanup</a>
+        <a href="36-attributes.html">Attributes</a>
+        <a href="37-build-directives.html">Build Directives</a>
+        <a href="38-ffi.html">Foreign Function Interfaces</a>
+        <a href="39-tasks.html">Tasks</a>
+        <a href="40-spawn.html">Spawning Work</a>
+        <a href="41-await.html">Awaiting Tasks</a>
+        <a href="42-channels.html">Channels and Coordination</a>
+        <a href="43-testing.html">Tests and Benchmarks</a>
+        <a href="44-formatting.html">Formatting</a>
+        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Loops and Iteration</div>
+
+        <h1 id="loops">Loops and Iteration</h1>
+
+        <p>
+            Sec separates iteration from condition-controlled repetition.
+            Use <code>for</code> for ranges, collections and explicit iterators.
+            Use <code>while</code> when repetition is controlled by a changing boolean condition.
+        </p>
+
+        <pre><code>for item in items {
+    Process(item)
+}
+
+while running {
+    Poll()
+}</code></pre>
+
+        <p>Unconditional repetition uses:</p>
+
+        <pre><code>for {
+    Work()
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>for</code> means iteration or explicit unconditional repetition.
+            <code>while</code> means condition-controlled repetition.
+        </div>
+
+        <section id="for-vs-while">
+            <h2><code>for</code> vs <code>while</code></h2>
+
+            <p>Use <code>for</code> when there is an iterable source:</p>
+
+            <pre><code>for item in items {
+    Process(item)
+}</code></pre>
+
+            <p>Use <code>while</code> when a boolean condition controls repetition:</p>
+
+            <pre><code>while ready {
+    Poll()
+}</code></pre>
+
+            <p>Use unconditional <code>for</code> for intentional endless repetition:</p>
+
+            <pre><code>for {
+    Poll()
+}</code></pre>
+
+            <p>A condition-only <code>for</code> is invalid:</p>
+
+            <pre><code>for ready {
+    Poll()
+}</code></pre>
+
+            <p>C-style loop syntax is also invalid:</p>
+
+            <pre><code>for i := 0; i &lt; 10; i += 1 {
+    ...
+}</code></pre>
+
+            <p>Use a range instead:</p>
+
+            <pre><code>for i in 0..&lt;10 {
+    ...
+}</code></pre>
+        </section>
+
+        <section id="for-forms">
+            <h2><code>for</code> Forms</h2>
+
+            <pre><code>// Unconditional loop.
+for {
+    Work()
+}
+
+// One value binding.
+for item in items {
+    Process(item)
+}
+
+// Sequential index and value.
+for index, item in items {
+    Process(index, item)
+}
+
+// Map key and value.
+for key, value in users {
+    Process(key, value)
+}
+
+// Range.
+for index in 0..&lt;10 {
+    Process(index)
+}
+
+// Explicit descending range.
+for index in 10..1 step -1 {
+    Process(index)
+}
+
+// Shared element borrow.
+for ref item in items {
+    Inspect(item)
+}
+
+// Mutable element borrow.
+for ref mut item in items {
+    item.Reset()
+}</code></pre>
+
+            <p>Braces are mandatory for every <code>for</code> body.</p>
+        </section>
+
+        <section id="loop-bindings">
+            <h2>Loop Bindings</h2>
+
+            <p>The supported binding modes are:</p>
+
+            <pre><code>item
+ref item
+ref mut item
+_</code></pre>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Binding</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>item</code></td><td>By-value binding</td></tr>
+                        <tr><td><code>ref item</code></td><td>Shared borrowed element</td></tr>
+                        <tr><td><code>ref mut item</code></td><td>Exclusive mutable borrowed element</td></tr>
+                        <tr><td><code>_</code></td><td>Discard this binding position</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The iterable category determines which modes are legal for each binding position.
+                Sec 0.1 has no consuming loop binding.
+            </p>
+        </section>
+
+        <section id="plain-binding">
+            <h2>Plain Value Binding</h2>
+
+            <pre><code>for item in items {
+    Process(item)
+}</code></pre>
+
+            <p>
+                A plain binding is by value. If the yielded type <code>T</code> is implicitly copyable,
+                the current element is copied into <code>item</code>.
+            </p>
+
+            <p>
+                The source element remains valid.
+            </p>
+
+            <p>
+                If <code>T</code> is move-only, plain iteration is invalid:
+            </p>
+
+            <pre><code>for file in files {
+    Use(file)
+}</code></pre>
+
+            <p>
+                when <code>File</code> is move-only.
+            </p>
+
+            <p>
+                Sec does not silently move the element out of the collection and does not silently
+                reinterpret the loop as a borrow.
+            </p>
+
+            <p>Borrow explicitly when inspection is intended:</p>
+
+            <pre><code>for ref file in files {
+    Inspect(file)
+}</code></pre>
+        </section>
+
+        <section id="shared-binding">
+            <h2>Shared <code>ref</code> Binding</h2>
+
+            <pre><code>for ref item in items {
+    Inspect(item)
+}</code></pre>
+
+            <p>For element type <code>T</code>, the binding has type:</p>
+
+            <pre><code>ref T</code></pre>
+
+            <p>
+                The source must be able to provide a stable shared reference to the current element.
+                Shared iteration works for move-only values because no ownership transfer occurs.
+            </p>
+
+            <p>
+                Normal borrowing rules apply, and the element cannot be moved out through the shared reference.
+            </p>
+        </section>
+
+        <section id="mutable-binding">
+            <h2>Mutable <code>ref mut</code> Binding</h2>
+
+            <pre><code>for ref mut item in items {
+    item.Count += 1
+}</code></pre>
+
+            <p>For element type <code>T</code>, the binding has type:</p>
+
+            <pre><code>ref mut T</code></pre>
+
+            <p>
+                The source must provide mutable borrowing authority.
+                Element mutation is permitted according to ordinary exclusive-borrow rules.
+            </p>
+
+            <p>
+                This does not grant permission to structurally mutate the source collection:
+            </p>
+
+            <pre><code>for ref mut item in items {
+    try items.Append(newItem)
+}</code></pre>
+
+            <p>
+                is invalid when <code>Append</code> may change collection structure or invalidate
+                iteration state.
+            </p>
+
+            <p>
+                The binding itself remains immutable; the referenced element is mutable.
+            </p>
+        </section>
+
+        <section id="discard">
+            <h2>Discard Binding</h2>
+
+            <pre><code>for _, item in items {
+    Process(item)
+}</code></pre>
+
+            <pre><code>for _, ref mut value in users {
+    Update(value)
+}</code></pre>
+
+            <p>
+                <code>_</code> creates no local symbol.
+                Discarding a position does not force the compiler to copy or move the yielded
+                value merely to discard it.
+            </p>
+        </section>
+
+        <section id="binding-scope">
+            <h2>Binding Scope</h2>
+
+            <p>Every loop body is a lexical scope.</p>
+
+            <pre><code>for item in items {
+    Process(item)
+}
+
+Process(item)    // invalid</code></pre>
+
+            <p>
+                Loop bindings follow normal no-shadowing rules:
+            </p>
+
+            <pre><code>let item := 10
+
+for item in items {
+    ...
+}</code></pre>
+
+            <p>is invalid because the loop binding would shadow the visible <code>item</code>.</p>
+
+            <p>A plain loop binding cannot be reassigned:</p>
+
+            <pre><code>for item in items {
+    item = replacement    // invalid
+}</code></pre>
+        </section>
+
+        <section id="source-evaluation">
+            <h2>Source Evaluation</h2>
+
+            <p>The iterable expression is evaluated exactly once before iteration begins.</p>
+
+            <pre><code>for item in LoadItems() {
+    Process(item)
+}</code></pre>
+
+            <p>
+                <code>LoadItems()</code> runs once, not once per iteration.
+            </p>
+
+            <p>
+                An owned temporary used as the iterable source remains alive as long as required
+                by the loop and is cleaned up through ordinary ownership rules.
+            </p>
+        </section>
+
+        <section id="iterables">
+            <h2>Iterable Categories</h2>
+
+            <p>Sec 0.1 defines iteration for compiler-known categories including:</p>
+
+            <ul>
+                <li>fixed arrays <code>T[N]</code>;</li>
+                <li>dynamic arrays <code>T[]</code>;</li>
+                <li>slices <code>ref T[]</code> and <code>ref mut T[]</code>;</li>
+                <li><code>list[T]</code>;</li>
+                <li><code>set[T]</code>;</li>
+                <li><code>map[K, V]</code>;</li>
+                <li><code>string</code>;</li>
+                <li>finite numeric ranges;</li>
+                <li>supported sequential shaped types such as <code>vector[T, N]</code>;</li>
+                <li>concrete types explicitly conforming to compiler-known <code>Iterator[T]</code>.</li>
+            </ul>
+
+            <p>A type does not become iterable merely because it has members named:</p>
+
+            <pre><code>Len
+Get
+Next
+HasNext
+Contains</code></pre>
+
+            <p>
+                User-defined pull-based iteration uses explicit <code>Iterator[T]</code> conformance.
+            </p>
+        </section>
+
+        <section id="sequential">
+            <h2>Sequential Collections</h2>
+
+            <p>Sequential sources support one element binding:</p>
+
+            <pre><code>for item in items {
+    ...
+}</code></pre>
+
+            <p>and, where defined, index plus element:</p>
+
+            <pre><code>for index, item in items {
+    ...
+}</code></pre>
+
+            <p>
+                The sequential index is zero-based and has type <code>int</code>.
+                It is a value binding, not an element reference.
+            </p>
+
+            <pre><code>for index, ref item in items {
+    Inspect(index, item)
+}</code></pre>
+
+            <pre><code>for index, ref mut item in items {
+    item.Sequence = index
+}</code></pre>
+        </section>
+
+        <section id="arrays-lists">
+            <h2>Arrays and Lists</h2>
+
+            <h3>Fixed arrays</h3>
+
+            <p>
+                A fixed array <code>T[N]</code> iterates from index <code>0</code> through
+                <code>N - 1</code>.
+            </p>
+
+            <p>
+                Plain element iteration copies <code>T</code> and therefore requires
+                <code>T</code> to be copyable.
+            </p>
+
+            <pre><code>for ref item in values {
+    Inspect(item)
+}</code></pre>
+
+            <pre><code>for ref mut item in values {
+    Update(item)
+}</code></pre>
+
+            <p>
+                A <code>for</code> loop never partially moves elements out of a fixed array.
+            </p>
+
+            <h3>Dynamic arrays and lists</h3>
+
+            <p>
+                <code>T[]</code> and <code>list[T]</code> visit live logical elements in
+                collection order.
+            </p>
+
+            <p>
+                They follow the same plain-copy, shared-borrow and mutable-borrow model where
+                the source provides the required authority.
+            </p>
+        </section>
+
+        <section id="slices">
+            <h2>Slices</h2>
+
+            <p>A shared slice:</p>
+
+            <pre><code>ref T[]</code></pre>
+
+            <p>supports:</p>
+
+            <ul>
+                <li>plain value when <code>T</code> is copyable;</li>
+                <li><code>ref T</code>;</li>
+                <li><code>_</code>.</li>
+            </ul>
+
+            <p>A shared slice does not provide mutable element authority.</p>
+
+            <p>A mutable slice:</p>
+
+            <pre><code>ref mut T[]</code></pre>
+
+            <p>may additionally provide:</p>
+
+            <pre><code>ref mut T</code></pre>
+
+            <p>
+                Iteration does not extend the backing owner's lifetime beyond normal reference rules.
+            </p>
+        </section>
+
+        <section id="strings">
+            <h2>Strings</h2>
+
+            <p>String iteration yields Unicode code points of type:</p>
+
+            <pre><code>rune</code></pre>
+
+            <pre><code>for character in text {
+    Process(character)
+}</code></pre>
+
+            <p>Two-binding string iteration is also supported:</p>
+
+            <pre><code>for index, character in text {
+    Process(index, character)
+}</code></pre>
+
+            <div class="rule">
+                <strong>Important:</strong> The index is a zero-based sequential iteration index.
+                It is not a UTF-8 byte offset.
+            </div>
+
+            <p>
+                String iteration does not expose raw UTF-8 bytes.
+                Use an explicit encoded byte representation when bytes are required.
+            </p>
+
+            <p>
+                Decoded runes are yielded values rather than mutable stored rune elements, so
+                ordinary string iteration does not support <code>ref</code> or
+                <code>ref mut</code> rune bindings.
+            </p>
+        </section>
+
+        <section id="sets">
+            <h2>Sets</h2>
+
+            <p>A set has exactly one logical value binding:</p>
+
+            <pre><code>for value in activeUsers {
+    Process(value)
+}</code></pre>
+
+            <p>Shared borrowing may be supported:</p>
+
+            <pre><code>for ref value in activeUsers {
+    Inspect(value)
+}</code></pre>
+
+            <p>Mutable set element iteration is invalid:</p>
+
+            <pre><code>for ref mut value in activeUsers {
+    ...
+}</code></pre>
+
+            <p>
+                Stored set values participate in equality and hashing identity and must not be
+                mutated in place.
+            </p>
+
+            <p>
+                Ordinary <code>set[T]</code> iteration order is unspecified.
+            </p>
+        </section>
+
+        <section id="maps">
+            <h2>Maps</h2>
+
+            <p>A map requires exactly two logical binding positions:</p>
+
+            <pre><code>for key, value in users {
+    Process(key, value)
+}</code></pre>
+
+            <p>Single-binding map iteration is not supported:</p>
+
+            <pre><code>for entry in users {
+    ...
+}</code></pre>
+
+            <p>Shared borrowing:</p>
+
+            <pre><code>for ref key, ref value in users {
+    Inspect(key, value)
+}</code></pre>
+
+            <p>Mutable value borrowing:</p>
+
+            <pre><code>for ref key, ref mut value in users {
+    Update(value)
+}</code></pre>
+
+            <p>Mutable key borrowing is invalid:</p>
+
+            <pre><code>for ref mut key, value in users {
+    ...
+}</code></pre>
+
+            <p>
+                A stored key participates in hash and equality identity and cannot be modified in place.
+            </p>
+
+            <p>Discard positions independently when needed:</p>
+
+            <pre><code>for _, ref mut value in users {
+    Update(value)
+}</code></pre>
+
+            <p>
+                Ordinary <code>map[K, V]</code> iteration order is unspecified.
+            </p>
+        </section>
+
+        <section id="ranges">
+            <h2>Ranges</h2>
+
+            <p>The directly iterable finite range forms are:</p>
+
+            <pre><code>start..end
+start..&lt;end</code></pre>
+
+            <p><code>..</code> includes the endpoint when reached:</p>
+
+            <pre><code>for value in 1..5 {
+    Process(value)
+}</code></pre>
+
+            <p>yields <code>1</code> through <code>5</code>.</p>
+
+            <p><code>..&lt;</code> excludes it:</p>
+
+            <pre><code>for value in 1..&lt;5 {
+    Process(value)
+}</code></pre>
+
+            <p>yields <code>1</code> through <code>4</code>.</p>
+
+            <h3>Open-ended ranges</h3>
+
+            <pre><code>for value in 0.. {
+    ...
+}</code></pre>
+
+            <p>
+                is invalid because an open-ended range has no finite iteration boundary.
+                Use <code>for {}</code> or <code>while</code> instead.
+            </p>
+
+            <h3>Bound evaluation</h3>
+
+            <pre><code>for value in Start()..&lt;End() step Increment() {
+    Process(value)
+}</code></pre>
+
+            <p>
+                <code>Start()</code>, <code>End()</code> and <code>Increment()</code> are each
+                evaluated exactly once before progression begins.
+            </p>
+
+            <h3>Named numeric types</h3>
+
+            <pre><code>let minimum: Score := Score(0)
+let maximum: Score := Score(10)
+
+for score in minimum..maximum {
+    Process(score)
+}</code></pre>
+
+            <p>
+                The binding has type <code>Score</code>. Range construction does not erase
+                named-type identity.
+            </p>
+        </section>
+
+        <section id="range-step">
+            <h2>Range <code>step</code></h2>
+
+            <p>
+                Integer-like ranges use an implicit ascending <code>+1</code> step when
+                <code>step</code> is omitted.
+            </p>
+
+            <p>
+                The compiler does not infer descending iteration from the bounds:
+            </p>
+
+            <pre><code>for value in 10..&lt;5 {
+    ...
+}</code></pre>
+
+            <p>performs zero iterations.</p>
+
+            <p>Descending iteration is explicit:</p>
+
+            <pre><code>for value in 10..1 step -1 {
+    Process(value)
+}</code></pre>
+
+            <p>An explicit step:</p>
+
+            <ul>
+                <li>is evaluated once;</li>
+                <li>must be non-zero;</li>
+                <li>must be valid for the range's numeric type;</li>
+                <li>determines direction and delta.</li>
+            </ul>
+
+            <p>These are invalid when statically known:</p>
+
+            <pre><code>for value in 1..10 step -1 {
+    ...
+}
+
+for value in 10..1 step 1 {
+    ...
+}</code></pre>
+
+            <p>
+                Descending unsigned ranges are not silently converted to a signed domain.
+                Use a suitable signed type or <code>while</code>.
+            </p>
+
+            <p>
+                Range termination never requires an overflowing increment after the final
+                yielded value.
+            </p>
+        </section>
+
+        <section id="float-ranges">
+            <h2>Float and Decimal Ranges</h2>
+
+            <p>
+                <code>float</code> and <code>decimal</code> range iteration requires an explicit step.
+            </p>
+
+            <pre><code>for value in 0.001..&lt;0.002 step 0.00001 {
+    Process(value)
+}</code></pre>
+
+            <pre><code>for value in 0.002..0.001 step -0.00001 {
+    Process(value)
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>for value in 0.001..&lt;0.002 {
+    ...
+}</code></pre>
+
+            <p>
+                Progression follows the arithmetic semantics of the resolved numeric type.
+                Float lowering must preserve source-visible coverage rather than introduce avoidable
+                repeated-addition drift. Decimal progression preserves Sec decimal semantics.
+            </p>
+        </section>
+
+        <section id="iterators">
+            <h2>Compiler-Known <code>Iterator[T]</code></h2>
+
+            <p>Sec defines this compiler-known pull iterator contract:</p>
+
+            <pre><code>interface Iterator[T] {
+    mut fn Next() Option[T]
+}</code></pre>
+
+            <p>A concrete source participates through explicit conformance:</p>
+
+            <pre><code>type NumberStream struct {
+    current: int,
+    end: int,
+}
+
+impl NumberStream implements Iterator[int] {
+    fn Next() Option[int] {
+        if self.current &gt;= self.end {
+            return None
+        }
+
+        let value := self.current
+        self.current += 1
+        return Some(value)
+    }
+}</code></pre>
+
+            <p>Then:</p>
+
+            <pre><code>let mut stream := NumberStream {
+    current: 0,
+    end: 10,
+}
+
+for value in stream {
+    Process(value)
+}</code></pre>
+
+            <p>The protocol means:</p>
+
+            <ul>
+                <li>the source expression is evaluated once;</li>
+                <li>the concrete statically resolved <code>Next()</code> is called repeatedly;</li>
+                <li><code>Some(value)</code> yields one owned <code>T</code> and runs the body;</li>
+                <li><code>None</code> terminates iteration;</li>
+                <li>exactly one value binding or discard is available;</li>
+                <li>the yielded <code>T</code> is not an implicit reference into iterator storage.</li>
+            </ul>
+
+            <p>
+                Reusable iterator storage must provide the mutable authority required by the
+                iterator operation.
+            </p>
+
+            <p>A fresh owned iterator may be used directly:</p>
+
+            <pre><code>for part in text.Split(";") {
+    Process(part)
+}</code></pre>
+
+            <p>
+                The compiler retains the fresh iterator as loop-local state for as long as needed.
+            </p>
+
+            <p>
+                The <code>Iterator[T]</code> protocol does not define <code>ref</code> or
+                <code>ref mut</code> bindings for yielded results.
+            </p>
+
+            <p>It also requires no:</p>
+
+            <ul>
+                <li>runtime interface object;</li>
+                <li>virtual dispatch;</li>
+                <li>boxing;</li>
+                <li>runtime type inspection;</li>
+                <li>runtime borrow tracking;</li>
+                <li>hidden heap allocation.</li>
+            </ul>
+
+            <p>
+                A method named <code>Next</code> is not sufficient. The type must explicitly
+                conform to <code>Iterator[T]</code>.
+            </p>
+        </section>
+
+        <section id="structural-stability">
+            <h2>Structural Stability During Iteration</h2>
+
+            <p>
+                Active collection iteration must preserve the structural assumptions used by
+                the iterator.
+            </p>
+
+            <p>Structural mutation includes operations that may:</p>
+
+            <ul>
+                <li>change collection length;</li>
+                <li>insert or remove elements;</li>
+                <li>move or replace backing storage;</li>
+                <li>reorder elements so iteration state becomes invalid;</li>
+                <li>invalidate current or future element references.</li>
+            </ul>
+
+            <p>
+                Such operations are invalid while the active iteration depends on that structure.
+            </p>
+
+            <p>
+                Element mutation through a valid <code>ref mut</code> loop binding is not structural
+                mutation when it preserves the collection's structural invariants.
+            </p>
+        </section>
+
+        <section id="while">
+            <h2><code>while</code></h2>
+
+            <pre><code>while condition {
+    statements
+}</code></pre>
+
+            <p>
+                The condition is evaluated before every possible iteration.
+                The body runs only when it evaluates to <code>true</code>, so a normal
+                <code>while</code> loop may execute zero times.
+            </p>
+
+            <p>
+                Parentheses around the condition are allowed but normally unnecessary.
+            </p>
+        </section>
+
+        <section id="while-condition">
+            <h2><code>while</code> Conditions</h2>
+
+            <p>The condition must have type <code>bool</code>. Sec has no implicit truthiness.</p>
+
+            <p>Valid:</p>
+
+            <pre><code>while running {
+    Poll()
+}
+
+while count &lt; limit {
+    count += 1
+}</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>while 1 {
+    ...
+}
+
+while items {
+    ...
+}</code></pre>
+
+            <h3>Short-circuit evaluation</h3>
+
+            <pre><code>while ready &amp;&amp; CanContinue() {
+    Work()
+}</code></pre>
+
+            <p>
+                <code>&amp;&amp;</code> and <code>||</code> retain guaranteed left-to-right
+                short-circuit semantics.
+            </p>
+
+            <h3>Side effects</h3>
+
+            <pre><code>while ReadNext() {
+    Process()
+}</code></pre>
+
+            <p>
+                A legal side-effecting condition is evaluated exactly once before each attempted iteration.
+            </p>
+
+            <h3><code>try</code></h3>
+
+            <pre><code>while try ReadStatus() {
+    Poll()
+}</code></pre>
+
+            <p>
+                This is valid when the successful value has type <code>bool</code>.
+                A <code>Result</code> value itself is not implicitly boolean.
+            </p>
+
+            <h3>State tests</h3>
+
+            <pre><code>while state is Active {
+    Poll()
+}</code></pre>
+
+            <p>
+                Non-binding <code>is</code> expressions may be used when another language rule
+                defines them as producing <code>bool</code>.
+            </p>
+
+            <p>
+                <code>while</code> does not introduce payload-binding patterns.
+            </p>
+
+            <h3>No declaration header</h3>
+
+            <pre><code>while let value := Read(); value &gt; 0 {
+    ...
+}</code></pre>
+
+            <p>is invalid.</p>
+
+            <h3>Assignment is not an expression</h3>
+
+            <pre><code>while running = true {
+    ...
+}</code></pre>
+
+            <p>is invalid.</p>
+
+            <h3>Comparisons and membership</h3>
+
+            <p>Comparison chaining is not supported:</p>
+
+            <pre><code>while 0 &lt;= value &lt; 100 {
+    ...
+}</code></pre>
+
+            <p>Use:</p>
+
+            <pre><code>while value &gt;= 0 &amp;&amp; value &lt; 100 {
+    ...
+}</code></pre>
+
+            <p>or:</p>
+
+            <pre><code>while value in 0..&lt;100 {
+    ...
+}</code></pre>
+        </section>
+
+        <section id="while-progression">
+            <h2><code>while</code> Progression</h2>
+
+            <p>
+                <code>while</code> provides no automatic progression clause.
+            </p>
+
+            <pre><code>let mut index: int := 0
+
+while index &lt; limit {
+    Process(index)
+    index += 1
+}</code></pre>
+
+            <p>
+                The body is responsible for changing any state required for eventual termination.
+            </p>
+        </section>
+
+        <section id="infinite-loops">
+            <h2>Infinite Loops</h2>
+
+            <p>Both forms are legal:</p>
+
+            <pre><code>for {
+    Poll()
+}</code></pre>
+
+            <pre><code>while true {
+    Poll()
+}</code></pre>
+
+            <p>
+                Use <code>for {}</code> when unconditional repetition is the direct intent.
+            </p>
+
+            <p>
+                A loop with no reachable exit path is non-continuing for control-flow analysis.
+            </p>
+        </section>
+
+        <section id="break">
+            <h2><code>break</code></h2>
+
+            <p><code>break</code> exits the nearest enclosing loop.</p>
+
+            <pre><code>for item in items {
+    if Stop(item) {
+        break
+    }
+
+    Process(item)
+}</code></pre>
+
+            <p>
+                It is invalid outside a loop and does not carry a value.
+                Required cleanup runs before control reaches the loop exit.
+            </p>
+
+            <p>Labeled <code>break</code> is not part of Sec 0.1.</p>
+        </section>
+
+        <section id="continue">
+            <h2><code>continue</code></h2>
+
+            <p>
+                <code>continue</code> ends the current iteration and advances the nearest
+                enclosing loop.
+            </p>
+
+            <pre><code>for item in items {
+    if Skip(item) {
+        continue
+    }
+
+    Process(item)
+}</code></pre>
+
+            <p>In a <code>while</code>, it transfers to the next condition evaluation:</p>
+
+            <pre><code>while running {
+    if ShouldSkip() {
+        continue
+    }
+
+    Work()
+}</code></pre>
+
+            <p>
+                Required per-iteration cleanup runs before the next iteration.
+                <code>continue</code> carries no value and has no labeled form in Sec 0.1.
+            </p>
+        </section>
+
+        <section id="nested-loops">
+            <h2>Nested Loops</h2>
+
+            <p>
+                <code>break</code> and <code>continue</code> always target the nearest enclosing loop.
+            </p>
+
+            <pre><code>while rowsRemain {
+    while columnsRemain {
+        if DoneWithRow() {
+            break
+        }
+
+        ProcessCell()
+    }
+}</code></pre>
+
+            <p>The inner <code>break</code> exits only the inner loop.</p>
+
+            <p>
+                Exiting multiple levels uses explicit state, <code>return</code>, error propagation,
+                or refactoring rather than labels.
+            </p>
+        </section>
+
+        <section id="switch-interaction">
+            <h2>Loops and <code>switch</code></h2>
+
+            <p>
+                <code>switch</code> does not own a <code>break</code> or <code>continue</code> target.
+            </p>
+
+            <pre><code>while running {
+    switch status {
+    case Status.Stop:
+        break
+
+    default:
+        Work()
+    }
+}</code></pre>
+
+            <p>The <code>break</code> exits the surrounding loop.</p>
+
+            <pre><code>while running {
+    switch status {
+    case Status.Skip:
+        continue
+
+    default:
+        Work()
+    }
+}</code></pre>
+
+            <p>The <code>continue</code> advances the surrounding loop.</p>
+        </section>
+
+        <section id="ownership-cleanup">
+            <h2>Ownership and Cleanup</h2>
+
+            <p>
+                Each executed iteration creates a new loop-body scope.
+            </p>
+
+            <p>
+                Owned locals created during an iteration are destroyed before that iteration
+                finishes unless ownership is transferred elsewhere.
+            </p>
+
+            <ul>
+                <li><code>continue</code> performs cleanup before the next iteration;</li>
+                <li><code>break</code> performs cleanup for exited scopes;</li>
+                <li><code>return</code> performs function-exit cleanup;</li>
+                <li>error propagation performs cleanup required by its exit path.</li>
+            </ul>
+
+            <p>
+                Loop-provided references do not create ownership of source elements.
+                Plain by-value copies are ordinary locals with ordinary destruction semantics.
+            </p>
+        </section>
+
+        <section id="definite-assignment">
+            <h2>Definite Assignment</h2>
+
+            <p>
+                Normal finite <code>for</code> and <code>while</code> loops may execute zero times.
+            </p>
+
+            <p>
+                An assignment performed only inside such a loop therefore does not automatically
+                establish definite assignment after the loop.
+            </p>
+
+            <pre><code>let mut result: int
+
+for value in values {
+    result = value
+}
+
+Use(result)</code></pre>
+
+            <p>
+                is invalid unless some other flow fact proves <code>result</code> initialized on
+                every path that reaches <code>Use</code>.
+            </p>
+
+            <p>
+                Non-continuing paths are excluded from post-loop state merging.
+            </p>
+        </section>
+
+        <section id="return-analysis">
+            <h2>Return-Path Analysis</h2>
+
+            <p>
+                A return inside a finite loop does not prove that a non-void function returns,
+                because the loop may execute zero times.
+            </p>
+
+            <p>An unconditional loop with no reachable exit is non-continuing:</p>
+
+            <pre><code>fn RunForever() int {
+    for {
+        Poll()
+    }
+}</code></pre>
+
+            <p>A reachable <code>break</code> introduces a continuing path:</p>
+
+            <pre><code>fn MayStop(stop: bool) int {
+    for {
+        if stop {
+            break
+        }
+    }
+
+    return 0
+}</code></pre>
+
+            <p>
+                A break that exits only a nested inner loop does not make an outer infinite
+                loop continuing.
+            </p>
+        </section>
+
+        <section id="no-consuming-for">
+            <h2>No Consuming <code>for</code></h2>
+
+            <p>
+                Ordinary iteration never implicitly extracts ownership from the source collection.
+            </p>
+
+            <p>Sec 0.1 does not define:</p>
+
+            <pre><code>for -&gt; item in items {
+    ...
+}
+
+for item in move items {
+    ...
+}</code></pre>
+
+            <p>
+                Plain iteration also does not turn into a move when an element happens to be move-only.
+            </p>
+
+            <p>
+                When stored ownership must be removed, use the explicit owning extraction operation
+                provided by the collection type.
+            </p>
+        </section>
+
+        <section id="no-hidden-allocation">
+            <h2>No Hidden Allocation</h2>
+
+            <p>
+                A <code>for</code> loop does not inherently require heap allocation.
+            </p>
+
+            <p>
+                Compiler-generated iteration state should use ordinary local or lowered state.
+                Operations called by the body may allocate according to their own contracts,
+                but iteration itself does not gain permission for hidden allocation.
+            </p>
+        </section>
+
+        <section id="unsupported">
+            <h2>Unsupported Loop Forms</h2>
+
+            <p>Sec 0.1 does not include:</p>
+
+            <ul>
+                <li>condition-only <code>for</code>;</li>
+                <li>C-style <code>for</code>;</li>
+                <li>loop <code>else</code> clauses;</li>
+                <li><code>do-while</code>;</li>
+                <li>labeled <code>break</code> or <code>continue</code>;</li>
+                <li>break/continue values;</li>
+                <li>implicit consuming iteration;</li>
+                <li><code>for -&gt; item in source</code>;</li>
+                <li><code>for item in move source</code>;</li>
+                <li>implicit mutable element iteration;</li>
+                <li><code>ref</code> bindings to decoded string runes;</li>
+                <li><code>ref</code> bindings to synthesized range values;</li>
+                <li>mutable set element iteration;</li>
+                <li>mutable map key iteration;</li>
+                <li>single-binding map iteration;</li>
+                <li>general pattern destructuring in <code>for</code> headers;</li>
+                <li>iterator discovery from member names;</li>
+                <li>implicit <code>Iterable</code> factory discovery;</li>
+                <li>runtime-dispatched iterator interface values as the <code>for</code> protocol.</li>
+            </ul>
+
+            <p>Loops are statements and do not produce values.</p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important loop diagnostics include:</p>
+
+            <ul>
+                <li>non-iterable source;</li>
+                <li>invalid binding count;</li>
+                <li>invalid binding mode;</li>
+                <li>plain by-value iteration of a move-only element;</li>
+                <li>mutable iteration without mutable authority;</li>
+                <li>mutable map key or set element iteration;</li>
+                <li>structural mutation during active iteration;</li>
+                <li>open-ended range used in <code>for</code>;</li>
+                <li>incompatible range types;</li>
+                <li>zero or invalid range step;</li>
+                <li>invalid statically known step direction;</li>
+                <li>missing explicit step for float or decimal range;</li>
+                <li><code>Iterator[T]</code> use without explicit conformance;</li>
+                <li>iterator source without required mutable authority;</li>
+                <li>invalid iterator <code>Next()</code> contract;</li>
+                <li>non-boolean <code>while</code> condition;</li>
+                <li>assignment, declaration or pattern binding used as a <code>while</code> condition;</li>
+                <li><code>break</code> or <code>continue</code> outside a loop;</li>
+                <li>unsupported labeled loop control;</li>
+                <li>loop binding shadowing or reassignment.</li>
+            </ul>
+
+            <p>A move-related diagnostic should explain the intended alternatives:</p>
+
+            <pre><code>cannot iterate File by value
+
+File is move-only and ordinary for iteration does not consume collection elements
+
+help: use `for ref file in files` to borrow each element
+help: use an explicit owning collection operation to extract ownership</code></pre>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>for</code> for ranges and iterable sources.</li>
+                <li>Use <code>while</code> for changing boolean conditions.</li>
+                <li>Use <code>for {}</code> for intentionally unconditional repetition.</li>
+                <li>Use plain bindings for copyable elements when a copy is appropriate.</li>
+                <li>Use <code>ref</code> to inspect elements without copying.</li>
+                <li>Use <code>ref mut</code> only for supported in-place element mutation.</li>
+                <li>Do not structurally mutate a collection while iteration depends on its structure.</li>
+                <li>Do not depend on ordinary map or set iteration order.</li>
+                <li>Prefer finite ranges over manually maintained counted <code>while</code> loops.</li>
+                <li>Make descending iteration explicit with a negative <code>step</code>.</li>
+                <li>Use explicit <code>Iterator[T]</code> conformance for custom pull iterators.</li>
+                <li>Use collection-specific extraction operations when ownership must leave the collection.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>for</code> handles iteration and explicit unconditional repetition.</li>
+                <li><code>while</code> handles condition-controlled repetition.</li>
+                <li><code>for {}</code> is the canonical unconditional loop.</li>
+                <li>Sec has no condition-only or C-style <code>for</code>.</li>
+                <li>Plain loop bindings copy and require copyable yielded values.</li>
+                <li>Plain iteration never silently moves or borrows move-only elements.</li>
+                <li><code>ref</code> creates a shared element borrow.</li>
+                <li><code>ref mut</code> creates an exclusive mutable element borrow where supported.</li>
+                <li><code>_</code> discards a binding without forcing a copy or move.</li>
+                <li>Loop bindings are immutable and body-scoped.</li>
+                <li>The iterable source is evaluated once.</li>
+                <li>Sequential two-binding iteration yields zero-based <code>int</code> index plus element.</li>
+                <li>String iteration yields decoded <code>rune</code> values.</li>
+                <li>String iteration indices are logical iteration indices, not UTF-8 byte offsets.</li>
+                <li>Sets do not permit mutable element iteration.</li>
+                <li>Maps require key and value bindings and do not permit mutable key iteration.</li>
+                <li>Ordinary map and set iteration order is unspecified.</li>
+                <li>Finite <code>..</code> and <code>..&lt;</code> ranges are iterable.</li>
+                <li>Open-ended ranges are not directly iterable.</li>
+                <li>Integer-like ranges default to ascending <code>+1</code>.</li>
+                <li>Descending iteration requires an explicit negative <code>step</code>.</li>
+                <li>Float and decimal ranges require an explicit step.</li>
+                <li>Custom pull iteration uses explicit <code>Iterator[T]</code> conformance.</li>
+                <li><code>Iterator[T]</code> defines <code>mut fn Next() Option[T]</code>.</li>
+                <li>Iterator results are owned yielded values, not implicit element references.</li>
+                <li>Iteration does not inherently allocate.</li>
+                <li>Active iteration requires structural stability of its source.</li>
+                <li>A <code>while</code> condition must be <code>bool</code>.</li>
+                <li><code>while</code> preserves normal short-circuit, <code>try</code>, comparison and membership semantics.</li>
+                <li><code>break</code> exits the nearest enclosing loop.</li>
+                <li><code>continue</code> advances the nearest enclosing loop.</li>
+                <li><code>switch</code> does not create separate loop-control targets.</li>
+                <li>Sec 0.1 has no labeled loop control.</li>
+                <li>Cleanup runs correctly on normal completion, <code>continue</code>, <code>break</code>, <code>return</code> and error propagation.</li>
+                <li>Finite loops may execute zero times and therefore do not automatically establish definite assignment.</li>
+                <li>An infinite loop without a reachable exit is non-continuing.</li>
+                <li>Ordinary <code>for</code> iteration is never consuming in Sec 0.1.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="14-generics.html">Previous: Generics</a>
+            <a href="16-impl.html">Next: Impl Blocks</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

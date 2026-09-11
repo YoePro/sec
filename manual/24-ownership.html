@@ -13,7 +13,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,16 +22,62 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Ownership</div>
-        <a href="#24-ownership">Overview</a>
-                <div class="sidebar-section">Language</div>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#ownership">Ownership</a>
+        <a href="#model">Ownership Model</a>
+        <a href="#owner">What Is an Owner?</a>
+        <a href="#single-owner">One Current Owner</a>
+        <a href="#not-address">Ownership Is Not Address</a>
+        <a href="#dimensions">Independent Dimensions</a>
+        <a href="#availability">Availability</a>
+        <a href="#uninitialized">Uninitialized</a>
+        <a href="#available">Available</a>
+        <a href="#partial">Partially Available</a>
+        <a href="#unavailable">Unavailable</a>
+        <a href="#conditional">Conditionally Available</a>
+        <a href="#reasons">Unavailability Reasons</a>
+        <a href="#mutability">Mutability vs Availability</a>
+        <a href="#consumption">Visible Consumption</a>
+        <a href="#temporaries">Fresh Temporaries</a>
+        <a href="#parameters">Function Parameters</a>
+        <a href="#consuming-parameters">Consuming Parameters</a>
+        <a href="#call-commit">Call Transfer Commit</a>
+        <a href="#payloads">Owning Payloads</a>
+        <a href="#returns">Return Ownership</a>
+        <a href="#partial-moves">Partial Ownership</a>
+        <a href="#whole-vs-subplace">Whole vs Sub-Place Use</a>
+        <a href="#immutable-partial">Immutable Aggregates</a>
+        <a href="#repair">Repairing Partial Ownership</a>
+        <a href="#custom-free">Custom free Restriction</a>
+        <a href="#control-flow">Control-Flow Merges</a>
+        <a href="#availability-tests">Availability Tests</a>
+        <a href="#static-resolution">Static Resolution</a>
+        <a href="#runtime-state">Dynamic Ownership State</a>
+        <a href="#static-policy">Static-Ownership Policy</a>
+        <a href="#discard">discard</a>
+        <a href="#reinitialization">Reinitialization</a>
+        <a href="#replacement">Replacement</a>
+        <a href="#self">Ownership of self</a>
+        <a href="#borrows">Borrow Interaction</a>
+        <a href="#destruction">Destruction Responsibility</a>
+        <a href="#error-flow">try and match</a>
+        <a href="#hardware">Hardware and Foreign Storage</a>
+        <a href="#raw-pointers">Raw Pointers</a>
+        <a href="#runtime">Runtime Representation</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
         <a href="02-basic-syntax.html">Basic Syntax</a>
         <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
+        <a href="04-named-types.html">Named Types</a>
         <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
         <a href="06-functions.html">Functions</a>
         <a href="07-if.html">If Statements</a>
@@ -42,19 +88,21 @@
         <a href="12-registers.html">Registers</a>
         <a href="13-units.html">Units</a>
         <a href="14-generics.html">Generics</a>
-        <a href="15-structs.html">Structs</a>
+        <a href="15-loops.html">Loops and Iteration</a>
         <a href="16-impl.html">Impl Blocks</a>
         <a href="17-properties.html">Properties</a>
         <a href="18-interfaces.html">Interfaces</a>
         <a href="19-arrays.html">Arrays</a>
         <a href="20-slices.html">Slices</a>
         <a href="21-indexing.html">Indexing</a>
-        <a href="22-constants.html">Constants</a>
+        <a href="22-storage.html">Values, Places and Storage</a>
         <a href="23-references.html">References</a>
         <a href="24-ownership.html" class="active">Ownership</a>
-        <a href="25-borrowing.html">Borrowing</a>
+        <a href="25-borrowing.html">Copying and Moving</a>
         <a href="26-unsafe.html">Unsafe</a>
-        <a href="27-spread.html">Spread</a>
+        <a href="27-lifetimes.html">Lifetimes</a>
+        <a href="28-destruction.html">Destruction</a>
+        <a href="29-unsafe.html">Unsafe and Raw Pointers</a>
         <a href="30-modules.html">Modules and Imports</a>
         <a href="31-projects.html">Projects and sec.module</a>
         <a href="32-visibility.html">Visibility</a>
@@ -71,36 +119,1433 @@
         <a href="43-testing.html">Tests and Benchmarks</a>
         <a href="44-formatting.html">Formatting</a>
         <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
-        <div class="sidebar-section">Status</div>
-        <a href="test-status.html">Implementation Status</a>
-        <div class="sidebar-section">Community</div>
-        <a href="bug-report.html">Report a Bug</a>
-        <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Ownership</div>
 
-        <h1 id="24-ownership">Ownership</h1>
+        <h1 id="ownership">Ownership</h1>
 
-        <p>Ownership defines which value owns memory and when that memory is released.</p>
+        <p>
+            Ownership determines which Sec Place is responsible for a value's lifetime.
+            It defines where responsibility begins, when it transfers, when a source becomes
+            unavailable, and which remaining owner is responsible for destruction.
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>let resource := OpenResource()
+Use(resource)
+Consume(&lt;-resource)</code></pre>
+
+        <p>
+            After the consuming transfer, <code>resource</code> still exists as a source binding,
+            but it no longer owns a value and cannot be used as though it did.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Every tracked owned value has one current owner unless a
+            separate language or library contract explicitly defines shared ownership.
+        </div>
+
+        <section id="model">
+            <h2>The Ownership Model</h2>
+
+            <p>
+                Ownership is mandatory semantic analysis in Sec.
+                It is not an optional lint and is not reconstructed later from generated machine code.
+            </p>
+
+            <p>For every owned value, the compiler tracks facts such as:</p>
+
+            <ul>
+                <li>where ownership began;</li>
+                <li>the current owner;</li>
+                <li>whether the relevant Place is available;</li>
+                <li>whether an operation copies or consumes;</li>
+                <li>whether an active borrow blocks the operation;</li>
+                <li>whether part of an aggregate has already been consumed;</li>
+                <li>whether availability differs across continuing control-flow paths;</li>
+                <li>where ownership transfers or ends;</li>
+                <li>which remaining value must eventually be destroyed.</li>
+            </ul>
+
+            <p>
+                The detailed distinction between copyable and move-only types is covered in
+                <a href="25-copy-move.html">Copying and Moving</a>.
+                Borrow overlap and borrow live ranges are covered in
+                <a href="26-borrowing.html">Borrowing</a>.
+            </p>
+        </section>
+
+        <section id="owner">
+            <h2>What Is an Owner?</h2>
+
+            <p>
+                An owner is the semantic location responsible for a value's lifetime.
+            </p>
+
+            <p>Owners may include:</p>
+
+            <ul>
+                <li>a local binding;</li>
+                <li>a parameter binding;</li>
+                <li>a struct field;</li>
+                <li>an independently owned aggregate element;</li>
+                <li>a union payload;</li>
+                <li>a closure environment field;</li>
+                <li>a returned result;</li>
+                <li>a task or thread handle holder;</li>
+                <li>another rulebook-defined owning location.</li>
+            </ul>
+
+            <p>For example:</p>
+
+            <pre><code>let session := OpenSession()</code></pre>
+
+            <p>
+                the local Place named <code>session</code> owns the returned <code>Session</code>
+                value until ownership is transferred or its lifetime ends.
+            </p>
+        </section>
+
+        <section id="single-owner">
+            <h2>One Current Owner</h2>
+
+            <p>
+                Ordinary Sec ownership is exclusive: one semantic owner is responsible for each
+                owned value at a time.
+            </p>
+
+            <p>
+                Ownership transfer changes that owner.
+                It does not create a second owner.
+            </p>
+
+            <pre><code>let first := OpenResource()
+let second :&lt;- first</code></pre>
+
+            <p>After the transfer:</p>
+
+            <pre><code>second    // owns the Resource
+first     // unavailable</code></pre>
+
+            <p>
+                If a type needs shared ownership, that behavior must come from an explicit type or
+                API whose contract defines shared retention and release semantics.
+            </p>
+
+            <p>
+                Sec does not silently convert exclusive ownership into shared ownership.
+            </p>
+        </section>
+
+        <section id="not-address">
+            <h2>Ownership Is Not a Physical Address</h2>
+
+            <p>
+                Ownership exists before backend storage placement is chosen.
+            </p>
+
+            <p>
+                A semantic owner may be represented by:
+            </p>
+
+            <ul>
+                <li>an SSA value;</li>
+                <li>a machine register;</li>
+                <li>automatic storage;</li>
+                <li>static storage;</li>
+                <li>Arena-backed storage;</li>
+                <li>allocator-backed storage;</li>
+                <li>a descriptor owning separate backing storage;</li>
+                <li>a target-specific resource representation.</li>
+            </ul>
+
+            <p>
+                A move may transfer ownership without physically moving any bytes.
+            </p>
+
+            <p>
+                Conversely, physical relocation can occur without changing semantic ownership.
+            </p>
+        </section>
+
+        <section id="dimensions">
+            <h2>Ownership Is One of Several Independent Dimensions</h2>
+
+            <p>Sec keeps these questions separate:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Dimension</th>
+                            <th>Question</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Mutability</td>
+                            <td>May this Place be written, replaced or reinitialized?</td>
+                        </tr>
+                        <tr>
+                            <td>Availability</td>
+                            <td>Does this owner currently own a complete value in this Place?</td>
+                        </tr>
+                        <tr>
+                            <td>Borrow authority</td>
+                            <td>May this Place be accessed while current borrows are live?</td>
+                        </tr>
+                        <tr>
+                            <td>Reference validity</td>
+                            <td>Does a reference still identify the correct live storage?</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>This means:</p>
+
+            <ul>
+                <li>an immutable Place may be available;</li>
+                <li>an immutable Place may become unavailable after ownership transfer;</li>
+                <li>a mutable Place may be unavailable and later reinitialized;</li>
+                <li>an available Place may temporarily be inaccessible because of a borrow;</li>
+                <li>a valid reference generation does not prove ownership availability.</li>
+            </ul>
+        </section>
+
+        <section id="availability">
+            <h2>Availability</h2>
+
+            <p>
+                Availability describes whether a Place currently contains an owned value usable on
+                the current execution path.
+            </p>
+
+            <p>The source-semantic states are:</p>
+
+            <pre><code>Uninitialized
+Available
+PartiallyAvailable
+Unavailable
+ConditionallyAvailable</code></pre>
+
+            <p>
+                These are ownership states, not user-defined enum values and not a replacement for
+                <code>Option[T]</code>.
+            </p>
+        </section>
+
+        <section id="uninitialized">
+            <h2>Uninitialized</h2>
+
+            <p>
+                An uninitialized Place exists but does not yet contain a constructed value.
+            </p>
+
+            <pre><code>let mut resource: Resource</code></pre>
+
+            <p>An uninitialized Place cannot be:</p>
+
+            <ul>
+                <li>read;</li>
+                <li>copied;</li>
+                <li>moved;</li>
+                <li>borrowed;</li>
+                <li>destroyed as though a value were present.</li>
+            </ul>
+
+            <p>
+                If the Place is mutable and later receives a valid value, it becomes
+                <code>Available</code>.
+            </p>
+        </section>
+
+        <section id="available">
+            <h2>Available</h2>
+
+            <p>
+                An available Place currently contains a valid owned value.
+            </p>
+
+            <pre><code>let resource := OpenResource()</code></pre>
+
+            <p>
+                Normal operations may use the value subject to its ordinary:
+            </p>
+
+            <ul>
+                <li>mutability;</li>
+                <li>copy/move classification;</li>
+                <li>borrow state;</li>
+                <li>type contracts;</li>
+                <li>storage and platform rules.</li>
+            </ul>
+
+            <p>
+                Availability therefore does not mean that every possible operation on the value is legal.
+            </p>
+        </section>
+
+        <section id="partial">
+            <h2>Partially Available</h2>
+
+            <p>
+                An aggregate becomes partially available when one independently tracked owned
+                sub-Place is unavailable while another remains available.
+            </p>
+
+            <pre><code>type Package struct {
+    Header: Header,
+    Payload: Buffer,
+}
+
+let package := LoadPackage()
+let payload :&lt;- package.Payload</code></pre>
+
+            <p>After the transfer:</p>
+
+            <pre><code>package.Payload    unavailable
+package.Header     available
+package            partially available</code></pre>
+
+            <p>
+                The compiler preserves that distinction rather than treating the complete aggregate
+                as either entirely alive or entirely gone.
+            </p>
+        </section>
+
+        <section id="unavailable">
+            <h2>Unavailable</h2>
+
+            <p>
+                An unavailable Place no longer contains a value owned by that Place.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+Consume(&lt;-resource)</code></pre>
+
+            <p>After the committed transfer, <code>resource</code> cannot be:</p>
+
+            <ul>
+                <li>read;</li>
+                <li>copied;</li>
+                <li>borrowed;</li>
+                <li>moved again;</li>
+                <li>destroyed as though it still owned the value.</li>
+            </ul>
+
+            <p>
+                The binding may still be lexically in scope.
+                Scope and availability are different concepts.
+            </p>
+
+            <p>
+                A mutable unavailable Place may later be reinitialized.
+            </p>
+        </section>
+
+        <section id="conditional">
+            <h2>Conditionally Available</h2>
+
+            <p>
+                A Place becomes conditionally available when continuing control-flow paths disagree
+                about whether the owner still owns the value.
+            </p>
+
+            <pre><code>let package := LoadPackage()
+
+if condition {
+    Consume(&lt;-package.Payload)
+}</code></pre>
+
+            <p>
+                After the <code>if</code>, one continuing path still owns
+                <code>package.Payload</code> and another does not.
+            </p>
+
+            <p>
+                The field is therefore not safe to use as an ordinary definitely available value
+                until control flow refines or converges the ownership state.
+            </p>
+        </section>
+
+        <section id="reasons">
+            <h2>Why a Place Became Unavailable</h2>
+
+            <p>
+                Availability and the reason for unavailability are separate facts.
+            </p>
+
+            <p>Examples of unavailability reasons include:</p>
+
+            <pre><code>Moved
+Discarded
+Detached</code></pre>
+
+            <p>
+                The reason improves diagnostics and ownership provenance.
+            </p>
+
+            <p>
+                It does not create a different top-level state for every possible cause.
+                For continued ordinary use, a moved Place and a discarded Place are both unavailable.
+            </p>
+        </section>
+
+        <section id="mutability">
+            <h2>Mutability and Availability Are Independent</h2>
+
+            <p>
+                Sec's default immutability does not prevent ownership transfer.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+Consume(&lt;-resource)</code></pre>
+
+            <p>
+                This is valid because a move is not ordinary assignment.
+            </p>
+
+            <p>
+                Likewise, an immutable aggregate may lose ownership of an independently movable field:
+            </p>
+
+            <pre><code>let package := LoadPackage()
+let payload :&lt;- package.Payload</code></pre>
+
+            <p>
+                What immutability prevents is later ordinary replacement or reinitialization:
+            </p>
+
+            <pre><code>package.Payload = CreateBuffer()    // invalid: immutable root</code></pre>
+
+            <p>A mutable aggregate can repair the field:</p>
+
+            <pre><code>let mut package := LoadPackage()
+let payload :&lt;- package.Payload
+
+package.Payload = CreateBuffer()</code></pre>
+        </section>
+
+        <section id="consumption">
+            <h2>Consumption of Reusable Sources Is Visible</h2>
+
+            <p>
+                A reusable source Place is a source that the programmer could otherwise expect to
+                use again after the current expression.
+            </p>
+
+            <p>Examples include:</p>
+
+            <pre><code>resource
+package.Payload
+items[0]</code></pre>
+
+            <p>
+                When ownership leaves such a source, Sec requires the destructive transfer to be
+                visible at the source position.
+            </p>
+
+            <pre><code>Consume(&lt;-resource)</code></pre>
+
+            <p>
+                Ordinary source spelling must never silently become a destructive transfer merely
+                because the type happens to be move-only.
+            </p>
+
+            <p>
+                The full syntax and copyability matrix are covered in the next chapter.
+            </p>
+        </section>
+
+        <section id="temporaries">
+            <h2>Fresh Temporaries Do Not Need Redundant Move Markers</h2>
+
+            <p>
+                A fresh temporary has no reusable source Place that could surprise the programmer
+                by disappearing.
+            </p>
+
+            <p>These are natural ownership-forwarding forms:</p>
+
+            <pre><code>let buffer := CreateBuffer()
+
+Consume(CreateBuffer())
+
+let optional := Some(CreateBuffer())
+
+let packet := Packet {
+    Payload: CreateBuffer(),
+}</code></pre>
+
+            <p>
+                The compiler may forward the temporary directly into its first owner without
+                materializing an intermediate object.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Ordinary By-Value Parameters Own Their Parameter Value</h2>
+
+            <pre><code>fn Process(value: T) void {
+    ...
+}</code></pre>
+
+            <p>
+                Inside the call, <code>value</code> is an owned callee-local parameter value.
+            </p>
+
+            <p>
+                How the caller supplies that owned value depends on copy/move classification:
+                a reusable copyable source may be copied; a reusable non-copyable source requires
+                visible ownership transfer.
+            </p>
+
+            <p>
+                Borrowing uses <code>ref T</code> or <code>ref mut T</code> instead and does not
+                transfer ownership of the referent.
+            </p>
+        </section>
+
+        <section id="consuming-parameters">
+            <h2>Explicit Consuming Parameters</h2>
+
+            <p>
+                A parameter may state that the API intentionally consumes its argument:
+            </p>
+
+            <pre><code>fn Consume(-&gt; value: T) void {
+    ...
+}</code></pre>
+
+            <p>
+                A reusable caller-owned source must visibly transfer ownership:
+            </p>
+
+            <pre><code>Consume(&lt;-resource)</code></pre>
+
+            <p>
+                This contract is independent of whether <code>T</code> would otherwise be copyable.
+            </p>
+
+            <p>
+                A fresh temporary can be passed directly:
+            </p>
+
+            <pre><code>Consume(CreateResource())</code></pre>
+
+            <p>
+                There is no reusable caller-owned source whose disappearance needs additional marking.
+            </p>
+        </section>
+
+        <section id="call-commit">
+            <h2>Call Ownership Transfer Commits at Call Entry</h2>
+
+            <p>
+                A consuming call with several arguments must not prematurely take ownership from the
+                caller before all required call arguments are ready.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+
+try Use(
+    &lt;-resource,
+    LoadConfiguration(),
+) {
+    Err(error) =&gt; Handle(error)
+}</code></pre>
+
+            <p>
+                Arguments evaluate left to right.
+            </p>
+
+            <p>
+                Conceptually, Sec performs:
+            </p>
+
+            <ol>
+                <li>resolve the callable;</li>
+                <li>evaluate arguments left to right;</li>
+                <li>validate conversions, borrows and ownership-transfer requirements;</li>
+                <li>reserve reusable sources prepared for transfer;</li>
+                <li>if a later argument fails, cancel the outer call's pending reservations;</li>
+                <li>once all arguments are ready, commit the transfers exactly once;</li>
+                <li>enter the callee.</li>
+            </ol>
+
+            <p>
+                If <code>LoadConfiguration()</code> fails before <code>Use</code> begins,
+                the outer call has not taken ownership of <code>resource</code>.
+            </p>
+
+            <h3>Pending transfer blocks overlapping use</h3>
+
+            <p>
+                A reusable Place prepared for transfer cannot be reused by a later overlapping sibling
+                argument while the outer call is being prepared.
+            </p>
+
+            <p>This can be valid when fields are proven disjoint:</p>
+
+            <pre><code>Use(
+    &lt;-package.Payload,
+    Inspect(package.Header),
+)</code></pre>
+
+            <p>But overlapping whole-aggregate use is invalid:</p>
+
+            <pre><code>Use(
+    &lt;-package.Payload,
+    Inspect(package),
+)</code></pre>
+
+            <p>
+                A successful ownership transfer completed inside a nested argument expression is an
+                already-completed effect and is not rolled back merely because a later outer argument fails.
+            </p>
+        </section>
+
+        <section id="payloads">
+            <h2>Owning Payloads</h2>
+
+            <p>
+                Struct fields, union variants, <code>Option</code> and <code>Result</code> may own
+                values stored in their payloads.
+            </p>
+
+            <p>
+                A reusable source that transfers ownership into such a payload uses visible consumption:
+            </p>
+
+            <pre><code>let optional := Some(&lt;-resource)
+
+let result := Ok(&lt;-buffer)
+
+let message := Message {
+    Payload: &lt;-payload,
+}</code></pre>
+
+            <p>
+                Fresh temporaries can flow directly into their new owner:
+            </p>
+
+            <pre><code>let optional := Some(CreateResource())</code></pre>
+
+            <p>
+                Construction never infers a destructive transfer solely because the payload type
+                happens to be non-copyable.
+            </p>
+        </section>
+
+        <section id="returns">
+            <h2>Return Ownership</h2>
+
+            <p>
+                A non-reference function result becomes owned by the caller.
+            </p>
+
+            <p>
+                Returning an owned local is therefore an intrinsically terminal transfer:
+            </p>
+
+            <pre><code>fn Create() Resource {
+    let resource := OpenResource()
+    return resource
+}</code></pre>
+
+            <p>
+                The return boundary does not require the caller-side move notation used for
+                continuing reusable-source transfers.
+            </p>
+
+            <p>
+                The same terminal ownership context can flow through structural return construction:
+            </p>
+
+            <pre><code>return Some(resource)
+
+return Response {
+    Body: resource,
+}
+
+return Ok(resource)</code></pre>
+
+            <p>
+                This exception belongs to the terminal return boundary.
+                It does not turn ordinary calls, assignments or non-terminal payload construction
+                into implicit destructive moves.
+            </p>
+
+            <p>
+                A borrowed Place still does not grant permission to remove a move-only owned value
+                from borrowed storage merely because the expression appears in a return statement.
+            </p>
+        </section>
+
+        <section id="partial-moves">
+            <h2>Partial Ownership of Aggregates</h2>
+
+            <p>
+                Sec tracks independently owned sub-Places where the relevant type and storage rules
+                permit independent ownership.
+            </p>
+
+            <pre><code>type Package struct {
+    Header: Header,
+    Payload: Buffer,
+}
+
+let package := LoadPackage()
+let payload :&lt;- package.Payload</code></pre>
+
+            <p>
+                The transfer changes only the ownership state of <code>package.Payload</code>.
+            </p>
+
+            <pre><code>package.Payload    unavailable
+package.Header     available
+package            partially available</code></pre>
+
+            <p>
+                This makes partial ownership useful without pretending that the complete aggregate
+                remains an ordinary intact value.
+            </p>
+        </section>
+
+        <section id="whole-vs-subplace">
+            <h2>Whole-Value Use vs Sub-Place Use</h2>
+
+            <div class="rule">
+                <strong>Rule:</strong> Whole-value operations require the complete value to be
+                available. Sub-Place operations require only the addressed sub-Place to be available.
+            </div>
+
+            <p>After moving <code>package.Payload</code>:</p>
+
+            <pre><code>Use(package.Header)    // may be valid
+Use(package)           // invalid while package is partial</code></pre>
+
+            <p>
+                This rule applies recursively to nested ownership where independent tracking is legal.
+            </p>
+        </section>
+
+        <section id="immutable-partial">
+            <h2>Immutable Aggregates May Be Partially Consumed</h2>
+
+            <p>
+                Immutability does not freeze ownership responsibility in place.
+            </p>
+
+            <pre><code>let package := LoadPackage()
+let payload :&lt;- package.Payload</code></pre>
+
+            <p>
+                This may be valid even though <code>package</code> is immutable.
+            </p>
+
+            <p>
+                What immutability prevents is later ordinary repair:
+            </p>
+
+            <pre><code>package.Payload = CreateBuffer()    // invalid</code></pre>
+
+            <p>
+                The remaining owned fields continue to be the responsibility of
+                <code>package</code>.
+            </p>
+        </section>
+
+        <section id="repair">
+            <h2>Mutable Aggregates Can Repair Partial Ownership</h2>
+
+            <pre><code>let mut package := LoadPackage()
+let payload :&lt;- package.Payload
+
+package.Payload = CreateBuffer()</code></pre>
+
+            <p>
+                The assignment reinitializes the unavailable field.
+            </p>
+
+            <p>After successful reinitialization:</p>
+
+            <pre><code>package.Payload    available</code></pre>
+
+            <p>
+                If every required sub-Place is again available, the complete
+                <code>package</code> becomes available again.
+            </p>
+        </section>
+
+        <section id="custom-free">
+            <h2>Types with Custom <code>free</code> Cannot Be Partially Moved in Sec 0.1</h2>
+
+            <p>
+                A custom destructor may rely on invariants over the complete valid instance.
+                Sec 0.1 therefore forbids dismantling such a value through partial moves.
+            </p>
+
+            <pre><code>type ResourcePair struct {
+    First: Resource,
+    Second: Resource,
+}
+
+impl ResourcePair {
+    free {
+        ...
+    }
+}</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>let first :&lt;- pair.First</code></pre>
+
+            <p>
+                The compiler must not silently replace the type's whole-value cleanup contract with
+                ad-hoc field cleanup after partially dismantling the instance.
+            </p>
+        </section>
+
+        <section id="control-flow">
+            <h2>Ownership Is Path-Sensitive</h2>
+
+            <p>
+                Sec merges ownership facts at control-flow joins.
+                Only paths that actually continue to the join participate.
+            </p>
+
+            <p>If every continuing path agrees:</p>
+
+            <pre><code>all Available   -&gt; Available
+all Unavailable -&gt; Unavailable</code></pre>
+
+            <p>
+                If continuing paths disagree, the result becomes conditionally available.
+            </p>
+
+            <p>A terminating moved path does not poison the continuation:</p>
+
+            <pre><code>let package := LoadPackage()
+
+if condition {
+    Consume(&lt;-package.Payload)
+    return
+}
+
+Use(package)</code></pre>
+
+            <p>
+                The path that consumed <code>Payload</code> never reaches <code>Use(package)</code>.
+                The continuing path still has the complete package.
+            </p>
+        </section>
+
+        <section id="availability-tests">
+            <h2><code>is available</code> and <code>is not available</code></h2>
+
+            <p>
+                Sec provides ownership-state tests:
+            </p>
+
+            <pre><code>place is available
+place is not available</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>if package.Payload is available {
+    Use(package.Payload)
+}</code></pre>
+
+            <p>
+                The true branch refines the exact tested Place to available unless another operation
+                changes its ownership state.
+            </p>
+
+            <p>Negative form:</p>
+
+            <pre><code>if package.Payload is not available {
+    RecoverWithoutPayload()
+}</code></pre>
+
+            <p>
+                These tests answer whether the exact tested Place contains a complete currently
+                owned value usable as an ordinary value on that path.
+            </p>
+
+            <h3>They are not null or Option tests</h3>
+
+            <p><code>is available</code> does not ask:</p>
+
+            <ul>
+                <li>whether an <code>Option</code> is <code>Some</code>;</li>
+                <li>whether a raw pointer is null;</li>
+                <li>whether a reference generation is current;</li>
+                <li>whether a borrow currently permits access;</li>
+                <li>whether a value's own data represents an empty state.</li>
+            </ul>
+
+            <h3>Whole aggregate availability</h3>
+
+            <p>
+                A partially available aggregate is not available as a whole.
+            </p>
+
+            <pre><code>package is available</code></pre>
+
+            <p>
+                is false when <code>package.Payload</code> has been moved even if
+                <code>package.Header</code> remains available.
+            </p>
+
+            <p>
+                Testing <code>package.Header is available</code> observes that exact sub-Place instead.
+            </p>
+        </section>
+
+        <section id="static-resolution">
+            <h2>Availability Tests Are Resolved Statically When Possible</h2>
+
+            <p>
+                The compiler must not emit runtime ownership-state machinery when control-flow facts
+                already prove the answer.
+            </p>
+
+            <p>
+                If an availability test is statically known, normal constant/unreachable control-flow
+                behavior applies.
+            </p>
+
+            <p>
+                This keeps ownership semantics strong without turning every owned value into a
+                runtime-tagged object.
+            </p>
+        </section>
+
+        <section id="runtime-state">
+            <h2>Conditional Ownership May Require Runtime State</h2>
+
+            <p>
+                Some genuinely path-dependent ownership programs cannot be implemented correctly
+                from static facts alone at every later decision point.
+            </p>
+
+            <p>
+                In such cases an implementation may use local bookkeeping such as:
+            </p>
+
+            <pre><code>existing control-flow state
+SSA state
+hidden local ownership/drop flag
+equivalent compiler-owned representation</code></pre>
+
+            <p>
+                This state is an implementation detail.
+            </p>
+
+            <p>It must not:</p>
+
+            <ul>
+                <li>change the public source type;</li>
+                <li>turn <code>T</code> into <code>Option[T]</code>;</li>
+                <li>be interpreted as nullable storage;</li>
+                <li>make ordinary references generational merely for ownership tracking;</li>
+                <li>change public ABI layout merely because one function needs local ownership bookkeeping.</li>
+            </ul>
+        </section>
+
+        <section id="static-policy">
+            <h2>Targets May Require Fully Static Ownership Decisions</h2>
+
+            <p>
+                Sec supports environments where hidden dynamic ownership bookkeeping is unacceptable,
+                such as some bare-metal and real-time targets.
+            </p>
+
+            <p>
+                A strict target/project policy may reject code only when correct ownership semantics
+                genuinely require forbidden runtime state.
+            </p>
+
+            <p>
+                Merely producing a conditionally available state is not automatically enough to reject
+                the program if every later ownership-sensitive decision can still be resolved statically.
+            </p>
+
+            <p>
+                When explicit convergence can remove the requirement, diagnostics should suggest it.
+            </p>
+        </section>
+
+        <section id="discard">
+            <h2><code>discard</code> Converges Ownership</h2>
+
+            <p>
+                <code>discard place</code> means:
+            </p>
+
+            <blockquote>
+                After this statement, the programmer intentionally owns no value in this Place.
+            </blockquote>
+
+            <p>For an available discardable Place:</p>
+
+            <pre><code>discard resource</code></pre>
+
+            <p>
+                performs any required destruction and leaves the Place unavailable.
+            </p>
+
+            <p>
+                Discarding an already unavailable Place is a valid no-op with respect to destruction.
+            </p>
+
+            <p>
+                Discarding a conditionally available Place destroys the value only on paths where the
+                value is still owned and converges every outgoing path to unavailable.
+            </p>
+
+            <pre><code>let mut package := LoadPackage()
+
+if condition {
+    Consume(&lt;-package.Payload)
+}
+
+discard package.Payload
+package.Payload = CreateBuffer()</code></pre>
+
+            <p>
+                After <code>discard</code>, the field is definitely unavailable.
+                The following assignment is therefore reinitialization.
+            </p>
+
+            <p>
+                <code>discard</code> does not bypass a type's non-discardable lifecycle obligations.
+            </p>
+        </section>
+
+        <section id="reinitialization">
+            <h2>Assignment to an Unavailable Mutable Place Is Reinitialization</h2>
+
+            <pre><code>let mut resource := OpenResource()
+Consume(&lt;-resource)
+
+resource = OpenResource()</code></pre>
+
+            <p>
+                No old value remains in <code>resource</code> to destroy.
+            </p>
+
+            <p>
+                After successful initialization, <code>resource</code> becomes available again and
+                takes responsibility for the new value.
+            </p>
+        </section>
+
+        <section id="replacement">
+            <h2>Assignment to an Available Mutable Place Is Replacement</h2>
+
+            <pre><code>let mut buffer := CreateBuffer()
+buffer = CreateBuffer()</code></pre>
+
+            <p>
+                The existing destination value is ended according to ordinary destruction rules
+                before the new value becomes the destination's owned value.
+            </p>
+
+            <p>
+                Hosted Sec code does not require an explicit <code>discard</code> before normal replacement.
+            </p>
+
+            <p>
+                The complete incoming operation must be semantically valid before destructive
+                commitment to the old destination occurs.
+            </p>
+
+            <p>
+                A conditionally available mutable Place may also be repaired by assignment.
+                The implementation destroys an old value only on paths where one is still owned,
+                then installs the new value and converges the Place to available.
+            </p>
+
+            <p>
+                A strict static-ownership target may instead require explicit
+                <code>discard</code> convergence before such replacement.
+            </p>
+        </section>
+
+        <section id="self">
+            <h2>Ownership of <code>self</code> in Methods</h2>
+
+            <p>
+                Ordinary instance methods do not have a source-language receiver mode that consumes
+                the complete <code>self</code>.
+            </p>
+
+            <p>
+                Ending the entire instance lifetime belongs to lifecycle destruction, including a
+                custom <code>free</code> where one exists.
+            </p>
+
+            <p>
+                A method may consume or discard owned members when receiver authority and partial
+                ownership rules permit it:
+            </p>
+
+            <pre><code>impl Package {
+    fn ReleasePayload() void {
+        Destroy(&lt;-self.Payload)
+    }
+}</code></pre>
+
+            <p>
+                The compiler derives the mutable/exclusive receiver authority required by such a body.
+            </p>
+
+            <p>
+                Compiler-known terminal lifecycle operations may have special ownership semantics
+                when their dedicated rulebook defines them. They do not create a general facility
+                for user-defined whole-<code>self</code>-consuming methods.
+            </p>
+        </section>
+
+        <section id="borrows">
+            <h2>Borrowing Does Not Transfer Ownership</h2>
+
+            <p>
+                A reference borrows access to an owned value:
+            </p>
+
+            <pre><code>let view := ref resource
+let writable := ref mut value</code></pre>
+
+            <p>
+                Neither reference becomes owner of the referent.
+            </p>
+
+            <p>
+                Ownership transfer or discard requires authority to remove the value from the source
+                Place and is rejected while an incompatible live borrow overlaps that Place.
+            </p>
+
+            <p>
+                A <code>ref mut T</code> holder may itself have move-only value semantics while
+                remaining merely borrowed authority over <code>T</code>.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction Responsibility Follows Current Ownership</h2>
+
+            <p>
+                An unavailable Place is never destroyed again by its former owner.
+            </p>
+
+            <pre><code>let package := LoadPackage()
+Consume(&lt;-package.Payload)</code></pre>
+
+            <p>At scope exit:</p>
+
+            <pre><code>package.Payload    not destroyed by package
+package.Header     destroyed if required by Header</code></pre>
+
+            <p>
+                A partially available aggregate destroys exactly the still-owned available sub-Places
+                where field-wise destruction is valid.
+            </p>
+
+            <p>
+                This is one of the fundamental protections against double destruction.
+            </p>
+
+            <p>
+                Detailed destruction order, trivial/non-trivial destruction and custom
+                <code>free</code> behavior are covered in the Destruction chapter.
+            </p>
+        </section>
+
+        <section id="error-flow">
+            <h2><code>try</code>, <code>match</code> and Ownership</h2>
+
+            <p>
+                Error handling and pattern matching use the ordinary ownership model.
+                They do not introduce a second move system.
+            </p>
+
+            <p>
+                By-value payload bindings follow normal copy/move rules.
+                <code>ref</code> and <code>ref mut</code> payload bindings borrow.
+            </p>
+
+            <p>
+                A guarded prospective move does not commit merely because the structural pattern matched.
+                Ownership commits only when the guard succeeds and the arm is actually selected.
+            </p>
+
+            <p>
+                After a <code>try</code> or <code>match</code>, only continuing paths participate in
+                the ownership-state merge.
+            </p>
+
+            <p>
+                Propagating error paths that leave the function do not make a value conditionally
+                unavailable in code they never reach.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>Hardware, Fixed-Address and Foreign Storage</h2>
+
+            <p>
+                Not every storage-backed Place is an ordinary movable owner.
+            </p>
+
+            <p>
+                MMIO registers, volatile fixed-address storage and foreign storage follow their
+                dedicated access and ownership contracts.
+            </p>
+
+            <p>
+                They are not movable merely because they can be represented as a Place.
+            </p>
+
+            <p>
+                A compiler-known hardware mapping may itself be an owning move-only resource:
+                moving the mapping transfers responsibility for the mapping lifetime, while typed
+                register views borrow that owner.
+            </p>
+
+            <p>
+                FFI ownership may cross the language boundary only through explicit foreign contracts
+                or wrappers that define retention and ownership behavior.
+            </p>
+        </section>
+
+        <section id="raw-pointers">
+            <h2>Raw Pointers Do Not Imply Ownership</h2>
+
+            <pre><code>RawPtr[T]</code></pre>
+
+            <p>
+                is a raw address value.
+            </p>
+
+            <p>Possessing one does not by itself mean that code owns:</p>
+
+            <ul>
+                <li>the pointed-to object;</li>
+                <li>the allocation;</li>
+                <li>a hardware mapping;</li>
+                <li>the right to destroy the object;</li>
+                <li>the right to deallocate the storage;</li>
+                <li>privilege or security-domain authority.</li>
+            </ul>
+
+            <p>
+                Ownership must come from an explicit semantic contract, never from the mere existence
+                of an address.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>Ownership Does Not Require a Runtime Ownership Table</h2>
+
+            <p>
+                Sec's ownership model is primarily a compiler semantic model.
+            </p>
+
+            <p>
+                Most ownership facts may disappear completely after semantic analysis and optimization.
+            </p>
+
+            <p>
+                Runtime state is needed only when the actual source program leaves a dynamic ownership
+                decision that later behavior must observe.
+            </p>
+
+            <p>
+                Even then, the implementation is not required to use one universal representation.
+                It may use control flow, SSA facts, a local flag or another equivalent mechanism.
+            </p>
+
+            <p>
+                Ownership bookkeeping is never permission to alter public source type identity or
+                ABI layout silently.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Ownership Diagnostics</h2>
+
+            <p>
+                Ownership errors should be explained in programmer terms.
+            </p>
+
+            <p>A useful diagnostic identifies:</p>
+
+            <ol>
+                <li>which value or Place cannot be used;</li>
+                <li>which earlier operation changed its ownership state;</li>
+                <li>why the requested operation is invalid;</li>
+                <li>what correction is likely appropriate.</li>
+            </ol>
+
+            <h3>Missing visible transfer</h3>
+
+            <pre><code>`Consume` takes ownership of `resource`.
+
+Passing this value will make `resource` unavailable, so the ownership transfer
+must be written explicitly.
+
+help: write `Consume(&lt;-resource)`</code></pre>
+
+            <h3>Use after transfer</h3>
+
+            <pre><code>`resource` is no longer available here.
+
+ownership was transferred earlier by:
+    Consume(&lt;-resource)
+
+help: use the new owner instead
+help: borrow the value if ownership transfer was not intended</code></pre>
+
+            <h3>Conditional availability</h3>
+
+            <pre><code>`package.Payload` may no longer be available here.
+
+it was consumed on one possible execution path
+
+help: test `package.Payload is available`
+help: restructure the control flow so availability is known statically</code></pre>
+
+            <h3>Whole aggregate after partial transfer</h3>
+
+            <pre><code>`package` is only partially available.
+
+`package.Payload` no longer contains an owned value.
+`package.Header` is still available.
+
+help: use an available field directly
+help: reinitialize the missing field when the aggregate is mutable</code></pre>
+
+            <p>
+                LSP hover and analysis may expose whether a Place is available, unavailable,
+                partial or conditional; the reason for unavailability; and whether a call argument
+                is copied, borrowed or consumed.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Think of ownership as lifetime responsibility, not as an address or allocation strategy.</li>
+                <li>Use borrowing when a callee only needs temporary access.</li>
+                <li>Make destructive transfer from reusable values visible.</li>
+                <li>Do not assume immutability prevents ownership transfer.</li>
+                <li>Remember that an immutable partially consumed aggregate cannot be repaired by assignment.</li>
+                <li>Use the still-available sub-Places of a partially available aggregate instead of treating the whole value as intact.</li>
+                <li>Use <code>is available</code> only for ownership-state refinement.</li>
+                <li>Do not use availability tests as substitutes for <code>Option</code>, null checks or reference validity.</li>
+                <li>Use <code>discard</code> when intentional ownership convergence makes later control flow clearer.</li>
+                <li>Prefer control flow that lets the compiler resolve ownership statically.</li>
+                <li>Do not infer ownership from <code>RawPtr[T]</code>, MMIO addresses or foreign pointers.</li>
+                <li>Let destruction follow the owner that actually remains responsible for each value.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Ownership defines which Place is responsible for an owned value's lifetime.</li>
+                <li>Every ordinary tracked owned value has one current owner unless an explicit contract defines shared ownership.</li>
+                <li>Ownership is semantic and independent of physical address or backend storage choice.</li>
+                <li>Ownership transfer does not necessarily move bytes.</li>
+                <li>Mutability, ownership availability, borrow authority and reference validity are separate dimensions.</li>
+                <li>Ownership availability states are <code>Uninitialized</code>, <code>Available</code>, <code>PartiallyAvailable</code>, <code>Unavailable</code> and <code>ConditionallyAvailable</code>.</li>
+                <li>An uninitialized Place contains no constructed value.</li>
+                <li>An available Place currently owns a complete usable value, subject to other language rules.</li>
+                <li>A partially available aggregate has at least one unavailable owned sub-Place and at least one available one.</li>
+                <li>An unavailable Place no longer contains a value owned by that Place.</li>
+                <li>A conditionally available Place has different ownership states on continuing control-flow paths.</li>
+                <li>Unavailability reason is tracked separately from availability state.</li>
+                <li>Initial unavailability reasons include moved, discarded and detached.</li>
+                <li>An immutable value may still be explicitly consumed.</li>
+                <li>An immutable aggregate may be partially consumed when partial ownership is legal.</li>
+                <li>Immutability prevents ordinary reinitialization or replacement after such consumption.</li>
+                <li>A mutable aggregate may reinitialize a moved field and restore whole-value availability.</li>
+                <li>Destructive transfer from a reusable source must be visible in source code.</li>
+                <li>Ordinary source syntax must never silently consume a reusable move-only value.</li>
+                <li>Fresh temporaries do not need redundant move syntax when forwarded directly to their first owner.</li>
+                <li>Ordinary by-value parameters own their parameter value inside the callee.</li>
+                <li>An explicit <code>-&gt;</code> parameter declares consuming API semantics.</li>
+                <li>A reusable caller-owned source passed to a consuming parameter uses visible <code>&lt;-</code> transfer.</li>
+                <li>Call ownership transfer commits only when all outer call arguments are ready and call entry can occur.</li>
+                <li>A pending transfer reserves its source against later overlapping sibling-argument use.</li>
+                <li>A later outer-argument failure cancels the outer call's uncommitted transfer reservation.</li>
+                <li>A successful nested ownership transfer is not rolled back by a later outer-call failure.</li>
+                <li>Struct, union, <code>Option</code> and <code>Result</code> payloads may become owners of transferred values.</li>
+                <li>The return boundary intrinsically transfers an owned result to the caller.</li>
+                <li>Terminal structural return construction may forward ownership without repeating ordinary continuing-flow move syntax.</li>
+                <li>Return context does not grant ownership over borrowed, static, volatile, MMIO or otherwise restricted storage.</li>
+                <li>Partial ownership is tracked by independently owned sub-Place where the type and storage model permit it.</li>
+                <li>Whole-value operations require complete availability.</li>
+                <li>Sub-Place operations require only the selected sub-Place to be available.</li>
+                <li>Types with custom <code>free</code> do not permit partial moves in Sec 0.1.</li>
+                <li>Ownership analysis is path-sensitive and merges only continuing paths.</li>
+                <li>A terminating path that consumed a value does not poison a continuation it never reaches.</li>
+                <li><code>place is available</code> tests ownership availability of the exact Place.</li>
+                <li><code>place is not available</code> is the logical negation of whole availability, not necessarily proof that every sub-Place is unavailable.</li>
+                <li>A partially available aggregate tests false as a whole even when some fields remain available.</li>
+                <li>Availability tests are not <code>Option</code>, null, reference-generation or borrow checks.</li>
+                <li>The compiler resolves ownership state statically whenever possible.</li>
+                <li>Genuinely dynamic ownership decisions may use local hidden implementation state.</li>
+                <li>Ownership bookkeeping must not change public source types or ABI layout.</li>
+                <li>Strict targets may reject only code that genuinely requires forbidden dynamic ownership bookkeeping.</li>
+                <li><code>discard place</code> intentionally converges ownership to unavailable.</li>
+                <li>Discarding an available discardable value performs required destruction.</li>
+                <li>Discarding an already unavailable Place is semantically harmless.</li>
+                <li>Discarding a conditionally available Place destroys only on paths that still own the value and converges all paths.</li>
+                <li>Assignment to an unavailable mutable Place is reinitialization.</li>
+                <li>Assignment to an available mutable Place is replacement.</li>
+                <li>Replacement validates the incoming operation before destructive commitment to the old value.</li>
+                <li>Ordinary instance methods cannot consume the complete <code>self</code>.</li>
+                <li>Methods may consume owned members when receiver authority and partial-ownership rules permit it.</li>
+                <li>Borrowing does not transfer ownership.</li>
+                <li>An incompatible live borrow blocks ownership transfer or discard.</li>
+                <li>Destruction responsibility follows current ownership.</li>
+                <li>An unavailable Place is never destroyed again by its former owner.</li>
+                <li>Partial aggregate destruction cleans only the still-owned sub-Places where field-wise destruction is valid.</li>
+                <li><code>try</code> and <code>match</code> reuse the ordinary ownership model.</li>
+                <li>A guarded move commits only when the guard succeeds and its arm is selected.</li>
+                <li>MMIO, fixed-address and foreign storage are not automatically ordinary movable owners.</li>
+                <li><code>RawPtr[T]</code> does not imply ownership or deallocation authority.</li>
+                <li>Ownership semantics do not require a universal runtime ownership table.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="23-references.html">Previous: References</a>
-            <a href="25-borrowing.html">Next: Borrowing</a>
+            <a href="23-references.html">Previous: References</a>
+            <a href="25-borrowing.html">Next: Copying and Moving</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-11</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

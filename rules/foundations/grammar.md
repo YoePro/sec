@@ -497,8 +497,8 @@ The current implementation still differs in several places:
   and Sema validates fixed matrix/matrix and matrix/vector shapes, while
   lowering and parser-aware formatter/LSP classification remain incomplete;
 - `++` and `--` are accepted by the language rulebook as formatter-normalized
-  statement aliases, but the current lexer and parser do not yet tokenize or
-  parse them;
+  statement aliases and are implemented through lexer recognition, parser
+  normalization, compound-assignment Sema, and parser-aware formatting;
 - `in` and contextual `not in` have Sema behavior for ranges, fixed arrays,
   dynamic arrays, and slices, while
   array/slice membership lowering remains incomplete;
@@ -949,7 +949,9 @@ value++
 value--
 ```
 
-are not yet tokenized or parsed.
+are tokenized and parsed as statement-only aliases for `value += 1` and
+`value -= 1`. The AST retains the source alias for formatter and tooling use;
+Sema applies the existing compound-assignment rules.
 
 ## General conditional expression
 
@@ -4712,7 +4714,7 @@ The formatter must not infer language semantics.
 | empty list literal | Tokens available | Parsed as typed braces | Not resolved as list literal | Not implemented |
 | contextual `x` | Identifier | Implemented as contextual infix | Fixed matrix/matrix and matrix/vector validation | Partly implemented; lowering and tooling pending |
 | unary `+` | Implemented | Implemented | Implemented for numeric operands and constants | Implemented; backend paths covered |
-| `++`/`--` | Not implemented | Not implemented | Not implemented | Not implemented |
+| `++`/`--` | Implemented | Implemented as statement-only aliases | Reuses compound assignment | Implemented through frontend normalization; no distinct lowering operation |
 | general attributes | `@` available | `@noCopy` AST path plus `@address` and `@link_name` special cases | `@noCopy` enforced; other paths remain specialized | Partly implemented |
 | `?` | Reserved | No canonical form | None | Reserved |
 | `free` | Reserved | Explicit invalid node | Explicit error | Not implemented |

@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 
@@ -975,6 +976,42 @@ fn Test() void {
 	assertSemaErrors(t, errors, []string{
 		"cannot create mutable reference to values[0] while it is already borrowed at 9:19, previous declaration at 7:15",
 	})
+}
+
+func TestWideConstantIndexPlacesRemainDistinct(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/place_wide_constant_indexes.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, string(source)), nil)
+
+	left := Place{Root: "values", Projections: []PlaceProjection{{
+		Kind: PlaceIndex, ConstantIndex: mustTestBigInt(t, "9223372036854775808"),
+	}}}
+	right := Place{Root: "values", Projections: []PlaceProjection{{
+		Kind: PlaceIndex, ConstantIndex: mustTestBigInt(t, "9223372036854775809"),
+	}}}
+	if PlacesOverlap(left, right) {
+		t.Fatal("distinct above-int64 constant element Places must be disjoint")
+	}
+	if got := left.String(); got != "values[9223372036854775808]" {
+		t.Fatalf("wide Place string = %q", got)
+	}
+
+	cloned := clonePlace(left)
+	cloned.Projections[0].ConstantIndex.SetInt64(0)
+	if got := left.Projections[0].ConstantIndex.String(); got != "9223372036854775808" {
+		t.Fatalf("clone mutated analyzer-owned constant index: %s", got)
+	}
+}
+
+func mustTestBigInt(t *testing.T, value string) *big.Int {
+	t.Helper()
+	result, ok := new(big.Int).SetString(value, 10)
+	if !ok {
+		t.Fatalf("invalid test integer %q", value)
+	}
+	return result
 }
 
 func TestMovedMutableReferenceKeepsCanonicalProvenance(t *testing.T) {
@@ -2197,8 +2234,8 @@ func TestStaticSlicePlaceOverlap(t *testing.T) {
 	overlap := Place{Root: "values", Projections: []PlaceProjection{{
 		Kind: PlaceSlice, SliceStart: 1, SliceEnd: 3, SliceStartKnown: true, SliceEndKnown: true,
 	}}}
-	inside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: 1}}}
-	outside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: 4}}}
+	inside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: big.NewInt(1)}}}
+	outside := Place{Root: "values", Projections: []PlaceProjection{{Kind: PlaceIndex, ConstantIndex: big.NewInt(4)}}}
 	empty := Place{Root: "values", Projections: []PlaceProjection{{
 		Kind: PlaceSlice, SliceStart: 2, SliceEnd: 2, SliceStartKnown: true, SliceEndKnown: true,
 	}}}

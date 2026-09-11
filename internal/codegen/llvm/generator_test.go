@@ -414,7 +414,7 @@ func TestGenerateUnsignedDivisionComparisonAndMembership(t *testing.T) {
 module main
 fn Check(left: uint, right: uint) bool {
 	let quotient := left / right
-	return quotient < right && left in 1u..<right
+	return quotient < right && left in 1u..<right && left not in right..<100u
 }
 fn main() int { return 0 }
 `
@@ -423,7 +423,7 @@ fn main() int { return 0 }
 	if err != nil {
 		t.Fatalf("Generate returned error: %v", err)
 	}
-	for _, part := range []string{"udiv i64", "icmp ult i64", "icmp uge i64"} {
+	for _, part := range []string{"udiv i64", "icmp ult i64", "icmp uge i64", "xor i1"} {
 		if !strings.Contains(got, part) {
 			t.Fatalf("generated LLVM IR missing %q.\nIR:\n%s", part, got)
 		}

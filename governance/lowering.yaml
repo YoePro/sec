@@ -141,8 +141,9 @@ integrations:
     name: Safe Place and Direct Reference Semantic Core
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
-    implementation_phase: reproducible-baseline-and-test-tooling
+    implementation_phase: canonical-place-model-migration
     integrated: "2026-09-10"
+    revised: "2026-09-11"
     baseline:
       repository_head: 2c67853ee31358a9a8a486aa11fba57c6b6a7270
       tree: 225922f80c0537e8c2b21e3388d6a068cbb032ee
@@ -181,20 +182,31 @@ integrations:
       - internal/lowering/secmlir/emitter_test.go
       - cmd/compiler/emit_sec_mlir_package10_test.go
       - cmd/compiler/emit_sec_mlir_package11_test.go
+      - internal/sema/place.go
+      - internal/sema/analyzer.go
+      - internal/sema/parameter_usage.go
     tests:
       - internal/testsupport/sec_mlir_test.go
       - internal/lowering/secmlir/emitter_test.go
       - cmd/compiler/emit_sec_mlir_package10_test.go
       - cmd/compiler/emit_sec_mlir_package11_test.go
+      - internal/sema/copy_move_test.go
+      - testdata/sema/place_wide_constant_indexes.sec
     implemented:
       - clean persistent detached baseline with exact commit, tree, primary-worktree exclusion, and toolchain record
       - repository-shared SEC_MLIR_BIN resolver that rejects relative directories
       - optional and required sec-mlir-opt lookup usable from every repository-internal Go test package
       - working-directory-independent resolution verified from a nested test directory
       - Package 10/11 compiler tests and Package 13/14 lowering tests consume the shared resolver
+      - canonical Place constant-index projections retain arbitrary-precision big.Int values without host-width truncation
+      - Place resolution and interprocedural parameter projections preserve exact constants above int64
+      - Place diagnostic printing, identity and overlap comparisons use exact numeric values
+      - static-slice-to-element Place composition uses arbitrary-precision addition without an int64 index adapter
+      - Place and projection clone boundaries defensively copy mutable big.Int storage
+      - distinct mutable element borrows above MaxInt64 are proven disjoint by source-level Sema coverage
     remaining:
       - synchronize the canonical reference, runtime-check, panic, Semantic IR, dialect, and lowering rulebooks
-      - establish canonical stable Place identities, projections, relationships, and arbitrary-precision indexes
+      - establish canonical stable Place identities, normalized projections, and structured relationships
       - publish immutable compiler-resolved Place, reference-creation, and reference-use plans
       - implement verified Semantic IR Place and direct-reference operations without physical representation choices
       - lower source reference behavior solely from resolved plans
@@ -213,3 +225,7 @@ integrations:
         result: passed with the real sec-mlir-opt from the recorded absolute tool directory
       - command: go vet ./internal/testsupport ./internal/lowering/secmlir ./cmd/compiler
         result: passed
+      - command: go test ./internal/sema -run 'Test(WideConstantIndexPlacesRemainDistinct|ConstantIndexReferenceAliasKeepsIndexProvenance|StaticSlicePlaceOverlap)' -count=1
+        result: passed
+      - command: go run ./cmd/compiler sema testdata/sema/place_wide_constant_indexes.sec
+        result: passed with zero errors and zero warnings

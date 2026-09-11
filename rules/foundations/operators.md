@@ -510,7 +510,7 @@ The following table is ordered from highest precedence to lowest precedence.
 | 4 | Multiplicative | `*`, `/`, `%`, contextual `x` | left |
 | 5 | Additive | `+`, `-` | left |
 | 6 | Shift | `<<`, `>>` | left |
-| 7 | Ordered comparison and membership | `<`, `<=`, `>`, `>=`, `in` | non-chainable |
+| 7 | Ordered comparison and membership | `<`, `<=`, `>`, `>=`, `in`, `not in` | non-chainable |
 | 8 | Equality | `==`, `!=` | non-chainable |
 | 9 | Bitwise AND | `&` | left |
 | 10 | Bitwise XOR | `^` | left |
@@ -2353,9 +2353,10 @@ unless a specialized canonical rule explicitly adds it.
 
 ---
 
-# Membership operator `in`
+# Membership operators `in` and `not in`
 
-`in` has two different grammar roles.
+`in` has two different grammar roles. The two-token spelling `not in` exists
+only in membership-expression position and is not iteration grammar.
 
 They must not be conflated.
 
@@ -2367,9 +2368,21 @@ Expression form:
 
 ```sec
 value in collection
+value not in collection
 ```
 
 returns `bool`.
+
+`value not in collection` is the logical complement of
+`value in collection`. It preserves the same operand evaluation order,
+single-evaluation guarantees, short-circuit search, type compatibility,
+ownership behavior, allocation behavior, and diagnostics. The membership
+result is negated only after the search has completed or short-circuited.
+
+`not in` is one compound contextual operator at the same precedence as `in`.
+The lexer may emit ordinary identifier `not` followed by keyword `in`; the
+parser must retain the canonical AST operator spelling `not in`. A standalone
+identifier named `not` remains legal outside this infix context.
 
 Sec 0.1 supports membership for:
 
@@ -2465,7 +2478,7 @@ The slice and references must remain valid during the operation.
 
 # Unsupported membership in Sec 0.1
 
-The `in` operator is not defined for:
+The `in` and `not in` operators are not defined for:
 
 ```text
 list
@@ -2513,6 +2526,7 @@ It:
 - does not perform a membership search.
 
 The parser distinguishes the forms by grammar context.
+`for value not in values` is not valid iteration syntax.
 
 ---
 

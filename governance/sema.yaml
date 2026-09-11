@@ -38,3 +38,61 @@ integrations:
         result: valid cases accepted; incompatible elements rejected
       - command: emit-ir testdata/sema/dynamic_membership_lowering_deferred.sec
         result: explicit unsupported array type uint[] error; no executable support claimed
+  - id: frontend.negated-membership
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-09-11"
+    summary: >-
+      Accepts contextual not in as the boolean complement of membership without
+      reserving not as a keyword. Parser, Sema and LSP share the canonical AST
+      operator, and the legacy direct range backends perform one membership
+      search followed by boolean negation.
+    rules:
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/foundations/operators.md
+    code:
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/ir/semantic/builder.go
+      - internal/codegen/llvm/expressions.go
+      - internal/codegen/mlir/generator.go
+      - cmd/lsp/main.go
+      - internal/lsp/features/semantic_tokens.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+      - cmd/lsp/main_test.go
+      - testdata/sema/in_not_in.sec
+      - testdata/lsp/contextual_membership_semantic_tokens.sec
+      - testdata/sema/resolved_contextual_operator_facts.sec
+    implemented:
+      - lexer continues to emit not as IDENT and in as the existing hard keyword
+      - parser recognizes the adjacent contextual token pair only in infix membership position
+      - canonical AST operator spelling is not in at the same precedence as in
+      - standalone identifiers named not remain legal outside the compound operator
+      - Sema applies the same collection, element compatibility, ownership and diagnostic rules as in
+      - LSP analysis accepts valid not-in expressions through the shared parser and Sema
+      - LSP semantic tokens classify parser-confirmed in and both not-in token segments as operators while iteration in and identifier not retain their ordinary roles
+      - compiler-owned ResolvedOperator facts preserve membership, negated-membership, and matrix-multiplication operand and result types without tooling re-analysis
+      - hover on either token segment of not in presents one full compound-operator range, resolved operand/result types, and canonical complement behavior
+      - legacy direct LLVM and MLIR range lowering negate the completed membership result
+      - fixed-array Semantic IR deferral recognizes in and not in consistently
+    remaining:
+      - maintained Semantic IR membership lowering for fixed arrays, dynamic arrays and slices
+      - executable backend coverage for negated array and slice membership after that lowering exists
+    verification:
+      - command: go test ./internal/parser ./internal/sema ./cmd/lsp ./internal/codegen/llvm ./internal/codegen/mlir
+        result: passed
+      - command: go run ./cmd/compiler parse testdata/sema/in_not_in.sec
+        result: passed without diagnostics
+      - command: go run ./cmd/compiler sema testdata/sema/in_not_in.sec
+        result: passed without diagnostics
+      - command: go test ./cmd/lsp -run TestSemanticTokensClassifyContextualMembershipOperators -count=1
+        result: passed; membership tokens are operators and equal spellings in iteration or identifier roles remain positionally distinct
+      - command: go test ./internal/sema ./cmd/lsp -run 'Test(SemanticFactsRetainResolvedContextualOperators|HoverUsesResolvedContextualOperatorFacts)' -count=1
+        result: passed; contextual operators expose compiler-owned facts and position-specific hover without affecting iteration or identifiers

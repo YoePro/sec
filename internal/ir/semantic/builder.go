@@ -2601,7 +2601,7 @@ func (fb *functionBuilder) package14DeferredArrayOperator(expr ast.Expression) (
 		if leftResolved && rightResolved && (leftArray || rightArray) {
 			return "fixed-array equality lowering", true
 		}
-	case "in":
+	case "in", "not in":
 		if rightResolved && rightArray {
 			return "fixed-array membership lowering", true
 		}

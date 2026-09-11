@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 
 	"sec/internal/ast"
@@ -23,13 +24,71 @@ const (
 type PlaceProjection struct {
 	Kind            PlaceProjectionKind
 	Name            string
-	ConstantIndex   int64
+	ConstantIndex   *big.Int
 	DynamicIndex    bool
 	SliceStart      int64
 	SliceEnd        int64
 	SliceStartKnown bool
 	SliceEndKnown   bool
 	Token           lexer.Token
+}
+
+// clonePlaceConstantIndex creates an independently owned exact integer so
+// copying Place facts never exposes analyzer-owned mutable big.Int storage.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+//   - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md — §4 "Constant index precision"
+func clonePlaceConstantIndex(index *big.Int) *big.Int {
+	if index == nil {
+		return nil
+	}
+	return new(big.Int).Set(index)
+}
+
+// clonePlaceProjection defensively copies arbitrary-precision projection data.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+func clonePlaceProjection(projection PlaceProjection) PlaceProjection {
+	projection.ConstantIndex = clonePlaceConstantIndex(projection.ConstantIndex)
+	return projection
+}
+
+// clonePlaceProjections returns independent immutable-by-convention Place
+// projection facts, including each exact constant index.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+func clonePlaceProjections(projections []PlaceProjection) []PlaceProjection {
+	cloned := make([]PlaceProjection, len(projections))
+	for index, projection := range projections {
+		cloned[index] = clonePlaceProjection(projection)
+	}
+	return cloned
+}
+
+// placeConstantIndexValue preserves the legacy zero value of PlaceProjection
+// as exact integer zero while all analyzed constant projections carry a
+// non-nil arbitrary-precision value.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+func placeConstantIndexValue(index *big.Int) *big.Int {
+	if index == nil {
+		return new(big.Int)
+	}
+	return index
+}
+
+// placeConstantIndexesEqual compares semantic integer values rather than
+// pointer identity and therefore remains exact beyond host integer widths.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+//   - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md — §5 "Place relationships"
+func placeConstantIndexesEqual(left, right *big.Int) bool {
+	return placeConstantIndexValue(left).Cmp(placeConstantIndexValue(right)) == 0
 }
 
 // Place identifies a reusable semantic storage path. It is frontend-only
@@ -61,6 +120,11 @@ type Place struct {
 	PartialMoveSafe bool
 }
 
+// String derives diagnostic presentation from the exact canonical Place path;
+// it never narrows a constant index to a host-sized integer.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §9 "Current place implementation debt" and §13 "Constant index representation"
 func (p Place) String() string {
 	var out strings.Builder
 	out.WriteString(p.Root)
@@ -73,7 +137,9 @@ func (p Place) String() string {
 			if projection.DynamicIndex {
 				out.WriteString("[*]")
 			} else {
-				fmt.Fprintf(&out, "[%d]", projection.ConstantIndex)
+				out.WriteByte('[')
+				out.WriteString(placeConstantIndexValue(projection.ConstantIndex).String())
+				out.WriteByte(']')
 			}
 		case PlaceSlice:
 			out.WriteByte('[')
@@ -98,6 +164,12 @@ func (p Place) String() string {
 	return out.String()
 }
 
+// PlacesOverlap conservatively compares legacy Place paths while retaining
+// exact arbitrary-precision constant-index disjointness.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+//   - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md — §5 "Place relationships"
 func PlacesOverlap(left, right Place) bool {
 	leftAlternatives := placeOriginAlternatives(left)
 	rightAlternatives := placeOriginAlternatives(right)
@@ -140,7 +212,7 @@ func PlacesOverlap(left, right Place) bool {
 			// otherwise, so properties conservatively overlap at their receiver.
 			return true
 		case PlaceIndex:
-			if !leftProjection.DynamicIndex && !rightProjection.DynamicIndex && leftProjection.ConstantIndex != rightProjection.ConstantIndex {
+			if !leftProjection.DynamicIndex && !rightProjection.DynamicIndex && !placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) {
 				return false
 			}
 		case PlaceSlice:
@@ -171,9 +243,9 @@ func placeOriginAlternatives(place Place) []Place {
 }
 
 func appendPlaceProjection(place Place, projection PlaceProjection) Place {
-	place.Projections = append(place.Projections, projection)
+	place.Projections = append(place.Projections, clonePlaceProjection(projection))
 	for index := range place.AlternativeOrigins {
-		place.AlternativeOrigins[index].Projections = append(place.AlternativeOrigins[index].Projections, projection)
+		place.AlternativeOrigins[index].Projections = append(place.AlternativeOrigins[index].Projections, clonePlaceProjection(projection))
 	}
 	return place
 }
@@ -206,8 +278,8 @@ func indexOutsideSlice(index, slice PlaceProjection) bool {
 	if index.DynamicIndex {
 		return false
 	}
-	return slice.SliceStartKnown && index.ConstantIndex < slice.SliceStart ||
-		slice.SliceEndKnown && index.ConstantIndex >= slice.SliceEnd
+	return slice.SliceStartKnown && placeConstantIndexValue(index.ConstantIndex).Cmp(big.NewInt(slice.SliceStart)) < 0 ||
+		slice.SliceEndKnown && placeConstantIndexValue(index.ConstantIndex).Cmp(big.NewInt(slice.SliceEnd)) >= 0
 }
 
 func unionPayloadPlace(subject Place, variant string, payloadType Type, token lexer.Token) Place {
@@ -220,6 +292,12 @@ func unionPayloadPlace(subject Place, variant string, payloadType Type, token le
 	return subject
 }
 
+// resolvePlace derives a canonical frontend storage path and retains exact
+// constant array indexes without host-width truncation.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §11 "Canonical Place" and §13 "Constant index representation"
+//   - rules/memory/references.md — §28(4) provenance/projection tests
 func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -291,8 +369,8 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 			return Place{}, false
 		}
 		projection := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expressionToken(expr.Index)}
-		if constant, ok := a.integerExpressionInt64(expr.Index); ok {
-			projection.ConstantIndex = constant
+		if constant, ok := a.integerConstantValue(expr.Index); ok {
+			projection.ConstantIndex = clonePlaceConstantIndex(constant)
 			projection.DynamicIndex = false
 		}
 		base.Projections = appendIndexProjection(base.Projections, projection)
@@ -360,7 +438,13 @@ func (a *Analyzer) slicePlaceProjection(expr *ast.SliceExpression, containerType
 	return projection
 }
 
+// appendIndexProjection composes a constant index through a legacy static
+// slice using arbitrary-precision arithmetic and no int64 index adapter.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
 func appendIndexProjection(projections []PlaceProjection, index PlaceProjection) []PlaceProjection {
+	index = clonePlaceProjection(index)
 	if len(projections) == 0 || index.DynamicIndex {
 		return append(projections, index)
 	}
@@ -368,14 +452,11 @@ func appendIndexProjection(projections []PlaceProjection, index PlaceProjection)
 	if last.Kind != PlaceSlice || !last.SliceStartKnown {
 		return append(projections, index)
 	}
-	if index.ConstantIndex < 0 || (last.SliceEndKnown && index.ConstantIndex >= last.SliceEnd-last.SliceStart) {
+	constant := placeConstantIndexValue(index.ConstantIndex)
+	if constant.Sign() < 0 || (last.SliceEndKnown && constant.Cmp(big.NewInt(last.SliceEnd-last.SliceStart)) >= 0) {
 		return append(projections, index)
 	}
-	absolute, ok := addInt64(index.ConstantIndex, last.SliceStart)
-	if !ok {
-		return append(projections, index)
-	}
-	index.ConstantIndex = absolute
+	index.ConstantIndex = new(big.Int).Add(constant, big.NewInt(last.SliceStart))
 	return append(projections[:len(projections)-1], index)
 }
 

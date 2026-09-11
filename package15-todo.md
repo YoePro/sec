@@ -174,9 +174,17 @@ nested working-directory change.
   `EpochDependencyID`, `AddressSpaceID`, `BorrowID`, and `LifetimeID` facts.
   Define ownership, allocation, cloning, deterministic printing, and invalid/
   absent state; none may be treated as numeric addresses or source names.
-- [ ] P15-12 — Replace `int64` constant place indexes with immutable,
+- [x] P15-12 — Replace `int64` constant place indexes with immutable,
   defensive-copy arbitrary-precision values. Keep any legacy `int64` display
   or backend adapter behind one checked representability helper only.
+
+Completed 2026-09-11: canonical frontend `PlaceProjection.ConstantIndex` now
+stores exact `big.Int` values. Place resolution, interprocedural parameter
+projection, path printing, overlap/identity comparison, static-slice index
+composition, and cloning preserve full precision without an `int64` adapter.
+All Place-copy boundaries clone the integer storage. A source fixture proves
+that distinct mutable element borrows above `MaxInt64` remain disjoint, while
+focused unit assertions cover exact presentation and defensive cloning.
 - [ ] P15-13 — Add dynamic-index identity based on a resolved expression/value
   identity, not source text. It must distinguish evaluated indexes while
   retaining P14 source type, signedness, exact fixed-array length, and

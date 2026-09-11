@@ -899,6 +899,45 @@ fn Compare(a: int, b: int) bool { return a <= b }
 	}
 }
 
+func TestSemanticFactsRetainResolvedContextualOperators(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/resolved_contextual_operator_facts.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.NewWithFile(string(source), "resolved_contextual_operator_facts.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) > 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+
+	operators := []*ast.InfixExpression{}
+	for _, statement := range result.Program.Statements[1:] {
+		function := statement.(*ast.FunctionDeclaration)
+		operators = append(operators, function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InfixExpression))
+	}
+	wants := []ResolvedOperatorKind{ResolvedMembershipCompare, ResolvedNegatedMembershipCompare, ResolvedMatrixMultiply}
+	for index, expression := range operators {
+		resolved, ok := a.ResolvedOperatorOf(expression)
+		if !ok || resolved.Kind != wants[index] {
+			t.Fatalf("operator %q facts = %#v, %t; want %s", expression.Operator, resolved, ok, wants[index])
+		}
+		if resolved.RightType == nil {
+			t.Fatalf("operator %q omitted right operand type", expression.Operator)
+		}
+	}
+	if operators[0].Operator != "in" || operators[1].Operator != "not in" || operators[2].Operator != "x" {
+		t.Fatalf("unexpected contextual operator order: %q, %q, %q", operators[0].Operator, operators[1].Operator, operators[2].Operator)
+	}
+	matrix, _ := a.ResolvedOperatorOf(operators[2])
+	if matrix.ResultType.Name != "matrix" || len(matrix.ResultType.ConstArgs) != 2 || matrix.ResultType.ConstArgs[0] != 1 || matrix.ResultType.ConstArgs[1] != 3 || matrix.FailureBehavior != "" {
+		t.Fatalf("matrix result/failure facts = %#v", matrix)
+	}
+}
+
 func TestResolvedIntegerOperatorsCoverKindsAndActiveWidths(t *testing.T) {
 	source := `module main
 fn F01(a: int8) int8 { return +a }

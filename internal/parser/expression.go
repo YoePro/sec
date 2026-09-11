@@ -196,11 +196,15 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 			left = p.parseConversionExpression(left)
 
 		case lexer.IDENT:
-			if p.peekToken.Lexeme != "x" {
+			if p.peekToken.Lexeme != "x" && !p.contextualNotInAhead() {
 				return left
 			}
 			p.nextToken()
-			left = p.parseInfixExpression(left)
+			if p.curToken.Lexeme == "not" {
+				left = p.parseNotInExpression(left)
+			} else {
+				left = p.parseInfixExpression(left)
+			}
 
 		case lexer.LBRACKET:
 			p.nextToken()
@@ -1582,6 +1586,27 @@ func (p *Parser) parseInExpression(left ast.Expression) ast.Expression {
 	return expr
 }
 
+// parseNotInExpression consumes contextual `not` plus the following hard `in`
+// token as one membership operator while retaining `not` as an identifier in
+// every other lexical context.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Membership operators `in` and `not in`"
+//   - rules/foundations/lexical_structure.md — §10.1 "Contextual compound operator `not in`"
+func (p *Parser) parseNotInExpression(left ast.Expression) ast.Expression {
+	expr := &ast.InfixExpression{Token: p.curToken, Left: left, Operator: "not in"}
+	if p.peekToken.Type != lexer.IN {
+		return left
+	}
+	p.nextToken()
+	p.nextToken()
+	expr.Right = p.parseRangeOrExpression()
+	if expr.Right == nil {
+		return nil
+	}
+	return expr
+}
+
 func (p *Parser) parseRangeOrExpression() ast.Expression {
 	if p.curToken.Type == lexer.RANGE || p.curToken.Type == lexer.RANGE_EXCLUSIVE {
 		rangeExpr := &ast.RangeExpression{
@@ -1654,11 +1679,30 @@ func (p *Parser) peekPrecedence() precedence {
 	if p.contextualMatrixMultiplyAhead() {
 		return PRODUCT
 	}
+	if p.contextualNotInAhead() {
+		return COMPARE
+	}
 	if p, ok := precedences[p.peekToken.Type]; ok {
 		return p
 	}
 
 	return LOWEST
+}
+
+// contextualNotInAhead recognizes the two-token membership operator without
+// globally reserving the otherwise ordinary identifier spelling `not`.
+//
+// Rules:
+//   - rules/foundations/operators.md — canonical precedence and membership expressions
+//   - rules/foundations/lexical_structure.md — §10.1 "Contextual compound operator `not in`"
+func (p *Parser) contextualNotInAhead() bool {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "not" {
+		return false
+	}
+	state := p.l.Snapshot()
+	next := p.l.NextToken()
+	p.l.Restore(state)
+	return next.Type == lexer.IN
 }
 
 func (p *Parser) contextualMatrixMultiplyAhead() bool {
@@ -1674,6 +1718,9 @@ func (p *Parser) contextualMatrixMultiplyAhead() bool {
 func (p *Parser) curPrecedence() precedence {
 	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "x" {
 		return PRODUCT
+	}
+	if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "not" && p.peekToken.Type == lexer.IN {
+		return COMPARE
 	}
 	if p, ok := precedences[p.curToken.Type]; ok {
 		return p

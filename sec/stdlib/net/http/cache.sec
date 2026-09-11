@@ -30,3 +30,28 @@ type CacheOptions struct {
     MaxEntries: uint,
     MaxBytes: uint64,
 }
+
+impl CacheOptions {
+    init() {
+        self.Mode = CacheMode.Disabled
+        self.MaxEntries = 256
+        self.MaxBytes = 16777216
+    }
+
+    // TODO: Implement http.CacheOptions.Validate
+    fn Validate() Result[void, CacheError] { return Err(CacheError.AllocationFailed) }
+}
+
+/*
+CacheMode is an enum because revision 0.2 exposes exactly two cache modes.
+CacheOptions is a struct because mode and two independent limits coexist.
+
+Caching is disabled by default. Memory mode is bounded by both entry count
+and aggregate stored bytes. An individual response larger than MaxBytes
+is not stored; the original response still succeeds unless another application
+policy requires failure.
+
+The cache implements RFC 9111 freshness, Age, Date, Cache-Control, Expires,
+Vary, ETag, Last-Modified, conditional revalidation, invalidation, and authorization rules.
+Cache miss is ordinary control flow, not CacheError.
+*/

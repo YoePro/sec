@@ -499,7 +499,8 @@ The current implementation still differs in several places:
 - `++` and `--` are accepted by the language rulebook as formatter-normalized
   statement aliases, but the current lexer and parser do not yet tokenize or
   parse them;
-- `in` has Sema behavior for ranges, fixed arrays, and slices, while
+- `in` and contextual `not in` have Sema behavior for ranges, fixed arrays,
+  dynamic arrays, and slices, while
   array/slice membership lowering remains incomplete;
 - runtime string `+` and direct `string +=` implement the canonical
   `string`/`char`/`rune` operand matrix, while allocation effects,

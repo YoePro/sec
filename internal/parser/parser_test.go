@@ -2987,6 +2987,48 @@ fn Test(score: int) void {
 	}
 }
 
+func TestParseContextualNotInMembership(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/sema/in_not_in.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := New(lexer.New(string(input)))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
+	condition := fn.Body.Statements[4].(*ast.IfStatement).Condition
+	membership, ok := condition.(*ast.InfixExpression)
+	if !ok {
+		t.Fatalf("condition is not InfixExpression. got=%T", condition)
+	}
+	if membership.Operator != "not in" || membership.Token.Lexeme != "not" {
+		t.Fatalf("wrong contextual membership operator: %+v", membership)
+	}
+}
+
+func TestNotRemainsIdentifierOutsideMembership(t *testing.T) {
+	input := `
+fn Select(not: bool, value: int, values: int[]) bool {
+	return not || value not in values
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	logical := fn.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InfixExpression)
+	identifier, ok := logical.Left.(*ast.Identifier)
+	if !ok || identifier.Value != "not" {
+		t.Fatalf("standalone not did not remain an identifier: %+v", logical.Left)
+	}
+	if membership, ok := logical.Right.(*ast.InfixExpression); !ok || membership.Operator != "not in" {
+		t.Fatalf("right side did not parse as not-in membership: %+v", logical.Right)
+	}
+}
+
 func TestParseIfOptionNoneConditionAsExhaustiveMatch(t *testing.T) {
 	input := `
 fn Test(value: Option[uint]) void {

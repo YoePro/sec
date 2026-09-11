@@ -216,11 +216,7 @@ impl _StructuredFieldParser {
         while !self._IsFinished {
             let current := char(self._input.ByteAt(self._position))
 
-            // if current not in [' ', '\t'] {
-            //     return
-            // }
-
-            if current != ' ' && current != '\t' {
+            if current not in [' ', '\t'] {
                 return
             }
 

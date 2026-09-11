@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-10"
+    revised: "2026-09-11"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -64,8 +64,10 @@ integrations:
       - testdata/parser/interpolation_parts_invalid.sec
       - testdata/parser/interpolation_lowering_deferred.sec
       - internal/formatter/formatter_test.go
+      - testdata/formatter/contextual_x.sec
       - internal/sema/analyzer_test.go
       - cmd/lsp/main_test.go
+      - testdata/lsp/contextual_x_semantic_tokens.sec
     implemented:
       - closed character literals require exactly one Unicode scalar after escape interpretation; L1009 lexer.character-literal-length preserves the original token span and suppresses cascades after malformed escapes
       - scalar-count diagnostics survive parser propagation and roll back with lexer snapshots; bootstrap source mirrors the check
@@ -131,6 +133,9 @@ integrations:
       - unsupported Unicode spacing outside literals and comments rejected as one ILLEGAL token with code-point-specific L1003 diagnostics
       - contextual set lexed as an ordinary identifier and resolved by parser context as collection type syntax, property setter syntax, or a value identifier
       - contextual set classified positionally by LSP semantic tokens and constrained by TextMate lookahead instead of globally reserved highlighting
+      - parser-confirmed contextual matrix-multiplication x tokens receive the LSP operator class while ordinary identifiers named x retain their symbol class
+      - contextual matrix-multiplication x hover presents compiler-resolved shaped operand and result identities while identifier x retains ordinary symbol hover
+      - shared formatter normalizes parser-confirmed matrix-multiplication x as a binary operator and preserves declaration, call, use, and member identifiers named x
       - compiler-known type names protected against replacement by user type, enum, interface, or unit declarations
       - bootstrap lexer source synchronized with initial-BOM skipping, later-BOM and Unicode-whitespace diagnostics, diagnostic snapshot state, and a parser-valid DecodedSource boundary
       - Sec 0.1 exposes no BYTES placeholder token; bytes and a leading b before an ordinary string remain ordinary identifier and string tokens rather than inventing byte-string syntax
@@ -169,7 +174,6 @@ integrations:
       - maximal malformed numeric-token recovery for remaining non-base decimal, fractional, exponent, and suffix candidates
       - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
       - port interpolation AST parts and expression parsing to the bootstrap parser
-      - parser-aware formatter and semantic-token classification for contextual x
       - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
       - complete reserved contract-word inventory
       - >-
@@ -217,3 +221,9 @@ integrations:
         result: passed; synchronized TextMate keyword changes remain valid JSON
       - command: go run ./cmd/compiler parse testdata/lexer/keyword_inventory_valid.sec && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
         result: passed; ordinary arena/sec/set bindings, impl extends, and the synchronized bootstrap lexer are parser-valid
+      - command: go test ./cmd/lsp -run TestSemanticTokensClassifyOnlyContextualXAsOperator -count=1
+        result: passed; parser-confirmed infix x is an operator while parameter and ordinary-use x tokens remain variables
+      - command: go test ./internal/formatter -run TestFormatContextualMatrixXWithoutRewritingIdentifiers -count=1
+        result: passed; irregular and delimiter-adjacent operator spacing is canonical and ordinary x identifiers remain unchanged
+      - command: go test ./cmd/lsp -run TestHoverUsesResolvedContextualOperatorFacts -count=1
+        result: passed; matrix x hover exposes compiler-resolved shaped operands and result dimensions

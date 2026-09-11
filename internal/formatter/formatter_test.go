@@ -1,9 +1,33 @@
 package formatter
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/formatter/contextual_x.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Format(Source{Text: string(input)}, Options{}).Text
+	for _, want := range []string{
+		"let product := left x right",
+		"let grouped := left x (right)",
+		"fn Multiply(x: int,",
+		"discard x\n",
+		"discard x(1)",
+		"discard holder.x",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("contextual x formatting missing %q:\n%s", want, got)
+		}
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("contextual x formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
 
 func TestFormatPreservesDefaultClauseAndPartialStructLiteral(t *testing.T) {
 	input := "module main\n\n" +

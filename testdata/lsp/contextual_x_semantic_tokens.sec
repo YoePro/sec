@@ -1,0 +1,7 @@
+module main
+
+fn Multiply(x: int, left: matrix[int, 1, 1], right: matrix[int, 1, 1]) matrix[int, 1, 1] {
+    let product := left x right
+    discard x
+    return product
+}

@@ -2,9 +2,15 @@
 package formatter
 
 import (
+	"reflect"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"sec/internal/ast"
+	"sec/internal/lexer"
+	"sec/internal/parser"
 )
 
 type Options struct{ Fix bool }
@@ -106,6 +112,7 @@ func format(text string, options Options) string {
 	// columns and comment text never participates in structural indentation.
 	out = alignDeclarationTrailingComments(out)
 	result := strings.Join(out, "\n")
+	result = formatContextualMatrixOperators(result)
 	if hadFinal || result != "" {
 		result += "\n"
 	}
@@ -113,6 +120,119 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+// formatContextualMatrixOperators normalizes horizontal spacing only for x
+// tokens that the parser resolved as matrix-multiplication infix operators.
+// Identifiers, calls, declarations, and member names spelled x are untouched.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Contextual `x`"
+//   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
+//   - rules/foundations/operators.md — "Matrix multiplication operator `x`"
+func formatContextualMatrixOperators(text string) string {
+	program := parser.New(lexer.New(text)).ParseProgram()
+	byLine := map[int][]int{}
+	for _, token := range contextualMatrixOperatorTokens(program) {
+		if token.Line > 0 && token.Column > 0 {
+			byLine[token.Line-1] = append(byLine[token.Line-1], token.Column-1)
+		}
+	}
+	if len(byLine) == 0 {
+		return text
+	}
+
+	lines := strings.Split(text, "\n")
+	for lineIndex, columns := range byLine {
+		if lineIndex < 0 || lineIndex >= len(lines) {
+			continue
+		}
+		sort.Sort(sort.Reverse(sort.IntSlice(columns)))
+		line := []rune(lines[lineIndex])
+		for _, column := range columns {
+			if column < 0 || column >= len(line) || line[column] != 'x' {
+				continue
+			}
+			left := column
+			for left > 0 && isHorizontalFormatterSpace(line[left-1]) {
+				left--
+			}
+			right := column + 1
+			for right < len(line) && isHorizontalFormatterSpace(line[right]) {
+				right++
+			}
+			if column == 0 || column+1 >= len(line) {
+				continue
+			}
+			replacement := []rune{' ', 'x', ' '}
+			line = append(append(append([]rune{}, line[:left]...), replacement...), line[right:]...)
+		}
+		lines[lineIndex] = string(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// isHorizontalFormatterSpace limits operator normalization to same-line trivia;
+// formatter layout never joins expressions across physical line boundaries.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Contextual `x`"
+func isHorizontalFormatterSpace(value rune) bool {
+	return value == ' ' || value == '\t'
+}
+
+// contextualMatrixOperatorTokens walks the parser-owned AST and returns only
+// x tokens whose expression node carries the canonical infix operator role.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Contextual `x`"
+//   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
+func contextualMatrixOperatorTokens(program *ast.Program) []lexer.Token {
+	if program == nil {
+		return nil
+	}
+	tokens := []lexer.Token{}
+	var visit func(reflect.Value)
+	visit = func(value reflect.Value) {
+		if !value.IsValid() {
+			return
+		}
+		if value.Kind() == reflect.Interface {
+			if !value.IsNil() {
+				visit(value.Elem())
+			}
+			return
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return
+			}
+			if value.CanInterface() {
+				if infix, ok := value.Interface().(*ast.InfixExpression); ok && infix.Operator == "x" {
+					tokens = append(tokens, infix.Token)
+				}
+			}
+			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
+				visit(value.Elem())
+			}
+			return
+		}
+		switch value.Kind() {
+		case reflect.Struct:
+			if value.Type().PkgPath() != "sec/internal/ast" {
+				return
+			}
+			for index := 0; index < value.NumField(); index++ {
+				visit(value.Field(index))
+			}
+		case reflect.Slice, reflect.Array:
+			for index := 0; index < value.Len(); index++ {
+				visit(value.Index(index))
+			}
+		}
+	}
+	visit(reflect.ValueOf(program))
+	return tokens
 }
 
 // alignDeclarationTrailingComments aligns local groups inside nominal

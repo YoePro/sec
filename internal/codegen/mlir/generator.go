@@ -2375,12 +2375,24 @@ func isDefaultDecimalLiteral(expr ast.Expression) bool {
 	}
 }
 
+// emitInfixExpression lowers legacy MLIR binary expressions; membership keeps
+// its exact-once search and applies `not in` only as a final boolean complement.
+//
+// Rules:
+//   - rules/foundations/operators.md — canonical precedence and "Membership expression"
 func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error) {
 	if expr.Operator == "&&" || expr.Operator == "||" {
 		return g.emitShortCircuitExpression(expr)
 	}
-	if expr.Operator == "in" {
-		return g.emitInExpression(expr)
+	if expr.Operator == "in" || expr.Operator == "not in" {
+		membership, err := g.emitInExpression(expr)
+		if err != nil || expr.Operator == "in" {
+			return membership, err
+		}
+		one := g.emitBoolConstant(true)
+		result := g.nextTemp()
+		g.write("    %s = llvm.xor %s, %s : i1\n", result, membership.ref, one.ref)
+		return value{typ: "i1", ref: result}, nil
 	}
 
 	left, err := g.emitExpression(expr.Left)

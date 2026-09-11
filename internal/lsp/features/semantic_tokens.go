@@ -76,7 +76,17 @@ func SemanticTokens(text, file string, classification map[string]string) []int {
 	return data
 }
 
+// tokenKind gives compiler-provided position facts precedence over lexical
+// categories so a hard token may receive its parser-confirmed contextual role
+// without changing the lexer's global keyword inventory.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Semantic tokens"
+//   - rules/foundations/lexical_structure.md — §10 and §10.1 contextual operators
 func tokenKind(token lexer.Token, names map[string]string) (string, uint32) {
+	if classification := names[ClassificationKey(token.File, token.Line, token.Column)]; classification != "" {
+		return decodeClassification(classification)
+	}
 	switch token.Type {
 	case lexer.COMMENT:
 		return "comment", 0
@@ -85,9 +95,6 @@ func tokenKind(token lexer.Token, names map[string]string) (string, uint32) {
 	case lexer.INT, lexer.FLOAT:
 		return "number", 0
 	case lexer.IDENT, lexer.SELF:
-		if classification := names[ClassificationKey(token.File, token.Line, token.Column)]; classification != "" {
-			return decodeClassification(classification)
-		}
 		if classification := names[token.Lexeme]; classification != "" {
 			return decodeClassification(classification)
 		}

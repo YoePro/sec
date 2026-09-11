@@ -1,0 +1,13 @@
+module main
+
+fn Contains(value: int, values: int[]) bool {
+    return value in values
+}
+
+fn Excludes(value: int, values: int[]) bool {
+    return value not in values
+}
+
+fn Multiply(left: matrix[int, 1, 2], right: matrix[int, 2, 3]) matrix[int, 1, 3] {
+    return left x right
+}

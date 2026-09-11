@@ -12372,6 +12372,14 @@ func TestDynamicArrayMembership(t *testing.T) {
 	assertSemaErrors(t, analyzeSourceRaw(t, string(source)), nil)
 }
 
+func TestContextualNotInMembership(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/sema/in_not_in.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, string(source)), nil)
+}
+
 func TestDynamicArrayMembershipRejectsIncompatibleElements(t *testing.T) {
 	source, err := os.ReadFile("../../testdata/sema/dynamic_membership_invalid.sec")
 	if err != nil {

@@ -1230,6 +1230,29 @@ fn main() int {
 	}
 }
 
+func TestGenerateRangeNotInCondition(t *testing.T) {
+	input := `
+module main
+
+fn Outside(value: int) bool {
+    return value not in 0..<100
+}
+
+fn main() int { return 0 }
+`
+	program := parseTestProgram(t, input)
+
+	got, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err != nil {
+		t.Fatalf("GenerateWithTriple returned error: %v", err)
+	}
+	for _, want := range []string{`llvm.icmp "sge"`, `llvm.icmp "slt"`, "llvm.and", "llvm.xor"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated MLIR missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestGenerateDecimalStorageLiteralsParametersAndReturns(t *testing.T) {
 	input := `
 module main

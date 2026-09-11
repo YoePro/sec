@@ -1,0 +1,16 @@
+module notintest
+
+fn inTest() int {
+    let s: int[] := [1, 2, 3, 4]
+    let mut x := 3
+    if x in s {
+        return 1
+    }
+
+    x = 6
+    if x not in s {
+        return 1
+    }
+
+    return 0
+}

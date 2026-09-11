@@ -1,0 +1,11 @@
+module main
+
+fn Check(not: bool, value: int, values: int[]) bool {
+    for item in values {
+        discard item
+    }
+    if value in values {
+        return not
+    }
+    return value not in values
+}

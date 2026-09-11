@@ -928,6 +928,21 @@ The formatter writes one space around operator `x`:
 left x right
 ```
 
+## 10.1 Contextual compound operator `not in`
+
+`not` remains an ordinary identifier lexically. When it occurs between a
+complete left expression and the hard keyword `in`, and a right membership
+operand follows, the parser resolves the two tokens as the single contextual
+operator `not in` defined by `operators.md`.
+
+```sec
+value not in values
+```
+
+Outside that exact infix position, `not` remains a legal identifier. The lexer
+must not reserve it globally. Tooling may classify the contextual `not` token
+as an operator after parsing.
+
 No whitespace is required for lexical recognition, but canonical formatting
 always inserts it.
 
@@ -1765,6 +1780,7 @@ The parser is responsible for:
 - grammatical role;
 - contextual `set` type/accessor resolution;
 - contextual operator `x`;
+- contextual compound operator `not in`;
 - declaration structure;
 - type-argument structure;
 - expression precedence;

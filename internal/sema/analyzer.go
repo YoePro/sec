@@ -7284,16 +7284,26 @@ func copyLocalRefContainers(in map[string]localReferenceOrigin) map[string]local
 	return out
 }
 
+// clonePlace returns independent Place projection and origin facts, including
+// defensive copies of arbitrary-precision constant indexes.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
 func clonePlace(place Place) Place {
-	place.Projections = append([]PlaceProjection(nil), place.Projections...)
+	place.Projections = clonePlaceProjections(place.Projections)
 	place.AlternativeOrigins = clonePlaces(place.AlternativeOrigins)
 	return place
 }
 
+// clonePlaces defensively copies a finite Place-origin set and its exact index
+// values without retaining mutable big.Int aliases.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
 func clonePlaces(places []Place) []Place {
 	cloned := make([]Place, len(places))
 	for index, place := range places {
-		place.Projections = append([]PlaceProjection(nil), place.Projections...)
+		place.Projections = clonePlaceProjections(place.Projections)
 		place.AlternativeOrigins = nil
 		cloned[index] = place
 	}
@@ -7640,6 +7650,11 @@ func sameReferenceOrigin(left, right localReferenceOrigin) bool {
 	return true
 }
 
+// samePlaceIdentity compares legacy Place identity using exact numeric equality
+// for constant projections rather than pointer or host-width equality.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
 func samePlaceIdentity(left, right Place) bool {
 	if left.Root != right.Root || len(left.Projections) != len(right.Projections) {
 		return false
@@ -7648,7 +7663,7 @@ func samePlaceIdentity(left, right Place) bool {
 		leftProjection := left.Projections[index]
 		rightProjection := right.Projections[index]
 		if leftProjection.Kind != rightProjection.Kind || leftProjection.Name != rightProjection.Name ||
-			leftProjection.ConstantIndex != rightProjection.ConstantIndex || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
+			!placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) || leftProjection.DynamicIndex != rightProjection.DynamicIndex ||
 			leftProjection.SliceStart != rightProjection.SliceStart || leftProjection.SliceEnd != rightProjection.SliceEnd ||
 			leftProjection.SliceStartKnown != rightProjection.SliceStartKnown || leftProjection.SliceEndKnown != rightProjection.SliceEndKnown {
 			return false
@@ -19058,7 +19073,7 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	if expr.Operator == "in" {
+	if expr.Operator == "in" || expr.Operator == "not in" {
 		return a.inferMembershipExpression(expr, leftType)
 	}
 	if isLogicalOperator(expr.Operator) {
@@ -19587,6 +19602,9 @@ func (a *Analyzer) validateUnitComparison(expr *ast.InfixExpression, leftType, r
 
 // inferMembershipExpression checks the supported collection and element equality
 // without converting named types implicitly or consuming the searched array.
+// `not in` has the identical operand contract and produces the complement of
+// the membership result without changing evaluation or ownership behavior.
+//
 // Rules: rules/foundations/operators.md — "Membership expression",
 // "Fixed-array membership", "Dynamic-array membership", "Slice membership".
 func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
@@ -19606,7 +19624,8 @@ func (a *Analyzer) inferMembershipExpression(expr *ast.InfixExpression, leftType
 			expr.Token,
 			diagnostics.OperatorInvalidMembership,
 			"Use a contextual range, a fixed array, a dynamic array, or a slice. For other containers, call an explicit membership API such as Contains.",
-			"operator in supports ranges, fixed arrays, dynamic arrays, and slices in Sec 0.1; got %s",
+			"operator %s supports ranges, fixed arrays, dynamic arrays, and slices in Sec 0.1; got %s",
+			expr.Operator,
 			typeDisplayName(rightType),
 		)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}

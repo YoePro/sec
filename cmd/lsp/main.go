@@ -1317,6 +1317,7 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
+	tokens := sourceTokens(uri, text)
 	for name := range analyzer.Types() {
 		classification[name] = "type"
 	}
@@ -1340,11 +1341,11 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 			classification[name] = "variable"
 		}
 	}
-	for key, kind := range contextualKeywordClassifications(program) {
+	for key, kind := range contextualTokenClassifications(program, tokens) {
 		classification[key] = kind
 	}
 	declarationKinds := semanticDeclarationKinds(analyzer)
-	for _, token := range sourceTokens(uri, text) {
+	for _, token := range tokens {
 		if token.Type != lexer.IDENT && token.Type != lexer.SELF {
 			continue
 		}
@@ -1385,16 +1386,28 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	return classification
 }
 
-func contextualKeywordClassifications(program *ast.Program) map[string]string {
+// contextualTokenClassifications assigns position-exact semantic kinds only
+// after the parser has established a contextual token's grammatical role.
+// Ordinary identifiers with the same spelling retain their symbol class.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
+//   - rules/foundations/lexical_structure.md — §10.1 "Contextual compound operator `not in`"
+//   - rules/foundations/operators.md — "Membership expression"
+//   - rules/tooling/lsp.md — "Semantic tokens"
+func contextualTokenClassifications(program *ast.Program, source []lexer.Token) map[string]string {
 	classification := map[string]string{}
 	if program == nil {
 		return classification
 	}
-	setKeyword := func(token lexer.Token) {
+	setClass := func(token lexer.Token, kind string) {
 		if token.Line <= 0 || token.Column <= 0 {
 			return
 		}
-		classification[features.ClassificationKey(token.File, token.Line, token.Column)] = "keyword"
+		classification[features.ClassificationKey(token.File, token.Line, token.Column)] = kind
+	}
+	setKeyword := func(token lexer.Token) {
+		setClass(token, "keyword")
 	}
 	setParameter := func(identifier *ast.Identifier) {
 		if identifier == nil || identifier.Token.Line <= 0 || identifier.Token.Column <= 0 {
@@ -1429,6 +1442,18 @@ func contextualKeywordClassifications(program *ast.Program) map[string]string {
 						setKeyword(member.Token)
 					}
 				}
+			}
+		}
+	}
+	for _, expression := range astExpressionsInProgram(program) {
+		infix, ok := expression.(*ast.InfixExpression)
+		if !ok {
+			continue
+		}
+		switch infix.Operator {
+		case "x", "in", "not in":
+			for _, token := range contextualInfixOperatorTokens(infix, source) {
+				setClass(token, "operator")
 			}
 		}
 	}
@@ -1537,6 +1562,11 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
+	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := contextualOperatorHover(program, analyzer, sourceTokens(uri, text), token); ok {
+			return hover, true
+		}
+	}
 
 	name, nameStart, nameEnd, ok := identifierAtOffset(text, offset)
 	if !ok {
@@ -1598,6 +1628,95 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	}
 
 	return hoverResult{}, false
+}
+
+// contextualOperatorHover presents parser identity and Sema-resolved operand
+// and result facts for contextual operators. Equal spellings in identifier or
+// iteration roles do not match an operator expression and receive no such hover.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover"
+//   - rules/foundations/operators.md — "Operator tooling", "Matrix multiplication operator `x`", and "Membership expression"
+func contextualOperatorHover(program *ast.Program, analyzer *sema.Analyzer, source []lexer.Token, hovered lexer.Token) (hoverResult, bool) {
+	for _, expression := range astExpressionsInProgram(program) {
+		infix, ok := expression.(*ast.InfixExpression)
+		if !ok || infix.Operator != "x" && infix.Operator != "in" && infix.Operator != "not in" {
+			continue
+		}
+		operatorTokens := contextualInfixOperatorTokens(infix, source)
+		matched := false
+		for _, token := range operatorTokens {
+			if sameSourceToken(token, hovered) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		resolved, ok := analyzer.ResolvedOperatorOf(infix)
+		if !ok {
+			return hoverResult{}, false
+		}
+		rng := tokenRange(operatorTokens[0])
+		for _, token := range operatorTokens[1:] {
+			rng = rangeContaining(rng, tokenRange(token))
+		}
+		return hoverResult{
+			Contents: markupContent{Kind: "markdown", Value: contextualOperatorHoverContents(infix.Operator, resolved)},
+			Range:    rng,
+		}, true
+	}
+	return hoverResult{}, false
+}
+
+// contextualInfixOperatorTokens returns the exact source tokens belonging to
+// one parser-confirmed contextual operator, including both segments of not in.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §10 and §10.1 contextual operators
+func contextualInfixOperatorTokens(infix *ast.InfixExpression, source []lexer.Token) []lexer.Token {
+	if infix == nil {
+		return nil
+	}
+	tokens := []lexer.Token{infix.Token}
+	if infix.Operator != "not in" {
+		return tokens
+	}
+	for index, token := range source {
+		if sameSourceToken(token, infix.Token) && index+1 < len(source) && source[index+1].Type == lexer.IN {
+			return append(tokens, source[index+1])
+		}
+	}
+	return tokens
+}
+
+// contextualOperatorHoverContents renders only compiler-resolved type and
+// failure facts plus the canonical behavior attached to the resolved operator.
+// Unknown failure information is omitted.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover" and operators.md appendix A.21 "LSP"
+//   - rules/foundations/operators.md — "Membership expression" and "Matrix multiplication operator `x`"
+func contextualOperatorHoverContents(operator string, resolved sema.ResolvedOperator) string {
+	left := lspTypeName(resolved.LeftType)
+	right := "_unknown_"
+	if resolved.RightType != nil {
+		right = "`" + lspTypeName(*resolved.RightType) + "`"
+	}
+	contents := fmt.Sprintf("### `operator %s`\n\nLeft operand: `%s`  \nRight operand: %s  \nResult: `%s`", operator, left, right, lspTypeName(resolved.ResultType))
+	switch operator {
+	case "in":
+		contents += "\n\nTests whether the left value is a member of the right collection."
+	case "not in":
+		contents += "\n\nLogical complement of membership, with the same evaluation and ownership behavior as `in`."
+	case "x":
+		contents += "\n\nShaped matrix multiplication using the compiler-resolved operand and result shapes."
+	}
+	if resolved.FailureBehavior != "" {
+		contents += "\n\nFailure behavior: `" + string(resolved.FailureBehavior) + "`"
+	}
+	return contents
 }
 
 func signatureHelpForSource(uri string, text string, pos position, overlays ...sourceOverlay) (signatureHelp, bool) {
@@ -1726,12 +1845,17 @@ func constructionAtOffset(program *ast.Program, sourcePath string, text string, 
 	return selected, selectedOpen, selectedClose, selected != nil
 }
 
-func newExpressionsInProgram(program *ast.Program) []*ast.NewExpression {
+// astExpressionsInProgram walks the parser-owned tree for tooling consumers
+// without reconstructing contextual grammar from lexer tokens.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Semantic tokens" and "Rename"
+//   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
+func astExpressionsInProgram(program *ast.Program) []ast.Expression {
 	if program == nil {
 		return nil
 	}
-	result := []*ast.NewExpression{}
-	newExpressionType := reflect.TypeOf((*ast.NewExpression)(nil))
+	result := []ast.Expression{}
 	var visit func(reflect.Value)
 	visit = func(value reflect.Value) {
 		if !value.IsValid() {
@@ -1747,8 +1871,10 @@ func newExpressionsInProgram(program *ast.Program) []*ast.NewExpression {
 			if value.IsNil() {
 				return
 			}
-			if value.Type() == newExpressionType {
-				result = append(result, value.Interface().(*ast.NewExpression))
+			if value.CanInterface() {
+				if expression, ok := value.Interface().(ast.Expression); ok {
+					result = append(result, expression)
+				}
 			}
 			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
 				visit(value.Elem())
@@ -1770,6 +1896,21 @@ func newExpressionsInProgram(program *ast.Program) []*ast.NewExpression {
 		}
 	}
 	visit(reflect.ValueOf(program))
+	return result
+}
+
+// newExpressionsInProgram selects constructor expressions from the shared AST
+// traversal used by syntax-aware LSP features.
+//
+// Rules:
+//   - rules/tooling/lsp.md — completion and signature help
+func newExpressionsInProgram(program *ast.Program) []*ast.NewExpression {
+	result := []*ast.NewExpression{}
+	for _, expression := range astExpressionsInProgram(program) {
+		if construction, ok := expression.(*ast.NewExpression); ok {
+			result = append(result, construction)
+		}
+	}
 	return result
 }
 
@@ -2961,14 +3102,26 @@ func registerFieldHover(field sema.RegisterField) string {
 	return contents
 }
 
+// lspTypeName renders compiler-resolved source type identity, including shaped
+// type arguments and constant dimensions used by operator hover.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover"
+//   - rules/collections/shaped-types.md — shaped type syntax and static dimensions
 func lspTypeName(typ sema.Type) string {
 	if typ.Name != "" {
-		if len(typ.TypeArgs) == 0 || strings.Contains(typ.Name, "[") {
+		if strings.Contains(typ.Name, "[") {
 			return typ.Name
 		}
-		arguments := make([]string, 0, len(typ.TypeArgs))
+		arguments := make([]string, 0, len(typ.TypeArgs)+len(typ.ConstArgs))
 		for _, argument := range typ.TypeArgs {
 			arguments = append(arguments, lspTypeName(argument))
+		}
+		for _, argument := range typ.ConstArgs {
+			arguments = append(arguments, strconv.FormatInt(argument, 10))
+		}
+		if len(arguments) == 0 {
+			return typ.Name
 		}
 		return typ.Name + "[" + strings.Join(arguments, ", ") + "]"
 	}

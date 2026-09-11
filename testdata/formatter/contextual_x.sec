@@ -1,0 +1,10 @@
+module main
+
+fn Multiply(x: int, left: matrix[int, 1, 1], right: matrix[int, 1, 1]) matrix[int, 1, 1] {
+    let product := left      x       right
+    let grouped := left x(right)
+    discard x
+    discard x(1)
+    discard holder.x
+    return product
+}

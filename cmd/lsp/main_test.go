@@ -667,6 +667,21 @@ fn VisitParts(value: string) void {
 	}
 }
 
+func TestAnalyzeAcceptsContextualNotInMembership(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", "testdata", "sema", "in_not_in.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reported := analyze(uriFromPath(path), string(source)); len(reported) != 0 {
+		t.Fatalf("analyze returned diagnostics for contextual not-in membership: %+v", reported)
+	}
+}
+
 // Iterator[T] is compiler-known in the shared frontend, including while the
 // defining core source itself is the active LSP document. Keep this regression
 // deliberately focused: string.sec may contain unrelated work in progress and
@@ -1325,6 +1340,94 @@ fn Check(myVar: bool) bool {
 	assertSemanticToken(t, tokens, 3, 4, 5, "variable") // myVar
 	assertSemanticToken(t, tokens, 3, 10, 2, "operator")
 	assertSemanticToken(t, tokens, 3, 13, 4, "keyword") // true
+}
+
+func TestSemanticTokensClassifyOnlyContextualXAsOperator(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "contextual_x_semantic_tokens.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tokens := decodeSemanticTokens(semanticTokensForSource(uriFromPath(path), string(source)))
+	assertSemanticToken(t, tokens, 2, 12, 1, "variable") // parameter named x
+	assertSemanticToken(t, tokens, 3, 24, 1, "operator") // contextual matrix multiplication
+	assertSemanticToken(t, tokens, 4, 12, 1, "variable") // ordinary identifier use
+}
+
+func TestSemanticTokensClassifyContextualMembershipOperators(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "contextual_membership_semantic_tokens.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tokens := decodeSemanticTokens(semanticTokensForSource(uriFromPath(path), string(source)))
+	assertSemanticToken(t, tokens, 2, 9, 3, "variable")  // parameter named not
+	assertSemanticToken(t, tokens, 3, 13, 2, "keyword")  // iteration grammar in
+	assertSemanticToken(t, tokens, 6, 13, 2, "operator") // membership in
+	assertSemanticToken(t, tokens, 7, 15, 3, "variable") // ordinary identifier use
+	assertSemanticToken(t, tokens, 9, 17, 3, "operator") // contextual not
+	assertSemanticToken(t, tokens, 9, 21, 2, "operator") // compound operator's in
+}
+
+func TestHoverUsesResolvedContextualOperatorFacts(t *testing.T) {
+	membershipPath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "contextual_membership_semantic_tokens.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	membershipSourceBytes, err := os.ReadFile(membershipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	membershipSource := string(membershipSourceBytes)
+	membershipURI := uriFromPath(membershipPath)
+
+	plainIn := strings.Index(membershipSource, "value in values") + len("value ")
+	inHover, ok := hoverForSource(membershipURI, membershipSource, offsetPosition(membershipSource, plainIn))
+	if !ok || !strings.Contains(inHover.Contents.Value, "`operator in`") || !strings.Contains(inHover.Contents.Value, "Right operand: `int[]`") || !strings.Contains(inHover.Contents.Value, "Result: `bool`") {
+		t.Fatalf("membership hover = %+v, %v", inHover, ok)
+	}
+
+	notStart := strings.LastIndex(membershipSource, "not in")
+	notHover, ok := hoverForSource(membershipURI, membershipSource, offsetPosition(membershipSource, notStart+1))
+	if !ok || !strings.Contains(notHover.Contents.Value, "`operator not in`") || notHover.Range.Start.Character != 17 || notHover.Range.End.Character != 23 {
+		t.Fatalf("not-in hover on not = %+v, %v", notHover, ok)
+	}
+	notInHover, ok := hoverForSource(membershipURI, membershipSource, offsetPosition(membershipSource, notStart+4))
+	if !ok || notInHover.Contents.Value != notHover.Contents.Value || notInHover.Range != notHover.Range {
+		t.Fatalf("not-in hover on in differs: %+v versus %+v", notHover, notInHover)
+	}
+
+	iterationIn := strings.Index(membershipSource, "item in values") + len("item ")
+	if hover, ok := hoverForSource(membershipURI, membershipSource, offsetPosition(membershipSource, iterationIn)); ok {
+		t.Fatalf("iteration in received operator hover: %+v", hover)
+	}
+	ordinaryNot := strings.Index(membershipSource, "return not") + len("return ")
+	if hover, ok := hoverForSource(membershipURI, membershipSource, offsetPosition(membershipSource, ordinaryNot)); !ok || strings.Contains(hover.Contents.Value, "operator not") {
+		t.Fatalf("ordinary not hover = %+v, %v", hover, ok)
+	}
+
+	matrixPath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "contextual_x_semantic_tokens.sec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixSourceBytes, err := os.ReadFile(matrixPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matrixSource := string(matrixSourceBytes)
+	matrixOperator := strings.Index(matrixSource, "left x right") + len("left ")
+	matrixHover, ok := hoverForSource(uriFromPath(matrixPath), matrixSource, offsetPosition(matrixSource, matrixOperator))
+	if !ok || !strings.Contains(matrixHover.Contents.Value, "`operator x`") || !strings.Contains(matrixHover.Contents.Value, "Result: `matrix[int, 1, 1]`") {
+		t.Fatalf("matrix x hover = %+v, %v", matrixHover, ok)
+	}
 }
 
 func TestSemanticTokensClassifyNoCopyAttribute(t *testing.T) {

@@ -947,6 +947,12 @@ func (b *parameterUsageBuilder) markExpression(expression ast.Expression, kind P
 	return true
 }
 
+// parameterPlace projects a callable parameter into the shared canonical Place
+// model, preserving exact constant indexes in interprocedural summaries.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+//   - rules/memory/references.md — §28(4) provenance/projection tests
 func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*ParameterUsageParameterSummary, Place, bool) {
 	switch expression := expression.(type) {
 	case *ast.Identifier:
@@ -977,8 +983,8 @@ func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*Para
 			return nil, Place{}, false
 		}
 		projection := PlaceProjection{Kind: PlaceIndex, DynamicIndex: true, Token: expressionToken(expression.Index)}
-		if value, constant := constantIntegerValue(expression.Index); constant && value.IsInt64() {
-			projection.ConstantIndex = value.Int64()
+		if value, constant := b.analyzer.integerConstantValue(expression.Index); constant {
+			projection.ConstantIndex = clonePlaceConstantIndex(value)
 			projection.DynamicIndex = false
 		}
 		return parameter, appendPlaceProjection(place, projection), true

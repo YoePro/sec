@@ -104,6 +104,9 @@ const (
 	ResolvedIntegerCompareGE                 ResolvedOperatorKind = "integer-compare-ge"
 	ResolvedEnumCompareEQ                    ResolvedOperatorKind = "enum-compare-eq"
 	ResolvedEnumCompareNE                    ResolvedOperatorKind = "enum-compare-ne"
+	ResolvedMembershipCompare                ResolvedOperatorKind = "membership-compare"
+	ResolvedNegatedMembershipCompare         ResolvedOperatorKind = "negated-membership-compare"
+	ResolvedMatrixMultiply                   ResolvedOperatorKind = "matrix-multiply"
 )
 
 type OperatorFailureBehavior string
@@ -925,6 +928,13 @@ func (a *Analyzer) ResolvedMatchPlanOf(expr *ast.MatchExpression) (ResolvedMatch
 	return plan, true
 }
 
+// recordResolvedOperator publishes compiler-owned operand, result, check, and
+// failure facts for successfully analyzed operators; tooling and lowering must
+// consume these facts instead of reconstructing semantics from spelling.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compiler semantic facts" and "Operator tooling"
+//   - rules/tooling/lsp.md — "Hover"
 func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 	if a == nil || expr == nil || result.Kind == InvalidType {
 		return
@@ -959,6 +969,23 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 			return
 		}
 		resolved = ResolvedOperator{LeftType: left, RightType: &right, ResultType: result, FailureBehavior: OperatorDoesNotFail}
+		switch expression.Operator {
+		case "in":
+			resolved.Kind = ResolvedMembershipCompare
+			break
+		case "not in":
+			resolved.Kind = ResolvedNegatedMembershipCompare
+			break
+		case "x":
+			resolved.Kind = ResolvedMatrixMultiply
+			// Element arithmetic failure metadata is not yet complete for the
+			// shaped lowering, so tooling must omit rather than invent it.
+			resolved.FailureBehavior = ""
+			break
+		}
+		if resolved.Kind != "" {
+			break
+		}
 		if left.Kind == EnumType && right.Kind == EnumType && sameConcreteType(left, right) {
 			switch expression.Operator {
 			case "==":

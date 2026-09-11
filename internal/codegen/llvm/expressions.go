@@ -270,6 +270,11 @@ func (g *Generator) emitPrefixExpression(expr *ast.PrefixExpression) (value, err
 	}
 }
 
+// emitInfixExpression lowers legacy LLVM binary expressions; membership keeps
+// its exact-once search and applies `not in` only as a final boolean complement.
+//
+// Rules:
+//   - rules/foundations/operators.md — canonical precedence and "Membership expression"
 func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error) {
 	switch expr.Operator {
 	case "&&":
@@ -282,8 +287,14 @@ func (g *Generator) emitInfixExpression(expr *ast.InfixExpression) (value, error
 	if err != nil {
 		return value{}, err
 	}
-	if expr.Operator == "in" {
-		return g.emitMembershipExpression(left, expr.Right)
+	if expr.Operator == "in" || expr.Operator == "not in" {
+		membership, err := g.emitMembershipExpression(left, expr.Right)
+		if err != nil || expr.Operator == "in" {
+			return membership, err
+		}
+		result := g.nextTemp()
+		g.write("  %s = xor i1 %s, true\n", result, membership.ref)
+		return value{typ: "i1", ref: result}, nil
 	}
 	right, err := g.emitExpression(expr.Right)
 	if err != nil {

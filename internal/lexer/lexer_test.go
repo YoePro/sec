@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode"
@@ -608,6 +609,42 @@ func TestContextualKeywordSpellingsRemainIdentifiers(t *testing.T) {
 	}
 }
 
+func TestContractWordInventoryIsCompleteAndContextual(t *testing.T) {
+	want := []string{"multipleOf", "notEmpty", "unique", "finite", "odd", "even"}
+	got := ContractWords()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ContractWords() = %v, want %v", got, want)
+	}
+
+	for _, spelling := range want {
+		if !IsContractWord(spelling) {
+			t.Errorf("IsContractWord(%q) = false", spelling)
+		}
+		if tokenType := lookupIdent(spelling); tokenType != IDENT {
+			t.Errorf("lookupIdent(%q) = %s, want IDENT", spelling, tokenType)
+		}
+	}
+	if role := ContractWordRoleOf("multipleOf"); role != ValueContractWord {
+		t.Errorf("multipleOf role = %v, want ValueContractWord", role)
+	}
+	for _, spelling := range want[1:] {
+		if role := ContractWordRoleOf(spelling); role != MarkerContractWord {
+			t.Errorf("%s role = %v, want MarkerContractWord", spelling, role)
+		}
+	}
+
+	got[0] = "changed"
+	if ContractWords()[0] != "multipleOf" {
+		t.Error("ContractWords returned mutable canonical storage")
+	}
+	if IsContractWord("range") || IsContractWord("in") || IsContractWord("futureContract") {
+		t.Error("contract inventory includes a non-contextual or unspecified spelling")
+	}
+	if role := ContractWordRoleOf("futureContract"); role != NotContractWord {
+		t.Errorf("unknown contract role = %v, want NotContractWord", role)
+	}
+}
+
 func TestNumbersAndRanges(t *testing.T) {
 	input := `123 45.67 .1 1..10 1..<10 1.. ..10 10i 10u 10g 10m 1.5g 1.5m .5g .5m 0b1000 0o10 0x8 0x8u 0x10g 0x10m`
 
@@ -797,16 +834,67 @@ func TestInvalidNumericSuffixIsSingleDiagnosedToken(t *testing.T) {
 	}
 }
 
+// TestMalformedScientificExponentIsOneIllegalToken verifies L1014 ownership,
+// maximal recovery, and the following reliable token boundary.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func TestMalformedScientificExponentIsOneIllegalToken(t *testing.T) {
-	for _, input := range []string{"1e", "1e+", "1.5E-", ".5e+"} {
+	for _, input := range []string{"1e", "1e+", "1.5E-", ".5e+", "1eunknown"} {
 		t.Run(input, func(t *testing.T) {
-			l := New(input)
+			l := NewWithFile(input+" following", "exponent.sec")
 			tok := l.NextToken()
 			if tok.Type != ILLEGAL || tok.Lexeme != input {
 				t.Fatalf("wrong malformed exponent token. got=%q %q want=%q %q", tok.Type, tok.Lexeme, ILLEGAL, input)
 			}
-			if next := l.NextToken(); next.Type != EOF {
-				t.Fatalf("malformed exponent did not recover at EOF: %+v", next)
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerMissingExponentDigits, 1, 1, input)
+			if next := l.NextToken(); next.Type != IDENT || next.Lexeme != "following" {
+				t.Fatalf("malformed exponent recovery token = %+v", next)
+			}
+		})
+	}
+}
+
+// TestMalformedDecimalCandidateMatrix covers every non-base decimal shape and
+// verifies that its complete identifier-like malformed tail belongs to one
+// focused lexer diagnostic before tokenization resumes at a reliable boundary.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.2 "Decimal integer literals"
+//   - rules/foundations/lexical_structure.md — §12.4 "Fractional literals"
+//   - rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+//   - rules/foundations/lexical_structure.md — §12.6 "Digit separators"
+//   - rules/foundations/lexical_structure.md — §12.7 "Numeric family suffixes"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
+func TestMalformedDecimalCandidateMatrix(t *testing.T) {
+	tests := []struct {
+		input string
+		id    string
+	}{
+		{input: "12__34tail", id: compilerdiagnostics.LexerInvalidDigitSeparator},
+		{input: "1._5tail", id: compilerdiagnostics.LexerInvalidDigitSeparator},
+		{input: ".5__tail", id: compilerdiagnostics.LexerInvalidDigitSeparator},
+		{input: "1.5e+_3tail", id: compilerdiagnostics.LexerInvalidDigitSeparator},
+		{input: "10unknown", id: compilerdiagnostics.LexerInvalidNumericSuffix},
+		{input: "1.5u32", id: compilerdiagnostics.LexerInvalidNumericSuffix},
+		{input: ".5rune", id: compilerdiagnostics.LexerInvalidNumericSuffix},
+		{input: "1e3float", id: compilerdiagnostics.LexerInvalidNumericSuffix},
+		{input: "1e+missing", id: compilerdiagnostics.LexerMissingExponentDigits},
+		{input: "1.5E-following", id: compilerdiagnostics.LexerMissingExponentDigits},
+		{input: ".5e+absent", id: compilerdiagnostics.LexerMissingExponentDigits},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			l := NewWithFile(test.input+" following", "decimal.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != test.input {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, test.input)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), test.id, 1, 1, test.input)
+			if following := l.NextToken(); following.Type != IDENT || following.Lexeme != "following" {
+				t.Fatalf("recovery token = %+v, want following identifier", following)
 			}
 		})
 	}
@@ -859,6 +947,28 @@ let b := 2
 	}
 
 	assertTokens(t, input, tests)
+}
+
+// TestUnterminatedBlockCommentIsSingleDiagnosedToken verifies that nested
+// unmatched depth remains one outer lexical error through end of file.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.3 "Nested block comments"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestUnterminatedBlockCommentIsSingleDiagnosedToken(t *testing.T) {
+	for _, input := range []string{"/* open", "/* outer /* nested */"} {
+		t.Run(input, func(t *testing.T) {
+			l := NewWithFile(input, "comment.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != input {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, input)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerUnterminatedBlockComment, 1, 1, input)
+			if eof := l.NextToken(); eof.Type != EOF {
+				t.Fatalf("token after unterminated comment = %+v, want EOF", eof)
+			}
+		})
+	}
 }
 
 func TestPosition(t *testing.T) {
@@ -947,6 +1057,68 @@ func TestInvalidUTF8ProducesLexicalDiagnostic(t *testing.T) {
 	input := string([]byte{'m', 'o', 'd', 'u', 'l', 'e', ' ', 0xff, 'm', 'a', 'i', 'n'})
 	l := NewWithFile(input, "invalid.sec")
 	assertLexerDiagnostic(t, l.Diagnostics(), "L1001", 1, 8, string([]byte{0xff}))
+	for token := l.NextToken(); token.Type != EOF; token = l.NextToken() {
+	}
+	if diagnostics := l.Diagnostics(); len(diagnostics) != 1 || diagnostics[0].ID != compilerdiagnostics.LexerInvalidUTF8 {
+		t.Fatalf("invalid UTF-8 diagnostics = %+v, want only L1001", diagnostics)
+	}
+}
+
+// TestInvalidSourceCharactersAdvanceOneScalar verifies stable diagnostics and
+// recovery for unrecognized ASCII and Unicode token starts.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestInvalidSourceCharactersAdvanceOneScalar(t *testing.T) {
+	input := "$ ☃ \\ 💥 \x00 let"
+	l := NewWithFile(input, "characters.sec")
+	for index, expected := range []struct {
+		lexeme string
+		column int
+	}{{"$", 1}, {"☃", 3}, {"\\", 5}, {"💥", 7}, {"\x00", 9}} {
+		token := l.NextToken()
+		if token.Type != ILLEGAL || token.Lexeme != expected.lexeme || token.Column != expected.column {
+			t.Fatalf("illegal token %d = %+v", index, token)
+		}
+		assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerInvalidSourceCharacter, 1, expected.column, expected.lexeme)
+	}
+	if token := l.NextToken(); token.Type != LET || token.Lexeme != "let" {
+		t.Fatalf("token after invalid characters = %+v, want LET", token)
+	}
+	if diagnostics := l.Diagnostics(); len(diagnostics) != 5 {
+		t.Fatalf("diagnostics = %+v, want one L1020 per invalid scalar", diagnostics)
+	}
+}
+
+// TestEmbeddedNULIsNotEOF verifies that U+0000 content cannot truncate a
+// literal, comment, or the following source stream.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §2 "Source text and encoding"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestEmbeddedNULIsNotEOF(t *testing.T) {
+	tests := []struct {
+		input  string
+		type_  TokenType
+		lexeme string
+	}{
+		{input: "\"a\x00b\" let", type_: STRING, lexeme: "\"a\x00b\""},
+		{input: "`a\x00b` let", type_: RAW_STRING, lexeme: "`a\x00b`"},
+		{input: "/*a\x00b*/ let", type_: COMMENT, lexeme: "/*a\x00b*/"},
+		{input: "//a\x00b\nlet", type_: COMMENT, lexeme: "//a\x00b"},
+	}
+	for _, test := range tests {
+		l := New(test.input)
+		if token := l.NextToken(); token.Type != test.type_ || token.Lexeme != test.lexeme {
+			t.Fatalf("embedded NUL token = %+v, want %q %q", token, test.type_, test.lexeme)
+		}
+		if token := l.NextToken(); token.Type != LET {
+			t.Fatalf("token after embedded NUL content = %+v, want LET", token)
+		}
+		if diagnostics := l.Diagnostics(); len(diagnostics) != 0 {
+			t.Fatalf("embedded token content diagnostics = %+v", diagnostics)
+		}
+	}
 }
 
 func TestUnsupportedUnicodeWhitespaceIsIllegalOutsideLiteralsAndComments(t *testing.T) {
@@ -1002,13 +1174,139 @@ func assertLexerDiagnostic(t *testing.T, diagnostics []Diagnostic, id string, li
 	t.Fatalf("missing diagnostic %s at %d:%d for %q in %+v", id, line, column, lexeme, diagnostics)
 }
 
-func TestIllegalUnterminatedString(t *testing.T) {
-	input := `"unterminated`
+// TestUnterminatedOrdinaryStringIsSingleDiagnosedToken verifies focused EOF
+// and physical-line recovery without consuming the following source line.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.1 "Ordinary strings"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestUnterminatedOrdinaryStringIsSingleDiagnosedToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		lexeme    string
+		nextType  TokenType
+		nextValue string
+	}{
+		{name: "EOF", input: `"unterminated`, lexeme: `"unterminated`, nextType: EOF},
+		{name: "LF recovery", input: "\"unterminated\nlet", lexeme: `"unterminated`, nextType: LET, nextValue: "let"},
+		{name: "CRLF recovery", input: "\"unterminated\r\nlet", lexeme: `"unterminated`, nextType: LET, nextValue: "let"},
+		{name: "bare CR recovery", input: "\"unterminated\rlet", lexeme: `"unterminated`, nextType: LET, nextValue: "let"},
+	}
 
-	tok := New(input).NextToken()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			l := NewWithFile(test.input, "string.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != test.lexeme {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, test.lexeme)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerUnterminatedOrdinaryString, 1, 1, test.lexeme)
+			next := l.NextToken()
+			if next.Type != test.nextType || next.Lexeme != test.nextValue {
+				t.Fatalf("token after unterminated string = %+v, want %q %q", next, test.nextType, test.nextValue)
+			}
+		})
+	}
+}
 
-	if tok.Type != ILLEGAL {
-		t.Fatalf("wrong type. got=%q want=%q", tok.Type, ILLEGAL)
+// TestUnterminatedRawStringIsSingleDiagnosedToken verifies that a multiline
+// raw-string candidate is retained through EOF under one focused diagnostic.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.2 "Raw strings"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestUnterminatedRawStringIsSingleDiagnosedToken(t *testing.T) {
+	input := "`first raw line\nsecond raw line\nstill open"
+	l := NewWithFile(input, "raw.sec")
+	token := l.NextToken()
+	if token.Type != ILLEGAL || token.Lexeme != input {
+		t.Fatalf("token = %+v, want one ILLEGAL %q", token, input)
+	}
+	assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerUnterminatedRawString, 1, 1, input)
+	if eof := l.NextToken(); eof.Type != EOF {
+		t.Fatalf("token after unterminated raw string = %+v, want EOF", eof)
+	}
+}
+
+// TestUnterminatedCharacterLiteralIsSingleDiagnosedToken verifies focused EOF
+// and physical-line recovery without consuming the following source line.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestUnterminatedCharacterLiteralIsSingleDiagnosedToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		lexeme    string
+		nextType  TokenType
+		nextValue string
+	}{
+		{name: "EOF", input: `'x`, lexeme: `'x`, nextType: EOF},
+		{name: "LF recovery", input: "'x\nlet", lexeme: `'x`, nextType: LET, nextValue: "let"},
+		{name: "CRLF recovery", input: "'x\r\nlet", lexeme: `'x`, nextType: LET, nextValue: "let"},
+		{name: "bare CR recovery", input: "'x\rlet", lexeme: `'x`, nextType: LET, nextValue: "let"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			l := NewWithFile(test.input, "character.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != test.lexeme {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, test.lexeme)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerUnterminatedCharacterLiteral, 1, 1, test.lexeme)
+			next := l.NextToken()
+			if next.Type != test.nextType || next.Lexeme != test.nextValue {
+				t.Fatalf("token after unterminated character literal = %+v, want %q %q", next, test.nextType, test.nextValue)
+			}
+		})
+	}
+}
+
+// TestUnterminatedInterpolatedStringIsSingleDiagnosedToken verifies focused
+// EOF and physical-line recovery for both text and expression portions.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestUnterminatedInterpolatedStringIsSingleDiagnosedToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		lexeme    string
+		nextType  TokenType
+		nextValue string
+	}{
+		{name: "EOF in text", input: `$"value`, lexeme: `$"value`, nextType: EOF},
+		{name: "EOF in expression", input: `$"value {item`, lexeme: `$"value {item`, nextType: EOF},
+		{name: "LF recovery", input: "$\"value {item}\nlet", lexeme: `$"value {item}`, nextType: LET, nextValue: "let"},
+		{name: "CRLF recovery", input: "$\"value {item}\r\nlet", lexeme: `$"value {item}`, nextType: LET, nextValue: "let"},
+		{name: "bare CR recovery", input: "$\"value {item}\rlet", lexeme: `$"value {item}`, nextType: LET, nextValue: "let"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			l := NewWithFile(test.input, "interpolation.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != test.lexeme {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, test.lexeme)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerUnterminatedInterpolatedString, 1, 1, test.lexeme)
+			next := l.NextToken()
+			if next.Type != test.nextType || next.Lexeme != test.nextValue {
+				t.Fatalf("token after unterminated interpolation = %+v, want %q %q", next, test.nextType, test.nextValue)
+			}
+		})
+	}
+
+	l := New(`$"\`)
+	if token := l.NextToken(); token.Type != ILLEGAL {
+		t.Fatalf("terminal escape token = %+v, want ILLEGAL", token)
+	}
+	if diagnostics := l.Diagnostics(); len(diagnostics) != 1 || diagnostics[0].ID != compilerdiagnostics.LexerMalformedEscape {
+		t.Fatalf("terminal escape diagnostics = %+v, want only L1007", diagnostics)
 	}
 }
 

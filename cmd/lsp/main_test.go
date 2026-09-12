@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -892,13 +893,30 @@ func TestStructuredParserDiagnosticUsesFocusedCodeAndTokenRange(t *testing.T) {
 		Message:    "assignment in while condition at 5:16",
 		Primary:    token,
 		Unexpected: &token,
-	})
+	}, "\n\n\n\n               =")
 
 	if diagnostic.Code != diagnostics.ParserInvalidAssignmentExpr {
 		t.Fatalf("wrong diagnostic code. got=%q want=%s", diagnostic.Code, diagnostics.ParserInvalidAssignmentExpr)
 	}
 	if diagnostic.Range.Start.Line != 4 || diagnostic.Range.Start.Character != 15 {
 		t.Fatalf("wrong diagnostic start: %+v", diagnostic.Range.Start)
+	}
+}
+
+func TestStructuredParserDiagnosticMapsScalarColumnsAndWidthsToUTF16(t *testing.T) {
+	text := "/*💥*/ $"
+	token := lexer.Token{Type: lexer.ILLEGAL, Lexeme: "💥", Line: 1, Column: 3}
+	diagnostic := structuredParserDiagnostic(parser.Diagnostic{
+		ID:      diagnostics.LexerInvalidSourceCharacter,
+		Message: "invalid source character",
+		Primary: token,
+	}, text)
+	want := lspRange{
+		Start: position{Line: 0, Character: 2},
+		End:   position{Line: 0, Character: 4},
+	}
+	if diagnostic.Range != want {
+		t.Fatalf("UTF-16 diagnostic range = %+v, want %+v", diagnostic.Range, want)
 	}
 }
 
@@ -945,6 +963,151 @@ func TestAnalyzePublishesInvalidNumericSuffixDiagnostics(t *testing.T) {
 	}
 	if count != 6 {
 		t.Fatalf("LSP invalid numeric suffix count = %d, want 6", count)
+	}
+}
+
+func TestAnalyzePublishesMissingExponentDigitsDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/missing_exponent_digits_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	items := analyze("file:///tmp/missing_exponent_digits_invalid.sec", string(input))
+	for _, diagnostic := range items {
+		if diagnostic.Code == diagnostics.LexerMissingExponentDigits {
+			count++
+		}
+	}
+	if len(items) != 5 || count != 5 {
+		t.Fatalf("LSP missing exponent diagnostics = %+v, want exactly five L1014 diagnostics", items)
+	}
+}
+
+func TestAnalyzePublishesMalformedDecimalCandidateMatrix(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/malformed_decimal_candidates_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/malformed_decimal_candidates_invalid.sec", string(input))
+	counts := map[string]int{}
+	for _, diagnostic := range items {
+		counts[diagnostic.Code]++
+	}
+	if len(items) != 11 ||
+		counts[diagnostics.LexerInvalidDigitSeparator] != 4 ||
+		counts[diagnostics.LexerInvalidNumericSuffix] != 4 ||
+		counts[diagnostics.LexerMissingExponentDigits] != 3 {
+		t.Fatalf("LSP malformed decimal diagnostics = %+v", items)
+	}
+}
+
+func TestAnalyzePublishesUnterminatedBlockCommentDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_block_comment_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/unterminated_block_comment_invalid.sec", string(input))
+	if len(items) != 1 || items[0].Code != diagnostics.LexerUnterminatedBlockComment {
+		t.Fatalf("LSP unterminated block comment diagnostics = %+v", items)
+	}
+	want := lspRange{
+		Start: position{Line: 3, Character: 0},
+		End:   position{Line: 6, Character: 0},
+	}
+	if items[0].Range != want {
+		t.Fatalf("LSP unterminated block comment range = %+v, want %+v", items[0].Range, want)
+	}
+}
+
+func TestAnalyzePublishesUnterminatedOrdinaryStringDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_ordinary_string_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/unterminated_ordinary_string_invalid.sec", string(input))
+	if len(items) != 1 || items[0].Code != diagnostics.LexerUnterminatedOrdinaryString {
+		t.Fatalf("LSP unterminated ordinary string diagnostics = %+v", items)
+	}
+	want := lspRange{
+		Start: position{Line: 2, Character: 14},
+		End:   position{Line: 2, Character: 36},
+	}
+	if items[0].Range != want {
+		t.Fatalf("LSP unterminated ordinary string range = %+v, want %+v", items[0].Range, want)
+	}
+}
+
+func TestAnalyzePublishesUnterminatedRawStringDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_raw_string_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/unterminated_raw_string_invalid.sec", string(input))
+	if len(items) != 1 || items[0].Code != diagnostics.LexerUnterminatedRawString {
+		t.Fatalf("LSP unterminated raw string diagnostics = %+v", items)
+	}
+	want := lspRange{
+		Start: position{Line: 2, Character: 14},
+		End:   position{Line: 5, Character: 0},
+	}
+	if items[0].Range != want {
+		t.Fatalf("LSP unterminated raw string range = %+v, want %+v", items[0].Range, want)
+	}
+}
+
+func TestAnalyzePublishesUnterminatedCharacterLiteralDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_character_literal_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/unterminated_character_literal_invalid.sec", string(input))
+	if len(items) != 1 || items[0].Code != diagnostics.LexerUnterminatedCharacterLiteral {
+		t.Fatalf("LSP unterminated character literal diagnostics = %+v", items)
+	}
+	want := lspRange{
+		Start: position{Line: 2, Character: 14},
+		End:   position{Line: 2, Character: 16},
+	}
+	if items[0].Range != want {
+		t.Fatalf("LSP unterminated character literal range = %+v, want %+v", items[0].Range, want)
+	}
+}
+
+func TestAnalyzePublishesUnterminatedInterpolatedStringDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_interpolated_string_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/unterminated_interpolated_string_invalid.sec", string(input))
+	if len(items) != 1 || items[0].Code != diagnostics.LexerUnterminatedInterpolatedString {
+		t.Fatalf("LSP unterminated interpolated string diagnostics = %+v", items)
+	}
+	want := lspRange{
+		Start: position{Line: 2, Character: 14},
+		End:   position{Line: 2, Character: 28},
+	}
+	if items[0].Range != want {
+		t.Fatalf("LSP unterminated interpolated string range = %+v, want %+v", items[0].Range, want)
+	}
+}
+
+func TestAnalyzePublishesInvalidSourceCharacterDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/invalid_source_character_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := analyze("file:///tmp/invalid_source_character_invalid.sec", string(input))
+	if len(items) != 2 || items[0].Code != diagnostics.LexerInvalidSourceCharacter || items[1].Code != diagnostics.LexerInvalidSourceCharacter {
+		t.Fatalf("LSP invalid source character diagnostics = %+v", items)
+	}
+	wants := []lspRange{
+		{Start: position{Line: 2, Character: 7}, End: position{Line: 2, Character: 8}},
+		{Start: position{Line: 3, Character: 17}, End: position{Line: 3, Character: 18}},
+	}
+	for index, want := range wants {
+		if items[index].Range != want {
+			t.Fatalf("LSP invalid source character range %d = %+v, want %+v", index, items[index].Range, want)
+		}
 	}
 }
 
@@ -2841,6 +3004,13 @@ func TestCompletionIncludesContractModifiers(t *testing.T) {
 		source := "module main\n\n" + tc.source
 		items := completeSource("", source, len(source))
 		assertCompletionLabels(t, items, tc.labels)
+	}
+}
+
+func TestContractCompletionUsesCanonicalLexerInventory(t *testing.T) {
+	want := append([]string{"range", "in"}, lexer.ContractWords()...)
+	if !reflect.DeepEqual(contractCompletionWords, want) {
+		t.Fatalf("contractCompletionWords = %v, want %v", contractCompletionWords, want)
 	}
 }
 

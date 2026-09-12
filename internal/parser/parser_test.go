@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -1064,16 +1065,22 @@ func TestParseLetInitializer(t *testing.T) {
 	}
 }
 
+// Rules: rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+// and §20 "Lexical errors".
 func TestMalformedScientificExponentHasFocusedDiagnostic(t *testing.T) {
-	p := New(lexer.New(`let value := 1e+`))
-	p.ParseProgram()
-
-	expected := `malformed scientific exponent "1e+": expected at least one decimal digit at 1:14`
-	if len(p.Errors()) != 1 {
-		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	input, err := os.ReadFile("../../testdata/lexer/missing_exponent_digits_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if p.Errors()[0] != expected {
-		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	result := New(lexer.NewWithFile(string(input), "missing_exponent_digits_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerMissingExponentDigits {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 5 || count != 5 {
+		t.Fatalf("missing exponent diagnostics = %+v", result.Diagnostics)
 	}
 }
 
@@ -5803,6 +5810,268 @@ func TestParserPreservesInvalidNumericSuffixDiagnostics(t *testing.T) {
 	}
 	if !result.HasErrors || len(result.Diagnostics) != 6 || count != 6 {
 		t.Fatalf("invalid numeric suffix diagnostics = %+v", result.Diagnostics)
+	}
+}
+
+// TestParserPreservesMalformedDecimalCandidateDiagnostics verifies that lexer
+// ownership survives parser recovery for every decimal literal shape.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§12.2, 12.4–12.7 and §20
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+func TestParserPreservesMalformedDecimalCandidateDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/malformed_decimal_candidates_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "malformed_decimal_candidates_invalid.sec")).Parse()
+	counts := map[string]int{}
+	for _, diagnostic := range result.Diagnostics {
+		counts[diagnostic.ID]++
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 11 ||
+		counts[diagnostics.LexerInvalidDigitSeparator] != 4 ||
+		counts[diagnostics.LexerInvalidNumericSuffix] != 4 ||
+		counts[diagnostics.LexerMissingExponentDigits] != 3 {
+		t.Fatalf("malformed decimal diagnostics = %+v", result.Diagnostics)
+	}
+}
+
+// TestDocumentationCommentsAttachToDeclarationAST verifies source-ordered AST
+// attachment for top-level, member, field, variant, and local declarations.
+// It also verifies blank-line detachment, grouped documentation blocks, and
+// the ordinary-comment status of `///`.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§5.4–5.5
+//   - rules/tooling/formatter.md — "Documentation comment"
+func TestDocumentationCommentsAttachToDeclarationAST(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/parser/documentation_attachment_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "documentation_attachment_valid.sec")).Parse()
+	if result.HasErrors {
+		t.Fatalf("documentation fixture errors = %v", result.Diagnostics)
+	}
+
+	wantTargets := []string{
+		"module:documentation_attachment_valid",
+		"type:Record", "field:Value",
+		"enum:Mode", "enum-value:Active", "enum-value:Idle",
+		"type:Choice", "union-variant:Item",
+		"interface:Reader", "function:Read", "interface-property:Size",
+		"impl:Record", "init", "function:Read", "property:Size", "let:Default",
+		"function:Main", "let:value",
+	}
+	if len(result.Program.Documentation) != len(wantTargets) {
+		t.Fatalf("documentation attachments = %d, want %d: %#v", len(result.Program.Documentation), len(wantTargets), result.Program.Documentation)
+	}
+
+	for index, attachment := range result.Program.Documentation {
+		got := documentationTargetName(attachment.Declaration)
+		if got != wantTargets[index] {
+			t.Errorf("attachment %d target = %q, want %q", index, got, wantTargets[index])
+		}
+		if len(attachment.Comments) == 0 || !strings.HasPrefix(attachment.Comments[0].Lexeme, "/**") {
+			t.Errorf("attachment %d does not preserve documentation tokens: %+v", index, attachment.Comments)
+		}
+		if index > 0 && attachment.Comments[0].Line <= result.Program.Documentation[index-1].Comments[0].Line {
+			t.Errorf("attachments are not in source order at %d", index)
+		}
+	}
+
+	mainAttachment := result.Program.Documentation[len(result.Program.Documentation)-2]
+	if len(mainAttachment.Comments) != 2 {
+		t.Fatalf("Main documentation group has %d comments, want 2", len(mainAttachment.Comments))
+	}
+	for _, attachment := range result.Program.Documentation {
+		if target := documentationTargetName(attachment.Declaration); target == "field:Ignored" || target == "function:Undocumented" {
+			t.Errorf("detached or ordinary comment attached to %s", target)
+		}
+	}
+}
+
+func documentationTargetName(node ast.Node) string {
+	switch node := node.(type) {
+	case *ast.ModuleStatement:
+		return "module:" + node.Path
+	case *ast.TypeDeclStatement:
+		return "type:" + node.Name.Value
+	case *ast.StructField:
+		return "field:" + node.Name.Value
+	case *ast.EnumDeclaration:
+		return "enum:" + node.Name.Value
+	case *ast.EnumValue:
+		return "enum-value:" + node.Name.Value
+	case *ast.UnionVariant:
+		return "union-variant:" + node.Name.Value
+	case *ast.InterfaceDeclaration:
+		return "interface:" + node.Name.Value
+	case *ast.InterfaceProperty:
+		return "interface-property:" + node.Name.Value
+	case *ast.ImplStatement:
+		return "impl:" + node.Target.Name
+	case *ast.InitDeclaration:
+		return "init"
+	case *ast.FunctionDeclaration:
+		return "function:" + node.Name.Value
+	case *ast.PropertyDeclaration:
+		return "property:" + node.Name.Value
+	case *ast.LetStatement:
+		return "let:" + node.Name.Value
+	default:
+		return fmt.Sprintf("%T", node)
+	}
+}
+
+// Rules: rules/foundations/lexical_structure.md — §5.3 "Nested block
+// comments" and §20 "Lexical errors".
+func TestParserPreservesUnterminatedBlockCommentDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_block_comment_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "unterminated_block_comment_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerUnterminatedBlockComment {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 1 || count != 1 {
+		t.Fatalf("unterminated block comment diagnostics = %+v", result.Diagnostics)
+	}
+}
+
+// TestParserPreservesUnterminatedOrdinaryStringDiagnostic verifies that the
+// lexer-owned error does not produce parser or Sema cascades and that parsing
+// resumes on the next physical line.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.1 "Ordinary strings"
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+func TestParserPreservesUnterminatedOrdinaryStringDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_ordinary_string_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "unterminated_ordinary_string_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerUnterminatedOrdinaryString {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 1 || count != 1 {
+		t.Fatalf("unterminated ordinary string diagnostics = %+v", result.Diagnostics)
+	}
+	if len(result.Program.Statements) != 3 {
+		t.Fatalf("statements after recovery = %d, want module, invalid let, and following let", len(result.Program.Statements))
+	}
+}
+
+// TestParserPreservesUnterminatedRawStringDiagnostic verifies that a
+// lexer-owned multiline raw-string failure does not acquire parser or Sema
+// cascades.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.2 "Raw strings"
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+func TestParserPreservesUnterminatedRawStringDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_raw_string_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "unterminated_raw_string_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerUnterminatedRawString {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 1 || count != 1 {
+		t.Fatalf("unterminated raw string diagnostics = %+v", result.Diagnostics)
+	}
+}
+
+// TestParserPreservesUnterminatedCharacterLiteralDiagnostic verifies that the
+// lexer-owned error does not produce parser or Sema cascades and that parsing
+// resumes on the next physical line.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+func TestParserPreservesUnterminatedCharacterLiteralDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_character_literal_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "unterminated_character_literal_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerUnterminatedCharacterLiteral {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 1 || count != 1 {
+		t.Fatalf("unterminated character literal diagnostics = %+v", result.Diagnostics)
+	}
+	if len(result.Program.Statements) != 3 {
+		t.Fatalf("statements after recovery = %d, want module, invalid let, and following let", len(result.Program.Statements))
+	}
+}
+
+// TestParserPreservesUnterminatedInterpolatedStringDiagnostic verifies that
+// lexer-owned interpolation closure errors do not produce parser or Sema
+// cascades and that parsing resumes on the next physical line.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+func TestParserPreservesUnterminatedInterpolatedStringDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/unterminated_interpolated_string_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "unterminated_interpolated_string_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerUnterminatedInterpolatedString {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 1 || count != 1 {
+		t.Fatalf("unterminated interpolated string diagnostics = %+v", result.Diagnostics)
+	}
+	if len(result.Program.Statements) != 3 {
+		t.Fatalf("statements after recovery = %d, want module, invalid let, and following let", len(result.Program.Statements))
+	}
+}
+
+// TestParserPreservesInvalidSourceCharacterDiagnostic verifies one-scalar
+// lexer recovery without parser or Sema cascades.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+func TestParserPreservesInvalidSourceCharacterDiagnostic(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/invalid_source_character_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "invalid_source_character_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerInvalidSourceCharacter {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 2 || count != 2 {
+		t.Fatalf("invalid source character diagnostics = %+v", result.Diagnostics)
+	}
+	if len(result.Program.Statements) != 4 {
+		t.Fatalf("statements after recovery = %d, want module, invalid token, invalid let, and following let", len(result.Program.Statements))
 	}
 }
 

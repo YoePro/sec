@@ -3,8 +3,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Visibility - Sec Language Manual</title>
+    <title>Visibility and Scopes - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
 </head>
 <body>
 <header class="site-header">
@@ -13,7 +17,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,124 +26,816 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Visibility</div>
-        <a href="#32-visibility">Overview</a>
-        <div class="sidebar-section">Visibility Levels</div>
-        <a href="#public-names">Public names</a>
-        <a href="#module-visible-names">Module-visible names</a>
-        <a href="#private-names">Private names</a>
-        <div class="sidebar-section">Nested Types</div>
-        <a href="#visibility-of-nested-types">Visibility of nested types</a>
-        <a href="#public-interfaces">Public interfaces</a>
-        <a href="#private-payload-types">Private payload types</a>
-        <div class="sidebar-section">Members</div>
-        <a href="#fields-methods-and-properties">Fields, methods and properties</a>
-        <a href="#visibility-through-imports">Visibility through imports</a>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#visibility">Visibility and Scopes</a>
+        <a href="#identifier-model">Identifier Model</a>
+        <a href="#unified-namespace">One Namespace per Scope</a>
+        <a href="#module-namespace">Module Namespace</a>
+        <a href="#overload-groups">Function Overload Groups</a>
+        <a href="#member-namespace">Member Namespace</a>
+        <a href="#nested-declarations">Nested Declarations</a>
+        <a href="#lexical-scopes">Lexical Scopes</a>
+        <a href="#declaration-point">Declaration Point</a>
+        <a href="#shadowing">No Shadowing</a>
+        <a href="#sibling-scopes">Sibling Scopes</a>
+        <a href="#reserved-names">Reserved Names</a>
+        <a href="#contextual-set">Contextual set</a>
+        <a href="#contextual-x">Contextual x</a>
+        <a href="#visibility-prefixes">Visibility Prefixes</a>
+        <a href="#public">Public Names</a>
+        <a href="#module-internal">Module-Internal Names</a>
+        <a href="#private">Private Names</a>
+        <a href="#private-members">Private Members</a>
+        <a href="#local-prefixes">Prefixes on Locals</a>
+        <a href="#discard-binding">Bare _</a>
+        <a href="#type-naming">Type Naming</a>
+        <a href="#other-naming">Other Naming Styles</a>
+        <a href="#generic-parameters">Generic Parameters</a>
+        <a href="#imports-aliases">Imports and Aliases</a>
+        <a href="#lookup">Name Lookup</a>
+        <a href="#qualified-lookup">Qualified Lookup</a>
+        <a href="#forward-references">Forward References</a>
+        <a href="#local-forward">No Local Forward References</a>
+        <a href="#name-identity">Name Identity</a>
+        <a href="#visibility-vs-access">Visibility vs Module Access</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
         <div class="sidebar-section">Language</div>
-        <a href="01-introduction.html">Introduction</a>
-        <a href="02-basic-syntax.html">Basic Syntax</a>
-        <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
-        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
-        <a href="06-functions.html">Functions</a>
-        <a href="07-if.html">If Statements</a>
-        <a href="08-switch.html">Switch Statements</a>
-        <a href="09-match.html">Match Expressions</a>
-        <a href="10-enums.html">Enums</a>
-        <a href="11-unions.html">Unions</a>
-        <a href="12-registers.html">Registers</a>
-        <a href="13-units.html">Units</a>
-        <a href="14-generics.html">Generics</a>
-        <a href="15-loops.html">Loops</a>
-        <a href="16-impl.html">Impl Blocks</a>
-        <a href="17-properties.html">Properties</a>
-        <a href="18-interfaces.html">Interfaces</a>
-        <a href="19-arrays.html">Arrays</a>
-        <a href="20-slices.html">Slices</a>
-        <a href="21-indexing.html">Indexing</a>
-        <a href="22-storage.html">Values, Places and Storage</a>
-        <a href="23-references.html">References</a>
-        <a href="24-ownership.html">Ownership</a>
-        <a href="25-copy-move.html">Copying and Moving</a>
-        <a href="26-unsafe.html">Unsafe</a>
-        <a href="27-spread.html">Spread</a>
-        <a href="30-modules.html">Modules and Imports</a>
-        <a href="31-projects.html">Projects and sec.module</a>
-        <a href="32-visibility.html" class="active">Visibility</a>
-        <a href="33-result-and-option.html">Result and Option</a>
-        <a href="34-try.html">Error Propagation</a>
-        <a href="35-defer.html">Deferred Cleanup</a>
-        <a href="36-attributes.html">Attributes</a>
-        <a href="37-build-directives.html">Build Directives</a>
-        <a href="38-ffi.html">Foreign Function Interfaces</a>
-        <a href="39-tasks.html">Tasks</a>
-        <a href="40-spawn.html">Spawning Work</a>
-        <a href="41-await.html">Awaiting Tasks</a>
-        <a href="42-channels.html">Channels and Coordination</a>
-        <a href="43-testing.html">Tests and Benchmarks</a>
-        <a href="44-formatting.html">Formatting</a>
-        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html" class="active">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
     </nav>
 
     <main class="content">
-        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Visibility</div>
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Visibility and Scopes</div>
 
-        <h1 id="32-visibility">Visibility</h1>
+        <h1 id="visibility">Visibility and Scopes</h1>
 
-        <p>Visibility controls which names are accessible from different modules and scopes.</p>
+        <p>
+            Sec uses names, scopes and visibility rules designed to make identifier resolution
+            predictable from source code.
+        </p>
 
-        <div class="section" id="visibility-levels">
-            <h2>Visibility Levels</h2>
-            <ul>
-                <li id="public-names">Public names</li>
-                <li id="module-visible-names">Module-visible names</li>
-                <li id="private-names">Private names</li>
-            </ul>
-        </div>
+        <p>
+            Visibility is encoded directly in an identifier's prefix:
+        </p>
 
-        <div class="section" id="nested-types">
-            <h2>Nested Types</h2>
-            <ul>
-                <li id="visibility-of-nested-types">Visibility of nested types</li>
-                <li id="public-interfaces">Public interfaces</li>
-                <li id="private-payload-types">Private payload types</li>
-            </ul>
-        </div>
+        <pre><code>Name
+_name
+__name</code></pre>
 
-        <div class="section" id="members">
-            <h2>Members</h2>
-            <ul>
-                <li id="fields-methods-and-properties">Fields, methods and properties</li>
-                <li id="visibility-through-imports">Visibility through imports</li>
-            </ul>
-        </div>
+        <p>
+            These spellings mean public, module-internal and private visibility respectively when
+            they are declared in scopes that export names.
+        </p>
+
+        <p>
+            Visibility is only one part of name resolution. Sec also defines one declaration
+            namespace per scope, forbids shadowing, combines type-member declarations into one member
+            namespace, and registers selected declaration surfaces before body analysis so that
+            ordinary forward references work predictably.
+        </p>
 
         <div class="rule">
-            <strong>Note:</strong> This chapter is part of the planned manual structure. Content is preliminary and will be expanded as the language evolves.
+            <strong>Core rule:</strong> A reader, compiler, formatter, debugger and language server
+            must resolve the same source name to the same declaration.
         </div>
 
+        <section id="identifier-model">
+            <h2>Identifier Model</h2>
+            <p>An identifier names a declaration or binding.</p>
+            <p>Identifiers may name types, functions, variables, parameters, generic parameters,
+            fields, properties, methods, events, nested declarations, imports, aliases, pattern
+            bindings and loop bindings.</p>
+            <p>Character-level identifier syntax belongs to the lexical rules. This chapter defines
+            the semantic use of valid identifier spellings.</p>
+        </section>
+
+        <section id="unified-namespace">
+            <h2>One Declaration Namespace per Scope</h2>
+            <p>Sec does not maintain separate type and value namespaces inside one scope.</p>
+            <p>This is invalid:</p>
+            <pre><code>type User struct {
+    Id: uint64
+}
+
+fn User() int {
+    return 1
+}</code></pre>
+            <p>This is also invalid:</p>
+            <pre><code>type User struct {
+    Id: uint64
+}
+
+let User := 10</code></pre>
+            <p>A programmer should not need to know whether a syntactic position expects a type or
+            value before knowing which declaration the spelling denotes.</p>
+            <p>Qualified names remain distinct:</p>
+            <pre><code>storage.Reader
+network.Reader</code></pre>
+        </section>
+
+        <section id="module-namespace">
+            <h2>The Module Namespace Spans All Source Files</h2>
+            <p>Every source file belonging to one module contributes to one shared module declaration namespace.</p>
+            <pre><code>storage/
+    reader.sec
+    factory.sec</code></pre>
+            <p><code>reader.sec</code>:</p>
+            <pre><code>module storage
+
+type Reader struct {
+    ...
+}</code></pre>
+            <p><code>factory.sec</code>:</p>
+            <pre><code>module storage
+
+fn CreateReader() Reader {
+    ...
+}</code></pre>
+            <p>No sibling-file import is needed. Conflicting module-scope declarations also conflict
+            across source files. A filename does not become part of declaration identity.</p>
+        </section>
+
+        <section id="overload-groups">
+            <h2>Function Overload Groups Occupy One Name</h2>
+            <pre><code>fn Format(value: int) string {
+    return value.ToString()
+}
+
+fn Format(
+    value: int,
+    pattern: string,
+) Result[string, FormatError] {
+    return value.ToString(pattern)
+}</code></pre>
+            <p>These declarations form one overload group named <code>Format</code>. A non-function
+            declaration cannot reuse that name in the same scope.</p>
+            <p>Two overloads need distinct parameter signatures. Return type does not participate in
+            overload identity or overload resolution.</p>
+            <pre><code>fn Read() int {
+    return 1
+}
+
+fn Read() string {    // invalid
+    return "one"
+}</code></pre>
+        </section>
+
+        <section id="member-namespace">
+            <h2>Named Types Have One Member Namespace</h2>
+            <p>Fields, properties, methods, method overload groups, associated/static functions,
+            instance/static bindings, events and nested declarations share one member namespace.</p>
+            <pre><code>type Person struct {
+    Name: string
+}
+
+impl Person {
+    fn Name() string {    // invalid
+        return self.Name
+    }
+}</code></pre>
+            <p>Member conflicts are checked across the type declaration, primary ordinary
+            <code>impl</code> and valid same-module <code>impl extends</code> contributions.
+            Moving an impl fragment to another file does not create another member namespace.</p>
+        </section>
+
+        <section id="nested-declarations">
+            <h2>Nested Declarations Belong to Their Owning Type</h2>
+            <p>Outside the containing type and implementation context, use the qualified name:</p>
+            <pre><code>Vehicle.FuelType</code></pre>
+            <p>Inside the owning implementation, the short name may be used when unambiguous:</p>
+            <pre><code>impl Vehicle {
+    fn DefaultFuel() FuelType {
+        return FuelType.Electric
+    }
+}</code></pre>
+            <p>A nested declaration never leaks into the surrounding module namespace.</p>
+        </section>
+
+        <section id="lexical-scopes">
+            <h2>Lexical Scopes</h2>
+            <p>Relevant scopes include modules, types, impl blocks, functions, methods, property
+            accessors, ordinary blocks, if branches, switch cases, match arms, loops, closures,
+            pattern-binding regions and generic parameter lists.</p>
+        </section>
+
+        <section id="declaration-point">
+            <h2>Local Names Begin at Their Declaration Point</h2>
+            <p>Ordinary local bindings become visible only after their declaration has been analyzed.</p>
+            <pre><code>let value := value + 1    // invalid</code></pre>
+            <p>The local being declared is not visible inside its own initializer.</p>
+        </section>
+
+        <section id="shadowing">
+            <h2>Sec Forbids Shadowing</h2>
+            <pre><code>let count := 10
+
+if enabled {
+    let count := 20    // invalid
+}</code></pre>
+            <p>Parameters cannot be shadowed by loop or pattern bindings:</p>
+            <pre><code>fn Process(value: int) void {
+    for value in values {    // invalid
+        ...
+    }
+}</code></pre>
+            <p>Because types and values share the namespace, a local cannot hide a visible type:</p>
+            <pre><code>type Packet struct {
+}
+
+fn Decode() void {
+    let Packet := 10    // invalid
+}</code></pre>
+            <p>The rule applies to locals, parameters, loop bindings, pattern bindings, generic
+            parameters, nested declarations, imports and aliases.</p>
+        </section>
+
+        <section id="sibling-scopes">
+            <h2>Disjoint Sibling Scopes May Reuse a Name</h2>
+            <pre><code>if condition {
+    let result := First()
+} else {
+    let result := Second()
+}</code></pre>
+            <p>The branch-local declarations do not shadow one another because neither is visible
+            from the other branch.</p>
+        </section>
+
+        <section id="reserved-names">
+            <h2>Reserved Language Names Cannot Be Declarations</h2>
+            <p>Keywords and modifiers cannot be used as declaration names:</p>
+            <pre><code>let mut := 3          // invalid
+
+fn unsafe() void {    // invalid
+}
+
+type match int        // invalid</code></pre>
+            <p>Compiler-known fundamental type names and built-in type constructors are also reserved
+            where the lexical rules define them as reserved.</p>
+            <pre><code>let list := 3         // invalid
+fn map() void {       // invalid
+}
+type int uint64       // invalid</code></pre>
+            <p>Contextual spellings are different: one spelling may have a language role in one
+            grammar position while remaining an ordinary identifier elsewhere.</p>
+        </section>
+
+        <section id="contextual-set">
+            <h2><code>set</code> Is Contextual</h2>
+            <p>In type position:</p>
+            <pre><code>let values: set[int]</code></pre>
+            <p>Inside a property:</p>
+            <pre><code>property Value: int {
+    set value {
+        _value = value
+    }
+}</code></pre>
+            <p>and:</p>
+            <pre><code>property Value: int {
+    try set value {
+        _value = value
+    }
+}</code></pre>
+            <p>Outside those contexts, <code>set</code> may remain an ordinary identifier when the
+            grammar resolves it unambiguously:</p>
+            <pre><code>let set: int := 3
+
+fn set(value: int) int {
+    return value
+}</code></pre>
+        </section>
+
+        <section id="contextual-x">
+            <h2><code>x</code> Can Be an Identifier or an Operator</h2>
+            <p>As an identifier:</p>
+            <pre><code>let x := 10
+
+fn Scale(x: float32) float32 {
+    return x * 2.0
+}</code></pre>
+            <p>As matrix multiplication in the appropriate shaped-expression position:</p>
+            <pre><code>let result := left x right</code></pre>
+            <p><code>x</code> is not globally reserved merely because it also has an operator role.</p>
+        </section>
+
+        <section id="visibility-prefixes">
+            <h2>Visibility Is Encoded in the Identifier Prefix</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Spelling</th>
+                            <th>Visibility</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Name</code></td>
+                            <td>Public</td>
+                        </tr>
+                        <tr>
+                            <td><code>_name</code></td>
+                            <td>Module-internal</td>
+                        </tr>
+                        <tr>
+                            <td><code>__name</code></td>
+                            <td>Private to its declaring owner</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>The prefix is part of the identifier spelling. It is not a separate visibility modifier.</p>
+        </section>
+
+        <section id="public">
+            <h2>Public Names</h2>
+            <p>A declaration without a leading underscore is public when declared in a scope that
+            can export names.</p>
+            <pre><code>type Reader struct {
+}
+
+fn Open() Result[Reader, IOError] {
+    ...
+}</code></pre>
+            <p>Public visibility is still subject to project/module access restrictions. A public
+            declaration behind an inaccessible <code>internal</code> module boundary remains inaccessible.</p>
+        </section>
+
+        <section id="module-internal">
+            <h2>Module-Internal Names</h2>
+            <p>A name beginning with one underscore is visible throughout the declaring module but
+            is not exported from that module.</p>
+            <pre><code>type _BufferState struct {
+}
+
+fn _ValidateHeader() bool {
+    return true
+}</code></pre>
+            <p>All source files in the same module may use these declarations. External modules may not.</p>
+        </section>
+
+        <section id="private">
+            <h2>Private Names</h2>
+            <p>A name beginning with two underscores is private to its declaring owner.</p>
+            <p>At module scope, the owner is the source file:</p>
+            <pre><code>fn __ReadHeader() void {
+    ...
+}</code></pre>
+            <p>A sibling source file in the same module cannot access it.</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Declaration</th>
+                            <th>Same file</th>
+                            <th>Sibling file, same module</th>
+                            <th>External module</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Name</code></td>
+                            <td>Yes</td>
+                            <td>Yes</td>
+                            <td>Yes, subject to module access</td>
+                        </tr>
+                        <tr>
+                            <td><code>_name</code></td>
+                            <td>Yes</td>
+                            <td>Yes</td>
+                            <td>No</td>
+                        </tr>
+                        <tr>
+                            <td><code>__name</code> at module scope</td>
+                            <td>Yes</td>
+                            <td>No</td>
+                            <td>No</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="private-members">
+            <h2>Private Members Are Private to Their Owning Type</h2>
+            <pre><code>type Counter struct {
+    __value: int
+}
+
+impl Counter {
+    fn Increment() void {
+        __value += 1
+    }
+}</code></pre>
+            <p>The private field is accessible from the owning type's primary impl and valid
+            same-module extensions. Another type in the same file or module cannot access
+            <code>Counter.__value</code>.</p>
+            <p>Private nested declarations follow the same owner-based rule.</p>
+        </section>
+
+        <section id="local-prefixes">
+            <h2>Leading Underscores Do Not Change Local Lexical Scope</h2>
+            <pre><code>let _temporary := Calculate()
+let __state := ReadState()</code></pre>
+            <p>These are ordinary local variables. Their prefixes do not make them module-internal or
+            file-private, suppress unused diagnostics, or turn them into discard bindings.</p>
+        </section>
+
+        <section id="discard-binding">
+            <h2>Bare <code>_</code> Is Not a General Identifier</h2>
+            <p>Bare underscore is a context-specific grammar form.</p>
+            <p>Defined uses include match ignore patterns, reserved unnamed register bits and other
+            grammar positions that explicitly assign underscore semantics.</p>
+            <p>It is not an ordinary variable named <code>_</code>.</p>
+        </section>
+
+        <section id="type-naming">
+            <h2>User-Defined Nominal Types Begin with an Uppercase Letter</h2>
+            <p>After any visibility prefix, every user-defined nominal type begins with an uppercase letter.</p>
+            <p>Valid:</p>
+            <pre><code>type Percent int
+
+type Person struct {
+    Name: string
+}
+
+type Response union {
+}
+
+enum Color int {
+    Red = 1
+}
+
+interface Reader {
+    fn Read() Result[string, IOError]
+}
+
+type _ModuleState struct {
+}
+
+type __PrivateState struct {
+}</code></pre>
+            <p>Invalid:</p>
+            <pre><code>type percent int
+
+type person struct {
+}
+
+interface reader {
+}</code></pre>
+            <p>This is a language rule, not formatter style. It applies to named scalar/distinct
+            types, structs, unions, enums, registers, interfaces, error types, generic nominal
+            types and nested nominal types.</p>
+            <p>Compiler-known lowercase first-class types such as <code>int</code>,
+            <code>string</code>, <code>list</code>, <code>map</code>, <code>set</code>,
+            <code>vector</code>, <code>matrix</code>, <code>tensor</code> and
+            <code>tensor_view</code> are language-defined exceptions. Unit symbols follow unit naming rules.</p>
+        </section>
+
+        <section id="other-naming">
+            <h2>Other Naming Styles</h2>
+            <p>Sec 0.1 does not impose one universal capitalization convention on functions,
+            methods, fields, properties, immutable values, variables, parameters, modules or enum values.</p>
+            <p>They still obey uniqueness, no-shadowing, reserved-name, visibility-prefix and
+            category-specific rules.</p>
+            <p>The formatter never renames declarations to impose a style convention.</p>
+        </section>
+
+        <section id="generic-parameters">
+            <h2>Generic Parameters</h2>
+            <p>Generic type parameters are type names and begin with an uppercase letter:</p>
+            <pre><code>type Pair[T, U] struct {
+    First: T
+    Second: U
+}</code></pre>
+            <p>Generic parameter names must be unique and must not shadow another generic parameter,
+            a visible type, a visible value or a member made directly visible by the declaration grammar.</p>
+            <p>Compile-time value parameters follow ordinary value naming unless a more specific generic rule applies.</p>
+        </section>
+
+        <section id="imports-aliases">
+            <h2>Imports and Aliases Participate in Name Resolution</h2>
+            <pre><code>import "storage"
+import customerOrder "customer/order"</code></pre>
+            <p>They create source-file-local qualifier bindings:</p>
+            <pre><code>storage.Reader
+storage.Open()
+
+customerOrder.CreateCustomerOrder()</code></pre>
+            <p>Import bindings do not become bindings in sibling source files. They participate in
+            normal namespace conflicts and no-shadowing checks.</p>
+        </section>
+
+        <section id="lookup">
+            <h2>Unqualified Name Lookup</h2>
+            <p>Unqualified lookup proceeds from the innermost valid scope outward.</p>
+            <ol>
+                <li>active pattern, loop, closure or block scope;</li>
+                <li>function or property scope;</li>
+                <li>generic parameter scope;</li>
+                <li>owning type and impl member scope;</li>
+                <li>module scope;</li>
+                <li>the current file's imported module bindings and aliases;</li>
+                <li>always-available core declarations.</li>
+            </ol>
+            <p>Because shadowing is forbidden, an ambiguous outer/inner reuse is normally rejected at
+            declaration time instead of becoming a lookup tie-breaker.</p>
+        </section>
+
+        <section id="qualified-lookup">
+            <h2>Qualified Lookup Uses the Resolved Owner</h2>
+            <pre><code>value.Member
+Type.AssociatedFunction()
+Module.Declaration</code></pre>
+            <p>Semantic analysis resolves the member as a field, property, method, associated
+            function, enum value, nested type, event, compiler-known member or core member.</p>
+            <p>Visibility is then checked against that resolved declaration and its owner.</p>
+        </section>
+
+        <section id="forward-references">
+            <h2>Selected Declaration Surfaces Support Forward References</h2>
+            <p>The compiler registers declaration surfaces before body analysis where Sec permits
+            forward references.</p>
+            <p>At module scope this includes types, interfaces, functions/overload groups, supported
+            module-scope bindings and the current file's imports/aliases.</p>
+            <p>For a type and its impl surface this includes fields, nested declarations, properties,
+            methods/overload groups, events and supported associated/static bindings.</p>
+            <p>This permits methods to call methods declared later, properties to refer to later
+            properties, and module declarations to refer across source files without file-order semantics.</p>
+        </section>
+
+        <section id="local-forward">
+            <h2>Local Variables Do Not Have Forward References</h2>
+            <pre><code>Use(value)          // invalid
+
+let value := 10</code></pre>
+            <p>Forward-reference support belongs to registered declaration surfaces, not ordinary local bindings.</p>
+        </section>
+
+        <section id="name-identity">
+            <h2>Semantic Name Identity Includes the Owner Path</h2>
+            <pre><code>storage.Reader
+network.Reader
+Vehicle.FuelType
+Result.Ok</code></pre>
+            <p>Function overload identity additionally includes the parameter signature. Return type
+            is excluded from overload identity.</p>
+            <p>Visibility prefixes remain part of source name identity unless an ABI rule defines an
+            external symbol transformation.</p>
+            <p>Compiler-generated hidden names use compiler-private identities; the compiler does
+            not rely on a user-accessible <code>__</code> prefix alone.</p>
+        </section>
+
+        <section id="visibility-vs-access">
+            <h2>Visibility and Module Access Are Separate</h2>
+            <p>A declaration may be public and still be unreachable because its module is inaccessible.</p>
+            <pre><code>services/
+    internal/
+        transport/
+            transport.sec</code></pre>
+            <p>A public declaration in that module remains inaccessible to importers outside the
+            subtree allowed by the <code>internal</code> rule.</p>
+            <p>Access therefore requires both an accessible module/import path and a declaration
+            visible from the caller.</p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+            <p>Name-resolution diagnostics should distinguish conflicts, shadowing, inaccessibility
+            and unknown names instead of collapsing them into one generic error.</p>
+
+            <h3>Namespace conflict</h3>
+            <pre><code>function `User` conflicts with type `User`
+
+the type is declared here:
+    type User struct { ... }
+
+the function would occupy the same declaration namespace</code></pre>
+
+            <h3>Shadowing</h3>
+            <pre><code>local declaration `count` shadows a visible declaration
+
+the existing `count` is declared here:
+    let count := 10
+
+help: choose a distinct local name</code></pre>
+
+            <h3>Module-internal visibility</h3>
+            <pre><code>`_Open` is module-internal to `storage`
+
+this declaration is not visible from the current module</code></pre>
+
+            <h3>Source-file-private visibility</h3>
+            <pre><code>`__ReadHeader` is private to its declaring source file
+
+the current source file belongs to the same module but is not the private owner</code></pre>
+
+            <h3>Private member</h3>
+            <pre><code>`Counter.__value` is private to `Counter`
+
+private members may be accessed only from the owning type's valid implementation context</code></pre>
+
+            <h3>Nominal type capitalization</h3>
+            <pre><code>user-defined type `percent` must begin with an uppercase letter
+
+help: rename it to `Percent`</code></pre>
+
+            <p>Diagnostics preserve original source spelling, identify both declarations in a
+            conflict, distinguish duplicate declarations from overload conflicts, and distinguish
+            inaccessible declarations from unknown names.</p>
+        </section>
+
+        <section id="tooling">
+            <h2>Formatter and Language-Server Behavior</h2>
+            <p>The formatter preserves identifier spelling and capitalization. It does not rename
+            public, module-internal, private or user-defined nominal declarations.</p>
+            <p>Syntax highlighting and semantic tokens classify contextual spellings such as
+            <code>set</code> and <code>x</code> from grammar context rather than spelling alone.</p>
+            <p>A rename operation must reject a new name when the rename would:</p>
+            <ul>
+                <li>collide in the unified declaration namespace;</li>
+                <li>create an invalid overload;</li>
+                <li>shadow a visible declaration;</li>
+                <li>use a reserved language name;</li>
+                <li>violate the uppercase nominal-type rule;</li>
+                <li>change intended visibility by adding or removing <code>_</code> or <code>__</code>.</li>
+            </ul>
+            <p>Debugger and diagnostic displays should use fully qualified names whenever the short
+            name would otherwise be ambiguous.</p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+            <ul>
+                <li>Use unprefixed names for declarations intentionally exposed as public API.</li>
+                <li>Use one leading underscore for implementation details shared across files in one module.</li>
+                <li>Use two leading underscores for declarations private to one source file or owning type.</li>
+                <li>Do not use underscore-prefixed locals merely to suppress diagnostics; they remain ordinary bindings.</li>
+                <li>Prefer distinct descriptive names instead of relying on shadowing; Sec rejects shadowing intentionally.</li>
+                <li>Keep nested declarations qualified outside their owning type.</li>
+                <li>Use import aliases when dependency qualifiers would collide.</li>
+                <li>Remember that public visibility never bypasses an <code>internal</code> module boundary.</li>
+                <li>Begin every user-defined nominal type and generic type parameter with an uppercase letter.</li>
+                <li>Do not rely on source-file or impl-fragment order for declaration visibility.</li>
+                <li>Let contextual spellings be interpreted by grammar context rather than treating them as globally reserved.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+            <ul>
+                <li>Sec uses one declaration namespace per scope.</li>
+                <li>Types and values do not occupy separate namespaces.</li>
+                <li>All source files in one module contribute to one shared module namespace.</li>
+                <li>Function overloads form one namespace entry under their shared name.</li>
+                <li>Parameter signature distinguishes overloads; return type does not.</li>
+                <li>A named type has one combined member namespace.</li>
+                <li>Primary impl and valid same-module impl extensions contribute to one member surface.</li>
+                <li>Nested declarations belong to their owning type.</li>
+                <li>Ordinary local bindings become visible at their declaration point.</li>
+                <li>A local declaration is not visible inside its own initializer.</li>
+                <li>Sec forbids shadowing of visible declarations.</li>
+                <li>Disjoint sibling scopes may reuse a spelling when neither declaration is visible from the other.</li>
+                <li>Keywords, modifiers and reserved language names cannot be used as declarations.</li>
+                <li>Contextual spellings are resolved by grammar position rather than globally reserved.</li>
+                <li><code>set</code> is contextual between collection type syntax, property setter syntax and ordinary identifier use.</li>
+                <li><code>x</code> is contextual between ordinary identifier use and shaped matrix multiplication.</li>
+                <li>Visibility is encoded in the identifier spelling, not in separate visibility modifiers.</li>
+                <li>An unprefixed exportable name is public.</li>
+                <li>A single leading underscore denotes module-internal visibility.</li>
+                <li>A double leading underscore denotes privacy to the declaring owner.</li>
+                <li>At module scope, a double-underscore declaration is private to its source file.</li>
+                <li>A private type member is private to the owning type and its valid implementation context.</li>
+                <li>Leading underscores on local variables do not alter lexical scope or suppress diagnostics.</li>
+                <li>Bare <code>_</code> is a context-specific grammar form rather than a general identifier.</li>
+                <li>User-defined nominal types begin with an uppercase letter after any visibility prefix.</li>
+                <li>Compiler-known lowercase first-class types are language-defined exceptions.</li>
+                <li>Sec 0.1 does not impose one universal capitalization style on functions, fields, values or modules.</li>
+                <li>Generic type parameters begin with an uppercase letter and must not shadow visible declarations.</li>
+                <li>Import names and aliases live in the current source file's import-binding scope.</li>
+                <li>Import aliases participate in normal conflict and no-shadowing rules.</li>
+                <li>Unqualified lookup proceeds from innermost lexical scopes outward through member, module, import and core scopes.</li>
+                <li>Qualified lookup uses the resolved owner type or module.</li>
+                <li>Module, type and member declaration surfaces are registered before body analysis where forward references are permitted.</li>
+                <li>Forward references may cross source files within one module.</li>
+                <li>Ordinary local variables do not receive forward-reference behavior.</li>
+                <li>Semantic declaration identity includes the qualified owner path.</li>
+                <li>Function overload identity additionally includes the parameter signature.</li>
+                <li>Visibility prefixes remain part of source name identity.</li>
+                <li>Compiler-generated hidden symbols use compiler-private identities instead of relying on user-accessible <code>__</code> names.</li>
+                <li>Declaration visibility and module/import accessibility are separate checks.</li>
+                <li>Public declarations inside inaccessible <code>internal</code> modules remain inaccessible to prohibited importers.</li>
+                <li>Diagnostics distinguish unknown names, inaccessible names, duplicate declarations, overload conflicts and shadowing.</li>
+                <li>Formatter and LSP tooling preserve visibility spelling and contextual-name meaning.</li>
+                <li>Rename operations reject changes that introduce conflicts, shadowing, reserved names, invalid capitalization or unintended visibility changes.</li>
+            </ul>
+        </section>
+
         <div class="page-navigation">
-            <a href="31-projects.html">Previous: Projects and sec.module</a>
-            <a href="33-result-and-option.html">Next: Result and Option</a>
+            <a href="31-ffi.html">Previous: Foreign Function Interfaces</a>
+            <a href="33-result-option.html">Next: Result and Option</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

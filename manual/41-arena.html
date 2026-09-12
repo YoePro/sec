@@ -1,0 +1,2076 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arenas - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#arenas">Arenas</a>
+        <a href="#core-model">Core Model</a>
+        <a href="#semantic-builtin">Arena Is a Semantic Builtin</a>
+        <a href="#lowercase-arena">lowercase arena</a>
+        <a href="#domain">ArenaDomain</a>
+        <a href="#state-vs-epoch">State Version vs Validity Epoch</a>
+        <a href="#move-only">Move-Only Ownership</a>
+        <a href="#composition">Composition</a>
+        <a href="#backing">Backing Relationships</a>
+        <a href="#from-buffer">Arena.FromBuffer</a>
+        <a href="#empty-borrowed">Zero-Capacity Borrowed Arena</a>
+        <a href="#with-capacity">Arena.WithCapacity</a>
+        <a href="#growable">Arena.Growable</a>
+        <a href="#growth">Growth Rules</a>
+        <a href="#capacity">Capacity</a>
+        <a href="#alignment">Alignment</a>
+        <a href="#api">Typed Allocation API</a>
+        <a href="#new">Arena.New[T]</a>
+        <a href="#alloc">Arena.Alloc[T]</a>
+        <a href="#type-requirements">Type Requirements</a>
+        <a href="#full-init">Full Initialization</a>
+        <a href="#trivial-destruction">Trivial-Destruction Restriction</a>
+        <a href="#zero-count">Zero-Element Allocation</a>
+        <a href="#zero-sized">Zero-Sized Types</a>
+        <a href="#failure">Allocation Failure</a>
+        <a href="#atomicity">Allocation Atomicity</a>
+        <a href="#repeated">Repeated Allocation</a>
+        <a href="#no-free">No Individual Free</a>
+        <a href="#reset">Reset</a>
+        <a href="#reset-blockers">What Blocks Reset</a>
+        <a href="#epoch">Validity Epochs</a>
+        <a href="#reset-capacity">Reset and Capacity</a>
+        <a href="#reset-zeroing">Reset Does Not Zero</a>
+        <a href="#release">Release</a>
+        <a href="#release-backing">Release by Backing Kind</a>
+        <a href="#implicit-destruction">Implicit Arena Destruction</a>
+        <a href="#value-destruction">Logical Value Destruction</a>
+        <a href="#escape">Return and Escape</a>
+        <a href="#return-owner">Returning Arena Ownership</a>
+        <a href="#self-reference">Self-Referential Results</a>
+        <a href="#nested">Nested Arenas</a>
+        <a href="#defer">defer</a>
+        <a href="#tasks">Tasks and Arena Dependencies</a>
+        <a href="#threads">Threads</a>
+        <a href="#concurrent">No Concurrent Arena Mutation</a>
+        <a href="#allocation-context">Allocation Context</a>
+        <a href="#mayallocate">MayAllocate vs RequiresAllocationContext</a>
+        <a href="#ambient">Explicit Arenas Are Not Ambient</a>
+        <a href="#spawn-context">Spawned Allocation Contexts</a>
+        <a href="#ordered-effects">Ordered Arena Effects</a>
+        <a href="#noalloc">@noAlloc</a>
+        <a href="#profiles">Target Profiles</a>
+        <a href="#compiler">Compiler and IR Requirements</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Analysis</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html" class="active">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Arenas</div>
+
+        <h1 id="arenas">Arenas</h1>
+
+        <p>
+            <code>Arena</code> is Sec's programmer-visible bulk-allocation domain.
+            It owns and controls one logical allocation domain while allowing many typed allocations
+            to share backing storage.
+        </p>
+
+        <pre><code>let mut arena := try Arena.WithCapacity(4096)
+
+let value := try arena.New[Header]()
+let bytes := try arena.Alloc[byte](1024)</code></pre>
+
+        <p>
+            Arena allocation is designed for explicit lifetime control, predictable bulk reclamation
+            and compiler-visible memory reasoning.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> An <code>Arena</code> is the unique move-only owner/controller
+            of one <code>ArenaDomain</code>. Ordinary allocations do not invalidate earlier
+            allocations; <code>Reset()</code> starts a new validity epoch, and
+            <code>Release()</code> terminates the domain.
+        </div>
+
+        <section id="core-model">
+            <h2>Core Model</h2>
+
+            <p>Every Arena allocation belongs to:</p>
+
+            <ul>
+                <li>one <code>ArenaDomain</code>;</li>
+                <li>the Arena's current validity epoch;</li>
+                <li>one concrete bounded allocation extent;</li>
+                <li>one storage/memory-space contract;</li>
+                <li>one allocation site.</li>
+            </ul>
+
+            <p>
+                Ordinary allocation advances Arena allocation state but does not change the validity epoch.
+            </p>
+
+            <p>
+                <code>Reset()</code> ends the current epoch, reuses the domain and backing, and starts
+                a new epoch.
+            </p>
+
+            <p>
+                <code>Release()</code> ends the ArenaDomain completely.
+            </p>
+
+            <p>
+                Arena is bulk-reclamation storage management.
+                Sec 0.1 does not provide per-allocation Arena deallocation.
+            </p>
+        </section>
+
+        <section id="semantic-builtin">
+            <h2><code>Arena</code> Is a Semantic Builtin</h2>
+
+            <p>
+                <code>Arena</code> is a compiler-known semantic builtin type.
+                Its existence does not require an ordinary imported source declaration.
+            </p>
+
+            <p>The compiler owns the semantics of:</p>
+
+            <pre><code>Arena.FromBuffer(...)
+Arena.WithCapacity(...)
+Arena.Growable(...)
+arena.New[T]()
+arena.Alloc[T](count)
+arena.Reset()
+arena.Release()</code></pre>
+
+            <p>
+                Core or target libraries may provide helper implementations, but helpers do not
+                redefine the language contract.
+            </p>
+
+            <p>
+                Arena operations are compiler-known because they affect ownership, domain identity,
+                epochs, ordered effects, task/thread dependencies and lowering.
+            </p>
+        </section>
+
+        <section id="lowercase-arena">
+            <h2>Lowercase <code>arena</code> Is an Ordinary Identifier</h2>
+
+            <p>
+                Sec 0.1 does not reserve lowercase <code>arena</code> as a keyword.
+            </p>
+
+            <pre><code>let mut arena := try Arena.WithCapacity(4096)</code></pre>
+
+            <p>
+                The language defines no special:
+            </p>
+
+            <pre><code>arena {
+    ...
+}</code></pre>
+
+            <p>
+                scoped-arena syntax in Sec 0.1.
+            </p>
+        </section>
+
+        <section id="domain">
+            <h2><code>ArenaDomain</code></h2>
+
+            <p>
+                <code>ArenaDomain</code> is the compiler-visible identity of one Arena allocation domain.
+            </p>
+
+            <p>It is:</p>
+
+            <ul>
+                <li>stable across Arena ownership moves;</li>
+                <li>stable across ordinary allocations;</li>
+                <li>stable across <code>Reset()</code>;</li>
+                <li>terminated by <code>Release()</code> or destruction.</li>
+            </ul>
+
+            <p>
+                Domain identity is independent of the physical address of the backing storage.
+            </p>
+
+            <p>
+                If a later Arena happens to reuse the same physical bytes, it receives a distinct
+                ArenaDomain identity.
+                Old references or handles never become valid again merely because an address is reused.
+            </p>
+
+            <p>
+                <code>ArenaDomain</code> is compiler semantics, not source-level region syntax.
+            </p>
+        </section>
+
+        <section id="state-vs-epoch">
+            <h2>Arena State Version and Validity Epoch Are Different</h2>
+
+            <p>
+                A mutating Arena operation produces a new compiler-visible Arena state version.
+            </p>
+
+            <p>
+                The validity epoch answers a different question: which incarnation of Arena
+                allocations is currently valid?
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Operation</th><th>State Version</th><th>Validity Epoch</th></tr></thead>
+                    <tbody>
+                        <tr><td>Allocation</td><td>Advances</td><td>Unchanged</td></tr>
+                        <tr><td>Reset</td><td>Advances</td><td>Changes</td></tr>
+                        <tr><td>Release</td><td>Terminates owner state</td><td>Domain ends</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                This distinction lets the compiler model repeated allocation without falsely treating
+                every allocation as invalidating previous references.
+            </p>
+        </section>
+
+        <section id="move-only">
+            <h2>Arena Ownership Is Move-Only</h2>
+
+            <p>
+                An <code>Arena</code> cannot be copied.
+            </p>
+
+            <pre><code>let second := first    // invalid when first: Arena</code></pre>
+
+            <p>Ownership may be moved:</p>
+
+            <pre><code>let second :&lt;- first</code></pre>
+
+            <p>After the move:</p>
+
+            <ul>
+                <li><code>second</code> owns the same ArenaDomain;</li>
+                <li>the same validity epoch remains current;</li>
+                <li>the same backing remains controlled;</li>
+                <li>the allocation state continues;</li>
+                <li><code>first</code> is unavailable.</li>
+            </ul>
+
+            <p>
+                Moving the Arena owner does not invalidate references into its allocations.
+            </p>
+
+            <p>
+                A move may be purely semantic and need no physical runtime relocation.
+            </p>
+        </section>
+
+        <section id="composition">
+            <h2>Types Containing an Arena Become Move-Only by Composition</h2>
+
+            <pre><code>type WorkerStorage struct {
+    arena: Arena
+}</code></pre>
+
+            <p>
+                Moving <code>WorkerStorage</code> transfers Arena ownership with the containing value.
+            </p>
+
+            <p>
+                Destruction of the containing value destroys the Arena field when it is still owned.
+            </p>
+        </section>
+
+        <section id="backing">
+            <h2>Arena Domain Ownership Is Not Always Backing Ownership</h2>
+
+            <p>
+                Every Arena owns and controls its ArenaDomain.
+                It does not necessarily own the physical backing bytes.
+            </p>
+
+            <p>Arena backing relationships include conceptually:</p>
+
+            <pre><code>Owned
+Borrowed
+Static
+TargetProvided</code></pre>
+
+            <p>
+                These categories describe how backing is acquired and released.
+                They do not replace the general storage-origin model.
+            </p>
+
+            <p>
+                A growable Arena may control several stable backing segments while still representing
+                one ArenaDomain.
+            </p>
+        </section>
+
+        <section id="from-buffer">
+            <h2><code>Arena.FromBuffer</code></h2>
+
+            <p>A borrowed fixed Arena is created from mutable contiguous storage:</p>
+
+            <pre><code>let mut arena := Arena.FromBuffer(ref mut buffer)</code></pre>
+
+            <p>Conceptual compiler-known shape:</p>
+
+            <pre><code>fn FromBuffer(
+    buffer: ref mut byte[],
+) Arena</code></pre>
+
+            <p><code>FromBuffer</code>:</p>
+
+            <ul>
+                <li>creates a fresh ArenaDomain;</li>
+                <li>uses the supplied mutable storage as fixed backing;</li>
+                <li>does not allocate new backing;</li>
+                <li>is infallible when the safe input view already satisfies required static conditions;</li>
+                <li>takes exclusive allocation authority over that backing for the Arena lifetime;</li>
+                <li>does not destroy or deallocate the backing owner when the Arena ends.</li>
+            </ul>
+
+            <p>The supplied storage must remain:</p>
+
+            <ul>
+                <li>mutable;</li>
+                <li>contiguous;</li>
+                <li>addressable;</li>
+                <li>live for the complete Arena lifetime;</li>
+                <li>representably bounded;</li>
+                <li>compatible with the required address space;</li>
+                <li>capable of satisfying requested alignment.</li>
+            </ul>
+
+            <p>
+                Direct conflicting use of the borrowed backing is invalid while the Arena controls it.
+            </p>
+        </section>
+
+        <section id="empty-borrowed">
+            <h2>A Zero-Capacity Borrowed Arena Is Valid</h2>
+
+            <p>
+                A zero-length mutable backing view may create a valid Arena.
+            </p>
+
+            <p>Such an Arena:</p>
+
+            <ul>
+                <li>is live;</li>
+                <li>has zero byte capacity;</li>
+                <li>may satisfy zero-element allocations;</li>
+                <li>cannot satisfy positive-storage allocations;</li>
+                <li>may be reset;</li>
+                <li>may be released.</li>
+            </ul>
+
+            <p>
+                Zero capacity is not by itself a semantic error.
+            </p>
+        </section>
+
+        <section id="with-capacity">
+            <h2><code>Arena.WithCapacity</code></h2>
+
+            <p>
+                An owned fixed Arena requests backing from the active target/profile provider:
+            </p>
+
+            <pre><code>let mut arena := try Arena.WithCapacity(4096)</code></pre>
+
+            <p>Conceptual compiler-known shape:</p>
+
+            <pre><code>fn WithCapacity(
+    capacity: uint,
+) Result[Arena, AllocationError]</code></pre>
+
+            <p>
+                The resulting Arena has fixed capacity and does not grow.
+            </p>
+
+            <p>
+                Creation may fail and is available only when the active CompilationPlan provides a
+                compatible backing provider.
+            </p>
+
+            <p>
+                Provider effects and trust provenance remain visible to analysis.
+            </p>
+
+            <p>
+                Release/destruction returns owned backing through the matching provider contract.
+            </p>
+        </section>
+
+        <section id="growable">
+            <h2><code>Arena.Growable</code></h2>
+
+            <p>
+                Where supported by the active profile, Sec 0.1 may expose a growable Arena:
+            </p>
+
+            <pre><code>let mut arena := try Arena.Growable(4096)</code></pre>
+
+            <p>Conceptual shape:</p>
+
+            <pre><code>fn Growable(
+    initialCapacity: uint,
+) Result[Arena, AllocationError]</code></pre>
+
+            <p>
+                A growable Arena remains one ArenaDomain while acquiring additional stable backing.
+            </p>
+
+            <p>
+                Growth policy may include an initial capacity, segment strategy, maximum capacity,
+                provider, alignment restrictions and memory-space restrictions.
+            </p>
+
+            <p>
+                Not every target/profile is required to expose growable Arenas.
+            </p>
+        </section>
+
+        <section id="growth">
+            <h2>Growth Must Never Relocate Existing Live Allocations</h2>
+
+            <p>Permitted strategies include:</p>
+
+            <ul>
+                <li>additional stable segments;</li>
+                <li>reserved virtual address space;</li>
+                <li>target-provided non-relocating extension;</li>
+                <li>another plan-defined stable strategy.</li>
+            </ul>
+
+            <p>This strategy is forbidden while prior allocations remain live:</p>
+
+            <pre><code>allocate a larger buffer
+copy existing Arena objects
+change their addresses
+continue using old references</code></pre>
+
+            <p>Growth preserves:</p>
+
+            <ul>
+                <li>ArenaDomain identity;</li>
+                <li>current validity epoch;</li>
+                <li>existing allocation addresses;</li>
+                <li>existing bounds;</li>
+                <li>safe-reference validity;</li>
+                <li>ownership and dependency facts.</li>
+            </ul>
+
+            <p>
+                Growth is not Reset.
+            </p>
+        </section>
+
+        <section id="capacity">
+            <h2>Capacity Is Measured in Bytes</h2>
+
+            <p>
+                Arena capacity is a backing-storage quantity measured in bytes.
+            </p>
+
+            <p>Compiler-visible quantitative facts may include:</p>
+
+            <ul>
+                <li>reserved capacity;</li>
+                <li>used capacity;</li>
+                <li>current-segment capacity;</li>
+                <li>total acquired growable capacity;</li>
+                <li>maximum capacity;</li>
+                <li>alignment padding;</li>
+                <li>peak logical demand.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 does not require every one of these facts to be exposed as a public Arena property.
+            </p>
+
+            <p>
+                For typed allocation, the element count is converted to byte demand using the
+                target-resolved layout of <code>T</code>.
+            </p>
+        </section>
+
+        <section id="alignment">
+            <h2>Every Allocation Obeys the Alignment of <code>T</code></h2>
+
+            <p>For:</p>
+
+            <pre><code>let values := try arena.Alloc[int32](100)</code></pre>
+
+            <p>the conceptual calculation is:</p>
+
+            <pre><code>alignedOffset = AlignUp(currentOffset, AlignOf(int32))
+payloadSize   = CheckedMultiply(100, int32.SizeOf)
+endOffset     = CheckedAdd(alignedOffset, payloadSize)</code></pre>
+
+            <p>
+                Alignment padding consumes Arena capacity.
+            </p>
+
+            <p>The implementation must not assume that:</p>
+
+            <ul>
+                <li><code>T.SizeOf == AlignOf(T)</code>;</li>
+                <li>all alignments are powers of two;</li>
+                <li>the current cursor is already aligned;</li>
+                <li>every backing base can satisfy every possible type alignment.</li>
+            </ul>
+
+            <p>
+                Dynamic inability to satisfy required alignment produces <code>AllocationError</code>.
+                A statically impossible alignment is a compile-time error.
+            </p>
+        </section>
+
+        <section id="api">
+            <h2>Typed Safe Allocation API</h2>
+
+            <p>The canonical safe operations are:</p>
+
+            <pre><code>let value := try arena.New[Value]()
+let values := try arena.Alloc[Value](count)</code></pre>
+
+            <p>Conceptual compiler-known signatures:</p>
+
+            <pre><code>fn New[T]() Result[ref mut T, AllocationError]
+
+fn Alloc[T](
+    count: uint,
+) Result[ref mut T[], AllocationError]</code></pre>
+
+            <p>
+                These are Arena instance operations.
+            </p>
+
+            <p>
+                They temporarily require mutable authority over Arena control state.
+                That mutable borrow ends when the allocation operation returns.
+            </p>
+
+            <p>
+                The returned reference or slice retains a dependency on the ArenaDomain and current epoch,
+                but does not retain an exclusive mutable borrow of the entire Arena controller.
+            </p>
+
+            <p>
+                Repeated allocation is therefore valid while capacity and other constraints allow it.
+            </p>
+        </section>
+
+        <section id="new">
+            <h2><code>arena.New[T]()</code></h2>
+
+            <p>
+                <code>New[T]</code> allocates storage for exactly one <code>T</code>.
+            </p>
+
+            <p>It:</p>
+
+            <ul>
+                <li>validates <code>T</code>, layout and alignment;</li>
+                <li>checks fixed capacity or performs permitted non-relocating growth;</li>
+                <li>fully initializes one <code>T</code>;</li>
+                <li>returns <code>ref mut T</code>;</li>
+                <li>never exposes an uninitialized <code>T</code>;</li>
+                <li>returns <code>AllocationError</code> on allocation failure.</li>
+            </ul>
+
+            <p>The successful reference is:</p>
+
+            <ul>
+                <li>non-null;</li>
+                <li>bounded to exactly one <code>T</code>;</li>
+                <li>associated with the current ArenaDomain;</li>
+                <li>associated with the current validity epoch;</li>
+                <li>mutable;</li>
+                <li>non-owning with respect to backing storage;</li>
+                <li>not individually deallocatable.</li>
+            </ul>
+        </section>
+
+        <section id="alloc">
+            <h2><code>arena.Alloc[T](count)</code></h2>
+
+            <p>
+                <code>Alloc[T](count)</code> allocates exactly <code>count</code> values of
+                <code>T</code>.
+            </p>
+
+            <p>
+                <code>count</code> is an element count, not a byte count.
+            </p>
+
+            <p>The operation:</p>
+
+            <ul>
+                <li>checks count arithmetic;</li>
+                <li>checks layout and alignment;</li>
+                <li>checks capacity or performs valid non-relocating growth;</li>
+                <li>fully initializes every element;</li>
+                <li>returns <code>ref mut T[]</code>;</li>
+                <li>never returns a shorter slice;</li>
+                <li>never exposes partial initialization;</li>
+                <li>returns <code>AllocationError</code> on failure.</li>
+            </ul>
+
+            <p>
+                The returned slice has exactly the requested number of elements and bounds matching
+                the complete allocation.
+            </p>
+        </section>
+
+        <section id="type-requirements">
+            <h2>Safe <code>New[T]</code> and <code>Alloc[T]</code> Have Type Requirements</h2>
+
+            <p>Sec 0.1 requires:</p>
+
+            <ul>
+                <li>complete layout under the active CompilationPlan;</li>
+                <li>a sized <code>T</code>;</li>
+                <li>known supported alignment;</li>
+                <li>a valid compiler-defined default;</li>
+                <li>safe initialization;</li>
+                <li>trivial destruction classification.</li>
+            </ul>
+
+            <p>
+                The parameterless safe forms do not allocate a type that lacks an infallible valid default.
+            </p>
+
+            <p>
+                They also do not directly allocate non-trivially-destructible <code>T</code> in Sec 0.1.
+            </p>
+
+            <p>
+                A future explicit initializer or placement-construction API would require separate
+                language semantics.
+            </p>
+        </section>
+
+        <section id="full-init">
+            <h2>Safe Arena Allocation Exposes Only Fully Initialized Values</h2>
+
+            <p>Full initialization means:</p>
+
+            <ul>
+                <li>every result value satisfies its canonical default semantics;</li>
+                <li>every readable field or element is valid;</li>
+                <li>required type invariants are established.</li>
+            </ul>
+
+            <p>It does not necessarily mean:</p>
+
+            <ul>
+                <li>every physical byte is zero;</li>
+                <li>padding has defined contents;</li>
+                <li>the implementation used <code>memset</code>;</li>
+                <li>the all-zero bit pattern is a valid representation.</li>
+            </ul>
+
+            <p>
+                The compiler may initialize using field stores, loops, vectorized stores, target
+                intrinsics, valid bulk zeroing or proof-driven store elimination.
+            </p>
+        </section>
+
+        <section id="trivial-destruction">
+            <h2>Direct Safe Arena Allocation Requires Trivial Destruction in Sec 0.1</h2>
+
+            <p>
+                <code>New[T]</code> and <code>Alloc[T]</code> require <code>T</code> to be trivially
+                destructible.
+            </p>
+
+            <p>
+                This restriction exists because Arena is a bulk-reclamation mechanism, not an
+                implicit per-allocation destructor registry.
+            </p>
+
+            <p>Arena does not automatically record:</p>
+
+            <ul>
+                <li>destructor callables;</li>
+                <li>per-allocation type metadata;</li>
+                <li>element counts for destruction;</li>
+                <li>initialization masks;</li>
+                <li>destruction ordering records.</li>
+            </ul>
+
+            <p>
+                A type directly owning files, locks, sockets, owning collections, custom-free
+                resources or another non-trivial lifecycle is therefore rejected by these direct safe
+                allocation forms unless its canonical destruction classification is trivial.
+            </p>
+
+            <p>
+                This does not forbid an owning container from using Arena-backed raw/element storage
+                when that container itself tracks logical elements and performs their required destruction.
+            </p>
+        </section>
+
+        <section id="zero-count">
+            <h2>Zero-Element Allocation Is Valid</h2>
+
+            <pre><code>let values := try arena.Alloc[int](0)</code></pre>
+
+            <p>The operation:</p>
+
+            <ul>
+                <li>succeeds;</li>
+                <li>returns a valid empty mutable slice;</li>
+                <li>consumes no capacity;</li>
+                <li>requires no Arena growth;</li>
+                <li>creates no dereferenceable element;</li>
+                <li>does not advance the validity epoch.</li>
+            </ul>
+
+            <p>
+                A literal zero count is not inherently suspicious.
+            </p>
+        </section>
+
+        <section id="zero-sized">
+            <h2>Zero-Sized Types Preserve Semantic Count</h2>
+
+            <p>
+                When the layout rules permit a concrete zero-sized <code>T</code>,
+                <code>Alloc[T](count)</code> may consume no payload bytes.
+            </p>
+
+            <p>
+                The result still retains its semantic element count and bounds.
+            </p>
+
+            <p>
+                A positive element count does not by itself imply distinct dereferenceable byte locations
+                when the element type has zero size.
+            </p>
+        </section>
+
+        <section id="failure">
+            <h2>Allocation Failure Uses <code>AllocationError</code></h2>
+
+            <p>
+                Arena creation and typed allocation report ordinary allocation failure through
+                <code>AllocationError</code>.
+            </p>
+
+            <pre><code>let values := try arena.Alloc[Packet](count)</code></pre>
+
+            <p>Failure must not silently:</p>
+
+            <ul>
+                <li>return <code>null</code>;</li>
+                <li>return an invalid safe reference;</li>
+                <li>return a shorter slice;</li>
+                <li>expose partial initialization;</li>
+                <li>fall back to an unrelated allocator;</li>
+                <li>select another Arena;</li>
+                <li>panic merely because capacity is exhausted;</li>
+                <li>terminate the process merely because capacity is exhausted.</li>
+            </ul>
+
+            <p>
+                Callers handle or propagate failure using normal <code>Result</code> and
+                <code>try</code> semantics.
+            </p>
+
+            <p>
+                The public source signature retains <code>Result</code> even when compiler proof
+                eliminates the runtime failure path.
+            </p>
+        </section>
+
+        <section id="atomicity">
+            <h2>Arena Allocation Is Atomic from Program Semantics</h2>
+
+            <p>Conceptually, the operation:</p>
+
+            <ol>
+                <li>validates Arena state;</li>
+                <li>validates <code>T</code>;</li>
+                <li>computes checked payload size;</li>
+                <li>computes alignment padding;</li>
+                <li>ensures the complete capacity/growth requirement;</li>
+                <li>reserves the complete range;</li>
+                <li>fully initializes every result value;</li>
+                <li>publishes the resulting reference or slice.</li>
+            </ol>
+
+            <p>If failure happens before publication:</p>
+
+            <ul>
+                <li>the Arena remains live;</li>
+                <li>the ArenaDomain is unchanged;</li>
+                <li>the validity epoch is unchanged;</li>
+                <li>the allocation cursor is unchanged;</li>
+                <li>prior allocations remain valid;</li>
+                <li>no partial result is published;</li>
+                <li>no partial requested capacity remains consumed.</li>
+            </ul>
+
+            <p>
+                Growable Arena segment acquisition is similarly atomic: a new segment joins the Arena
+                only after complete successful acquisition.
+            </p>
+        </section>
+
+        <section id="repeated">
+            <h2>Repeated Allocation Does Not Invalidate Earlier Allocations</h2>
+
+            <pre><code>let first := try arena.Alloc[byte](100)
+let second := try arena.Alloc[byte](200)</code></pre>
+
+            <p>
+                Both allocations remain valid in the current epoch.
+            </p>
+
+            <p>
+                Positive-sized allocation ranges do not overlap.
+                The compiler may use that fact in alias analysis.
+            </p>
+
+            <p>
+                Zero-sized and zero-element cases do not imply distinct dereferenceable byte ranges.
+            </p>
+        </section>
+
+        <section id="no-free">
+            <h2>Sec 0.1 Has No Individual <code>Arena.Free</code></h2>
+
+            <p>
+                Ending a reference lifetime does not reclaim Arena bytes.
+            </p>
+
+            <p>
+                Storage consumed by a successful allocation remains consumed in the current epoch
+                until <code>Reset()</code>, <code>Release()</code> or a future explicitly defined
+                bulk-reclamation operation.
+            </p>
+
+            <pre><code>arena.Free(value)    // no such Sec 0.1 operation</code></pre>
+        </section>
+
+        <section id="reset">
+            <h2><code>arena.Reset()</code></h2>
+
+            <pre><code>arena.Reset()</code></pre>
+
+            <p>Conceptual shape:</p>
+
+            <pre><code>fn Reset() void</code></pre>
+
+            <p><code>Reset()</code>:</p>
+
+            <ul>
+                <li>keeps the Arena owner live;</li>
+                <li>keeps the same ArenaDomain;</li>
+                <li>ends the current validity epoch;</li>
+                <li>invalidates prior allocations;</li>
+                <li>resets allocation cursors;</li>
+                <li>retains reusable backing;</li>
+                <li>starts a new validity epoch;</li>
+                <li>allows later allocation.</li>
+            </ul>
+
+            <p>
+                Reset is an ordinary mutable Arena operation.
+                It does not consume whole Arena ownership.
+            </p>
+
+            <p>
+                Reset is not Release.
+            </p>
+        </section>
+
+        <section id="reset-blockers">
+            <h2>No Validity-Preserving Dependency May Cross <code>Reset()</code></h2>
+
+            <p>Dependencies that can block Reset include:</p>
+
+            <ul>
+                <li>ordinary shared or mutable references;</li>
+                <li>slices and views;</li>
+                <li>nested Arenas;</li>
+                <li>containers using Arena backing;</li>
+                <li>closure captures;</li>
+                <li>task captures;</li>
+                <li>thread arguments;</li>
+                <li>deferred operations;</li>
+                <li>foreign-retained dependencies;</li>
+                <li>strong validity-preserving handles;</li>
+                <li>returned/result values still depending on Arena storage.</li>
+            </ul>
+
+            <p>Valid after final use:</p>
+
+            <pre><code>let values := try arena.Alloc[int](100)
+Process(values)
+
+arena.Reset()</code></pre>
+
+            <p>Invalid:</p>
+
+            <pre><code>let values := try arena.Alloc[int](100)
+arena.Reset()
+Process(values)</code></pre>
+
+            <p>
+                Final-use / non-lexical lifetime analysis decides whether the dependency still crosses
+                the Reset point.
+                Mere lexical scope does not keep a dead reference dependency alive.
+            </p>
+        </section>
+
+        <section id="epoch">
+            <h2>Reset Advances the Validity Epoch</h2>
+
+            <p>
+                Ordinary references from the old epoch must be dead before Reset.
+            </p>
+
+            <p>
+                Explicit stale-capable weak handles may survive when their own contract permits
+                fallible resolution after Reset.
+            </p>
+
+            <p>
+                A stale handle does not block Reset merely because the handle value remains live.
+            </p>
+
+            <p>
+                Epoch rekeying must never let stale references or handles become valid again through
+                wraparound or physical-address reuse.
+            </p>
+
+            <p>
+                Runtime epoch metadata may be eliminated when static proof makes it unnecessary.
+            </p>
+        </section>
+
+        <section id="reset-capacity">
+            <h2>Reset Retains Arena Capacity</h2>
+
+            <p>For a fixed Arena, Reset:</p>
+
+            <ul>
+                <li>sets used capacity/cursor back to zero;</li>
+                <li>retains total capacity;</li>
+                <li>retains backing;</li>
+                <li>retains ArenaDomain identity;</li>
+                <li>advances the validity epoch.</li>
+            </ul>
+
+            <p>
+                A borrowed Arena retains its exclusive control of the borrowed backing.
+                Reset does not return the buffer to its owner.
+            </p>
+
+            <p>
+                A growable Arena retains already acquired stable segments and resets their allocation
+                cursors.
+            </p>
+
+            <p>
+                Reset does not automatically trim growable backing.
+            </p>
+        </section>
+
+        <section id="reset-zeroing">
+            <h2>Reset Does Not Require Zeroing the Backing</h2>
+
+            <p>
+                After Reset, old typed object lifetimes have ended.
+                Later safe typed allocations must fully initialize new values before exposing them.
+            </p>
+
+            <p>
+                A compiler or profile may clear memory for security, debug or performance policy,
+                but complete zeroing is not the base semantic meaning of Reset.
+            </p>
+
+            <p>
+                Reset itself is atomic from Sec program semantics; code cannot observe a mixed old/new
+                allocation state.
+            </p>
+        </section>
+
+        <section id="release">
+            <h2><code>arena.Release()</code></h2>
+
+            <pre><code>arena.Release()</code></pre>
+
+            <p>
+                <code>Release()</code> is a compiler-known terminal lifecycle operation.
+            </p>
+
+            <p>It:</p>
+
+            <ul>
+                <li>consumes Arena ownership;</li>
+                <li>terminates the ArenaDomain;</li>
+                <li>invalidates validity-preserving dependencies;</li>
+                <li>returns owned backing to its provider where required;</li>
+                <li>ends borrowed-backing control;</li>
+                <li>permits no later use of the Arena value.</li>
+            </ul>
+
+            <p>
+                After Release, the source Arena Place is unavailable.
+            </p>
+
+            <p>
+                <code>Release()</code> returns <code>void</code> and is non-fallible in the base Arena contract.
+            </p>
+
+            <div class="rule">
+                <strong>Special case:</strong> <code>Release()</code> uses method syntax but is a
+                compiler-known consuming lifecycle operation. It does not create a general rule that
+                ordinary user-defined methods may consume whole <code>self</code>.
+            </div>
+
+            <p>
+                No validity-preserving reference or dependency may cross Release.
+            </p>
+        </section>
+
+        <section id="release-backing">
+            <h2>Release Behavior Depends on the Backing Relationship</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Backing</th><th>Release behavior</th></tr></thead>
+                    <tbody>
+                        <tr><td>Owned</td><td>Return backing through the matching provider</td></tr>
+                        <tr><td>Borrowed</td><td>End exclusive Arena control; do not deallocate the owner</td></tr>
+                        <tr><td>Static</td><td>End ArenaDomain semantics; physical storage remains</td></tr>
+                        <tr><td>Target-provided</td><td>Follow the provider/platform contract</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The ArenaDomain ends even when physical bytes remain present.
+            </p>
+        </section>
+
+        <section id="implicit-destruction">
+            <h2>Explicit <code>Release()</code> Is Usually Optional</h2>
+
+            <p>
+                The programmer does not need to call <code>Release()</code> on every normal path.
+            </p>
+
+            <p>
+                Destruction of a still-owned Arena performs terminal Release semantics.
+            </p>
+
+            <p>This can occur through:</p>
+
+            <ul>
+                <li>normal scope exit;</li>
+                <li>early return;</li>
+                <li>error-propagation cleanup;</li>
+                <li>field destruction;</li>
+                <li>task/thread cleanup;</li>
+                <li>another canonical ownership boundary.</li>
+            </ul>
+
+            <p>
+                If explicit Release already consumed the Arena, implicit cleanup does not release it again.
+            </p>
+
+            <p>
+                Double Release is invalid.
+            </p>
+        </section>
+
+        <section id="value-destruction">
+            <h2>Arena Reclamation Does Not Replace Logical Value Destruction</h2>
+
+            <p>
+                Arena controls storage.
+                Logical values may have separate ownership and lifecycle responsibilities.
+            </p>
+
+            <p>
+                Destroying a value does not necessarily reclaim its Arena bytes.
+            </p>
+
+            <p>
+                Reset or Release also cannot silently skip required non-trivial logical destruction.
+            </p>
+
+            <p>
+                This is the reason direct safe <code>New</code>/<code>Alloc</code> are restricted to
+                trivially destructible types in Sec 0.1.
+            </p>
+
+            <p>
+                Specialized owning containers may use Arena-backed storage when they themselves track
+                and destroy logical elements before the Arena dependency ends.
+            </p>
+        </section>
+
+        <section id="escape">
+            <h2>Returning a Reference into a Local Arena Is Invalid</h2>
+
+            <pre><code>fn Invalid() Result[ref int, AllocationError] {
+    let mut arena := try Arena.WithCapacity(1024)
+    let value := try arena.New[int]()
+
+    return Ok(value)    // invalid
+}</code></pre>
+
+            <p>
+                The local Arena is destroyed when the function exits, so the returned reference would
+                outlive its ArenaDomain.
+            </p>
+
+            <p>
+                Sec does not repair this through hidden Arena or heap promotion.
+            </p>
+
+            <p>
+                An Arena-backed reference may escape only when its ArenaDomain already outlives the
+                returned value through an external owner or allocation context.
+            </p>
+        </section>
+
+        <section id="return-owner">
+            <h2>Returning Arena Ownership Is Valid</h2>
+
+            <pre><code>fn CreateArena() Result[Arena, AllocationError] {
+    let arena := try Arena.WithCapacity(4096)
+    return Ok(arena)
+}</code></pre>
+
+            <p>
+                The return boundary transfers ownership of the Arena value.
+            </p>
+
+            <p>
+                The same ArenaDomain and current validity epoch continue.
+            </p>
+
+            <p>
+                Returning the Arena owner does not by itself invalidate Arena-backed storage.
+            </p>
+        </section>
+
+        <section id="self-reference">
+            <h2>Self-Referential Arena Owner/Reference Aggregates Are Not Automatic</h2>
+
+            <p>Sec 0.1 does not automatically validate shapes such as:</p>
+
+            <pre><code>type ArenaResult struct {
+    arena: Arena
+    value: ref int
+}</code></pre>
+
+            <p>
+                where <code>value</code> points into storage controlled by the Arena stored in the same
+                ordinary movable aggregate.
+            </p>
+
+            <p>
+                Such a design requires explicit self-reference, relocation and ownership semantics not
+                introduced by the base Arena model.
+            </p>
+
+            <p>
+                Field order is not proof that a self-reference remains valid after moves.
+            </p>
+        </section>
+
+        <section id="nested">
+            <h2>Nested Arenas Need No Special Syntax</h2>
+
+            <pre><code>let childBuffer := try parent.Alloc[byte](4096)
+let mut child := Arena.FromBuffer(childBuffer)</code></pre>
+
+            <p>
+                The child Arena has:
+            </p>
+
+            <ul>
+                <li>its own ArenaDomain;</li>
+                <li>its own validity epoch;</li>
+                <li>borrowed backing from one parent allocation;</li>
+                <li>a dependency on the parent ArenaDomain and parent epoch.</li>
+            </ul>
+
+            <p>
+                The parent cannot Reset or Release while the child remains live.
+            </p>
+
+            <p>
+                Releasing the child ends the child domain and its borrow of the backing.
+                It does not individually reclaim the parent allocation.
+            </p>
+
+            <p>
+                A later parent Reset may reclaim that parent allocation once the child dependency has ended.
+            </p>
+        </section>
+
+        <section id="defer">
+            <h2>Arena Cleanup Participates in Normal <code>defer</code> Ordering</h2>
+
+            <pre><code>let mut arena := try Arena.WithCapacity(4096)
+
+defer {
+    arena.Release()
+}
+
+let values := try arena.Alloc[int](100)
+
+defer {
+    FinalUse(values)
+}</code></pre>
+
+            <p>
+                LIFO cleanup runs <code>FinalUse(values)</code> before <code>arena.Release()</code>.
+            </p>
+
+            <p>
+                A cleanup plan that releases an Arena before a required dependent cleanup use is invalid.
+            </p>
+
+            <p>
+                Explicit Release is often unnecessary because normal Arena destruction already performs
+                terminal Release semantics, but an explicit defer may be useful when the intended cleanup
+                order should be written directly.
+            </p>
+
+            <p>
+                Panic cleanup occurs only where the panic/destruction policy guarantees cleanup.
+            </p>
+        </section>
+
+        <section id="tasks">
+            <h2>Tasks Preserve Arena Dependencies</h2>
+
+            <p>
+                Capturing an Arena-backed reference into a task keeps a dependency on:
+            </p>
+
+            <ul>
+                <li>ArenaDomain;</li>
+                <li>validity epoch;</li>
+                <li>allocation bounds;</li>
+                <li>capture and borrow authority.</li>
+            </ul>
+
+            <p>
+                The parent cannot Reset or Release the Arena while the task may still access that storage.
+            </p>
+
+            <p>
+                A canonical completion boundary such as <code>await</code>, join or structured-scope
+                completion may discharge the task's execution-local dependency.
+            </p>
+
+            <p>
+                Merely observing that a task “probably finished” is not sufficient.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>let task := try spawn Process(values)
+discard await task
+
+arena.Reset()</code></pre>
+
+            <p>
+                Reset is valid only if no Arena dependency survives through the task result or elsewhere.
+            </p>
+
+            <p>
+                Task completion ends execution-local captures, but a result carrying an Arena-backed
+                reference continues to carry that dependency.
+            </p>
+        </section>
+
+        <section id="threads">
+            <h2>Threads Follow the Same Lifetime Rule Plus Physical-Thread Constraints</h2>
+
+            <p>
+                Borrowing Arena-backed storage into another physical thread additionally requires proof of:
+            </p>
+
+            <ul>
+                <li>storage lifetime beyond thread execution;</li>
+                <li>valid access authority;</li>
+                <li>exclusive mutation where needed;</li>
+                <li>no conflicting Arena mutation;</li>
+                <li>no Reset or Release during use;</li>
+                <li>transferability;</li>
+                <li>required memory synchronization;</li>
+                <li>address-space compatibility;</li>
+                <li>target thread support.</li>
+            </ul>
+
+            <p>
+                A canonical join/completion boundary may end execution-local dependencies when no result
+                or other dependency remains.
+            </p>
+
+            <p>
+                An Arena may itself be moved into a task or thread when the relevant transfer rules,
+                backing provider and target profile permit it:
+            </p>
+
+            <pre><code>let task := try spawn Worker(&lt;-arena)</code></pre>
+
+            <p>
+                After committed transfer, the parent no longer owns the Arena.
+                The ArenaDomain itself remains the same.
+            </p>
+        </section>
+
+        <section id="concurrent">
+            <h2>Ordinary <code>Arena</code> Does Not Support Concurrent Mutation</h2>
+
+            <p>Without a distinct synchronization abstraction, Sec 0.1 forbids:</p>
+
+            <ul>
+                <li>concurrent <code>New</code>/<code>Alloc</code>;</li>
+                <li>concurrent Reset;</li>
+                <li>concurrent Release;</li>
+                <li>allocation concurrent with Reset or Release;</li>
+                <li>Reset/Release concurrent with access requiring the old epoch;</li>
+                <li>conflicting parent/child Arena mutation through shared backing.</li>
+            </ul>
+
+            <p>
+                Ownership, borrowing and concurrency analysis reject these cases.
+            </p>
+
+            <p>
+                A future synchronized or concurrent Arena would be a distinct explicit abstraction,
+                not a silent extension of ordinary Arena.
+            </p>
+        </section>
+
+        <section id="allocation-context">
+            <h2>Arena and Allocation Context Are Related but Distinct</h2>
+
+            <p>
+                Every callable invocation has zero or one active allocation context according to the
+                general allocation model.
+            </p>
+
+            <p>The allocation context is compiler-visible semantic state. It is not:</p>
+
+            <ul>
+                <li>a source global;</li>
+                <li>an automatically visible Arena variable;</li>
+                <li>a universal thread-local allocator;</li>
+                <li>an implicit heap;</li>
+                <li>a mandatory runtime object.</li>
+            </ul>
+
+            <p>
+                Arena is a primary concrete realization of an allocation domain, but an explicit Arena
+                value and the ambient allocation context are not the same concept.
+            </p>
+        </section>
+
+        <section id="mayallocate">
+            <h2><code>MayAllocate</code> and <code>RequiresAllocationContext</code> Are Different Facts</h2>
+
+            <p>
+                <code>MayAllocate</code> means reachable execution may perform allocation.
+            </p>
+
+            <p>
+                <code>RequiresAllocationContext</code> means a callable reaches implicit allocation
+                that needs an ambient allocation context.
+            </p>
+
+            <pre><code>fn Fill(
+    arena: ref mut Arena,
+) Result[ref mut byte[], AllocationError] {
+    return arena.Alloc[byte](1024)
+}</code></pre>
+
+            <p>
+                <code>Fill</code> may allocate through its explicit Arena parameter without requiring
+                an ambient allocation context.
+            </p>
+
+            <p>
+                A string or collection operation that allocates without an explicit Arena may instead
+                require the ambient context.
+            </p>
+        </section>
+
+        <section id="ambient">
+            <h2>The Compiler Does Not Guess an Ambient Arena from Lexical Scope</h2>
+
+            <pre><code>let temporaryArena := ...
+let outputArena := ...
+
+let result := try Build()</code></pre>
+
+            <p>
+                The compiler does not silently choose either visible Arena for <code>Build()</code>.
+            </p>
+
+            <p>
+                Likewise, passing an Arena as an ordinary explicit argument does not automatically
+                rebind the ambient allocation context.
+            </p>
+
+            <p>Allocation-context selection conceptually recognizes:</p>
+
+            <ul>
+                <li>an explicit Arena selected by the operation;</li>
+                <li>a propagated ambient allocation context;</li>
+                <li>a compiler-managed local Arena with proven backing and non-escape;</li>
+                <li>a target-provided context;</li>
+                <li>no valid context, which is a compile-time error.</li>
+            </ul>
+
+            <p>
+                Context selection happens before physical lowering.
+            </p>
+        </section>
+
+        <section id="spawn-context">
+            <h2>Spawned Execution Gets a New Allocation Context</h2>
+
+            <p>
+                A spawned task or thread does not automatically inherit the parent's mutable Arena context.
+            </p>
+
+            <p>Its allocation capability comes from:</p>
+
+            <ul>
+                <li>a task/thread-specific profile or target context;</li>
+                <li>an explicitly transferred Arena;</li>
+                <li>an explicit execution contract;</li>
+                <li>or no allocation capability.</li>
+            </ul>
+
+            <p>
+                A process receives a separate address-space allocation context.
+            </p>
+
+            <p>
+                An ISR has no ordinary allocation context unless the target/interrupt rules explicitly
+                provide and permit one.
+            </p>
+
+            <p>
+                Foreign code likewise does not automatically provide a Sec allocation context.
+            </p>
+
+            <p>
+                An exported Sec function that requires one needs an explicit Sec-aware ABI, wrapper or
+                target-provided context; the compiler must not silently add a hidden Arena parameter to
+                an ordinary foreign ABI.
+            </p>
+        </section>
+
+        <section id="ordered-effects">
+            <h2>Arena Operations Are Ordered Semantic Effects</h2>
+
+            <p>Conceptually:</p>
+
+            <pre><code>ArenaCreate(A, policy)
+ArenaAllocate(A, size)
+ArenaReset(A)
+ArenaRelease(A)</code></pre>
+
+            <p>
+                These events are associated with ArenaDomain identity and their order matters.
+            </p>
+
+            <p>This sequence is valid:</p>
+
+            <pre><code>ArenaCreate(A)
+ArenaAllocate(A)
+ArenaReset(A)
+ArenaAllocate(A)
+ArenaRelease(A)</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>ArenaRelease(A)
+ArenaAllocate(A, size)</code></pre>
+
+            <p>
+                Branches, loops, defer, destruction, tasks, threads, implicit allocation-context
+                operations and provider calls all participate in ordered-effect analysis.
+            </p>
+
+            <p>
+                Arena allocation is not a pure operation.
+                CSE must not merge two distinct allocations merely because their arguments are equal.
+            </p>
+        </section>
+
+        <section id="noalloc">
+            <h2><code>@noAlloc</code> and Arena</h2>
+
+            <p>
+                Arena typed allocation is allocation for Sec effect semantics.
+            </p>
+
+            <p>
+                Therefore current Sec 0.1 semantics treat reachable:
+            </p>
+
+            <pre><code>arena.New[T]()
+arena.Alloc[T](count)</code></pre>
+
+            <p>
+                as incompatible with <code>@noAlloc</code>.
+            </p>
+
+            <p>
+                This remains true even when the Arena backing was already reserved.
+            </p>
+
+            <p>
+                <code>Arena.FromBuffer</code> itself creates an Arena domain over existing backing and
+                does not add backing allocation.
+            </p>
+
+            <p>
+                Sec 0.1 defines no separate <code>@noBackingAlloc</code> attribute.
+            </p>
+        </section>
+
+        <section id="profiles">
+            <h2>Target Profiles May Change Implementation Capability, Not Arena Semantics</h2>
+
+            <p>Profiles may differ in:</p>
+
+            <ul>
+                <li>available Arena constructors;</li>
+                <li>backing providers;</li>
+                <li>growth support;</li>
+                <li>capacity-proof strictness;</li>
+                <li>runtime epoch metadata;</li>
+                <li>provider failure guarantees;</li>
+                <li>thread transfer;</li>
+                <li>ISR use;</li>
+                <li>memory spaces.</li>
+            </ul>
+
+            <p>
+                They may not weaken:
+            </p>
+
+            <ul>
+                <li>unique Arena ownership;</li>
+                <li>ArenaDomain identity;</li>
+                <li>validity epochs;</li>
+                <li>failure atomicity;</li>
+                <li>safe-reference validity;</li>
+                <li>non-relocating growth.</li>
+            </ul>
+
+            <h3>Hosted</h3>
+
+            <p>
+                A hosted profile may support borrowed, owned and growable Arenas plus a compiler-managed
+                ambient allocation context.
+            </p>
+
+            <h3>Embedded fixed</h3>
+
+            <p>
+                Embedded profiles may prefer borrowed fixed Arenas, static backing, caller-provided
+                backing or target-provided fixed pools.
+            </p>
+
+            <h3>Bare-metal bounded</h3>
+
+            <p>
+                A bounded profile may require statically bounded demand, no OS provider, no hidden growth
+                and no allocation context without explicit or provable backing.
+            </p>
+
+            <p>
+                When all offsets, lifetime and identity facts are static, the compiler may eliminate
+                the physical Arena descriptor entirely.
+            </p>
+
+            <h3>No-allocation</h3>
+
+            <p>
+                A no-allocation profile may still permit <code>Arena.FromBuffer</code> because it does
+                not acquire new backing.
+            </p>
+
+            <p>
+                <code>New</code> and <code>Alloc</code> nevertheless retain their canonical allocation
+                effect under the Arena rule.
+            </p>
+        </section>
+
+        <section id="compiler">
+            <h2>Compiler and IR Requirements</h2>
+
+            <p>The compiler must preserve distinctions equivalent to:</p>
+
+            <pre><code>ArenaCreateBorrowed
+ArenaCreateOwnedFixed
+ArenaCreateGrowable
+ArenaNew
+ArenaAlloc
+ArenaReset
+ArenaRelease
+ArenaDestroy</code></pre>
+
+            <p>Semantic IR must also retain or relate:</p>
+
+            <ul>
+                <li>Arena owner state;</li>
+                <li>ArenaDomain identity;</li>
+                <li>Arena state version;</li>
+                <li>validity epoch;</li>
+                <li>allocation context;</li>
+                <li>backing relation and growth policy;</li>
+                <li>Arena dependencies;</li>
+                <li>ordered effects;</li>
+                <li>provider calls;</li>
+                <li>task/thread transfer and completion;</li>
+                <li>capacity and demand facts;</li>
+                <li>failure paths.</li>
+            </ul>
+
+            <p>
+                Conceptually, mutating Arena control uses one continuing SSA owner state:
+            </p>
+
+            <pre><code>arena1 = create
+arena2, result1 = allocate(arena1)
+arena3, result2 = allocate(arena2)
+arena4 = reset(arena3)
+release(arena4)</code></pre>
+
+            <p>
+                This compiler representation does not change the ordinary source syntax.
+            </p>
+
+            <p>
+                Arena semantics must remain explicit through high-level Sec MLIR until Arena-specific
+                planning, lifetime, capacity and validity reasoning are complete.
+            </p>
+
+            <p>
+                The backend must not flatten Arena operations into generic allocation too early.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <h3>Arena copy</h3>
+
+            <pre><code>cannot copy `Arena`
+
+`Arena` is the unique owner/controller of one allocation domain
+
+help: move ownership instead:
+    let next :&lt;- arena</code></pre>
+
+            <h3>Reset with live reference</h3>
+
+            <pre><code>cannot reset `arena`
+
+`values` still depends on the current Arena validity epoch
+
+the later use is here:
+    Process(values)
+
+help: move Reset after the final use of `values`</code></pre>
+
+            <h3>Release with live dependency</h3>
+
+            <pre><code>cannot release `arena`
+
+a live nested Arena still borrows backing from this ArenaDomain
+
+help: release or destroy the child Arena first</code></pre>
+
+            <h3>Use after Release</h3>
+
+            <pre><code>`arena` is unavailable
+
+the Arena was consumed by:
+    arena.Release()</code></pre>
+
+            <h3>Unsupported type for direct safe allocation</h3>
+
+            <pre><code>cannot use `arena.Alloc[Connection](count)`
+
+`Connection` is not trivially destructible
+
+Arena.Alloc does not register per-element destructors in Sec 0.1
+
+help: use an owning container with an explicit lifecycle protocol
+help: use another storage/lifecycle abstraction</code></pre>
+
+            <h3>Missing default</h3>
+
+            <pre><code>cannot use `arena.New[Config]()`
+
+`Config` has no valid infallible default required by Arena.New</code></pre>
+
+            <h3>Insufficient capacity</h3>
+
+            <pre><code>Arena allocation failed
+
+requested:
+    128 Packet values
+
+the fixed Arena has insufficient remaining aligned capacity</code></pre>
+
+            <h3>Returning local Arena reference</h3>
+
+            <pre><code>cannot return `value`
+
+`value` depends on local Arena `arena`
+
+`arena` is destroyed when this function exits
+
+Sec does not promote the allocation into hidden longer-lived storage</code></pre>
+
+            <h3>Concurrent Arena mutation</h3>
+
+            <pre><code>concurrent Arena mutation is not permitted
+
+one execution may allocate from this Arena while another may reset it</code></pre>
+
+            <p>
+                Diagnostics should identify ArenaDomain/epoch dependencies and the source operation
+                keeping them live whenever that improves the explanation.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Analysis</h2>
+
+            <p>
+                The LSP consumes compiler-owned Arena analysis rather than implementing an independent model.
+            </p>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>backing relationship and provider;</li>
+                <li>capacity;</li>
+                <li>ArenaDomain and current epoch;</li>
+                <li>active target/profile;</li>
+                <li>allocation origin;</li>
+                <li>live dependencies;</li>
+                <li>what currently blocks Reset or Release;</li>
+                <li>task/thread captures;</li>
+                <li>capacity-demand summary;</li>
+                <li>allocation-context origin;</li>
+                <li>effect paths;</li>
+                <li>physical-lowering plan;</li>
+                <li>peak demand and utilization where known.</li>
+            </ul>
+
+            <p>
+                Analysis must invalidate cached Arena facts when relevant capacity, layout, call graph,
+                control flow, effects, task/thread capture, Reset/Release placement, provider contracts or
+                storage/reference rules change.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>Arena.FromBuffer</code> when you already own suitable mutable backing and want deterministic fixed capacity.</li>
+                <li>Use <code>Arena.WithCapacity</code> when the active profile provides an owned backing provider and fixed capacity is sufficient.</li>
+                <li>Use <code>Arena.Growable</code> only where target/profile support and non-relocating growth semantics are appropriate.</li>
+                <li>Keep Arena lifetime larger than every ordinary reference, view, nested Arena and task/thread dependency into it.</li>
+                <li>Place <code>Reset()</code> only after final use of all dependencies from the old epoch.</li>
+                <li>Prefer automatic Arena destruction unless an explicit <code>Release()</code> improves required cleanup ordering.</li>
+                <li>Do not call Release twice or use an Arena after Release.</li>
+                <li>Remember that Reset retains backing while Release terminates the domain.</li>
+                <li>Do not expect Reset to zero memory.</li>
+                <li>Do not use direct <code>New</code>/<code>Alloc</code> for non-trivially-destructible types in Sec 0.1.</li>
+                <li>Use an owning container when Arena-backed storage needs a separate logical element lifecycle.</li>
+                <li>Do not expect Arena to free one individual allocation.</li>
+                <li>Do not package an Arena and a direct self-reference into an ordinary movable value without explicit future self-reference semantics.</li>
+                <li>Do not let the compiler guess which visible Arena should become the ambient allocation context.</li>
+                <li>Do not share one ordinary mutable Arena concurrently between tasks or threads.</li>
+                <li>Use canonical completion boundaries before resetting storage captured by asynchronous work.</li>
+                <li>Remember that <code>@noAlloc</code> currently rejects reachable Arena typed allocation even when backing is pre-reserved.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>Arena</code> is a compiler-known move-only owner/controller of one ArenaDomain.</li>
+                <li>ArenaDomain identity is independent of physical backing address.</li>
+                <li>ArenaDomain identity survives ownership moves, ordinary allocation and Reset.</li>
+                <li>Release/destruction terminates the ArenaDomain.</li>
+                <li>Ordinary allocation changes Arena control state but does not change the validity epoch.</li>
+                <li>Reset changes the validity epoch while preserving ArenaDomain identity.</li>
+                <li>Release ends the domain instead of merely advancing the epoch.</li>
+                <li>Sec 0.1 Arena is bulk-reclamation storage management.</li>
+                <li>Sec 0.1 Arena is not garbage collection or reference counting.</li>
+                <li>Sec 0.1 defines no individual <code>Arena.Free</code>.</li>
+                <li>Sec 0.1 Arena does not perform hidden heap promotion or relocating compaction.</li>
+                <li>Sec 0.1 Arena is not a general destructor registry.</li>
+                <li>Sec 0.1 provides no general safe uninitialized typed Arena storage.</li>
+                <li>Lowercase <code>arena</code> remains an ordinary identifier.</li>
+                <li>Sec 0.1 introduces no special scoped <code>arena { ... }</code> syntax.</li>
+                <li>Arena is non-copyable and ownership is moved with ordinary canonical move syntax.</li>
+                <li>Moving Arena ownership preserves the same ArenaDomain, epoch, backing and existing reference validity.</li>
+                <li>A type containing Arena becomes move-only by composition.</li>
+                <li>Arena always owns/controls its allocation domain but may own or merely borrow its physical backing.</li>
+                <li>Backing relationships include owned, borrowed, static and target-provided forms.</li>
+                <li>A growable Arena may control several stable backing segments within one ArenaDomain.</li>
+                <li><code>Arena.FromBuffer(ref mut buffer)</code> creates a fixed Arena over borrowed mutable contiguous storage.</li>
+                <li><code>FromBuffer</code> does not allocate new backing.</li>
+                <li>Borrowed backing remains owned by its original owner and is not deallocated by Arena Release.</li>
+                <li>A zero-capacity borrowed Arena is valid.</li>
+                <li><code>Arena.WithCapacity(capacity)</code> creates a fixed owned Arena where a provider is available.</li>
+                <li><code>WithCapacity</code> returns <code>Result[Arena, AllocationError]</code>.</li>
+                <li><code>Arena.Growable(initialCapacity)</code> may be available under profiles supporting stable non-relocating growth.</li>
+                <li>Growable Arena must never relocate existing live allocations.</li>
+                <li>Growth preserves ArenaDomain, epoch, addresses, bounds and reference validity.</li>
+                <li>Arena capacity is measured in bytes.</li>
+                <li>Typed allocation count is an element count rather than byte count.</li>
+                <li>Allocation size arithmetic and alignment arithmetic are checked.</li>
+                <li>Alignment padding consumes Arena capacity.</li>
+                <li><code>arena.New[T]()</code> returns <code>Result[ref mut T, AllocationError]</code>.</li>
+                <li><code>arena.Alloc[T](count)</code> returns <code>Result[ref mut T[], AllocationError]</code>.</li>
+                <li>Typed allocation temporarily borrows Arena control state mutably.</li>
+                <li>The returned reference retains ArenaDomain/epoch dependency but not an exclusive borrow of the Arena controller.</li>
+                <li>Repeated Arena allocation is therefore permitted.</li>
+                <li>Safe direct Arena allocation requires a complete sized type, supported alignment, valid infallible default, safe initialization and trivial destruction.</li>
+                <li>Safe typed Arena allocation publishes only fully initialized semantic values.</li>
+                <li>Full initialization does not require every physical byte or padding byte to be zero.</li>
+                <li>Direct safe New/Alloc do not support non-trivially-destructible T in Sec 0.1.</li>
+                <li>Owning containers may use Arena-backed storage when the container separately tracks and destroys logical elements.</li>
+                <li><code>Alloc[T](0)</code> succeeds with a valid empty mutable slice and consumes no capacity.</li>
+                <li>Valid zero-sized types retain semantic element count even when payload bytes are zero.</li>
+                <li>Arena creation/allocation failure uses <code>AllocationError</code>.</li>
+                <li>Arena allocation never reports ordinary failure by returning null, invalid references or shorter slices.</li>
+                <li>Capacity exhaustion is not automatically panic or process termination.</li>
+                <li>The source Result signature remains stable even if proof removes the runtime failure path.</li>
+                <li>Arena allocation is atomic from program semantics.</li>
+                <li>Failed allocation leaves the prior Arena allocation state and existing allocations valid.</li>
+                <li>Successful positive-sized allocations do not overlap and do not invalidate earlier allocations.</li>
+                <li>Ending a reference does not reclaim Arena bytes.</li>
+                <li>Reset retains the Arena owner, ArenaDomain and backing while ending the current validity epoch.</li>
+                <li>Reset invalidates allocations from the old epoch and starts a new epoch.</li>
+                <li>No validity-preserving dependency may cross Reset.</li>
+                <li>Final-use analysis can prove a reference dead before Reset even when its lexical scope continues.</li>
+                <li>Explicit stale-capable weak handles may survive Reset under their own fallible-resolution contract.</li>
+                <li>Epoch reuse must never revive stale references or handles.</li>
+                <li>Runtime epoch metadata may be eliminated when static proof is sufficient.</li>
+                <li>Fixed Arena Reset resets used capacity while retaining total capacity.</li>
+                <li>Borrowed Arena Reset retains the borrow of the backing.</li>
+                <li>Growable Arena Reset retains acquired stable segments unless another future trim operation is explicitly used.</li>
+                <li>Reset does not require backing bytes to be zeroed.</li>
+                <li>Reset is atomic from program semantics.</li>
+                <li><code>Release()</code> is a compiler-known terminal consuming lifecycle operation.</li>
+                <li>Release terminates the ArenaDomain and makes the source Arena unavailable.</li>
+                <li>Release is non-fallible and returns void in the base Arena contract.</li>
+                <li>Release's whole-self consumption is a compiler-known Arena special case and does not enable ordinary consuming user methods.</li>
+                <li>No validity-preserving dependency may cross Release.</li>
+                <li>Owned backing is returned to its provider at Release.</li>
+                <li>Borrowed/static backing is not deallocated merely because the ArenaDomain ends.</li>
+                <li>Arena destruction performs Release semantics automatically while ownership is still held.</li>
+                <li>Explicit Release prevents a second implicit Release.</li>
+                <li>Double Release is invalid.</li>
+                <li>Arena storage reclamation does not replace required logical value destruction.</li>
+                <li>A returned reference cannot depend on a local Arena destroyed on function exit.</li>
+                <li>Sec never repairs such an escape through hidden promotion.</li>
+                <li>Returning the Arena owner itself is valid and preserves its ArenaDomain/epoch.</li>
+                <li>Sec 0.1 does not automatically support ordinary movable values containing both an Arena owner and a direct self-reference into that Arena.</li>
+                <li>Nested Arenas require no special syntax.</li>
+                <li>A nested child Arena has its own domain/epoch but depends on the parent allocation/domain/epoch providing its backing.</li>
+                <li>The parent cannot Reset or Release while a child Arena remains live.</li>
+                <li>Releasing a child does not individually reclaim its backing allocation from the parent.</li>
+                <li>Arena operations participate in the common LIFO defer/destruction cleanup model.</li>
+                <li>Dependent deferred uses must execute before Arena Release invalidates their storage.</li>
+                <li>Task captures of Arena-backed storage preserve domain, epoch, bounds and borrow dependencies.</li>
+                <li>Reset/Release remain invalid until canonical task completion proves the task can no longer access the storage.</li>
+                <li>Task result payloads may continue carrying Arena dependencies after task completion.</li>
+                <li>Arena may be moved exclusively into a task or thread when the concurrency/provider/profile rules permit it.</li>
+                <li>Moving Arena ownership across execution contexts preserves the ArenaDomain identity.</li>
+                <li>Thread borrowing additionally requires transferability and memory-synchronization proof.</li>
+                <li>Ordinary Arena does not support concurrent mutation.</li>
+                <li>Concurrent allocate/reset/release operations require a future distinct synchronization abstraction.</li>
+                <li>Arena is a primary allocation-domain realization but is not identical to the ambient allocation context.</li>
+                <li>Each callable has zero or one ambient allocation context under the general allocation rules.</li>
+                <li><code>MayAllocate</code> and <code>RequiresAllocationContext</code> are separate semantic facts.</li>
+                <li>An explicit Arena argument can allocate without requiring ambient allocation context.</li>
+                <li>The compiler never guesses an ambient Arena merely from visible Arena variables.</li>
+                <li>Passing an Arena argument does not implicitly rebind the ambient allocation context.</li>
+                <li>Spawned task/thread execution receives a new allocation context rather than automatically inheriting the parent's mutable context.</li>
+                <li>Processes receive separate address-space allocation contexts.</li>
+                <li>ISRs have no ordinary allocation context unless target rules explicitly provide and permit one.</li>
+                <li>Foreign entrypoints do not automatically receive a hidden Sec Arena context.</li>
+                <li>Arena operations are ordered semantic effects associated with ArenaDomain identity.</li>
+                <li>Arena allocation is not pure and distinct allocations must not be merged by CSE.</li>
+                <li><code>Arena.New</code>/<code>Arena.Alloc</code> carry the canonical allocation effect.</li>
+                <li>Current Sec 0.1 <code>@noAlloc</code> semantics reject reachable Arena typed allocation even when backing is already reserved.</li>
+                <li><code>Arena.FromBuffer</code> creates an Arena domain without adding backing allocation.</li>
+                <li>Target profiles may vary providers, growth, capacity policy, metadata, thread transfer, ISR availability and memory spaces.</li>
+                <li>Profiles may not weaken ownership, domain/epoch identity, failure atomicity, safe-reference validity or non-relocating growth.</li>
+                <li>Bare-metal bounded profiles may eliminate runtime Arena descriptors when all relevant facts are static.</li>
+                <li>Semantic IR must preserve Arena creation form, typed allocation, Reset, Release, destruction, domain identity, epochs and dependencies.</li>
+                <li>Arena control may be represented as unique SSA state internally without changing source syntax.</li>
+                <li>High-level Arena semantics remain explicit until Arena-specific optimization and validity analysis are complete.</li>
+                <li>LSP and <code>sec analyse</code> consume compiler Arena analysis rather than maintaining a separate model.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="40-allocation.html">Previous: Memory Allocation</a>
+            <a href="42-lifetimes.html">Next: Lifetimes</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

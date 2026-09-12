@@ -1,0 +1,1358 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Modules and Imports - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#modules">Modules and Imports</a>
+        <a href="#directory-module">One Directory, One Module</a>
+        <a href="#declaration">Module Declaration</a>
+        <a href="#module-name">Module Name</a>
+        <a href="#module-identity">Module Identity</a>
+        <a href="#multi-file">Multi-File Modules</a>
+        <a href="#shared-namespace">Shared Declaration Namespace</a>
+        <a href="#file-order">File Order</a>
+        <a href="#visibility">Visibility Across Files</a>
+        <a href="#imports">Imports</a>
+        <a href="#logical-paths">Logical Import Paths</a>
+        <a href="#stdlib">Standard Library Imports</a>
+        <a href="#platform">Platform Imports</a>
+        <a href="#project-imports">Project-Local Imports</a>
+        <a href="#qualifier">Default Qualifier</a>
+        <a href="#file-local-imports">Imports Are File-Local</a>
+        <a href="#aliases">Import Aliases</a>
+        <a href="#collisions">Qualifier Collisions</a>
+        <a href="#qualified-access">Qualified Access</a>
+        <a href="#no-name-injection">No Name Injection</a>
+        <a href="#no-reexport">No Implicit Re-Export</a>
+        <a href="#no-selective">No Selective or Wildcard Imports</a>
+        <a href="#internal">internal Modules</a>
+        <a href="#internal-scope">internal Access Scope</a>
+        <a href="#self-import">Self-Imports</a>
+        <a href="#duplicate-import">Duplicate Imports</a>
+        <a href="#cycles">Import Cycles</a>
+        <a href="#dependency-graph">Module Dependency Graph</a>
+        <a href="#initialization">Imports Are Not Initialization Order</a>
+        <a href="#public-surface">Public Module Surface</a>
+        <a href="#public-signatures">Public Signature Accessibility</a>
+        <a href="#test-files">Test Files and Modules</a>
+        <a href="#entry-modules">Entry Modules</a>
+        <a href="#compilation-plan">Compilation Plans</a>
+        <a href="#separate-compilation">Separate Compilation</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#invalid">Invalid Examples</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html" class="active">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Modules and Imports</div>
+
+        <h1 id="modules">Modules and Imports</h1>
+
+        <p>
+            A Sec module is the shared source namespace formed by one source directory.
+            All applicable Sec source files directly in that directory contribute declarations to
+            the same module.
+        </p>
+
+        <pre><code>domain/orders/
+    order.sec
+    status.sec
+    validation.sec</code></pre>
+
+        <p>Each ordinary source file in that directory declares:</p>
+
+        <pre><code>module orders</code></pre>
+
+        <p>
+            External modules are accessed through explicit logical imports:
+        </p>
+
+        <pre><code>import "net/http"
+
+fn Handle() void {
+    let cookie := http.Cookie(...)
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Module declarations are module-wide facts.
+            Import bindings are source-file-local.
+        </div>
+
+        <section id="directory-module">
+            <h2>One Directory Forms One Module</h2>
+
+            <p>
+                One source directory corresponds to one source module.
+            </p>
+
+            <pre><code>services/database/
+    connection.sec
+    query.sec
+    transaction.sec</code></pre>
+
+            <p>All participating files declare:</p>
+
+            <pre><code>module database</code></pre>
+
+            <p>
+                The files do not become separate modules merely because they are separate files.
+            </p>
+
+            <p>
+                Conversely, subdirectories form their own source modules rather than being folded
+                automatically into the parent module.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Source-file boundaries organize code.
+                Directory boundaries define ordinary source-module membership.
+            </div>
+        </section>
+
+        <section id="declaration">
+            <h2>Module Declaration</h2>
+
+            <p>
+                Every ordinary Sec source file declares the module to which it belongs:
+            </p>
+
+            <pre><code>module orders</code></pre>
+
+            <p>
+                The declaration appears as one module identifier.
+            </p>
+
+            <p>It is not a filesystem path:</p>
+
+            <pre><code>module domain.orders          // invalid
+module internal.storage       // invalid
+module platform.linux.amd64   // invalid</code></pre>
+
+            <p>
+                Directory hierarchy belongs to import resolution.
+                It is not encoded as a dotted source-level module name.
+            </p>
+        </section>
+
+        <section id="module-name">
+            <h2>Module Name</h2>
+
+            <p>
+                For an ordinary directory module, the expected module name is the final source-directory component.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source directory</th>
+                            <th>Module declaration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>domain/orders/</code></td>
+                            <td><code>module orders</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>services/database/</code></td>
+                            <td><code>module database</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>internal/storage/</code></td>
+                            <td><code>module storage</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>services/internal/transport/</code></td>
+                            <td><code>module transport</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The project root follows the root-module rules described in
+                <a href="29-projects.html">Projects and sec.module</a>.
+            </p>
+        </section>
+
+        <section id="module-identity">
+            <h2>Module Name and Module Identity Are Different</h2>
+
+            <p>
+                The short source module name is not globally unique.
+            </p>
+
+            <p>These may both be valid:</p>
+
+            <pre><code>sales/order/
+    module order
+
+customer/order/
+    module order</code></pre>
+
+            <p>
+                The modules remain distinct because their canonical import locations and import roots
+                differ.
+            </p>
+
+            <p>
+                Source code normally sees the short module qualifier.
+                The compiler tracks a stronger canonical module identity so that declarations from
+                unrelated modules with the same short name never collapse into one semantic module.
+            </p>
+
+            <p>
+                Target selection may create different compilation instances of the same logical
+                module without changing the logical module's identity.
+            </p>
+        </section>
+
+        <section id="multi-file">
+            <h2>Multi-File Modules</h2>
+
+            <p>
+                A module may be split across as many directly participating source files as is useful.
+            </p>
+
+            <p><code>order.sec</code>:</p>
+
+            <pre><code>module orders
+
+type CustomerOrder struct {
+    Id: uint64
+}</code></pre>
+
+            <p><code>create.sec</code>:</p>
+
+            <pre><code>module orders
+
+fn CreateCustomerOrder() CustomerOrder {
+    return CustomerOrder {
+        Id: 0
+    }
+}</code></pre>
+
+            <p>
+                No import is needed between these files.
+            </p>
+
+            <p>
+                They are two source files contributing to one module namespace.
+            </p>
+        </section>
+
+        <section id="shared-namespace">
+            <h2>All Files Share the Module Declaration Namespace</h2>
+
+            <p>
+                Module-level declarations from sibling files are visible according to their ordinary
+                visibility rules.
+            </p>
+
+            <p>
+                Duplicate-declaration checking therefore considers the complete module, not one file at a time.
+            </p>
+
+            <p>
+                Declaration forms that explicitly allow merging or overloading still follow their own rules:
+            </p>
+
+            <ul>
+                <li>function overload groups;</li>
+                <li><code>impl</code> and <code>impl extends</code>;</li>
+                <li>nested declarations;</li>
+                <li>other declaration-specific merge rules.</li>
+            </ul>
+
+            <p>
+                Splitting code into files never grants permission to declare two otherwise-conflicting
+                module members with the same identity.
+            </p>
+        </section>
+
+        <section id="file-order">
+            <h2>Source-File Order Has No Semantic Meaning</h2>
+
+            <p>
+                Files in one module do not have a semantic compilation order.
+            </p>
+
+            <p>
+                A declaration in one file may refer to another declaration in the same module
+                regardless of:
+            </p>
+
+            <ul>
+                <li>filename sorting;</li>
+                <li>filesystem enumeration order;</li>
+                <li>editor-open order;</li>
+                <li>parallel compiler worker order.</li>
+            </ul>
+
+            <p>
+                The compiler assembles the complete relevant declaration surface before ordinary
+                body name resolution depends on source-file order.
+            </p>
+        </section>
+
+        <section id="visibility">
+            <h2>Visibility Across Module Files</h2>
+
+            <p>Sec's name prefixes retain their ordinary visibility meaning:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Spelling</th>
+                            <th>Visibility</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Name</code></td>
+                            <td>Public</td>
+                        </tr>
+                        <tr>
+                            <td><code>_name</code></td>
+                            <td>Module-internal</td>
+                        </tr>
+                        <tr>
+                            <td><code>__name</code></td>
+                            <td>Source-file-private</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                A module-internal declaration may be used from sibling source files in the same module.
+            </p>
+
+            <p>
+                A source-file-private declaration remains private to its declaring file even though
+                sibling files belong to the same module.
+            </p>
+
+            <p>
+                Module-path access restrictions and declaration visibility are separate checks.
+            </p>
+        </section>
+
+        <section id="imports">
+            <h2>Imports</h2>
+
+            <p>
+                Imports bind an external module to a qualifier in the current source file.
+            </p>
+
+            <pre><code>module server
+
+import "net/http"
+
+fn Serve() void {
+    http.Listen(...)
+}</code></pre>
+
+            <p>
+                Importing a module does not merge its declarations into the current module.
+            </p>
+
+            <p>
+                Imported declarations remain owned by their original module.
+            </p>
+        </section>
+
+        <section id="logical-paths">
+            <h2>Import Paths Are Logical Paths</h2>
+
+            <p>
+                Sec imports use canonical logical import paths:
+            </p>
+
+            <pre><code>import "domain/orders"
+import "net/http"</code></pre>
+
+            <p>Canonical import paths:</p>
+
+            <ul>
+                <li>use <code>/</code> as the separator on every host platform;</li>
+                <li>are case-sensitive;</li>
+                <li>are not host filesystem paths;</li>
+                <li>do not contain <code>.</code> or <code>..</code> traversal components;</li>
+                <li>do not use host-specific path separators;</li>
+                <li>are resolved through Sec's import roots.</li>
+            </ul>
+
+            <p>These are invalid:</p>
+
+            <pre><code>import "../orders"
+import "./orders"
+import "/srv/project/orders"</code></pre>
+
+            <p>
+                The same source import has the same logical spelling on Linux, Windows, macOS and
+                other supported hosts.
+            </p>
+        </section>
+
+        <section id="stdlib">
+            <h2>Standard Library Imports</h2>
+
+            <p>
+                Standard-library modules use their canonical logical path directly.
+            </p>
+
+            <pre><code>import "fmt"
+import "io"
+import "net/http"
+import "net/dns"</code></pre>
+
+            <p>
+                There is no <code>std/</code> prefix.
+            </p>
+
+            <p>
+                The compiler resolves canonical standard-library paths through the standard-library
+                namespace before ordinary project/dependency fallback.
+            </p>
+
+            <p>
+                A project-local module must not silently replace a canonical standard-library module
+                that owns the same logical path.
+            </p>
+        </section>
+
+        <section id="platform">
+            <h2>Platform Imports</h2>
+
+            <p>
+                <code>platform</code> is a compiler-reserved import root.
+            </p>
+
+            <pre><code>import "platform/linux/amd64"</code></pre>
+
+            <p>
+                Platform source selection is governed by the active compilation plan and target model.
+            </p>
+
+            <p>
+                If a reserved-root import fails, the compiler does not retry the same spelling as a
+                project-local import.
+            </p>
+
+            <p>
+                This prevents accidental shadowing of compiler-owned platform identities.
+            </p>
+        </section>
+
+        <section id="project-imports">
+            <h2>Project-Local Imports</h2>
+
+            <p>
+                Ordinary non-reserved imports resolve within the active project source root.
+            </p>
+
+            <pre><code>import "domain/orders"
+import "services/database"</code></pre>
+
+            <p>
+                The Project chapter defines how the source root and build inputs are selected.
+            </p>
+
+            <p>
+                Module semantics remain based on logical import identity rather than arbitrary paths
+                relative to the importing file.
+            </p>
+        </section>
+
+        <section id="qualifier">
+            <h2>The Default Qualifier Comes from the Imported Module</h2>
+
+            <p>Consider:</p>
+
+            <pre><code>import "customer/order"</code></pre>
+
+            <p>If the imported module declares:</p>
+
+            <pre><code>module order</code></pre>
+
+            <p>the default source qualifier is:</p>
+
+            <pre><code>order.CreateCustomerOrder()</code></pre>
+
+            <p>not:</p>
+
+            <pre><code>customer.order.CreateCustomerOrder()    // invalid
+customer/order.CreateCustomerOrder()    // invalid</code></pre>
+
+            <p>
+                The import path identifies the module.
+                The module declaration provides its normal short source qualifier.
+            </p>
+        </section>
+
+        <section id="file-local-imports">
+            <h2>Import Bindings Are Source-File-Local</h2>
+
+            <p>
+                Imports do not become module-wide bindings.
+            </p>
+
+            <p><code>create.sec</code>:</p>
+
+            <pre><code>module orders
+
+import "database"
+
+fn Create() void {
+    database.Insert()
+}</code></pre>
+
+            <p>
+                A sibling file in module <code>orders</code> does not automatically gain the
+                <code>database</code> qualifier.
+            </p>
+
+            <p>If that sibling file also needs the module, it declares its own import:</p>
+
+            <pre><code>module orders
+
+import "database"
+
+fn Remove() void {
+    database.Delete()
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Declarations are module-wide.
+                Import qualifiers are local to the file that imports them.
+            </div>
+        </section>
+
+        <section id="aliases">
+            <h2>Import Aliases</h2>
+
+            <p>
+                An import can provide a local qualifier:
+            </p>
+
+            <pre><code>import customerOrder "customer/order"</code></pre>
+
+            <p>Use the alias in that source file:</p>
+
+            <pre><code>customerOrder.CreateCustomerOrder()</code></pre>
+
+            <p>
+                The alias changes only the source-file-local binding.
+            </p>
+
+            <p>It does not change:</p>
+
+            <ul>
+                <li>the imported module's identity;</li>
+                <li>the imported module's own module name;</li>
+                <li>declaration ownership;</li>
+                <li>cross-module semantic identity;</li>
+                <li>linking identity.</li>
+            </ul>
+        </section>
+
+        <section id="collisions">
+            <h2>Qualifier Collisions</h2>
+
+            <p>
+                Two imported modules may have the same short module name.
+                The current source file still needs unique local qualifiers.
+            </p>
+
+            <pre><code>import (
+    "sales/order"
+    customerOrder "customer/order"
+)</code></pre>
+
+            <p>Usage:</p>
+
+            <pre><code>order.Ascending()
+customerOrder.CreateCustomerOrder()</code></pre>
+
+            <p>
+                Without the alias, both imports would attempt to bind the local qualifier
+                <code>order</code>.
+            </p>
+
+            <p>
+                Aliases and imported module bindings participate in the ordinary unified source-scope
+                naming rules.
+            </p>
+        </section>
+
+        <section id="qualified-access">
+            <h2>Imported Declarations Use Qualified Access</h2>
+
+            <p>After:</p>
+
+            <pre><code>import "storage"</code></pre>
+
+            <p>use:</p>
+
+            <pre><code>storage.Open()</code></pre>
+
+            <p>
+                Imported module declarations are not injected into the current source scope as
+                unqualified names.
+            </p>
+
+            <p>
+                This keeps module ownership visible in source and avoids ambiguity as projects grow.
+            </p>
+        </section>
+
+        <section id="no-name-injection">
+            <h2>No Implicit Name Injection</h2>
+
+            <p>This is not valid solely because <code>storage</code> was imported:</p>
+
+            <pre><code>Open()</code></pre>
+
+            <p>
+                Use the module qualifier:
+            </p>
+
+            <pre><code>storage.Open()</code></pre>
+
+            <p>
+                A local declaration named <code>Open</code> remains a separate local/module name.
+            </p>
+        </section>
+
+        <section id="no-reexport">
+            <h2>Imports Are Not Re-Exports</h2>
+
+            <p>
+                Suppose module <code>service</code> imports <code>database</code>:
+            </p>
+
+            <pre><code>module service
+
+import "database"</code></pre>
+
+            <p>
+                A third module that imports <code>service</code> does not automatically obtain a
+                <code>database</code> binding.
+            </p>
+
+            <p>
+                Ordinary imports are dependencies of the importing file/module, not public forwarding declarations.
+            </p>
+
+            <p>
+                Sec 0.1 does not define explicit re-export syntax.
+            </p>
+        </section>
+
+        <section id="no-selective">
+            <h2>No Selective or Wildcard Imports</h2>
+
+            <p>Sec 0.1 does not define forms such as:</p>
+
+            <pre><code>import { Open, Close } from "storage"    // invalid
+import * from "storage"                  // invalid
+from "storage" import Open               // invalid</code></pre>
+
+            <p>
+                Import the module and use its qualifier:
+            </p>
+
+            <pre><code>import "storage"
+
+storage.Open()
+storage.Close()</code></pre>
+        </section>
+
+        <section id="internal">
+            <h2><code>internal</code> Modules</h2>
+
+            <p>
+                The path component <code>internal</code> is an import-access marker.
+            </p>
+
+            <pre><code>services/internal/transport/</code></pre>
+
+            <p>The module inside still declares:</p>
+
+            <pre><code>module transport</code></pre>
+
+            <p>
+                <code>internal</code> remains part of the canonical import path and module identity,
+                but it is not part of the module declaration or default source qualifier.
+            </p>
+        </section>
+
+        <section id="internal-scope">
+            <h2><code>internal</code> Access Scope</h2>
+
+            <p>
+                A module below an <code>internal</code> directory may be imported only by modules
+                below the directory immediately containing that <code>internal</code> directory.
+            </p>
+
+            <p>For:</p>
+
+            <pre><code>services/
+    internal/
+        transport/</code></pre>
+
+            <p>
+                modules within the <code>services</code> subtree may use that internal module.
+                Modules outside that enclosing subtree may not.
+            </p>
+
+            <p>
+                A root-level <code>internal/</code> directory is private to the complete project.
+            </p>
+
+            <p>
+                This access check occurs before declaration visibility.
+                A public declaration inside an inaccessible internal module does not make the module importable.
+            </p>
+        </section>
+
+        <section id="self-import">
+            <h2>Modules Cannot Import Themselves</h2>
+
+            <p>
+                A module must not create an import edge to its own canonical module identity.
+            </p>
+
+            <p>
+                Same-module sibling files need no import at all.
+            </p>
+
+            <p>
+                If code in <code>orders/create.sec</code> needs a declaration from
+                <code>orders/status.sec</code>, it simply uses that declaration according to normal
+                same-module visibility.
+            </p>
+        </section>
+
+        <section id="duplicate-import">
+            <h2>Duplicate Imports</h2>
+
+            <p>
+                One source file must not import the same canonical module identity more than once.
+            </p>
+
+            <p>
+                Different aliases do not make duplicate imports distinct modules:
+            </p>
+
+            <pre><code>import first "customer/order"
+import second "customer/order"    // invalid duplicate module import</code></pre>
+
+            <p>
+                Different source files may independently import the same dependency because each
+                file has its own import-binding scope.
+            </p>
+        </section>
+
+        <section id="cycles">
+            <h2>Import Cycles Are Invalid</h2>
+
+            <p>
+                The Sec 0.1 module import graph is acyclic.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>orders
+    imports billing
+
+billing
+    imports inventory
+
+inventory
+    imports orders</code></pre>
+
+            <p>
+                The cycle is rejected regardless of:
+            </p>
+
+            <ul>
+                <li>import aliases;</li>
+                <li>source-file order;</li>
+                <li>whether declarations happen to resolve under a partial compilation order.</li>
+            </ul>
+
+            <p>
+                Cycle detection uses canonical module identities, not local source aliases.
+            </p>
+        </section>
+
+        <section id="dependency-graph">
+            <h2>The Module Dependency Graph</h2>
+
+            <p>
+                Every source-file import contributes an edge to the containing module's dependency set.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>source-file imports
+        ↓
+module dependency set
+        ↓
+resolved ModuleGraph</code></pre>
+
+            <p>
+                Once self-imports, duplicate imports and cycles are rejected, the module dependency
+                graph is a directed acyclic graph.
+            </p>
+
+            <p>
+                The compiler can then process module dependencies deterministically without making
+                filesystem enumeration order semantic.
+            </p>
+        </section>
+
+        <section id="initialization">
+            <h2>The Import Graph Is Not the Initialization Order</h2>
+
+            <p>
+                Imports describe semantic module dependencies.
+            </p>
+
+            <p>They do not by themselves define:</p>
+
+            <ul>
+                <li>static initialization order;</li>
+                <li>runtime startup order;</li>
+                <li>startup failure behavior;</li>
+                <li>deinitialization order.</li>
+            </ul>
+
+            <p>
+                Program initialization consumes module dependency facts but has its own lifecycle rules.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> “A imports B” does not by itself mean “B executes initialization immediately before A”.
+            </div>
+        </section>
+
+        <section id="public-surface">
+            <h2>Public Module Surface</h2>
+
+            <p>
+                A module's external semantic surface consists of the public declarations and semantic
+                information another module needs in order to use them.
+            </p>
+
+            <p>This includes, where applicable:</p>
+
+            <ul>
+                <li>public types;</li>
+                <li>public functions;</li>
+                <li>public properties;</li>
+                <li>public interfaces and conformance relationships;</li>
+                <li>public generic signatures and constraints;</li>
+                <li>other public declaration identities required for type checking.</li>
+            </ul>
+
+            <p>
+                Imported module bindings are not automatically part of the module's public surface.
+            </p>
+
+            <p>
+                The compiler may represent this surface internally in whatever form preserves the
+                required semantics.
+            </p>
+        </section>
+
+        <section id="public-signatures">
+            <h2>Public Signatures Cannot Expose Inaccessible Types</h2>
+
+            <p>
+                A public declaration used from another module must not require that importer to name
+                or understand an inaccessible declaration.
+            </p>
+
+            <p>For example, a public function cannot expose a module-internal type in its signature:</p>
+
+            <pre><code>type _InternalState struct {
+    ...
+}
+
+fn CurrentState() _InternalState {    // invalid public surface
+    ...
+}</code></pre>
+
+            <p>
+                The same principle applies, where relevant, to:
+            </p>
+
+            <ul>
+                <li>parameter types;</li>
+                <li>return types;</li>
+                <li>public fields;</li>
+                <li>public properties;</li>
+                <li>interface relationships;</li>
+                <li>generic constraints and arguments.</li>
+            </ul>
+        </section>
+
+        <section id="test-files">
+            <h2>Test Files and Module Participation</h2>
+
+            <p>
+                Production module instances exclude <code>*_test.sec</code> files.
+            </p>
+
+            <p>
+                During <code>sec test</code>, a test compilation may combine:
+            </p>
+
+            <ul>
+                <li>the ordinary production files of the module;</li>
+                <li>same-directory <code>*_test.sec</code> files.</li>
+            </ul>
+
+            <p>
+                Same-directory test files participate in the same test-view module and therefore
+                have ordinary same-module access.
+            </p>
+
+            <p>
+                They still do not gain access to declarations that are source-file-private in another file.
+            </p>
+
+            <p>
+                Production code must never depend on test-only declarations.
+            </p>
+
+            <p>
+                Project-root <code>tests/</code> modules are test-only external modules and use
+                ordinary imports and external visibility rules.
+            </p>
+        </section>
+
+        <section id="entry-modules">
+            <h2>Entry Modules Are a Project Role</h2>
+
+            <p>
+                A project target may designate an entry module.
+            </p>
+
+            <p>
+                Entry status does not change:
+            </p>
+
+            <ul>
+                <li>the module namespace;</li>
+                <li>visibility rules;</li>
+                <li>import semantics;</li>
+                <li>module identity;</li>
+                <li>ordinary declaration ownership.</li>
+            </ul>
+
+            <p>
+                Entry selection belongs to the project/build model rather than the source module declaration itself.
+            </p>
+        </section>
+
+        <section id="compilation-plan">
+            <h2>Compilation Plans Select Module Instances</h2>
+
+            <p>
+                One logical module may be analyzed under more than one concrete compilation plan
+                when target-dependent source selection differs.
+            </p>
+
+            <p>
+                A Linux AMD64 build and a bare-metal Cortex-M build therefore do not become one
+                polymorphic module graph.
+            </p>
+
+            <p>
+                Each concrete compilation plan receives the module instances applicable to that plan.
+            </p>
+
+            <p>
+                The logical identity of a target-independent module does not change merely because
+                the module is compiled for another target.
+            </p>
+
+            <p>
+                Sec 0.1 does not define conditional-import source syntax.
+            </p>
+        </section>
+
+        <section id="separate-compilation">
+            <h2>Separate and Incremental Compilation</h2>
+
+            <p>
+                Modules are designed so importers can resolve public declarations without requiring
+                every imported implementation body to be reanalyzed from scratch.
+            </p>
+
+            <p>
+                Conceptually, the compiler can derive a deterministic semantic module surface:
+            </p>
+
+            <pre><code>ModuleIdentity
+PublicDeclarations
+SemanticSignatures
+RequiredTypeInformation
+SurfaceFingerprint</code></pre>
+
+            <p>
+                An implementation-only edit that preserves the public semantic surface need not
+                invalidate ordinary importer name/type resolution.
+            </p>
+
+            <p>
+                A public-signature change must invalidate dependent semantic state where necessary.
+            </p>
+
+            <p>
+                These are compiler/tooling properties; they do not add source syntax.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>Editor and LSP Behavior</h2>
+
+            <p>
+                The LSP uses the same module resolver and active compilation-plan model as command-line compilation.
+            </p>
+
+            <p>For an open source file, tooling can therefore reason about:</p>
+
+            <ul>
+                <li>its module identity;</li>
+                <li>its declared module name;</li>
+                <li>same-module sibling declarations;</li>
+                <li>file-local import aliases;</li>
+                <li>module dependency identities;</li>
+                <li><code>internal</code> accessibility;</li>
+                <li>the public surface of imported modules.</li>
+            </ul>
+
+            <p>
+                Editing one file updates that file's imports immediately and invalidates wider module
+                state only as required by the changed dependency or public surface.
+            </p>
+
+            <p>
+                A qualifier rename normally changes the local import alias rather than renaming the
+                imported module itself.
+            </p>
+        </section>
+
+        <section id="invalid">
+            <h2>Common Invalid Forms</h2>
+
+            <h3>Dotted module declaration</h3>
+
+            <pre><code>module domain.orders</code></pre>
+
+            <h3>Relative filesystem import</h3>
+
+            <pre><code>import "../orders"</code></pre>
+
+            <h3>Absolute filesystem import</h3>
+
+            <pre><code>import "/srv/project/orders"</code></pre>
+
+            <h3>Implicit unqualified imported member</h3>
+
+            <pre><code>import "storage"
+
+Open()    // invalid solely because storage was imported</code></pre>
+
+            <h3>Duplicate canonical import</h3>
+
+            <pre><code>import first "customer/order"
+import second "customer/order"</code></pre>
+
+            <h3>Import cycle</h3>
+
+            <pre><code>A imports B
+B imports A</code></pre>
+
+            <h3>Wildcard import</h3>
+
+            <pre><code>import * from "storage"</code></pre>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Important module diagnostics include:</p>
+
+            <ul>
+                <li>missing module declaration;</li>
+                <li>module declaration inconsistent with the source directory;</li>
+                <li>sibling files declaring different module names;</li>
+                <li>unresolved import;</li>
+                <li>malformed or non-canonical import path;</li>
+                <li>illegal <code>internal</code> import;</li>
+                <li>duplicate import of the same canonical module identity;</li>
+                <li>self-import;</li>
+                <li>qualifier or alias collision;</li>
+                <li>import cycle;</li>
+                <li>duplicate module-scope declaration;</li>
+                <li>public surface exposing an inaccessible declaration or type.</li>
+            </ul>
+
+            <h3>Directory/module mismatch</h3>
+
+            <pre><code>module declaration does not match source directory
+
+file:
+    domain/orders/status.sec
+
+declared:
+    module status
+
+expected:
+    module orders</code></pre>
+
+            <h3>Qualifier collision</h3>
+
+            <pre><code>both imports bind the qualifier `order`
+
+    import "sales/order"
+    import "customer/order"
+
+help: give one import an explicit local alias</code></pre>
+
+            <h3>Import cycle</h3>
+
+            <pre><code>module import cycle detected
+
+orders -> billing -> inventory -> orders</code></pre>
+
+            <p>
+                Cycle diagnostics should point to the import sites forming a short deterministic
+                representative cycle.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use one cohesive source directory per module.</li>
+                <li>Keep the module declaration equal to the directory's module name.</li>
+                <li>Split large modules into files freely; sibling files already share the module namespace.</li>
+                <li>Declare imports only in files that actually use the external module.</li>
+                <li>Use direct standard-library paths such as <code>"fmt"</code> and <code>"net/http"</code>.</li>
+                <li>Use import aliases when two dependencies have the same short module name.</li>
+                <li>Keep imported names qualified rather than trying to simulate wildcard imports.</li>
+                <li>Use <code>internal</code> directories for subtree-level implementation modules that should not be imported externally.</li>
+                <li>Avoid cyclic module design; extract shared contracts into a lower dependency when necessary.</li>
+                <li>Do not rely on filename or filesystem enumeration order for declaration visibility.</li>
+                <li>Keep public signatures free of inaccessible implementation-only types.</li>
+                <li>Remember that import dependencies and program initialization order are different concerns.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>One ordinary source directory forms one Sec module.</li>
+                <li>All applicable <code>.sec</code> files directly in that directory contribute to one shared module namespace.</li>
+                <li>Every ordinary source file declares its module with <code>module Name</code>.</li>
+                <li>The normal module name is the final source-directory component.</li>
+                <li>A module declaration contains one identifier and is not a dotted filesystem path.</li>
+                <li>The compiler tracks canonical module identity separately from the short module name.</li>
+                <li>Different modules may legally share the same short module name.</li>
+                <li>No import is required between files belonging to the same module.</li>
+                <li>Duplicate-declaration checks operate over the complete module namespace.</li>
+                <li>Source-file and filesystem enumeration order have no semantic meaning.</li>
+                <li>Public names are externally visible subject to module access rules.</li>
+                <li><code>_name</code> is module-internal.</li>
+                <li><code>__name</code> is source-file-private.</li>
+                <li>Module access and declaration visibility are separate checks.</li>
+                <li>Imports use quoted canonical logical paths such as <code>import "net/http"</code>.</li>
+                <li>Import paths use <code>/</code> on every host platform.</li>
+                <li>Import paths are case-sensitive and do not use <code>.</code>, <code>..</code>, absolute host paths or host-specific separators.</li>
+                <li>Standard-library modules use direct logical paths without a <code>std/</code> prefix.</li>
+                <li>Canonical standard-library paths cannot be silently shadowed by project-local modules.</li>
+                <li><code>platform</code> is a compiler-reserved import root.</li>
+                <li>Failed reserved-root imports do not silently fall back to project-local resolution.</li>
+                <li>Ordinary non-reserved imports resolve within the active project source root.</li>
+                <li>The default imported qualifier comes from the imported module's <code>module</code> declaration.</li>
+                <li>The canonical import path does not become a dotted source qualifier.</li>
+                <li>Import bindings are source-file-local.</li>
+                <li>Sibling files do not inherit one another's imports.</li>
+                <li>Import aliases create local qualifiers only and do not change module identity.</li>
+                <li>One source file must have unique import qualifiers.</li>
+                <li>The same canonical module identity cannot be imported twice by one source file.</li>
+                <li>Imports do not inject declarations as unqualified names.</li>
+                <li>Ordinary imports are not re-exports.</li>
+                <li>Sec 0.1 has no explicit re-export syntax.</li>
+                <li>Sec 0.1 has no selective-import or wildcard-import syntax.</li>
+                <li>The path component <code>internal</code> is an access-control marker, not part of the source module name.</li>
+                <li>An internal module is importable only from the subtree allowed by its enclosing <code>internal</code> boundary.</li>
+                <li>A root-level <code>internal</code> directory is private to the project.</li>
+                <li>A public declaration cannot override an inaccessible internal-module boundary.</li>
+                <li>A module cannot import itself.</li>
+                <li>The Sec 0.1 module import graph must be acyclic.</li>
+                <li>Cycle detection uses canonical module identities rather than aliases.</li>
+                <li>Module dependency edges are the union of imports from the module's participating source files.</li>
+                <li>The module import graph is not automatically the program initialization or deinitialization graph.</li>
+                <li>A public module surface contains the public semantic information required by importers.</li>
+                <li>Public signatures cannot expose inaccessible declarations that external users need to name or understand.</li>
+                <li>Production module instances exclude <code>*_test.sec</code>.</li>
+                <li>A test compilation may combine production files with same-directory <code>*_test.sec</code> files.</li>
+                <li>Same-directory test files gain ordinary same-module visibility but not another file's source-private names.</li>
+                <li>Production declarations must not depend on test-only declarations.</li>
+                <li>Entry-module status is a project/build role and does not change module semantics.</li>
+                <li>Each concrete compilation plan receives the module instances selected for that plan.</li>
+                <li>Target-specific compilation does not automatically create a different logical module identity.</li>
+                <li>Sec 0.1 has no conditional-import source syntax.</li>
+                <li>Module surfaces support deterministic separate and incremental compilation.</li>
+                <li>Implementation-only changes need not invalidate importers when the public semantic surface remains unchanged.</li>
+                <li>The LSP uses the same module-resolution and compilation-plan model as command-line compilation.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="27-spread.html">Previous: Spread</a>
+            <a href="29-projects.html">Next: Projects and sec.module</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

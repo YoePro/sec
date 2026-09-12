@@ -28,7 +28,7 @@ func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverla
 		parsed := parser.New(lexer.NewWithFile(snapshot.Text, path)).Parse()
 		results[snapshot.URI] = []diagnostic{}
 		for _, value := range parsed.Diagnostics {
-			results[snapshot.URI] = append(results[snapshot.URI], structuredParserDiagnostic(value))
+			results[snapshot.URI] = append(results[snapshot.URI], structuredParserDiagnostic(value, snapshot.Text))
 		}
 		if parsed.Fatal {
 			continue

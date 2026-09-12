@@ -1,0 +1,1652 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Collections - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#collections">Collections</a>
+        <a href="#scope">Chapter Scope</a>
+        <a href="#collection-set">Core Collection Set</a>
+        <a href="#compiler-known">Compiler-Known Types</a>
+        <a href="#shared-properties">Shared Properties</a>
+        <a href="#len">Len</a>
+        <a href="#is-empty">IsEmpty</a>
+        <a href="#ptr-sizeof">Ptr and SizeOf</a>
+        <a href="#absence-errors">Absence vs Error</a>
+        <a href="#collection-error">CollectionError</a>
+        <a href="#allocation">Allocation and Growth</a>
+        <a href="#transactional">Transactional Mutation</a>
+        <a href="#borrowing">Borrowing and Structural Mutation</a>
+        <a href="#destruction">Destruction</a>
+        <a href="#list">list[T]</a>
+        <a href="#list-bounded">Dynamic and Bounded Lists</a>
+        <a href="#list-empty">Empty Lists</a>
+        <a href="#list-properties">List Properties</a>
+        <a href="#list-indexing">List Indexing</a>
+        <a href="#list-slicing">List Slicing</a>
+        <a href="#list-iteration">List Iteration</a>
+        <a href="#list-surface">List Operations</a>
+        <a href="#list-append">Append</a>
+        <a href="#list-insert">Insert</a>
+        <a href="#list-remove-at">RemoveAt</a>
+        <a href="#list-remove">Remove</a>
+        <a href="#list-search">Contains and IndexOf</a>
+        <a href="#list-clear">Clear</a>
+        <a href="#list-ordering">Reverse and Sorting</a>
+        <a href="#map">map[K, V]</a>
+        <a href="#map-bounded">Dynamic and Bounded Maps</a>
+        <a href="#map-order">Map Ordering</a>
+        <a href="#map-properties">Map Properties</a>
+        <a href="#map-lookup">Map Lookup</a>
+        <a href="#map-upsert">Map Upsert</a>
+        <a href="#map-remove">Map Remove</a>
+        <a href="#map-contains">ContainsKey</a>
+        <a href="#map-iteration">Map Iteration</a>
+        <a href="#map-keys">Key Stability</a>
+        <a href="#set">set[T]</a>
+        <a href="#set-bounded">Dynamic and Bounded Sets</a>
+        <a href="#set-order">Set Ordering</a>
+        <a href="#set-properties">Set Properties</a>
+        <a href="#set-add">Add</a>
+        <a href="#set-remove">Remove and Contains</a>
+        <a href="#set-algebra">Set Algebra</a>
+        <a href="#set-iteration">Set Iteration</a>
+        <a href="#move-only-elements">Move-Only Elements</a>
+        <a href="#ffi">FFI</a>
+        <a href="#analysis">Compiler Analysis</a>
+        <a href="#semantic-ir">Semantic IR</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html" class="active">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Collections</div>
+
+        <h1 id="collections">Collections</h1>
+
+        <p>
+            Sec provides a small compiler-known collection set for common ordered and associative data.
+            This chapter focuses on the richer collection types:
+        </p>
+
+        <pre><code>list[T]
+map[K, V]
+set[T]</code></pre>
+
+        <p>
+            Each also has a bounded form with a compile-time maximum capacity.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Collections preserve Sec ownership, borrowing, destruction,
+            allocation and error semantics. A collection operation never gains permission to perform
+            hidden copies, hidden moves, hidden allocation or unsafe reference invalidation merely
+            because a backend container implementation would find that convenient.
+        </div>
+
+        <section id="scope">
+            <h2>Chapter Scope</h2>
+
+            <p>
+                Fixed arrays, owning dynamic arrays, slices and ordinary indexing have already been
+                covered in:
+            </p>
+
+            <ul>
+                <li><a href="19-arrays.html">Arrays</a>;</li>
+                <li><a href="20-slices.html">Slices</a>;</li>
+                <li><a href="21-indexing.html">Indexing</a>.</li>
+            </ul>
+
+            <p>
+                They remain part of Sec's overall collection model, but their full rules are not
+                repeated here.
+            </p>
+
+            <p>
+                Chapter 46 covers shaped values such as tensors and matrices rather than ordinary
+                general-purpose collections.
+            </p>
+        </section>
+
+        <section id="collection-set">
+            <h2>Core Collection Set</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Type</th><th>Purpose</th><th>Ordering</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>list[T]</code></td>
+                            <td>Variable-length ordered contiguous collection</td>
+                            <td>Stable logical index order</td>
+                        </tr>
+                        <tr>
+                            <td><code>map[K, V]</code></td>
+                            <td>Unique key/value association</td>
+                            <td>Iteration order unspecified</td>
+                        </tr>
+                        <tr>
+                            <td><code>set[T]</code></td>
+                            <td>Unique-value associative collection</td>
+                            <td>Iteration order unspecified</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                More specialized structures such as linked lists, ordered maps or ordered sets belong
+                in libraries as distinct types.
+            </p>
+        </section>
+
+        <section id="compiler-known">
+            <h2><code>list</code>, <code>map</code> and <code>set</code> Are Compiler-Known Type Constructors</h2>
+
+            <p>They use lowercase type-constructor syntax:</p>
+
+            <pre><code>list[User]
+map[UserID, User]
+set[Permission]</code></pre>
+
+            <p>
+                They require no import and are not standard-library aliases.
+            </p>
+
+            <p>
+                Their public compiler-known members are part of the language/core semantic surface.
+                A library cannot silently add privileged members to these types.
+            </p>
+        </section>
+
+        <section id="shared-properties">
+            <h2>Shared Collection Properties</h2>
+
+            <p>
+                Collection state that is naturally observed is exposed as a property rather than a method.
+            </p>
+
+            <p>Canonical spellings include:</p>
+
+            <pre><code>collection.Len
+collection.IsEmpty</code></pre>
+
+            <p>
+                Use uppercase public member spelling.
+            </p>
+
+            <p>These are not canonical:</p>
+
+            <pre><code>collection.len
+collection.IsEmpty()</code></pre>
+        </section>
+
+        <section id="len">
+            <h2><code>Len</code></h2>
+
+            <p>
+                <code>Len</code> is a read-only <code>uint</code> property.
+            </p>
+
+            <pre><code>let userCount := users.Len
+let permissionCount := permissions.Len</code></pre>
+
+            <p>Its meaning depends on the collection:</p>
+
+            <ul>
+                <li><code>list[T]</code>: number of live logical elements;</li>
+                <li><code>map[K,V]</code>: number of stored entries;</li>
+                <li><code>set[T]</code>: number of stored unique values.</li>
+            </ul>
+
+            <p>
+                <code>Len</code> never means capacity or byte size.
+            </p>
+
+            <p>
+                Reading it does not allocate, consume, mutate or inspect collection elements.
+            </p>
+        </section>
+
+        <section id="is-empty">
+            <h2><code>IsEmpty</code></h2>
+
+            <p>
+                <code>IsEmpty</code> is a read-only <code>bool</code> property equivalent to
+                <code>Len == 0</code>.
+            </p>
+
+            <pre><code>if users.IsEmpty {
+    return
+}</code></pre>
+
+            <p>
+                It evaluates the receiver once and does not allocate or mutate.
+            </p>
+        </section>
+
+        <section id="ptr-sizeof">
+            <h2><code>Ptr</code> and Instance <code>SizeOf</code></h2>
+
+            <p>
+                <code>list[T]</code> guarantees contiguous logical element storage in Sec 0.1.
+                It therefore participates in the contiguous-storage surface:
+            </p>
+
+            <pre><code>values.Ptr
+values.SizeOf</code></pre>
+
+            <p>
+                <code>Ptr</code> is an unsafe raw-pointer observation.
+                It does not transfer ownership, extend lifetime, pin storage or prevent a later
+                structural mutation from invalidating the backing incarnation.
+            </p>
+
+            <p>
+                Instance <code>SizeOf</code> describes the byte extent of the represented logical
+                elements, not the size of the list descriptor and not unused capacity.
+            </p>
+
+            <p>
+                <code>map[K,V]</code> and <code>set[T]</code> do not expose <code>Ptr</code>.
+                Their physical storage is not a public contiguous sequence contract.
+            </p>
+        </section>
+
+        <section id="absence-errors">
+            <h2>Normal Absence Is Not an Error</h2>
+
+            <p>
+                Sec does not manufacture an Error merely because a collection operation returns a
+                normal negative result.
+            </p>
+
+            <p>Examples:</p>
+
+            <pre><code>RemoveAt(invalidIndex)  -> None
+Remove(missingValue)    -> false
+Contains(missingValue)  -> false
+IndexOf(missingValue)   -> None
+set.Add(existingValue)  -> Ok(false)</code></pre>
+
+            <p>
+                Errors are reserved for failures that prevent a valid requested structural or resource
+                operation from being completed.
+            </p>
+        </section>
+
+        <section id="collection-error">
+            <h2><code>CollectionError</code></h2>
+
+            <p>
+                Collection-facing structural/resource failure uses <code>CollectionError</code>.
+            </p>
+
+            <p>Sec 0.1 defines collection-level cases including:</p>
+
+            <pre><code>CollectionError.AllocationFailed
+CollectionError.CapacityExceeded
+CollectionError.SizeOverflow</code></pre>
+
+            <p>
+                The allocation subsystem may still use the lower-level <code>AllocationError</code>.
+                A collection operation may translate that failure into
+                <code>CollectionError.AllocationFailed</code>.
+            </p>
+
+            <p>
+                Access-specific errors such as index, range or key-access failures remain in their own
+                error families when a checked access actually requires an Error.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Allocation and Growth</h2>
+
+            <p>
+                Dynamic collections may grow through the active Sec allocation model.
+            </p>
+
+            <p>
+                No hidden global heap is assumed.
+                An allocation-capable structural operation must have a valid allocation context before lowering.
+            </p>
+
+            <p>
+                Bounded collection forms instead carry a compile-time maximum capacity and are intended
+                for bounded/no-heap use cases where the relevant backing model can satisfy them.
+            </p>
+
+            <p>
+                Allocation, ownership of logical elements and reclamation authority for raw backing
+                remain distinct concepts.
+            </p>
+        </section>
+
+        <section id="transactional">
+            <h2>Structural Mutation Is Transactional Where Failure Is Possible</h2>
+
+            <p>
+                A structural operation that may fail during growth must not leave the collection
+                half-mutated.
+            </p>
+
+            <p>On failure, the collection must preserve its previous valid state, including:</p>
+
+            <ul>
+                <li>its previous logical length;</li>
+                <li>all previously owned elements or entries;</li>
+                <li>valid ownership state;</li>
+                <li>no partially published new backing;</li>
+                <li>no lost input value merely because growth failed.</li>
+            </ul>
+
+            <p>
+                This principle applies to fallible append, insert, map upsert, set insertion and
+                other structural operations.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Borrowing and Structural Mutation</h2>
+
+            <p>
+                Ordinary borrow rules apply to collections.
+            </p>
+
+            <p>
+                A structural operation that may relocate, resize, rehash or otherwise invalidate
+                storage cannot execute while a conflicting direct element reference, slice, iterator
+                borrow or related dependency remains live.
+            </p>
+
+            <p>
+                In-place element mutation may remain legal when it preserves structural stability and
+                ordinary borrow authority.
+            </p>
+
+            <p>
+                Sec does not introduce a runtime borrow checker for collections.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Collection Destruction</h2>
+
+            <p>
+                An owning list, map or set destroys every still-owned live logical element or entry
+                exactly once according to its canonical destruction plan.
+            </p>
+
+            <p>
+                After logical element destruction, raw backing is reclaimed only through the resolved
+                allocation/reclamation authority.
+            </p>
+
+            <p>
+                Backend container representation must not change source-level destruction semantics.
+            </p>
+        </section>
+
+        <section id="list">
+            <h2><code>list[T]</code></h2>
+
+            <p>
+                <code>list[T]</code> is Sec's richer variable-length ordered linear collection.
+            </p>
+
+            <pre><code>list[User]
+list[Packet]</code></pre>
+
+            <p>
+                Unlike a linked list, Sec 0.1 <code>list[T]</code> guarantees contiguous logical
+                element storage.
+            </p>
+
+            <p>This supports:</p>
+
+            <ul>
+                <li>zero-based indexing;</li>
+                <li>explicit slices;</li>
+                <li><code>Ptr</code>;</li>
+                <li>instance <code>SizeOf</code>;</li>
+                <li>ordered iteration;</li>
+                <li>order-preserving removal;</li>
+                <li>sorting and reversal.</li>
+            </ul>
+        </section>
+
+        <section id="list-bounded">
+            <h2>Dynamic and Bounded Lists</h2>
+
+            <p>Dynamic form:</p>
+
+            <pre><code>list[T]</code></pre>
+
+            <p>Bounded form:</p>
+
+            <pre><code>list[T, Capacity]</code></pre>
+
+            <p>
+                The dynamic form may grow through an approved allocation strategy.
+            </p>
+
+            <p>
+                The bounded form has runtime-variable <code>Len</code> and a compile-time maximum
+                number of elements.
+            </p>
+
+            <p>A bounded list:</p>
+
+            <ul>
+                <li>never exceeds its declared maximum capacity;</li>
+                <li>does not perform hidden growth allocation beyond its resolved bounded backing model;</li>
+                <li>reports capacity exhaustion explicitly;</li>
+                <li>is suitable for no-heap targets.</li>
+            </ul>
+
+            <p>
+                For <code>list[T, Capacity]</code>, <code>Capacity</code> must be greater than zero.
+            </p>
+
+            <p>
+                The exact physical backing representation is not source semantics.
+            </p>
+        </section>
+
+        <section id="list-empty">
+            <h2>Empty Lists</h2>
+
+            <p>
+                Both dynamic and bounded lists have a valid empty state independently of whether
+                <code>T</code> itself is default-constructible.
+            </p>
+
+            <p>Canonical explicit empty forms are:</p>
+
+            <pre><code>list[T] {}
+list[T, Capacity] {}</code></pre>
+
+            <p>
+                These are collection literals, not struct literals.
+            </p>
+
+            <p>
+                Empty reserved bounded backing does not mean any <code>T</code> value has been
+                constructed.
+            </p>
+        </section>
+
+        <section id="list-properties">
+            <h2>List Properties</h2>
+
+            <p><code>list[T]</code> exposes:</p>
+
+            <pre><code>Len
+IsEmpty
+Ptr
+SizeOf
+Capacity</code></pre>
+
+            <p>
+                <code>Capacity</code> is intentionally source-visible on lists.
+            </p>
+
+            <p>
+                For bounded lists it is the compile-time maximum capacity.
+                For dynamic lists it is the currently available logical capacity according to the list contract.
+            </p>
+
+            <p>
+                This differs from <code>T[]</code>, whose internal capacity is not public source state.
+            </p>
+        </section>
+
+        <section id="list-indexing">
+            <h2>List Indexing</h2>
+
+            <pre><code>let item := values[index]
+values[index] = replacement
+
+let itemRef := ref values[index]
+let itemMut := ref mut values[index]</code></pre>
+
+            <p>
+                Successful list indexing produces an element Place.
+                Use context determines copy, borrow or mutation.
+            </p>
+
+            <p>
+                Runtime indexing does not implicitly move a move-only element out of the list.
+                Use an explicit owning extraction operation such as <code>RemoveAt</code>.
+            </p>
+        </section>
+
+        <section id="list-slicing">
+            <h2>Lists Support Explicit Slices</h2>
+
+            <pre><code>let all := ref values[..]
+let middle := ref values[2..<5]
+let writable := ref mut values[..]</code></pre>
+
+            <p>
+                Slice creation remains explicit.
+                There is no required <code>AsSlice()</code> or <code>Slice()</code> helper.
+            </p>
+
+            <p>
+                A structural list mutation that can invalidate the backing is illegal while a
+                conflicting slice remains live.
+            </p>
+        </section>
+
+        <section id="list-iteration">
+            <h2>List Iteration Preserves Logical Index Order</h2>
+
+            <pre><code>for item in values {
+    Use(item)
+}</code></pre>
+
+            <pre><code>for index, ref item in values {
+    Inspect(index, item)
+}</code></pre>
+
+            <pre><code>for _, ref mut item in values {
+    Update(item)
+}</code></pre>
+
+            <p>
+                Plain element binding copies the yielded element and therefore requires an implicitly
+                copyable <code>T</code>.
+            </p>
+
+            <p>
+                It never silently moves, borrows or clones a move-only element.
+            </p>
+
+            <p>
+                Structural mutation that invalidates iteration storage/range is forbidden while the
+                iteration or an element borrow remains active.
+            </p>
+        </section>
+
+        <section id="list-surface">
+            <h2>Core List Operations</h2>
+
+            <pre><code>Append(value)
+Insert(index, value)
+RemoveAt(index)
+Remove(value)
+Clear()
+
+Contains(value)
+IndexOf(value)
+
+Reverse()
+Sort()
+SortBy(compare)
+
+ToString()
+ToString(format)</code></pre>
+
+            <p>
+                Higher-level transformation algorithms may be supplied by libraries as free generic
+                algorithms rather than privileged list members.
+            </p>
+        </section>
+
+        <section id="list-append">
+            <h2><code>Append</code></h2>
+
+            <pre><code>try values.Append(value)</code></pre>
+
+            <p>
+                Append adds one value at the end of the current logical sequence.
+            </p>
+
+            <p>
+                It is a structural mutation and may require growth/allocation in the dynamic form.
+            </p>
+
+            <p>
+                The collection changes only after successful value transfer and any required growth.
+                Failure must not lose the source value or corrupt the existing list.
+            </p>
+
+            <p>
+                <code>Push</code> is not a Sec 0.1 alias for <code>Append</code>.
+            </p>
+        </section>
+
+        <section id="list-insert">
+            <h2><code>Insert</code></h2>
+
+            <p>Canonical semantic result:</p>
+
+            <pre><code>Insert(index, value) -> Result[bool, CollectionError]</code></pre>
+
+            <p>Meaning:</p>
+
+            <pre><code>Ok(true)
+    insertion succeeded
+
+Ok(false)
+    insertion position is invalid
+
+Err(error)
+    valid insertion could not be completed because of
+    structural/resource failure</code></pre>
+
+            <p>
+                An invalid position is a normal unsuccessful request, not an <code>IndexError</code>.
+            </p>
+
+            <p>
+                Successful insertion preserves list order and may require structural growth.
+            </p>
+        </section>
+
+        <section id="list-remove-at">
+            <h2><code>RemoveAt</code></h2>
+
+            <p>Canonical result:</p>
+
+            <pre><code>RemoveAt(index) -> Option[T]</code></pre>
+
+            <p>For a valid index:</p>
+
+            <ul>
+                <li>the removed <code>T</code> is moved out;</li>
+                <li>later elements shift one logical position left;</li>
+                <li><code>Len</code> decreases by one;</li>
+                <li>no readable hole remains;</li>
+                <li>the operation does not allocate;</li>
+                <li>the result is <code>Some(removed)</code>.</li>
+            </ul>
+
+            <p>
+                Invalid or negative indices return <code>None</code>.
+                Absence is not an Error.
+            </p>
+
+            <pre><code>let removed := values.RemoveAt(index)</code></pre>
+        </section>
+
+        <section id="list-remove">
+            <h2><code>Remove</code></h2>
+
+            <p>
+                <code>Remove(value)</code> removes one matching value according to the list's equality rules.
+            </p>
+
+            <pre><code>Remove(value) -> bool</code></pre>
+
+            <p>
+                <code>true</code> means a matching value was removed.
+                <code>false</code> means no matching value existed.
+            </p>
+
+            <p>
+                A missing value is not an Error.
+            </p>
+        </section>
+
+        <section id="list-search">
+            <h2><code>Contains</code> and <code>IndexOf</code></h2>
+
+            <pre><code>Contains(value) -> bool
+
+IndexOf(value) -> Option[uint]</code></pre>
+
+            <p>
+                <code>Contains</code> requires equality semantics for <code>T</code>.
+            </p>
+
+            <p>
+                <code>IndexOf</code> returns the first matching logical index.
+                No match returns <code>None</code>.
+            </p>
+        </section>
+
+        <section id="list-clear">
+            <h2><code>Clear</code></h2>
+
+            <pre><code>values.Clear()</code></pre>
+
+            <p>
+                Clearing destroys every still-owned live element, sets <code>Len</code> to zero and
+                retains reusable backing where the representation provides it.
+            </p>
+
+            <p>
+                It does not allocate.
+            </p>
+        </section>
+
+        <section id="list-ordering">
+            <h2><code>Reverse</code>, <code>Sort</code> and <code>SortBy</code></h2>
+
+            <p>
+                <code>Reverse()</code> mutates the list in place without allocation.
+            </p>
+
+            <p>
+                <code>Sort()</code> is available when <code>T</code> satisfies the required ordering contract.
+            </p>
+
+            <p>
+                <code>SortBy(compare)</code> uses the canonical comparison callable form defined by
+                Sec's callable/lambda rules.
+            </p>
+
+            <p>
+                Sorting must not silently copy move-only values merely because the implementation
+                algorithm was written for copyable data.
+            </p>
+        </section>
+
+        <section id="map">
+            <h2><code>map[K, V]</code></h2>
+
+            <p>
+                A map stores unique keys associated with owned values.
+            </p>
+
+            <pre><code>map[UserID, User]
+map[string, Configuration]</code></pre>
+
+            <p>It provides:</p>
+
+            <ul>
+                <li>key lookup;</li>
+                <li>insertion and replacement;</li>
+                <li>removal;</li>
+                <li>membership testing;</li>
+                <li>entry iteration;</li>
+                <li>owned key/value storage;</li>
+                <li>stable equality/hash requirements for stored keys.</li>
+            </ul>
+
+            <p>
+                Hash-based behavior is the default semantic implementation family, but physical bucket
+                representation is not source-visible.
+            </p>
+        </section>
+
+        <section id="map-bounded">
+            <h2>Dynamic and Bounded Maps</h2>
+
+            <p>Dynamic:</p>
+
+            <pre><code>map[K, V]</code></pre>
+
+            <p>Bounded:</p>
+
+            <pre><code>map[K, V, Capacity]</code></pre>
+
+            <p>
+                The bounded form has a compile-time maximum entry count.
+            </p>
+
+            <p>
+                The dynamic form may grow through an approved allocation strategy.
+                No hidden global heap is assumed.
+            </p>
+
+            <p>
+                Unlike lists, the Sec 0.1 map base surface does not expose a public <code>Capacity</code>
+                property.
+            </p>
+        </section>
+
+        <section id="map-order">
+            <h2>Map Iteration Order Is Unspecified</h2>
+
+            <p>Programs must not depend on:</p>
+
+            <ul>
+                <li>insertion order;</li>
+                <li>bucket order;</li>
+                <li>sorted key order;</li>
+                <li>target-specific traversal order.</li>
+            </ul>
+
+            <p>
+                Ordered associative behavior belongs in a separate ordered-map type.
+            </p>
+        </section>
+
+        <section id="map-properties">
+            <h2>Map Properties</h2>
+
+            <p>The required read-only properties are:</p>
+
+            <pre><code>Len
+IsEmpty</code></pre>
+
+            <p>A map does not provide base members:</p>
+
+            <pre><code>Ptr
+First
+Last</code></pre>
+
+            <p>
+                <code>First</code> or <code>Last</code> would incorrectly make unspecified traversal
+                order part of the public contract.
+            </p>
+        </section>
+
+        <section id="map-lookup">
+            <h2>Map Lookup Uses Indexing Syntax</h2>
+
+            <pre><code>let user := try users[id]</code></pre>
+
+            <p>
+                A successful lookup produces the value Place for the existing entry.
+            </p>
+
+            <p>Use context then determines whether the value is:</p>
+
+            <ul>
+                <li>copied;</li>
+                <li>shared-borrowed;</li>
+                <li>mutably borrowed.</li>
+            </ul>
+
+            <p>
+                A lookup does not insert.
+            </p>
+
+            <p>
+                A missing key is a checked key-access failure and can use ordinary
+                <code>try</code> handling according to the access/error rules.
+            </p>
+        </section>
+
+        <section id="map-upsert">
+            <h2>Map Mutation Uses Indexed Upsert Assignment</h2>
+
+            <pre><code>try users[id] = user</code></pre>
+
+            <p>Semantics:</p>
+
+            <pre><code>existing key:
+    replace the stored V
+
+missing key:
+    insert a new K/V entry</code></pre>
+
+            <p>
+                When structural growth/resource failure is possible, the operation has the
+                operation-level shape:
+            </p>
+
+            <pre><code>Result[void, CollectionError]</code></pre>
+
+            <p>
+                Sec does not add a separate <code>Set()</code> method.
+            </p>
+
+            <p>
+                The assignment operator is <code>=</code>, not <code>:=</code>.
+                <code>:=</code> remains declaration/initialization syntax.
+            </p>
+
+            <p>
+                Explicit move assignment may use ordinary canonical move assignment:
+            </p>
+
+            <pre><code>try users[id] &lt;- user</code></pre>
+
+            <p>
+                Exact move behavior remains governed by ownership and assignment rules.
+            </p>
+        </section>
+
+        <section id="map-remove">
+            <h2><code>Remove</code></h2>
+
+            <pre><code>Remove(key) -> Option[V]</code></pre>
+
+            <p>
+                <code>Some(value)</code> transfers ownership of the removed value.
+            </p>
+
+            <p>
+                <code>None</code> means the key was absent.
+                Missing keys are not an Error for removal.
+            </p>
+        </section>
+
+        <section id="map-contains">
+            <h2><code>ContainsKey</code></h2>
+
+            <pre><code>ContainsKey(key) -> bool</code></pre>
+
+            <p>
+                This tests key membership without performing insertion.
+            </p>
+        </section>
+
+        <section id="map-iteration">
+            <h2>Map Iteration Has Exactly Two Logical Bindings</h2>
+
+            <pre><code>for key, value in users {
+    Use(key, value)
+}</code></pre>
+
+            <pre><code>for ref key, ref value in users {
+    Inspect(key, value)
+}</code></pre>
+
+            <pre><code>for ref key, ref mut value in users {
+    Update(key, value)
+}</code></pre>
+
+            <p>
+                A single-binding map loop is invalid because map iteration yields key and value as
+                distinct logical components.
+            </p>
+
+            <p>
+                Plain bindings copy their components and therefore require those component types to be
+                implicitly copyable.
+            </p>
+
+            <p>
+                A discarded component <code>_</code> does not force a copy or move merely to discard it.
+            </p>
+
+            <p>
+                Structural mutation during a conflicting active iteration borrow is invalid.
+            </p>
+        </section>
+
+        <section id="map-keys">
+            <h2>Stored Map Keys Must Preserve Equality and Hash Identity</h2>
+
+            <p>
+                Mutable value references may be permitted when the map is mutably borrowed.
+            </p>
+
+            <p>
+                Mutable references to stored keys are not permitted:
+            </p>
+
+            <pre><code>for ref mut key, value in users {    // invalid
+    ...
+}</code></pre>
+
+            <p>
+                A stored key cannot be mutated in a way that changes the equality/hash identity under
+                which it is stored.
+            </p>
+        </section>
+
+        <section id="set">
+            <h2><code>set[T]</code></h2>
+
+            <p>
+                A set stores unique values and provides membership, insertion, removal, iteration and
+                set algebra.
+            </p>
+
+            <pre><code>set[Permission]
+set[UserID]</code></pre>
+
+            <p>
+                Stored values participate in the set's equality/hash identity while present.
+            </p>
+        </section>
+
+        <section id="set-bounded">
+            <h2>Dynamic and Bounded Sets</h2>
+
+            <p>Dynamic:</p>
+
+            <pre><code>set[T]</code></pre>
+
+            <p>Bounded:</p>
+
+            <pre><code>set[T, Capacity]</code></pre>
+
+            <p>
+                The dynamic form may grow through an approved allocation strategy.
+                The bounded form has a compile-time maximum value count.
+            </p>
+
+            <p>
+                The Sec 0.1 base set surface does not expose a public <code>Capacity</code> property.
+            </p>
+        </section>
+
+        <section id="set-order">
+            <h2>Set Iteration Order Is Unspecified</h2>
+
+            <p>
+                A program cannot depend on insertion, bucket, sorted or target-specific traversal order.
+            </p>
+
+            <p>
+                Ordered-set semantics belong in a distinct collection type.
+            </p>
+        </section>
+
+        <section id="set-properties">
+            <h2>Set Properties</h2>
+
+            <pre><code>Len
+IsEmpty</code></pre>
+
+            <p>A set does not expose base members:</p>
+
+            <pre><code>Ptr
+First
+Last</code></pre>
+
+            <p>
+                Its physical storage is not a public contiguous sequence contract.
+            </p>
+        </section>
+
+        <section id="set-add">
+            <h2><code>Add</code></h2>
+
+            <p>Canonical result:</p>
+
+            <pre><code>Add(value) -> Result[bool, CollectionError]</code></pre>
+
+            <p>Meaning:</p>
+
+            <pre><code>Ok(true)
+    value was inserted
+
+Ok(false)
+    value was already present
+
+Err(error)
+    valid insertion could not be completed because of
+    structural/resource failure</code></pre>
+
+            <p>
+                Inserting a value already present is a normal successful non-insertion outcome, not an Error.
+            </p>
+        </section>
+
+        <section id="set-remove">
+            <h2><code>Remove</code> and <code>Contains</code></h2>
+
+            <pre><code>Remove(value) -> bool
+Contains(value) -> bool</code></pre>
+
+            <p>
+                <code>Remove</code> returns <code>false</code> when the value was absent.
+            </p>
+
+            <p>
+                <code>Contains</code> reports membership.
+            </p>
+
+            <p>
+                Absence in either operation is not an Error.
+            </p>
+        </section>
+
+        <section id="set-algebra">
+            <h2>Set Algebra</h2>
+
+            <p>Sec 0.1 includes the non-mutating operations:</p>
+
+            <pre><code>Union(other)
+Intersection(other)
+Difference(other)
+SymmetricDifference(other)</code></pre>
+
+            <p>
+                They produce a new owning set.
+            </p>
+
+            <p>
+                Because the receiver remains intact, the operations require the ordinary non-consuming
+                copy semantics needed to populate the result.
+            </p>
+
+            <p>
+                For move-only <code>T</code>, these non-consuming set-algebra members are unavailable.
+                Use explicit ownership-moving logic instead.
+            </p>
+
+            <p>
+                When constructing the result may fail because of allocation or structural resources,
+                the result is returned through:
+            </p>
+
+            <pre><code>Result[set[...], CollectionError]</code></pre>
+
+            <p>
+                The concrete bounded or dynamic set type is preserved according to the operation's
+                collection rules.
+            </p>
+
+            <p>
+                No hidden element copying or hidden allocation is allowed.
+            </p>
+        </section>
+
+        <section id="set-iteration">
+            <h2>Set Iteration</h2>
+
+            <pre><code>for value in activeUsers {
+    Use(value)
+}</code></pre>
+
+            <pre><code>for ref value in activeUsers {
+    Inspect(value)
+}</code></pre>
+
+            <p>
+                Plain iteration copies the stored value and therefore requires an implicitly copyable
+                element type.
+            </p>
+
+            <p>
+                Shared-reference iteration is permitted when stable addressable storage is available.
+            </p>
+
+            <p>
+                Mutable-reference set iteration is invalid because mutating a stored value could change
+                its equality/hash identity:
+            </p>
+
+            <pre><code>for ref mut value in activeUsers {    // invalid
+    ...
+}</code></pre>
+
+            <p>
+                Ordinary iteration never moves an owned element out of the set.
+            </p>
+        </section>
+
+        <section id="move-only-elements">
+            <h2>Move-Only Elements Are Never Silently Copied</h2>
+
+            <p>
+                Collection algorithms must preserve ordinary Sec copy/move classification.
+            </p>
+
+            <p>
+                In particular:
+            </p>
+
+            <ul>
+                <li>plain iteration cannot copy a move-only element;</li>
+                <li>ordinary indexed read does not move an element out merely because it is move-only;</li>
+                <li>sorting must use move-aware implementation when needed;</li>
+                <li>set algebra requiring non-consuming duplication is unavailable for move-only elements;</li>
+                <li>explicit extraction operations transfer ownership according to their declared result.</li>
+            </ul>
+
+            <p>
+                A backend container implementation cannot introduce implicit clone/copy behavior to
+                simplify implementation.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>Collections and FFI</h2>
+
+            <p>
+                Lists, maps and sets do not have one general FFI-stable descriptor representation.
+            </p>
+
+            <p>
+                A foreign wrapper must use explicitly ABI-compatible components and define pointer,
+                lifetime, retention and ownership rules.
+            </p>
+
+            <p>
+                For contiguous list data, low-level wrappers may use:
+            </p>
+
+            <pre><code>unsafe {
+    ForeignCall(values.Ptr, values.SizeOf)
+}</code></pre>
+
+            <p>
+                This exposes the current data pointer and logical payload byte extent.
+                Neither operation transfers ownership or extends storage lifetime.
+            </p>
+
+            <p>
+                If the foreign API wants element count rather than byte count, pass
+                <code>values.Len</code> instead.
+            </p>
+
+            <p>
+                Maps and sets require an explicit conversion or wrapper representation suitable for the
+                foreign API rather than exposing their internal buckets.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Compiler Analysis Understands Collection Semantics</h2>
+
+            <p>
+                Collection operations are not treated as opaque arbitrary method calls.
+            </p>
+
+            <p>Analysis tracks facts such as:</p>
+
+            <ul>
+                <li>logical <code>Len</code> changes;</li>
+                <li>structural mutation;</li>
+                <li>allocation capability;</li>
+                <li>possible relocation;</li>
+                <li>storage-domain/epoch invalidation;</li>
+                <li>borrow conflicts;</li>
+                <li>element destruction;</li>
+                <li>element copy/move requirements;</li>
+                <li>normal absence versus Error;</li>
+                <li>fallible mutation and <code>try</code> propagation;</li>
+                <li>iteration mutation restrictions;</li>
+                <li>map/set key identity restrictions.</li>
+            </ul>
+
+            <p>
+                Static proof may remove checks or improve diagnostics without changing source-level
+                result types.
+            </p>
+        </section>
+
+        <section id="semantic-ir">
+            <h2>Collection Categories Remain Distinct in Semantic IR</h2>
+
+            <p>The compiler preserves distinct semantic categories equivalent to:</p>
+
+            <pre><code>ListType(T, optional bounded capacity)
+MapType(K, V, optional bounded capacity)
+SetType(T, optional bounded capacity)</code></pre>
+
+            <p>
+                One category must not be lowered as another merely because a backend could share an
+                implementation structure.
+            </p>
+
+            <p>
+                Structural operations remain visible until allocation effects, ownership transfer,
+                destruction, borrow invalidation, storage transitions and error propagation have been verified.
+            </p>
+
+            <p>
+                Backend representation never chooses source semantics.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <h3>Bounded capacity exhaustion</h3>
+
+            <pre><code>cannot append to `values`
+
+the bounded list has reached its maximum capacity
+
+type:
+    list[Packet, 32]
+
+help: remove an element
+help: increase the compile-time capacity
+help: use a dynamic list where allocation is permitted</code></pre>
+
+            <h3>Structural mutation during borrow</h3>
+
+            <pre><code>cannot structurally modify `values`
+
+a live slice still depends on the current list backing:
+    let view := ref values[..]
+
+later use:
+    Process(view)</code></pre>
+
+            <h3>Map iteration requires two bindings</h3>
+
+            <pre><code>map iteration yields key and value
+
+invalid:
+    for entry in users
+
+use:
+    for key, value in users</code></pre>
+
+            <h3>Mutable map key borrow</h3>
+
+            <pre><code>cannot mutably borrow a stored map key
+
+map keys must preserve equality/hash identity while stored
+
+help: remove the entry and insert it again with the new key</code></pre>
+
+            <h3>Mutable set element iteration</h3>
+
+            <pre><code>cannot iterate `set[T]` with `ref mut`
+
+stored set values participate in equality/hash identity
+
+help: iterate with `ref`
+help: remove and reinsert values when identity must change</code></pre>
+
+            <h3>Move-only element copied by plain iteration</h3>
+
+            <pre><code>plain iteration would copy move-only element type `Resource`
+
+help: borrow the element:
+    for ref item in resources</code></pre>
+
+            <h3>Normal absence is not an error</h3>
+
+            <pre><code>`RemoveAt` returns Option[T]
+
+an invalid position produces None rather than IndexError
+
+help: match Some/None
+help: use an access operation when checked indexing semantics are required</code></pre>
+
+            <p>
+                Diagnostics should distinguish invalid access, normal unsuccessful mutation,
+                allocation/resource failure, capacity exhaustion, borrow conflict and forbidden
+                identity mutation.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                The LSP consumes the same compiler-known collection semantics as Sema.
+            </p>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>dynamic versus bounded collection form;</li>
+                <li>logical length;</li>
+                <li>list capacity;</li>
+                <li>allocation capability;</li>
+                <li>whether an operation is structural;</li>
+                <li>possible backing invalidation;</li>
+                <li>copy/move requirements;</li>
+                <li>required equality/hash or ordering capabilities;</li>
+                <li>normal absence result versus structural Error;</li>
+                <li>iteration order guarantees;</li>
+                <li>why a member is unavailable for a concrete element type.</li>
+            </ul>
+
+            <p>
+                Completion should not suggest non-canonical helpers such as <code>Push</code>,
+                <code>Set</code>, <code>AsSlice</code> or <code>Iterator</code> as base collection APIs.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>list[T]</code> when ordered indexed storage needs search/sort and source-visible capacity semantics.</li>
+                <li>Use <code>map[K,V]</code> when values are addressed by unique keys.</li>
+                <li>Use <code>set[T]</code> when only uniqueness and membership matter.</li>
+                <li>Use bounded forms when a compile-time maximum is part of the memory/resource design.</li>
+                <li>Do not rely on map or set iteration order.</li>
+                <li>Use a distinct ordered collection type when order is semantically important.</li>
+                <li>Use <code>Len</code> and <code>IsEmpty</code> as properties, not methods.</li>
+                <li>Use <code>Append</code>, not a non-canonical <code>Push</code> alias.</li>
+                <li>Use indexed assignment for map upsert rather than inventing <code>Set()</code>.</li>
+                <li>Use <code>Option</code> or <code>bool</code> for ordinary not-found/absence results.</li>
+                <li>Reserve <code>CollectionError</code> for real structural or resource failures.</li>
+                <li>Borrow move-only elements instead of relying on plain copying iteration.</li>
+                <li>Use explicit extraction operations when ownership must leave a collection.</li>
+                <li>Do not structurally mutate a collection while live references, slices or iterator borrows depend on its current backing.</li>
+                <li>Never mutably borrow map keys or set elements while stored.</li>
+                <li>Use <code>Ptr</code> only on collection types with a public contiguous-storage contract and only inside appropriate unsafe code.</li>
+                <li>Do not expose internal map/set representation across FFI boundaries.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec's richer built-in collection types are <code>list[T]</code>, <code>map[K,V]</code> and <code>set[T]</code>.</li>
+                <li>They are compiler-known lowercase type constructors requiring no import.</li>
+                <li>They are not standard-library aliases.</li>
+                <li>Arrays, slices and indexing are covered in chapters 19–21 and are not repeated here.</li>
+                <li>Shaped values are covered separately in chapter 46.</li>
+                <li><code>Len</code> is a read-only <code>uint</code> logical element/entry count.</li>
+                <li><code>IsEmpty</code> is a read-only bool property equivalent to <code>Len == 0</code>.</li>
+                <li>Canonical public collection properties use uppercase spelling.</li>
+                <li>Normal absence should use <code>bool</code> or <code>Option</code>, not an Error.</li>
+                <li>Collection structural/resource failures use <code>CollectionError</code>.</li>
+                <li>CollectionError includes allocation failure, bounded-capacity exhaustion and size overflow cases.</li>
+                <li>Access errors remain in access-specific error families.</li>
+                <li>No hidden global heap is assumed.</li>
+                <li>Fallible structural growth is transactional.</li>
+                <li>Structural mutation cannot invalidate a live conflicting reference, slice or iteration borrow.</li>
+                <li>Owning collections destroy still-owned live elements/entries exactly once.</li>
+                <li>Backing reclamation follows the resolved allocation/reclamation authority.</li>
+                <li><code>list[T]</code> is an ordered variable-length contiguous collection, not a linked list.</li>
+                <li><code>list[T, Capacity]</code> is a bounded list with runtime Len and compile-time maximum capacity.</li>
+                <li>Bounded list Capacity must be greater than zero.</li>
+                <li>Lists have canonical empty collection literals <code>list[T] {}</code> and <code>list[T, Capacity] {}</code>.</li>
+                <li>An empty list does not construct any T merely because backing capacity exists.</li>
+                <li>Lists expose <code>Len</code>, <code>IsEmpty</code>, <code>Ptr</code>, <code>SizeOf</code> and <code>Capacity</code>.</li>
+                <li>List capacity is intentionally source-visible.</li>
+                <li>List indexing produces an element Place.</li>
+                <li>Runtime indexed access does not implicitly move move-only elements out of a list.</li>
+                <li>Lists support explicit shared and mutable slices.</li>
+                <li>List iteration preserves logical index order.</li>
+                <li>Plain list iteration copies and therefore requires implicitly copyable elements.</li>
+                <li>List iteration supports shared and mutable element borrows where authority permits.</li>
+                <li>List structural mutation may not invalidate active iteration/slice dependencies.</li>
+                <li>Core list operations include Append, Insert, RemoveAt, Remove, Clear, Contains, IndexOf, Reverse, Sort and SortBy.</li>
+                <li><code>Push</code> is not an alias for <code>Append</code>.</li>
+                <li>List Insert returns <code>Result[bool, CollectionError]</code>.</li>
+                <li>Invalid Insert position is <code>Ok(false)</code>, not an index Error.</li>
+                <li>List RemoveAt returns <code>Option[T]</code>.</li>
+                <li>Valid RemoveAt moves the removed element out and shifts later elements left.</li>
+                <li>Invalid RemoveAt returns None.</li>
+                <li>List Remove returns bool.</li>
+                <li>List Contains returns bool.</li>
+                <li>List IndexOf returns <code>Option[uint]</code>.</li>
+                <li>List Clear destroys live elements, sets Len to zero and retains reusable backing where available.</li>
+                <li>List Reverse mutates in place and does not allocate.</li>
+                <li>List Sort is available when T satisfies ordering requirements.</li>
+                <li>SortBy uses the canonical comparison callable form.</li>
+                <li>Sorting cannot silently copy move-only elements.</li>
+                <li><code>map[K,V]</code> stores unique keys associated with values.</li>
+                <li><code>map[K,V,Capacity]</code> has a compile-time maximum entry count.</li>
+                <li>Maps do not expose a base Capacity property in Sec 0.1.</li>
+                <li>Hash-based behavior is the default semantic implementation family for maps.</li>
+                <li>Map physical representation is not source-visible.</li>
+                <li>Map iteration order is unspecified.</li>
+                <li>Programs must not depend on insertion, bucket, sorted or target-specific map order.</li>
+                <li>Maps expose Len and IsEmpty but not Ptr, First or Last.</li>
+                <li>Map lookup uses indexing syntax.</li>
+                <li>Successful map lookup produces the existing value Place.</li>
+                <li>Map lookup does not insert.</li>
+                <li>Missing-key access follows checked key-access semantics.</li>
+                <li>Map upsert uses fallible indexed assignment such as <code>try users[id] = user</code>.</li>
+                <li>Map upsert replaces an existing value or inserts a missing key/value entry.</li>
+                <li>Sec does not define a base map <code>Set()</code> method.</li>
+                <li>Map upsert uses <code>=</code>, not declaration operator <code>:=</code>.</li>
+                <li>Explicit move upsert may use ordinary canonical move assignment.</li>
+                <li>Map Remove returns <code>Option[V]</code> and transfers removed-value ownership.</li>
+                <li>Map ContainsKey returns bool.</li>
+                <li>Map iteration has exactly key and value binding positions.</li>
+                <li>Plain map bindings copy their components and require implicit copyability.</li>
+                <li>Shared references to map keys/values may be available when entries are stably addressable.</li>
+                <li>Mutable map value references require mutable authority.</li>
+                <li>Mutable map key references are invalid while the key is stored.</li>
+                <li>Stored map keys must preserve equality/hash identity.</li>
+                <li><code>set[T]</code> stores unique values.</li>
+                <li><code>set[T,Capacity]</code> has a compile-time maximum value count.</li>
+                <li>Sets do not expose a base Capacity property in Sec 0.1.</li>
+                <li>Set iteration order is unspecified.</li>
+                <li>Sets expose Len and IsEmpty but not Ptr, First or Last.</li>
+                <li>Set Add returns <code>Result[bool, CollectionError]</code>.</li>
+                <li><code>Ok(true)</code> means inserted; <code>Ok(false)</code> means already present.</li>
+                <li>An already present set value is not an Error.</li>
+                <li>Set Remove returns bool.</li>
+                <li>Set Contains returns bool.</li>
+                <li>Set algebra includes Union, Intersection, Difference and SymmetricDifference.</li>
+                <li>Non-mutating set algebra produces a new owning set.</li>
+                <li>Set algebra requiring element copying is unavailable for move-only T.</li>
+                <li>Allocation-capable set algebra returns the new set through <code>Result[..., CollectionError]</code>.</li>
+                <li>Set iteration may copy or shared-borrow stored values.</li>
+                <li><code>ref mut</code> set iteration is invalid because stored values participate in equality/hash identity.</li>
+                <li>Ordinary collection iteration never implicitly moves owned elements out.</li>
+                <li>Move-only collection elements are never silently copied or cloned.</li>
+                <li>Lists may expose Ptr/SizeOf because contiguous logical storage is part of their public contract.</li>
+                <li>Maps and sets do not expose Ptr because their internal storage is not a public contiguous sequence.</li>
+                <li>Lists, maps and sets do not have a general FFI-stable descriptor ABI.</li>
+                <li>Collection Sema tracks Len changes, structural mutation, allocation, relocation, borrows, destruction, ownership and absence/error semantics.</li>
+                <li>List, map and set remain distinct semantic IR categories even when backend implementation could share data structures.</li>
+                <li>The backend does not choose collection source semantics.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="44-layout.html">Previous: Memory Layout and Representation</a>
+            <a href="46-shaped-types.html">Next: Shaped Types</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

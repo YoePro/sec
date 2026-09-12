@@ -1,0 +1,1905 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Destruction - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#destruction">Destruction</a>
+        <a href="#core-rule">Core Rule</a>
+        <a href="#terminology">Terminology</a>
+        <a href="#classification">Destruction Classification</a>
+        <a href="#trivial">Trivially Destructible</a>
+        <a href="#nontrivial">Non-Trivially Destructible</a>
+        <a href="#copy-independent">Independent from Copyability</a>
+        <a href="#exact-once">Exact-Once Rule</a>
+        <a href="#automatic">Automatic Destruction</a>
+        <a href="#registration">Cleanup Registration</a>
+        <a href="#unified-lifo">Unified LIFO Cleanup</a>
+        <a href="#earliest">Earliest Legal Destruction</a>
+        <a href="#locals">Local Destruction Order</a>
+        <a href="#struct-fields">Struct Field Order</a>
+        <a href="#arrays">Fixed Array Order</a>
+        <a href="#temporaries">Temporaries</a>
+        <a href="#move">Moves and Cleanup</a>
+        <a href="#consuming-calls">Consuming Calls</a>
+        <a href="#return">Return Transfer</a>
+        <a href="#aggregate-transfer">Aggregate and Variant Transfer</a>
+        <a href="#partial">Partial Destruction</a>
+        <a href="#custom-free-partial">Custom free and Partial Moves</a>
+        <a href="#conditional">Conditional Destruction</a>
+        <a href="#runtime-bookkeeping">Runtime Ownership Bookkeeping</a>
+        <a href="#available">is available</a>
+        <a href="#discard">discard</a>
+        <a href="#reinitialize">Reinitialization</a>
+        <a href="#replacement">Replacement</a>
+        <a href="#construction">Construction Cleanup</a>
+        <a href="#fallible-init">Fallible init</a>
+        <a href="#free">Custom free</a>
+        <a href="#free-self">self During free</a>
+        <a href="#free-fields">Fields During free</a>
+        <a href="#free-order">free Destruction Order</a>
+        <a href="#free-fallibility">Fallible Close vs free</a>
+        <a href="#result-option">Result, Option and Unions</a>
+        <a href="#collections">Collections and Shaped Values</a>
+        <a href="#references">References and Views</a>
+        <a href="#control-flow">Control-Flow Exits</a>
+        <a href="#loops">Loops</a>
+        <a href="#allocation">Deallocation</a>
+        <a href="#ffi">FFI Ownership</a>
+        <a href="#static">Static and Global Destruction</a>
+        <a href="#termination">Program Termination</a>
+        <a href="#panic">Panic</a>
+        <a href="#concurrency">Concurrency</a>
+        <a href="#hardware">Volatile and Hardware</a>
+        <a href="#interfaces">Interfaces</a>
+        <a href="#generics">Generics</a>
+        <a href="#recursive">Recursive Destruction</a>
+        <a href="#cte">Compile-Time Evaluation</a>
+        <a href="#semantic-ir">Semantic IR</a>
+        <a href="#lowering">Lowering and Optimization</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html" class="active">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Destruction</div>
+
+        <h1 id="destruction">Destruction</h1>
+
+        <p>
+            Destruction is the deterministic semantic end of an owned Sec value's lifetime.
+            It releases every resource and owned subvalue for which the current owner is still responsible.
+        </p>
+
+        <pre><code>fn Process() void {
+    let buffer := CreateBuffer()
+    Use(buffer)
+}</code></pre>
+
+        <p>
+            If <code>buffer</code> still owns a non-trivial value when its lifetime ends, Sec performs
+            the required destruction automatically.
+        </p>
+
+        <div class="rule" id="core-rule">
+            <strong>Core rule:</strong> Every non-trivially destructible owned value must reach exactly
+            one semantically valid terminal ownership action on every reachable path where that value exists.
+        </div>
+
+        <section id="terminology">
+            <h2>Destruction, Cleanup, Resource Release and Deallocation Are Different</h2>
+
+            <h3>Destruction</h3>
+            <p>
+                Destruction ends the current owner's responsibility for a value and performs the cleanup
+                required by the resolved type and current ownership state.
+            </p>
+
+            <h3>Cleanup</h3>
+            <p>
+                Cleanup is the compiler-generated sequence of automatic destruction and registered
+                deferred work executed when Sec semantics leave a lifetime or control-flow region.
+            </p>
+
+            <h3>Resource release</h3>
+            <p>
+                Resource release is a type- or API-defined operation that releases an external or
+                logical resource such as a handle, mapping, lock state, foreign object or device registration.
+            </p>
+
+            <h3>Deallocation</h3>
+            <p>
+                Deallocation returns owned allocation storage through the allocator or authority that
+                owns that storage.
+            </p>
+
+            <h3><code>free</code></h3>
+            <p>
+                <code>free</code> is Sec's custom lifecycle cleanup member for a type whose complete
+                cleanup cannot be expressed solely through automatic destruction of its owned fields.
+            </p>
+
+            <p>
+                It is not an ordinary method and is never called as <code>value.free()</code>.
+            </p>
+        </section>
+
+        <section id="classification">
+            <h2>Every Resolved Type Has a Destruction Classification</h2>
+
+            <p>Conceptually, the compiler classifies a concrete type as:</p>
+
+            <pre><code>TriviallyDestructible
+NonTriviallyDestructible</code></pre>
+
+            <p>
+                These names describe compiler semantics; they are not source-level enum members.
+            </p>
+        </section>
+
+        <section id="trivial">
+            <h2>Trivially Destructible</h2>
+
+            <p>
+                A type is trivially destructible when ending an owned value's lifetime requires no
+                observable cleanup action.
+            </p>
+
+            <p>Typical examples include:</p>
+
+            <ul>
+                <li>ordinary scalar values;</li>
+                <li>safe references;</li>
+                <li>mutable references;</li>
+                <li><code>RawPtr[T]</code>;</li>
+                <li>fieldless enums;</li>
+                <li>aggregates containing only trivially destructible owned fields.</li>
+            </ul>
+
+            <p>
+                Trivial destruction may lower to no machine instruction at all.
+                The compiler still updates semantic ownership/lifetime state.
+            </p>
+        </section>
+
+        <section id="nontrivial">
+            <h2>Non-Trivially Destructible</h2>
+
+            <p>
+                A type is non-trivially destructible when ending an owned value may require observable
+                cleanup directly or recursively through owned subvalues.
+            </p>
+
+            <p>Typical examples include:</p>
+
+            <ul>
+                <li>owning collections;</li>
+                <li>owned allocations;</li>
+                <li>resource wrappers;</li>
+                <li>file, socket and device handles;</li>
+                <li>runtime mappings;</li>
+                <li>owned foreign resources;</li>
+                <li>types defining custom <code>free</code>;</li>
+                <li>aggregates containing non-trivially destructible owned fields.</li>
+            </ul>
+
+            <p>
+                Classification follows concrete ownership representation, not merely the source type name.
+            </p>
+
+            <p>
+                For example, a standard type such as <code>string</code> may have trivial or non-trivial
+                destruction depending on its canonical representation and ownership state.
+            </p>
+        </section>
+
+        <section id="copy-independent">
+            <h2>Destruction Classification Is Independent from Copyability</h2>
+
+            <p>
+                Copyability and destruction are separate semantic properties.
+            </p>
+
+            <p>
+                <code>@noCopy</code> does not automatically mean non-trivial destruction.
+            </p>
+
+            <p>
+                Likewise, a copyable type may require destruction when a valid copy produces an
+                independently owned cleanup obligation.
+            </p>
+        </section>
+
+        <section id="exact-once">
+            <h2>Exact-Once Destruction</h2>
+
+            <p>
+                An owned non-trivial value that remains owned when its lifetime ends is destroyed exactly once.
+            </p>
+
+            <p>The compiler must never:</p>
+
+            <ul>
+                <li>destroy a value after ownership moved elsewhere;</li>
+                <li>destroy an unavailable Place again;</li>
+                <li>destroy a value that never finished initialization;</li>
+                <li>destroy a moved or discarded sub-Place through its former owner;</li>
+                <li>omit the terminal action of a still-owned non-trivial value.</li>
+            </ul>
+
+            <p>
+                Double destruction is a compiler correctness defect, not an acceptable backend artifact.
+            </p>
+        </section>
+
+        <section id="automatic">
+            <h2>Automatic Destruction</h2>
+
+            <p>
+                Ordinary owned values are destroyed automatically when their lifetime ends unless
+                ownership already transferred or another canonical terminal action ended the owner's responsibility.
+            </p>
+
+            <p>
+                User code does not need explicit cleanup solely because a normal local variable reaches
+                the end of its lifetime.
+            </p>
+
+            <p>
+                Automatic destruction is source-language semantics.
+                It is not inferred later from “unused SSA values”.
+            </p>
+        </section>
+
+        <section id="registration">
+            <h2>Successful Initialization Registers Destruction Responsibility</h2>
+
+            <p>
+                When an owned value becomes successfully initialized, its current owner gains the
+                corresponding destruction responsibility.
+            </p>
+
+            <p>
+                Legal reinitialization establishes a new responsibility for the new value.
+            </p>
+
+            <p>
+                Move, discard, return transfer, consuming argument transfer and other terminal ownership
+                actions cancel the former owner's responsibility for the transferred or ended value.
+            </p>
+        </section>
+
+        <section id="unified-lifo">
+            <h2>Automatic Destruction and <code>defer</code> Share One LIFO Cleanup Order</h2>
+
+            <pre><code>fn Example() void {
+    let first := OpenFirst()
+
+    defer {
+        Log("leaving")
+    }
+
+    let second := OpenSecond()
+}</code></pre>
+
+            <p>Conceptual registration order:</p>
+
+            <pre><code>destroy first
+defer Log
+destroy second</code></pre>
+
+            <p>Exit order:</p>
+
+            <pre><code>destroy second
+run defer Log
+destroy first</code></pre>
+
+            <p>
+                Sec does not run “all defers” as a separate phase before or after all automatic destruction.
+            </p>
+
+            <p>
+                The common order follows source-semantic registration time.
+            </p>
+        </section>
+
+        <section id="earliest">
+            <h2>Values May Still Be Destroyed at Their Earliest Legal Lifetime End</h2>
+
+            <p>
+                Unified cleanup ordering does not force every owned value to survive until invocation exit.
+            </p>
+
+            <p>
+                A value may be destroyed earlier when ownership, borrowing, deferred uses, control flow
+                and observable ordering all permit it.
+            </p>
+
+            <p>
+                A defer that later reads a value extends that value's required lifetime until the deferred use.
+            </p>
+        </section>
+
+        <section id="locals">
+            <h2>Local Values Destroy in Reverse Successful Registration Order</h2>
+
+            <p>
+                Owned locals whose lifetimes otherwise overlap are destroyed in reverse successful
+                initialization/cleanup-registration order.
+            </p>
+
+            <p>
+                A declaration whose initialization never completes is not destroyed as a completed value.
+            </p>
+        </section>
+
+        <section id="struct-fields">
+            <h2>Struct Fields Destroy in Reverse Declaration Order</h2>
+
+            <pre><code>type Example struct {
+    First: First
+    Second: Second
+    Third: Third
+}</code></pre>
+
+            <p>Compiler-derived field destruction order:</p>
+
+            <pre><code>Third
+Second
+First</code></pre>
+
+            <p>
+                Optimization may not reorder observable field destruction.
+            </p>
+        </section>
+
+        <section id="arrays">
+            <h2>Fixed Arrays Destroy Elements in Reverse Index Order</h2>
+
+            <p>
+                A fixed array destroys initialized still-owned elements from the highest relevant
+                index down to the lowest.
+            </p>
+
+            <p>
+                Elements whose ownership already moved or ended are skipped.
+            </p>
+        </section>
+
+        <section id="temporaries">
+            <h2>Owned Temporaries Are Destroyed Deterministically</h2>
+
+            <p>
+                An owned temporary remains live through the enclosing full expression unless an earlier
+                ownership transfer ends its responsibility sooner.
+            </p>
+
+            <pre><code>Use(CreateFirst(), CreateSecond())</code></pre>
+
+            <p>With left-to-right argument evaluation, the conceptual order is:</p>
+
+            <pre><code>CreateFirst
+CreateSecond
+Use
+destroy remaining second temporary
+destroy remaining first temporary</code></pre>
+
+            <p>
+                A temporary forwarded into its first owner is not also destroyed by the forwarding context.
+            </p>
+
+            <p>
+                Lifetime shortening must not change observable destruction order, reference validity,
+                defer behavior, volatile effects or expression-evaluation order.
+            </p>
+        </section>
+
+        <section id="move">
+            <h2>Move Cancels the Former Owner's Destruction Responsibility</h2>
+
+            <pre><code>let destination :&lt;- source</code></pre>
+
+            <p>
+                Once the move commits, <code>source</code> no longer owns that value and must not
+                destroy it later.
+            </p>
+
+            <p>
+                The new owner becomes responsible for the value's eventual terminal action.
+            </p>
+
+            <p>
+                Moved-from storage is not itself a live default value and receives no destruction.
+            </p>
+        </section>
+
+        <section id="consuming-calls">
+            <h2>Consuming Calls Transfer Destruction Responsibility at Commit</h2>
+
+            <pre><code>fn Consume(-&gt; resource: Resource) void {
+    ...
+}
+
+Consume(&lt;-resource)</code></pre>
+
+            <p>
+                The caller keeps its destruction responsibility until the consuming transfer actually commits.
+            </p>
+
+            <p>
+                Fallible argument preparation must not cancel cleanup early if the call never reaches
+                the ownership-transfer point.
+            </p>
+
+            <p>
+                After successful transfer commitment, the caller must not destroy the transferred value.
+            </p>
+        </section>
+
+        <section id="return">
+            <h2>Returning an Owned Value Transfers Destruction Responsibility</h2>
+
+            <pre><code>fn Create() Resource {
+    let resource := OpenResource()
+    return resource
+}</code></pre>
+
+            <p>
+                The returned value becomes the responsibility of the result/caller owner.
+            </p>
+
+            <p>
+                The callee excludes that transferred value from its local cleanup.
+            </p>
+
+            <p>
+                Sec's canonical return syntax uses ordinary <code>return value</code>; there is no
+                return-site move marker in the current language model.
+            </p>
+        </section>
+
+        <section id="aggregate-transfer">
+            <h2>Ownership Moved into an Aggregate or Variant Moves Cleanup Responsibility with It</h2>
+
+            <p>
+                When an owned payload is transferred into an owning aggregate, Result/Option/union
+                variant or other owner, that new container becomes responsible for eventual destruction.
+            </p>
+
+            <p>
+                The former source Place must not later destroy the same payload.
+            </p>
+        </section>
+
+        <section id="partial">
+            <h2>Partial Destruction Destroys Only Still-Owned Sub-Places</h2>
+
+            <pre><code>let package := LoadPackage()
+let payload :&lt;- package.Payload</code></pre>
+
+            <p>
+                At the later end of <code>package</code>'s lifetime, <code>package.Payload</code> is
+                not destroyed through <code>package</code> because ownership transferred earlier.
+            </p>
+
+            <p>
+                Other still-owned fields such as <code>package.Header</code> are destroyed normally
+                when their types require it.
+            </p>
+
+            <p>
+                The rule applies recursively to nested Places where partial moves are legal.
+            </p>
+
+            <p>
+                Whole-value cleanup must therefore respect current per-sub-Place ownership state.
+            </p>
+        </section>
+
+        <section id="custom-free-partial">
+            <h2>A Type with Custom <code>free</code> Does Not Permit Partial Field Moves in Sec 0.1</h2>
+
+            <p>
+                A custom <code>free</code> body is allowed to rely on the completed value's complete
+                ownership invariant.
+            </p>
+
+            <p>
+                Therefore Sec 0.1 rejects partial moves from owned fields of a type that defines custom
+                <code>free</code>.
+            </p>
+
+            <p>
+                This avoids invoking a completed-value cleanup routine against an object whose expected
+                owned fields have already been removed.
+            </p>
+        </section>
+
+        <section id="conditional">
+            <h2>Conditionally Owned Values Are Destroyed Only on Paths Where Ownership Remains</h2>
+
+            <pre><code>let mut package := LoadPackage()
+
+if condition {
+    Consume(&lt;-package.Payload)
+}</code></pre>
+
+            <p>
+                After the branch, <code>package.Payload</code> may still be owned on one path and be
+                unavailable on another.
+            </p>
+
+            <p>
+                Cleanup must destroy the payload only on runtime paths where the current owner still
+                owns it.
+            </p>
+
+            <p>
+                The compiler resolves this statically whenever path facts are sufficient.
+            </p>
+        </section>
+
+        <section id="runtime-bookkeeping">
+            <h2>Conditional Destruction May Require Hidden Compiler Bookkeeping</h2>
+
+            <p>
+                When static control-flow facts cannot completely resolve conditional cleanup, a hosted
+                implementation may use:
+            </p>
+
+            <ul>
+                <li>hidden SSA state;</li>
+                <li>a drop/availability flag;</li>
+                <li>split cleanup blocks;</li>
+                <li>another equivalent compiler representation.</li>
+            </ul>
+
+            <p>
+                This bookkeeping is compiler state and does not automatically become part of the
+                source type's ABI layout.
+            </p>
+
+            <p>
+                A target or project policy may forbid dynamic ownership bookkeeping.
+                In that case, the compiler rejects only programs whose correct semantics genuinely
+                require such runtime state.
+            </p>
+
+            <p>
+                Source restructuring or explicit ownership convergence may eliminate the need.
+            </p>
+        </section>
+
+        <section id="available">
+            <h2><code>is available</code> Refines Ownership, Not Destruction by Itself</h2>
+
+            <pre><code>if package.Payload is available {
+    Use(package.Payload)
+}</code></pre>
+
+            <p>
+                Availability tests refine the ownership state defined by the Ownership chapter.
+            </p>
+
+            <p>They do not test:</p>
+
+            <ul>
+                <li><code>null</code>;</li>
+                <li><code>None</code>;</li>
+                <li>payload contents;</li>
+                <li>borrow validity;</li>
+                <li>Arena/reference epoch validity.</li>
+            </ul>
+
+            <p>
+                Destruction lowering may reuse the same resolved availability facts, but the language
+                does not require one particular runtime representation.
+            </p>
+        </section>
+
+        <section id="discard">
+            <h2><code>discard</code> Converges Ownership and Destruction</h2>
+
+            <p>
+                Legal discard of an available owned value ends that value, performs required
+                destruction and leaves the Place unavailable.
+            </p>
+
+            <pre><code>discard resource</code></pre>
+
+            <p>
+                Discard of an already unavailable Place is a legal destruction no-op.
+                No second destruction occurs.
+            </p>
+
+            <p>
+                Discard of a conditionally available Place destroys only runtime paths where ownership
+                remains and leaves every outgoing path unavailable:
+            </p>
+
+            <pre><code>let mut package := LoadPackage()
+
+if condition {
+    Consume(&lt;-package.Payload)
+}
+
+discard package.Payload
+package.Payload = CreateBuffer()</code></pre>
+
+            <p>
+                The final assignment is ordinary reinitialization because all paths have converged to
+                unavailable first.
+            </p>
+
+            <p>
+                Destruction semantics do not make a non-discardable value discardable.
+                Discard legality is checked first.
+            </p>
+        </section>
+
+        <section id="reinitialize">
+            <h2>Reinitialization Performs No Old-Value Destruction</h2>
+
+            <p>
+                Assignment to an unavailable mutable Place is reinitialization.
+            </p>
+
+            <pre><code>let mut value := CreateFirst()
+discard value
+value = CreateSecond()</code></pre>
+
+            <p>
+                At the assignment, no old owned value exists in <code>value</code>, so there is
+                nothing to destroy.
+            </p>
+
+            <p>
+                Successful reinitialization starts a new value lifetime and registers a new destruction
+                responsibility.
+            </p>
+
+            <p>
+                Destruction does not grant reinitialization authority to immutable Places.
+            </p>
+        </section>
+
+        <section id="replacement">
+            <h2>Replacement Destroys the Old Value Before the New Destination Ownership Commits</h2>
+
+            <pre><code>let mut value := CreateFirst()
+value = CreateSecond()</code></pre>
+
+            <p>
+                Because <code>value</code> is still available, the assignment is replacement.
+            </p>
+
+            <p>
+                The compiler first validates the complete source expression, conversions, contracts,
+                borrows, overlap rules and fallible preparation.
+            </p>
+
+            <p>
+                Only after the replacement is semantically ready to commit does the old destination
+                value end according to its canonical destruction plan and the new value become owned
+                by the destination.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> The compiler must not destroy the old destination and only then
+                discover that the replacement operation was invalid or failed before commitment.
+            </div>
+
+            <p>
+                Conditional replacement destroys the old value only on paths where the destination
+                was still owned; unavailable paths behave as reinitialization.
+            </p>
+        </section>
+
+        <section id="construction">
+            <h2>Successful Construction Transfers Cleanup into the Completed Value</h2>
+
+            <p>
+                A successfully completed <code>init</code> establishes one complete valid instance.
+            </p>
+
+            <p>
+                Cleanup responsibilities for its owned fields/resources then belong to that completed
+                instance.
+            </p>
+        </section>
+
+        <section id="fallible-init">
+            <h2>Fallible Construction Cleans Only What Was Successfully Initialized</h2>
+
+            <pre><code>type Resources struct {
+    First: First
+    Second: Second
+    Third: Third
+}</code></pre>
+
+            <p>
+                If construction of <code>Second</code> fails after <code>First</code> succeeded:
+            </p>
+
+            <ul>
+                <li><code>First</code> is cleaned up;</li>
+                <li><code>Second</code> is not treated as a successfully initialized complete value;</li>
+                <li><code>Third</code> is never initialized and receives no destruction;</li>
+                <li>cleanup follows reverse successful initialization/registration order.</li>
+            </ul>
+
+            <p>
+                The outer type's completed-value custom <code>free</code> does not run when the outer
+                value itself never finished construction.
+            </p>
+
+            <p>
+                Every resource acquired during <code>init</code> must have a defined cleanup path on
+                each later failure path and on successful lifetime completion.
+            </p>
+        </section>
+
+        <section id="free">
+            <h2>Custom <code>free</code></h2>
+
+            <p>
+                Most types should rely entirely on compiler-derived field destruction.
+            </p>
+
+            <p>
+                Define custom <code>free</code> only when the type owns a resource whose cleanup is
+                not already expressed correctly by ordinary owned fields.
+            </p>
+
+            <p>Typical cases include:</p>
+
+            <ul>
+                <li>foreign resources represented by raw/non-owning handles;</li>
+                <li>platform handles whose release is not represented by the field type;</li>
+                <li>runtime mappings;</li>
+                <li>device registrations;</li>
+                <li>other opaque ownership contracts.</li>
+            </ul>
+
+            <pre><code>impl DeviceMapping {
+    free {
+        PlatformUnmap(self.Handle)
+    }
+}</code></pre>
+
+            <p>
+                <code>free</code> is a lifecycle member, not an ordinary function.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>mapping.free()</code></pre>
+
+            <p>
+                The compiler invokes <code>free</code> automatically when destroying a completed
+                still-owned value of that type.
+            </p>
+        </section>
+
+        <section id="free-self">
+            <h2><code>self</code> During <code>free</code></h2>
+
+            <p>
+                At entry to <code>free</code>, the completed value remains initialized and is under
+                exclusive compiler-controlled destruction authority.
+            </p>
+
+            <p>The <code>free</code> body must not:</p>
+
+            <ul>
+                <li>return <code>self</code>;</li>
+                <li>let <code>self</code> escape;</li>
+                <li>resurrect the complete value;</li>
+                <li>transfer whole <code>self</code> elsewhere;</li>
+                <li>move owned fields out of <code>self</code> in Sec 0.1.</li>
+            </ul>
+
+            <p>
+                Whole-value lifetime termination is the purpose of <code>free</code>.
+                Ordinary user-defined methods do not consume whole <code>self</code>.
+            </p>
+
+            <p>
+                Compiler-known lifecycle operations such as <code>Arena.Release()</code> remain
+                narrowly defined exceptions and do not create a general consuming-method facility.
+            </p>
+        </section>
+
+        <section id="free-fields">
+            <h2>Owned Fields Remain Compiler-Managed During Custom <code>free</code></h2>
+
+            <p>
+                Custom <code>free</code> should normally release resources not already represented by
+                ordinary owned fields.
+            </p>
+
+            <p>
+                Owned fields are automatically destroyed after the <code>free</code> body unless a
+                specialized canonical rule explicitly says otherwise.
+            </p>
+
+            <p>
+                Sec rejects a statically provable manual release that would cause the same owned
+                resource to be released again during automatic field destruction.
+            </p>
+
+            <p>
+                <code>defer</code> is not permitted inside <code>free</code>.
+                Locals and temporaries created inside the body still receive normal automatic destruction.
+            </p>
+        </section>
+
+        <section id="free-order">
+            <h2>Completed Custom-<code>free</code> Destruction Order</h2>
+
+            <p>Conceptually:</p>
+
+            <pre><code>run custom free body
+destroy remaining initialized owned fields in canonical field order
+release/deallocate representation-owned storage where required</code></pre>
+
+            <p>
+                Custom <code>free</code> does not suppress automatic destruction of ordinary owned fields.
+            </p>
+        </section>
+
+        <section id="free-fallibility">
+            <h2>Fallible Close and Automatic <code>free</code> Are Different</h2>
+
+            <p>
+                <code>free</code> has no return value and cannot return <code>Result</code>.
+            </p>
+
+            <p>
+                Automatic destruction cannot require its former owner to recover from a cleanup error
+                after the ownership lifetime has ended.
+            </p>
+
+            <p>
+                A resource whose meaningful close can fail should expose an explicit fallible method
+                before automatic destruction when appropriate:
+            </p>
+
+            <pre><code>impl File {
+    fn Close() Result[void, IOError] {
+        return CloseHandleChecked(ref mut self.Handle)
+    }
+
+    free {
+        CloseHandleBestEffort(self.Handle)
+    }
+}</code></pre>
+
+            <p>
+                A successful explicit close must update the value's lifecycle state so later automatic
+                destruction does not release the same underlying resource twice.
+            </p>
+
+            <p>
+                <code>free</code> is not implicitly <code>unsafe</code>; unsafe operations still
+                require an explicit unsafe context.
+            </p>
+
+            <p>
+                <code>free</code> also must not silently translate an ordinary recoverable cleanup
+                failure into panic.
+            </p>
+        </section>
+
+        <section id="result-option">
+            <h2><code>Result</code>, <code>Option</code> and Tagged Unions Destroy Only the Active Retained Payload</h2>
+
+            <p>
+                Destroying <code>Result[T, E]</code> destroys the active payload still owned by the Result.
+            </p>
+
+            <p>
+                Destroying <code>Option[T]</code> destroys the payload only when the active state is
+                <code>Some</code> and ownership has not already transferred.
+            </p>
+
+            <p>
+                A tagged union similarly destroys only its active initialized still-owned payload.
+            </p>
+
+            <p>
+                Consuming <code>.Ok()</code> or <code>.Err()</code> transfers the selected payload
+                into the resulting <code>Option</code> and ends the other side according to ordinary
+                destruction/discard rules.
+            </p>
+
+            <p>
+                The consumed Result owner must not later destroy a payload whose ownership moved through
+                the projection.
+            </p>
+
+            <p>
+                The compiler does not guess active ownership for untagged foreign unions.
+                Safe non-trivial ownership requires an explicit wrapper/contract.
+            </p>
+        </section>
+
+        <section id="collections">
+            <h2>Collections, Shaped Values and Strings Follow Their Ownership Representation</h2>
+
+            <h3>Structs</h3>
+            <p>
+                A struct without custom <code>free</code> derives destruction recursively from
+                initialized still-owned fields.
+            </p>
+
+            <h3>Owning dynamic arrays and lists</h3>
+            <p>
+                An owning collection destroys initialized still-owned elements in its canonical order,
+                then releases owned backing through the recorded allocation authority.
+            </p>
+
+            <p>
+                Capacity beyond the initialized logical element range is not destroyed as if it
+                contained live values.
+            </p>
+
+            <p>
+                An element removed by ownership transfer is not later destroyed by the collection.
+            </p>
+
+            <h3>Owning shaped values</h3>
+            <p>
+                Owning tensor/matrix/vector representations destroy still-owned initialized
+                elements/resources as required and release owned backing.
+            </p>
+
+            <p>
+                Borrowed tensor views and slices do not destroy backing elements or storage.
+            </p>
+
+            <h3>Strings</h3>
+            <p>
+                String destruction follows the canonical concrete string representation.
+                Static/borrowed forms may be trivial while an owned form releases owned storage.
+            </p>
+
+            <p>
+                Ordinary string replacement may automatically end the prior owned representation;
+                the programmer does not need to write <code>discard</code> merely because cleanup exists.
+            </p>
+        </section>
+
+        <section id="references">
+            <h2>References and Borrowed Views Do Not Destroy Their Referents</h2>
+
+            <p>
+                Destroying or discarding a safe reference ends only the reference-holder value.
+            </p>
+
+            <p>
+                Destroying a borrowed slice or view likewise does not destroy its backing storage or elements.
+            </p>
+
+            <p>
+                Conversely, destruction of an owned referent is rejected while an incompatible live
+                borrow requires that value or overlapping Place to remain valid.
+            </p>
+
+            <p>
+                A deferred read is a later use and may extend the referent's lifetime until the defer runs.
+            </p>
+
+            <p>
+                Reference generation/epoch validity and ownership availability remain separate concepts.
+            </p>
+        </section>
+
+        <section id="control-flow">
+            <h2>Control-Flow Exits Execute Only the Cleanup They Actually Exit</h2>
+
+            <h3>Return</h3>
+            <p>
+                The return result is established first.
+                Still-owned non-transferred values are then cleaned according to the unified cleanup order.
+            </p>
+
+            <h3><code>return try</code></h3>
+            <p>
+                The success or failure payload is transferred/propagated first and excluded from the
+                cleanup of the ownership context that transferred it.
+            </p>
+
+            <h3>Error propagation</h3>
+            <p>
+                Unmatched <code>try</code> propagation executes cleanup for still-owned values on the
+                propagating path.
+            </p>
+
+            <p>
+                A recovery value that continues establishes ordinary new ownership/destruction responsibility.
+            </p>
+
+            <h3><code>break</code></h3>
+            <p>
+                Executes cleanup for every lifetime/scope region actually exited by the break edge.
+            </p>
+
+            <h3><code>continue</code></h3>
+            <p>
+                Cleans per-iteration values/regions that end before the next iteration but does not
+                destroy loop-carried values that remain live.
+            </p>
+
+            <h3><code>match</code> and <code>switch</code></h3>
+            <p>
+                Each branch has its own destruction state.
+                Branch-local owned values clean up when leaving the branch unless ownership transfers.
+            </p>
+        </section>
+
+        <section id="loops">
+            <h2>Loop Destruction Is Path- and Iteration-Sensitive</h2>
+
+            <p>The compiler distinguishes:</p>
+
+            <ul>
+                <li>pre-loop owned values;</li>
+                <li>per-iteration values;</li>
+                <li>loop-carried values;</li>
+                <li>conditionally initialized values;</li>
+                <li>values moved during one iteration;</li>
+                <li>values retained after loop exit.</li>
+            </ul>
+
+            <p>
+                A per-iteration value is destroyed once for every reached iteration unless ownership
+                transfers elsewhere.
+            </p>
+
+            <p>
+                A Place moved in one iteration remains unavailable on later iterations unless valid
+                control flow reinitializes it.
+            </p>
+
+            <p>
+                Loop fixed-point analysis must preserve exact-once destruction across entry, backedge,
+                continue, break and zero-iteration paths.
+            </p>
+
+            <p>
+                The compiler rejects ownership states it cannot model safely instead of emitting
+                speculative cleanup.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Destruction and Deallocation Are Separate</h2>
+
+            <p>
+                Destroying a value ends its semantic owned lifetime.
+                Deallocation releases the storage backing an owning allocation.
+            </p>
+
+            <p>
+                Stack storage may disappear with its scope, but a non-trivial value living there must
+                be semantically destroyed first.
+            </p>
+
+            <p>
+                Every explicit owning allocation must preserve enough information to select the
+                matching deallocation authority.
+            </p>
+
+            <p>
+                Storage allocated by one allocator must not be released through an incompatible allocator.
+            </p>
+
+            <p>
+                <code>RawPtr[T]</code> alone never creates ownership or deallocation responsibility.
+            </p>
+
+            <p>
+                The compiler must not infer that a raw pointer should be freed merely because the raw
+                pointer value reaches the end of its lifetime.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI Ownership Transfer Controls Destruction Responsibility</h2>
+
+            <p>Foreign contracts distinguish cases such as:</p>
+
+            <ul>
+                <li>borrowed foreign pointers;</li>
+                <li>caller-owned foreign resources;</li>
+                <li>Sec-owned foreign resources;</li>
+                <li>ownership transferred to foreign code;</li>
+                <li>ownership transferred from foreign code;</li>
+                <li>resources requiring a matching foreign release operation.</li>
+            </ul>
+
+            <p>
+                When ownership legally transfers to foreign code, the former Sec owner becomes
+                unavailable and must not destroy the resource later.
+            </p>
+
+            <p>
+                A fallible ownership-transferring foreign call must define whether ownership was
+                accepted on each outcome.
+            </p>
+
+            <p>
+                Ambiguous ownership transfer is rejected or isolated behind an explicit unsafe wrapper
+                with a well-defined ownership contract.
+            </p>
+
+            <p>
+                An owning Sec wrapper may use custom <code>free</code> to call the matching foreign
+                release operation exactly once.
+            </p>
+        </section>
+
+        <section id="static">
+            <h2>Static and Global Destruction Requires a Deterministic Shutdown Plan</h2>
+
+            <p>
+                Sec does not assume that every hosted process automatically runs deterministic global
+                cleanup at process exit.
+            </p>
+
+            <p>
+                Static/global owned values requiring destruction are valid only when the canonical
+                program initialization/shutdown plan and target profile provide deterministic cleanup
+                for that storage lifetime.
+            </p>
+
+            <p>
+                A target without supported deterministic static teardown must reject static/global
+                owned values whose required destruction cannot otherwise be satisfied.
+            </p>
+
+            <p>
+                Freestanding/runtime-free targets do not gain a hidden global destruction registry
+                merely to support static teardown.
+            </p>
+
+            <p>
+                Where deterministic static cleanup exists, order comes from the canonical dependency,
+                use and shutdown plan rather than arbitrary source, import, linker, filesystem or worker order.
+            </p>
+        </section>
+
+        <section id="termination">
+            <h2>Normal Program Termination Runs the Defined Shutdown Cleanup</h2>
+
+            <p>
+                Returning normally from <code>main</code> executes the cleanup required by the
+                canonical program shutdown plan.
+            </p>
+
+            <p>
+                A raw platform termination primitive explicitly defined not to unwind or clean callers
+                does not promise cleanup after that termination point.
+            </p>
+
+            <p>
+                Abnormal hardware or operating-system termination cannot guarantee pending destruction.
+            </p>
+        </section>
+
+        <section id="panic">
+            <h2>Panic Cleanup Follows the Panic Policy</h2>
+
+            <p>
+                Destruction on panic paths is governed by the panic-domain and target/profile model.
+            </p>
+
+            <p>
+                The compiler does not assume that every pending destructor or defer executes on every
+                panic path.
+            </p>
+
+            <p>
+                In particular, Sec destruction must not silently introduce a general exception-unwinding runtime.
+            </p>
+
+            <p>
+                When a panic policy does guarantee cleanup, that cleanup follows the same resolved
+                destruction and defer ordering already established for the affected domain.
+            </p>
+        </section>
+
+        <section id="concurrency">
+            <h2>Destruction Does Not Imply Synchronization</h2>
+
+            <p>
+                Moving ownership to a task, thread or another execution owner transfers destruction
+                responsibility with the ownership.
+            </p>
+
+            <p>
+                The former owner must not destroy the transferred value.
+            </p>
+
+            <p>
+                Transfer must be represented before cleanup placement is finalized.
+            </p>
+
+            <p>
+                A lifetime being long enough does not by itself make destruction race-free or
+                synchronization-correct.
+            </p>
+
+            <p>
+                Shared/reference-counted destruction may exist through a specialized explicit type,
+                but it is not Sec's default ownership model.
+            </p>
+
+            <p>
+                ISR/platform restrictions on blocking, allocation and device lifetime remain additional
+                requirements on any destruction path.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>Ordinary Destruction Does Not Invent Hardware Side Effects</h2>
+
+            <p>
+                Ending the lifetime of a local register snapshot or ordinary value does not perform a
+                new volatile read or write.
+            </p>
+
+            <p>
+                Destroying a volatile/MMIO accessor, typed register view or shadow-bearing accessor
+                does not implicitly:
+            </p>
+
+            <ul>
+                <li>read hardware;</li>
+                <li>write hardware;</li>
+                <li>reset a device;</li>
+                <li>clear status;</li>
+                <li>acknowledge an interrupt;</li>
+                <li>commit a shadow;</li>
+                <li>flush a shadow.</li>
+            </ul>
+
+            <p>
+                A volatile read yields an ordinary Sec value snapshot.
+                Destroying that snapshot later does not repeat the hardware access.
+            </p>
+
+            <p>
+                Physical hardware storage is not an ordinary owned movable Sec value merely because
+                its bits are addressable.
+            </p>
+
+            <p>
+                A runtime mapping owner may perform only the explicit release/unmap cleanup defined
+                by its mapping contract.
+                Destroying a borrowed register view does not release the mapping or perform hardware I/O.
+            </p>
+        </section>
+
+        <section id="interfaces">
+            <h2>Owning Interface Values Destroy Their Concrete Payload</h2>
+
+            <p>
+                An owning interface value must destroy its owned concrete value through resolved type
+                metadata, generated dispatch or an equivalent statically validated mechanism.
+            </p>
+
+            <p>
+                A borrowed interface view does not destroy the concrete value merely because the view ends.
+            </p>
+
+            <p>
+                Interface destruction does not require a global garbage-collected object model.
+            </p>
+
+            <p>
+                Lowering must preserve whether the interface representation owns or borrows its
+                concrete payload.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generic Destruction Is Resolved from the Concrete Instantiation</h2>
+
+            <pre><code>type Box[T] struct {
+    Value: T
+}</code></pre>
+
+            <p>
+                <code>Box[int]</code> and <code>Box[File]</code> may have completely different
+                destruction plans.
+            </p>
+
+            <p>
+                Generic lowering must not assume trivial destruction before the concrete type arguments
+                and representation prove it.
+            </p>
+
+            <p>
+                Monomorphization may inline a concrete cleanup plan or generate a specialized destruction helper.
+            </p>
+
+            <p>
+                Missing destruction-aware lowering is an implementation gap; it never removes the
+                language's cleanup obligation.
+            </p>
+        </section>
+
+        <section id="recursive">
+            <h2>Recursive Ownership May Require Recursive Destruction</h2>
+
+            <p>
+                Recursive owning types must represent a finite runtime ownership graph.
+            </p>
+
+            <p>
+                Direct infinitely sized recursive values are rejected by the type/layout rules.
+            </p>
+
+            <p>
+                Indirect recursive ownership may naturally require recursive cleanup.
+            </p>
+
+            <p>
+                A target/profile may restrict destruction recursion for stack or realtime constraints.
+            </p>
+
+            <p>
+                The compiler may transform recursive destruction into iterative cleanup when observable
+                ordering and resource-release semantics remain equivalent.
+            </p>
+        </section>
+
+        <section id="cte">
+            <h2>Compile-Time Evaluation Performs Ordinary Semantic Destruction</h2>
+
+            <p>
+                Transient values created during semantic compile-time evaluation follow ordinary
+                deterministic destruction and <code>defer</code> whenever those paths are semantically reached.
+            </p>
+
+            <p>
+                Reclamation of the compiler evaluator's private storage is a separate compiler-internal concern.
+            </p>
+
+            <p>
+                If a CTE result is separately materialized as a static/runtime object, that object
+                follows the ordinary runtime/static destruction rules of its type.
+            </p>
+
+            <p>
+                Computing a value at compile time does not make its eventual materialized runtime
+                destruction disappear.
+            </p>
+        </section>
+
+        <section id="semantic-ir">
+            <h2>Semantic IR Must Preserve Destruction Explicitly</h2>
+
+            <p>
+                Ownership-sensitive destruction is resolved before lowering may erase source ownership structure.
+            </p>
+
+            <p>Semantic IR may need operations or equivalent facts such as:</p>
+
+            <pre><code>DestroyValue
+DestroyPlace
+DestroySubPlace
+DestroyActiveVariant
+ConditionalDestroy
+InvokeFree
+DeallocateOwnedStorage
+RegisterCleanup
+ExecuteCleanup
+CleanupRegion
+CancelCleanupAfterMove
+CancelCleanupAfterDiscard
+Replace
+Reinitialize
+TransferToReturn
+TransferToArgument</code></pre>
+
+            <p>
+                Exact operation names are an implementation detail; the semantic distinctions are not.
+            </p>
+
+            <p>
+                Source provenance remains sufficient to explain cleanup origin, ownership transfer,
+                partial state, custom <code>free</code> and deallocation authority.
+            </p>
+
+            <p>
+                Every non-trivial owned value represented in executable semantics must still have one
+                valid terminal ownership action on every path where it exists.
+            </p>
+        </section>
+
+        <section id="lowering">
+            <h2>Sec MLIR, LLVM and Optimization Preserve Resolved Cleanup Semantics</h2>
+
+            <p>
+                Sec MLIR/lowering preserves:
+            </p>
+
+            <ul>
+                <li>exact-once destruction;</li>
+                <li>cleanup order;</li>
+                <li>partial availability;</li>
+                <li>conditional destruction;</li>
+                <li>construction-failure cleanup;</li>
+                <li>defer ordering;</li>
+                <li>return/error transfer;</li>
+                <li>allocator pairing;</li>
+                <li>custom <code>free</code>.</li>
+            </ul>
+
+            <p>
+                Lowering may realize those semantics using direct calls, inline cleanup, cleanup blocks,
+                loops, generated helpers, conditional flags, SSA state or target-specific release calls.
+            </p>
+
+            <p>
+                A target policy forbidding dynamic ownership bookkeeping is enforced before lowering
+                introduces hidden runtime ownership state.
+            </p>
+
+            <p>
+                By LLVM translation, cleanup placement is already ordinary explicit control flow and operations.
+                LLVM does not decide whether a Sec value should be destroyed merely because an SSA value is unused.
+            </p>
+
+            <p>Valid optimizations include, when proven safe:</p>
+
+            <ul>
+                <li>removing trivial destruction;</li>
+                <li>inlining cleanup;</li>
+                <li>merging equivalent cleanup blocks;</li>
+                <li>eliminating cleanup for never-initialized or already-moved values;</li>
+                <li>scalarizing aggregate cleanup;</li>
+                <li>eliminating allocation/deallocation pairs;</li>
+                <li>devirtualizing interface destruction.</li>
+            </ul>
+
+            <p>Optimization must never:</p>
+
+            <ul>
+                <li>change observable destruction order;</li>
+                <li>skip required resource release;</li>
+                <li>double destroy;</li>
+                <li>destroy moved/discarded values;</li>
+                <li>access unavailable sub-Places;</li>
+                <li>reorder forbidden volatile effects;</li>
+                <li>suppress required foreign release;</li>
+                <li>change explicit fallible close behavior;</li>
+                <li>introduce forbidden hidden allocation or runtime state.</li>
+            </ul>
+
+            <p>
+                Copy/move elision must preserve the same final destruction owner as the source semantics.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Destruction diagnostics should explain the ownership/lifecycle problem in ordinary
+                language and identify the relevant terminal action.
+            </p>
+
+            <h3>Use after ownership transfer</h3>
+
+            <pre><code>`resource` is no longer available
+
+ownership moved here:
+    Consume(&lt;-resource)
+
+the former owner cannot use or destroy the transferred value</code></pre>
+
+            <h3>Partial move from a custom-free type</h3>
+
+            <pre><code>cannot move field `Handle` out of `Connection`
+
+`Connection` defines custom `free`
+
+the cleanup body requires the completed value to retain its full owned-field invariant
+
+help: expose an explicit lifecycle operation instead
+help: redesign ownership so the field can be transferred safely</code></pre>
+
+            <h3>Conditional cleanup not permitted by the target policy</h3>
+
+            <pre><code>conditional destruction requires runtime ownership state
+
+`package.Payload` is owned on one incoming path and moved on another
+
+the selected profile forbids dynamic ownership bookkeeping
+
+help: converge ownership explicitly:
+    discard package.Payload</code></pre>
+
+            <h3>Mismatched deallocation authority</h3>
+
+            <pre><code>cannot release this allocation through the selected allocator
+
+allocation origin:
+    ForeignPool
+
+required release authority:
+    ForeignPool.Release
+
+selected release:
+    DefaultArena</code></pre>
+
+            <h3>Double resource release</h3>
+
+            <pre><code>resource may be released twice
+
+explicit release occurs here:
+    CloseNative(self.Handle)
+
+automatic owned-field destruction would release the same resource later
+
+help: update lifecycle state after successful explicit close
+help: represent the handle as non-owning if custom free owns the release responsibility</code></pre>
+
+            <h3>Failed construction cleanup</h3>
+
+            <pre><code>construction of `Resources` failed while initializing `Second`
+
+cleanup:
+    destroy initialized field `First`
+
+`Second` is not treated as a completed value
+`Third` was not initialized</code></pre>
+
+            <p>
+                When practical, diagnostics identify:
+            </p>
+
+            <ul>
+                <li>the affected value or Place;</li>
+                <li>where ownership was established;</li>
+                <li>where it moved, was discarded or was replaced;</li>
+                <li>where destruction would occur or be duplicated;</li>
+                <li>the relevant custom <code>free</code> or field;</li>
+                <li>any borrow/defer keeping the value alive;</li>
+                <li>the required allocator/release authority;</li>
+                <li>a safe source-level restructuring.</li>
+            </ul>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                The LSP consumes the compiler's destruction analysis rather than inferring cleanup independently.
+            </p>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>destruction classification;</li>
+                <li>current cleanup owner;</li>
+                <li>custom <code>free</code>;</li>
+                <li>partial/conditional cleanup state;</li>
+                <li>ownership-transfer origin;</li>
+                <li>pending deferred uses;</li>
+                <li>field/element cleanup order;</li>
+                <li>allocation/deallocation authority;</li>
+                <li>why a cleanup path is conditional;</li>
+                <li>the terminal ownership action selected for a value.</li>
+            </ul>
+
+            <p>
+                Automatic code actions that insert <code>discard</code>, move cleanup or restructure
+                ownership are appropriate only when semantic preservation is proven.
+            </p>
+
+            <p>
+                A statically redundant second <code>discard</code> remains semantically valid and may
+                produce at most the configured redundancy advisory.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer compiler-derived destruction and ordinary owned fields whenever they fully describe cleanup.</li>
+                <li>Define custom <code>free</code> only for cleanup obligations that cannot be represented by field ownership.</li>
+                <li>Do not call <code>free</code> manually; use explicit lifecycle methods for user-controlled close operations.</li>
+                <li>Use a fallible <code>Close()</code>-style API when the caller needs to observe cleanup failure.</li>
+                <li>Ensure successful explicit close updates lifecycle state so automatic destruction cannot release the same resource twice.</li>
+                <li>Remember that move transfers cleanup responsibility to the new owner.</li>
+                <li>Use canonical <code>&lt;-</code> at consuming call sites and move bindings, not at return sites.</li>
+                <li>Use <code>discard</code> when you intentionally end ownership early or need to converge conditional ownership state.</li>
+                <li>Do not use <code>discard</code> merely because ordinary replacement already handles old-value destruction.</li>
+                <li>Keep deferred uses in mind: they may postpone the earliest legal destruction point.</li>
+                <li>Do not partially move fields from a custom-<code>free</code> type in Sec 0.1.</li>
+                <li>Let fallible construction cleanup already-initialized fields automatically.</li>
+                <li>Keep allocator/deallocator authority paired explicitly for owning allocations.</li>
+                <li>Do not infer foreign ownership from <code>RawPtr</code> alone.</li>
+                <li>Do not expect scope exit of hardware views to commit, clear or acknowledge hardware.</li>
+                <li>Do not depend on process-exit cleanup unless the selected initialization/shutdown profile guarantees it.</li>
+                <li>Remember that panic cleanup depends on panic policy; not every panic path guarantees destruction.</li>
+                <li>Treat destruction and synchronization as separate correctness obligations.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Destruction is the deterministic semantic end of an owned Sec value's lifetime.</li>
+                <li>Cleanup, resource release, deallocation, <code>free</code> and destruction are related but distinct concepts.</li>
+                <li><code>free</code> is a lifecycle declaration, not an ordinary method.</li>
+                <li>Source code never calls <code>value.free()</code>.</li>
+                <li>Every concrete type has a compiler-derived trivial or non-trivial destruction classification.</li>
+                <li>Trivially destructible values need no observable cleanup action.</li>
+                <li>Non-trivial values may require resource release, recursive field cleanup or backing deallocation.</li>
+                <li>Destruction classification is independent from copy classification.</li>
+                <li><code>@noCopy</code> alone does not imply non-trivial destruction.</li>
+                <li>Every still-owned non-trivial value must reach exactly one valid terminal ownership action on every reachable path where it exists.</li>
+                <li>A former owner never destroys a value after ownership transfer.</li>
+                <li>An unavailable Place is never destroyed again by the former owner.</li>
+                <li>A value that never completed initialization is not destroyed as a completed value.</li>
+                <li>Automatic destruction is source-language semantics, not backend liveness inference.</li>
+                <li>Successful initialization registers destruction responsibility.</li>
+                <li>Reinitialization registers a new destruction responsibility for the new value.</li>
+                <li>Move, discard, return transfer and consuming transfer cancel the former owner's cleanup responsibility.</li>
+                <li>Automatic destruction and <code>defer</code> use one source-ordered LIFO cleanup model.</li>
+                <li>Sec does not have a separate “all defers first” or “all destructors first” phase.</li>
+                <li>Values may still be destroyed at the earliest legal lifetime end.</li>
+                <li>A deferred use may extend the required lifetime of a value.</li>
+                <li>Overlapping locals destroy in reverse successful cleanup-registration order.</li>
+                <li>Struct fields destroy in reverse declaration order by default.</li>
+                <li>Fixed arrays destroy initialized still-owned elements in reverse index order.</li>
+                <li>Owned temporaries are destroyed deterministically in reverse remaining creation order after their full expression.</li>
+                <li>A temporary transferred into another owner is not also destroyed by the forwarding context.</li>
+                <li>Moving a value ends the former owner's destruction responsibility at transfer commitment.</li>
+                <li>Consuming calls transfer cleanup responsibility only when the consuming transfer actually commits.</li>
+                <li>Fallible argument preparation cannot cancel cleanup before a call commits.</li>
+                <li>Returning an owned value transfers cleanup responsibility to the result/caller owner.</li>
+                <li>Canonical return syntax is <code>return value</code>; Sec does not use a return-site move marker.</li>
+                <li>Moving a payload into an owning aggregate or variant transfers destruction responsibility to the container.</li>
+                <li>Partially available aggregates destroy only still-owned available sub-Places.</li>
+                <li>Moved/discarded fields are skipped during later parent destruction.</li>
+                <li>Partial destruction is recursive where partial moves are permitted.</li>
+                <li>A custom-<code>free</code> type does not permit partial field moves in Sec 0.1.</li>
+                <li>Conditionally available values destroy only on runtime paths where ownership remains.</li>
+                <li>The compiler resolves conditional cleanup statically whenever path facts suffice.</li>
+                <li>Hosted implementations may use hidden SSA/drop state when correct conditional destruction genuinely requires it.</li>
+                <li>Hidden ownership bookkeeping does not automatically alter source ABI layout.</li>
+                <li>Profiles may forbid dynamic ownership bookkeeping and reject only programs that truly require it.</li>
+                <li><code>is available</code> refines ownership state rather than null/Option/reference validity.</li>
+                <li>Discarding an available owned value performs its required destruction and leaves the Place unavailable.</li>
+                <li>Discarding an already unavailable Place is a legal destruction no-op.</li>
+                <li>Discarding a conditionally available Place destroys only paths still owning the value and converges all paths to unavailable.</li>
+                <li>Destruction semantics do not make non-discardable values discardable.</li>
+                <li>Assignment to an unavailable mutable Place is reinitialization and performs no old-value destruction.</li>
+                <li>Assignment to an available mutable Place is replacement.</li>
+                <li>Replacement validates the incoming operation before committing destruction of the old destination.</li>
+                <li>Conditional replacement destroys the old value only on paths where it still exists.</li>
+                <li>Successful <code>init</code> transfers field/resource cleanup into the completed instance.</li>
+                <li>Failed construction cleans only successfully initialized fields/resources and temporaries.</li>
+                <li>Completed-value custom <code>free</code> does not run for an outer value that never completed construction.</li>
+                <li>Fallible initialization cleanup runs in reverse successful initialization/registration order.</li>
+                <li>Most types should define no custom <code>free</code>.</li>
+                <li>Custom <code>free</code> is intended for opaque cleanup obligations not already modeled by ordinary owned fields.</li>
+                <li>At <code>free</code> entry, the complete value is under compiler-controlled destruction authority.</li>
+                <li>Whole <code>self</code> cannot escape, be returned, resurrected or transferred from <code>free</code>.</li>
+                <li>Owned fields cannot be moved out of <code>self</code> during <code>free</code> in Sec 0.1.</li>
+                <li>Ordinary user-defined methods cannot consume whole <code>self</code>.</li>
+                <li>Compiler-known lifecycle operations such as <code>Arena.Release()</code> remain narrowly defined exceptions.</li>
+                <li>Owned fields remain compiler-managed and are destroyed after the custom <code>free</code> body.</li>
+                <li>Custom <code>free</code> does not suppress ordinary owned-field destruction.</li>
+                <li><code>defer</code> is forbidden inside <code>free</code>.</li>
+                <li>Locals/temporaries created inside <code>free</code> still receive ordinary destruction.</li>
+                <li><code>free</code> has no ordinary return value and cannot return <code>Result</code>.</li>
+                <li>Recoverable close failures should use an explicit fallible lifecycle method where appropriate.</li>
+                <li>A successful explicit close must update lifecycle state to prevent double release during later destruction.</li>
+                <li><code>free</code> is not implicitly unsafe.</li>
+                <li><code>free</code> must not silently turn recoverable cleanup failure into panic.</li>
+                <li>Result destroys only its active retained payload.</li>
+                <li>Option destroys only an active retained Some payload.</li>
+                <li>Tagged unions destroy only their active initialized still-owned payload.</li>
+                <li>Consuming <code>.Ok()</code>/<code>.Err()</code> transfer the retained payload and prevent duplicate later destruction.</li>
+                <li>The compiler does not guess active ownership inside untagged foreign unions.</li>
+                <li>Structs without custom <code>free</code> derive cleanup recursively from fields.</li>
+                <li>Owning dynamic collections destroy initialized elements then release backing through the recorded authority.</li>
+                <li>Uninitialized spare capacity is not destroyed as live elements.</li>
+                <li>Borrowed slices/views do not destroy backing storage or elements.</li>
+                <li>Owning shaped values release owned elements/resources and backing according to their representation.</li>
+                <li>String destruction follows the concrete canonical string representation.</li>
+                <li>Reference-holder destruction never destroys the referent.</li>
+                <li>Owned referent destruction is forbidden while incompatible live borrows still require it.</li>
+                <li>Return establishes the result before cleaning non-transferred locals.</li>
+                <li><code>return try</code> establishes/transfers the success or failure payload before local cleanup.</li>
+                <li>Unmatched error propagation cleans still-owned locals on the propagating path.</li>
+                <li><code>break</code> cleans only regions actually exited.</li>
+                <li><code>continue</code> cleans iteration-local values that end while preserving loop-carried values still required.</li>
+                <li>match/switch branches maintain independent destruction state before ownership-state merge.</li>
+                <li>Loop destruction analysis is iteration- and path-sensitive.</li>
+                <li>Per-iteration values destroy once per reached iteration unless transferred.</li>
+                <li>Zero-iteration paths never destroy iteration locals that were never created.</li>
+                <li>Destruction and deallocation are distinct semantic actions.</li>
+                <li>Owning allocations preserve the matching release/deallocation authority.</li>
+                <li>Incompatible allocator/deallocator pairing is invalid.</li>
+                <li><code>RawPtr[T]</code> alone never creates deallocation responsibility.</li>
+                <li>Foreign ownership transfer removes Sec destruction responsibility only when the foreign contract says transfer committed.</li>
+                <li>An owning Sec foreign wrapper may use custom <code>free</code> for the matching release operation.</li>
+                <li>Static/global destruction requires a deterministic target/program shutdown plan.</li>
+                <li>Hosted targets do not automatically imply process-exit destruction for all globals.</li>
+                <li>Runtime-free targets do not gain a hidden global destruction registry.</li>
+                <li>Normal main return follows the canonical program shutdown cleanup plan.</li>
+                <li>Raw forced termination and abnormal system/hardware termination do not guarantee pending cleanup.</li>
+                <li>Panic cleanup follows the selected panic-domain/profile policy.</li>
+                <li>Destruction never silently introduces a general exception-unwinding runtime.</li>
+                <li>Destruction itself does not imply synchronization.</li>
+                <li>Ownership transferred to another task/thread/execution owner transfers destruction responsibility.</li>
+                <li>Shared/ref-counted cleanup is not Sec's default ownership model.</li>
+                <li>Scope exit of hardware views does not invent volatile reads/writes, resets, clears, acknowledgements, commits or shadow flushes.</li>
+                <li>Destroying a local volatile snapshot does not repeat the hardware read.</li>
+                <li>A borrowed hardware/register view does not release its mapping merely because the view ends.</li>
+                <li>Owning interface values destroy owned concrete payloads through resolved type-aware mechanisms.</li>
+                <li>Borrowed interface views do not destroy concrete payloads.</li>
+                <li>Generic destruction is resolved from concrete instantiated type arguments and representation.</li>
+                <li>Different instantiations of one generic may have different destruction plans.</li>
+                <li>Recursive owning structures may require recursive destruction.</li>
+                <li>The compiler may lower recursive destruction iteratively when observable semantics are preserved.</li>
+                <li>CTE-local values perform ordinary semantic destruction/defer when those paths are reached.</li>
+                <li>Evaluator memory reclamation is not the same as Sec value destruction.</li>
+                <li>Materialized runtime/static CTE results follow ordinary program destruction rules.</li>
+                <li>Semantic IR preserves destruction, cleanup, transfer, replacement, reinitialization and deallocation facts explicitly.</li>
+                <li>No unresolved destruction semantics may reach LLVM.</li>
+                <li>Sec MLIR preserves exact-once cleanup, conditional/partial destruction, construction failure, defer order and allocator pairing.</li>
+                <li>LLVM receives already-resolved cleanup control flow and does not infer Sec destruction from unused SSA.</li>
+                <li>Optimization may remove or combine cleanup only when observable semantics remain unchanged.</li>
+                <li>Optimization never skips required release, double-destroys, destroys moved values or changes observable cleanup order.</li>
+                <li>Copy/move elision preserves the same terminal destruction owner.</li>
+                <li>Destruction diagnostics identify ownership origin, terminal action, duplicate cleanup, custom free, borrow/defer dependency and release authority where relevant.</li>
+                <li>LSP consumes compiler destruction state rather than maintaining an independent cleanup model.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="42-lifetimes.html">Previous: Lifetimes</a>
+            <a href="44-layout.html">Next: Memory Layout and Representation</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

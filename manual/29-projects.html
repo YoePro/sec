@@ -1,0 +1,2093 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Projects - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#projects">Projects</a>
+        <a href="#terminology">Project Terminology</a>
+        <a href="#project-boundary">Project Boundary</a>
+        <a href="#manifest">The Project Manifest</a>
+        <a href="#single-manifest">One Manifest per Project</a>
+        <a href="#project-discovery">Project Discovery</a>
+        <a href="#source-discovery">Source Discovery</a>
+        <a href="#root-sources">Project-Root Source Files</a>
+        <a href="#reserved-directories">Reserved Directories</a>
+        <a href="#cmd">cmd</a>
+        <a href="#bin">bin</a>
+        <a href="#sec-directory">.sec</a>
+        <a href="#internal">internal</a>
+        <a href="#ordinary-directories">Ordinary Directories</a>
+        <a href="#project-section">Project Identity</a>
+        <a href="#analysis">Analysis Settings</a>
+        <a href="#targets">Targets</a>
+        <a href="#target-kinds">Target Kinds</a>
+        <a href="#target-source">Target Source</a>
+        <a href="#tests">Test Compilation</a>
+        <a href="#variants">Variants</a>
+        <a href="#os-names">Operating-System Names</a>
+        <a href="#arch-names">Architecture Names</a>
+        <a href="#variant-options">Variant Options</a>
+        <a href="#toolchains">Toolchain Intent</a>
+        <a href="#build-command">sec build</a>
+        <a href="#build-filters">Build Filters</a>
+        <a href="#multi-variant">Multi-Variant Builds</a>
+        <a href="#compilation-plan">Compilation Plans</a>
+        <a href="#target-lowering">Target-Specific Lowering</a>
+        <a href="#build-options">Build Options</a>
+        <a href="#profiles">Profiles</a>
+        <a href="#parameters">Compile-Time Parameters</a>
+        <a href="#parameter-overrides">Parameter Overrides</a>
+        <a href="#parameter-secrets">Parameters Are Not Secrets</a>
+        <a href="#precedence">Configuration Precedence</a>
+        <a href="#output">Build Output</a>
+        <a href="#artifacts">Artifacts</a>
+        <a href="#build-counter">Automatic Build Counter</a>
+        <a href="#counter-commit">Build-Number Commit Rule</a>
+        <a href="#counter-state">Counter State</a>
+        <a href="#parallel-counters">Parallel Builds</a>
+        <a href="#explicit-build-number">Explicit Build Numbers</a>
+        <a href="#build-metadata">Build Metadata</a>
+        <a href="#timestamps">Timestamps</a>
+        <a href="#reproducible">Reproducible Builds</a>
+        <a href="#cache">Build Cache Identity</a>
+        <a href="#native-linking">Native Link Metadata</a>
+        <a href="#sec-init">sec init</a>
+        <a href="#init-new">Creating a Project</a>
+        <a href="#init-existing">Existing Projects</a>
+        <a href="#init-module">Adding Modules</a>
+        <a href="#init-command">Adding Command Targets</a>
+        <a href="#init-other-targets">Other Target Kinds</a>
+        <a href="#idempotence">Idempotence</a>
+        <a href="#manifest-edits">Manifest Preservation</a>
+        <a href="#file-conflicts">Existing Files</a>
+        <a href="#transactional">Transactional Changes</a>
+        <a href="#dry-run">Dry Run</a>
+        <a href="#architecture">Architecture Recommendations</a>
+        <a href="#validation">Compiler Validation</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html" class="active">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Projects</div>
+
+        <h1 id="projects">Projects</h1>
+
+        <p>
+            A Sec project is the complete source tree governed by one project manifest:
+        </p>
+
+        <pre><code>.sec/sec.toml</code></pre>
+
+        <p>
+            The project defines the buildable products, reusable platform variants, compiler defaults,
+            compile-time parameters, output rules and project-wide tooling settings for that source tree.
+        </p>
+
+        <p>
+            Source modules are discovered from the directory tree and imports.
+            They do not need to be repeated as a manually maintained module list in the manifest.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A Sec project has one project boundary, one
+            <code>.sec/sec.toml</code> manifest and any number of logical build targets inside that project.
+        </div>
+
+        <section id="terminology">
+            <h2>Project Terminology</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Term</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Project</td>
+                            <td>The complete source tree governed by one <code>.sec/sec.toml</code></td>
+                        </tr>
+                        <tr>
+                            <td>Module</td>
+                            <td>One source directory and its shared Sec namespace</td>
+                        </tr>
+                        <tr>
+                            <td>Target</td>
+                            <td>One logical buildable product</td>
+                        </tr>
+                        <tr>
+                            <td>Variant</td>
+                            <td>One concrete platform/build configuration for a target</td>
+                        </tr>
+                        <tr>
+                            <td>Artifact</td>
+                            <td>A file produced by one target variant</td>
+                        </tr>
+                        <tr>
+                            <td>Compilation plan</td>
+                            <td>The fully resolved target + variant build configuration used by the compiler</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                These concepts are deliberately separate.
+                A module is not a project, and a target is not an operating-system/architecture pair.
+            </p>
+        </section>
+
+        <section id="project-boundary">
+            <h2>Project Boundary</h2>
+
+            <p>
+                The directory containing <code>.sec/sec.toml</code> is the project root.
+            </p>
+
+            <pre><code>shop/
+    .sec/
+        sec.toml
+
+    cmd/
+    internal/
+    domain/
+    bin/</code></pre>
+
+            <p>
+                The manifest governs the complete source tree below that root.
+            </p>
+
+            <p>
+                Applications, command-line tools, libraries, firmware images and other independently
+                buildable products are represented as targets inside the same project.
+            </p>
+
+            <p>
+                Sec does not use a separate manifest for every source module.
+            </p>
+        </section>
+
+        <section id="manifest">
+            <h2>The Project Manifest</h2>
+
+            <p>The canonical project manifest is:</p>
+
+            <pre><code>.sec/sec.toml</code></pre>
+
+            <p>It describes project-level build information such as:</p>
+
+            <ul>
+                <li>project identity;</li>
+                <li>default build behavior;</li>
+                <li>profiles;</li>
+                <li>reusable variants;</li>
+                <li>logical targets;</li>
+                <li>compiler options;</li>
+                <li>compile-time parameters;</li>
+                <li>analysis/tooling settings;</li>
+                <li>build-counter configuration;</li>
+                <li>dependencies when the dependency model is implemented.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Important:</strong> The manifest describes buildable products and project
+                configuration. It should not duplicate the complete source-module tree.
+            </div>
+        </section>
+
+        <section id="single-manifest">
+            <h2>One Manifest per Project</h2>
+
+            <p>
+                A project contains exactly one <code>.sec/sec.toml</code>.
+                Nested Sec projects are not supported.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>project/
+    .sec/sec.toml
+
+    server/
+        .sec/sec.toml
+
+    worker/
+        .sec/sec.toml</code></pre>
+
+            <p>
+                <code>server</code> and <code>worker</code> should instead be represented as targets
+                in the root project manifest.
+            </p>
+
+            <p>
+                The single-manifest rule gives project-wide tooling one coherent view of:
+            </p>
+
+            <ul>
+                <li>imports and dependency resolution;</li>
+                <li>target and variant selection;</li>
+                <li>formatting;</li>
+                <li>diagnostics;</li>
+                <li>ownership and whole-project analysis;</li>
+                <li>call graphs;</li>
+                <li>stack and allocation analysis;</li>
+                <li>build caching;</li>
+                <li>platform selection.</li>
+            </ul>
+        </section>
+
+        <section id="project-discovery">
+            <h2>Project Discovery</h2>
+
+            <p>
+                Project-aware tools search the current directory and parent directories for:
+            </p>
+
+            <pre><code>.sec/sec.toml</code></pre>
+
+            <p>
+                The nearest valid containing project manifest defines the active project.
+            </p>
+
+            <p>
+                This lets commands such as <code>sec init</code> run from a directory inside the
+                project without creating a second nested project.
+            </p>
+        </section>
+
+        <section id="source-discovery">
+            <h2>Source Discovery</h2>
+
+            <p>
+                Ordinary source modules are discovered through directory structure and import reachability.
+            </p>
+
+            <p>
+                A target names its entry module:
+            </p>
+
+            <pre><code>[target.shop]
+kind = "command"
+source = "cmd/shop"</code></pre>
+
+            <p>
+                The complete source graph is then derived by following imports.
+            </p>
+
+            <p>
+                The manifest does not require a list such as:
+            </p>
+
+            <pre><code># Not required:
+modules = [
+    "domain/orders",
+    "domain/products",
+    "storage/database",
+]</code></pre>
+
+            <p>
+                Module discovery remains part of the module/import model described in the previous chapter.
+            </p>
+        </section>
+
+        <section id="root-sources">
+            <h2>Project-Root Source Files</h2>
+
+            <p>
+                Sec source files may exist directly in the project root.
+                This is useful for small projects and root libraries.
+            </p>
+
+            <pre><code>codec/
+    .sec/
+        sec.toml
+
+    codec.sec
+    encoder.sec
+
+    internal/
+        parser/
+            parser.sec</code></pre>
+
+            <p>
+                Root-level <code>.sec</code> files form one root module.
+            </p>
+
+            <p>
+                For a root library module, the expected module name is:
+            </p>
+
+            <ol>
+                <li><code>project.module</code> when explicitly declared in the manifest;</li>
+                <li>otherwise <code>project.name</code> when the project name is a valid Sec identifier.</li>
+            </ol>
+
+            <pre><code>[project]
+name = "codec"</code></pre>
+
+            <p>Root files then use:</p>
+
+            <pre><code>module codec</code></pre>
+
+            <p>
+                If the project name is not a valid Sec identifier, declare the source module name explicitly:
+            </p>
+
+            <pre><code>[project]
+name = "inventory-service"
+module = "inventory"</code></pre>
+
+            <p>Root source files then declare:</p>
+
+            <pre><code>module inventory</code></pre>
+
+            <p>
+                A minimal command project may instead use the project root itself as an entry module:
+            </p>
+
+            <pre><code>module main</code></pre>
+
+            <p>with:</p>
+
+            <pre><code>[target.app]
+kind = "command"
+source = "."</code></pre>
+
+            <p>
+                One directory cannot simultaneously be both <code>module main</code> and a differently
+                named root library module.
+            </p>
+        </section>
+
+        <section id="reserved-directories">
+            <h2>Reserved and Recognized Directories</h2>
+
+            <p>The project-root names reserved by Sec are:</p>
+
+            <pre><code>cmd
+bin
+.sec</code></pre>
+
+            <p>
+                <code>internal</code> is recognized and carries mandatory access semantics when used,
+                but using it is optional.
+            </p>
+
+            <p>
+                Other organizational directory names normally have no special language meaning.
+            </p>
+        </section>
+
+        <section id="cmd">
+            <h2><code>cmd</code></h2>
+
+            <p>
+                <code>cmd</code> is the canonical source root for executable and firmware entry targets.
+            </p>
+
+            <pre><code>cmd/
+    shop/
+        main.sec
+
+    worker/
+        main.sec</code></pre>
+
+            <p>Rules:</p>
+
+            <ul>
+                <li><code>.sec</code> files may not exist directly in <code>cmd/</code>;</li>
+                <li>each target is placed in a child directory;</li>
+                <li>a command or firmware entry module normally declares <code>module main</code>;</li>
+                <li>reusable code should live outside the entry module;</li>
+                <li>entry modules should primarily configure and connect reusable modules.</li>
+            </ul>
+
+            <p>This is invalid:</p>
+
+            <pre><code>cmd/shared.sec</code></pre>
+        </section>
+
+        <section id="bin">
+            <h2><code>bin</code></h2>
+
+            <p>
+                <code>bin</code> is reserved for generated build output.
+            </p>
+
+            <p>Rules:</p>
+
+            <ul>
+                <li><code>bin</code> is never a source module;</li>
+                <li>imports from <code>bin/...</code> are invalid;</li>
+                <li><code>.sec</code> source below <code>bin</code> is invalid project source;</li>
+                <li><code>sec clean</code> may remove compiler-owned output below <code>bin</code>;</li>
+                <li>unknown user files must not be removed merely because they happen to be below <code>bin</code> unless compiler ownership is recorded.</li>
+            </ul>
+        </section>
+
+        <section id="sec-directory">
+            <h2><code>.sec</code></h2>
+
+            <p>
+                <code>.sec</code> is compiler and project metadata storage.
+            </p>
+
+            <pre><code>.sec/
+    sec.toml
+    state/
+    cache/</code></pre>
+
+            <p>
+                Source modules must not be declared below <code>.sec</code>.
+            </p>
+
+            <p>
+                Mutable compiler-owned state belongs below this directory rather than being written
+                back into source files or the declarative manifest unless the manifest itself is
+                intentionally edited.
+            </p>
+        </section>
+
+        <section id="internal">
+            <h2><code>internal</code></h2>
+
+            <p>
+                <code>internal</code> is an optional but recognized access-control marker.
+            </p>
+
+            <p>
+                Its restrictions are mandatory whenever the path segment is used.
+            </p>
+
+            <pre><code>internal/
+    storage/
+        storage.sec</code></pre>
+
+            <p>The source module still declares:</p>
+
+            <pre><code>module storage</code></pre>
+
+            <p>
+                <code>.sec</code> files may not be placed directly in an <code>internal</code> marker directory:
+            </p>
+
+            <pre><code>internal/helper.sec    // invalid</code></pre>
+
+            <p>Use a child module directory:</p>
+
+            <pre><code>internal/
+    helper/
+        helper.sec</code></pre>
+
+            <p>
+                Import accessibility follows the subtree rule documented in
+                <a href="28-modules.html">Modules and Imports</a>.
+            </p>
+        </section>
+
+        <section id="ordinary-directories">
+            <h2>Ordinary Organizational Directories</h2>
+
+            <p>Names such as these have no special language semantics:</p>
+
+            <pre><code>modules
+domain
+application
+app
+services
+features
+components
+adapters
+infrastructure</code></pre>
+
+            <p>
+                Projects may use them freely.
+            </p>
+
+            <p>
+                In particular, a directory named <code>modules</code> is not required and is not
+                treated specially by the compiler.
+            </p>
+        </section>
+
+        <section id="project-section">
+            <h2>Project Identity</h2>
+
+            <p>
+                The manifest's <code>[project]</code> section defines project identity information.
+            </p>
+
+            <p>A simple root-library project may use:</p>
+
+            <pre><code>[project]
+name = "codec"</code></pre>
+
+            <p>
+                When the project name cannot itself be a Sec module identifier, provide an explicit
+                root module name:
+            </p>
+
+            <pre><code>[project]
+name = "inventory-service"
+module = "inventory"</code></pre>
+
+            <p>
+                Project identity is stable project metadata.
+                Project tools such as <code>sec init</code> must preserve the existing project identity,
+                project UUID and project name rather than silently replacing them.
+            </p>
+
+            <p>
+                The exact project-identity fields supported by the manifest are compiler-versioned.
+                Unknown required fields must not be invented by tools.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Analysis Settings</h2>
+
+            <p>
+                Project-wide analysis/tooling settings live under:
+            </p>
+
+            <pre><code>[analysis]</code></pre>
+
+            <p>The current closure-analysis setting includes:</p>
+
+            <pre><code>[analysis]
+lsp_depth = "interactive"</code></pre>
+
+            <p>
+                Such settings control tooling resource use and optional precision.
+            </p>
+
+            <p>
+                They do not redefine language semantics and do not disable safety analysis required
+                for program correctness.
+            </p>
+        </section>
+
+        <section id="targets">
+            <h2>Targets</h2>
+
+            <p>
+                A target is one logical buildable product.
+            </p>
+
+            <p>Targets are declared under:</p>
+
+            <pre><code>[target.&lt;name&gt;]</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>[target.shop]
+kind = "command"
+source = "cmd/shop"
+artifact = "shop"
+variants = [
+    "linux-amd64",
+    "macos-arm64",
+    "windows-amd64",
+]</code></pre>
+
+            <p>A target owns:</p>
+
+            <ul>
+                <li>logical product identity;</li>
+                <li>entry module;</li>
+                <li>target kind;</li>
+                <li>artifact base name;</li>
+                <li>selected variants;</li>
+                <li>target-specific compiler options;</li>
+                <li>target-specific compile-time parameters;</li>
+                <li>build-counter behavior.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> A target is a product, not a platform tuple.
+                The same target may produce several platform-specific artifacts.
+            </div>
+        </section>
+
+        <section id="target-kinds">
+            <h2>Target Kinds</h2>
+
+            <p>The initial target kinds are:</p>
+
+            <pre><code>command
+library
+firmware
+test</code></pre>
+
+            <p>
+                The target kind describes what logical product is being built.
+            </p>
+
+            <p>
+                The <code>test</code> target kind is for an explicitly buildable test-oriented target
+                or artifact.
+                Ordinary source-level tests and <code>sec test</code> do not require a manifest
+                <code>test</code> target.
+            </p>
+        </section>
+
+        <section id="target-source">
+            <h2>Target Source</h2>
+
+            <p>
+                The target <code>source</code> identifies the entry module.
+            </p>
+
+            <pre><code>[target.worker]
+kind = "command"
+source = "cmd/worker"</code></pre>
+
+            <p>
+                The full source graph is discovered by following imports from that entry.
+            </p>
+
+            <p>
+                The source path and target kind do not vary by platform variant.
+            </p>
+
+            <p>
+                If two outputs require different entry modules or represent different logical
+                products, declare separate targets.
+            </p>
+        </section>
+
+        <section id="tests">
+            <h2>Test Compilation</h2>
+
+            <p>
+                <code>sec test</code> creates a dedicated <code>TestCompilationPlan</code>.
+            </p>
+
+            <p>
+                It is not implemented by taking a production build and casually appending test files.
+            </p>
+
+            <p>Production builds exclude:</p>
+
+            <ul>
+                <li><code>*_test.sec</code> files;</li>
+                <li>the project-root <code>tests/</code> tree.</li>
+            </ul>
+
+            <p>A test compilation may include:</p>
+
+            <ul>
+                <li>ordinary production sources;</li>
+                <li>same-directory <code>*_test.sec</code> white-box tests;</li>
+                <li><code>tests/</code> integration/black-box modules;</li>
+                <li>test-only dependencies;</li>
+                <li>compiler-known testing support;</li>
+                <li>generated harness roots;</li>
+                <li>execution metadata.</li>
+            </ul>
+
+            <p>
+                Modules below <code>tests/</code> follow ordinary module/import rules and receive no
+                special friend visibility.
+            </p>
+
+            <p>
+                Production code may not depend on test-only declarations.
+            </p>
+        </section>
+
+        <section id="variants">
+            <h2>Variants</h2>
+
+            <p>
+                A variant is a reusable concrete platform/build configuration.
+            </p>
+
+            <p>Variants are declared under:</p>
+
+            <pre><code>[variant.&lt;name&gt;]</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>[variant.linux-amd64]
+os = "linux"
+arch = "amd64"
+abi = "gnu"
+
+[variant.macos-arm64]
+os = "macos"
+arch = "arm64"
+
+[variant.windows-amd64]
+os = "windows"
+arch = "amd64"
+abi = "msvc"</code></pre>
+
+            <p>
+                A target chooses which declared variants belong to that logical product.
+            </p>
+        </section>
+
+        <section id="os-names">
+            <h2>Canonical Operating-System Names</h2>
+
+            <p>Initial canonical operating-system names include:</p>
+
+            <pre><code>linux
+windows
+macos
+freebsd
+netbsd
+baremetal
+freertos</code></pre>
+
+            <p>
+                The source/project name for Apple's desktop operating system is <code>macos</code>,
+                not <code>darwin</code>.
+            </p>
+
+            <p>
+                The compiler may still lower that target to an internal Darwin target triple.
+            </p>
+        </section>
+
+        <section id="arch-names">
+            <h2>Canonical Architecture Names</h2>
+
+            <p>Initial canonical architecture names include:</p>
+
+            <pre><code>amd64
+arm64
+arm32
+riscv32</code></pre>
+
+            <p>
+                Architecture names belong to the Sec project/target model rather than being arbitrary
+                host-toolchain strings.
+            </p>
+        </section>
+
+        <section id="variant-options">
+            <h2>Additional Variant Options</h2>
+
+            <p>A variant may also define values such as:</p>
+
+            <pre><code>cpu
+features
+abi
+toolchain
+profile</code></pre>
+
+            <p>
+                This allows one reusable variant to describe details beyond just OS and architecture.
+            </p>
+
+            <p>
+                CPU selection and feature selection become part of the concrete compilation plan and
+                build/cache identity when they affect generated output.
+            </p>
+        </section>
+
+        <section id="toolchains">
+            <h2>Project Manifests Express Toolchain Intent</h2>
+
+            <p>
+                The manifest may identify a toolchain class or intent.
+            </p>
+
+            <p>
+                Machine-specific SDK paths, compiler installation paths and local filesystem locations
+                belong in user or CI configuration rather than the portable project manifest.
+            </p>
+
+            <p>
+                This keeps the repository reproducible across developer machines and build agents.
+            </p>
+        </section>
+
+        <section id="build-command">
+            <h2><code>sec build</code></h2>
+
+            <p>
+                Build a target with:
+            </p>
+
+            <pre><code>sec build shop</code></pre>
+
+            <p>
+                By default this builds every variant configured for target <code>shop</code>.
+            </p>
+
+            <p>If the target declares:</p>
+
+            <pre><code>variants = [
+    "linux-amd64",
+    "macos-arm64",
+    "windows-amd64",
+]</code></pre>
+
+            <p>
+                one build invocation attempts all three configured outputs.
+            </p>
+        </section>
+
+        <section id="build-filters">
+            <h2>Build Filters</h2>
+
+            <p>
+                A build invocation can select a subset of already configured variants:
+            </p>
+
+            <pre><code>sec build shop --variant linux-amd64
+sec build shop --os linux
+sec build shop --arch amd64
+sec build shop --profile debug</code></pre>
+
+            <p>
+                Filters select configured variants.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A command-line filter does not silently create an undeclared variant.
+            </div>
+
+            <p>
+                Command-line overrides affect only that invocation and do not rewrite the manifest.
+            </p>
+        </section>
+
+        <section id="multi-variant">
+            <h2>Multi-Variant Build Results</h2>
+
+            <p>
+                By default the compiler should attempt every selected variant and report an aggregate result.
+            </p>
+
+            <p>
+                A <code>--fail-fast</code> option may stop the build after the first failed variant.
+            </p>
+
+            <p>
+                The complete command exits unsuccessfully when any requested variant fails.
+            </p>
+
+            <p>
+                Diagnostics should identify which target/variant failed:
+            </p>
+
+            <pre><code>error[shop/windows-amd64]: platform operation OpenFile is unavailable</code></pre>
+        </section>
+
+        <section id="compilation-plan">
+            <h2>Compilation Plans</h2>
+
+            <p>
+                Every selected target + variant pair produces one concrete compilation plan.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>CompilationPlan {
+    Project
+    Target
+    Variant
+    SourceGraph
+    OS
+    Architecture
+    ABI
+    CPU
+    CPUFeatures
+    Profile
+    CompilerOptions
+    CompileTimeParameters
+    BuildNumber
+    OutputDirectory
+    LinkConfiguration
+}</code></pre>
+
+            <p>
+                The compilation plan is the resolved immutable build description consumed by later
+                semantic, lowering and linking stages.
+            </p>
+        </section>
+
+        <section id="target-lowering">
+            <h2>Target-Specific Lowering</h2>
+
+            <p>
+                The compiler should reuse target-independent parsing and semantic work when safe.
+            </p>
+
+            <p>
+                Target-dependent selection and semantic completion must happen before target-specific
+                assumptions are frozen into lowering.
+            </p>
+
+            <p>Target-specific concerns include:</p>
+
+            <ul>
+                <li>pointer width;</li>
+                <li>alignment;</li>
+                <li>data layout;</li>
+                <li>ABI;</li>
+                <li>calling convention;</li>
+                <li>symbol naming;</li>
+                <li>object format;</li>
+                <li>platform imports;</li>
+                <li>syscalls;</li>
+                <li>linker behavior;</li>
+                <li>CPU instructions and feature availability.</li>
+            </ul>
+
+            <p>The preferred pipeline is conceptually:</p>
+
+            <pre><code>Source
+    -&gt; AST
+    -&gt; target-independent semantic representation where possible
+    -&gt; variant-specific semantic completion and source selection
+    -&gt; MLIR/LLVM lowering
+    -&gt; target object format
+    -&gt; final artifact</code></pre>
+        </section>
+
+        <section id="build-options">
+            <h2>Project Build Options</h2>
+
+            <p>
+                Compiler behavior may be configured under project build settings:
+            </p>
+
+            <pre><code>[build]
+backend = "mlir"
+profile = "release"
+warnings = "default"
+bounds_checks = true
+overflow_checks = true</code></pre>
+
+            <p>Compiler options may include categories such as:</p>
+
+            <ul>
+                <li>backend;</li>
+                <li>optimization level;</li>
+                <li>debug information;</li>
+                <li>stripping;</li>
+                <li>LTO;</li>
+                <li>bounds checks;</li>
+                <li>overflow checks;</li>
+                <li>warning level;</li>
+                <li>warnings as errors;</li>
+                <li>recursion policy;</li>
+                <li>allocation policy;</li>
+                <li>stack limit;</li>
+                <li>minimum OS or kernel version;</li>
+                <li>CPU features.</li>
+            </ul>
+
+            <p>
+                The exact option set is compiler-versioned.
+                Unknown compiler options are errors unless a manifest extension mechanism explicitly permits them.
+            </p>
+        </section>
+
+        <section id="profiles">
+            <h2>Profiles</h2>
+
+            <p>
+                Profiles group reusable compiler settings:
+            </p>
+
+            <pre><code>[profile.release]
+optimization = "speed"
+debug = "line"
+strip = true
+
+[profile.debug]
+optimization = "none"
+debug = "full"
+strip = false</code></pre>
+
+            <p>
+                A target or variant can select or override the applicable profile according to the
+                configuration precedence rules.
+            </p>
+
+            <p>
+                Profiles are build configuration.
+                They do not create a second source-language semantic model.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Compile-Time Parameters</h2>
+
+            <p>
+                Compile-time parameters are typed program values supplied by build configuration.
+            </p>
+
+            <pre><code>[parameters]
+telemetry = false
+maximum_connections = 1000
+product_name = "Shop"</code></pre>
+
+            <p>They are not:</p>
+
+            <ul>
+                <li>compiler options;</li>
+                <li>C-style textual macros;</li>
+                <li>arbitrary token substitution.</li>
+            </ul>
+
+            <p>
+                The exact Sec source syntax used to access compile-time parameters is defined separately.
+            </p>
+        </section>
+
+        <section id="parameter-overrides">
+            <h2>Compile-Time Parameter Overrides</h2>
+
+            <p>Target-specific override:</p>
+
+            <pre><code>[target.shop.parameters]
+maximum_connections = 2000</code></pre>
+
+            <p>Variant-specific override:</p>
+
+            <pre><code>[variant.windows-amd64.parameters]
+native_service = true</code></pre>
+
+            <p>Target + variant-specific override:</p>
+
+            <pre><code>[target.shop.variant.windows-amd64.parameters]
+service_name = "ShopService"</code></pre>
+
+            <p>
+                A parameter's type is derived from its original declaration.
+                Every override must preserve that type.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>[parameters]
+maximum_connections = 1000
+
+[target.shop.parameters]
+maximum_connections = "many"</code></pre>
+        </section>
+
+        <section id="parameter-secrets">
+            <h2>Compile-Time Parameters Are Not for Secrets</h2>
+
+            <p>
+                Compile-time parameters may become visible in:
+            </p>
+
+            <ul>
+                <li>generated machine code;</li>
+                <li>IR;</li>
+                <li>object files;</li>
+                <li>debug information;</li>
+                <li>build caches.</li>
+            </ul>
+
+            <p>
+                Passwords, tokens, private keys and similar secrets belong in runtime configuration
+                or another appropriate secret-management system.
+            </p>
+        </section>
+
+        <section id="precedence">
+            <h2>Configuration Precedence</h2>
+
+            <p>
+                Settings merge from least specific to most specific:
+            </p>
+
+            <ol>
+                <li>compiler defaults;</li>
+                <li>project build settings;</li>
+                <li>selected profile;</li>
+                <li>reusable variant settings;</li>
+                <li>target settings;</li>
+                <li>target-specific variant settings;</li>
+                <li>command-line overrides.</li>
+            </ol>
+
+            <p>
+                A more specific value overrides a less specific value only when the setting type and
+                option semantics permit the override.
+            </p>
+
+            <p>
+                Command-line overrides never modify <code>sec.toml</code>.
+            </p>
+        </section>
+
+        <section id="output">
+            <h2>Build Output</h2>
+
+            <p>The default output layout is:</p>
+
+            <pre><code>bin/&lt;target&gt;/&lt;variant&gt;/&lt;profile&gt;/&lt;artifact&gt;</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>bin/
+    shop/
+        linux-amd64/
+            release/
+                shop
+
+        macos-arm64/
+            release/
+                shop
+
+        windows-amd64/
+            release/
+                shop.exe</code></pre>
+
+            <p>
+                Platform-appropriate filename extensions are applied by the compiler.
+            </p>
+
+            <p>
+                Output separation prevents one variant from overwriting another variant's artifact.
+            </p>
+        </section>
+
+        <section id="artifacts">
+            <h2>Artifacts</h2>
+
+            <p>
+                An artifact is a file produced by one target variant.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>executables;</li>
+                <li>static libraries;</li>
+                <li>shared libraries;</li>
+                <li>object files;</li>
+                <li>MLIR files;</li>
+                <li>LLVM IR files;</li>
+                <li>debug-information files.</li>
+            </ul>
+
+            <p>A target may define its artifact base name:</p>
+
+            <pre><code>[target.shop]
+artifact = "shop-server"</code></pre>
+        </section>
+
+        <section id="build-counter">
+            <h2>Automatic Build Counter</h2>
+
+            <p>
+                A target may enable an automatic build counter:
+            </p>
+
+            <pre><code>[target.shop.build_counter]
+enabled = true
+scope = "target"</code></pre>
+
+            <p>
+                The default scope is <code>target</code>.
+            </p>
+
+            <p>A project-wide scope may be configured as:</p>
+
+            <pre><code>scope = "project"</code></pre>
+
+            <p>
+                Per-target scope is recommended.
+            </p>
+
+            <p>
+                One logical target build consumes at most one build number, even when several
+                variants are built together.
+            </p>
+
+            <pre><code>shop build 143
+    linux-amd64
+    macos-arm64
+    windows-amd64</code></pre>
+
+            <p>
+                All successful artifacts from that logical invocation receive the same build number.
+            </p>
+        </section>
+
+        <section id="counter-commit">
+            <h2>Build-Number Commit Rule</h2>
+
+            <p>
+                The next build number is reserved for the invocation but is committed only if every
+                requested variant succeeds.
+            </p>
+
+            <p>If any requested variant fails:</p>
+
+            <ul>
+                <li>the candidate build number is not committed;</li>
+                <li>the stored counter remains unchanged;</li>
+                <li>the next attempt may reuse the same candidate number.</li>
+            </ul>
+
+            <p>
+                A filtered build is still a real logical build and consumes one build number on success.
+            </p>
+        </section>
+
+        <section id="counter-state">
+            <h2>Build-Counter State</h2>
+
+            <p>
+                The manifest defines counter behavior.
+                The mutable counter value is not written back into <code>sec.toml</code>.
+            </p>
+
+            <p>Compiler-owned local state lives under:</p>
+
+            <pre><code>.sec/state/build-counters.toml</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>[counter.shop]
+value = 142</code></pre>
+
+            <p>
+                Local counter state should normally be excluded from version control when local
+                counters are used.
+            </p>
+        </section>
+
+        <section id="parallel-counters">
+            <h2>Parallel Builds and Counter Safety</h2>
+
+            <p>
+                Build-counter updates must remain correct under parallel builds.
+            </p>
+
+            <p>The implementation must conceptually:</p>
+
+            <ol>
+                <li>lock the relevant counter;</li>
+                <li>read the current committed value;</li>
+                <li>reserve the next candidate value;</li>
+                <li>build the selected variants;</li>
+                <li>atomically commit the value only after complete success;</li>
+                <li>release the lock.</li>
+            </ol>
+
+            <p>
+                State files must be updated atomically.
+                A partially written build-counter file is not acceptable.
+            </p>
+        </section>
+
+        <section id="explicit-build-number">
+            <h2>Explicit Build Numbers</h2>
+
+            <p>CI or release tooling may provide a build number explicitly:</p>
+
+            <pre><code>sec build shop --build-number 2841</code></pre>
+
+            <p>An explicit build number:</p>
+
+            <ul>
+                <li>is validated;</li>
+                <li>is used by every selected variant;</li>
+                <li>does not automatically advance the local counter;</li>
+                <li>participates in artifact and cache identity.</li>
+            </ul>
+
+            <p>
+                The initial model requires local state plus explicit CLI build numbers.
+                Additional build-number providers may be added later.
+            </p>
+        </section>
+
+        <section id="build-metadata">
+            <h2>Typed Build Metadata</h2>
+
+            <p>
+                The compiler should expose typed compile-time build metadata.
+            </p>
+
+            <p>Conceptual values include:</p>
+
+            <pre><code>build number
+project version
+target name
+variant name
+operating system
+architecture
+profile
+source revision when available
+dirty-source status when available</code></pre>
+
+            <p>
+                The exact Sec source namespace and syntax are defined separately.
+            </p>
+
+            <p>
+                Build metadata is typed data, not textual macro substitution.
+            </p>
+
+            <p>
+                Project version and build number are separate:
+            </p>
+
+            <pre><code>project version: 1.4.0
+build number:    143
+combined label:  1.4.0+143</code></pre>
+
+            <p>
+                The automatic build counter does not modify semantic versioning.
+            </p>
+        </section>
+
+        <section id="timestamps">
+            <h2>Timestamps Are Not Embedded by Default</h2>
+
+            <p>
+                Current time is not automatically embedded into every build.
+            </p>
+
+            <p>
+                Automatic timestamps reduce reproducibility and depend on local clock state.
+            </p>
+
+            <p>
+                Timestamp embedding may be added through an explicit future option rather than being
+                an unavoidable build side effect.
+            </p>
+        </section>
+
+        <section id="reproducible">
+            <h2>Reproducible Builds</h2>
+
+            <p>
+                An explicit build number may participate in reproducing a previous build configuration.
+            </p>
+
+            <p>
+                Whenever the build number is embedded in an artifact, it is part of compilation/cache identity.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A reproducible build must not silently allocate a new automatic build number.
+            </div>
+        </section>
+
+        <section id="cache">
+            <h2>Build Cache Identity</h2>
+
+            <p>
+                A variant cache key must include every input that may affect generated output.
+            </p>
+
+            <p>At minimum this includes:</p>
+
+            <ul>
+                <li>compiler version;</li>
+                <li>project identity;</li>
+                <li>target identity;</li>
+                <li>variant identity;</li>
+                <li>operating system;</li>
+                <li>architecture;</li>
+                <li>ABI;</li>
+                <li>CPU and features;</li>
+                <li>selected profile;</li>
+                <li>compiler options;</li>
+                <li>compile-time parameters;</li>
+                <li>build number when embedded;</li>
+                <li>source hashes;</li>
+                <li>dependency hashes;</li>
+                <li>selected platform-module hashes;</li>
+                <li>target directives.</li>
+            </ul>
+
+            <p>
+                An artifact from one variant must never be reused as though it were an artifact for
+                an incompatible variant.
+            </p>
+        </section>
+
+        <section id="native-linking">
+            <h2>Native Libraries and Link Metadata Belong to the Build Plan</h2>
+
+            <p>
+                Native libraries, object files, import libraries, frameworks and search paths are
+                project/package/build metadata resolved into the active compilation plan.
+            </p>
+
+            <p>
+                FFI declarations define symbol and ABI semantics.
+            </p>
+
+            <p>
+                They do not repeat linker dependency metadata through per-function
+                <code>@library</code> annotations.
+            </p>
+
+            <p>
+                This keeps foreign symbol declarations separate from target-specific linking policy.
+            </p>
+        </section>
+
+        <section id="sec-init">
+            <h2><code>sec init</code></h2>
+
+            <p>
+                <code>sec init</code> creates or extends a project safely.
+            </p>
+
+            <p>Its required behavior is:</p>
+
+            <ul>
+                <li>additive;</li>
+                <li>idempotent;</li>
+                <li>conflict-aware;</li>
+                <li>transactional;</li>
+                <li>non-destructive.</li>
+            </ul>
+
+            <p>It must never:</p>
+
+            <ul>
+                <li>overwrite an existing user file;</li>
+                <li>replace an existing manifest;</li>
+                <li>create a nested manifest inside an existing Sec project.</li>
+            </ul>
+        </section>
+
+        <section id="init-new">
+            <h2>Creating a New Project</h2>
+
+            <p>When no containing project exists:</p>
+
+            <pre><code>sec init</code></pre>
+
+            <p>
+                creates a new project in the selected directory.
+            </p>
+
+            <p>A normal application profile creates at least:</p>
+
+            <pre><code>.sec/sec.toml
+cmd/&lt;project-name&gt;/main.sec
+bin/
+internal/</code></pre>
+
+            <p>
+                <code>internal</code> is a recommended initial structure, not a requirement that all
+                projects use that architecture.
+            </p>
+
+            <p>A minimal profile may instead create:</p>
+
+            <pre><code>.sec/sec.toml
+main.sec</code></pre>
+
+            <p>
+                with a project-root command target.
+            </p>
+        </section>
+
+        <section id="init-existing">
+            <h2>Running <code>sec init</code> in an Existing Project</h2>
+
+            <p>
+                When the upward project search finds an existing manifest:
+            </p>
+
+            <pre><code>sec init</code></pre>
+
+            <p>
+                validates and safely extends that project rather than creating another project.
+            </p>
+
+            <p>
+                When the existing project is already complete for the requested operation,
+                the command succeeds without changes.
+            </p>
+
+            <p>
+                Being already initialized is not itself an error.
+            </p>
+        </section>
+
+        <section id="init-module">
+            <h2>Adding Modules</h2>
+
+            <p>Create a normal source module with:</p>
+
+            <pre><code>sec init module domain/orders</code></pre>
+
+            <p>This creates:</p>
+
+            <pre><code>domain/orders/orders.sec</code></pre>
+
+            <p>containing:</p>
+
+            <pre><code>module orders</code></pre>
+
+            <p>
+                A normal source module is not added to the manifest unless it is independently
+                declared as a build target.
+            </p>
+
+            <p>An internal module may be created with:</p>
+
+            <pre><code>sec init module internal/storage</code></pre>
+
+            <p>which creates:</p>
+
+            <pre><code>internal/storage/storage.sec</code></pre>
+
+            <p>containing:</p>
+
+            <pre><code>module storage</code></pre>
+        </section>
+
+        <section id="init-command">
+            <h2>Adding a Command Target</h2>
+
+            <p>Create a command target with:</p>
+
+            <pre><code>sec init command worker</code></pre>
+
+            <p>This creates:</p>
+
+            <pre><code>cmd/worker/main.sec</code></pre>
+
+            <p>with an entry module such as:</p>
+
+            <pre><code>module main
+
+fn main() int {
+    return 0
+}</code></pre>
+
+            <p>and extends the manifest additively:</p>
+
+            <pre><code>[target.worker]
+kind = "command"
+source = "cmd/worker"
+artifact = "worker"</code></pre>
+
+            <p>
+                The target may inherit the project's default variant set.
+            </p>
+        </section>
+
+        <section id="init-other-targets">
+            <h2>Adding Other Target Kinds</h2>
+
+            <p>Initial forms may include:</p>
+
+            <pre><code>sec init library protocol
+sec init firmware controller
+sec init test integration</code></pre>
+
+            <p>
+                Each command creates only the source structure and manifest entry appropriate for
+                that target kind.
+            </p>
+
+            <p>
+                It must not create unrelated boilerplate or rewrite existing user structure.
+            </p>
+        </section>
+
+        <section id="idempotence">
+            <h2>Initialization Is Idempotent</h2>
+
+            <p>Running the same operation repeatedly must not duplicate files or manifest sections:</p>
+
+            <pre><code>sec init command worker
+sec init command worker</code></pre>
+
+            <p>
+                The second invocation is a successful no-op when the existing target is compatible.
+            </p>
+        </section>
+
+        <section id="manifest-edits">
+            <h2>Existing Manifest Content Must Be Preserved</h2>
+
+            <p>When <code>.sec/sec.toml</code> already exists, <code>sec init</code> must:</p>
+
+            <ul>
+                <li>parse and validate it;</li>
+                <li>preserve project identity;</li>
+                <li>preserve project UUID;</li>
+                <li>preserve project name;</li>
+                <li>preserve comments;</li>
+                <li>preserve unknown sections;</li>
+                <li>preserve user ordering and formatting when practical;</li>
+                <li>add only requested missing sections or keys;</li>
+                <li>reject incompatible existing declarations.</li>
+            </ul>
+
+            <p>
+                Project tools must not deserialize and rewrite the complete TOML document in a way
+                that destroys comments or user formatting.
+            </p>
+
+            <p>
+                Syntax-aware edits or precise source patches are the preferred model.
+            </p>
+        </section>
+
+        <section id="file-conflicts">
+            <h2>Existing Files Are Never Silently Replaced</h2>
+
+            <p>Initialization follows this policy:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Existing state</th>
+                            <th>Behavior</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>File missing</td>
+                            <td>Create it</td>
+                        </tr>
+                        <tr>
+                            <td>Generated file already identical</td>
+                            <td>No-op</td>
+                        </tr>
+                        <tr>
+                            <td>Compatible user file exists</td>
+                            <td>Preserve it</td>
+                        </tr>
+                        <tr>
+                            <td>Conflicting user file exists</td>
+                            <td>Report an error and change nothing</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>Example:</p>
+
+            <pre><code>error: cmd/worker/main.sec already exists but does not define a valid command entry module
+
+no files were changed</code></pre>
+        </section>
+
+        <section id="transactional">
+            <h2><code>sec init</code> Is Transactional</h2>
+
+            <p>Before writing anything, the command must:</p>
+
+            <ol>
+                <li>discover the project;</li>
+                <li>read and validate the manifest;</li>
+                <li>inspect existing files;</li>
+                <li>calculate the complete change plan;</li>
+                <li>detect every known conflict.</li>
+            </ol>
+
+            <p>
+                If any planned operation conflicts, no operation is applied.
+            </p>
+
+            <p>
+                The tool must not create several files and directories and only then discover a
+                later conflict that leaves the project half-modified.
+            </p>
+        </section>
+
+        <section id="dry-run">
+            <h2>Dry Run</h2>
+
+            <p>
+                Initialization should support:
+            </p>
+
+            <pre><code>sec init --dry-run</code></pre>
+
+            <p>
+                and equivalent dry-run behavior for initialization subcommands.
+            </p>
+
+            <p>Example output:</p>
+
+            <pre><code>Planned changes:
+
+  create cmd/worker/
+  create cmd/worker/main.sec
+  add [target.worker] to .sec/sec.toml
+
+No existing files will be overwritten.</code></pre>
+
+            <p>
+                Dry run computes the same conflict-aware change plan without applying it.
+            </p>
+        </section>
+
+        <section id="architecture">
+            <h2>Project Architecture Is Not Prescribed</h2>
+
+            <p>
+                Sec does not require one application architecture.
+            </p>
+
+            <p>A reasonable application layout might be:</p>
+
+            <pre><code>cmd/
+    shop/
+        main.sec
+
+internal/
+    domain/
+    application/
+    adapters/</code></pre>
+
+            <p>A library might instead use:</p>
+
+            <pre><code>publicmodule/
+internal/
+    implementation/</code></pre>
+
+            <p>
+                The compiler should not infer business meaning from directory names such as
+                <code>domain</code>, <code>application</code> or <code>adapters</code>.
+            </p>
+
+            <p>
+                The general recommendation is:
+            </p>
+
+            <blockquote>Organize modules by responsibility and reason for change.</blockquote>
+
+            <p>
+                Directory names such as <code>utils</code>, <code>helpers</code>, <code>common</code>,
+                <code>misc</code> and <code>shared</code> may attract mentor-style advice when they
+                accumulate unrelated responsibilities, but that is not a language error.
+            </p>
+        </section>
+
+        <section id="validation">
+            <h2>Compiler and Project Validation</h2>
+
+            <p>Project tooling validates at least:</p>
+
+            <ul>
+                <li>exactly one project manifest exists;</li>
+                <li>no nested project manifest exists;</li>
+                <li>source-directory module names are consistent;</li>
+                <li>normal module names match the source-directory component;</li>
+                <li>root-module declarations match manifest-defined root-module rules;</li>
+                <li>dotted module declarations are rejected;</li>
+                <li><code>internal</code> is not used as a module name;</li>
+                <li>internal import visibility is enforced;</li>
+                <li>reserved directories are used correctly;</li>
+                <li>source files do not exist directly in <code>cmd</code>, <code>bin</code> or an <code>internal</code> marker directory;</li>
+                <li>target names are unique;</li>
+                <li>variant names are unique;</li>
+                <li>target source paths exist;</li>
+                <li>referenced variants exist;</li>
+                <li>target and variant settings are compatible;</li>
+                <li>compiler options are known and valid;</li>
+                <li>compile-time parameter override types match;</li>
+                <li>output paths do not collide;</li>
+                <li>build-counter configuration is valid;</li>
+                <li>counter state updates are atomic;</li>
+                <li><code>sec init</code> changes are conflict-free before application.</li>
+            </ul>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Project diagnostics should explain:
+            </p>
+
+            <ul>
+                <li>the violated project rule;</li>
+                <li>the relevant path or manifest section;</li>
+                <li>the expected structure or value;</li>
+                <li>a safe corrective action.</li>
+            </ul>
+
+            <h3>Nested project</h3>
+
+            <pre><code>nested Sec project manifest is not allowed
+
+project manifest:
+    project/.sec/sec.toml
+
+nested manifest:
+    project/server/.sec/sec.toml
+
+help: declare server as a target in the root project manifest</code></pre>
+
+            <h3>Reserved source directory</h3>
+
+            <pre><code>Sec source files may not be placed directly in reserved directory `cmd`
+
+help: create a target directory such as `cmd/server`
+help: move reusable code to a normal module</code></pre>
+
+            <h3>Parameter type mismatch</h3>
+
+            <pre><code>compile-time parameter `maximum_connections` has inconsistent types
+
+project value: int
+target value:  string</code></pre>
+
+            <h3>Variant-specific build error</h3>
+
+            <pre><code>error[shop/windows-amd64]: platform operation OpenFile is unavailable</code></pre>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Keep one <code>.sec/sec.toml</code> at the project root.</li>
+                <li>Represent applications, tools, libraries and firmware images as targets rather than nested projects.</li>
+                <li>Let imports discover ordinary modules; do not mirror the entire source tree in the manifest.</li>
+                <li>Keep reusable code out of <code>cmd/&lt;target&gt;</code> entry modules.</li>
+                <li>Use reusable variants for recurring platform configurations.</li>
+                <li>Use target + variant combinations to generate multiple platform outputs from one logical product.</li>
+                <li>Keep machine-specific SDK paths out of the portable manifest.</li>
+                <li>Keep compile-time program parameters separate from compiler options.</li>
+                <li>Never put secrets in compile-time parameters.</li>
+                <li>Use explicit build numbers in CI/release workflows when reproducibility matters.</li>
+                <li>Keep generated artifacts below <code>bin</code> and compiler-owned mutable state below <code>.sec</code>.</li>
+                <li>Use <code>sec init --dry-run</code> when reviewing structural changes to an existing project.</li>
+                <li>Organize source modules by responsibility rather than forcing one prescribed application architecture.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A Sec project is the complete source tree governed by one <code>.sec/sec.toml</code>.</li>
+                <li>Nested Sec projects are not supported.</li>
+                <li>Applications, tools, libraries and firmware products inside one project are represented as targets.</li>
+                <li>A module is a source namespace; a project is the build/configuration boundary.</li>
+                <li>A target is one logical buildable product.</li>
+                <li>A variant is one concrete platform/build configuration for a target.</li>
+                <li>An artifact is one file produced by a target variant.</li>
+                <li>Ordinary source modules are discovered through directories and imports and do not require manifest entries.</li>
+                <li>The target <code>source</code> identifies the entry module; imports determine the remaining source graph.</li>
+                <li>Project-root <code>.sec</code> source files are allowed.</li>
+                <li>A root library module uses <code>project.module</code> when provided, otherwise a valid <code>project.name</code>.</li>
+                <li>A minimal root command target may use <code>module main</code> with <code>source = "."</code>.</li>
+                <li><code>cmd</code>, <code>bin</code> and <code>.sec</code> are reserved project-root directories.</li>
+                <li><code>cmd</code> contains child entry-target modules and cannot contain direct <code>.sec</code> source files.</li>
+                <li><code>bin</code> is generated output and is never a source/import root.</li>
+                <li><code>.sec</code> stores the manifest and compiler-owned project state/cache.</li>
+                <li><code>internal</code> is optional but carries mandatory access semantics when present.</li>
+                <li>Ordinary organizational names such as <code>domain</code>, <code>services</code> and <code>modules</code> have no special language semantics.</li>
+                <li>Project tools preserve existing project identity, UUID, name, comments and compatible manifest content.</li>
+                <li>Project-wide analysis settings live under <code>[analysis]</code>.</li>
+                <li><code>lsp_depth</code> controls tooling budget/precision and does not change language safety semantics.</li>
+                <li>Targets are declared with <code>[target.&lt;name&gt;]</code>.</li>
+                <li>Initial target kinds are <code>command</code>, <code>library</code>, <code>firmware</code> and <code>test</code>.</li>
+                <li>The target source and target kind do not change per platform variant.</li>
+                <li>Different entry modules or different logical products require different targets.</li>
+                <li><code>sec test</code> uses a dedicated <code>TestCompilationPlan</code>.</li>
+                <li>Production builds exclude <code>*_test.sec</code> and the project-root <code>tests/</code> tree.</li>
+                <li>Variants are declared with <code>[variant.&lt;name&gt;]</code>.</li>
+                <li>Canonical OS names include <code>linux</code>, <code>windows</code>, <code>macos</code>, <code>freebsd</code>, <code>netbsd</code>, <code>baremetal</code> and <code>freertos</code>.</li>
+                <li>The Sec project name for macOS is <code>macos</code>, not <code>darwin</code>.</li>
+                <li>Canonical architecture names include <code>amd64</code>, <code>arm64</code>, <code>arm32</code> and <code>riscv32</code>.</li>
+                <li>Variants may additionally specify CPU, feature, ABI, toolchain and profile intent.</li>
+                <li>Machine-specific SDK/toolchain paths belong in user or CI configuration rather than the portable project manifest.</li>
+                <li><code>sec build &lt;target&gt;</code> builds every configured variant for that target by default.</li>
+                <li>Build filters select declared variants and do not create undeclared variants.</li>
+                <li>By default all selected variants are attempted; <code>--fail-fast</code> may stop on the first failure.</li>
+                <li>The build command fails if any requested variant fails.</li>
+                <li>Every target + variant pair produces one concrete <code>CompilationPlan</code>.</li>
+                <li>Target-independent semantic work should be reused when safe.</li>
+                <li>Target-dependent layout, ABI, platform source and lowering are completed per variant.</li>
+                <li>Compiler options and compile-time program parameters are separate concepts.</li>
+                <li>Unknown compiler options are errors unless an explicit extension mechanism permits them.</li>
+                <li>Profiles group reusable compiler settings.</li>
+                <li>Compile-time parameters are typed values, not textual preprocessor macros.</li>
+                <li>Target, variant and target+variant parameter overrides must preserve the original parameter type.</li>
+                <li>Compile-time parameters must not contain secrets.</li>
+                <li>Configuration precedence runs from compiler defaults through increasingly specific project/variant/target settings to command-line overrides.</li>
+                <li>Command-line overrides do not rewrite the manifest.</li>
+                <li>Default artifacts live under <code>bin/&lt;target&gt;/&lt;variant&gt;/&lt;profile&gt;/&lt;artifact&gt;</code>.</li>
+                <li>Different variants must never overwrite one another's output.</li>
+                <li>A target may enable an automatic build counter.</li>
+                <li>One logical multi-variant build receives one build number.</li>
+                <li>A failed multi-variant build does not commit the candidate build number.</li>
+                <li>Mutable build-counter state is stored outside <code>sec.toml</code> under <code>.sec/state/</code>.</li>
+                <li>Parallel build-counter updates must be locked and atomically committed.</li>
+                <li>An explicit <code>--build-number</code> applies to every selected variant and does not automatically advance the local counter.</li>
+                <li>Build metadata is typed data, not macro substitution.</li>
+                <li>Project version and build number are distinct values.</li>
+                <li>Current time is not automatically embedded into builds.</li>
+                <li>A reproducible build must not silently allocate a new automatic build number.</li>
+                <li>Build cache identity includes every input that can affect generated output.</li>
+                <li>Artifacts from incompatible variants must never share cache identity.</li>
+                <li>Native linker dependencies are build-plan metadata rather than per-FFI-function <code>@library</code> annotations.</li>
+                <li><code>sec init</code> is additive, idempotent, conflict-aware, transactional and non-destructive.</li>
+                <li><code>sec init</code> searches upward for an existing project before creating anything.</li>
+                <li>Running <code>sec init</code> inside an existing project extends or validates that project rather than creating a nested one.</li>
+                <li><code>sec init module path</code> creates a normal module without adding it to the manifest unless it is also a target.</li>
+                <li><code>sec init command name</code> creates an entry module and adds the corresponding target manifest section.</li>
+                <li>Library, firmware and test target initialization use target-kind-specific structures.</li>
+                <li>Repeated compatible init commands are successful no-ops.</li>
+                <li>Existing user files are never silently overwritten.</li>
+                <li>A conflicting init plan changes nothing.</li>
+                <li>Manifest edits preserve comments and compatible user formatting when practical.</li>
+                <li><code>sec init --dry-run</code> reports the complete planned change set without writing it.</li>
+                <li>Sec does not require one application architecture.</li>
+                <li>The general architecture recommendation is to organize modules by responsibility and reason for change.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="28-modules.html">Previous: Modules and Imports</a>
+            <a href="30-unsafe.html">Next: Unsafe</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

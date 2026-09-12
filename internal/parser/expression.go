@@ -149,20 +149,13 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 
 	default:
 		if p.curToken.Type == lexer.ILLEGAL {
+			if diagnostic, ok := p.lexerDiagnosticForToken(p.curToken); ok {
+				return p.invalidExpression(p.curToken, diagnostic.Message, diagnostic.ID)
+			}
 			if message, ok := numericSuffixMigrationMessage(p.curToken); ok {
 				p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, nil, "%s", message)
 				return p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
 			}
-		}
-		if p.curToken.Type == lexer.ILLEGAL && isMalformedScientificExponent(p.curToken.Lexeme) {
-			message := fmt.Sprintf(
-				"malformed scientific exponent %q: expected at least one decimal digit at %d:%d",
-				p.curToken.Lexeme,
-				p.curToken.Line,
-				p.curToken.Column,
-			)
-			p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, nil, "%s", message)
-			return p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
 		}
 		message := fmt.Sprintf(
 			"no prefix parse function for %q at %d:%d",
@@ -337,20 +330,6 @@ func numericSuffixMigrationMessage(token lexer.Token) (string, bool) {
 		token.Lexeme[len(token.Lexeme)-1], replacement.newSuffix,
 		replacement.family, token.Line, token.Column,
 	), true
-}
-
-func isMalformedScientificExponent(lexeme string) bool {
-	if lexeme == "" || !((lexeme[0] >= '0' && lexeme[0] <= '9') || lexeme[0] == '.') {
-		return false
-	}
-	for index := len(lexeme) - 1; index >= 0; index-- {
-		if lexeme[index] != 'e' && lexeme[index] != 'E' {
-			continue
-		}
-		tail := lexeme[index+1:]
-		return tail == "" || tail == "+" || tail == "-"
-	}
-	return false
 }
 
 func (p *Parser) parseCaptureLambdaExpression() ast.Expression {

@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Loops and Iteration - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
 </head>
 <body>
 <header class="site-header">
@@ -69,49 +73,78 @@
         <a href="#summary">Summary</a>
 
         <div class="sidebar-section">Language</div>
-        <a href="01-introduction.html">Introduction</a>
-        <a href="02-basic-syntax.html">Basic Syntax</a>
-        <a href="03-types.html">Types</a>
-        <a href="04-named-types.html">Named Types</a>
-        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
-        <a href="06-functions.html">Functions</a>
-        <a href="07-if.html">If Statements</a>
-        <a href="08-switch.html">Switch Statements</a>
-        <a href="09-match.html">Match Expressions</a>
-        <a href="10-enums.html">Enums</a>
-        <a href="11-unions.html">Unions</a>
-        <a href="12-registers.html">Registers</a>
-        <a href="13-units.html">Units</a>
-        <a href="14-generics.html">Generics</a>
-        <a href="15-loops.html" class="active">Loops and Iteration</a>
-        <a href="16-impl.html">Impl Blocks</a>
-        <a href="17-properties.html">Properties</a>
-        <a href="18-interfaces.html">Interfaces</a>
-        <a href="19-arrays.html">Arrays</a>
-        <a href="20-slices.html">Slices</a>
-        <a href="21-indexing.html">Indexing</a>
-        <a href="22-storage.html">Values, Places and Storage</a>
-        <a href="23-references.html">References</a>
-        <a href="24-ownership.html">Ownership</a>
-        <a href="25-copy-move.html">Copying and Moving</a>
-        <a href="26-unsafe.html">Unsafe</a>
-        <a href="27-spread.html">Spread</a>
-        <a href="30-modules.html">Modules and Imports</a>
-        <a href="31-projects.html">Projects and sec.module</a>
-        <a href="32-visibility.html">Visibility</a>
-        <a href="33-result-and-option.html">Result and Option</a>
-        <a href="34-try.html">Error Propagation</a>
-        <a href="35-defer.html">Deferred Cleanup</a>
-        <a href="36-attributes.html">Attributes</a>
-        <a href="37-build-directives.html">Build Directives</a>
-        <a href="38-ffi.html">Foreign Function Interfaces</a>
-        <a href="39-tasks.html">Tasks</a>
-        <a href="40-spawn.html">Spawning Work</a>
-        <a href="41-await.html">Awaiting Tasks</a>
-        <a href="42-channels.html">Channels and Coordination</a>
-        <a href="43-testing.html">Tests and Benchmarks</a>
-        <a href="44-formatting.html">Formatting</a>
-        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html" class="active">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
 
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>

@@ -1,0 +1,2034 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Unsafe and Raw Pointers - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#unsafe">Unsafe and Raw Pointers</a>
+        <a href="#principle">What unsafe Means</a>
+        <a href="#does-not-disable">What unsafe Does Not Disable</a>
+        <a href="#unsafe-operations">Unsafe Operations</a>
+        <a href="#single-operation">Single-Operation unsafe</a>
+        <a href="#unsafe-block">unsafe Blocks</a>
+        <a href="#block-values">Block Results</a>
+        <a href="#scope">Lexical Scope</a>
+        <a href="#redundant">Redundant unsafe</a>
+        <a href="#unsafe-fn">unsafe fn</a>
+        <a href="#unsafe-body">unsafe fn Bodies</a>
+        <a href="#caller-obligations">Caller Obligations</a>
+        <a href="#safety-docs">Safety Documentation</a>
+        <a href="#safe-wrappers">Safe Wrappers</a>
+        <a href="#trust">Trust Provenance</a>
+        <a href="#effects">Effects Remain Active</a>
+        <a href="#panic">Panic</a>
+        <a href="#allocation">Allocation</a>
+        <a href="#blocking">Blocking and Suspension</a>
+        <a href="#rawptr">RawPtr[T]</a>
+        <a href="#rawptr-void">RawPtr[void]</a>
+        <a href="#rawptr-value">Raw Pointers Are Values</a>
+        <a href="#rawptr-safe-ops">Safe Raw-Pointer Operations</a>
+        <a href="#rawptr-unsafe-ops">Unsafe Raw-Pointer Operations</a>
+        <a href="#null">Null</a>
+        <a href="#construction">Raw-Pointer Construction</a>
+        <a href="#read">Read</a>
+        <a href="#write">Write</a>
+        <a href="#volatile">Volatile Raw Access</a>
+        <a href="#arithmetic">Pointer Arithmetic</a>
+        <a href="#offset">Offset</a>
+        <a href="#addbytes">AddBytes</a>
+        <a href="#difference">Difference</a>
+        <a href="#comparison">Comparison</a>
+        <a href="#integer-conversion">Integer and Address Conversion</a>
+        <a href="#safe-to-raw">Safe Reference to Raw</a>
+        <a href="#raw-to-safe">Raw to Safe Reference</a>
+        <a href="#slice-raw-parts">Slice from Raw Parts</a>
+        <a href="#representation">Unchecked Representation</a>
+        <a href="#ownership-adoption">Ownership Adoption</a>
+        <a href="#foreign-release">Ownership Release to Foreign Code</a>
+        <a href="#borrowing">Borrowing Still Applies</a>
+        <a href="#lifetime">Lifetime Still Applies</a>
+        <a href="#destruction">Destruction Still Applies</a>
+        <a href="#concurrency">Concurrency Still Applies</a>
+        <a href="#address-spaces">Address Spaces</a>
+        <a href="#hardware">Hardware and Fixed Addresses</a>
+        <a href="#mappings">Runtime Mappings</a>
+        <a href="#isr">Interrupt Contexts</a>
+        <a href="#ffi-boundary">FFI Boundary</a>
+        <a href="#unsafe-extern">unsafe extern</a>
+        <a href="#inline-assembly">Inline Assembly</a>
+        <a href="#function-values">Function Values</a>
+        <a href="#interfaces">Interfaces</a>
+        <a href="#generics">Generics</a>
+        <a href="#closures">Closures</a>
+        <a href="#compile-time">Compile-Time Evaluation</a>
+        <a href="#backend-ub">Backend Undefined Behavior</a>
+        <a href="#runtime">No Mandatory Runtime</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html" class="active">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Unsafe and Raw Pointers</div>
+
+        <h1 id="unsafe">Unsafe and Raw Pointers</h1>
+
+        <p>
+            Sec uses <code>unsafe</code> for operations whose complete safety obligations cannot be
+            proven automatically at an ordinary safe call site.
+        </p>
+
+        <p>
+            The keyword does not disable the language's safety model.
+            Instead, it marks a precise trust boundary where the programmer or a trusted wrapper
+            accepts specific proof obligations.
+        </p>
+
+        <pre><code>let value := unsafe pointer.Read()
+
+unsafe pointer.Write(value)</code></pre>
+
+        <p>
+            The principal low-level address type used at these boundaries is:
+        </p>
+
+        <pre><code>RawPtr[T]</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>unsafe</code> accepts specific proof obligations.
+            It does not turn an operation known to be invalid into a valid one.
+        </div>
+
+        <section id="principle">
+            <h2>What <code>unsafe</code> Means</h2>
+
+            <p>
+                An unsafe operation is an operation whose safety depends on facts that ordinary
+                static analysis cannot completely establish at that source location.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>raw-pointer dereference;</li>
+                <li>raw-pointer write;</li>
+                <li>raw-pointer arithmetic;</li>
+                <li>raw-to-safe reference construction;</li>
+                <li>slice construction from raw parts;</li>
+                <li>calling an <code>unsafe fn</code>;</li>
+                <li>calling an unsafe foreign function;</li>
+                <li>inline assembly;</li>
+                <li>unchecked representation construction;</li>
+                <li>unchecked enum or union construction;</li>
+                <li>interpreting an unverified numeric address;</li>
+                <li>adopting ownership from raw or foreign storage.</li>
+            </ul>
+
+            <p>
+                The explicit <code>unsafe</code> marker records that the remaining proof obligations
+                have been reviewed outside ordinary compiler proof.
+            </p>
+        </section>
+
+        <section id="does-not-disable">
+            <h2>What <code>unsafe</code> Does Not Disable</h2>
+
+            <p>
+                The compiler continues every analysis that remains applicable.
+            </p>
+
+            <p><code>unsafe</code> does not mean:</p>
+
+            <ul>
+                <li>stop type checking;</li>
+                <li>stop ownership checking;</li>
+                <li>stop borrow checking;</li>
+                <li>stop lifetime analysis;</li>
+                <li>stop effect analysis;</li>
+                <li>ignore moves or invalidation;</li>
+                <li>ignore cleanup rules;</li>
+                <li>ignore target or platform rules;</li>
+                <li>permit arbitrary backend undefined behavior.</li>
+            </ul>
+
+            <p>
+                If the compiler can prove an unsafe obligation false, the operation is rejected even
+                when it is written inside an unsafe context.
+            </p>
+
+            <pre><code>// Conceptual example:
+// if the compiler proves that `pointer` is null here,
+// unsafe does not make this read legal.
+
+let value := unsafe pointer.Read()</code></pre>
+        </section>
+
+        <section id="unsafe-operations">
+            <h2>Unsafe Operations Are Operation-Specific</h2>
+
+            <p>
+                The language does not have one universal “trust everything in this file” mode.
+            </p>
+
+            <p>
+                Each compiler-known unsafe operation has its own required obligations.
+                For example, a raw read may require:
+            </p>
+
+            <ul>
+                <li>non-null address;</li>
+                <li>correct alignment;</li>
+                <li>readable storage;</li>
+                <li>a valid initialized representation;</li>
+                <li>sufficient lifetime;</li>
+                <li>compatible aliasing;</li>
+                <li>correct address space;</li>
+                <li>permission under the active platform contract.</li>
+            </ul>
+
+            <p>
+                An unrelated unsafe operation may have a different set of obligations.
+            </p>
+        </section>
+
+        <section id="single-operation">
+            <h2>Single-Operation <code>unsafe</code></h2>
+
+            <p>
+                A single unsafe expression can be marked directly:
+            </p>
+
+            <pre><code>let value := unsafe pointer.Read()</code></pre>
+
+            <p>
+                A single unsafe statement can also be marked directly:
+            </p>
+
+            <pre><code>unsafe pointer.Write(value)</code></pre>
+
+            <p>
+                This is the narrowest form and is preferred when only one operation requires trust.
+            </p>
+        </section>
+
+        <section id="unsafe-block">
+            <h2><code>unsafe</code> Blocks</h2>
+
+            <p>
+                Several related operations may be grouped into an unsafe block:
+            </p>
+
+            <pre><code>let value := unsafe {
+    Validate(pointer)
+    pointer.Read()
+}</code></pre>
+
+            <p>
+                The block follows ordinary Sec block and evaluation rules.
+            </p>
+
+            <p>
+                Safe operations inside the block remain ordinary safe operations.
+                The block does not remove their normal checks.
+            </p>
+        </section>
+
+        <section id="block-values">
+            <h2>Unsafe Blocks Can Produce Values</h2>
+
+            <p>
+                Because the block follows normal block-expression semantics, it may produce a value:
+            </p>
+
+            <pre><code>let result := unsafe {
+    Prepare(pointer)
+    pointer.Read()
+}</code></pre>
+
+            <p>
+                The resulting type is determined by the ordinary block-expression rules.
+            </p>
+
+            <p>
+                <code>unsafe</code> does not create a special “unsafe value” type.
+            </p>
+        </section>
+
+        <section id="scope">
+            <h2>Unsafe Scope Is Lexically Explicit</h2>
+
+            <p>
+                The marker applies only to the operation or block it introduces.
+            </p>
+
+            <pre><code>unsafe {
+    pointer.Write(value)
+}
+
+pointer.Write(value)    // still requires unsafe here</code></pre>
+
+            <p>
+                A parent scope does not become implicitly unsafe.
+            </p>
+
+            <p>
+                Nested unsafe contexts are permitted, although tooling may report a nested marker as
+                redundant when it adds no useful boundary clarity.
+            </p>
+        </section>
+
+        <section id="redundant">
+            <h2>Empty and Redundant Unsafe Contexts</h2>
+
+            <p>
+                An empty unsafe block is valid syntax:
+            </p>
+
+            <pre><code>unsafe {
+}</code></pre>
+
+            <p>
+                An unsafe context containing no operation that requires unsafe is also valid.
+            </p>
+
+            <p>
+                By default, these cases should produce informational diagnostics rather than hard errors.
+            </p>
+
+            <p>
+                Project policy may promote redundant-unsafe diagnostics to warnings.
+            </p>
+        </section>
+
+        <section id="unsafe-fn">
+            <h2><code>unsafe fn</code></h2>
+
+            <p>
+                An unsafe function or method exposes proof obligations to its caller:
+            </p>
+
+            <pre><code>unsafe fn FromRawParts(
+    pointer: RawPtr[byte],
+    length: int,
+) Buffer {
+    // ...
+}</code></pre>
+
+            <p>
+                Calling it requires an unsafe context:
+            </p>
+
+            <pre><code>let buffer := unsafe Buffer.FromRawParts(pointer, length)</code></pre>
+
+            <p>
+                Unsafe status is part of the callable safety contract.
+            </p>
+
+            <p>
+                It is not the same thing as panic behavior, allocation behavior, blocking behavior
+                or any other effect.
+            </p>
+        </section>
+
+        <section id="unsafe-body">
+            <h2>The Body of <code>unsafe fn</code> Is Still Explicit</h2>
+
+            <p>
+                Declaring a function unsafe does not make its body implicitly unsafe.
+            </p>
+
+            <pre><code>unsafe fn ReadRaw(pointer: RawPtr[byte]) byte {
+    return unsafe pointer.Read()
+}</code></pre>
+
+            <p>
+                Each actual unsafe operation remains marked.
+            </p>
+
+            <p>
+                This keeps the exact implementation trust boundary visible during review.
+            </p>
+
+            <p>
+                An <code>unsafe fn</code> may contain only safe operations when the caller obligation
+                exists for contractual reasons.
+            </p>
+        </section>
+
+        <section id="caller-obligations">
+            <h2>Caller Proof Obligations</h2>
+
+            <p>
+                Every unsafe callable must define what the caller promises.
+            </p>
+
+            <p>Obligations may include:</p>
+
+            <ul>
+                <li>pointer is non-null;</li>
+                <li>pointer is correctly aligned;</li>
+                <li>address range is valid;</li>
+                <li>storage remains live for the required lifetime;</li>
+                <li>storage contains initialized valid representation;</li>
+                <li>mutable access is exclusive;</li>
+                <li>no conflicting aliases exist;</li>
+                <li>the allocator/deallocator pair is correct;</li>
+                <li>address space is valid;</li>
+                <li>hardware context is valid;</li>
+                <li>foreign ABI is correct;</li>
+                <li>callback or thread affinity is satisfied;</li>
+                <li>concurrent invalidation cannot occur;</li>
+                <li>length/capacity relationships are valid.</li>
+            </ul>
+
+            <p>
+                The compiler may prove some obligations itself.
+                Only the remaining unproven obligations are accepted by the explicit unsafe boundary.
+            </p>
+
+            <p>
+                A compiler-proven contradiction remains an error.
+            </p>
+        </section>
+
+        <section id="safety-docs">
+            <h2>Safety Documentation</h2>
+
+            <p>
+                Public unsafe APIs should document their caller obligations.
+            </p>
+
+            <p>
+                Sec 0.1 treats this as strongly recommended rather than a universal hard language requirement.
+            </p>
+
+            <p>
+                Project or tooling policy may require safety documentation for exported unsafe APIs.
+            </p>
+
+            <p>
+                Compiler-known unsafe operations must not rely solely on comments:
+                their obligations must also exist in compiler-readable metadata.
+            </p>
+        </section>
+
+        <section id="safe-wrappers">
+            <h2>Safe Wrappers</h2>
+
+            <p>
+                A safe function may use unsafe operations internally when it establishes every
+                obligation before crossing the boundary.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>fn CreateBuffer(
+    pointer: RawPtr[byte],
+    length: int,
+) Result[Buffer, BufferError] {
+    if length &lt; 0 {
+        return Err(BufferError.InvalidLength)
+    }
+
+    // Additional pointer/storage validation belongs here.
+
+    let buffer := unsafe Buffer.FromRawParts(pointer, length)
+    return Ok(buffer)
+}</code></pre>
+
+            <p>
+                A safe wrapper must not leave hidden obligations that the safe API cannot express or enforce.
+            </p>
+
+            <p>
+                Recoverable validation failure should use normal Sec error handling where appropriate.
+            </p>
+        </section>
+
+        <section id="trust">
+            <h2>Trust Provenance</h2>
+
+            <p>
+                Encapsulating an unsafe operation in a safe wrapper removes the caller's unsafe
+                obligation only when the wrapper discharges it.
+            </p>
+
+            <p>
+                It does not erase the fact that the implementation ultimately depends on trusted behavior.
+            </p>
+
+            <p>The compiler/tooling may retain facts such as:</p>
+
+            <pre><code>caller-facing safety: safe
+implementation provenance: depends on unsafe foreign call</code></pre>
+
+            <p>
+                Trust provenance is useful for:
+            </p>
+
+            <ul>
+                <li>security audits;</li>
+                <li>whole-program trust reports;</li>
+                <li>ISR analysis;</li>
+                <li>LSP navigation;</li>
+                <li>certification profiles;</li>
+                <li>invalidating assumptions when a platform or FFI contract changes.</li>
+            </ul>
+        </section>
+
+        <section id="effects">
+            <h2>Effects Remain Active Inside Unsafe Code</h2>
+
+            <p>
+                Unsafe status and effect analysis are independent semantic dimensions.
+            </p>
+
+            <p>An unsafe operation may still carry effects such as:</p>
+
+            <pre><code>MayPanic
+MayAllocate
+MayBlock
+MaySuspend
+MaySpawn
+MayIO
+MayAccessVolatile
+MayMutateExternalState
+MayUseNondeterministicInput</code></pre>
+
+            <p>
+                Therefore <code>@noPanic</code>, <code>@noAlloc</code>, <code>@noBlock</code>,
+                ISR restrictions and other verified contracts continue to apply.
+            </p>
+        </section>
+
+        <section id="panic">
+            <h2>Unsafe Does Not Suppress Panic Rules</h2>
+
+            <p>
+                Panic-capable code does not become compatible with a no-panic context merely because
+                it appears inside <code>unsafe</code>.
+            </p>
+
+            <p>
+                Trusted foreign no-panic claims are accepted only when the foreign contract explicitly
+                provides that fact.
+            </p>
+
+            <p>
+                Cleanup code that must remain panic-free remains subject to its normal no-panic restrictions.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Unsafe Does Not Authorize Hidden Allocation</h2>
+
+            <p>
+                Raw-pointer conversion, raw-to-safe reference construction, ownership adoption and
+                escaping lifetime relationships do not gain permission to allocate merely because
+                the code is unsafe.
+            </p>
+
+            <p>
+                Allocation-capable unsafe operations retain their ordinary allocation effects.
+            </p>
+
+            <p>
+                <code>@noAlloc</code> and ISR allocation restrictions remain enforced.
+            </p>
+        </section>
+
+        <section id="blocking">
+            <h2>Unsafe Does Not Authorize Blocking or Suspension</h2>
+
+            <p>
+                An unsafe foreign, assembly or platform operation that may block or suspend must
+                publish that effect or be treated conservatively.
+            </p>
+
+            <p>
+                An ISR cannot call a blocking operation merely by wrapping the call in
+                <code>unsafe</code>.
+            </p>
+        </section>
+
+        <section id="rawptr">
+            <h2><code>RawPtr[T]</code></h2>
+
+            <p>
+                <code>RawPtr[T]</code> is Sec's unchecked typed raw-address value.
+            </p>
+
+            <pre><code>let address: RawPtr[byte]
+let itemAddress: RawPtr[Item]</code></pre>
+
+            <p>
+                A raw pointer is not a safe reference.
+            </p>
+
+            <p>It does not inherently carry:</p>
+
+            <ul>
+                <li>non-nullness;</li>
+                <li>lifetime;</li>
+                <li>ownership;</li>
+                <li>destruction responsibility;</li>
+                <li>bounds;</li>
+                <li>borrow authority;</li>
+                <li>exclusive access;</li>
+                <li>generation validity;</li>
+                <li>hardware privilege;</li>
+                <li>proof that the address contains a valid <code>T</code>.</li>
+            </ul>
+        </section>
+
+        <section id="rawptr-void">
+            <h2><code>RawPtr[void]</code></h2>
+
+            <p>
+                <code>RawPtr[void]</code> represents an untyped raw address:
+            </p>
+
+            <pre><code>let handle: RawPtr[void]</code></pre>
+
+            <p>
+                It does not directly support typed:
+            </p>
+
+            <ul>
+                <li><code>Read()</code>;</li>
+                <li><code>Write(value)</code>;</li>
+                <li><code>VolatileRead()</code>;</li>
+                <li><code>VolatileWrite(value)</code>;</li>
+                <li><code>Offset(elements)</code>.</li>
+            </ul>
+
+            <p>
+                A concrete compatible raw-pointer interpretation must first be established under
+                the applicable conversion and unsafe rules.
+            </p>
+        </section>
+
+        <section id="rawptr-value">
+            <h2>Raw Pointers Are Ordinary Address Values</h2>
+
+            <p>
+                <code>RawPtr[T]</code> itself is copyable.
+            </p>
+
+            <pre><code>let first: RawPtr[byte] := pointer
+let second := first</code></pre>
+
+            <p>
+                Copying the pointer copies the raw address value.
+                It does not copy, retain, borrow, own or move the pointee.
+            </p>
+
+            <p>
+                Moving a raw-pointer holder moves only that raw-pointer value.
+                It does not move the memory addressed by the pointer.
+            </p>
+
+            <p>
+                Destroying a raw-pointer value never destroys or deallocates its pointee.
+            </p>
+        </section>
+
+        <section id="rawptr-safe-ops">
+            <h2>Operations on Raw Pointer Values That Are Not Inherently Unsafe</h2>
+
+            <p>
+                Merely handling a raw address as a value does not require unsafe.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>storing a raw pointer;</li>
+                <li>copying it;</li>
+                <li>moving it;</li>
+                <li>returning it;</li>
+                <li>passing it through a compatible FFI boundary;</li>
+                <li>comparing compatible raw pointers for equality;</li>
+                <li>testing raw-pointer null state under the canonical raw/FFI rules;</li>
+                <li>formatting or inspecting an address for diagnostics where permitted;</li>
+                <li>representation-compatible raw-pointer conversion explicitly defined as safe.</li>
+            </ul>
+
+            <p>
+                None of these operations asserts that the pointee is valid.
+            </p>
+        </section>
+
+        <section id="rawptr-unsafe-ops">
+            <h2>Raw-Pointer Operations That Require Unsafe</h2>
+
+            <p>
+                Unless a specialized compiler-verified adapter says otherwise, unsafe is required for:
+            </p>
+
+            <ul>
+                <li><code>Read()</code>;</li>
+                <li><code>Write(value)</code>;</li>
+                <li><code>VolatileRead()</code>;</li>
+                <li><code>VolatileWrite(value)</code>;</li>
+                <li>pointer arithmetic;</li>
+                <li>integer-to-raw-pointer conversion;</li>
+                <li>constructing <code>ref T</code> from raw storage;</li>
+                <li>constructing <code>ref mut T</code> from raw storage;</li>
+                <li>constructing a slice/view from raw pointer plus extent;</li>
+                <li>assuming alignment;</li>
+                <li>assuming initialized representation;</li>
+                <li>adopting ownership from a raw address;</li>
+                <li>constructing a callable function pointer from a raw address;</li>
+                <li>reinterpreting unrelated pointer representations without compiler proof.</li>
+            </ul>
+        </section>
+
+        <section id="null">
+            <h2>Null Is Part of the Raw-Pointer Value Domain</h2>
+
+            <p>
+                Every <code>RawPtr[T]</code> may represent a null address.
+            </p>
+
+            <p>A raw pointer may become null through:</p>
+
+            <ul>
+                <li>a foreign return;</li>
+                <li>an unsafe conversion;</li>
+                <li>a platform operation;</li>
+                <li>an allocator or operating-system operation;</li>
+                <li>another raw-pointer-producing operation.</li>
+            </ul>
+
+            <p>
+                Storing, moving, returning, passing, comparing or testing a null raw pointer is
+                permitted when the surrounding operation is otherwise valid.
+            </p>
+
+            <p>
+                Dereferencing null is invalid.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>unsafe</code> does not make a null dereference valid.
+                A compiler-proven null dereference is rejected.
+            </div>
+
+            <p>
+                Safe references remain non-null.
+                Safe APIs should normally translate nullable foreign outcomes into explicit
+                <code>Option</code>, <code>Result</code> or validated wrapper types.
+            </p>
+        </section>
+
+        <section id="construction">
+            <h2>Raw-Pointer Construction Is Explicit</h2>
+
+            <p>A <code>RawPtr[T]</code> may originate from:</p>
+
+            <ul>
+                <li>a foreign function result;</li>
+                <li>an explicit unsafe safe-reference conversion;</li>
+                <li>an explicit unsafe integer/address conversion;</li>
+                <li>a platform or hardware address primitive;</li>
+                <li>an allocator/runtime primitive;</li>
+                <li>another compatible raw-pointer conversion.</li>
+            </ul>
+
+            <p>
+                A raw pointer is never created implicitly from:
+            </p>
+
+            <ul>
+                <li>a safe reference;</li>
+                <li>an integer;</li>
+                <li>an owning collection;</li>
+                <li>a string;</li>
+                <li>a slice;</li>
+                <li>an unrelated pointer representation.</li>
+            </ul>
+
+            <p>
+                The exact source syntax for general <code>RawPtr ↔ ref/ref mut</code> conversion is
+                intentionally not specified here because that spelling is not yet canonically locked.
+            </p>
+        </section>
+
+        <section id="read">
+            <h2>Raw-Pointer Read</h2>
+
+            <p>Canonical typed raw read:</p>
+
+            <pre><code>let value := unsafe pointer.Read()</code></pre>
+
+            <p>For <code>pointer: RawPtr[T]</code>, <code>Read()</code> produces a <code>T</code>.</p>
+
+            <p>Before reading, the accepted proof obligations include at least:</p>
+
+            <ul>
+                <li>the pointer is non-null;</li>
+                <li>the address is aligned for <code>T</code>;</li>
+                <li>the address is readable in the active address space;</li>
+                <li>storage covers at least one <code>T</code>;</li>
+                <li>the storage contains a valid initialized <code>T</code> representation;</li>
+                <li>the storage remains live for the complete read;</li>
+                <li>ownership/aliasing rules permit the access;</li>
+                <li>the target/platform policy permits the read.</li>
+            </ul>
+
+            <p>
+                Reading does not create ownership of the pointee merely because a <code>T</code>
+                value is produced.
+            </p>
+
+            <p>
+                <code>RawPtr[void].Read()</code> is invalid.
+            </p>
+        </section>
+
+        <section id="write">
+            <h2>Raw-Pointer Write</h2>
+
+            <p>Canonical typed raw write:</p>
+
+            <pre><code>unsafe pointer.Write(value)</code></pre>
+
+            <p>
+                Before writing, the accepted obligations include at least:
+            </p>
+
+            <ul>
+                <li>the pointer is non-null;</li>
+                <li>the address is aligned for <code>T</code>;</li>
+                <li>the address is writable in the active address space;</li>
+                <li>storage covers at least one <code>T</code>;</li>
+                <li>the incoming representation is valid;</li>
+                <li>required mutable/exclusive authority exists;</li>
+                <li>no conflicting safe reference or foreign access violates the contract;</li>
+                <li>the write does not bypass required destruction of a live object;</li>
+                <li>the target/platform policy permits the write.</li>
+            </ul>
+
+            <p>
+                <code>Write()</code> does not grant ownership of destination storage.
+            </p>
+
+            <p>
+                It also must not silently overwrite a live non-trivial object while bypassing its
+                required lifecycle semantics.
+            </p>
+        </section>
+
+        <section id="volatile">
+            <h2>Volatile Raw-Pointer Access</h2>
+
+            <p>Volatile access uses separate compiler-known operations:</p>
+
+            <pre><code>let value := unsafe pointer.VolatileRead()
+
+unsafe pointer.VolatileWrite(value)</code></pre>
+
+            <p>
+                Volatile access is distinct from ordinary <code>Read()</code> and <code>Write()</code>.
+            </p>
+
+            <p>It does not:</p>
+
+            <ul>
+                <li>make <code>RawPtr[T]</code> a volatile-qualified type;</li>
+                <li>create ownership;</li>
+                <li>establish synchronization;</li>
+                <li>grant hardware privilege;</li>
+                <li>establish mapping authority;</li>
+                <li>establish DMA ownership;</li>
+                <li>establish cache coherence;</li>
+                <li>provide atomicity.</li>
+            </ul>
+
+            <p>
+                Exact volatile access width and ordering are defined by the platform/volatile rules.
+            </p>
+        </section>
+
+        <section id="arithmetic">
+            <h2>Raw-Pointer Arithmetic</h2>
+
+            <p>
+                Pointer arithmetic requires unsafe.
+            </p>
+
+            <p>
+                Sec does not use ordinary numeric pointer arithmetic:
+            </p>
+
+            <pre><code>pointer + 1       // invalid raw-pointer arithmetic
+pointer - 1       // invalid raw-pointer arithmetic
+pointer++         // invalid
+pointer--         // invalid</code></pre>
+
+            <p>Canonical operations are:</p>
+
+            <pre><code>pointer.Offset(elements)
+pointer.AddBytes(bytes)
+pointer.Difference(other)</code></pre>
+
+            <p>
+                These operations compute raw addresses only.
+                They do not establish that the result is dereferenceable.
+            </p>
+        </section>
+
+        <section id="offset">
+            <h2><code>Offset(elements)</code></h2>
+
+            <p>
+                <code>Offset(elements: int)</code> computes an address offset measured in elements of
+                the pointee type.
+            </p>
+
+            <pre><code>let next := unsafe pointer.Offset(1)</code></pre>
+
+            <p>
+                The byte scaling depends on the selected target layout for <code>T</code>.
+            </p>
+
+            <p>
+                <code>Offset()</code> is invalid for <code>RawPtr[void]</code>.
+            </p>
+
+            <p>
+                The operation does not prove that the result remains within the same allocation,
+                mapped region, hardware window or live object.
+            </p>
+        </section>
+
+        <section id="addbytes">
+            <h2><code>AddBytes(bytes)</code></h2>
+
+            <p>
+                Byte-oriented pointer arithmetic uses <code>RawPtr[byte]</code>:
+            </p>
+
+            <pre><code>let next := unsafe bytes.AddBytes(offset)</code></pre>
+
+            <p>
+                This keeps byte arithmetic explicit instead of silently reinterpreting element sizes.
+            </p>
+
+            <p>
+                <code>AddBytes()</code> is defined for <code>RawPtr[byte]</code>.
+            </p>
+        </section>
+
+        <section id="difference">
+            <h2><code>Difference(other)</code></h2>
+
+            <p>
+                Two compatible raw pointers with the same element type may compute an element difference:
+            </p>
+
+            <pre><code>let distance := unsafe end.Difference(begin)</code></pre>
+
+            <p>
+                The result is an <code>int</code> where the operation is valid for the selected target
+                and address domain.
+            </p>
+
+            <p>
+                Difference does not create a safe range and does not prove common allocation origin.
+            </p>
+        </section>
+
+        <section id="comparison">
+            <h2>Raw-Pointer Comparison</h2>
+
+            <p>
+                Compatible raw pointers may be compared for equality.
+            </p>
+
+            <p>
+                Equality compares raw address identity according to the selected target representation.
+            </p>
+
+            <p>
+                Equality does not prove that either pointer is:
+            </p>
+
+            <ul>
+                <li>non-null;</li>
+                <li>live;</li>
+                <li>aligned;</li>
+                <li>dereferenceable;</li>
+                <li>owned;</li>
+                <li>within the same allocation.</li>
+            </ul>
+
+            <p>
+                Raw-pointer equality is different from safe-reference equality, which may include
+                live storage identity and generation semantics.
+            </p>
+
+            <p>
+                Ordering comparisons are not generally meaningful unless a target-specific API defines them.
+            </p>
+        </section>
+
+        <section id="integer-conversion">
+            <h2>Integer and Address Conversion</h2>
+
+            <p>
+                Interpreting an arbitrary integer as a raw pointer requires unsafe.
+            </p>
+
+            <p>
+                Converting a raw pointer to a target-sized unsigned integer representation requires
+                the applicable explicit low-level conversion.
+            </p>
+
+            <p>
+                Such conversion proves no storage validity.
+            </p>
+
+            <p>The compiler must respect:</p>
+
+            <ul>
+                <li>selected target pointer width;</li>
+                <li>address-space representation;</li>
+                <li>capability/tag requirements;</li>
+                <li>non-flat pointer models;</li>
+                <li>overflow and truncation rules.</li>
+            </ul>
+
+            <p>
+                The implementation must never use the compiler host's pointer width as a substitute
+                for the selected target's pointer model.
+            </p>
+        </section>
+
+        <section id="safe-to-raw">
+            <h2>Safe Reference to Raw Pointer</h2>
+
+            <p>
+                Converting <code>ref T</code> or <code>ref mut T</code> into raw-address semantics
+                crosses out of the safe-reference model and requires unsafe unless a specialized
+                compiler-verified adapter defines the operation as safe.
+            </p>
+
+            <p>
+                The resulting raw pointer does not keep the referenced value alive.
+            </p>
+
+            <p>
+                It also does not preserve safe-reference guarantees after the source reference or
+                source storage lifetime ends.
+            </p>
+
+            <p>
+                Raw-pointer use cannot be used to evade an active borrow conflict and later recreate
+                a conflicting safe reference.
+            </p>
+
+            <p>
+                The exact source syntax for this conversion is intentionally not specified until the
+                canonical conversion grammar is locked.
+            </p>
+        </section>
+
+        <section id="raw-to-safe">
+            <h2>Raw Pointer to Safe Reference</h2>
+
+            <p>
+                Constructing <code>ref T</code> from raw storage requires unsafe unless a trusted
+                adapter proves the complete contract.
+            </p>
+
+            <p>A shared safe reference requires at least:</p>
+
+            <ul>
+                <li>non-null address;</li>
+                <li>correct alignment;</li>
+                <li>valid initialized <code>T</code>;</li>
+                <li>readable storage;</li>
+                <li>lifetime covering the reference;</li>
+                <li>canonical provenance;</li>
+                <li>no conflicting mutable access;</li>
+                <li>foreign/hardware mutation compatible with shared semantics;</li>
+                <li>address-space/platform compatibility.</li>
+            </ul>
+
+            <p>
+                Constructing <code>ref mut T</code> additionally requires writable storage and
+                exclusive mutable authority for the complete borrow live range.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A raw address by itself proves none of these guarantees.
+            </div>
+
+            <p>
+                The exact source spelling for raw-to-safe conversion is intentionally not invented
+                by this manual until the language grammar is canonically locked.
+            </p>
+        </section>
+
+        <section id="slice-raw-parts">
+            <h2>Slice Construction from Raw Parts</h2>
+
+            <p>
+                Constructing a safe slice or view from a raw pointer plus extent is unsafe unless a
+                trusted wrapper establishes the complete slice contract.
+            </p>
+
+            <p>Required facts include:</p>
+
+            <ul>
+                <li>valid range;</li>
+                <li>nonnegative and representable extent;</li>
+                <li>no length × element-size overflow;</li>
+                <li>correct alignment;</li>
+                <li>initialized element representations;</li>
+                <li>sufficient storage lifetime;</li>
+                <li>compatible aliasing and mutability;</li>
+                <li>one compatible storage region where required;</li>
+                <li>valid target address space.</li>
+            </ul>
+
+            <p>
+                Constructing a slice from raw parts must not allocate merely to make the conversion work.
+            </p>
+
+            <p>
+                A zero-length slice does not justify fabricating an arbitrary valid scalar safe reference.
+            </p>
+        </section>
+
+        <section id="representation">
+            <h2>Unchecked Representation Construction</h2>
+
+            <p>
+                Constructing a typed value directly from raw bits or raw storage without ordinary
+                constructors is unsafe unless a compiler-verified representation operation proves validity.
+            </p>
+
+            <p>
+                Unsafe does not make every bit pattern a valid Sec value.
+            </p>
+
+            <p>Validity obligations may include:</p>
+
+            <ul>
+                <li>enum discriminant validity;</li>
+                <li>union active variant;</li>
+                <li><code>bool</code> validity;</li>
+                <li><code>rune</code> validity;</li>
+                <li>named-type contracts;</li>
+                <li>reference invariants;</li>
+                <li>ownership state;</li>
+                <li>alignment;</li>
+                <li>padding rules;</li>
+                <li>FFI layout.</li>
+            </ul>
+
+            <p>
+                A compiler-proven invalid representation is rejected even inside unsafe.
+            </p>
+        </section>
+
+        <section id="ownership-adoption">
+            <h2>Ownership Adoption from Raw or Foreign Storage</h2>
+
+            <p>
+                Turning a raw/foreign resource into an owned Sec resource is unsafe unless a safe
+                wrapper proves the complete ownership contract.
+            </p>
+
+            <p>Obligations include:</p>
+
+            <ul>
+                <li>correct allocator or provider;</li>
+                <li>matching reclamation operation;</li>
+                <li>correct extent and alignment;</li>
+                <li>uniqueness where exclusive ownership is required;</li>
+                <li>initialized object state;</li>
+                <li>destruction responsibility;</li>
+                <li>foreign lifetime and retention rules.</li>
+            </ul>
+
+            <p>
+                Numeric address alone never proves ownership.
+            </p>
+
+            <p>
+                Double adoption of the same exclusive resource is invalid.
+            </p>
+
+            <p>
+                Unsafe does not permit double destruction or double free.
+            </p>
+        </section>
+
+        <section id="foreign-release">
+            <h2>Releasing Ownership to Foreign Code</h2>
+
+            <p>
+                Passing a raw address to foreign code does not by itself transfer Sec ownership.
+            </p>
+
+            <p>
+                Ownership transfer across FFI requires an explicit foreign ownership contract.
+            </p>
+
+            <p>
+                After a committed consuming foreign transfer, the Sec source Place becomes unavailable
+                under the ordinary ownership rules.
+            </p>
+
+            <p>
+                Failure and non-commit behavior must be specified by the foreign wrapper contract.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Unsafe Does Not Disable Borrow Checking</h2>
+
+            <p>
+                Safe references continue to follow normal borrow rules inside unsafe code.
+            </p>
+
+            <p>
+                Raw aliases may exist outside the safe-reference borrow model, but using them in a
+                way that violates a live safe-reference guarantee is invalid.
+            </p>
+
+            <p>
+                Reconstructing a safe reference from raw storage must re-establish borrow compatibility.
+            </p>
+
+            <p>
+                Known overlap or alias conflict is rejected.
+            </p>
+        </section>
+
+        <section id="lifetime">
+            <h2>Unsafe Does Not Extend Lifetime</h2>
+
+            <p>
+                A raw pointer may physically outlive the storage it once addressed.
+            </p>
+
+            <p>
+                That does not make dereference after storage lifetime end valid.
+            </p>
+
+            <p>
+                Safe wrappers must not return references that depend on ended local storage.
+            </p>
+
+            <p>
+                Unsafe also does not trigger hidden heap or Arena promotion to repair an invalid lifetime.
+            </p>
+
+            <p>
+                A known use-after-domain-end is rejected even inside unsafe code.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Unsafe Does Not Disable Destruction Rules</h2>
+
+            <p>
+                Deterministic destruction remains active.
+            </p>
+
+            <p>
+                A raw write must not overwrite a live non-trivial object while silently bypassing
+                required destruction unless a dedicated low-level replacement/adoption contract proves
+                that lifecycle transition.
+            </p>
+
+            <p>
+                Unsafe operations inside <code>defer</code>, <code>free</code> or another cleanup
+                body remain explicitly marked where such operations are otherwise permitted.
+            </p>
+
+            <p>
+                Unsafe does not make panic-capable required cleanup legal.
+            </p>
+        </section>
+
+        <section id="concurrency">
+            <h2>Unsafe Does Not Legalize Concurrency Violations</h2>
+
+            <p><code>unsafe</code> does not:</p>
+
+            <ul>
+                <li>make a non-transferable value transferable;</li>
+                <li>legalize a data race;</li>
+                <li>waive thread affinity;</li>
+                <li>waive task-migration restrictions;</li>
+                <li>waive process-boundary rules;</li>
+                <li>waive ISR restrictions;</li>
+                <li>waive destruction-context restrictions.</li>
+            </ul>
+
+            <p>
+                Volatile access is not synchronization.
+            </p>
+
+            <p>
+                Foreign/raw concurrent access requires explicit synchronization and ownership contracts.
+            </p>
+        </section>
+
+        <section id="address-spaces">
+            <h2>Address Spaces and Target Dependence</h2>
+
+            <p>
+                <code>RawPtr[T]</code> uses the selected target's pointer and address-space model.
+            </p>
+
+            <p>
+                The compiler must not assume:
+            </p>
+
+            <ul>
+                <li>one flat address space;</li>
+                <li>host pointer width;</li>
+                <li>integer-only pointer representation;</li>
+                <li>interchangeability of all address spaces.</li>
+            </ul>
+
+            <p>
+                A target may use tagged, capability or otherwise richer pointer representations.
+            </p>
+
+            <p>
+                A target may reject conversions between incompatible address spaces.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>Hardware and Fixed Addresses</h2>
+
+            <p>
+                Hardware knowledge is not automatically unsafe merely because it refers to physical addresses.
+            </p>
+
+            <p>
+                Compiler/platform-verified fixed-address declarations may remain safe:
+            </p>
+
+            <pre><code>@address(Platform.GPIOA)
+let mut gpio: GpioRegisters</code></pre>
+
+            <p>
+                Raw numeric address interpretation requires unsafe when the compiler cannot prove the
+                complete storage/access contract.
+            </p>
+
+            <p>
+                Raw-pointer MMIO access remains subject to:
+            </p>
+
+            <ul>
+                <li>exact access width;</li>
+                <li>volatile ordering;</li>
+                <li>mapping validity;</li>
+                <li>device availability;</li>
+                <li>privilege rules;</li>
+                <li>ISR restrictions.</li>
+            </ul>
+
+            <p>
+                Hardware signal polarity remains application/driver semantics.
+            </p>
+        </section>
+
+        <section id="mappings">
+            <h2>Runtime Mappings</h2>
+
+            <p>
+                Creating and destroying mapped regions follows the platform mapping/resource model.
+            </p>
+
+            <p>
+                Unsafe access through a raw pointer into a mapping still requires:
+            </p>
+
+            <ul>
+                <li>mapping lifetime;</li>
+                <li>valid extent;</li>
+                <li>correct address space;</li>
+                <li>appropriate access mode.</li>
+            </ul>
+
+            <p>
+                A raw pointer does not keep the mapping alive.
+            </p>
+
+            <p>
+                Remap or unmap may invalidate both raw and safe views.
+            </p>
+
+            <p>
+                Safe mapping wrappers may encapsulate the raw platform operations when they preserve
+                the complete contract.
+            </p>
+        </section>
+
+        <section id="isr">
+            <h2>Interrupt Contexts</h2>
+
+            <p>
+                Unsafe code reachable from an ISR remains subject to all interrupt safety restrictions.
+            </p>
+
+            <p>
+                <code>unsafe</code> does not waive:
+            </p>
+
+            <ul>
+                <li><code>@isr</code> or <code>@interruptSafe</code> requirements;</li>
+                <li>no-panic rules;</li>
+                <li>no-allocation rules;</li>
+                <li>no-blocking rules;</li>
+                <li>bounded-work requirements;</li>
+                <li>synchronization requirements;</li>
+                <li>hardware-access restrictions.</li>
+            </ul>
+
+            <p>
+                Named compiler-known interrupt vectors may be safe when the platform contract verifies them.
+                Raw numeric vector/address interpretation may require an unsafe trust boundary.
+            </p>
+        </section>
+
+        <section id="ffi-boundary">
+            <h2>Unsafe and the FFI Boundary</h2>
+
+            <p>
+                Foreign code is a trust boundary because Sec cannot verify its implementation.
+            </p>
+
+            <p>A useful FFI contract may need to define:</p>
+
+            <ul>
+                <li>ABI and linkage;</li>
+                <li>nullability;</li>
+                <li>ownership transfer;</li>
+                <li>borrowing and retention;</li>
+                <li>lifetime;</li>
+                <li>thread/callback affinity;</li>
+                <li>allocation and deallocation;</li>
+                <li>panic/abort/unwind behavior;</li>
+                <li>blocking or suspension;</li>
+                <li>I/O and external mutation;</li>
+                <li>layout, alignment and extent.</li>
+            </ul>
+
+            <p>
+                Unknown foreign behavior is treated conservatively where proof is required.
+            </p>
+
+            <p>
+                The next chapter covers FFI declarations and contracts in detail.
+            </p>
+        </section>
+
+        <section id="unsafe-extern">
+            <h2><code>unsafe extern</code></h2>
+
+            <p>
+                Unsafe foreign functions combine separate safety and ABI/linkage concepts:
+            </p>
+
+            <pre><code>unsafe extern "system" fn rawSysCall(
+    number: int,
+    argument1: uint64,
+) int64</code></pre>
+
+            <p>Here:</p>
+
+            <ul>
+                <li><code>unsafe</code> defines caller proof obligations;</li>
+                <li><code>extern "system"</code> defines foreign linkage/ABI selection;</li>
+                <li><code>fn</code> declares the callable.</li>
+            </ul>
+
+            <p>
+                Calling an unsafe extern function requires an unsafe context:
+            </p>
+
+            <pre><code>let result := unsafe rawSysCall(number, argument)</code></pre>
+
+            <p>
+                The marker does not prove that the arguments, pointers, ownership or ABI declaration are correct.
+            </p>
+        </section>
+
+        <section id="inline-assembly">
+            <h2>Inline Assembly</h2>
+
+            <p>
+                Inline assembly is an unsafe operation and trust boundary.
+            </p>
+
+            <p>
+                Exact assembly syntax belongs to the inline-assembly rules, but the assembly contract
+                must describe enough behavior for compiler correctness.
+            </p>
+
+            <p>Relevant facts include:</p>
+
+            <ul>
+                <li>register inputs and outputs;</li>
+                <li>clobbers;</li>
+                <li>memory reads and writes;</li>
+                <li>volatile behavior;</li>
+                <li>control flow;</li>
+                <li>stack behavior;</li>
+                <li>possible trap or abort;</li>
+                <li>blocking;</li>
+                <li>I/O;</li>
+                <li>external mutation.</li>
+            </ul>
+
+            <p>
+                Assembly effects remain active inside unsafe.
+            </p>
+        </section>
+
+        <section id="function-values">
+            <h2>Unsafe Function Values</h2>
+
+            <p>
+                Unsafe status is part of callable compatibility.
+            </p>
+
+            <p>
+                An unsafe function cannot implicitly become a safe function value.
+            </p>
+
+            <p>
+                Calling through an unsafe function value requires unsafe context.
+            </p>
+
+            <p>
+                A safe wrapper may produce a safe callable only after discharging the caller obligations.
+            </p>
+
+            <p>
+                Effects and trust provenance remain attached to the callable target set.
+            </p>
+        </section>
+
+        <section id="interfaces">
+            <h2>Unsafe and Interfaces</h2>
+
+            <p>
+                Interface method safety contracts are preserved by implementations.
+            </p>
+
+            <p>
+                A safe interface method cannot be implemented by a callable that requires additional
+                unsafe caller obligations.
+            </p>
+
+            <p>
+                An unsafe interface method may have an internally safe implementation while remaining
+                unsafe to call through the interface contract.
+            </p>
+
+            <p>
+                Dynamic dispatch must not erase unsafe status.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Unsafe and Generics</h2>
+
+            <p>
+                Generic code preserves the unsafe requirements of operations on concrete instantiated
+                types and callable values.
+            </p>
+
+            <p>
+                A generic constraint must not assume an operation is safe when the callable safety
+                contract is unknown.
+            </p>
+
+            <p>
+                Specialization may prove a previously unnecessary unsafe boundary redundant only
+                when canonical semantics permit that conclusion.
+            </p>
+
+            <p>
+                Trust provenance from generic dependencies remains available to analysis and tooling.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closures and Raw Pointers</h2>
+
+            <p>
+                A closure may capture a <code>RawPtr[T]</code> as an ordinary copyable address value.
+            </p>
+
+            <p>
+                That does not make later pointer interpretation safe.
+            </p>
+
+            <p>
+                Dereferencing the captured raw pointer still requires explicit unsafe context and
+                complete validity obligations at the use site.
+            </p>
+
+            <p>
+                Closure lifetime and transferability rules remain active normally.
+            </p>
+        </section>
+
+        <section id="compile-time">
+            <h2>Compile-Time Evaluation</h2>
+
+            <p>
+                Ordinary compile-time evaluation rejects unsafe operations.
+            </p>
+
+            <p>The compiler does not normally execute operations such as:</p>
+
+            <ul>
+                <li>raw-pointer dereference;</li>
+                <li>foreign calls;</li>
+                <li>inline assembly;</li>
+                <li>addressed-storage access;</li>
+                <li>raw target-memory access;</li>
+                <li>unsafe ownership adoption.</li>
+            </ul>
+
+            <p>
+                A compiler-known intrinsic may be compile-time evaluable only when explicitly defined as such.
+            </p>
+
+            <p>
+                Writing an unsafe context does not force or authorize compile-time execution.
+            </p>
+        </section>
+
+        <section id="backend-ub">
+            <h2>Unsafe Is Not a General Backend-UB Switch</h2>
+
+            <p>
+                Sec should minimize backend undefined behavior even for unsafe operations.
+            </p>
+
+            <p>
+                Where practical, unsafe operations should lower to:
+            </p>
+
+            <ul>
+                <li>defined target instructions;</li>
+                <li>explicit traps;</li>
+                <li>validated intrinsics;</li>
+                <li>well-specified foreign ABI operations;</li>
+                <li>carefully bounded backend assumptions.</li>
+            </ul>
+
+            <p>
+                Backend assumptions must never be stronger than the obligations or trusted facts
+                accepted at the Sec/Semantic IR boundary.
+            </p>
+
+            <p>
+                When violating an unsafe obligation necessarily violates backend assumptions, tooling
+                and documentation should describe that risk accurately.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>Unsafe Requires No Mandatory Runtime</h2>
+
+            <p>
+                Unsafe is primarily a compile-time language and analysis feature.
+            </p>
+
+            <p>It requires no mandatory:</p>
+
+            <ul>
+                <li>runtime unsafe flag;</li>
+                <li>dynamic trust checker;</li>
+                <li>pointer metadata;</li>
+                <li>provenance object;</li>
+                <li>generational reference representation;</li>
+                <li>exception machinery;</li>
+                <li>general Sec runtime.</li>
+            </ul>
+
+            <p>
+                A selected target profile may independently use runtime checks for other safety models.
+            </p>
+
+            <p>
+                Trust metadata may be erased from release binaries when the selected tooling or
+                certification profile does not require it.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Unsafe diagnostics should distinguish a missing unsafe context from an operation
+                that is already known to be invalid.
+            </p>
+
+            <h3>Missing unsafe context</h3>
+
+            <pre><code>raw-pointer read requires an unsafe context
+
+    pointer.Read()
+
+help: write `unsafe pointer.Read()` when the required safety obligations are established</code></pre>
+
+            <h3>Known invalid operation</h3>
+
+            <pre><code>this raw-pointer read is known to use a null address
+
+`unsafe` can accept obligations that the compiler cannot prove,
+but it does not make a proven null dereference valid
+
+help: validate the raw pointer before reading it</code></pre>
+
+            <h3>Unsafe function body remains explicit</h3>
+
+            <pre><code>raw-pointer dereference still requires an explicit unsafe operation
+
+this function is declared `unsafe fn`, but its body is not implicitly unsafe
+
+help: mark the exact operation:
+    return unsafe pointer.Read()</code></pre>
+
+            <p>Important diagnostic categories include:</p>
+
+            <ul>
+                <li>missing unsafe context;</li>
+                <li>unnecessary or redundant unsafe;</li>
+                <li>unsafe callable invoked outside context;</li>
+                <li>interface/function-value safety mismatch;</li>
+                <li>unknown generic callable safety;</li>
+                <li>unknown foreign ownership or effects;</li>
+                <li>known raw-pointer null;</li>
+                <li>known alignment violation;</li>
+                <li>known lifetime violation;</li>
+                <li>known alias conflict;</li>
+                <li>invalid raw-pointer range;</li>
+                <li>uninitialized read;</li>
+                <li>invalid representation;</li>
+                <li>unverified target address;</li>
+                <li>unsafe cleanup effect;</li>
+                <li>compile-time-forbidden unsafe operation.</li>
+            </ul>
+        </section>
+
+        <section id="tooling">
+            <h2>Formatter, LSP and Analysis</h2>
+
+            <p>The formatter preserves canonical forms:</p>
+
+            <pre><code>let value := unsafe pointer.Read()
+
+unsafe pointer.Write(value)
+
+let result := unsafe {
+    Prepare(pointer)
+    pointer.Read()
+}
+
+unsafe fn FromRawParts(...) Buffer {
+}
+
+unsafe extern "system" fn rawSysCall(number: int) int64</code></pre>
+
+            <p>
+                The formatter must not invent:
+            </p>
+
+            <ul>
+                <li>C-style pointer syntax;</li>
+                <li><code>unsafe struct</code>;</li>
+                <li><code>unsafe type</code>;</li>
+                <li>unlocked raw/reference conversion syntax.</li>
+            </ul>
+
+            <p>
+                LSP and analysis tooling may expose:
+            </p>
+
+            <ul>
+                <li>unsafe operation identity;</li>
+                <li>caller obligations;</li>
+                <li>unsafe callable status;</li>
+                <li>foreign trust facts;</li>
+                <li>effects;</li>
+                <li>trust provenance;</li>
+                <li>nearest unsafe context;</li>
+                <li>safe-wrapper boundary;</li>
+                <li>raw address-space/null/alignment/range facts;</li>
+                <li>safe alternatives where available.</li>
+            </ul>
+
+            <p>
+                Tooling must never imply that wrapping a compiler-proven-invalid operation in
+                <code>unsafe</code> will fix the program.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Keep unsafe regions as narrow as practical.</li>
+                <li>Prefer single-operation <code>unsafe</code> when one operation carries the trust boundary.</li>
+                <li>Document the exact caller obligations of public <code>unsafe fn</code> APIs.</li>
+                <li>Build small safe wrappers that validate all obligations before entering unsafe code.</li>
+                <li>Do not use <code>unsafe</code> as a way to bypass ownership, borrowing or lifetime errors.</li>
+                <li>Use <code>RawPtr[T]</code> only when safe references or platform abstractions cannot express the required operation.</li>
+                <li>Remember that a raw pointer does not keep storage alive.</li>
+                <li>Remember that copying a raw pointer does not copy or own the pointee.</li>
+                <li>Use <code>Read</code>/<code>Write</code> and volatile operations intentionally; they have different semantics.</li>
+                <li>Use <code>Offset</code>, <code>AddBytes</code> and <code>Difference</code> rather than numeric pointer operators.</li>
+                <li>Do not create safe references from raw storage until every reference guarantee is re-established.</li>
+                <li>Do not infer ownership from an address.</li>
+                <li>Prefer compiler/platform-known hardware bindings such as <code>@address</code> over unverified numeric addresses.</li>
+                <li>Treat foreign code, inline assembly and unverified target facts as explicit trust boundaries.</li>
+                <li>Keep effects such as panic, allocation, blocking and volatile I/O visible even inside unsafe code.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>unsafe</code> permits operations whose complete safety obligations are not automatically proven.</li>
+                <li><code>unsafe</code> disables no compiler analysis.</li>
+                <li>A compiler-proven false safety obligation is rejected even inside unsafe.</li>
+                <li>Sec supports single-operation <code>unsafe operation</code> and block-form <code>unsafe { ... }</code>.</li>
+                <li>Unsafe blocks follow normal block-expression result semantics.</li>
+                <li>Unsafe scope is lexical and does not propagate to parent or sibling scopes.</li>
+                <li>Empty or redundant unsafe contexts are valid and normally diagnosed informationally.</li>
+                <li>Sec supports <code>unsafe fn</code> and unsafe methods.</li>
+                <li>Calling an unsafe callable requires an unsafe context.</li>
+                <li>The body of <code>unsafe fn</code> is not implicitly unsafe.</li>
+                <li>Every actual unsafe operation inside an unsafe function remains explicitly marked.</li>
+                <li>Unsafe callable contracts define caller proof obligations.</li>
+                <li>Caller obligations may include non-nullness, alignment, lifetime, aliasing, ownership, address-space, ABI and concurrency facts.</li>
+                <li>The compiler may prove some obligations and reject obligations known to be false.</li>
+                <li>Public unsafe APIs should document their caller obligations.</li>
+                <li>Compiler-known unsafe operations carry machine-readable obligation metadata.</li>
+                <li>A safe wrapper may encapsulate unsafe code only after establishing every caller obligation.</li>
+                <li>Unsafe does not transitively mark callers through a correct safe wrapper.</li>
+                <li>Trust provenance may remain available internally even when the wrapper is caller-safe.</li>
+                <li>Unsafe status and effects are separate semantic dimensions.</li>
+                <li>Unsafe does not waive panic, allocation, blocking, suspension, volatile, I/O or external-mutation effects.</li>
+                <li><code>@noPanic</code>, <code>@noAlloc</code>, <code>@noBlock</code> and ISR restrictions remain active.</li>
+                <li>Unsafe does not authorize hidden allocation.</li>
+                <li>Unsafe does not authorize blocking or suspension in contexts that forbid them.</li>
+                <li><code>RawPtr[T]</code> is an unchecked typed address value.</li>
+                <li><code>RawPtr[T]</code> is not a safe reference.</li>
+                <li><code>RawPtr[T]</code> is copyable and non-owning.</li>
+                <li>Copying or moving a raw-pointer value does not copy, move, retain or own its pointee.</li>
+                <li>Destroying a raw pointer does not destroy or deallocate the pointee.</li>
+                <li><code>RawPtr[void]</code> represents an untyped raw address.</li>
+                <li><code>RawPtr[void]</code> cannot directly perform typed reads, writes, volatile access or element offsets.</li>
+                <li>Storing, copying, moving, returning, passing, equality-testing and null-testing raw pointers are not inherently unsafe.</li>
+                <li>Raw reads, writes, volatile access, pointer arithmetic, integer-address construction, raw-to-safe conversion, raw slice construction and ownership adoption require unsafe unless a specialized verified operation says otherwise.</li>
+                <li>Null is part of the value domain of every <code>RawPtr[T]</code>.</li>
+                <li>Dereferencing a null raw pointer is invalid.</li>
+                <li>Unsafe does not make a known null dereference valid.</li>
+                <li>Safe references remain non-null.</li>
+                <li>Raw-pointer construction from safe references, integers and unrelated pointer representations is never implicit.</li>
+                <li>The exact source spelling for general <code>RawPtr ↔ ref/ref mut</code> conversion is intentionally not specified until canonically locked.</li>
+                <li><code>pointer.Read()</code> performs a typed raw read under explicit unsafe obligations.</li>
+                <li><code>pointer.Write(value)</code> performs a typed raw write under explicit unsafe obligations.</li>
+                <li>Raw writes must not bypass required destruction of a live non-trivial object.</li>
+                <li><code>VolatileRead()</code> and <code>VolatileWrite()</code> are distinct from ordinary raw access.</li>
+                <li>Volatile access does not imply synchronization, atomicity, ownership or hardware privilege.</li>
+                <li>Raw-pointer arithmetic uses <code>Offset</code>, <code>AddBytes</code> and <code>Difference</code>.</li>
+                <li>Ordinary numeric operators are not raw-pointer arithmetic.</li>
+                <li><code>Offset</code> scales by target <code>sizeof(T)</code> and is invalid for <code>RawPtr[void]</code>.</li>
+                <li><code>AddBytes</code> is byte-oriented and defined for <code>RawPtr[byte]</code>.</li>
+                <li><code>Difference</code> requires compatible same-element-type raw pointers.</li>
+                <li>Pointer arithmetic does not prove bounds or common allocation identity.</li>
+                <li>Raw-pointer equality compares raw address identity and does not imply dereferenceability.</li>
+                <li>Raw-pointer equality is distinct from safe-reference identity.</li>
+                <li>Integer/address conversion must use the selected target pointer representation, never compiler-host assumptions.</li>
+                <li>A raw pointer derived from a safe reference does not keep the referent alive.</li>
+                <li>Raw-to-safe reference construction must re-establish non-nullness, alignment, representation, lifetime, provenance and borrow authority.</li>
+                <li>Constructing <code>ref mut T</code> from raw storage additionally requires writable storage and exclusive mutable authority.</li>
+                <li>Constructing a safe slice from raw parts requires valid extent, alignment, initialization, lifetime, aliasing and address-space proof.</li>
+                <li>Unsafe does not make every raw bit pattern a valid typed value.</li>
+                <li>Unchecked enum/union/representation construction remains subject to type validity and lifecycle rules.</li>
+                <li>Adopting ownership from raw or foreign storage requires the correct provider, reclamation, uniqueness, initialization and lifetime contract.</li>
+                <li>Numeric address alone never proves ownership.</li>
+                <li>Unsafe does not permit double adoption, double destruction or double free.</li>
+                <li>Passing a raw pointer to foreign code does not by itself transfer ownership.</li>
+                <li>Committed foreign ownership transfer makes the Sec source unavailable according to ordinary ownership rules.</li>
+                <li>Unsafe does not disable safe-reference borrow checking.</li>
+                <li>Raw aliases cannot be used to manufacture conflicting safe borrows.</li>
+                <li>Unsafe does not extend storage, object or reference lifetime.</li>
+                <li>Known use-after-lifetime-end remains invalid inside unsafe.</li>
+                <li>Unsafe does not disable deterministic destruction.</li>
+                <li>Unsafe does not legalize data races or waive thread/task/process/ISR restrictions.</li>
+                <li>Raw-pointer address spaces and representation are selected-target facts.</li>
+                <li>The compiler must not assume one flat address space or compiler-host pointer width.</li>
+                <li>Compiler/platform-verified hardware addresses may be safe without raw numeric address interpretation.</li>
+                <li><code>@address</code> is not automatically an unsafe operation.</li>
+                <li>Raw-pointer MMIO access remains subject to volatile, mapping, privilege and ISR rules.</li>
+                <li>Raw pointers do not keep runtime mappings alive.</li>
+                <li>Unsafe foreign functions use separate <code>unsafe</code>, <code>extern "&lt;abi&gt;"</code> and <code>fn</code> semantics.</li>
+                <li>Foreign undefined behavior is not repaired by Sec's unsafe marker.</li>
+                <li>Inline assembly is an unsafe trust boundary and must publish enough behavior for compiler correctness.</li>
+                <li>Unsafe status is part of function-value and interface callable compatibility.</li>
+                <li>Generic specialization preserves unsafe requirements.</li>
+                <li>A closure may safely store a raw-pointer value while later dereference remains unsafe.</li>
+                <li>Ordinary compile-time evaluation rejects unsafe operations unless a specific compiler-known intrinsic says otherwise.</li>
+                <li>Unsafe is not permission for unrestricted backend undefined behavior.</li>
+                <li>Unsafe requires no mandatory Sec runtime or dynamic borrow/trust machinery.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="29-projects.html">Previous: Projects</a>
+            <a href="31-ffi.html">Next: Foreign Function Interfaces</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

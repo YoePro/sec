@@ -1,0 +1,4 @@
+module unterminated_character_literal_invalid
+
+let broken := 'x
+let recoveredValue := 7

@@ -1,0 +1,75 @@
+/** Module documentation. */
+module documentation_attachment_valid
+
+/** Record documentation. */
+type Record struct {
+    /** Value field documentation. */
+    Value: int,
+
+    /** Detached field documentation. */
+
+    Ignored: int,
+}
+
+/** Mode documentation. */
+enum Mode {
+    /** Active value documentation. */
+    Active
+    /** Idle value documentation without a preceding comma. */
+    Idle
+}
+
+/** Choice documentation. */
+type Choice union {
+    /** Item variant documentation. */
+    Item(int),
+}
+
+/** Reader documentation. */
+interface Reader {
+    /** Read method documentation. */
+    fn Read() int
+
+    /** Size property documentation. */
+    property Size: int {
+        get
+    }
+
+    /** A final documentation comment has no declaration target. */
+}
+
+/** Implementation documentation. */
+impl Record {
+    /** Initializer documentation. */
+    init() {
+    }
+
+    /** Method documentation. */
+    fn Read() int {
+        return 1
+    }
+
+    /** Property documentation. */
+    property Size: int {
+        get {
+            return 1
+        }
+    }
+
+    /** Associated value documentation. */
+    let Default: int := 1
+}
+
+/** First function documentation block. */
+/** Second function documentation block. */
+fn Main() void {
+    /** Local declaration documentation. */
+    let value := 1
+
+    /** Executable statements are not documentation targets. */
+    return
+}
+
+/// Ordinary line comments are not documentation comments.
+fn Undocumented() void {
+}

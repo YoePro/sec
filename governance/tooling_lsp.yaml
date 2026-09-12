@@ -2,6 +2,30 @@ schema_version: 1
 area: tooling-lsp
 purpose: Language-server behavior, protocol integration, and editor actions.
 integrations:
+  - id: tooling.vscode-language-icon
+    area: tooling
+    status: implemented
+    integrated: "2026-09-12"
+    summary: >-
+      Packages the canonical Sec language mark with the VS Code extension and
+      registers it as the default file icon for Sec language documents in both
+      light and dark editor themes.
+    rules:
+      - rules/tooling/lsp.md
+    code:
+      - vscode/package.json
+      - vscode/images/sec-language.svg
+      - vscode/README.md
+    implemented:
+      - the language contribution maps the sec language ID, and therefore .sec and .se files, to an extension-local icon
+      - light and dark theme entries use the same opaque blue-and-white canonical mark, which has sufficient contrast in both themes
+      - the icon is stored inside the extension root so VS Code packaging includes it without depending on the manual site tree
+    verification:
+      - command: npm --prefix vscode run compile
+        result: passed
+      - command: node manifest and asset validation plus npm pack --dry-run --json
+        result: passed; both language-icon paths resolve to the packaged SVG and the dry-run package file list contains images/sec-language.svg
+
   - id: tooling.lsp-type-member-completion
     area: tooling
     status: implemented

@@ -1,0 +1,1678 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Compile-Time Evaluation - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#cte">Compile-Time Evaluation</a>
+        <a href="#ordinary-sec">Ordinary Sec Semantics</a>
+        <a href="#not-a-sub-language">No const/comptime Sub-Language</a>
+        <a href="#two-classes">Two Compile-Time Contexts</a>
+        <a href="#plan-time">Plan-Time Evaluation</a>
+        <a href="#semantic-cte">Semantic CTE</a>
+        <a href="#required-vs-optional">Required vs Optional Evaluation</a>
+        <a href="#required-contexts">Required Contexts</a>
+        <a href="#static-initializers">Static Initializers</a>
+        <a href="#local-expressions">Local Expressions</a>
+        <a href="#typed-values">Typed Compile-Time Values</a>
+        <a href="#host-independence">Host Independence</a>
+        <a href="#types-not-values">Types Are Not CTE Values</a>
+        <a href="#no-reflection">No General Reflection</a>
+        <a href="#no-codegen">No Declaration Generation</a>
+        <a href="#sizeof">SizeOf</a>
+        <a href="#generic-boundary">Generic Boundary</a>
+        <a href="#value-generics">No Implicit Value Generics</a>
+        <a href="#path-sensitive">Path-Sensitive Legality</a>
+        <a href="#allowed-computation">Allowed Computation</a>
+        <a href="#runtime-state">No Mutable Runtime State</a>
+        <a href="#forbidden-effects">Forbidden Effects</a>
+        <a href="#unsafe">unsafe Does Not Expand CTE</a>
+        <a href="#transient-allocation">Transient Allocation</a>
+        <a href="#runtime-allocator">Runtime Allocator Resources</a>
+        <a href="#ownership">Ownership During CTE</a>
+        <a href="#destruction">Destruction During CTE</a>
+        <a href="#borrowing">Borrowing and References</a>
+        <a href="#raw-pointers">Raw Pointers During CTE</a>
+        <a href="#evaluability-materialization">Evaluability vs Materialization</a>
+        <a href="#materializable-values">Materializable Values</a>
+        <a href="#dynamic-collections">Dynamic Collections</a>
+        <a href="#views">Views and Slices</a>
+        <a href="#materialization-graph">Materialization Graph</a>
+        <a href="#new-identity">New Program Identity</a>
+        <a href="#dependencies">Dependency Graph</a>
+        <a href="#cycles">Dependency Cycles</a>
+        <a href="#recursion">Recursion Is Different</a>
+        <a href="#layout-cycles">Layout/Value Cycles</a>
+        <a href="#cross-module">Cross-Module CTE</a>
+        <a href="#visibility">Visibility Still Applies</a>
+        <a href="#generic-cte">Generic CTE</a>
+        <a href="#result">Result and Err</a>
+        <a href="#panic">assert, Panic and Failed Operations</a>
+        <a href="#resource-limits">Loops, Recursion and Budgets</a>
+        <a href="#determinism">Determinism</a>
+        <a href="#context-validation">Context Validation</a>
+        <a href="#no-runtime-fallback">No Runtime Fallback</a>
+        <a href="#pipeline">Compiler Pipeline Boundary</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html" class="active">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Compile-Time Evaluation</div>
+
+        <h1 id="cte">Compile-Time Evaluation</h1>
+
+        <p>
+            Sec can execute ordinary typed Sec expressions during compilation when a language
+            construct requires a value before runtime.
+        </p>
+
+        <pre><code>fn CalculateBufferSize() uint {
+    return 4096
+}
+
+let BufferSize := CalculateBufferSize()</code></pre>
+
+        <p>
+            The function is an ordinary Sec function.
+            It does not need a special <code>const</code> or <code>comptime</code> modifier merely
+            because one call is evaluated during compilation.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Semantic compile-time evaluation executes ordinary typed Sec
+            semantics in a restricted deterministic compiler environment. It is not a second source language.
+        </div>
+
+        <section id="ordinary-sec">
+            <h2>Compile-Time Evaluation Uses Ordinary Sec Semantics</h2>
+
+            <p>
+                Semantic CTE preserves the normal language rules for:
+            </p>
+
+            <ul>
+                <li>arithmetic and comparisons;</li>
+                <li>boolean expressions;</li>
+                <li>control flow;</li>
+                <li>function calls and return;</li>
+                <li><code>Result</code> and <code>Option</code>;</li>
+                <li><code>try</code>;</li>
+                <li><code>assert</code> and panic semantics;</li>
+                <li>ownership, move and copy;</li>
+                <li>borrowing and references;</li>
+                <li>destruction and <code>defer</code>;</li>
+                <li>concrete generic callable semantics;</li>
+                <li>property and method resolution;</li>
+                <li>nominal type identity.</li>
+            </ul>
+
+            <p>
+                CTE does not introduce a second integer model, a second ownership model or a second
+                error model.
+            </p>
+        </section>
+
+        <section id="not-a-sub-language">
+            <h2>Sec 0.1 Has No <code>const fn</code> or <code>comptime</code> Sub-Language</h2>
+
+            <p>Sec 0.1 does not introduce source forms such as:</p>
+
+            <pre><code>const fn
+comptime fn
+comptime expression
+comptime block
+compile-time namespace
+IsCompileTime()</code></pre>
+
+            <p>
+                An ordinary function may run at runtime in one call and during semantic CTE in another.
+            </p>
+
+            <pre><code>fn CalculateSize(scale: uint) uint {
+    return 1024 * scale
+}</code></pre>
+
+            <p>
+                The source function itself is not permanently classified as a compile-time function.
+            </p>
+
+            <p>
+                It also cannot observe merely that the compiler happens to be evaluating it during CTE.
+            </p>
+        </section>
+
+        <section id="two-classes">
+            <h2>Sec Distinguishes Two Compile-Time Context Classes</h2>
+
+            <p>The compiler distinguishes:</p>
+
+            <pre><code>PlanTimeRequiredContext
+SemanticCompileTimeRequiredContext</code></pre>
+
+            <p>
+                These are compiler-semantic terms, not Sec source declarations.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Context</th><th>Purpose</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>PlanTimeRequiredContext</code></td>
+                            <td>Must resolve before the active semantic source graph is fully established</td>
+                        </tr>
+                        <tr>
+                            <td><code>SemanticCompileTimeRequiredContext</code></td>
+                            <td>Runs after enough typed semantic information exists for ordinary typed Sec execution</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="plan-time">
+            <h2>Plan-Time Evaluation Is Deliberately Restricted</h2>
+
+            <p>
+                Plan-time evaluation exists for source-selection and similar compilation-plan decisions.
+            </p>
+
+            <p>It may use only inputs explicitly allowed by the owning rule, such as:</p>
+
+            <ul>
+                <li>literals;</li>
+                <li>typed configuration parameters;</li>
+                <li>canonical target/platform facts available at plan time;</li>
+                <li>restricted operators;</li>
+                <li>compiler-known identities explicitly made available by that grammar.</li>
+            </ul>
+
+            <p>
+                Plan-time evaluation cannot call arbitrary ordinary functions whose availability or
+                body depends on the source graph that the same evaluation is trying to select.
+            </p>
+
+            <p>
+                This prevents phase cycles.
+            </p>
+
+            <p>
+                <code>@target</code> and <code>@when</code> are the main user-visible plan-time cases
+                and are covered in chapter 38.
+            </p>
+        </section>
+
+        <section id="semantic-cte">
+            <h2>Semantic CTE Can Execute Ordinary User Functions</h2>
+
+            <p>
+                A normal user-defined function may execute during semantic CTE when:
+            </p>
+
+            <ul>
+                <li>the function is semantically valid;</li>
+                <li>all required arguments are compile-time values;</li>
+                <li>the concrete executed path uses only CTE-permitted operations;</li>
+                <li>generic identities are concrete where required;</li>
+                <li>evaluation terminates within compiler resource limits.</li>
+            </ul>
+
+            <pre><code>fn MakeExtent(base: uint, multiplier: uint) uint {
+    return base * multiplier
+}
+
+let BufferLength := MakeExtent(64, 8)</code></pre>
+
+            <p>
+                No special function modifier is required.
+            </p>
+        </section>
+
+        <section id="required-vs-optional">
+            <h2>Required CTE and Optional Constant Folding Are Different</h2>
+
+            <p>
+                A language construct may require compile-time evaluation.
+                In that case, CTE must succeed according to the language rules.
+            </p>
+
+            <p>
+                Separately, the optimizer may choose to evaluate ordinary runtime expressions early:
+            </p>
+
+            <pre><code>fn Work() void {
+    let value := 10 * 20
+}</code></pre>
+
+            <p>
+                The expression above has ordinary runtime semantics.
+                The compiler may fold it to <code>200</code>, but that optimization is not required CTE.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> A value being statically known does not automatically make
+                its source position a compile-time-required context.
+            </div>
+
+            <p>
+                Disabling optional folding must not make an otherwise valid runtime program invalid.
+            </p>
+        </section>
+
+        <section id="required-contexts">
+            <h2>The Owning Language Rule Defines Required Contexts</h2>
+
+            <p>
+                CTE itself does not decide that every “constant-looking” expression must run during compilation.
+            </p>
+
+            <p>
+                The rule owning a source construct defines:
+            </p>
+
+            <ul>
+                <li>whether compile-time evaluation is required;</li>
+                <li>whether the context is plan-time or semantic CTE;</li>
+                <li>the required result type;</li>
+                <li>the legal value domain;</li>
+                <li>whether static materialization is required;</li>
+                <li>which compiler-known inputs are available.</li>
+            </ul>
+
+            <p>Examples of semantic CTE contexts include, where their owning rules permit expressions:</p>
+
+            <ul>
+                <li>module/static initializers that must be established during compilation;</li>
+                <li>fixed array extents;</li>
+                <li>static shaped extents and ranks;</li>
+                <li>register widths and compile-time field values;</li>
+                <li>explicit enum values;</li>
+                <li>other declaration/type metadata explicitly requiring a semantic compile-time value.</li>
+            </ul>
+
+            <p>
+                Generic constraint checking is compile-time semantic analysis, but it is not itself
+                automatically a semantic CTE request.
+            </p>
+        </section>
+
+        <section id="static-initializers">
+            <h2>Static Initializers May Require Semantic CTE</h2>
+
+            <pre><code>fn CalculateBufferSize() uint {
+    return 4096
+}
+
+let BufferSize := CalculateBufferSize()</code></pre>
+
+            <p>
+                When the owning static rule requires the initializer to be established during
+                compilation, the expression is a semantic compile-time-required context.
+            </p>
+
+            <p>
+                A mutable static may likewise have a compile-time-established initial value:
+            </p>
+
+            <pre><code>fn CalculateInitialRetryCount() int {
+    return 3
+}
+
+let mut RetryCount: int := CalculateInitialRetryCount()</code></pre>
+
+            <p>
+                After program initialization, <code>RetryCount</code> is ordinary mutable runtime state.
+                Knowing its initial value at compile time does not make later reads CTE-safe.
+            </p>
+
+            <p>
+                If a required initializer cannot be evaluated, the compiler must not silently replace
+                it with a hidden runtime initializer call.
+            </p>
+        </section>
+
+        <section id="local-expressions">
+            <h2>Ordinary Local Expressions Stay Ordinary Runtime Expressions</h2>
+
+            <pre><code>fn Work() void {
+    let value := 10 * 20
+}</code></pre>
+
+            <p>
+                This binding is not CTE-required merely because its value is easy for the compiler to determine.
+            </p>
+
+            <p>
+                A nested source position inside a runtime function may still be CTE-required if the
+                owning construct requires it, such as a fixed type extent.
+            </p>
+        </section>
+
+        <section id="typed-values">
+            <h2>Compile-Time Results Are Typed Sec Values</h2>
+
+            <p>
+                Successful semantic CTE produces a value with a canonical Sec type identity and a
+                semantic value.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>uint32 with value 42
+
+SortOrder[User] with value SortOrder.Ascending
+
+Point with value {
+    X: 10,
+    Y: 20,
+}</code></pre>
+
+            <p>
+                Nominal identity remains part of the value.
+                Two values with the same machine representation do not become the same Sec type.
+            </p>
+        </section>
+
+        <section id="host-independence">
+            <h2>CTE Uses Sec Target Semantics, Not Compiler-Host Semantics</h2>
+
+            <p>
+                Compile-time values are not defined by:
+            </p>
+
+            <ul>
+                <li>host-language object representation;</li>
+                <li>compiler-host pointer width;</li>
+                <li>host integer width;</li>
+                <li>host endianness;</li>
+                <li>host ABI;</li>
+                <li>host memory addresses.</li>
+            </ul>
+
+            <p>
+                This is essential during cross-compilation.
+            </p>
+
+            <p>
+                Target-dependent semantic facts may legitimately differ between compilation plans,
+                but they come from the selected Sec target plan rather than from the machine running the compiler.
+            </p>
+        </section>
+
+        <section id="types-not-values">
+            <h2>Types Are Not First-Class CTE Values</h2>
+
+            <p>
+                Sec 0.1 does not introduce a general runtime or compile-time metatype such as:
+            </p>
+
+            <pre><code>Type
+TypeInfo</code></pre>
+
+            <p>
+                A generic type parameter is a semantic type parameter, not an ordinary CTE value.
+            </p>
+
+            <p>
+                The CTE system itself does not add a <code>TypeOf</code>-style general facility.
+            </p>
+        </section>
+
+        <section id="no-reflection">
+            <h2>CTE Does Not Automatically Create Reflection</h2>
+
+            <p>
+                The compiler knows many facts about a program, but that knowledge is not automatically
+                exposed as source-level iterable reflection.
+            </p>
+
+            <p>CTE does not automatically expose lists of:</p>
+
+            <ul>
+                <li>fields;</li>
+                <li>methods;</li>
+                <li>properties;</li>
+                <li>attributes;</li>
+                <li>interfaces;</li>
+                <li>enum declarations;</li>
+                <li>union declarations;</li>
+                <li>modules;</li>
+                <li>symbols;</li>
+                <li>source locations;</li>
+                <li>compiler IDs;</li>
+                <li>Semantic IR;</li>
+                <li>MLIR.</li>
+            </ul>
+
+            <p>
+                Individual compiler-known facts may be exposed when another language rule deliberately
+                defines a concrete user-facing surface.
+            </p>
+        </section>
+
+        <section id="no-codegen">
+            <h2>CTE Produces Values, Not New Declarations</h2>
+
+            <p>
+                Semantic CTE cannot create, insert, remove or rewrite source declarations.
+            </p>
+
+            <p>It cannot synthesize new:</p>
+
+            <ul>
+                <li>functions;</li>
+                <li>types;</li>
+                <li>fields;</li>
+                <li>methods;</li>
+                <li>properties;</li>
+                <li>enum members;</li>
+                <li>union variants;</li>
+                <li>interfaces;</li>
+                <li>imports;</li>
+                <li>modules;</li>
+                <li>generic declarations.</li>
+            </ul>
+
+            <p>
+                A string produced during CTE remains a string value.
+                It is not reparsed as Sec source merely because its contents happen to look like Sec code.
+            </p>
+        </section>
+
+        <section id="sizeof">
+            <h2><code>SizeOf</code> Is a Compiler-Known Property</h2>
+
+            <p>Canonical source forms are:</p>
+
+            <pre><code>let valueSize: uint := value.SizeOf
+let typeSize: uint := TypeName.SizeOf</code></pre>
+
+            <p>The global-function form is not canonical:</p>
+
+            <pre><code>SizeOf(TypeName)    // invalid canonical form</code></pre>
+
+            <p>
+                A <code>SizeOf</code> result is determined for the active concrete compilation plan.
+            </p>
+
+            <p>
+                Target-sized semantic types remain the same Sec types even when their physical size
+                differs between plans.
+            </p>
+        </section>
+
+        <section id="generic-boundary">
+            <h2>CTE Does Not Add Implicit Generic Introspection</h2>
+
+            <p>
+                Generic template validity remains governed by declared generic constraints.
+            </p>
+
+            <p>CTE does not introduce generic mechanisms such as:</p>
+
+            <pre><code>if T == int
+IsCopyable[T]()
+Implements[T, Interface]()
+HasMethod[T](...)</code></pre>
+
+            <p>
+                A specifically defined compiler-known property does not imply a general structural
+                introspection system for generic source.
+            </p>
+        </section>
+
+        <section id="value-generics">
+            <h2>CTE Does Not Automatically Introduce Value Generics</h2>
+
+            <p>
+                The existence of compile-time values does not by itself make arbitrary values legal
+                generic arguments.
+            </p>
+
+            <p>
+                Sec 0.1 type generics remain governed by the Generics chapter.
+            </p>
+
+            <p>
+                Const/value generic parameters require their own normative language rules and are not
+                introduced merely by this CTE system.
+            </p>
+        </section>
+
+        <section id="path-sensitive">
+            <h2>CTE Legality Is Path-Sensitive</h2>
+
+            <p>
+                A function may contain runtime-only behavior on a branch that the concrete CTE
+                invocation does not execute.
+            </p>
+
+            <pre><code>fn SelectValue(useDefault: bool) int {
+    if useDefault {
+        return 10
+    }
+
+    return ReadFromRuntimeSource()
+}</code></pre>
+
+            <p>
+                <code>SelectValue(true)</code> may be valid during semantic CTE even when
+                <code>ReadFromRuntimeSource()</code> is forbidden during CTE.
+            </p>
+
+            <p>
+                <code>SelectValue(false)</code> is not CTE-evaluable if that executed call requires a
+                forbidden effect.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> CTE legality is a property of the concrete executed path, not
+                merely a declaration-wide “const-safe” label.
+            </div>
+        </section>
+
+        <section id="allowed-computation">
+            <h2>Semantic CTE Can Perform Real Computation</h2>
+
+            <p>Subject to ordinary Sec legality and compiler resource limits, CTE may execute:</p>
+
+            <ul>
+                <li>arithmetic and comparisons;</li>
+                <li>boolean logic;</li>
+                <li>local immutable state;</li>
+                <li>local mutable state;</li>
+                <li><code>if</code>, <code>switch</code> and <code>match</code>;</li>
+                <li><code>for</code> and <code>while</code>;</li>
+                <li>ordinary function calls;</li>
+                <li>concrete generic function calls;</li>
+                <li>aggregate construction;</li>
+                <li><code>Result</code> and <code>Option</code>;</li>
+                <li><code>try</code>;</li>
+                <li><code>assert</code> and panic semantics;</li>
+                <li>transient allocation;</li>
+                <li>move, copy and borrowing;</li>
+                <li>destruction and <code>defer</code>.</li>
+            </ul>
+
+            <p>
+                Local mutation during CTE is valid.
+                It does not create persistent mutable compiler-global or program-global state.
+            </p>
+        </section>
+
+        <section id="runtime-state">
+            <h2>CTE Cannot Read or Mutate Ordinary Mutable Runtime Static State</h2>
+
+            <p>
+                A mutable static may have a compile-time-established initial value, but that does not
+                make later runtime storage reads deterministic CTE inputs.
+            </p>
+
+            <p>
+                Immutable compile-time-established values may be read where visibility and dependency
+                rules permit it.
+            </p>
+
+            <p>
+                This separation preserves deterministic evaluation and safe caching.
+            </p>
+        </section>
+
+        <section id="forbidden-effects">
+            <h2>Ambient and External Runtime Effects Are Forbidden When Executed</h2>
+
+            <p>Semantic CTE may not execute ordinary ambient operations such as:</p>
+
+            <ul>
+                <li>filesystem I/O;</li>
+                <li>network I/O;</li>
+                <li>ambient environment-variable access;</li>
+                <li>ambient current time;</li>
+                <li>ambient entropy or randomness;</li>
+                <li>target memory access;</li>
+                <li>MMIO;</li>
+                <li>volatile access;</li>
+                <li>atomic operations;</li>
+                <li>memory barriers;</li>
+                <li>task, thread, channel or scheduler operations;</li>
+                <li>foreign calls;</li>
+                <li>system calls unless another canonical rule explicitly models a pure compiler-known semantic equivalent.</li>
+            </ul>
+
+            <p>
+                A deterministic pseudo-random algorithm using only explicit compile-time values is
+                ordinary computation and is not ambient randomness.
+            </p>
+
+            <p>
+                Explicit canonical <code>CompilationPlan</code> facts are likewise not ambient host state.
+            </p>
+        </section>
+
+        <section id="unsafe">
+            <h2><code>unsafe</code> Does Not Expand CTE Capabilities</h2>
+
+            <p>
+                Entering an unsafe source context does not itself make CTE invalid.
+            </p>
+
+            <p>
+                It also does not grant permission to:
+            </p>
+
+            <ul>
+                <li>dereference arbitrary host memory;</li>
+                <li>access target physical memory;</li>
+                <li>access MMIO;</li>
+                <li>call arbitrary foreign code;</li>
+                <li>smuggle compiler-host addresses into program values.</li>
+            </ul>
+
+            <p>
+                An unsafe operation executed during CTE must have deterministic canonical CTE semantics.
+            </p>
+        </section>
+
+        <section id="transient-allocation">
+            <h2>Semantic CTE May Allocate Transient Evaluator Storage</h2>
+
+            <p>
+                Compile-time code can build temporary dynamic structures while computing a value.
+            </p>
+
+            <p>This allocation:</p>
+
+            <ul>
+                <li>belongs to the compiler evaluator;</li>
+                <li>does not consume target runtime heap capacity;</li>
+                <li>does not mutate target allocator state;</li>
+                <li>does not require target allocator startup;</li>
+                <li>does not create runtime allocator generations;</li>
+                <li>does not make compiler-host addresses into target addresses.</li>
+            </ul>
+
+            <p>
+                The implementation may use host allocations, an evaluator arena or another internal
+                strategy. That implementation choice is not Sec language semantics.
+            </p>
+        </section>
+
+        <section id="runtime-allocator">
+            <h2>Transient CTE Allocation Does Not Mean Runtime Allocator Objects Are Available</h2>
+
+            <p>
+                An operation that semantically interacts with a runtime allocator, Arena provider or
+                another explicit runtime allocation context is not automatically legal during CTE.
+            </p>
+
+            <p>
+                The compiler may not silently substitute its private evaluator allocator for an
+                explicit allocator resource supplied by the source program.
+            </p>
+
+            <p>
+                Another canonical rule may define a specific compile-time semantic equivalent, but
+                such behavior must be explicit.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership Rules Apply During CTE</h2>
+
+            <p>A compile-time-created owning value may be:</p>
+
+            <ul>
+                <li>moved;</li>
+                <li>borrowed;</li>
+                <li>destroyed;</li>
+                <li>used by <code>defer</code>;</li>
+                <li>conditionally available;</li>
+                <li>partially moved where ordinary Sec rules permit it.</li>
+            </ul>
+
+            <p>
+                Compile-time values are not automatically copyable.
+            </p>
+
+            <p>
+                Copy and move behavior follows the concrete Sec type exactly as it would at runtime.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction Happens During CTE When Source Semantics Reach It</h2>
+
+            <p>
+                CTE-local owned values follow ordinary deterministic destruction semantics.
+            </p>
+
+            <p>
+                A destructor executed during CTE must itself use CTE-permitted operations.
+            </p>
+
+            <p>
+                Compiler-internal reclamation of evaluator memory is separate from observable Sec
+                destruction.
+            </p>
+
+            <p>
+                If the compiler aborts one evaluation because a resource limit is reached, it is not
+                required to continue arbitrary source-level cleanup after that external evaluator abort,
+                though compiler-owned resources must still be reclaimed safely.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Safe References and Borrows May Exist During CTE</h2>
+
+            <p>
+                Ordinary Sec lifetime, aliasing, mutable-borrow and reborrow rules apply.
+            </p>
+
+            <p>
+                The evaluator may represent compile-time reference identity abstractly.
+                Correctness must not depend on a numeric compiler-host address.
+            </p>
+
+            <p>
+                A CTE-local reference cannot escape into a runtime artifact merely by preserving its
+                evaluator identity.
+            </p>
+
+            <p>
+                If a runtime/static reference is needed, another owning storage/materialization rule
+                must create a valid new program identity.
+            </p>
+        </section>
+
+        <section id="raw-pointers">
+            <h2>Raw Pointers During CTE</h2>
+
+            <p>
+                Raw pointers to evaluator-local storage are possible only where ordinary raw-pointer
+                and unsafe rules permit them and where deterministic CTE semantics are defined.
+            </p>
+
+            <p>
+                Numeric host pointer addresses must not escape as compile-time program values.
+            </p>
+
+            <p>
+                Explicit target address values are a separate semantic category.
+                They may be consumed as metadata when the owning platform rule permits it.
+            </p>
+
+            <p>
+                Semantic CTE must not dereference target hardware memory.
+            </p>
+        </section>
+
+        <section id="evaluability-materialization">
+            <h2>Compile-Time Evaluability and Static Materialization Are Different</h2>
+
+            <p>
+                A value may be completely and successfully computed during CTE but still be unsuitable
+                for direct embedding as a program/static value.
+            </p>
+
+            <p>Conceptually the compiler distinguishes:</p>
+
+            <pre><code>CompileTimeEvaluable
+CompileTimeMaterializable</code></pre>
+
+            <p>
+                These are compiler terms, not Sec declarations.
+            </p>
+
+            <p>
+                Evaluation happens first.
+                The owning language construct then validates the typed value and, if required,
+                materialization is validated separately.
+            </p>
+
+            <p>
+                A materialization failure is not the same as an evaluation failure.
+            </p>
+        </section>
+
+        <section id="materializable-values">
+            <h2>Materializable Values</h2>
+
+            <p>
+                Ordinary scalar values may be materialized when their concrete type has a defined
+                static representation.
+            </p>
+
+            <p>Examples include, where legal:</p>
+
+            <ul>
+                <li><code>bool</code>;</li>
+                <li>integers;</li>
+                <li>floating-point values;</li>
+                <li><code>rune</code>;</li>
+                <li>enum values;</li>
+                <li>named scalar values;</li>
+                <li>unit values.</li>
+            </ul>
+
+            <p>Fixed aggregates may also materialize recursively, including:</p>
+
+            <ul>
+                <li>fixed arrays;</li>
+                <li>structs;</li>
+                <li>unions;</li>
+                <li><code>Option</code>;</li>
+                <li><code>Result</code>.</li>
+            </ul>
+
+            <p>
+                Immutable strings may be materialized where the string/storage rules define a valid
+                target representation.
+            </p>
+
+            <p>
+                Materialization preserves nominal type and active variant identity.
+            </p>
+        </section>
+
+        <section id="dynamic-collections">
+            <h2>Dynamic Owning Collections May Be CTE-Evaluable Without Being Materializable</h2>
+
+            <p>
+                A semantic CTE function may temporarily construct a dynamic collection such as:
+            </p>
+
+            <pre><code>list[T]
+map[K, V]</code></pre>
+
+            <p>
+                if the executed operations are CTE-permitted.
+            </p>
+
+            <p>
+                Sec 0.1 does not automatically define static artifact materialization for every
+                heap-backed dynamic owner merely because the evaluator can create it.
+            </p>
+
+            <p>A value may therefore be:</p>
+
+            <pre><code>CTE-evaluable
+but not statically materializable</code></pre>
+        </section>
+
+        <section id="views">
+            <h2>Views and Slices Need Valid Runtime Backing Before They Can Materialize</h2>
+
+            <p>
+                A slice or view may be used transiently over evaluator-local storage during CTE.
+            </p>
+
+            <p>
+                That view cannot be embedded into the resulting program unless its backing storage
+                receives a valid static/runtime identity according to another canonical rule.
+            </p>
+
+            <p>
+                The evaluator's private pointer is never preserved as the runtime backing address.
+            </p>
+        </section>
+
+        <section id="materialization-graph">
+            <h2>Static Materialization Is Checked Recursively</h2>
+
+            <p>
+                When a CTE value must become program storage, the complete reachable value graph is validated.
+            </p>
+
+            <p>The compiler checks:</p>
+
+            <ul>
+                <li>the concrete type has defined static materialization;</li>
+                <li>every stored subvalue is materializable;</li>
+                <li>no evaluator-local address escapes;</li>
+                <li>no evaluator-local generation/liveness identity escapes;</li>
+                <li>no unsupported cyclic evaluator object graph escapes;</li>
+                <li>required target relocations and static references are legal.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 has no implicit static heap model for arbitrary cyclic evaluator object graphs.
+            </p>
+        </section>
+
+        <section id="new-identity">
+            <h2>A Materialized Value Receives a New Program Identity</h2>
+
+            <p>
+                A successfully materialized result becomes ordinary program storage/value according
+                to its owning storage rule.
+            </p>
+
+            <p>
+                The runtime/static object is not the same object as the evaluator-local object that
+                computed the value.
+            </p>
+
+            <p>
+                Evaluator-local lifetime, generation and host-address identity do not survive merely
+                because the semantic value survives.
+            </p>
+        </section>
+
+        <section id="dependencies">
+            <h2>Required Compile-Time Values Form a Dependency Graph</h2>
+
+            <p>
+                Evaluation order follows semantic dependencies rather than textual source order.
+            </p>
+
+            <p>
+                A declaration does not need to appear earlier in the file merely because it is used
+                during required CTE, provided ordinary Sec name resolution makes it visible.
+            </p>
+
+            <p>
+                Independent required evaluations may be reordered or evaluated in parallel by the compiler.
+                Such scheduling is not observable in Sec semantics.
+            </p>
+        </section>
+
+        <section id="cycles">
+            <h2>Compile-Time Value Dependency Cycles Are Invalid</h2>
+
+            <pre><code>let A := B + 1
+let B := A + 1</code></pre>
+
+            <p>
+                Neither value can be established without first establishing itself transitively.
+            </p>
+
+            <p>
+                The compiler diagnoses the semantic dependency cycle instead of recursing indefinitely.
+            </p>
+        </section>
+
+        <section id="recursion">
+            <h2>Recursive Functions Are Not Automatically Dependency Cycles</h2>
+
+            <p>
+                Ordinary recursion and mutual recursion may execute during semantic CTE.
+            </p>
+
+            <p>
+                A recursive call-stack cycle is different from a compile-time value dependency cycle.
+            </p>
+
+            <p>
+                Recursive CTE is valid when the concrete evaluation terminates within the compiler's resource budget.
+            </p>
+        </section>
+
+        <section id="layout-cycles">
+            <h2>Dependencies Can Cross Values, Types and Layout</h2>
+
+            <p>A semantic cycle may look like:</p>
+
+            <pre><code>layout of Packet
+    -&gt; PacketSize
+    -&gt; CalculatePacketSize()
+    -&gt; layout of Packet</code></pre>
+
+            <p>
+                The compiler must detect such a cycle.
+            </p>
+
+            <p>
+                CTE does not invent placeholder layouts or speculative fixed-point behavior unless
+                another owning rule explicitly defines such semantics.
+            </p>
+        </section>
+
+        <section id="cross-module">
+            <h2>Public Functions May Execute During CTE Across Module Boundaries</h2>
+
+            <p>
+                A source-accessible public function can be called during semantic CTE from another module.
+            </p>
+
+            <p>
+                Cross-module execution requires compatible semantic execution information for the called body.
+            </p>
+
+            <p>
+                A binary ABI signature alone is insufficient when compile-time execution needs the function body.
+            </p>
+
+            <p>
+                Separate-compilation artifacts may therefore carry canonical semantic bodies or an
+                equivalent evaluator representation.
+            </p>
+        </section>
+
+        <section id="visibility">
+            <h2>Cross-Module CTE Does Not Bypass Source Visibility</h2>
+
+            <p>
+                Compiler availability of semantic bodies is not source visibility.
+            </p>
+
+            <p>
+                Public, module-internal and source-file-private declarations keep their ordinary rules.
+            </p>
+
+            <p>
+                An imported module may directly call only declarations visible to that source.
+            </p>
+
+            <p>
+                A public function being evaluated may internally call already-resolved private helpers
+                from its origin scope because those calls were legal in the origin source.
+                That does not make the helpers importable from outside.
+            </p>
+        </section>
+
+        <section id="generic-cte">
+            <h2>Generic Code Executes Only as Sufficiently Concrete Semantic Instances</h2>
+
+            <p>
+                CTE uses the same canonical concrete generic specialization identity as runtime semantic use.
+            </p>
+
+            <p>
+                It does not create a second “compile-time specialization” identity.
+            </p>
+
+            <p>
+                Unresolved runtime-like generic parameters cannot reach an operation that requires
+                fully concrete semantic behavior.
+            </p>
+
+            <p>
+                Monomorphization remains responsible for specialization demand, identity, deduplication
+                and physical realization.
+            </p>
+        </section>
+
+        <section id="result">
+            <h2><code>Result.Err(...)</code> Is a Successful CTE Value</h2>
+
+            <pre><code>fn Parse(...) Result[int, ParseError] {
+    ...
+    return Err(ParseError.InvalidDigit)
+}</code></pre>
+
+            <p>
+                If semantic CTE evaluates the function and it normally returns
+                <code>Err(ParseError.InvalidDigit)</code>, evaluation succeeded.
+            </p>
+
+            <p>
+                The resulting Sec value happens to be the error state of a Result.
+                That is not a compiler CTE failure.
+            </p>
+
+            <p>
+                Ordinary <code>try</code> semantics remain ordinary Sec semantics during CTE.
+            </p>
+        </section>
+
+        <section id="panic">
+            <h2><code>assert</code>, Panic and Failed Semantic Operations</h2>
+
+            <p>
+                Assertions execute during semantic CTE.
+            </p>
+
+            <p>
+                If a required evaluation reaches a failed assertion, the compile-time evaluation fails.
+            </p>
+
+            <p>
+                Reaching a panic/fatal semantic operation likewise fails the required evaluation.
+            </p>
+
+            <p>Other reached semantic failures may include:</p>
+
+            <ul>
+                <li>division by zero;</li>
+                <li>invalid shift;</li>
+                <li>checked numeric failure;</li>
+                <li>bounds violation;</li>
+                <li>invalid conversion;</li>
+                <li>named-type contract violation.</li>
+            </ul>
+
+            <p>
+                The owning language rule still determines the exact user-facing error and meaning.
+            </p>
+        </section>
+
+        <section id="resource-limits">
+            <h2>Loops and Recursion Are Allowed, but Evaluation Is Resource-Bounded</h2>
+
+            <p>
+                Sec 0.1 does not require the compiler to statically prove termination before semantic CTE.
+            </p>
+
+            <p>
+                Instead, the compiler imposes finite resource limits.
+            </p>
+
+            <p>Canonical resource categories include:</p>
+
+            <pre><code>ExecutionSteps
+CallDepth
+TransientMemory
+AggregateValueSize</code></pre>
+
+            <p>
+                These are compiler-semantic categories, not Sec enum members.
+            </p>
+
+            <p>
+                Wall-clock time is not a canonical deterministic language budget.
+                An implementation may use an emergency watchdog to protect the compiler process, but
+                that watchdog is not Sec semantics.
+            </p>
+
+            <p>
+                Reaching a resource limit does not prove that the source expression is non-terminating.
+                A larger permitted budget may succeed.
+            </p>
+
+            <p>
+                Transient-memory exhaustion during CTE is a compiler resource outcome, not target
+                runtime out-of-memory behavior.
+            </p>
+        </section>
+
+        <section id="determinism">
+            <h2>CTE Is Deterministic</h2>
+
+            <p>
+                With the same compatible compilation plan, semantic inputs and sufficient resource
+                budget, CTE must produce the same semantic value or semantic failure independent of:
+            </p>
+
+            <ul>
+                <li>source-file discovery order;</li>
+                <li>compiler thread scheduling;</li>
+                <li>hash-map iteration order;</li>
+                <li>which independent CTE request happens to run first;</li>
+                <li>compiler-host memory addresses.</li>
+            </ul>
+
+            <p>
+                Explicit target inputs may legitimately make results differ between compilation plans.
+            </p>
+
+            <p>
+                Ambient host filesystem, environment, time and entropy are never hidden semantic inputs.
+            </p>
+        </section>
+
+        <section id="context-validation">
+            <h2>Successful Evaluation Is Followed by Owning-Context Validation</h2>
+
+            <p>
+                A CTE expression can evaluate successfully but still produce a value invalid for the
+                source construct that requested it.
+            </p>
+
+            <p>Examples:</p>
+
+            <ul>
+                <li>an array extent evaluates to an integer outside the legal extent domain;</li>
+                <li><code>@when</code> does not yield <code>bool</code>;</li>
+                <li>an enum explicit value does not fit the backing type;</li>
+                <li>a static initializer is not assignable to its declared type;</li>
+                <li>a register width evaluates outside the legal width domain.</li>
+            </ul>
+
+            <p>
+                Those are errors of the owning language construct, not evidence that the evaluator
+                could not execute the expression.
+            </p>
+        </section>
+
+        <section id="no-runtime-fallback">
+            <h2>Required CTE Fails Closed</h2>
+
+            <p>
+                If a source position requires semantic CTE and the compiler cannot produce the
+                required compile-time value, it cannot silently:
+            </p>
+
+            <ul>
+                <li>emit a runtime initializer call;</li>
+                <li>insert a runtime generic dictionary;</li>
+                <li>allocate the result dynamically at startup;</li>
+                <li>replace a forbidden CTE effect with host execution;</li>
+                <li>reinterpret an evaluator-local pointer as a runtime pointer.</li>
+            </ul>
+
+            <p>
+                Any future runtime-initialization mechanism must be explicitly defined by its own
+                language rule.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Required CTE cannot fall back to weaker runtime semantics.
+            </div>
+        </section>
+
+        <section id="pipeline">
+            <h2>CTE Feeds the Ordinary Compiler Pipeline</h2>
+
+            <p>Conceptually:</p>
+
+            <pre><code>CompilationPlan
+    -&gt; plan-time evaluation
+    -&gt; active source graph
+    -&gt; typed semantic analysis
+        &lt;-&gt; semantic CTE as required
+        &lt;-&gt; generic/type/layout/target semantic services
+    -&gt; verified Semantic IR
+    -&gt; Sec-MLIR / MLIR
+    -&gt; LLVM
+    -&gt; artifact</code></pre>
+
+            <p>
+                Semantic CTE operates on already resolved typed Sec semantics.
+                It does not redo source-level name lookup, overload resolution, generic inference,
+                member lookup or visibility resolution while executing.
+            </p>
+
+            <p>
+                The implementation may use an interpreter, dedicated evaluator IR, bytecode, JIT or
+                reused MLIR infrastructure internally.
+            </p>
+
+            <p>
+                Those implementation choices must preserve canonical Sec semantics and the active
+                compilation plan.
+            </p>
+
+            <p>
+                MLIR/LLVM constant folding remains optional optimization and is not a semantic fallback
+                for required CTE.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                CTE diagnostics should say why compile-time evaluation was required and what actually failed.
+            </p>
+
+            <h3>Forbidden executed effect</h3>
+
+            <pre><code>compile-time evaluation of `BuildSize` requires filesystem access
+
+the initializer must be established during compilation
+
+call path:
+    BufferSize
+    -&gt; BuildSize
+    -&gt; ReadConfigurationFile
+
+filesystem I/O is not available during semantic compile-time evaluation</code></pre>
+
+            <h3>Path-sensitive forbidden operation</h3>
+
+            <pre><code>compile-time evaluation cannot execute `ReadFromRuntimeSource`
+
+the call is reached for this concrete compile-time argument set
+
+help: change the compile-time input so that a CTE-safe path is selected
+help: remove the runtime-only operation from the executed compile-time path</code></pre>
+
+            <h3>Dependency cycle</h3>
+
+            <pre><code>compile-time dependency cycle
+
+    A
+    -&gt; B
+    -&gt; A
+
+neither required value can be established without the other</code></pre>
+
+            <h3>Resource limit</h3>
+
+            <pre><code>compile-time evaluation exceeded the call-depth budget
+
+root expression:
+    BuildLookupTable()
+
+help: reduce recursive depth
+help: restructure the computation
+help: increase the permitted compiler CTE budget when appropriate</code></pre>
+
+            <h3>Value not materializable</h3>
+
+            <pre><code>compile-time evaluation succeeded, but the resulting value cannot be materialized
+
+the result contains a view backed by transient evaluator storage
+
+help: materialize an owning static value instead
+help: return a value with a defined static representation</code></pre>
+
+            <h3>Semantic failure</h3>
+
+            <pre><code>compile-time evaluation failed: assertion failed
+
+required by:
+    static initializer `BufferSize`
+
+call path:
+    CalculateBufferSize
+    -&gt; ValidateConfiguration</code></pre>
+
+            <p>
+                A generic message such as <code>not a constant expression</code> is insufficient when
+                the compiler knows the actual root cause.
+            </p>
+
+            <p>
+                The compiler should distinguish:
+            </p>
+
+            <ul>
+                <li>not CTE-evaluable;</li>
+                <li>CTE execution failed;</li>
+                <li>resource limit reached;</li>
+                <li>dependency cycle;</li>
+                <li>successful value not materializable;</li>
+                <li>compiler implementation gap;</li>
+                <li>compiler invariant failure.</li>
+            </ul>
+
+            <p>
+                A language construct that is valid under canonical CTE rules must not be reported as
+                invalid Sec merely because the current compiler has not implemented that evaluator
+                operation yet.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                The compiler workspace is the source of truth for compile-time evaluation.
+                The LSP does not implement an independent constant evaluator.
+            </p>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>the established compile-time value;</li>
+                <li>why the value is required at compile time;</li>
+                <li>dependencies of the evaluation;</li>
+                <li>call-chain provenance;</li>
+                <li>generic concrete context;</li>
+                <li>origin module for cross-module evaluation;</li>
+                <li>the forbidden effect or semantic failure causing rejection;</li>
+                <li>resource-budget exhaustion;</li>
+                <li>whether evaluation succeeded but materialization failed.</li>
+            </ul>
+
+            <p>
+                Cancellation of obsolete editor work is not a source-language CTE failure and should
+                not produce a stale program diagnostic.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Write ordinary Sec functions; do not design a parallel “compile-time API” unless a real semantic distinction exists.</li>
+                <li>Keep functions used by required CTE deterministic and free of ambient I/O/state dependencies.</li>
+                <li>Use explicit arguments for values that influence compile-time computation.</li>
+                <li>Do not depend on compiler-host pointer size, addresses, endianness or ABI.</li>
+                <li>Remember that a runtime-only operation is allowed in a function when the concrete CTE path never executes it.</li>
+                <li>Use ordinary ownership and borrowing rules even for temporary compile-time values.</li>
+                <li>Do not assume transient evaluator allocation means a runtime allocator resource is available.</li>
+                <li>Distinguish “can be evaluated at compile time” from “can be embedded as a static program value”.</li>
+                <li>Keep required compile-time dependency graphs acyclic.</li>
+                <li>Do not use CTE as a substitute for reflection or source generation.</li>
+                <li>Do not assume CTE introduces arbitrary const/value generic parameters.</li>
+                <li>Keep recursive or loop-heavy CTE bounded enough to compile predictably.</li>
+                <li>Use <code>@target</code>/<code>@when</code> for plan-time source selection rather than trying to call ordinary CTE functions during plan formation.</li>
+                <li>Use the canonical <code>value.SizeOf</code> and <code>TypeName.SizeOf</code> property forms.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec 0.1 defines compile-time evaluation of ordinary typed Sec expressions.</li>
+                <li>Semantic CTE uses ordinary Sec arithmetic, control flow, functions, Result/Option, ownership, borrowing, destruction and defer semantics.</li>
+                <li>CTE does not introduce a second integer, ownership, lifetime or error model.</li>
+                <li>Sec 0.1 has no <code>const fn</code>, <code>comptime fn</code>, compile-time block or <code>IsCompileTime()</code> source mechanism.</li>
+                <li>An ordinary function may execute at runtime in one context and during semantic CTE in another.</li>
+                <li>A function cannot observe merely that it is currently being evaluated at compile time.</li>
+                <li>The compiler distinguishes plan-time-required and semantic-CTE-required contexts.</li>
+                <li>Plan-time evaluation occurs before the active semantic source graph is complete.</li>
+                <li>Plan-time evaluation is deliberately restricted.</li>
+                <li><code>@target</code> and <code>@when</code> use the plan-time model.</li>
+                <li>Semantic CTE runs after enough typed semantic information is available.</li>
+                <li>Semantic CTE may execute ordinary user-defined functions.</li>
+                <li>No special compile-time function modifier is required.</li>
+                <li>Required CTE is distinct from optional optimizer constant folding.</li>
+                <li>An ordinary runtime expression remains a runtime expression even if the compiler can fold it.</li>
+                <li>A value being statically known does not automatically make its source position a compile-time-required context.</li>
+                <li>The rule owning a source construct determines whether CTE is required and which context class applies.</li>
+                <li>Module/static initializers may be semantic CTE-required where their owning rules require compile-time establishment.</li>
+                <li>A failed required static initializer does not silently become a runtime initializer.</li>
+                <li>Mutable static storage is ordinary runtime mutable state after initialization.</li>
+                <li>Successful CTE produces typed Sec values preserving nominal identity.</li>
+                <li>CTE values are semantic values, not compiler-host byte blobs or host addresses.</li>
+                <li>Cross-compilation uses target Sec semantics rather than host ABI semantics.</li>
+                <li>Types are not ordinary first-class CTE values in Sec 0.1.</li>
+                <li>CTE introduces no general <code>Type</code>/<code>TypeInfo</code> metatype.</li>
+                <li>CTE does not automatically expose fields, methods, symbols or compiler IR as reflection data.</li>
+                <li>Compiler knowledge does not automatically become source-visible reflection.</li>
+                <li>CTE produces values and cannot generate or rewrite source declarations.</li>
+                <li>CTE-generated strings are strings, not source text to be reparsed.</li>
+                <li>Canonical <code>SizeOf</code> source forms are <code>value.SizeOf</code> and <code>TypeName.SizeOf</code>.</li>
+                <li><code>SizeOf(TypeName)</code> is not the canonical Sec 0.1 form.</li>
+                <li>CTE does not introduce implicit generic introspection such as testing whether <code>T == int</code>.</li>
+                <li>CTE does not automatically introduce arbitrary value/const generic parameters.</li>
+                <li>CTE legality is path-sensitive to the operations actually executed for the concrete invocation.</li>
+                <li>A runtime-only operation on an unexecuted branch does not invalidate another CTE path.</li>
+                <li>Semantic CTE supports local mutation, control flow, loops, function calls, concrete generics, aggregates, Result, Option, try, assert, panic semantics, allocation, ownership, borrowing, destruction and defer.</li>
+                <li>CTE cannot read or mutate ordinary mutable runtime static state.</li>
+                <li>Filesystem, network, ambient environment, current time, ambient entropy, target memory, MMIO, volatile, atomics, barriers, concurrency and ordinary foreign calls are forbidden when executed during CTE.</li>
+                <li>Explicit deterministic computation on compile-time values is allowed even when it implements a pseudo-random algorithm.</li>
+                <li>Entering <code>unsafe</code> neither disables CTE nor grants extra CTE capabilities.</li>
+                <li>Unsafe CTE still cannot access arbitrary host/target memory or arbitrary foreign code.</li>
+                <li>Semantic CTE may allocate transient evaluator-local storage.</li>
+                <li>Transient CTE allocation is not target runtime allocation.</li>
+                <li>The compiler may not substitute evaluator storage for an explicit runtime allocator object.</li>
+                <li>Ordinary ownership, move, copy and borrowing rules apply during CTE.</li>
+                <li>Compile-time values are not automatically copyable.</li>
+                <li>Ordinary deterministic destruction occurs for CTE-local values when source semantics reach it.</li>
+                <li>Destructors executed during CTE must themselves use CTE-permitted semantics.</li>
+                <li>Safe references may exist during CTE but evaluator-local identity cannot escape as runtime identity.</li>
+                <li>Raw evaluator addresses cannot escape as program pointer/integer identity.</li>
+                <li>Target address metadata is distinct from evaluator-local addresses.</li>
+                <li>CTE must never dereference target hardware memory.</li>
+                <li>Compile-time evaluability and static materializability are distinct properties.</li>
+                <li>A value may evaluate successfully yet fail static materialization.</li>
+                <li>Scalars, fixed aggregates, Option, Result and immutable strings may be materializable when their owning representation rules permit it.</li>
+                <li>Dynamic owning collections may be useful transiently during CTE without having defined static materialization.</li>
+                <li>Views/slices over evaluator-local storage cannot escape unless valid runtime/static backing identity is created separately.</li>
+                <li>Static materialization recursively validates the complete reachable value graph.</li>
+                <li>Arbitrary cyclic evaluator object graphs have no implicit static-heap semantics in Sec 0.1.</li>
+                <li>A materialized program value receives a new program/storage identity; it is not the evaluator object.</li>
+                <li>Required compile-time values form semantic dependency graphs.</li>
+                <li>Dependency order, not textual declaration order, controls evaluation.</li>
+                <li>Independent CTE requests may be reordered or parallelized without observable semantic difference.</li>
+                <li>Compile-time value dependency cycles are errors.</li>
+                <li>Recursive function execution is not automatically a compile-time dependency-cycle error.</li>
+                <li>Recursion is allowed when the concrete evaluation terminates within resource limits.</li>
+                <li>Dependency cycles may cross values, types and layout facts.</li>
+                <li>Public functions may execute during semantic CTE across module boundaries.</li>
+                <li>Cross-module CTE does not bypass source visibility.</li>
+                <li>Origin-private helpers may execute only as already-resolved parts of a legal origin body; they do not become importable.</li>
+                <li>Generic CTE uses the same canonical concrete specialization identity as runtime semantics.</li>
+                <li>A program-level <code>Result.Err(...)</code> can be a successfully evaluated CTE value.</li>
+                <li>Compiler CTE failure is separate from a source function's Result error channel.</li>
+                <li>Reached assertion failure, panic or fatal checked semantic operation causes required CTE failure.</li>
+                <li>Loops and recursion do not require a general static termination proof.</li>
+                <li>CTE is protected by finite budgets such as execution steps, call depth, transient memory and aggregate value size.</li>
+                <li>Resource exhaustion does not prove semantic non-termination.</li>
+                <li>Wall-clock time is not canonical deterministic CTE semantics.</li>
+                <li>CTE must be deterministic for equal semantic inputs and compilation plan.</li>
+                <li>Ambient compiler-host filesystem, environment, time and entropy are not hidden inputs.</li>
+                <li>Successful evaluation is followed by the owning construct's type/domain validation.</li>
+                <li>A successfully evaluated but invalid array extent or enum value is an owning-construct error, not an evaluator failure.</li>
+                <li>Required CTE fails closed and never silently falls back to runtime initialization or host execution.</li>
+                <li>Semantic CTE operates on resolved typed semantics rather than repeating source name lookup or overload resolution.</li>
+                <li>CTE feeds the ordinary Sec-MLIR → MLIR → LLVM → artifact pipeline; it does not replace it.</li>
+                <li>MLIR/LLVM constant folding is optional optimization and not a fallback for required semantic CTE.</li>
+                <li>Diagnostics should distinguish not-evaluable operations, semantic evaluation failure, resource limits, dependency cycles, materialization failure, implementation gaps and compiler invariant failures.</li>
+                <li>LSP tooling consumes compiler CTE results and must not implement an independent Sec constant evaluator.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="38-conditional-compilation.html">Previous: Conditional Compilation and Build Selection</a>
+            <a href="40-allocation.html">Next: Memory Allocation</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

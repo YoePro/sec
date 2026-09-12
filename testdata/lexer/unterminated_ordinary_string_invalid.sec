@@ -1,0 +1,4 @@
+module unterminated_ordinary_string_invalid
+
+let broken := "missing closing quote
+let recoveredValue := 7

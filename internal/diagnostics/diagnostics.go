@@ -23,78 +23,92 @@ type Definition struct {
 }
 
 const (
-	LexerInvalidUTF8             = "L1001"
-	LexerUnexpectedByteOrderMark = "L1002"
-	LexerUnsupportedWhitespace   = "L1003"
-	LexerNonNFCIdentifier        = "L1004"
-	LexerIdentifierCharacter     = "L1005"
-	LexerUnknownEscape           = "L1006"
-	LexerMalformedEscape         = "L1007"
-	LexerInvalidUnicodeEscape    = "L1008"
-	LexerCharacterLiteralLength  = "L1009"
-	LexerMalformedBaseLiteral    = "L1010"
-	LexerInvalidBaseDigit        = "L1011"
-	LexerInvalidDigitSeparator   = "L1012"
-	LexerInvalidNumericSuffix    = "L1013"
-	ParserSyntaxError            = "P2001"
-	ParserMissingToken           = "P2002"
-	ParserUnexpectedToken        = "P2003"
-	ParserUnterminatedDelimiter  = "P2004"
-	ParserInvalidDeclaration     = "P2005"
-	ParserInvalidStatement       = "P2006"
-	ParserInvalidExpression      = "P2007"
-	ParserInvalidTypeReference   = "P2008"
-	ParserInvalidPattern         = "P2009"
-	ParserMissingSeparator       = "P2010"
-	ParserMisplacedKeyword       = "P2011"
-	ParserReservedSyntax         = "P2012"
-	ParserInvalidAssignmentExpr  = "P2013"
-	ParserChainedComparison      = "P2014"
-	ParserRecoveryLimit          = "P2015"
-	ParserUnexpectedEndOfFile    = "P2016"
-	ParserInvalidBlockMember     = "P2017"
-	ParserCompatibilitySyntax    = "P2018"
-	ParserUnimplementedFunction  = "P2019"
-	MissingModuleDeclaration     = "S1001"
-	DuplicateModuleDeclaration   = "S1002"
-	ModuleDeclarationConflict    = "S1003"
-	DuplicateLocalVariable       = "S1004"
-	UnhandledMustUseResult       = "S1005"
-	NonDiscardableValue          = "S1006"
-	ImplicitMoveDisallowed       = "S1007"
-	InvalidExplicitDefault       = "S1008"
-	NoDefaultValue               = "S1009"
-	MissingNonDefaultableField   = "S1010"
-	InvalidMembershipValue       = "S1011"
-	InterfaceInheritanceCycle    = "S1012"
-	IncompatibleUnitConversion   = "S1013"
-	IncompleteEnumSwitch         = "S1014"
-	DuplicateSwitchCase          = "S1015"
-	OperatorNonOrderable         = "S1016"
-	OperatorInvalidShiftCount    = "S1017"
-	OperatorShiftOverflow        = "S1018"
-	OperatorNonComparable        = "S1019"
-	OperatorStringRuntimeConcat  = "S1020"
-	OperatorInvalidMembership    = "S1021"
-	OperatorInvalidConcatOperand = "S1022"
-	OperatorIntegerOverflow      = "S1023"
-	OperatorDivisionByZero       = "S1024"
-	OperatorRemainderByZero      = "S1025"
-	RedundantAssociatedStatic    = "S1026"
-	InvalidGenericParameterName  = "S1027"
-	LargeValueParameter          = "A2001"
+	LexerInvalidUTF8                    = "L1001"
+	LexerUnexpectedByteOrderMark        = "L1002"
+	LexerUnsupportedWhitespace          = "L1003"
+	LexerNonNFCIdentifier               = "L1004"
+	LexerIdentifierCharacter            = "L1005"
+	LexerUnknownEscape                  = "L1006"
+	LexerMalformedEscape                = "L1007"
+	LexerInvalidUnicodeEscape           = "L1008"
+	LexerCharacterLiteralLength         = "L1009"
+	LexerMalformedBaseLiteral           = "L1010"
+	LexerInvalidBaseDigit               = "L1011"
+	LexerInvalidDigitSeparator          = "L1012"
+	LexerInvalidNumericSuffix           = "L1013"
+	LexerMissingExponentDigits          = "L1014"
+	LexerUnterminatedBlockComment       = "L1015"
+	LexerUnterminatedOrdinaryString     = "L1016"
+	LexerUnterminatedRawString          = "L1017"
+	LexerUnterminatedCharacterLiteral   = "L1018"
+	LexerUnterminatedInterpolatedString = "L1019"
+	LexerInvalidSourceCharacter         = "L1020"
+	ParserSyntaxError                   = "P2001"
+	ParserMissingToken                  = "P2002"
+	ParserUnexpectedToken               = "P2003"
+	ParserUnterminatedDelimiter         = "P2004"
+	ParserInvalidDeclaration            = "P2005"
+	ParserInvalidStatement              = "P2006"
+	ParserInvalidExpression             = "P2007"
+	ParserInvalidTypeReference          = "P2008"
+	ParserInvalidPattern                = "P2009"
+	ParserMissingSeparator              = "P2010"
+	ParserMisplacedKeyword              = "P2011"
+	ParserReservedSyntax                = "P2012"
+	ParserInvalidAssignmentExpr         = "P2013"
+	ParserChainedComparison             = "P2014"
+	ParserRecoveryLimit                 = "P2015"
+	ParserUnexpectedEndOfFile           = "P2016"
+	ParserInvalidBlockMember            = "P2017"
+	ParserCompatibilitySyntax           = "P2018"
+	ParserUnimplementedFunction         = "P2019"
+	MissingModuleDeclaration            = "S1001"
+	DuplicateModuleDeclaration          = "S1002"
+	ModuleDeclarationConflict           = "S1003"
+	DuplicateLocalVariable              = "S1004"
+	UnhandledMustUseResult              = "S1005"
+	NonDiscardableValue                 = "S1006"
+	ImplicitMoveDisallowed              = "S1007"
+	InvalidExplicitDefault              = "S1008"
+	NoDefaultValue                      = "S1009"
+	MissingNonDefaultableField          = "S1010"
+	InvalidMembershipValue              = "S1011"
+	InterfaceInheritanceCycle           = "S1012"
+	IncompatibleUnitConversion          = "S1013"
+	IncompleteEnumSwitch                = "S1014"
+	DuplicateSwitchCase                 = "S1015"
+	OperatorNonOrderable                = "S1016"
+	OperatorInvalidShiftCount           = "S1017"
+	OperatorShiftOverflow               = "S1018"
+	OperatorNonComparable               = "S1019"
+	OperatorStringRuntimeConcat         = "S1020"
+	OperatorInvalidMembership           = "S1021"
+	OperatorInvalidConcatOperand        = "S1022"
+	OperatorIntegerOverflow             = "S1023"
+	OperatorDivisionByZero              = "S1024"
+	OperatorRemainderByZero             = "S1025"
+	RedundantAssociatedStatic           = "S1026"
+	InvalidGenericParameterName         = "S1027"
+	LargeValueParameter                 = "A2001"
 )
 
 var registry = map[string]Definition{
-	InvalidGenericParameterName: {ID: InvalidGenericParameterName, Name: "names.invalid-generic-type-parameter", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerUnknownEscape:          {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerMalformedEscape:        {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerInvalidUnicodeEscape:   {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerCharacterLiteralLength: {ID: LexerCharacterLiteralLength, Name: "lexer.character-literal-length", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerMalformedBaseLiteral:   {ID: LexerMalformedBaseLiteral, Name: "lexer.malformed-base-literal", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerInvalidBaseDigit:       {ID: LexerInvalidBaseDigit, Name: "lexer.invalid-base-digit", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerInvalidDigitSeparator:  {ID: LexerInvalidDigitSeparator, Name: "lexer.invalid-digit-separator", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
-	LexerInvalidNumericSuffix:   {ID: LexerInvalidNumericSuffix, Name: "lexer.invalid-numeric-suffix", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidGenericParameterName:         {ID: InvalidGenericParameterName, Name: "names.invalid-generic-type-parameter", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnknownEscape:                  {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerMalformedEscape:                {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidUnicodeEscape:           {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerCharacterLiteralLength:         {ID: LexerCharacterLiteralLength, Name: "lexer.character-literal-length", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerMalformedBaseLiteral:           {ID: LexerMalformedBaseLiteral, Name: "lexer.malformed-base-literal", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidBaseDigit:               {ID: LexerInvalidBaseDigit, Name: "lexer.invalid-base-digit", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidDigitSeparator:          {ID: LexerInvalidDigitSeparator, Name: "lexer.invalid-digit-separator", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidNumericSuffix:           {ID: LexerInvalidNumericSuffix, Name: "lexer.invalid-numeric-suffix", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerMissingExponentDigits:          {ID: LexerMissingExponentDigits, Name: "lexer.missing-exponent-digits", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnterminatedBlockComment:       {ID: LexerUnterminatedBlockComment, Name: "lexer.unterminated-block-comment", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnterminatedOrdinaryString:     {ID: LexerUnterminatedOrdinaryString, Name: "lexer.unterminated-ordinary-string", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnterminatedRawString:          {ID: LexerUnterminatedRawString, Name: "lexer.unterminated-raw-string", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnterminatedCharacterLiteral:   {ID: LexerUnterminatedCharacterLiteral, Name: "lexer.unterminated-character-literal", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerUnterminatedInterpolatedString: {ID: LexerUnterminatedInterpolatedString, Name: "lexer.unterminated-interpolated-string", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidSourceCharacter:         {ID: LexerInvalidSourceCharacter, Name: "lexer.invalid-source-character", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerNonNFCIdentifier: {
 		ID: LexerNonNFCIdentifier, Name: "lexer.non-nfc-identifier", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
 	},

@@ -258,6 +258,11 @@ The block comment ends when depth returns to zero.
 An unterminated block comment is one lexical error beginning at the opening
 delimiter.
 
+The lexer retains the complete comment candidate through end of file and emits
+`L1015` (`lexer.unterminated-block-comment`) with the opening delimiter as the
+start of its primary source range. Nested unmatched openings do not create
+additional diagnostics for the same outer comment token.
+
 ---
 
 ## 5.4 Documentation comments
@@ -1109,6 +1114,11 @@ The exponent contains:
 - optional `+` or `-`;
 - one or more ASCII decimal digits.
 
+If the marker and optional sign are not followed by an ASCII decimal digit,
+the lexer retains the maximal malformed exponent candidate and emits `L1014`
+(`lexer.missing-exponent-digits`) over its complete source range. A malformed
+digit separator in the exponent remains the more specific `L1012` error.
+
 An exponent literal without an explicit `g` suffix follows Sec's ordinary exact
 decimal literal inference.
 
@@ -1324,7 +1334,12 @@ or as a `rune` `switch` case. Thus `if ch == '$'` is valid when `ch` is a
 `rune`.
 
 An unterminated character literal is one lexical error beginning at its opening
-quote.
+quote. The lexer retains the complete candidate through the first physical line
+ending or end of file and emits mandatory `L1018`
+(`lexer.unterminated-character-literal`). The physical line ending is not part
+of the token, so tokenization can resume on the following line. If the literal
+ends inside an already diagnosed malformed escape, that more specific escape
+diagnostic is retained without an additional unterminated-character diagnostic.
 
 ---
 
@@ -1344,7 +1359,12 @@ Ordinary string literals cannot contain an unescaped physical newline.
 An ordinary string is decoded through the escape rules.
 
 An unterminated ordinary string is one lexical error beginning at its opening
-quote.
+quote. The lexer retains the complete candidate through the first physical line
+ending or end of file and emits mandatory `L1016`
+(`lexer.unterminated-ordinary-string`). The physical line ending is not part of
+the token, so tokenization can resume on the following line. If the string ends
+inside an already diagnosed malformed escape, that more specific escape
+diagnostic is retained without an additional unterminated-string diagnostic.
 
 ---
 
@@ -1374,6 +1394,11 @@ second line`
 A raw string cannot directly contain a backtick.
 
 Sec 0.1 defines no doubled-backtick escape.
+
+An unterminated raw string is one lexical error beginning at its opening
+backtick. The lexer retains the complete candidate through end of file and
+emits mandatory `L1017` (`lexer.unterminated-raw-string`). Embedded physical
+line endings remain part of the raw-string token and its diagnostic range.
 
 Raw strings are also used by grammar rules that attach metadata or annotations
 to declarations:
@@ -1425,6 +1450,15 @@ which produces:
 String escapes remain available in the non-expression portions.
 
 Interpolated strings cannot contain an unescaped physical newline.
+
+An unterminated interpolated string is one lexical error beginning at its `$"`
+prefix. The lexer retains the complete candidate through the first physical
+line ending or end of file and emits mandatory `L1019`
+(`lexer.unterminated-interpolated-string`). This includes end of input before a
+started interpolation expression has reached its matching `}`. The physical
+line ending is not part of the token, so tokenization can resume on the
+following line. A more specific lexer error inside the candidate, such as a
+malformed escape, suppresses the additional unterminated-string diagnostic.
 
 The frontend may initially tokenize the entire interpolated string as one token,
 but parser-visible interpolation expressions must retain accurate nested source
@@ -1766,9 +1800,17 @@ invalid numeric suffix
 unexpected byte-order mark
 ```
 
-An illegal source character should produce one token or diagnostic and then
-advance by one Unicode scalar value unless a larger malformed token has already
-been recognized.
+An illegal source character produces one `ILLEGAL` token, emits mandatory
+`L1020` (`lexer.invalid-source-character`) over that Unicode scalar, and then
+advances by exactly one scalar unless a larger malformed token has already been
+recognized. A scalar already owned by a more specific lexer diagnostic, such
+as invalid UTF-8 recovery, does not receive an additional `L1020`.
+
+An embedded `U+0000` is not end of file. At an ordinary token boundary it is
+an invalid source character governed by `L1020`, after which lexing continues.
+Inside a literal or comment it remains content governed by that token's own
+lexical rules. Frontends must therefore represent end of input independently
+from the rune value zero.
 
 ---
 

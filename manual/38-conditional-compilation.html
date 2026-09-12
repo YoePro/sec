@@ -1,0 +1,1306 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Conditional Compilation and Build Selection - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#conditional">Conditional Compilation and Build Selection</a>
+        <a href="#model">Compilation-Plan Model</a>
+        <a href="#no-preprocessor">No Textual Preprocessor</a>
+        <a href="#selection-before-sema">Selection Before Active Sema</a>
+        <a href="#target">Target Selection with @target</a>
+        <a href="#file-target">File-Level @target</a>
+        <a href="#statement-target">Statement-Level @target</a>
+        <a href="#target-selectors">Target Selectors</a>
+        <a href="#target-terms">os, arch, cpu, device, board</a>
+        <a href="#selector-combination">Selector Combination</a>
+        <a href="#selector-values">Selector Values</a>
+        <a href="#conditional-imports">Conditional Imports</a>
+        <a href="#when">Configuration Selection with @when</a>
+        <a href="#parameters">Compile-Time Parameters</a>
+        <a href="#parameter-sources">Parameter Sources</a>
+        <a href="#parameter-types">Parameter Types</a>
+        <a href="#when-language">@when Condition Language</a>
+        <a href="#target-vs-when">@target vs @when</a>
+        <a href="#compiler-options">Compiler Options Are Not Conditions</a>
+        <a href="#combined-selection">Combining @target and @when</a>
+        <a href="#variants">Conditional Declaration Variants</a>
+        <a href="#mutual-exclusion">Mutual Exclusion</a>
+        <a href="#overlap">Overlapping Variants</a>
+        <a href="#no-specificity">No Specificity Ranking</a>
+        <a href="#shape">Public Shape Compatibility</a>
+        <a href="#function-shape">Function Variant Shape</a>
+        <a href="#variable-shape">Variable Variant Shape</a>
+        <a href="#type-shape">Type Variant Shape</a>
+        <a href="#no-active">No Active Variant</a>
+        <a href="#module-identity">Module Identity Remains Stable</a>
+        <a href="#excluded-source">Excluded Source</a>
+        <a href="#syntax-errors">Syntax Errors Still Count</a>
+        <a href="#semantic-errors">Semantic Errors in Excluded Source</a>
+        <a href="#lsp">LSP and Excluded Source</a>
+        <a href="#cache">Compilation and Cache Identity</a>
+        <a href="#reproducibility">Reproducibility</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#formatter">Formatter</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html" class="active">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Conditional Compilation and Build Selection</div>
+
+        <h1 id="conditional">Conditional Compilation and Build Selection</h1>
+
+        <p>
+            Sec performs conditional compilation by selecting source declarations for one concrete
+            <code>CompilationPlan</code>.
+        </p>
+
+        <p>The two source-level selection mechanisms are:</p>
+
+        <pre><code>@target(...)
+@when(...)</code></pre>
+
+        <p>
+            <code>@target</code> selects according to target identity.
+            <code>@when</code> selects according to typed compile-time program configuration.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Conditional compilation selects declarations before active
+            semantic analysis. It is not runtime branching and it is not textual preprocessing.
+        </div>
+
+        <section id="model">
+            <h2>The Compilation-Plan Model</h2>
+
+            <p>
+                Every concrete build resolves a compilation plan containing facts such as:
+            </p>
+
+            <ul>
+                <li>logical project and target identity;</li>
+                <li>selected variant;</li>
+                <li>operating system;</li>
+                <li>architecture;</li>
+                <li>ABI;</li>
+                <li>CPU and CPU features;</li>
+                <li>device and board where applicable;</li>
+                <li>selected profile;</li>
+                <li>compiler options;</li>
+                <li>typed compile-time parameters.</li>
+            </ul>
+
+            <p>
+                Source selection uses the target identity and compile-time parameter portions of that plan.
+            </p>
+
+            <p>
+                After selection, the compiler constructs the active source graph and symbol set for
+                that concrete plan.
+            </p>
+        </section>
+
+        <section id="no-preprocessor">
+            <h2>Sec Has No Textual Preprocessor</h2>
+
+            <p>Sec 0.1 does not provide C-style:</p>
+
+            <pre><code>#define
+#ifdef
+#ifndef
+-DNAME
+text substitution
+token concatenation
+conditional lexical regions</code></pre>
+
+            <p>
+                Conditional compilation works on parsed declarations rather than raw source text.
+            </p>
+
+            <p>
+                This keeps syntax, formatting, source mapping and editor tooling available for all
+                source, including source that is inactive in the current compilation plan.
+            </p>
+        </section>
+
+        <section id="selection-before-sema">
+            <h2>Selection Happens Before Active Semantic Analysis</h2>
+
+            <p>The conceptual order is:</p>
+
+            <pre><code>parse source
+    -&gt; evaluate file-level target selection
+    -&gt; evaluate top-level @target and @when
+    -&gt; construct active source/symbol set
+    -&gt; validate declaration variants
+    -&gt; active semantic analysis
+    -&gt; lowering</code></pre>
+
+            <p>
+                Excluded source therefore does not participate in the current active symbol table,
+                ordinary active Sema, Semantic IR or lowering.
+            </p>
+
+            <p>
+                Selection must occur early enough that mutually exclusive declarations can share one
+                logical symbol identity.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target Selection with <code>@target</code></h2>
+
+            <p>
+                <code>@target</code> selects source according to target identity:
+            </p>
+
+            <pre><code>@target(os: "linux", arch: "amd64")
+fn RawWrite(
+    data: ref byte[],
+) Result[int, WriteError] {
+    ...
+}</code></pre>
+
+            <p>
+                The same attribute form is used for complete-file and single-declaration selection.
+                Position determines which meaning applies.
+            </p>
+        </section>
+
+        <section id="file-target">
+            <h2>File-Level <code>@target</code></h2>
+
+            <p>
+                When <code>@target</code> is the first source-bearing line in a file, it selects the
+                complete file:
+            </p>
+
+            <pre><code>@target(os: "linux", arch: "amd64")
+
+module amd64
+
+fn RawSystemCall(...) int64 {
+    ...
+}</code></pre>
+
+            <p>
+                Comments and an allowed byte-order marker may precede the attribute.
+            </p>
+
+            <p>
+                To retain file-level meaning, the attribute must appear before:
+            </p>
+
+            <ul>
+                <li>the module declaration;</li>
+                <li>imports;</li>
+                <li>types;</li>
+                <li>functions;</li>
+                <li>variables;</li>
+                <li>any other non-comment source statement.</li>
+            </ul>
+
+            <p>
+                When the target selectors do not match, the complete file is excluded from the active plan.
+            </p>
+        </section>
+
+        <section id="statement-target">
+            <h2>Statement-Level <code>@target</code></h2>
+
+            <p>
+                When <code>@target</code> is not the first source-bearing line, it selects only the
+                next allowed top-level statement:
+            </p>
+
+            <pre><code>@target(os: "linux")
+import "platform/linux"</code></pre>
+
+            <pre><code>@target(device: "controller-a")
+@address(Peripheral.GPIOA)
+let mut GPIOA: GPIORegisters</code></pre>
+
+            <pre><code>@target(os: "linux", arch: "amd64")
+fn RawWrite(...) Result[int, WriteError] {
+    ...
+}</code></pre>
+
+            <p>Allowed statement categories include:</p>
+
+            <ul>
+                <li>imports;</li>
+                <li>type, enum, union, register and unit declarations;</li>
+                <li>interfaces;</li>
+                <li>impl blocks;</li>
+                <li>functions;</li>
+                <li>extern declarations;</li>
+                <li>module-scope variables;</li>
+                <li>static declarations;</li>
+                <li>other top-level declaration forms allowed by the grammar.</li>
+            </ul>
+
+            <p>
+                <code>@target</code> does not attach to the module declaration itself.
+                Module identity remains stable across target variants.
+            </p>
+        </section>
+
+        <section id="target-selectors">
+            <h2>Target Selectors</h2>
+
+            <p>Sec 0.1 defines these target selectors:</p>
+
+            <pre><code>os
+arch
+cpu
+device
+board</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>@target(os: "linux")</code></pre>
+
+            <pre><code>@target(arch: "amd64")</code></pre>
+
+            <pre><code>@target(cpu: "cortex-m4")</code></pre>
+
+            <pre><code>@target(device: "stm32f407vg")</code></pre>
+
+            <pre><code>@target(board: "controller-rev-b")</code></pre>
+
+            <p>Several selectors may be combined:</p>
+
+            <pre><code>@target(
+    os: "linux",
+    arch: "arm64",
+    cpu: "cortex-a72",
+    board: "raspberry-pi-4",
+)</code></pre>
+
+            <p>
+                Unknown selector names are errors.
+                The compiler does not accept a selector merely because a future version may define it.
+            </p>
+        </section>
+
+        <section id="target-terms">
+            <h2><code>os</code>, <code>arch</code>, <code>cpu</code>, <code>device</code> and <code>board</code></h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Selector</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>os</code></td><td>Operating system or freestanding environment family</td></tr>
+                        <tr><td><code>arch</code></td><td>Instruction-set architecture or architecture family</td></tr>
+                        <tr><td><code>cpu</code></td><td>Processor core or processor implementation</td></tr>
+                        <tr><td><code>device</code></td><td>Complete MCU, SoC or other target device</td></tr>
+                        <tr><td><code>board</code></td><td>Concrete board or hardware product containing the device and external components</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>For example:</p>
+
+            <pre><code>arch   = "arm32"
+cpu    = "cortex-m4"
+device = "stm32f407vg"
+board  = "controller-rev-b"</code></pre>
+
+            <p>
+                A device is not interchangeable with a CPU.
+                Two devices using the same CPU core may still have different memory maps, peripheral
+                blocks, DMA channels, interrupt vectors, clock controllers and pin multiplexing.
+            </p>
+
+            <p>
+                Device-specific storage or interrupt bindings should therefore normally select by
+                <code>device</code> or <code>board</code>, not merely by <code>cpu</code>.
+            </p>
+        </section>
+
+        <section id="selector-combination">
+            <h2>Target Selectors Combine with Logical AND</h2>
+
+            <p>
+                At least one selector is required.
+                Omitted selectors impose no restriction.
+            </p>
+
+            <p>All supplied selectors must match:</p>
+
+            <pre><code>@target(os: "linux", arch: "amd64")</code></pre>
+
+            <p>means:</p>
+
+            <pre><code>os == "linux" AND arch == "amd64"</code></pre>
+
+            <p>
+                There is no implicit OR between selector arguments.
+                Use separate mutually exclusive declarations when one logical symbol has several
+                different target implementations.
+            </p>
+        </section>
+
+        <section id="selector-values">
+            <h2>Target Selector Values</h2>
+
+            <p>
+                String literals are accepted for the initial target selectors.
+            </p>
+
+            <p>
+                Matching uses canonical target-name normalization defined by target knowledge.
+            </p>
+
+            <p>The compiler diagnoses cases such as:</p>
+
+            <ul>
+                <li>unknown target value;</li>
+                <li>CPU incompatible with the selected architecture;</li>
+                <li>device incompatible with the selected CPU;</li>
+                <li>board incompatible with the selected device;</li>
+                <li>contradictory selectors.</li>
+            </ul>
+
+            <p>
+                Target aliases, where supported, belong to target knowledge rather than arbitrary
+                source-defined aliases.
+            </p>
+        </section>
+
+        <section id="conditional-imports">
+            <h2>Imports May Be Target-Selected</h2>
+
+            <pre><code>@target(os: "linux")
+import "platform/linux"</code></pre>
+
+            <p>
+                When the selector does not match, the import does not enter the active source graph
+                for that compilation plan.
+            </p>
+
+            <p>
+                This is declaration-aware source selection rather than an implicit runtime choice
+                between modules.
+            </p>
+
+            <p>
+                File-local import semantics remain unchanged: an active import creates a qualifier
+                only in the source file where it appears.
+            </p>
+        </section>
+
+        <section id="when">
+            <h2>Configuration Selection with <code>@when</code></h2>
+
+            <p>
+                <code>@when</code> selects the next top-level statement according to typed
+                compile-time program configuration:
+            </p>
+
+            <pre><code>@when(config.telemetry)
+fn SendTelemetry() Result[void, TelemetryError] {
+    ...
+}</code></pre>
+
+            <p>
+                The declaration either exists in the current compilation plan or it does not.
+            </p>
+
+            <p>
+                <code>@when</code> does not produce a runtime <code>if</code>.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Compile-Time Parameters</h2>
+
+            <p>
+                Compile-time parameters are typed program values supplied by project build configuration.
+            </p>
+
+            <p>They are:</p>
+
+            <ul>
+                <li>typed;</li>
+                <li>validated;</li>
+                <li>part of compilation-plan identity;</li>
+                <li>part of build-cache identity;</li>
+                <li>not compiler options;</li>
+                <li>not text macros;</li>
+                <li>not runtime configuration.</li>
+            </ul>
+
+            <p>
+                Boolean parameters are referenced in source through the canonical
+                <code>config.Name</code> form:
+            </p>
+
+            <pre><code>@when(config.audit)
+fn RecordAuditEntry(...) Result[void, AuditError] {
+    ...
+}</code></pre>
+        </section>
+
+        <section id="parameter-sources">
+            <h2>Compile-Time Parameters Come from Project Build Configuration</h2>
+
+            <p>Project-wide values may be declared in the project manifest:</p>
+
+            <pre><code>[parameters]
+telemetry = false
+maximum_connections = 1000
+product_name = "Shop"</code></pre>
+
+            <p>More specific build configuration may override them:</p>
+
+            <pre><code>[target.shop.parameters]
+maximum_connections = 2000</code></pre>
+
+            <pre><code>[variant.windows-amd64.parameters]
+native_service = true</code></pre>
+
+            <pre><code>[target.shop.variant.windows-amd64.parameters]
+service_name = "ShopService"</code></pre>
+
+            <p>
+                Command-line overrides may provide the final invocation-specific value when supported
+                by the build interface.
+            </p>
+
+            <p>
+                More specific configuration overrides less specific configuration only under the
+                project configuration rules.
+            </p>
+        </section>
+
+        <section id="parameter-types">
+            <h2>Parameter Overrides Preserve Type</h2>
+
+            <p>
+                A parameter's type is established by its original declaration.
+                Every override must preserve that type.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>[parameters]
+maximum_connections = 1000
+
+[target.shop.parameters]
+maximum_connections = "many"</code></pre>
+
+            <p>
+                Conditional compilation therefore does not operate on untyped strings.
+            </p>
+
+            <p>
+                Compile-time parameters also must not contain secrets.
+                Their values may become visible in generated code, IR, object files, debug information
+                or build caches.
+            </p>
+        </section>
+
+        <section id="when-language">
+            <h2><code>@when</code> Condition Language</h2>
+
+            <p>Sec 0.1 permits a deliberately restricted compile-time boolean expression:</p>
+
+            <pre><code>boolean compile-time parameter
+true
+false
+!
+&amp;&amp;
+||
+==
+!=
+(...)</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>@when(config.audit)</code></pre>
+
+            <pre><code>@when(!config.telemetry)</code></pre>
+
+            <pre><code>@when(config.audit &amp;&amp; config.databaseLogging)</code></pre>
+
+            <p>
+                The expression must be evaluable while constructing the compilation plan.
+                It does not invoke ordinary user functions or runtime computation.
+            </p>
+        </section>
+
+        <section id="target-vs-when">
+            <h2><code>@target</code> and <code>@when</code> Have Different Responsibilities</h2>
+
+            <p>Use <code>@target</code> for target identity:</p>
+
+            <pre><code>@target(os: "linux")
+fn InstallPlatformHook() void {
+    ...
+}</code></pre>
+
+            <p>Use <code>@when</code> for typed program configuration:</p>
+
+            <pre><code>@when(config.audit)
+fn InstallAuditHook() void {
+    ...
+}</code></pre>
+
+            <p>Combine the two when both restrictions apply:</p>
+
+            <pre><code>@target(os: "linux")
+@when(config.audit)
+fn InstallAuditIntegration() void {
+    ...
+}</code></pre>
+
+            <p>Do not mix target identity into the <code>@when</code> expression:</p>
+
+            <pre><code>@when(config.audit &amp;&amp; target.os == "linux")    // invalid in Sec 0.1</code></pre>
+
+            <p>
+                Keeping these domains separate makes target selection and program configuration
+                explicit and independently validatable.
+            </p>
+        </section>
+
+        <section id="compiler-options">
+            <h2>Compiler Options Are Not Conditional-Compilation Inputs</h2>
+
+            <p>
+                Compiler behavior settings do not decide whether declarations exist.
+            </p>
+
+            <p>Examples that are not <code>@when</code> inputs include:</p>
+
+            <ul>
+                <li>optimization level;</li>
+                <li>debug-information level;</li>
+                <li>warning level;</li>
+                <li>LTO;</li>
+                <li>strip configuration;</li>
+                <li>bounds-check lowering policy;</li>
+                <li>overflow-check lowering policy.</li>
+            </ul>
+
+            <p>
+                Changing optimization or debug configuration must not silently change the public
+                source graph of the program.
+            </p>
+
+            <p>
+                Build features that genuinely change program source use typed compile-time parameters instead.
+            </p>
+        </section>
+
+        <section id="combined-selection">
+            <h2>Combining <code>@target</code> and <code>@when</code></h2>
+
+            <pre><code>@target(os: "linux", arch: "amd64")
+@when(config.telemetry)
+fn StartTelemetryBackend() Result[void, TelemetryError] {
+    ...
+}</code></pre>
+
+            <p>
+                The declaration is active only when both the target selectors and the
+                <code>@when</code> condition are satisfied.
+            </p>
+
+            <p>
+                Consecutive selection attributes belong to the same declaration attachment set.
+                They do not create nested scopes around one another.
+            </p>
+        </section>
+
+        <section id="variants">
+            <h2>Conditional Declaration Variants</h2>
+
+            <p>
+                Several declarations may represent one logical symbol when their selection conditions
+                are mutually exclusive:
+            </p>
+
+            <pre><code>@target(device: "controller-a")
+@address(0x40010000)
+let mut GPIO: GPIORegisters
+
+@target(device: "controller-b")
+@address(0x50020000)
+let mut GPIO: GPIORegisters</code></pre>
+
+            <p>
+                For one selected device, exactly one declaration becomes active.
+            </p>
+
+            <p>
+                The same mechanism can provide target-specific functions, imports, types, extern
+                declarations, implementation blocks and other top-level source.
+            </p>
+        </section>
+
+        <section id="mutual-exclusion">
+            <h2>Variants Must Be Mutually Exclusive for One Plan</h2>
+
+            <p>
+                Reusing one logical declaration identity is valid only when no legal compilation plan
+                can activate conflicting variants simultaneously.
+            </p>
+
+            <p>
+                Selection therefore becomes part of duplicate-declaration analysis.
+            </p>
+        </section>
+
+        <section id="overlap">
+            <h2>Overlapping Active Variants Are an Error</h2>
+
+            <pre><code>@target(os: "linux")
+fn Open() void {
+}
+
+@target(os: "linux", arch: "amd64")
+fn Open() void {
+}</code></pre>
+
+            <p>
+                On Linux amd64, both declarations are active.
+                Compilation fails.
+            </p>
+
+            <p>
+                A diagnostic should identify all active declarations and the relevant compilation-plan facts.
+            </p>
+        </section>
+
+        <section id="no-specificity">
+            <h2>There Is No Implicit “Most Specific Variant” Rule</h2>
+
+            <p>
+                Sec does not interpret:
+            </p>
+
+            <pre><code>@target(os: "linux", arch: "amd64")</code></pre>
+
+            <p>
+                as automatically preferred over:
+            </p>
+
+            <pre><code>@target(os: "linux")</code></pre>
+
+            <p>
+                If both define the same logical declaration and are active, the program is invalid.
+            </p>
+
+            <p>
+                Source selection is explicit, not precedence-based pattern matching.
+            </p>
+        </section>
+
+        <section id="shape">
+            <h2>Public Variant Shape Must Remain Compatible</h2>
+
+            <p>
+                Conditional source selection may change implementation details, but it must not
+                silently turn one public API into unrelated APIs across targets.
+            </p>
+
+            <p>
+                Mutually exclusive variants of one public symbol therefore need compatible public shape.
+            </p>
+        </section>
+
+        <section id="function-shape">
+            <h2>Function Variant Shape</h2>
+
+            <p>Public function variants must agree on:</p>
+
+            <ul>
+                <li>name;</li>
+                <li>visibility;</li>
+                <li>generic parameter shape;</li>
+                <li>parameter types;</li>
+                <li>return type;</li>
+                <li>compatible declared effects;</li>
+                <li>compatible ABI contract.</li>
+            </ul>
+
+            <p>Target-specific bodies may differ:</p>
+
+            <pre><code>@target(os: "linux")
+fn Open(path: string) Result[File, IOError] {
+    ...
+}
+
+@target(os: "windows")
+fn Open(path: string) Result[File, IOError] {
+    ...
+}</code></pre>
+
+            <p>
+                The public function contract remains stable even though platform implementation differs.
+            </p>
+        </section>
+
+        <section id="variable-shape">
+            <h2>Variable Variant Shape</h2>
+
+            <p>Public variable variants must agree on:</p>
+
+            <ul>
+                <li>name;</li>
+                <li>visibility;</li>
+                <li>declared type;</li>
+                <li>mutability;</li>
+                <li>compatible ownership policy.</li>
+            </ul>
+
+            <p>
+                Their physical addresses and other target-private binding details may differ.
+            </p>
+        </section>
+
+        <section id="type-shape">
+            <h2>Type Variant Shape</h2>
+
+            <p>
+                Type variants follow the public identity and surface rules defined by the type and
+                module model.
+            </p>
+
+            <p>
+                Target-specific private representation details may differ only where the owning
+                layout/ABI rules permit that difference without changing the public semantic contract.
+            </p>
+        </section>
+
+        <section id="no-active">
+            <h2>No Active Variant</h2>
+
+            <p>
+                If no declaration variant is active for the current compilation plan, that symbol is unavailable.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>@target(device: "controller-a")
+let mut GPIO: GPIORegisters
+
+@target(device: "controller-b")
+let mut GPIO: GPIORegisters</code></pre>
+
+            <p>
+                A build for <code>controller-c</code> has no active <code>GPIO</code> declaration.
+            </p>
+
+            <p>
+                A use should produce a target-aware diagnostic that reports the current plan and the
+                available variants.
+            </p>
+        </section>
+
+        <section id="module-identity">
+            <h2>Module Identity Remains Stable Across Variants</h2>
+
+            <p>
+                Conditional compilation selects files and declarations inside the project/module model.
+                It does not create a different module name for each target.
+            </p>
+
+            <p>
+                The same logical module may contain target-selected source, but its canonical module
+                identity remains the module identity defined by the Modules chapter.
+            </p>
+
+            <p>
+                This is why statement-level <code>@target</code> does not attach to the module declaration itself.
+            </p>
+        </section>
+
+        <section id="excluded-source">
+            <h2>Excluded Source Is Still Source</h2>
+
+            <p>A file or declaration excluded by <code>@target</code> or <code>@when</code>:</p>
+
+            <ul>
+                <li>is lexed;</li>
+                <li>is parsed;</li>
+                <li>is available to the formatter;</li>
+                <li>is visible to the LSP as excluded source;</li>
+                <li>does not enter the active symbol table;</li>
+                <li>does not require unavailable imports or types for the current plan;</li>
+                <li>does not undergo ordinary active semantic analysis;</li>
+                <li>does not reach Semantic IR;</li>
+                <li>does not reach lowering.</li>
+            </ul>
+
+            <p>
+                This design keeps inactive source structurally valid while allowing target-specific
+                semantic dependencies to exist only on plans where they are meaningful.
+            </p>
+        </section>
+
+        <section id="syntax-errors">
+            <h2>Syntax Errors in Excluded Source Still Count</h2>
+
+            <p>
+                A selector cannot hide malformed Sec syntax indefinitely.
+            </p>
+
+            <pre><code>@target(os: "windows")
+fn Broken( {    // syntax error even in a Linux plan
+}</code></pre>
+
+            <p>
+                Because all source is parsed before active semantic selection, syntax errors remain
+                syntax errors regardless of whether the declaration is active for the current plan.
+            </p>
+        </section>
+
+        <section id="semantic-errors">
+            <h2>Target-Dependent Semantic Errors Are Checked When Source Is Active</h2>
+
+            <p>
+                Excluded source does not undergo ordinary active Sema for the current plan.
+            </p>
+
+            <p>
+                This means an inactive declaration may refer to a target-only import or type unavailable
+                in the current plan without forcing that dependency to exist.
+            </p>
+
+            <p>
+                When a plan activates the declaration, its semantic requirements become active and
+                are checked normally.
+            </p>
+
+            <div class="rule">
+                <strong>Distinction:</strong> Syntax validity is universal across source. Active semantic
+                validity is plan-specific.
+            </div>
+        </section>
+
+        <section id="lsp">
+            <h2>LSP and Excluded Source</h2>
+
+            <p>
+                Editor tooling should preserve excluded source in the document model rather than
+                pretending it does not exist.
+            </p>
+
+            <p>The LSP should be able to show:</p>
+
+            <ul>
+                <li>whether a file or declaration is active in the current workspace plan;</li>
+                <li>which <code>@target</code> selector excluded it;</li>
+                <li>which <code>@when</code> condition excluded it;</li>
+                <li>the active target/variant/profile context;</li>
+                <li>available mutually exclusive variants;</li>
+                <li>shape mismatches between public variants;</li>
+                <li>overlap under a selected plan;</li>
+                <li>completion for known target values and configuration names.</li>
+            </ul>
+
+            <p>
+                Formatting and syntax diagnostics remain available for excluded source.
+            </p>
+        </section>
+
+        <section id="cache">
+            <h2>Selection Participates in Compilation and Cache Identity</h2>
+
+            <p>
+                Compile-time parameters and target/variant identity can change the active source graph
+                and generated artifact.
+            </p>
+
+            <p>
+                Build/cache identity therefore includes inputs such as:
+            </p>
+
+            <ul>
+                <li>project identity;</li>
+                <li>target identity;</li>
+                <li>variant identity;</li>
+                <li>operating system;</li>
+                <li>architecture;</li>
+                <li>ABI;</li>
+                <li>CPU and features;</li>
+                <li>selected profile;</li>
+                <li>compiler options;</li>
+                <li>compile-time parameters;</li>
+                <li>source hashes;</li>
+                <li>selected platform source.</li>
+            </ul>
+
+            <p>
+                Artifacts produced for one incompatible selection must never be reused as though they
+                represented another plan.
+            </p>
+        </section>
+
+        <section id="reproducibility">
+            <h2>Conditional Compilation Must Remain Reproducible</h2>
+
+            <p>
+                A compilation plan with the same semantic inputs should resolve the same active source graph.
+            </p>
+
+            <p>
+                Source selection therefore must not depend on:
+            </p>
+
+            <ul>
+                <li>filesystem enumeration order;</li>
+                <li>host machine details not represented in the selected target plan;</li>
+                <li>runtime environment variables unless explicitly imported into typed build configuration;</li>
+                <li>current wall-clock time;</li>
+                <li>network state;</li>
+                <li>arbitrary compiler implementation accidents.</li>
+            </ul>
+
+            <p>
+                Typed configuration and explicit target identity are part of the reason Sec avoids
+                an unrestricted textual preprocessor.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <h3>Unknown target selector</h3>
+
+            <pre><code>unknown @target selector `vendor`
+
+Sec 0.1 selectors are:
+    os
+    arch
+    cpu
+    device
+    board</code></pre>
+
+            <h3>Contradictory target selection</h3>
+
+            <pre><code>target selectors are incompatible
+
+    arch = "arm32"
+    cpu  = "x86-64"
+
+the selected CPU does not belong to the selected architecture</code></pre>
+
+            <h3>Unknown configuration parameter</h3>
+
+            <pre><code>unknown compile-time parameter `config.telemetry`
+
+help: declare the parameter in project build configuration
+help: check the parameter spelling</code></pre>
+
+            <h3>Wrong parameter type</h3>
+
+            <pre><code>`@when` requires a boolean condition
+
+`config.maximum_connections` has type int</code></pre>
+
+            <h3>Compiler option used as a source condition</h3>
+
+            <pre><code>compiler option `optimization` cannot control source inclusion
+
+help: use a typed compile-time parameter when program source genuinely varies</code></pre>
+
+            <h3>Overlapping variants</h3>
+
+            <pre><code>multiple active target variants define `Open`
+
+active declarations:
+    platform.sec:10
+    platform.sec:15
+
+compilation plan:
+    os = linux
+    arch = amd64
+
+help: make the selection conditions mutually exclusive</code></pre>
+
+            <h3>Public shape mismatch</h3>
+
+            <pre><code>target variants of `Open` have incompatible public shape
+
+linux variant:
+    fn Open(path: string) Result[File, IOError]
+
+windows variant:
+    fn Open(path: string, flags: uint32) Result[File, IOError]
+
+one logical public symbol must keep a compatible public contract</code></pre>
+
+            <h3>No active variant</h3>
+
+            <pre><code>`GPIO` is unavailable for device "controller-c"
+
+available variants:
+    device = "controller-a"
+    device = "controller-b"</code></pre>
+
+            <p>
+                Diagnostics should always include the relevant target/variant/configuration facts
+                when those facts explain why a declaration is active, excluded or conflicting.
+            </p>
+        </section>
+
+        <section id="formatter">
+            <h2>Formatter Behavior</h2>
+
+            <p>
+                The formatter preserves canonical attribute forms:
+            </p>
+
+            <pre><code>@target(
+    os: "linux",
+    arch: "arm64",
+    cpu: "cortex-a72",
+)
+
+@when(config.audit &amp;&amp; config.databaseLogging)
+fn RecordAuditEntry(...) Result[void, AuditError] {
+    ...
+}</code></pre>
+
+            <p>
+                It must not:
+            </p>
+
+            <ul>
+                <li>move a file-level selector below the module declaration;</li>
+                <li>change file-level selection into declaration-level selection;</li>
+                <li>rewrite target identity as configuration state;</li>
+                <li>rewrite configuration state as target identity;</li>
+                <li>delete excluded source;</li>
+                <li>change variant overlap semantics.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use file-level <code>@target</code> when an entire file belongs to one target family.</li>
+                <li>Use statement-level <code>@target</code> when only a small number of declarations differ.</li>
+                <li>Use <code>@when</code> for typed program features, not for compiler tuning.</li>
+                <li>Keep target identity in <code>@target</code> and program configuration in <code>@when</code>.</li>
+                <li>Prefer <code>device</code> or <code>board</code> for peripheral/address differences instead of over-broad CPU selection.</li>
+                <li>Make declaration variants obviously mutually exclusive.</li>
+                <li>Do not rely on a “more specific selector wins” rule; Sec has none.</li>
+                <li>Keep public API shape stable across target variants.</li>
+                <li>Keep inactive source syntactically valid and formatted.</li>
+                <li>Do not put secrets in compile-time parameters.</li>
+                <li>Use ordinary runtime <code>if</code> when the decision belongs to runtime state.</li>
+                <li>Avoid exploding one declaration into many variants when one portable implementation is sufficient.</li>
+                <li>Use target-selected imports only when the dependency itself is genuinely target-specific.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec conditional compilation is source selection for one concrete <code>CompilationPlan</code>.</li>
+                <li>The canonical selection attributes are <code>@target</code> and <code>@when</code>.</li>
+                <li><code>@target</code> selects by target identity.</li>
+                <li><code>@when</code> selects by typed compile-time program configuration.</li>
+                <li>Conditional compilation is not runtime branching.</li>
+                <li>Sec 0.1 has no C-style textual preprocessor.</li>
+                <li>Sec does not use <code>#define</code>, <code>#ifdef</code>, token substitution or conditional lexical regions.</li>
+                <li>All source is lexed and parsed before active semantic selection.</li>
+                <li>Selection occurs before active symbol-table construction and ordinary active Sema.</li>
+                <li>A file-level <code>@target</code> is the first source-bearing line and selects the complete file.</li>
+                <li>Comments and a supported byte-order marker may precede file-level <code>@target</code>.</li>
+                <li>A later <code>@target</code> selects only the next allowed top-level statement.</li>
+                <li>Statement-level <code>@target</code> may select imports and top-level declarations.</li>
+                <li><code>@target</code> does not attach to the module declaration itself.</li>
+                <li>Module identity stays stable across variants.</li>
+                <li>Sec 0.1 target selectors are <code>os</code>, <code>arch</code>, <code>cpu</code>, <code>device</code> and <code>board</code>.</li>
+                <li>At least one target selector is required.</li>
+                <li>Omitted selectors impose no restriction.</li>
+                <li>All supplied target selectors combine with logical AND.</li>
+                <li>Unknown selector names are errors.</li>
+                <li>Target values are checked against canonical target knowledge and compatibility relationships.</li>
+                <li><code>os</code> identifies an OS or freestanding environment family.</li>
+                <li><code>arch</code> identifies an instruction-set architecture/family.</li>
+                <li><code>cpu</code> identifies a processor core or implementation.</li>
+                <li><code>device</code> identifies a complete MCU/SoC/target device.</li>
+                <li><code>board</code> identifies a concrete hardware product containing a device and external components.</li>
+                <li>Device-specific peripheral differences should normally select by device or board rather than CPU alone.</li>
+                <li>An import may be selected with <code>@target</code>.</li>
+                <li>An excluded import does not enter the active source graph for the current plan.</li>
+                <li><code>@when</code> selects the next top-level statement using a plan-time boolean condition.</li>
+                <li>Compile-time parameters are typed program values supplied by project build configuration.</li>
+                <li>Compile-time parameters are validated and participate in compilation/cache identity.</li>
+                <li>Compile-time parameters are not compiler options, textual macros or runtime configuration.</li>
+                <li>Boolean configuration is referenced through <code>config.Name</code>.</li>
+                <li>Project, target, variant and target-variant configuration may supply parameter values under the project rules.</li>
+                <li>Parameter overrides must preserve the declared/original parameter type.</li>
+                <li>Compile-time parameters must not contain secrets.</li>
+                <li>The Sec 0.1 <code>@when</code> language supports boolean parameters, true/false, <code>!</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>==</code>, <code>!=</code> and parentheses.</li>
+                <li>Target identity belongs in <code>@target</code>, not inside <code>@when</code>.</li>
+                <li>Compiler options such as optimization, debug info, warnings, LTO and strip settings do not control declaration existence.</li>
+                <li>Changing compiler tuning must not silently change the public source graph.</li>
+                <li><code>@target</code> and <code>@when</code> may be combined on one declaration.</li>
+                <li>A combined declaration is active only when every attached selection condition is satisfied.</li>
+                <li>Mutually exclusive declaration variants may define one logical symbol.</li>
+                <li>Variant selection participates in duplicate-declaration analysis.</li>
+                <li>If two variants of one logical declaration are active in one plan, compilation fails.</li>
+                <li>Sec never implicitly selects the “most specific” active variant.</li>
+                <li>Mutually exclusive public variants must keep compatible public shape.</li>
+                <li>Function variants keep name, visibility, generic shape, parameter types, return type, effects and ABI contract compatible.</li>
+                <li>Variable variants keep name, visibility, type, mutability and ownership policy compatible.</li>
+                <li>Target-specific implementation bodies, addresses, vectors and private details may differ where their owning rules permit it.</li>
+                <li>If no variant is active, the symbol is unavailable for that compilation plan.</li>
+                <li>Unavailable-symbol diagnostics should report relevant target facts and available variants.</li>
+                <li>Excluded source is still lexed, parsed, formatted and visible to the LSP.</li>
+                <li>Excluded source does not enter the active symbol table, active Sema, Semantic IR or lowering.</li>
+                <li>Excluded source does not require target-only imports/types to exist in the current plan.</li>
+                <li>Syntax errors remain errors even in excluded source.</li>
+                <li>Target-dependent semantic errors are evaluated when their source becomes active.</li>
+                <li>LSP tooling should expose active/excluded state and the condition responsible for it.</li>
+                <li>Target/variant/configuration inputs participate in build and cache identity when they can affect generated output.</li>
+                <li>Artifacts from incompatible compilation plans must not be reused interchangeably.</li>
+                <li>Conditional selection must be reproducible from explicit plan inputs rather than ambient runtime state.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="37-attributes.html">Previous: Attributes</a>
+            <a href="39-compile-time-evaluation.html">Next: Compile-Time Evaluation</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

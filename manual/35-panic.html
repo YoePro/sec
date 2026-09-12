@@ -1,0 +1,1225 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Panic, Assertions and Runtime Checks - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#panic">Panic, Assertions and Runtime Checks</a>
+        <a href="#draft-status">Draft Status</a>
+        <a href="#panic-vs-errors">Panic vs Recoverable Errors</a>
+        <a href="#runtime-checks">Runtime Safety Checks</a>
+        <a href="#three-outcomes">Three Outcomes for Checked Operations</a>
+        <a href="#check-elimination">Check Elimination</a>
+        <a href="#panic-rule">Core Panic Rule</a>
+        <a href="#panic-domain">Panic Domains</a>
+        <a href="#no-general-catch">No General Panic Catching</a>
+        <a href="#root-panic">Root Panic</a>
+        <a href="#contained-panic">Contained Panic</a>
+        <a href="#panicinfo">PanicInfo</a>
+        <a href="#panicid">PanicID</a>
+        <a href="#allocation-free">Allocation-Free Minimum Path</a>
+        <a href="#assert">Assertions</a>
+        <a href="#assert-syntax">Assertion Syntax</a>
+        <a href="#assert-typing">Assertion Typing</a>
+        <a href="#assert-semantics">Assertion Semantics</a>
+        <a href="#assert-refinement">Assertion Refinement</a>
+        <a href="#assert-active">Assertions Are Always Active</a>
+        <a href="#assert-purpose">Assertions Are Not Input Validation</a>
+        <a href="#unreachable">Checked unreachable</a>
+        <a href="#explicit-panic">Explicit Panic</a>
+        <a href="#no-panic">noPanic</a>
+        <a href="#no-panic-proof">Transitive Proof</a>
+        <a href="#isr">ISR Interaction</a>
+        <a href="#cleanup">Panic Cleanup</a>
+        <a href="#double-panic">Double Panic</a>
+        <a href="#shared-state">Shared Mutable State</a>
+        <a href="#result-cancel">Panic, Result and Cancellation</a>
+        <a href="#unsafe-ffi">Unsafe and FFI</a>
+        <a href="#strategy">Target Panic Strategy</a>
+        <a href="#runtime-free">No Mandatory Runtime</a>
+        <a href="#cte">Compile-Time Evaluation</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#update-list">Required Future Updates</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html" class="active">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Panic, Assertions and Runtime Checks</div>
+
+        <h1 id="panic">Panic, Assertions and Runtime Checks</h1>
+
+        <div class="rule" id="draft-status">
+            <strong>Draft manual page for Sec 0.1:</strong>
+            Most panic semantics on this page are already normative, including panic domains,
+            assertions, checked <code>unreachable</code>, <code>PanicID</code>,
+            <code>PanicInfo</code>, runtime-check behavior and <code>@noPanic</code>.
+            However, the exact source syntax and payload model for an explicit programmer-triggered
+            panic are <strong>not yet locked</strong>. Sections marked <strong>UPDATE REQUIRED</strong>
+            must be revisited when those language decisions and the remaining platform/concurrency
+            integration details are finalized.
+        </div>
+
+        <p>
+            Panic represents a broken internal invariant or another failure path whose owning rule
+            explicitly selects panic semantics.
+        </p>
+
+        <p>
+            It is not Sec's ordinary mechanism for expected business or technical failure.
+            Recoverable failures use <code>Result</code>, <code>Option</code>, typed errors,
+            <code>try</code>, <code>match</code> and normal control flow.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Panic terminates the current panic domain and never resumes
+            the failed stack.
+        </div>
+
+        <section id="panic-vs-errors">
+            <h2>Panic and Recoverable Errors Are Different</h2>
+
+            <p>Expected failures should remain ordinary typed program states:</p>
+
+            <pre><code>fn Open(path: string) Result[File, IOError] {
+    ...
+}</code></pre>
+
+            <p>Examples that normally belong in a recoverable channel include:</p>
+
+            <ul>
+                <li>invalid user input;</li>
+                <li>file not found;</li>
+                <li>disk full;</li>
+                <li>connection failure;</li>
+                <li>timeout;</li>
+                <li>allocation failure where recovery is supported;</li>
+                <li>missing optional data.</li>
+            </ul>
+
+            <p>Panic is instead appropriate for conditions such as:</p>
+
+            <ul>
+                <li>failed internal assertions;</li>
+                <li>reached checked <code>unreachable</code>;</li>
+                <li>runtime safety checks whose ordinary form cannot prove safety and is not handled through <code>try</code>;</li>
+                <li>other invariant failures whose owning language rule explicitly selects panic semantics.</li>
+            </ul>
+
+            <p>
+                Returning <code>Err(errorValue)</code> is normal completion through the recoverable
+                result channel. It is not panic.
+            </p>
+        </section>
+
+        <section id="runtime-checks">
+            <h2>Runtime Safety Checks</h2>
+
+            <p>
+                Sec uses checked semantics for operations where invalid runtime input could otherwise
+                violate the language's guarantees.
+            </p>
+
+            <p>Runtime-check categories include:</p>
+
+            <ul>
+                <li>integer overflow where the operation is checked;</li>
+                <li>division or remainder by zero;</li>
+                <li>invalid shift counts;</li>
+                <li>invalid narrowing or scalar conversion;</li>
+                <li>array and slice bounds;</li>
+                <li>invalid slice ranges;</li>
+                <li>shape/dimension incompatibility;</li>
+                <li>named-type contract failure;</li>
+                <li>invalid reference generation or expired arena reference where runtime validation is required;</li>
+                <li>invalid representation at a trusted boundary;</li>
+                <li>assertion failure;</li>
+                <li>reached checked <code>unreachable</code>.</li>
+            </ul>
+
+            <p>
+                Statically provable ownership violations remain compile-time errors rather than
+                runtime checks.
+            </p>
+        </section>
+
+        <section id="three-outcomes">
+            <h2>Checked Operations Have Three Compiler Outcomes</h2>
+
+            <h3>1. Proven safe</h3>
+
+            <p>
+                When the compiler proves the failure condition impossible, no runtime failure path
+                remains:
+            </p>
+
+            <pre><code>type Small int range 0..100
+
+fn Increment(value: Small) int {
+    return value + 1
+}</code></pre>
+
+            <h3>2. Fallible</h3>
+
+            <p>
+                Using <code>try</code> converts the check into explicit typed fallible control flow:
+            </p>
+
+            <pre><code>let total := try left + right
+let value := try values[index]</code></pre>
+
+            <p>
+                The owning operation defines the exact error type, such as
+                <code>ArithmeticError</code> or <code>IndexError</code>.
+            </p>
+
+            <h3>3. Panic-capable</h3>
+
+            <p>
+                When the ordinary checked operation is used and failure cannot be disproven, the
+                operation may panic:
+            </p>
+
+            <pre><code>let total := left + right
+let value := values[index]</code></pre>
+
+            <p>
+                If the runtime failure occurs, panic semantics determine what happens to the current
+                execution domain.
+            </p>
+        </section>
+
+        <section id="check-elimination">
+            <h2>Checks May Be Eliminated by Proof</h2>
+
+            <p>The compiler may prove runtime checks unnecessary through facts such as:</p>
+
+            <ul>
+                <li>constant evaluation;</li>
+                <li>range and other named-type contracts;</li>
+                <li>branch refinement;</li>
+                <li>successful <code>assert</code> refinement;</li>
+                <li>loop induction;</li>
+                <li>fixed lengths or capacities;</li>
+                <li>generic constant arguments;</li>
+                <li>call-site specialization;</li>
+                <li>whole-program analysis where available.</li>
+            </ul>
+
+            <pre><code>if index &gt;= 0 &amp;&amp; index &lt; values.Length {
+    let value := values[index]
+}</code></pre>
+
+            <p>
+                Inside the true branch, the compiler may prove the bounds check redundant.
+            </p>
+
+            <p>
+                Removing a proven-unnecessary check does not change program semantics.
+            </p>
+        </section>
+
+        <section id="panic-rule">
+            <h2>Core Panic Rule</h2>
+
+            <p>When panic occurs:</p>
+
+            <ul>
+                <li>the current panic domain terminates;</li>
+                <li>the failed stack never resumes;</li>
+                <li>code after the panic point does not continue in that domain;</li>
+                <li>panic remains visible to compiler effect analysis;</li>
+                <li>panic does not change the declared function return type;</li>
+                <li>panic is not implicitly converted into <code>Err</code>.</li>
+            </ul>
+
+            <p>
+                Another execution domain may later observe the panic outcome when the active
+                concurrency model defines a containment boundary, but the failed operation itself
+                did not return normally.
+            </p>
+        </section>
+
+        <section id="panic-domain">
+            <h2>Panic Domains</h2>
+
+            <p>
+                A panic domain is the execution unit terminated by panic.
+            </p>
+
+            <p>Canonical categories include:</p>
+
+            <ul>
+                <li>managed task;</li>
+                <li>managed thread;</li>
+                <li>root process domain;</li>
+                <li>freestanding or bare-metal root domain.</li>
+            </ul>
+
+            <p>
+                An ordinary function call is not itself a panic domain.
+                Panic is not implemented by secretly adding a hidden error result to every function.
+            </p>
+        </section>
+
+        <section id="no-general-catch">
+            <h2>No General Panic Catching</h2>
+
+            <p>Sec 0.1 has no ordinary language construct equivalent to:</p>
+
+            <pre><code>try {
+    ...
+} catch panic {
+    ...
+}</code></pre>
+
+            <p>and no general:</p>
+
+            <ul>
+                <li>catch-and-resume;</li>
+                <li>recover-and-continue;</li>
+                <li>catch-all exception mechanism.</li>
+            </ul>
+
+            <p>
+                Panic may be observed only through a canonical containment boundary such as an
+                awaiter, joiner, supervisor, test harness or root panic endpoint.
+            </p>
+
+            <p>
+                Observation of a terminated domain never resumes its failed stack.
+            </p>
+        </section>
+
+        <section id="root-panic">
+            <h2>Root Panic</h2>
+
+            <h3>Hosted programs</h3>
+
+            <p>
+                Panic in the root process domain terminates the process.
+                No normal continuation follows.
+            </p>
+
+            <p>
+                A selected platform/profile may perform bounded panic-safe reporting, permitted
+                cleanup, debugger trapping or a configured hook before final termination.
+            </p>
+
+            <h3>Freestanding and bare-metal programs</h3>
+
+            <p>
+                A root panic transfers control to the configured non-returning panic endpoint.
+                Possible policies include:
+            </p>
+
+            <pre><code>halt
+reset
+enter safe state
+write diagnostic register
+signal watchdog
+signal hardware
+trap to monitor/debugger</code></pre>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED:</strong>
+                The panic semantics above are stable, but the exact Sec project/profile syntax used
+                to select root panic policy belongs to the build/platform model and should be linked
+                here once that configuration syntax is finalized and documented in chapters 38 and 49.
+            </div>
+        </section>
+
+        <section id="contained-panic">
+            <h2>Contained Panic in Managed Execution</h2>
+
+            <p>
+                A managed task or managed thread may form a containment domain.
+                Panic terminates that domain while another domain observes a panic outcome according
+                to the concurrency contract.
+            </p>
+
+            <p>
+                An ordinary contained task/thread panic does not automatically terminate the process.
+            </p>
+
+            <p>Conceptually, a task outcome includes a distinct panic state:</p>
+
+            <pre><code>type TaskOutcome[T] union {
+    Completed(T)
+    Cancelled
+    Panicked(PanicInfo)
+    Failed(TaskError)
+}</code></pre>
+
+            <p>
+                <code>Panicked(PanicInfo)</code> remains distinct from normal
+                <code>Failed(TaskError)</code> and from a function returning <code>Err(E)</code>.
+            </p>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED:</strong>
+                Exact task, thread, process and supervisor observation APIs are owned by the later
+                concurrency chapters. Reconcile this section with chapters 55–65 as those pages are written.
+            </div>
+        </section>
+
+        <section id="panicinfo">
+            <h2><code>PanicInfo</code></h2>
+
+            <p>
+                Sec 0.1 defines a bounded portable panic-information value:
+            </p>
+
+            <pre><code>type PanicInfo struct {
+    ID: PanicID
+    File: string
+    Line: uint
+    Column: uint
+    Function: string
+}</code></pre>
+
+            <p>
+                These five fields form the portable Sec 0.1 surface.
+            </p>
+
+            <p>
+                A profile may provide richer diagnostic information such as a message, operation,
+                task/thread/process identity or call stack, but that does not change this portable struct.
+            </p>
+
+            <p>
+                <code>PanicInfo</code> is bounded observation metadata.
+                Copying it transfers no ownership of the failed execution domain.
+            </p>
+        </section>
+
+        <section id="panicid">
+            <h2><code>PanicID</code></h2>
+
+            <p>The stable panic-reason identifier is:</p>
+
+            <pre><code>type PanicID uint32</code></pre>
+
+            <p>
+                It is target-independent and identifies a registered panic reason.
+            </p>
+
+            <p>Canonical panic reason categories include at least:</p>
+
+            <ul>
+                <li>arithmetic overflow;</li>
+                <li>division by zero;</li>
+                <li>invalid shift;</li>
+                <li>bounds failure;</li>
+                <li>contract failure;</li>
+                <li>assertion failure;</li>
+                <li>checked unreachable reached;</li>
+                <li>invalid reference generation;</li>
+                <li>explicit panic;</li>
+                <li>foreign abort or trusted-boundary failure.</li>
+            </ul>
+
+            <p>
+                The numeric registry and exact stable reason spelling belong to diagnostics/panic
+                registry data rather than to source programs.
+            </p>
+        </section>
+
+        <section id="allocation-free">
+            <h2>The Minimum Panic Path Is Allocation-Free</h2>
+
+            <p>
+                Panic reporting must have a minimum path that does not require:
+            </p>
+
+            <ul>
+                <li>heap allocation;</li>
+                <li>dynamic string concatenation;</li>
+                <li>growing collections;</li>
+                <li>symbolization;</li>
+                <li>filesystem or network access;</li>
+                <li>blocking on a potentially compromised allocator.</li>
+            </ul>
+
+            <p>
+                Static metadata or constant tables may provide source information without allocating
+                at panic time.
+            </p>
+
+            <p>
+                A profile may add richer reporting only when it remains compatible with the active
+                panic-context guarantees.
+            </p>
+        </section>
+
+        <section id="assert">
+            <h2>Assertions</h2>
+
+            <p>
+                <code>assert</code> checks programmer/internal invariants.
+            </p>
+
+            <p>
+                It is not intended for ordinary recoverable input or business validation.
+            </p>
+        </section>
+
+        <section id="assert-syntax">
+            <h2>Canonical Assertion Syntax</h2>
+
+            <p>Sec 0.1 defines exactly these ordinary forms:</p>
+
+            <pre><code>assert condition
+
+assert condition, "message"</code></pre>
+
+            <p>
+                The comma is the canonical separator before the optional message.
+            </p>
+
+            <p>Function-style assertion syntax is not canonical:</p>
+
+            <pre><code>assert(condition)    // not the canonical Sec assertion form</code></pre>
+
+            <p>
+                The optional message is a string literal in Sec 0.1.
+                Dynamically constructed assertion messages are not part of the current syntax.
+            </p>
+        </section>
+
+        <section id="assert-typing">
+            <h2>Assertion Conditions Must Be <code>bool</code></h2>
+
+            <pre><code>assert count &gt; 0
+
+assert state == State.Ready, "state must be ready"</code></pre>
+
+            <p>
+                Sec applies no truthiness conversion.
+            </p>
+
+            <p>This is invalid when <code>count</code> is not already <code>bool</code>:</p>
+
+            <pre><code>assert count</code></pre>
+        </section>
+
+        <section id="assert-semantics">
+            <h2>Assertion Semantics</h2>
+
+            <p>
+                If the condition is true, execution continues normally.
+            </p>
+
+            <p>
+                If the condition is false, the current panic domain panics with the stable
+                assertion-failure reason.
+            </p>
+
+            <p>
+                The optional message adds static diagnostic information.
+                It does not create a recoverable error value.
+            </p>
+
+            <p>
+                Assertion condition evaluation follows normal Sec expression evaluation and
+                side-effect rules.
+            </p>
+        </section>
+
+        <section id="assert-refinement">
+            <h2>Successful Assertions Refine Analysis</h2>
+
+            <pre><code>assert index &gt;= 0 &amp;&amp; index &lt; values.Length
+let value := values[index]</code></pre>
+
+            <p>
+                After the successful assertion, the compiler may use the proven condition as a
+                control-flow fact.
+            </p>
+
+            <p>
+                A later redundant bounds check may therefore be removed when proof is complete.
+            </p>
+        </section>
+
+        <section id="assert-active">
+            <h2>Assertions Are Always Semantically Active</h2>
+
+            <p>
+                Ordinary assertions have the same semantic meaning in debug and optimized builds.
+            </p>
+
+            <p>
+                Optimization level alone does not disable them.
+            </p>
+
+            <p>
+                The compiler may remove an assertion only when it proves the condition true for every
+                path reaching it.
+            </p>
+
+            <p>
+                Sec 0.1 has no separate ordinary <code>debug assert</code> form.
+            </p>
+        </section>
+
+        <section id="assert-purpose">
+            <h2>Assertions Are Not Business Validation</h2>
+
+            <p>Use <code>assert</code> for invariants such as:</p>
+
+            <pre><code>assert state == State.Initialized
+assert count &lt;= capacity</code></pre>
+
+            <p>
+                Use recoverable error handling for expected invalid input:
+            </p>
+
+            <pre><code>fn SetPercentage(value: int) Result[void, ValidationError] {
+    ...
+}</code></pre>
+
+            <p>
+                <code>assert</code> is not an unchecked optimizer promise.
+                Sec 0.1 exposes no ordinary safe-language <code>assume</code>.
+            </p>
+        </section>
+
+        <section id="unreachable">
+            <h2>Checked <code>unreachable</code></h2>
+
+            <p>Canonical syntax:</p>
+
+            <pre><code>unreachable</code></pre>
+
+            <p>
+                Reaching the statement panics the current domain with the stable checked-unreachable reason.
+            </p>
+
+            <p>
+                If the compiler proves the statement unreachable, no panic path remains.
+            </p>
+
+            <p>
+                This is deliberately not backend undefined behavior.
+                Backend <code>unreachable</code> may appear only after the path has been proven
+                impossible or after a defined non-returning Sec panic/trap path.
+            </p>
+        </section>
+
+        <section id="explicit-panic">
+            <h2>Explicit Programmer-Triggered Panic</h2>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED — LANGUAGE DESIGN NOT LOCKED:</strong>
+                The exact Sec 0.1 source syntax and payload shape for an explicit programmer-triggered
+                panic are not yet normative. Do not copy illustrative syntax from older material into
+                new Sec code or documentation as though it were final.
+            </div>
+
+            <p>What is already locked regardless of future syntax:</p>
+
+            <ul>
+                <li>explicit panic terminates the current panic domain;</li>
+                <li>it never returns to the failed stack;</li>
+                <li>it contributes a panic effect;</li>
+                <li>it is incompatible with unresolved <code>@noPanic</code>;</li>
+                <li>its minimum representation must be allocation-free;</li>
+                <li>it has a stable explicit-panic reason category.</li>
+            </ul>
+
+            <p>
+                This section must be rewritten when the grammar and payload contract are formally decided.
+            </p>
+        </section>
+
+        <section id="no-panic">
+            <h2><code>@noPanic</code></h2>
+
+            <p>
+                <code>@noPanic</code> is a compiler-verified transitive guarantee:
+            </p>
+
+            <pre><code>@noPanic
+fn Calculate(...) Result[Money, CalculateError] {
+    ...
+}</code></pre>
+
+            <p>
+                It means that no reachable language-defined panic remains on any valid execution path
+                covered by the contract.
+            </p>
+
+            <p>
+                A function returning <code>Result</code> may still be <code>@noPanic</code>;
+                recoverable <code>Err</code> is not panic.
+            </p>
+        </section>
+
+        <section id="no-panic-proof">
+            <h2><code>@noPanic</code> Is Proven Transitively</h2>
+
+            <p>Proof includes:</p>
+
+            <ul>
+                <li>direct panic-capable operations;</li>
+                <li>direct and indirect calls;</li>
+                <li>generic specializations;</li>
+                <li>callbacks;</li>
+                <li>FFI effect contracts;</li>
+                <li>compiler-generated helpers;</li>
+                <li>cleanup and defer;</li>
+                <li>destruction;</li>
+                <li>runtime checks.</li>
+            </ul>
+
+            <p>
+                Unknown required effect information is not positive proof of no-panic behavior.
+            </p>
+
+            <p>
+                An assertion inside <code>@noPanic</code> is valid only when the compiler proves its
+                condition true at every reachable point:
+            </p>
+
+            <pre><code>type NonNegative int range 0..int.Max
+
+@noPanic
+fn Use(value: NonNegative) int {
+    assert value &gt;= 0
+    return value
+}</code></pre>
+
+            <p>
+                Likewise, checked <code>unreachable</code> is valid in a no-panic function only when
+                it is proven unreachable.
+            </p>
+        </section>
+
+        <section id="isr">
+            <h2>ISR Interaction</h2>
+
+            <p>
+                Sec 0.1 interrupt-safe execution is no-panic.
+            </p>
+
+            <p>Therefore ISR analysis rejects reachable:</p>
+
+            <ul>
+                <li>unproven assertions;</li>
+                <li>reachable checked <code>unreachable</code>;</li>
+                <li>panic-capable runtime checks;</li>
+                <li>panic-capable calls;</li>
+                <li>panic-capable cleanup;</li>
+                <li>unknown foreign abort behavior;</li>
+                <li>future explicit panic.</li>
+            </ul>
+
+            <p>
+                <code>unsafe</code> does not waive the no-panic requirement.
+            </p>
+
+            <p>
+                A proven-safe checked operation or proven assertion contributes no remaining panic effect.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Panic Cleanup</h2>
+
+            <p>
+                Cleanup behavior depends on the selected panic policy and the execution domain.
+            </p>
+
+            <p>
+                Where the panic policy guarantees cleanup, cleanup may include:
+            </p>
+
+            <ul>
+                <li>reached <code>defer</code> entries;</li>
+                <li>automatic destruction;</li>
+                <li>task/thread-local cleanup;</li>
+                <li>containment bookkeeping;</li>
+                <li>panic-sink notification.</li>
+            </ul>
+
+            <p>
+                Cleanup that must run on panic is itself required to be transitively no-panic.
+            </p>
+
+            <p>
+                A target/profile selecting immediate trap, reset or no-cleanup root behavior does not
+                guarantee pending ordinary root-domain cleanup.
+            </p>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED:</strong>
+                Reconcile this section with chapters 36 Defer and 43 Destruction after those pages are
+                written, especially the exact unified cleanup order and profile-specific cleanup guarantees.
+            </div>
+        </section>
+
+        <section id="double-panic">
+            <h2>Double Panic</h2>
+
+            <p>
+                A panic during required panic cleanup violates the no-panic cleanup contract.
+            </p>
+
+            <p>
+                If a second panic nevertheless occurs because of unsafe code, foreign code,
+                hardware corruption, compiler defects or incorrect trusted metadata, the current panic
+                domain terminates immediately through the minimal panic endpoint.
+            </p>
+
+            <p>
+                A second cleanup sequence is not started.
+            </p>
+        </section>
+
+        <section id="shared-state">
+            <h2>Contained Panic Does Not Guarantee Shared-State Consistency</h2>
+
+            <p>
+                Panic containment means an execution domain can terminate without necessarily killing
+                the entire process.
+            </p>
+
+            <p>
+                It does not guarantee that partially modified shared state remains logically valid.
+            </p>
+
+            <p>Programs that continue after contained panic may need strategies such as:</p>
+
+            <ul>
+                <li>transactional updates;</li>
+                <li>copy-then-commit;</li>
+                <li>message passing;</li>
+                <li>task-owned state;</li>
+                <li>version validation;</li>
+                <li>rollback;</li>
+                <li>poisoning.</li>
+            </ul>
+
+            <p>
+                Synchronization primitives may define poisoning, but poisoning is not mandatory for
+                every primitive.
+            </p>
+        </section>
+
+        <section id="result-cancel">
+            <h2>Panic, <code>Result</code> and Cancellation Stay Distinct</h2>
+
+            <pre><code>Err(errorValue)     // normal recoverable return
+Panicked(PanicInfo) // abnormal terminated domain
+Cancelled           // cancellation outcome</code></pre>
+
+            <p>
+                Panic is never automatically converted into <code>Err</code>.
+            </p>
+
+            <p>
+                Cancellation is not panic.
+            </p>
+
+            <p>
+                A supervisor may choose to cancel sibling work after observing panic, but that policy
+                does not make the two concepts equivalent.
+            </p>
+        </section>
+
+        <section id="unsafe-ffi">
+            <h2>Unsafe and FFI Do Not Disable Panic Rules</h2>
+
+            <p>
+                <code>unsafe</code> does not waive <code>@noPanic</code> or panic-domain requirements.
+            </p>
+
+            <p>
+                Foreign exceptions or unwind must not cross Sec frames unless a future dedicated FFI
+                rule explicitly defines and proves such behavior.
+            </p>
+
+            <p>
+                Unknown foreign behavior is not positive proof of <code>@noPanic</code>.
+            </p>
+
+            <p>
+                Trusted FFI or unsafe metadata may establish a proof boundary only where the canonical
+                FFI/unsafe rules permit it.
+            </p>
+        </section>
+
+        <section id="strategy">
+            <h2>Target Panic Strategy</h2>
+
+            <p>A target/profile may select root behavior such as:</p>
+
+            <ul>
+                <li>cleanup then terminate;</li>
+                <li>limited cleanup;</li>
+                <li>immediate termination;</li>
+                <li>trap;</li>
+                <li>reset;</li>
+                <li>custom endpoint.</li>
+            </ul>
+
+            <p>
+                Portable code must not depend on one root panic cleanup strategy unless its selected
+                profile explicitly guarantees that strategy.
+            </p>
+
+            <p>
+                No target/profile may redefine panic as hidden recoverable exception flow.
+            </p>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED:</strong>
+                The exact project/profile configuration syntax belongs to later build/platform
+                rulebooks. Add concrete configuration examples here only after that syntax is locked.
+            </div>
+        </section>
+
+        <section id="runtime-free">
+            <h2>No Mandatory General Runtime</h2>
+
+            <p>
+                Panic support does not require a general Sec runtime.
+            </p>
+
+            <p>A panic endpoint may be implemented as:</p>
+
+            <ul>
+                <li>a compiler-emitted non-returning function;</li>
+                <li>a user-provided function;</li>
+                <li>a target support symbol;</li>
+                <li>a scheduler hook when managed scheduling is used;</li>
+                <li>a direct target trap;</li>
+                <li>a test-harness boundary.</li>
+            </ul>
+
+            <p>
+                A freestanding program may implement panic behavior without allocator, scheduler,
+                unwinder or general runtime library.
+            </p>
+
+            <p>
+                A program proven completely panic-free may eliminate unreachable panic support.
+            </p>
+        </section>
+
+        <section id="cte">
+            <h2>Compile-Time Evaluation</h2>
+
+            <p>
+                If a panic path or failed assertion is reached during required compile-time evaluation,
+                the compiler reports compile-time evaluation failure with source provenance.
+            </p>
+
+            <p>
+                The compiler itself must not crash and does not materialize a runtime panic merely
+                because the evaluated Sec expression would panic.
+            </p>
+
+            <p>
+                By contrast, a normal <code>Result.Err(...)</code> is an ordinary successfully
+                evaluated Sec value.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Panic diagnostics should explain:</p>
+
+            <ul>
+                <li>the panic-capable operation;</li>
+                <li>the concrete reason;</li>
+                <li>the relevant source/call path;</li>
+                <li>the violated guarantee, such as <code>@noPanic</code>;</li>
+                <li>the missing proof;</li>
+                <li>a practical recoverable or provably-safe alternative when known.</li>
+            </ul>
+
+            <h3>Unchecked overflow risk in no-panic code</h3>
+
+            <pre><code>`CalculateInvoiceTotal` is not panic-free
+
+call path:
+    CalculateInvoiceTotal
+    -&gt; CalculateLine
+    -&gt; quantity * unitPrice
+
+signed multiplication may overflow
+
+help: use `try`
+help: constrain the operands
+help: widen explicitly
+help: choose an explicit wrapping or saturating operation when that matches the domain</code></pre>
+
+            <h3>Unproven assertion</h3>
+
+            <pre><code>assertion may fail in `@noPanic` code
+
+the compiler cannot prove:
+    index &lt; values.Length
+
+help: establish the bound before this point
+help: use a recoverable check when failure is an expected outcome</code></pre>
+
+            <h3>Reachable unreachable</h3>
+
+            <pre><code>`unreachable` may be reached
+
+checked `unreachable` panics when execution reaches it
+
+help: make the control-flow proof complete
+help: handle the remaining state explicitly</code></pre>
+
+            <p>
+                The LSP and <code>sec analyse</code> should consume the same panic-effect facts and
+                proof results as compilation.
+            </p>
+        </section>
+
+        <section id="update-list">
+            <h2>Required Future Updates for This Page</h2>
+
+            <p>
+                This page is intentionally usable now, but it must be revisited before the Sec 0.1
+                manual is considered complete.
+            </p>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED 1 — Explicit panic syntax:</strong>
+                Decide and document the exact programmer-facing syntax and payload contract for
+                explicit panic. This is the primary unresolved language-design item in the current
+                panic rulebook.
+            </div>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED 2 — Root/profile configuration:</strong>
+                Add the exact manifest/profile syntax for selecting panic endpoint and root cleanup
+                strategy when the build/platform rulebooks lock that syntax.
+            </div>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED 3 — Concurrency observation:</strong>
+                Cross-check exact <code>TaskOutcome</code>, thread join, process status, supervisor and
+                detached-work panic observation APIs against chapters 54–65 when those chapters are written.
+            </div>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED 4 — Cleanup integration:</strong>
+                Cross-link and reconcile the exact panic cleanup ordering with chapters 36 Defer and
+                43 Destruction, including profile-specific no-cleanup behavior.
+            </div>
+
+            <div class="rule">
+                <strong>UPDATE REQUIRED 5 — Runtime-check catalogue:</strong>
+                Revisit the examples after Collections, Shaped Types, Arena, Lifetimes and platform
+                chapters are written so every language-defined panic-capable operation links to its
+                owning chapter and canonical error type.
+            </div>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use typed recoverable errors for expected failures.</li>
+                <li>Reserve panic for broken invariants and language-defined unrecoverable checked paths.</li>
+                <li>Use <code>try</code> when a runtime check should become a recoverable typed failure.</li>
+                <li>Use <code>assert</code> for invariants, not input validation.</li>
+                <li>Do not rely on assertions disappearing in optimized builds.</li>
+                <li>Use checked <code>unreachable</code> only when reaching the point represents a broken invariant.</li>
+                <li>Use <code>@noPanic</code> when the API or execution context requires a verified panic-free call graph.</li>
+                <li>Do not assume panic cleanup occurs unless the active execution-domain/profile policy guarantees it.</li>
+                <li>Do not assume contained panic leaves shared mutable state logically consistent.</li>
+                <li>Keep panic sinks and root endpoints bounded and allocation-free on their minimum path.</li>
+                <li>Do not use illustrative explicit-panic syntax until that grammar is formally locked.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Panic is for broken invariants and operations whose canonical ordinary failure semantics select panic.</li>
+                <li>Expected recoverable failures use Result, Option, typed errors, try, match and ordinary control flow.</li>
+                <li>A runtime-checked operation may be proven safe, made fallible with try, or remain panic-capable.</li>
+                <li>The compiler may remove runtime checks only when the relevant failure is proven impossible.</li>
+                <li>Panic terminates the current panic domain and never resumes the failed stack.</li>
+                <li>An ordinary function call is not itself a panic domain.</li>
+                <li>Sec 0.1 has no general user-level catch-and-resume panic mechanism.</li>
+                <li>Managed task/thread panic may be observed at a containment boundary without automatically terminating the entire process.</li>
+                <li>Contained Panicked, returned Err and Cancelled remain distinct outcomes.</li>
+                <li>Hosted root panic terminates the process.</li>
+                <li>Freestanding root panic transfers to a configured non-returning endpoint.</li>
+                <li>The exact project/profile configuration syntax for root panic policy must be documented later.</li>
+                <li><code>PanicID</code> is <code>type PanicID uint32</code>.</li>
+                <li><code>PanicInfo</code> contains ID, File, Line, Column and Function.</li>
+                <li>The minimum panic path is allocation-free.</li>
+                <li>Canonical assertion syntax is <code>assert condition</code> or <code>assert condition, "message"</code>.</li>
+                <li>Assertion conditions must be bool; Sec has no truthiness conversion.</li>
+                <li>A failed assertion panics the current domain.</li>
+                <li>Assertion messages are static string literals in Sec 0.1.</li>
+                <li>Assertions remain semantically active in optimized builds.</li>
+                <li>An assertion may be removed only after proof that it always succeeds.</li>
+                <li>A successful assertion may refine later compiler analysis.</li>
+                <li>Assertions are for invariants, not expected business/input validation.</li>
+                <li>Sec 0.1 has no ordinary debug-only assertion form and no ordinary safe-language assume.</li>
+                <li><code>unreachable</code> is checked and panics when reached.</li>
+                <li>Checked <code>unreachable</code> is not optimizer undefined behavior.</li>
+                <li>The exact explicit programmer-triggered panic syntax and payload are not yet locked and this manual section must be rewritten later.</li>
+                <li><code>@noPanic</code> is a transitive compiler-verified guarantee.</li>
+                <li>No-panic proof includes calls, generics, callbacks, FFI contracts, cleanup, destruction and runtime checks.</li>
+                <li>An unproven assertion contributes a panic effect.</li>
+                <li>A proven assertion contributes no remaining panic effect.</li>
+                <li>ISR/interrupt-safe execution in Sec 0.1 requires no-panic behavior.</li>
+                <li>Unsafe does not waive no-panic or ISR panic restrictions.</li>
+                <li>Panic cleanup runs only where the active panic policy guarantees it.</li>
+                <li>Required panic cleanup must itself be panic-free.</li>
+                <li>A second panic during panic cleanup terminates immediately through the minimal endpoint without starting another cleanup pass.</li>
+                <li>Containment does not guarantee consistency of partially modified shared mutable state.</li>
+                <li>Target/profile panic strategy may choose cleanup, limited cleanup, immediate termination, trap, reset or another defined endpoint.</li>
+                <li>No profile may redefine panic as hidden recoverable exception flow.</li>
+                <li>Panic support requires no mandatory general Sec runtime.</li>
+                <li>A fully panic-free program may eliminate unused panic support.</li>
+                <li>Compile-time evaluation reports reached panic/assert failure as compile-time evaluation failure rather than crashing the compiler.</li>
+                <li>The exact explicit panic syntax, profile configuration, concurrency observation APIs and final cleanup integration remain marked for manual update.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="34-error-handling.html">Previous: Errors and try</a>
+            <a href="36-defer.html">Next: Defer and Cleanup</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 0.9 &middot; 2026-09-12 &middot; Draft: update required before Sec 0.1 manual freeze</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

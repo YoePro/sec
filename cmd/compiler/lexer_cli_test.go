@@ -88,6 +88,159 @@ func TestLexerCLICommandsReportInvalidNumericSuffixes(t *testing.T) {
 	}
 }
 
+func TestLexerCLICommandsReportMissingExponentDigits(t *testing.T) {
+	fixture := "../../testdata/lexer/missing_exponent_digits_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerMissingExponentDigits) != 5 || !strings.Contains(string(output), "summary: 5 errors") {
+				t.Fatalf("wrong exponent diagnostics: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportMalformedDecimalCandidateMatrix(t *testing.T) {
+	fixture := "../../testdata/lexer/malformed_decimal_candidates_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			for id, count := range map[string]int{
+				diagnostics.LexerInvalidDigitSeparator: 4,
+				diagnostics.LexerInvalidNumericSuffix:  4,
+				diagnostics.LexerMissingExponentDigits: 3,
+			} {
+				if strings.Count(string(output), id) != count {
+					t.Errorf("%s count in output = %d, want %d: %s", id, strings.Count(string(output), id), count, output)
+				}
+			}
+			if !strings.Contains(string(output), "summary: 11 errors") {
+				t.Errorf("output lacks eleven-error summary: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportUnterminatedBlockComment(t *testing.T) {
+	fixture := "../../testdata/lexer/unterminated_block_comment_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerUnterminatedBlockComment) != 1 || !strings.Contains(string(output), "summary: 1 error") {
+				t.Fatalf("wrong unterminated comment diagnostics: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportUnterminatedOrdinaryString(t *testing.T) {
+	fixture := "../../testdata/lexer/unterminated_ordinary_string_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerUnterminatedOrdinaryString) != 1 || !strings.Contains(string(output), "summary: 1 error") {
+				t.Fatalf("wrong unterminated ordinary string diagnostics: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportUnterminatedRawString(t *testing.T) {
+	fixture := "../../testdata/lexer/unterminated_raw_string_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerUnterminatedRawString) != 1 || !strings.Contains(string(output), "summary: 1 error") {
+				t.Fatalf("wrong unterminated raw string diagnostics: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportUnterminatedCharacterLiteral(t *testing.T) {
+	fixture := "../../testdata/lexer/unterminated_character_literal_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerUnterminatedCharacterLiteral) != 1 || !strings.Contains(string(output), "summary: 1 error") {
+				t.Fatalf("wrong unterminated character literal diagnostics: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportUnterminatedInterpolatedString(t *testing.T) {
+	fixture := "../../testdata/lexer/unterminated_interpolated_string_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerUnterminatedInterpolatedString) != 1 || !strings.Contains(string(output), "summary: 1 error") {
+				t.Fatalf("wrong unterminated interpolated string diagnostics: %s", output)
+			}
+		})
+	}
+}
+
+func TestLexerCLICommandsReportInvalidSourceCharacter(t *testing.T) {
+	fixture := "../../testdata/lexer/invalid_source_character_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerInvalidSourceCharacter) != 2 || !strings.Contains(string(output), "summary: 2 errors") {
+				t.Fatalf("wrong invalid source character diagnostics: %s", output)
+			}
+		})
+	}
+}
+
 func TestLexerCLIProcess(t *testing.T) {
 	if os.Getenv("SEC_LEXER_CLI_TEST_PROCESS") != "1" {
 		return

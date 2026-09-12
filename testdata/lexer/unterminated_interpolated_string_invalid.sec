@@ -1,0 +1,4 @@
+module unterminated_interpolated_string_invalid
+
+let broken := $"value {item}
+let recoveredValue := 7

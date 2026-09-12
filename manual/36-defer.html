@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Defer and Cleanup - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#defer">Defer and Cleanup</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#registration">Registration Time</a>
+        <a href="#invocation-boundary">Invocation Boundary</a>
+        <a href="#allowed-contexts">Allowed Contexts</a>
+        <a href="#free">Not Inside free</a>
+        <a href="#not-block-scoped">Not Block-Scoped</a>
+        <a href="#lifo">Reverse Registration Order</a>
+        <a href="#unified-cleanup">Unified Cleanup Order</a>
+        <a href="#early-destruction">Earliest Legal Destruction</a>
+        <a href="#execution-time">Values at Execution Time</a>
+        <a href="#future-uses">Deferred Future Uses</a>
+        <a href="#borrowing">Borrowing</a>
+        <a href="#conditional">Conditional Registration</a>
+        <a href="#loops">Defer in Loops</a>
+        <a href="#return-order">Return Ordering</a>
+        <a href="#error-propagation">Error Propagation</a>
+        <a href="#fallible-cleanup">Fallible Cleanup</a>
+        <a href="#return-invalid">No return from defer</a>
+        <a href="#control-transfer">No break, continue or fallthrough</a>
+        <a href="#nested-defer">No Nested defer</a>
+        <a href="#completion">Normal Completion</a>
+        <a href="#panic">Panic Interaction</a>
+        <a href="#init">Defer in init</a>
+        <a href="#properties">Property Accessors</a>
+        <a href="#lambdas">Lambdas</a>
+        <a href="#side-effects">Side Effects</a>
+        <a href="#automatic-destruction">Automatic Destruction</a>
+        <a href="#definite-assignment">Definite Assignment</a>
+        <a href="#name-resolution">Name Resolution</a>
+        <a href="#not-capture">Not Capture-by-Value</a>
+        <a href="#not-callback">Not an Escaping Callback</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html" class="active">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Defer and Cleanup</div>
+
+        <h1 id="defer">Defer and Cleanup</h1>
+
+        <p>
+            <code>defer</code> registers cleanup work that runs when the nearest enclosing executable
+            invocation exits.
+        </p>
+
+        <pre><code>defer {
+    CloseTemporary()
+}</code></pre>
+
+        <p>
+            A defer is registered only when execution reaches the statement.
+            Once registered, it belongs to the complete function, method, accessor, initializer or
+            lambda invocation rather than to the lexical block in which the statement appears.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Deferred cleanup and automatic destruction form one
+            deterministic LIFO cleanup order.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Use <code>defer</code> for cleanup that naturally belongs to the lifetime of the
+                current invocation but is not already expressed completely by ordinary ownership and
+                automatic destruction.
+            </p>
+
+            <p>Common uses include:</p>
+
+            <ul>
+                <li>closing a temporary foreign resource;</li>
+                <li>undoing temporary setup;</li>
+                <li>releasing an API state entered earlier in the function;</li>
+                <li>logging or accounting at invocation exit;</li>
+                <li>cleanup during fallible construction;</li>
+                <li>coordination with an external API that requires an explicit paired operation.</li>
+            </ul>
+
+            <p>
+                <code>defer</code> does not replace ownership, automatic destruction,
+                <code>free</code> or explicit error handling.
+                It composes with them.
+            </p>
+        </section>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+
+            <p>Sec 0.1 uses block-form defer:</p>
+
+            <pre><code>defer {
+    statements
+}</code></pre>
+
+            <p>The body is always a block.</p>
+
+            <p>Shorthand forms are not part of Sec 0.1:</p>
+
+            <pre><code>defer Close()    // invalid</code></pre>
+
+            <p>Write:</p>
+
+            <pre><code>defer {
+    Close()
+}</code></pre>
+        </section>
+
+        <section id="registration">
+            <h2>Registration Happens When Execution Reaches <code>defer</code></h2>
+
+            <p>
+                Merely entering a lexical scope does not register its deferred work.
+            </p>
+
+            <pre><code>if connected {
+    defer {
+        Disconnect()
+    }
+}</code></pre>
+
+            <p>
+                If <code>connected</code> is false, no deferred entry exists.
+            </p>
+
+            <p>
+                If execution reaches the <code>defer</code>, one cleanup entry is registered for the
+                nearest enclosing invocation.
+            </p>
+        </section>
+
+        <section id="invocation-boundary">
+            <h2>The Execution Boundary Is the Enclosing Invocation</h2>
+
+            <p>
+                A registered defer runs when its nearest enclosing executable invocation exits.
+            </p>
+
+            <p>
+                It does not run merely because execution leaves an inner block, branch, loop or
+                match arm.
+            </p>
+
+            <p>
+                Each invocation has its own defer-registration state.
+            </p>
+        </section>
+
+        <section id="allowed-contexts">
+            <h2>Allowed Contexts</h2>
+
+            <p>In Sec 0.1, <code>defer</code> is permitted inside:</p>
+
+            <ul>
+                <li>ordinary functions;</li>
+                <li>instance methods;</li>
+                <li>static functions and methods;</li>
+                <li>lambdas;</li>
+                <li>property getters;</li>
+                <li>property setters;</li>
+                <li><code>init</code>.</li>
+            </ul>
+
+            <p>
+                A defer always belongs to the nearest one of these executing boundaries.
+            </p>
+        </section>
+
+        <section id="free">
+            <h2><code>defer</code> Is Not Allowed Inside <code>free</code></h2>
+
+            <p>
+                <code>free</code> is already lifecycle cleanup.
+                It may not register another invocation-scoped deferred cleanup.
+            </p>
+
+            <pre><code>free {
+    defer {                      // invalid
+        ReleaseSecondaryResource()
+    }
+}</code></pre>
+
+            <p>
+                Locals created inside <code>free</code> still follow their ordinary automatic
+                destruction rules.
+            </p>
+        </section>
+
+        <section id="not-block-scoped">
+            <h2><code>defer</code> Is Not Block-Scoped Cleanup</h2>
+
+            <pre><code>fn Example(condition: bool) void {
+    if condition {
+        defer {
+            Log("leaving Example")
+        }
+
+        Work()
+    }
+
+    ContinueWork()
+}</code></pre>
+
+            <p>
+                If the defer is registered, <code>Log</code> runs when <code>Example</code> exits,
+                not when the <code>if</code> body ends.
+            </p>
+
+            <p>
+                Leaving the branch does not create a cleanup boundary.
+            </p>
+        </section>
+
+        <section id="lifo">
+            <h2>Deferred Entries Run in Reverse Registration Order</h2>
+
+            <pre><code>defer {
+    Log("first")
+}
+
+defer {
+    Log("second")
+}</code></pre>
+
+            <p>Exit order:</p>
+
+            <pre><code>second
+first</code></pre>
+
+            <p>
+                The ordering is defined by runtime registration order, not merely by source nesting.
+            </p>
+
+            <p>
+                Every execution of a defer statement creates one entry.
+            </p>
+        </section>
+
+        <section id="unified-cleanup">
+            <h2>Deferred Cleanup and Automatic Destruction Share One LIFO Order</h2>
+
+            <p>
+                Sec does not first run all defers and then destroy all locals.
+            </p>
+
+            <p>
+                Cleanup obligations are ordered according to when those obligations are registered.
+            </p>
+
+            <pre><code>fn Example() void {
+    let first := OpenFirst()
+
+    defer {
+        Log("leaving")
+    }
+
+    let second := OpenSecond()
+}</code></pre>
+
+            <p>Relevant registration order:</p>
+
+            <pre><code>destroy first
+defer Log
+destroy second</code></pre>
+
+            <p>Exit order:</p>
+
+            <pre><code>destroy second
+run defer Log
+destroy first</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>defer</code> is part of the same cleanup model as
+                deterministic destruction, not a separate cleanup phase.
+            </div>
+        </section>
+
+        <section id="early-destruction">
+            <h2>Earliest Legal Destruction Still Applies</h2>
+
+            <p>
+                Unified cleanup does not force every local value to remain alive until invocation exit.
+            </p>
+
+            <p>
+                A local may still be destroyed at its earliest legal lifetime end when no future
+                ordinary or deferred use requires it.
+            </p>
+
+            <p>
+                A defer that references a value can extend that value's required lifetime:
+            </p>
+
+            <pre><code>fn Example() void {
+    if Ready() {
+        let resource := Open()
+
+        defer {
+            Use(resource)
+        }
+    }
+
+    ContinueWork()
+}</code></pre>
+
+            <p>
+                If the defer was registered, <code>resource</code> must remain valid until the
+                deferred use executes.
+            </p>
+
+            <p>
+                A different local not needed by any later cleanup may still be destroyed earlier.
+            </p>
+        </section>
+
+        <section id="execution-time">
+            <h2>Deferred Statements Execute Later</h2>
+
+            <p>
+                The body of a defer is not evaluated when the defer is registered.
+            </p>
+
+            <pre><code>fn Example() void {
+    let mut value: int := 1
+
+    defer {
+        Print(value)
+    }
+
+    value = 2
+}</code></pre>
+
+            <p>
+                The deferred block reads <code>value</code> when cleanup reaches the entry.
+                It therefore observes <code>2</code>.
+            </p>
+
+            <p>
+                Registration establishes future uses of the referenced bindings; it does not snapshot
+                their current values.
+            </p>
+        </section>
+
+        <section id="future-uses">
+            <h2>A Registered Defer Creates Real Future Uses</h2>
+
+            <p>
+                Ownership analysis treats a referenced value as needed by the later deferred block.
+            </p>
+
+            <pre><code>fn Example() void {
+    let resource := Open()
+
+    defer {
+        Use(resource)
+    }
+
+    Consume(&lt;-resource)    // invalid
+}</code></pre>
+
+            <p>
+                Consuming <code>resource</code> would make the registered future use invalid.
+            </p>
+
+            <p>
+                The compiler must diagnose the conflict and identify the pending defer when practical.
+            </p>
+
+            <p>
+                The same principle applies to destruction, invalidation, replacement and other
+                ownership-changing operations.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Borrowing Rules Still Apply</h2>
+
+            <p>
+                A deferred future use can keep a borrow or access requirement live until the defer executes.
+            </p>
+
+            <p>
+                The compiler therefore accounts for deferred:
+            </p>
+
+            <ul>
+                <li>reads;</li>
+                <li>writes;</li>
+                <li>shared borrows;</li>
+                <li>mutable borrows;</li>
+                <li>resource uses;</li>
+                <li>ownership dependencies.</li>
+            </ul>
+
+            <p>
+                A later operation that conflicts with the required future authority is rejected.
+            </p>
+
+            <p>
+                The compiler does not model the defer body as an arbitrary escaping callback.
+                Its latest execution point is known: exit from the enclosing invocation.
+            </p>
+        </section>
+
+        <section id="conditional">
+            <h2>Registration Is Path-Sensitive</h2>
+
+            <pre><code>if connected {
+    defer {
+        Disconnect()
+    }
+}</code></pre>
+
+            <p>
+                Only paths that execute the defer acquire the cleanup obligation.
+            </p>
+
+            <p>
+                Flow analysis tracks that difference so the compiler neither invents cleanup on a
+                path that never registered it nor forgets cleanup on a path that did.
+            </p>
+        </section>
+
+        <section id="loops">
+            <h2><code>defer</code> Inside Loops</h2>
+
+            <p>
+                A loop does not create a defer-execution boundary.
+            </p>
+
+            <pre><code>for item in items {
+    defer {
+        Finish(item)
+    }
+}</code></pre>
+
+            <p>
+                If the statement executes five times, five deferred entries are registered.
+                All five run at invocation exit in reverse registration order.
+            </p>
+
+            <p>
+                This can be useful, but a long-running or unbounded loop may accumulate a large
+                number of pending cleanups.
+            </p>
+
+            <p>
+                Analysis tooling may warn when immediate per-iteration cleanup is likely to be more appropriate.
+            </p>
+        </section>
+
+        <section id="return-order">
+            <h2>Return Values Are Established Before Cleanup Runs</h2>
+
+            <p>On ordinary <code>return</code>:</p>
+
+            <ol>
+                <li>the return expression is evaluated;</li>
+                <li>the return result is established under ordinary ownership/move rules;</li>
+                <li>required cleanup runs in canonical LIFO order;</li>
+                <li>control returns to the caller.</li>
+            </ol>
+
+            <pre><code>fn Example() int {
+    let mut value: int := 1
+
+    defer {
+        value = 2
+    }
+
+    return value
+}</code></pre>
+
+            <p>
+                The function returns <code>1</code>.
+            </p>
+
+            <p>
+                The deferred mutation happens after the return value has already been established.
+                A defer cannot retroactively replace that return value.
+            </p>
+        </section>
+
+        <section id="error-propagation">
+            <h2>Error Results Are Also Established Before Cleanup</h2>
+
+            <p>
+                When a fallible invocation propagates an error, the propagated result is established
+                before deferred cleanup begins.
+            </p>
+
+            <p>
+                Cleanup then executes in the same canonical order.
+            </p>
+
+            <p>
+                A defer cannot replace an already-established propagated error with a different
+                propagated error.
+            </p>
+        </section>
+
+        <section id="fallible-cleanup">
+            <h2>Fallible Cleanup Must Be Handled Inside the Defer</h2>
+
+            <p>
+                A deferred block may call fallible operations, but the failure cannot propagate out
+                into the already-exiting enclosing invocation.
+            </p>
+
+            <p>Handle it locally:</p>
+
+            <pre><code>defer {
+    match CloseResource() {
+        Ok() =&gt; {
+        }
+
+        Err(errorValue) =&gt; {
+            LogCloseError(errorValue)
+        }
+    }
+}</code></pre>
+
+            <p>
+                Any ordinary Sec construct may be used when it fully handles the cleanup result.
+            </p>
+
+            <p>
+                A <code>try</code> may appear inside the defer only when its possible alternate
+                outcome is handled before the deferred block completes.
+            </p>
+
+            <p>
+                A <code>try</code> that would propagate out of the defer and change the enclosing
+                exit result is invalid.
+            </p>
+
+            <p>
+                Normal must-use and unused-result rules remain active.
+                <code>defer</code> does not introduce a special implicit discard rule.
+            </p>
+        </section>
+
+        <section id="return-invalid">
+            <h2><code>return</code> Cannot Target the Enclosing Invocation from a Defer</h2>
+
+            <pre><code>defer {
+    return    // invalid
+}</code></pre>
+
+            <p>
+                The enclosing return/error result has already been or will be established according
+                to ordinary control flow.
+            </p>
+
+            <p>
+                Deferred cleanup cannot replace, restart or redirect that exit.
+            </p>
+
+            <p>
+                A function or lambda called by the deferred block may of course return normally from
+                its own separate invocation.
+            </p>
+        </section>
+
+        <section id="control-transfer">
+            <h2><code>break</code>, <code>continue</code> and <code>fallthrough</code> Cannot Escape a Defer</h2>
+
+            <p>These forms are invalid when they would target control flow outside the deferred block:</p>
+
+            <pre><code>defer {
+    break        // invalid
+}</code></pre>
+
+            <pre><code>defer {
+    continue     // invalid
+}</code></pre>
+
+            <pre><code>defer {
+    fallthrough  // invalid
+}</code></pre>
+
+            <p>
+                Cleanup cannot resume or redirect control flow in the already-exiting invocation.
+            </p>
+        </section>
+
+        <section id="nested-defer">
+            <h2>Nested <code>defer</code> Is Not Part of Sec 0.1</h2>
+
+            <p>
+                A deferred cleanup block may not register another defer:
+            </p>
+
+            <pre><code>defer {
+    defer {          // invalid
+        CleanupAgain()
+    }
+}</code></pre>
+
+            <p>
+                The cleanup schedule is determined by defer statements reached during ordinary
+                execution, not by new registration while cleanup is already running.
+            </p>
+        </section>
+
+        <section id="completion">
+            <h2>Normal Completion of a Deferred Block</h2>
+
+            <p>
+                A defer completes by reaching the end of its block.
+            </p>
+
+            <p>
+                The block does not produce a value.
+            </p>
+
+            <p>
+                After it completes, cleanup proceeds to the next pending cleanup entry.
+            </p>
+        </section>
+
+        <section id="panic">
+            <h2>Panic Interaction</h2>
+
+            <p>
+                <code>defer</code> does not independently define panic or unwind policy.
+            </p>
+
+            <p>
+                Whether deferred cleanup runs during panic depends on the active panic-domain and
+                target/profile rules described in <a href="35-panic.html">Panic, Assertions and Runtime Checks</a>.
+            </p>
+
+            <p>
+                When panic semantics require cleanup to run, deferred entries participate in the
+                same canonical cleanup order as ordinary destruction.
+            </p>
+
+            <p>
+                When a root profile chooses immediate trap/reset/no-cleanup behavior, pending root
+                defers are not guaranteed to run.
+            </p>
+
+            <p>
+                Required panic cleanup must itself satisfy the applicable no-panic rules.
+            </p>
+        </section>
+
+        <section id="init">
+            <h2><code>defer</code> Inside <code>init</code></h2>
+
+            <p>
+                Fallible construction often needs temporary cleanup:
+            </p>
+
+            <pre><code>init(path: string) IOError {
+    let temporary := try OpenTemporary(path)
+
+    defer {
+        CloseTemporary(temporary)
+    }
+
+    BuildState(temporary)
+}</code></pre>
+
+            <p>
+                The defer belongs to this initializer invocation.
+            </p>
+
+            <p>
+                Ownership analysis rejects a later transfer that would conflict with the pending
+                deferred use.
+            </p>
+
+            <p>
+                If ownership of a temporary is intentionally transferred into the constructed object,
+                the program must not leave a conflicting deferred cleanup that would release the same resource.
+            </p>
+        </section>
+
+        <section id="properties">
+            <h2>Property Accessors May Use <code>defer</code></h2>
+
+            <pre><code>property Value: int {
+    get {
+        defer {
+            FinishRead()
+        }
+
+        return ReadValue()
+    }
+}</code></pre>
+
+            <p>
+                The defer belongs to the current getter invocation.
+            </p>
+
+            <p>
+                The same rule applies to property setters, including fallible setters.
+            </p>
+
+            <p>
+                Ordinary accessor return, error, ownership and cleanup rules remain active.
+            </p>
+        </section>
+
+        <section id="lambdas">
+            <h2>Lambdas Have Their Own Defer Boundary</h2>
+
+            <pre><code>let work := fn() void {
+    defer {
+        FinishWork()
+    }
+
+    RunWork()
+}</code></pre>
+
+            <p>
+                The defer runs when that lambda invocation exits, not when the function that created
+                the lambda exits.
+            </p>
+
+            <p>
+                Calling the lambda several times creates independent defer registration state for
+                every invocation.
+            </p>
+        </section>
+
+        <section id="side-effects">
+            <h2>Deferred Side Effects Occur at Cleanup Time</h2>
+
+            <p>
+                Statements in the block execute only when cleanup reaches the deferred entry.
+            </p>
+
+            <p>
+                Their observable effects therefore occur at cleanup time, not at registration time.
+            </p>
+
+            <p>
+                The compiler must not reorder defer registration across observable source operations
+                when such reordering could change cleanup behavior.
+            </p>
+
+            <p>
+                Backend optimization is free to change implementation details only when the
+                observable cleanup order stays identical.
+            </p>
+        </section>
+
+        <section id="automatic-destruction">
+            <h2>Interaction with Automatic Destruction</h2>
+
+            <p>
+                Prefer ordinary ownership and automatic destruction when an owning Sec type already
+                models the resource correctly.
+            </p>
+
+            <p>
+                A defer is useful when cleanup requires a different operation or external coordination.
+            </p>
+
+            <p>
+                Be careful not to release one resource twice:
+            </p>
+
+            <pre><code>let resource := OpenOwned()
+
+defer {
+    ReleaseRawHandle(resource.Raw)
+}</code></pre>
+
+            <p>
+                If <code>resource</code> would also automatically release the same underlying handle,
+                the design must resolve ownership explicitly rather than allowing both cleanup paths
+                to run independently.
+            </p>
+
+            <p>
+                If explicit deferred cleanup consumes or invalidates an owning value, the later
+                automatic destruction obligation is updated through ordinary ownership/lifecycle
+                semantics. Sec never silently performs a second release.
+            </p>
+        </section>
+
+        <section id="definite-assignment">
+            <h2>Deferred Uses Require Definite Assignment at Registration</h2>
+
+            <p>
+                A value read by a defer must already be definitely initialized on every path that
+                reaches and registers that defer.
+            </p>
+
+            <pre><code>let value: int
+
+defer {
+    Print(value)    // invalid
+}</code></pre>
+
+            <p>
+                Assigning <code>value</code> later does not retroactively make this registration valid.
+            </p>
+
+            <p>
+                The compiler validates the future use at the point where the defer is registered.
+            </p>
+        </section>
+
+        <section id="name-resolution">
+            <h2>Name Resolution Uses the Declaration Site</h2>
+
+            <p>
+                Deferred execution happens later, but lexical name lookup does not move forward in time.
+            </p>
+
+            <pre><code>defer {
+    Use(resource)    // invalid
+}
+
+let resource := Open()</code></pre>
+
+            <p>
+                <code>resource</code> is not visible at the defer declaration site.
+            </p>
+
+            <p>
+                Names in a defer body follow ordinary lexical scope rules.
+            </p>
+        </section>
+
+        <section id="not-capture">
+            <h2>Sec 0.1 Has No Special Defer Capture-by-Value Syntax</h2>
+
+            <p>
+                A defer does not snapshot referenced variables at registration time.
+            </p>
+
+            <p>
+                It follows ordinary future-use and borrowing rules for the referenced bindings and
+                reads them when the defer executes.
+            </p>
+
+            <p>
+                If a programmer needs a stable earlier value, create an ordinary binding explicitly:
+            </p>
+
+            <pre><code>let snapshot := value
+
+defer {
+    Print(snapshot)
+}
+
+value = nextValue</code></pre>
+        </section>
+
+        <section id="not-callback">
+            <h2>A Defer Body Is Not an Arbitrary Escaping Callback</h2>
+
+            <p>
+                The compiler knows exactly where a registered defer may execute: at cleanup of the
+                enclosing invocation.
+            </p>
+
+            <p>
+                This lets ownership, borrowing and lifetime analysis model deferred future uses more
+                precisely than an unknown callback that may escape indefinitely.
+            </p>
+
+            <p>
+                Semantic lowering may use cleanup blocks or another implementation technique, but
+                source semantics remain explicit deferred cleanup.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Defer diagnostics should point to both the invalid operation and the relevant registered defer where useful.</p>
+
+            <h3>Defer inside free</h3>
+
+            <pre><code>defer is not allowed inside `free`
+
+`free` is already lifecycle cleanup
+
+help: perform the required cleanup directly in the free body</code></pre>
+
+            <h3>Move conflicts with a pending deferred use</h3>
+
+            <pre><code>cannot move `resource`
+
+`resource` is used by a registered defer:
+    defer {
+        Use(resource)
+    }
+
+help: move the value before registering the defer
+help: remove or restructure the deferred future use</code></pre>
+
+            <h3>Not definitely initialized</h3>
+
+            <pre><code>`value` is not definitely initialized when this defer is registered
+
+the deferred block may read `value` when the invocation exits
+
+help: initialize the value before the defer statement</code></pre>
+
+            <h3>Propagation from deferred cleanup</h3>
+
+            <pre><code>error propagation cannot leave a deferred cleanup block
+
+the enclosing invocation is already exiting
+
+help: handle the cleanup failure inside the defer
+help: log, translate, or explicitly discard the result when permitted</code></pre>
+
+            <h3>Nested defer</h3>
+
+            <pre><code>nested defer is not part of Sec 0.1
+
+cleanup code cannot register new deferred cleanup while cleanup is already running</code></pre>
+
+            <h3>Escaping control transfer</h3>
+
+            <pre><code>return is not allowed inside a deferred cleanup block</code></pre>
+
+            <pre><code>break cannot target an enclosing loop from inside a deferred cleanup block</code></pre>
+
+            <pre><code>continue cannot target an enclosing loop from inside a deferred cleanup block</code></pre>
+
+            <pre><code>fallthrough is not allowed inside a deferred cleanup block</code></pre>
+        </section>
+
+        <section id="tooling">
+            <h2>Formatter, LSP and Analysis</h2>
+
+            <p>The formatter preserves canonical block syntax:</p>
+
+            <pre><code>defer {
+    Cleanup()
+}</code></pre>
+
+            <p>
+                It must not rewrite a defer into unsupported shorthand syntax.
+            </p>
+
+            <p>LSP and analysis may expose:</p>
+
+            <ul>
+                <li>the invocation boundary that owns a defer;</li>
+                <li>registration point;</li>
+                <li>possible registration paths;</li>
+                <li>cleanup order relative to other defers and destruction;</li>
+                <li>values whose lifetimes are extended by a deferred future use;</li>
+                <li>moves or mutations blocked by a pending defer;</li>
+                <li>defer accumulation in loops;</li>
+                <li>fallible cleanup that is not fully handled;</li>
+                <li>panic/no-panic effects reachable from the defer body.</li>
+            </ul>
+
+            <p>
+                Analysis should avoid describing defer as an arbitrary escaping closure when its
+                invocation-bounded lifetime provides stronger information.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer automatic ownership and destruction when the resource already has a correct owning Sec type.</li>
+                <li>Use <code>defer</code> for explicit paired cleanup or invocation-exit side effects.</li>
+                <li>Register cleanup immediately after the operation that makes the cleanup necessary.</li>
+                <li>Keep deferred blocks short and cleanup-focused.</li>
+                <li>Remember that a defer runs at invocation exit, not block exit.</li>
+                <li>Do not move or invalidate values that a registered defer will need later.</li>
+                <li>Use explicit ordinary bindings when you need a snapshot of an earlier value.</li>
+                <li>Handle fallible cleanup completely inside the defer.</li>
+                <li>Do not try to change an already-established return or propagated error from a defer.</li>
+                <li>Avoid accumulating large numbers of defers in long-running loops when per-iteration cleanup is more appropriate.</li>
+                <li>Do not use defer to simulate general control flow.</li>
+                <li>Check that deferred foreign cleanup and automatic Sec destruction cannot release the same resource twice.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>defer</code> registers cleanup for the nearest enclosing executable invocation.</li>
+                <li>Sec 0.1 uses only block-form <code>defer { ... }</code>.</li>
+                <li><code>defer Call()</code> shorthand is not part of Sec 0.1.</li>
+                <li>A defer is registered only when execution reaches the defer statement.</li>
+                <li>Registration is path-sensitive.</li>
+                <li>One defer statement may register multiple cleanup entries when executed repeatedly.</li>
+                <li>Functions, methods, static functions, lambdas, property accessors and <code>init</code> may contain defer.</li>
+                <li><code>free</code> may not contain defer.</li>
+                <li>A defer belongs to the invocation, not the lexical block where it was registered.</li>
+                <li>Leaving an if/match/loop block does not execute its registered defer.</li>
+                <li>Deferred entries run in reverse runtime registration order.</li>
+                <li>Deferred cleanup and automatic destruction use one unified LIFO cleanup model.</li>
+                <li>Sec does not have a separate “all defers first” cleanup phase.</li>
+                <li>Ordinary values may still be destroyed at their earliest legal lifetime end.</li>
+                <li>A deferred future use may extend a value's required lifetime.</li>
+                <li>The defer body is not evaluated at registration time.</li>
+                <li>Ordinary variable reads in a defer observe the value when cleanup executes.</li>
+                <li>Sec 0.1 has no special defer capture-by-value syntax.</li>
+                <li>Registering a defer creates real future ownership and borrow uses.</li>
+                <li>A value cannot be moved, destroyed or invalidated when that would break a pending deferred use.</li>
+                <li>Borrowing rules remain fully active for deferred future uses.</li>
+                <li>The compiler knows that a defer cannot outlive the enclosing invocation.</li>
+                <li>A defer inside a loop registers one entry each time execution reaches it.</li>
+                <li>A loop does not create a defer-execution boundary.</li>
+                <li>Analysis may warn about unexpectedly large defer accumulation in loops.</li>
+                <li>On return, the return expression is evaluated and the return value established before cleanup runs.</li>
+                <li>A deferred mutation cannot retroactively change an already-established return value.</li>
+                <li>On propagated error, the propagated result is established before deferred cleanup begins.</li>
+                <li>A defer cannot replace the already-established propagated error.</li>
+                <li>Fallible cleanup must be handled inside the deferred block.</li>
+                <li>A try inside defer may not propagate out into the already-exiting invocation.</li>
+                <li>Normal Result must-use and explicit-discard rules remain active inside defer.</li>
+                <li><code>return</code> may not target the enclosing invocation from inside a defer.</li>
+                <li><code>break</code>, <code>continue</code> and <code>fallthrough</code> may not escape a deferred cleanup block.</li>
+                <li>Nested defer is not part of Sec 0.1.</li>
+                <li>A defer completes by reaching the end of its block and produces no value.</li>
+                <li>Panic behavior does not come from defer itself.</li>
+                <li>When the panic policy requires cleanup, defers participate in the ordinary canonical cleanup order.</li>
+                <li>A panic profile that chooses immediate root termination may provide no guarantee that root defers run.</li>
+                <li>A defer in <code>init</code> belongs to that initializer invocation.</li>
+                <li>Temporary construction cleanup must not conflict with ownership transferred into the completed object.</li>
+                <li>Property getters and setters may register defer cleanup.</li>
+                <li>A lambda's defer belongs to the lambda invocation, not to the function that created the lambda.</li>
+                <li>Each lambda call has independent defer-registration state.</li>
+                <li>Deferred side effects happen at cleanup time.</li>
+                <li>The compiler may optimize defer implementation only when observable cleanup ordering is unchanged.</li>
+                <li>Explicit deferred cleanup must not double-release a resource also owned by automatic destruction.</li>
+                <li>A value read by defer must be definitely initialized when the defer is registered.</li>
+                <li>Assigning a value later does not retroactively make an earlier deferred future use valid.</li>
+                <li>Names inside defer use ordinary lexical name resolution at the declaration site.</li>
+                <li>A declaration written after the defer is not visible merely because the defer executes later.</li>
+                <li>Defer is an explicit cleanup construct, not an arbitrary escaping callback.</li>
+                <li>Diagnostics should identify pending deferred uses when they block move, mutation, destruction or invalidation.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="35-panic.html">Previous: Panic, Assertions and Runtime Checks</a>
+            <a href="37-attributes.html">Next: Attributes</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

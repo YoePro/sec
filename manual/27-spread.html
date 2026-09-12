@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Spread - Sec Language Manual</title>
     <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">    
 </head>
 <body>
 <header class="site-header">
@@ -13,7 +17,7 @@
             <img src="logo.svg" alt="Sec" />
             <span class="site-title">Sec</span>
         </a>
-                <nav class="header-nav">
+        <nav class="header-nav">
             <a href="01-introduction.html">Language</a>
             <a href="stdlib.html">Stdlib</a>
             <a href="syntax-reference.html">Syntax</a>
@@ -22,61 +26,131 @@
         </nav>
     </div>
 </header>
+
 <div class="layout">
     <nav class="sidebar" aria-label="Section navigation">
         <h2 class="sidebar-title">Sec Manual</h2>
-        <div class="sidebar-section">Spread</div>
-        <a href="#27-spread">Overview</a>
-                <div class="sidebar-section">Language</div>
-        <a href="01-introduction.html">Introduction</a>
-        <a href="02-basic-syntax.html">Basic Syntax</a>
-        <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
-        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
-        <a href="06-functions.html">Functions</a>
-        <a href="07-if.html">If Statements</a>
-        <a href="08-switch.html">Switch Statements</a>
-        <a href="09-match.html">Match Expressions</a>
-        <a href="10-enums.html">Enums</a>
-        <a href="11-unions.html">Unions</a>
-        <a href="12-registers.html">Registers</a>
-        <a href="13-units.html">Units</a>
-        <a href="14-generics.html">Generics</a>
-        <a href="15-loops.html">Loops</a>
-        <a href="16-impl.html">Impl Blocks</a>
-        <a href="17-properties.html">Properties</a>
-        <a href="18-interfaces.html">Interfaces</a>
-        <a href="19-arrays.html">Arrays</a>
-        <a href="20-slices.html">Slices</a>
-        <a href="21-indexing.html">Indexing</a>
-        <a href="22-storage.html">Values, Places and Storage</a>
-        <a href="23-references.html">References</a>
-        <a href="24-ownership.html">Ownership</a>
-        <a href="25-copy-move.html">Copying and Moving</a>
-        <a href="26-unsafe.html">Unsafe</a>
-        <a href="27-spread.html" class="active">Spread</a>
-        <a href="30-modules.html">Modules and Imports</a>
-        <a href="31-projects.html">Projects and sec.module</a>
-        <a href="32-visibility.html">Visibility</a>
-        <a href="33-result-and-option.html">Result and Option</a>
-        <a href="34-try.html">Error Propagation</a>
-        <a href="35-defer.html">Deferred Cleanup</a>
-        <a href="36-attributes.html">Attributes</a>
-        <a href="37-build-directives.html">Build Directives</a>
-        <a href="38-ffi.html">Foreign Function Interfaces</a>
-        <a href="39-tasks.html">Tasks</a>
-        <a href="40-spawn.html">Spawning Work</a>
-        <a href="41-await.html">Awaiting Tasks</a>
-        <a href="42-channels.html">Channels and Coordination</a>
-        <a href="43-testing.html">Tests and Benchmarks</a>
-        <a href="44-formatting.html">Formatting</a>
-        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#spread">Spread</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#contextual">Contextual Syntax</a>
+        <a href="#approved-contexts">Approved Contexts</a>
+        <a href="#not-meaning">What Spread Does Not Mean</a>
+        <a href="#evaluation-order">Evaluation Order</a>
+        <a href="#exactly-once">Exactly-Once Source Evaluation</a>
+        <a href="#call-spread">Call Argument Spread</a>
+        <a href="#fixed-arity">Fixed-Arity Calls</a>
+        <a href="#runtime-arity">Runtime-Arity Destinations</a>
+        <a href="#call-resolution">Call Resolution</a>
+        <a href="#call-ownership">Call Ownership</a>
+        <a href="#array-spread">Fixed-Array Literal Spread</a>
+        <a href="#array-length">Result Length</a>
+        <a href="#array-types">Element Types</a>
+        <a href="#array-ownership">Array Spread Ownership</a>
+        <a href="#struct-spread">Struct Literal Spread</a>
+        <a href="#same-type">Same Nominal Type</a>
+        <a href="#shallow">Shallow Expansion</a>
+        <a href="#override-order">Override Order</a>
+        <a href="#defaults">Defaults and Missing Fields</a>
+        <a href="#visibility">Visibility and Invariants</a>
+        <a href="#struct-ownership">Struct Spread Ownership</a>
+        <a href="#copy-move-boundary">Copy/Move Boundary</a>
+        <a href="#borrowing">Borrowing and Spread</a>
+        <a href="#allocation">Allocation</a>
+        <a href="#invalid-sources">Invalid Sources</a>
+        <a href="#invalid-contexts">Invalid Contexts</a>
+        <a href="#prefix">No Prefix Spread</a>
+        <a href="#multiple-spreads">Multiple Spreads</a>
+        <a href="#trailing-comma">Trailing Commas</a>
+        <a href="#lowering">Lowering</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html" class="active">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
         <a href="best-practices.html">Best Practices</a>
+
         <div class="sidebar-section">Status</div>
         <a href="test-status.html">Implementation Status</a>
+
         <div class="sidebar-section">Community</div>
         <a href="bug-report.html">Report a Bug</a>
         <a href="join.html">Join</a>
@@ -85,22 +159,1058 @@
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Spread</div>
 
-        <h1 id="27-spread">Spread</h1>
+        <h1 id="spread">Spread</h1>
 
-        <p>The spread operator expands collections and structs into individual elements or fields.</p>
+        <p>
+            The postfix spread operator expands one source value into the surrounding argument,
+            element or field list.
+        </p>
 
-        <p>This chapter is a placeholder. Content will be added.</p>
+        <pre><code>expression...</code></pre>
+
+        <p>Examples:</p>
+
+        <pre><code>Call(arguments...)
+
+let combined := [prefix..., 10, 20]
+
+let updated := User {
+    original...
+    Name: "Anna"
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Spread describes contextual expansion.
+            It is not a standalone value operation and it never silently changes ownership semantics.
+        </div>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+
+            <p>
+                Sec spread is postfix:
+            </p>
+
+            <pre><code>source...</code></pre>
+
+            <p>
+                The spread token follows the expression being expanded.
+            </p>
+
+            <p>This is not Sec spread syntax:</p>
+
+            <pre><code>...source</code></pre>
+        </section>
+
+        <section id="contextual">
+            <h2>Spread Is Contextual Syntax</h2>
+
+            <p>
+                A spread expression is meaningful only inside a surrounding construct that knows
+                how to receive the expanded values.
+            </p>
+
+            <p>Spread therefore does not produce a standalone expression value:</p>
+
+            <pre><code>let expanded := values...    // invalid
+return values...             // invalid
+values... = other            // invalid</code></pre>
+
+            <p>
+                The surrounding construct defines:
+            </p>
+
+            <ul>
+                <li>what is expanded;</li>
+                <li>how many values are required;</li>
+                <li>what destination types are expected;</li>
+                <li>whether runtime arity is allowed;</li>
+                <li>which ownership or borrow rules apply;</li>
+                <li>whether the destination operation itself allocates.</li>
+            </ul>
+        </section>
+
+        <section id="approved-contexts">
+            <h2>Canonical Spread Contexts</h2>
+
+            <p>Sec 0.1 defines three canonical spread-aware contexts:</p>
+
+            <ul>
+                <li>function and method argument lists;</li>
+                <li>fixed-array literals;</li>
+                <li>struct literals.</li>
+            </ul>
+
+            <p>
+                A specialized language or library destination may define an additional spread-aware
+                context only when its own canonical contract defines expansion count, ownership,
+                evaluation order and allocation semantics explicitly.
+            </p>
+
+            <p>
+                Spread syntax itself does not automatically make every collection, constructor or
+                language construct spread-aware.
+            </p>
+        </section>
+
+        <section id="not-meaning">
+            <h2>What Spread Does Not Mean</h2>
+
+            <p>Spread does not by itself mean:</p>
+
+            <ul>
+                <li>copy;</li>
+                <li>move;</li>
+                <li>clone;</li>
+                <li>allocation;</li>
+                <li>iteration;</li>
+                <li>concatenation;</li>
+                <li>conversion;</li>
+                <li>borrowing.</li>
+            </ul>
+
+            <p>
+                The destination context and Sec's ordinary ownership, copy/move and borrowing rules
+                determine what each expanded use is allowed to do.
+            </p>
+
+            <p>
+                This distinction prevents a short convenience syntax from hiding expensive or
+                destructive behavior.
+            </p>
+        </section>
+
+        <section id="evaluation-order">
+            <h2>Evaluation Order</h2>
+
+            <p>
+                The complete surrounding construct is evaluated left to right.
+            </p>
+
+            <pre><code>Call(
+    First(),
+    values...,
+    Last(),
+)</code></pre>
+
+            <p>The semantic order is:</p>
+
+            <ol>
+                <li>evaluate <code>First()</code>;</li>
+                <li>evaluate <code>values</code> exactly once;</li>
+                <li>expand the selected elements in their defined order;</li>
+                <li>evaluate <code>Last()</code>;</li>
+                <li>complete normal call preparation and perform the call.</li>
+            </ol>
+
+            <p>
+                Backend lowering may optimize this sequence only when observable evaluation order
+                and side effects remain unchanged.
+            </p>
+        </section>
+
+        <section id="exactly-once">
+            <h2>Spread Sources Are Evaluated Exactly Once</h2>
+
+            <p>
+                The source expression is never re-evaluated once per expanded value.
+            </p>
+
+            <pre><code>Call(BuildArguments()...)</code></pre>
+
+            <p>
+                <code>BuildArguments()</code> executes once.
+                The resulting spread source is then expanded.
+            </p>
+
+            <p>The natural expansion order is:</p>
+
+            <ul>
+                <li>arrays: increasing index order;</li>
+                <li>struct fields: declaration order.</li>
+            </ul>
+
+            <p>
+                Struct override resolution may later determine which supplied field value becomes
+                the final field value, but the source expression itself is still evaluated exactly once.
+            </p>
+        </section>
+
+        <section id="call-spread">
+            <h2>Function and Method Argument Spread</h2>
+
+            <p>
+                A fixed-size array may expand into individual call arguments:
+            </p>
+
+            <pre><code>fn Add(a: int, b: int, c: int) int {
+    return a + b + c
+}
+
+let values: int[3] := [10, 20, 30]
+let result := Add(values...)</code></pre>
+
+            <p>
+                For a fixed-arity destination this is semantically equivalent to:
+            </p>
+
+            <pre><code>let result := Add(
+    values[0],
+    values[1],
+    values[2],
+)</code></pre>
+
+            <p>
+                while preserving the exactly-once evaluation of the original spread source.
+            </p>
+
+            <p>
+                Ordinary and spread arguments may be mixed:
+            </p>
+
+            <pre><code>Call(prefix, values..., suffix)</code></pre>
+
+            <p>
+                Multiple spread sources are also allowed when the destination can accept the final
+                expanded argument sequence.
+            </p>
+        </section>
+
+        <section id="fixed-arity">
+            <h2>Fixed-Arity Calls Require Compile-Time Expansion Count</h2>
+
+            <p>
+                For a fixed-arity function or method, every spread contribution must have a
+                compile-time-known number of expanded arguments.
+            </p>
+
+            <pre><code>let values: int[3] := [10, 20, 30]
+Use(values...)</code></pre>
+
+            <p>
+                has known expansion count <code>3</code>.
+            </p>
+
+            <p>A runtime-length sequence cannot satisfy a fixed-arity destination:</p>
+
+            <pre><code>let values: ref int[] := ref storage[..]
+Use(values...)    // invalid for fixed-arity Use</code></pre>
+
+            <p>
+                Spread never invents a runtime argument pack for an ordinary fixed-arity function.
+            </p>
+        </section>
+
+        <section id="runtime-arity">
+            <h2>Runtime-Arity Destinations</h2>
+
+            <p>
+                A destination that explicitly supports runtime arity may define how a runtime-length
+                spread source is received.
+            </p>
+
+            <p>
+                Native typed variadic parameters are one such destination category.
+            </p>
+
+            <p>
+                Spread does not define variadic parameters itself.
+                It merely expands into a destination whose own function rules already define
+                runtime-arity behavior.
+            </p>
+
+            <p>
+                Each expanded value must still satisfy the variadic element type and all normal
+                call ownership rules.
+            </p>
+        </section>
+
+        <section id="call-resolution">
+            <h2>Call Resolution Happens After Expansion</h2>
+
+            <p>
+                Spread expansion is resolved before final argument matching.
+            </p>
+
+            <p>After expansion, normal call rules apply:</p>
+
+            <ul>
+                <li>total argument count;</li>
+                <li>argument order;</li>
+                <li>parameter type compatibility;</li>
+                <li>ownership requirements;</li>
+                <li>borrowing requirements;</li>
+                <li>mutability requirements;</li>
+                <li>unsafe requirements;</li>
+                <li>generic inference;</li>
+                <li>overload resolution.</li>
+            </ul>
+
+            <p>
+                Return type still does not participate in overload selection.
+            </p>
+
+            <p>
+                A spread that produces the wrong final arity is therefore rejected by the ordinary
+                call-resolution rules.
+            </p>
+        </section>
+
+        <section id="call-ownership">
+            <h2>Call Spread Is Non-Consuming</h2>
+
+            <p>
+                Fixed-array argument spread does not define a consuming-spread form.
+            </p>
+
+            <p>
+                Expanded indexed uses must be legal under ordinary non-consuming access rules.
+            </p>
+
+            <p>
+                For ordinary by-value parameters, this means the relevant array elements must be
+                implicitly copyable.
+            </p>
+
+            <p>This is invalid when satisfying the call would require per-element moves:</p>
+
+            <pre><code>let resources: Resource[2] := [...]
+Consume(resources...)    // invalid when elements would need consuming transfer</code></pre>
+
+            <p>Spread must not secretly:</p>
+
+            <ul>
+                <li>move individual elements out of the array;</li>
+                <li>leave the array partially available;</li>
+                <li>clone move-only elements;</li>
+                <li>allocate a temporary owning collection;</li>
+                <li>invent a consuming-spread interpretation.</li>
+            </ul>
+
+            <p>
+                If the expanded destination parameters borrow, the normal call-borrowing rules are
+                applied after expansion. Spread itself does not create a new borrow mode.
+            </p>
+        </section>
+
+        <section id="array-spread">
+            <h2>Fixed-Array Literal Spread</h2>
+
+            <p>
+                A fixed-size array may expand into another fixed-array literal:
+            </p>
+
+            <pre><code>let first: int[2] := [1, 2]
+let combined := [first..., 3, 4]</code></pre>
+
+            <p>The inferred result is:</p>
+
+            <pre><code>int[4]</code></pre>
+
+            <p>Multiple fixed-array spreads may be mixed with ordinary elements:</p>
+
+            <pre><code>let all := [first..., second..., 10]</code></pre>
+
+            <p>
+                This remains a fixed-array construction.
+                Spread does not silently convert the literal into a dynamic collection.
+            </p>
+        </section>
+
+        <section id="array-length">
+            <h2>Fixed-Array Result Length</h2>
+
+            <p>
+                The resulting fixed-array length is known at compile time.
+            </p>
+
+            <p>It is the checked sum of:</p>
+
+            <ul>
+                <li>each ordinary literal element;</li>
+                <li>the compile-time length of every spread source.</li>
+            </ul>
+
+            <p>
+                Length arithmetic overflow is a compile-time error.
+            </p>
+
+            <p>A runtime-length source cannot participate:</p>
+
+            <pre><code>let values: ref int[] := ref storage[..]
+let combined := [values..., 10]    // invalid</code></pre>
+
+            <p>
+                Sec does not allocate dynamic backing merely to make such a literal work.
+            </p>
+        </section>
+
+        <section id="array-types">
+            <h2>Fixed-Array Element Types</h2>
+
+            <p>
+                Ordinary and expanded elements must satisfy the target element type.
+            </p>
+
+            <pre><code>let prefix: byte[2] := [1, 2]
+let values: byte[4] := [prefix..., 3, 4]</code></pre>
+
+            <p>
+                Target context may shape untyped literals in the same way it does without spread.
+            </p>
+
+            <p>
+                Spread does not add structural conversion, common-type inference or implicit
+                collection conversion rules of its own.
+            </p>
+        </section>
+
+        <section id="array-ownership">
+            <h2>Fixed-Array Literal Spread Copies Elements</h2>
+
+            <p>
+                Fixed-array literal spread is non-consuming.
+            </p>
+
+            <p>
+                Expanded elements are copied according to ordinary implicit-copy rules.
+            </p>
+
+            <p>Spread must not:</p>
+
+            <ul>
+                <li>clone move-only elements;</li>
+                <li>move individual elements from the source array;</li>
+                <li>leave the source partially available;</li>
+                <li>invalidate the source array;</li>
+                <li>allocate hidden storage merely to perform expansion.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 has no consuming fixed-array spread syntax.
+            </p>
+        </section>
+
+        <section id="struct-spread">
+            <h2>Struct Literal Spread</h2>
+
+            <p>
+                A struct value may provide direct fields to a literal of the same nominal struct type:
+            </p>
+
+            <pre><code>type User struct {
+    Name: string
+    Age: int
+    Active: bool
+}
+
+let updated := User {
+    original...
+    Name: "Anna"
+}</code></pre>
+
+            <p>
+                This is a convenient same-type update/construction form.
+            </p>
+        </section>
+
+        <section id="same-type">
+            <h2>Struct Spread Requires the Same Exact Nominal Type</h2>
+
+            <p>
+                The spread source must have exactly the target struct type.
+            </p>
+
+            <p>
+                Struct spread is not structural typing and does not copy fields merely because two
+                unrelated structs happen to have compatible member names.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>let user := User {
+    userUpdate...
+}</code></pre>
+
+            <p>
+                when <code>userUpdate</code> has type <code>UserUpdate</code> rather than
+                exactly <code>User</code>.
+            </p>
+
+            <p>
+                Nominal type identity is preserved.
+            </p>
+        </section>
+
+        <section id="shallow">
+            <h2>Struct Spread Is Shallow</h2>
+
+            <p>
+                Struct spread expands only direct fields.
+            </p>
+
+            <p>
+                It does not recursively merge nested structs, maps, collections or payloads.
+            </p>
+
+            <pre><code>type Config struct {
+    Network: NetworkConfig
+    Logging: LoggingConfig
+}</code></pre>
+
+            <p>
+                Spreading one <code>Config</code> into another supplies the direct
+                <code>Network</code> and <code>Logging</code> fields according to ordinary field
+                semantics.
+            </p>
+
+            <p>
+                It does not deep-merge the contents of <code>NetworkConfig</code> or
+                <code>LoggingConfig</code>.
+            </p>
+        </section>
+
+        <section id="override-order">
+            <h2>Struct Entries Resolve Left to Right</h2>
+
+            <p>
+                A later spread or explicit field entry overrides a field supplied by an earlier spread.
+            </p>
+
+            <pre><code>let merged := User {
+    defaults...
+    stored...
+    Name: "Anna"
+}</code></pre>
+
+            <p>Resolution order is:</p>
+
+            <pre><code>defaults
+stored overrides defaults
+Name overrides both</code></pre>
+
+            <p>
+                The ordering is explicit in source and is therefore easy to review.
+            </p>
+
+            <p>
+                Two explicit entries with the same field name remain invalid:
+            </p>
+
+            <pre><code>let invalid := User {
+    Name: "Anna"
+    Name: "Maria"
+}</code></pre>
+
+            <p>
+                Spread does not legalize duplicate explicit fields.
+            </p>
+        </section>
+
+        <section id="defaults">
+            <h2>Defaults and Missing Fields</h2>
+
+            <p>
+                Struct construction resolves spreads and explicit overrides first.
+            </p>
+
+            <p>After that:</p>
+
+            <ol>
+                <li>each field has at most one final selected supplied value;</li>
+                <li>every omitted Defaultable field receives its semantic default;</li>
+                <li>every omitted NonDefaultable field is a compile-time error.</li>
+            </ol>
+
+            <pre><code>type Settings struct {
+    Retries: int
+    Enabled: bool
+    File: File
+}
+
+let settings := Settings {
+    previous...
+    Enabled: true
+}</code></pre>
+
+            <p>
+                If <code>previous</code> supplies <code>File</code>, the construction can satisfy
+                that NonDefaultable field.
+            </p>
+
+            <p>
+                If no final entry supplies <code>File</code> and <code>File</code> is
+                NonDefaultable, construction is invalid.
+            </p>
+        </section>
+
+        <section id="visibility">
+            <h2>Spread Does Not Bypass Visibility or Invariants</h2>
+
+            <p>
+                Struct spread follows ordinary struct construction rules.
+            </p>
+
+            <p>It cannot bypass:</p>
+
+            <ul>
+                <li>inaccessible fields;</li>
+                <li>nominal type identity;</li>
+                <li>construction invariants;</li>
+                <li>field type contracts;</li>
+                <li>ownership restrictions.</li>
+            </ul>
+
+            <p>
+                If the target struct cannot legally be constructed from the current source location,
+                spread does not make that representation accessible.
+            </p>
+        </section>
+
+        <section id="struct-ownership">
+            <h2>Struct Spread Is Non-Consuming</h2>
+
+            <p>
+                Struct spread requires an implicitly copyable source struct.
+            </p>
+
+            <pre><code>let updated := User {
+    original...
+    Name: "Anna"
+}</code></pre>
+
+            <p>
+                The selected source fields are supplied using ordinary copy semantics.
+            </p>
+
+            <p>A move-only source struct cannot be spread:</p>
+
+            <pre><code>let updated := Session {
+    originalSession...    // invalid when Session is move-only
+}</code></pre>
+
+            <p>Struct spread must not:</p>
+
+            <ul>
+                <li>partially move the source struct;</li>
+                <li>hide explicit move syntax;</li>
+                <li>invoke a hidden clone;</li>
+                <li>allocate merely to perform expansion.</li>
+            </ul>
+
+            <p>
+                If ownership transfer is required for a particular explicit field, write that field
+                using the ordinary copy/move rules instead of expecting spread to consume it.
+            </p>
+        </section>
+
+        <section id="copy-move-boundary">
+            <h2>Spread Does Not Replace Copy/Move Syntax</h2>
+
+            <p>
+                Spread describes expansion and placement.
+                The Copying and Moving chapter still owns destructive transfer semantics.
+            </p>
+
+            <p>The canonical restrictions are:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Context</th>
+                            <th>Ownership rule</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Fixed-array call spread</td>
+                            <td>Expanded uses must be valid without hidden per-element consumption</td>
+                        </tr>
+                        <tr>
+                            <td>Fixed-array literal spread</td>
+                            <td>Expanded source elements must be implicitly copyable</td>
+                        </tr>
+                        <tr>
+                            <td>Struct literal spread</td>
+                            <td>The source struct must be implicitly copyable</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Spread never changes from copy behavior to move behavior simply because a concrete
+                type is move-only.
+            </p>
+
+            <p>
+                There is no hidden “consuming spread” interpretation in Sec 0.1.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Borrowing and Spread</h2>
+
+            <p>
+                Spread does not invent a new implicit borrow operation.
+            </p>
+
+            <p>
+                For call arguments, expansion happens first and the normal function-call borrowing
+                rules then apply to each resulting argument position.
+            </p>
+
+            <p>
+                For example, a destination parameter declared <code>ref T</code> may receive the
+                usual call-bounded borrow when the expanded element Place satisfies the ordinary
+                borrowing rules.
+            </p>
+
+            <p>
+                Spread itself does not:
+            </p>
+
+            <ul>
+                <li>extend borrow lifetime;</li>
+                <li>upgrade shared authority to mutable authority;</li>
+                <li>make overlapping mutable borrows legal;</li>
+                <li>grant ownership through a reference;</li>
+                <li>turn runtime sequence iteration into an argument pack.</li>
+            </ul>
+        </section>
+
+        <section id="allocation">
+            <h2>Spread Does Not Allocate by Itself</h2>
+
+            <p>
+                Spread has no inherent allocation semantics.
+            </p>
+
+            <p>
+                The compiler must not create temporary dynamic storage merely to implement spread.
+            </p>
+
+            <p>Typical lowering can remain direct:</p>
+
+            <ul>
+                <li>fixed-array call spread → ordinary argument operations;</li>
+                <li>fixed-array literal spread → direct fixed-element construction;</li>
+                <li>struct spread → explicit selected field operations.</li>
+            </ul>
+
+            <p>
+                If a specialized spread-aware destination allocates by its own contract, that
+                allocation belongs to the destination operation, not to spread.
+            </p>
+        </section>
+
+        <section id="invalid-sources">
+            <h2>Invalid Spread Sources</h2>
+
+            <p>
+                Unless another canonical destination explicitly allows them, ordinary spread is
+                invalid for source categories such as:
+            </p>
+
+            <ul>
+                <li>scalar values;</li>
+                <li>strings;</li>
+                <li>maps;</li>
+                <li>sets;</li>
+                <li>interfaces;</li>
+                <li>unions;</li>
+                <li>raw pointers;</li>
+                <li>registers;</li>
+                <li>move-only fixed arrays when element expansion would require consuming reads;</li>
+                <li>move-only structs for struct spread;</li>
+                <li>values whose expansion count cannot satisfy the destination context.</li>
+            </ul>
+
+            <p>
+                Slices and owning dynamic arrays are not valid sources for fixed-array literals or
+                fixed-arity calls because their length is runtime state.
+            </p>
+
+            <pre><code>Call(10...)                    // invalid
+let values := [slice..., 10]   // invalid fixed-array literal spread
+let user := User {
+    rawPointer...              // invalid
+}</code></pre>
+        </section>
+
+        <section id="invalid-contexts">
+            <h2>Invalid Spread Contexts</h2>
+
+            <p>
+                Spread is not an ordinary postfix operator that can appear anywhere an expression can.
+            </p>
+
+            <p>Invalid examples include:</p>
+
+            <pre><code>let value := source...
+
+return source...
+
+if source... {
+    ...
+}
+
+source... = replacement</code></pre>
+
+            <p>
+                A parser may recognize the token sequence for recovery, but semantic spread exists
+                only inside a spread-aware destination.
+            </p>
+        </section>
+
+        <section id="prefix">
+            <h2>There Is No Prefix Spread</h2>
+
+            <p>This is invalid:</p>
+
+            <pre><code>...values</code></pre>
+
+            <p>The canonical Sec operator is always postfix:</p>
+
+            <pre><code>values...</code></pre>
+
+            <p>
+                Repeated spread markers are also invalid:
+            </p>
+
+            <pre><code>values......</code></pre>
+        </section>
+
+        <section id="multiple-spreads">
+            <h2>Multiple Spreads</h2>
+
+            <p>
+                Multiple spread sources are allowed when the surrounding context can resolve the
+                complete result.
+            </p>
+
+            <p>Call example:</p>
+
+            <pre><code>Call(prefix..., middle, suffix...)</code></pre>
+
+            <p>Fixed-array example:</p>
+
+            <pre><code>let combined := [first..., second..., 10]</code></pre>
+
+            <p>Struct example:</p>
+
+            <pre><code>let merged := User {
+    defaults...
+    stored...
+    Name: "Anna"
+}</code></pre>
+
+            <p>
+                Every spread source is evaluated exactly once at its left-to-right source position.
+            </p>
+        </section>
+
+        <section id="trailing-comma">
+            <h2>Trailing Commas</h2>
+
+            <p>
+                Where the surrounding list syntax permits a trailing comma, spread entries may
+                appear before that trailing comma.
+            </p>
+
+            <pre><code>Call(
+    values...,
+)</code></pre>
+
+            <p>Likewise for array literals:</p>
+
+            <pre><code>let combined := [
+    prefix...,
+    10,
+]</code></pre>
+
+            <p>
+                The comma belongs to the surrounding list grammar.
+                It is not part of the spread operator itself.
+            </p>
+        </section>
+
+        <section id="lowering">
+            <h2>Spread Is Resolved Before Backend Lowering</h2>
+
+            <p>
+                Semantic analysis resolves the complete spread meaning before MLIR/LLVM lowering.
+            </p>
+
+            <p>The compiler must preserve enough information to guarantee:</p>
+
+            <ul>
+                <li>source evaluation exactly once;</li>
+                <li>destination context;</li>
+                <li>expansion order;</li>
+                <li>expansion count when statically required;</li>
+                <li>selected ownership operation for each expanded use;</li>
+                <li>struct override resolution;</li>
+                <li>observable left-to-right evaluation order.</li>
+            </ul>
+
+            <p>
+                The implementation may keep a dedicated spread representation until normalization,
+                or normalize early into ordinary arguments, elements and field operations once all
+                required semantic facts are explicit.
+            </p>
+
+            <p>
+                Low-level lowering must never reconstruct ownership or evaluation semantics merely
+                by seeing a textual spread pattern.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Spread diagnostics should identify the actual failed requirement:</p>
+
+            <ul>
+                <li>unsupported spread context;</li>
+                <li>invalid source type;</li>
+                <li>runtime expansion count where compile-time arity is required;</li>
+                <li>wrong call arity after expansion;</li>
+                <li>incompatible expanded argument or element;</li>
+                <li>move-only source restriction;</li>
+                <li>inaccessible struct fields;</li>
+                <li>wrong nominal struct type;</li>
+                <li>duplicate explicit struct fields;</li>
+                <li>omitted NonDefaultable fields after spread/default resolution;</li>
+                <li>fixed-array result-length overflow.</li>
+            </ul>
+
+            <h3>Unknown fixed-call expansion count</h3>
+
+            <pre><code>cannot spread `ref int[]` into this fixed-arity call
+
+the number of expanded arguments is not known at compile time
+
+help: use a fixed-size array
+help: use a destination that explicitly supports runtime arity</code></pre>
+
+            <h3>Move-only fixed-array elements</h3>
+
+            <pre><code>cannot spread `Resource[2]` into these by-value arguments
+
+the expanded elements would require destructive moves from the source array
+spread is non-consuming
+
+help: pass the elements explicitly with the required ownership syntax
+help: redesign the destination to borrow when ownership transfer is not needed</code></pre>
+
+            <h3>Wrong struct source type</h3>
+
+            <pre><code>cannot spread `UserUpdate` into `User`
+
+struct spread requires the same exact nominal struct type
+
+help: provide `User` as the spread source
+help: initialize the fields explicitly</code></pre>
+
+            <h3>Standalone spread</h3>
+
+            <pre><code>spread is not valid as a standalone expression
+
+`values...` must appear inside a spread-aware argument, array-element or struct-field list</code></pre>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use spread when it makes an already well-defined fixed expansion easier to read.</li>
+                <li>Use postfix <code>source...</code>; Sec has no prefix spread.</li>
+                <li>Use fixed arrays when a fixed-arity call or fixed-array literal needs compile-time-known expansion count.</li>
+                <li>Do not use spread when the important operation is ownership transfer; write the transfer explicitly.</li>
+                <li>Do not expect spread to clone move-only resources.</li>
+                <li>Keep struct overrides close to the spread they override.</li>
+                <li>Use struct spread only for same-type shallow updates.</li>
+                <li>Do not stack struct spreads merely to simulate deep merge semantics.</li>
+                <li>Prefer explicit code when runtime sequence length is central to understanding the operation.</li>
+                <li>Remember that allocation belongs to the destination operation, never to spread itself.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec spread uses postfix <code>expression...</code>.</li>
+                <li>Prefix <code>...expression</code> is invalid.</li>
+                <li>Spread is contextual syntax and does not produce a standalone value.</li>
+                <li>Canonical Sec 0.1 spread contexts are call arguments, fixed-array literals and struct literals.</li>
+                <li>A specialized destination may define another spread-aware context only through its own canonical contract.</li>
+                <li>Spread does not inherently mean copy, move, clone, allocation, iteration, concatenation, conversion or borrowing.</li>
+                <li>The spread source expression is evaluated exactly once.</li>
+                <li>The surrounding construct preserves left-to-right evaluation order.</li>
+                <li>Fixed-array elements expand in increasing index order.</li>
+                <li>Struct fields expand in declaration order.</li>
+                <li>A fixed-size array may expand into individual function or method arguments.</li>
+                <li>A fixed-arity call requires every spread contribution to have compile-time-known expansion count.</li>
+                <li>A runtime-length slice or dynamic array cannot spread into an ordinary fixed-arity call.</li>
+                <li>A destination that explicitly supports runtime arity may define runtime-length spread behavior.</li>
+                <li>Native typed variadic parameters are an explicit runtime-arity destination category.</li>
+                <li>Expansion occurs before final argument matching and overload resolution.</li>
+                <li>Normal argument count, type, ownership, borrowing, mutability, unsafe and generic rules apply after expansion.</li>
+                <li>Fixed-array call spread is non-consuming.</li>
+                <li>Spread cannot hide per-element moves or partial array ownership.</li>
+                <li>By-value expanded array elements must be copyable when the destination requires ordinary by-value values.</li>
+                <li>Normal call-borrowing rules may apply after expansion when the destination parameters borrow.</li>
+                <li>A fixed-size array may spread into another fixed-array literal.</li>
+                <li>Fixed-array result length is computed at compile time from ordinary elements and spread-source lengths.</li>
+                <li>Fixed-array length overflow is a compile-time error.</li>
+                <li>A runtime-length source cannot spread into a fixed-array literal.</li>
+                <li>Fixed-array spread does not silently create a dynamic array or allocate hidden backing storage.</li>
+                <li>All expanded array elements must satisfy the target element type.</li>
+                <li>Fixed-array literal spread copies source elements according to ordinary implicit-copy rules.</li>
+                <li>Sec 0.1 has no consuming fixed-array spread form.</li>
+                <li>Struct spread requires the same exact nominal target struct type.</li>
+                <li>Struct spread is shallow.</li>
+                <li>Struct spread does not recursively merge nested values.</li>
+                <li>Struct literal entries resolve from left to right.</li>
+                <li>A later spread may override fields supplied by an earlier spread.</li>
+                <li>An explicit field may override a field supplied by an earlier spread.</li>
+                <li>Two explicit entries for the same field remain invalid.</li>
+                <li>Omitted-field defaults are applied only after spread and explicit override resolution.</li>
+                <li>An omitted NonDefaultable field remains a compile-time error unless some final spread/entry supplies it.</li>
+                <li>Struct spread does not bypass field visibility, nominal identity, construction invariants or field contracts.</li>
+                <li>Struct spread is non-consuming and requires an implicitly copyable source struct.</li>
+                <li>A move-only struct cannot be spread through ordinary struct spread.</li>
+                <li>Spread never silently changes from copy semantics to move semantics for a concrete type.</li>
+                <li>Spread never invokes a hidden clone.</li>
+                <li>Spread does not allocate by itself.</li>
+                <li>Temporary dynamic storage must not be created merely to implement spread.</li>
+                <li>Scalars, strings, maps, sets, interfaces, unions, raw pointers and registers are not ordinary spread sources.</li>
+                <li>Slices and dynamic arrays are invalid fixed-array-literal or fixed-arity-call spread sources because their length is runtime state.</li>
+                <li>Repeated spread markers and standalone spread are invalid.</li>
+                <li>Multiple spreads may appear when the surrounding destination can resolve the complete expansion.</li>
+                <li>Trailing commas belong to the surrounding list syntax and may follow spread entries where that grammar allows them.</li>
+                <li>Spread semantics are fully resolved before low-level backend lowering.</li>
+                <li>Backend lowering must preserve exactly-once evaluation, expansion order, ownership semantics and observable evaluation order.</li>
+            </ul>
+        </section>
 
         <div class="page-navigation">
-                <a href="26-unsafe.html">Previous: Unsafe</a>
-            <a href="30-modules.html">Next: Modules and Imports</a>
+            <a href="26-borrowing.html">Previous: Borrowing</a>
+            <a href="28-modules.html">Next: Modules and Imports</a>
         </div>
     </main>
 </div>
+
 <footer class="site-footer">
     <div class="site-footer-inner">
-        <p>&copy; 2026 Sec Language</p>
-        <a href="https://github.com/YoePro/sec">GitHub</a>
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
     </div>
 </footer>
 </body>

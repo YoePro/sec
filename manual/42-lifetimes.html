@@ -1,0 +1,2060 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lifetimes - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#lifetimes">Lifetimes</a>
+        <a href="#core-invariant">Core Invariant</a>
+        <a href="#no-lifetime-syntax">No Source Lifetime Syntax</a>
+        <a href="#distinct-concepts">Distinct Lifetime Concepts</a>
+        <a href="#scope-not-lifetime">Scope Is Not Lifetime</a>
+        <a href="#storage-not-value">Storage Lifetime Is Not Value Lifetime</a>
+        <a href="#resource-not-wrapper">Resource Lifetime Is Not Wrapper Lifetime</a>
+        <a href="#sources">Lifetime Sources and Bounds</a>
+        <a href="#value-lifetime">Value Lifetime</a>
+        <a href="#value-start">Value Lifetime Begins</a>
+        <a href="#value-end">Value Lifetime Ends</a>
+        <a href="#partial-values">Partial Values</a>
+        <a href="#storage-lifetime">Storage Lifetime</a>
+        <a href="#no-hidden-extension">No Hidden Lifetime Extension</a>
+        <a href="#availability">Ownership Availability</a>
+        <a href="#reference-lifetime">Reference Lifetime</a>
+        <a href="#reference-bits">Reference Bits vs Validity</a>
+        <a href="#borrow-lifetime">Borrow Lifetime</a>
+        <a href="#non-lexical">Non-Lexical Borrowing</a>
+        <a href="#reborrows">Reborrows and Reference Holders</a>
+        <a href="#temporaries">Temporaries</a>
+        <a href="#fresh-returns">Fresh Owned Returns</a>
+        <a href="#control-flow">Control-Flow Lifetimes</a>
+        <a href="#joins">Branch Joins</a>
+        <a href="#loops">Loops</a>
+        <a href="#aggregates">Aggregates and Sub-Places</a>
+        <a href="#slices">Slices and Views</a>
+        <a href="#unions">Union Payloads</a>
+        <a href="#calls">Function Calls</a>
+        <a href="#borrowed-params">Borrowed Parameters</a>
+        <a href="#consuming-params">Consuming Parameters</a>
+        <a href="#returned-references">Returned References</a>
+        <a href="#local-return">Local Reference Return</a>
+        <a href="#parameter-return">Parameter-Derived Return</a>
+        <a href="#receiver-return">Receiver-Derived Return</a>
+        <a href="#multi-source-return">Multiple Possible Sources</a>
+        <a href="#mutable-return">Mutable Returned Reference</a>
+        <a href="#exported-relations">Exported Lifetime Relations</a>
+        <a href="#methods">Methods</a>
+        <a href="#closures">Closures and Captures</a>
+        <a href="#escaping-callables">Escaping Callables</a>
+        <a href="#defer">defer Dependencies</a>
+        <a href="#allocation">Allocation Lifetimes</a>
+        <a href="#arena">Arena Epochs</a>
+        <a href="#generation-availability">Epoch Is Not Availability</a>
+        <a href="#static">Static and Global Storage</a>
+        <a href="#thread-local">Thread-Local Storage</a>
+        <a href="#fixed-address">Fixed Addresses</a>
+        <a href="#mappings">Runtime Mappings</a>
+        <a href="#volatile">Volatile Access</a>
+        <a href="#rawptr">Raw Pointers</a>
+        <a href="#ffi">FFI Retention</a>
+        <a href="#escaping-contexts">Escaping Execution Contexts</a>
+        <a href="#interrupts">Interrupt Boundary</a>
+        <a href="#error-handling">Error Handling</a>
+        <a href="#generics">Generics</a>
+        <a href="#summaries">Separate Compilation</a>
+        <a href="#inference">Compiler Inference Model</a>
+        <a href="#semantic-ir">Semantic IR</a>
+        <a href="#backend">Backend Lowering</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html" class="active">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Lifetimes</div>
+
+        <h1 id="lifetimes">Lifetimes</h1>
+
+        <p>
+            Lifetime analysis proves that every safe non-owning access remains valid for its complete
+            semantic use.
+        </p>
+
+        <p>
+            The compiler tracks value lifetime, storage validity, references, borrows, returned
+            references, closure captures, deferred cleanup, allocation domains, Arena epochs, mappings,
+            FFI retention and execution-context dependencies.
+        </p>
+
+        <pre><code>let value := CreateValue()
+let view := ref value
+
+Inspect(view)
+
+Consume(&lt;-value)</code></pre>
+
+        <p>
+            The shared borrow may end after the final proven use of <code>view</code>.
+            The lexical scope of <code>view</code> does not force the borrow to remain live longer.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Safe Sec code never uses a reference, view, borrow or other
+            non-owning dependency beyond the complete validity of the value and storage on which it depends.
+        </div>
+
+        <section id="core-invariant">
+            <h2>Core Invariant</h2>
+
+            <p>Conceptually:</p>
+
+            <pre><code>use lifetime
+    &lt;= reference lifetime
+    &lt;= referent value lifetime
+    &lt;= required storage validity</code></pre>
+
+            <p>Additional bounds may include:</p>
+
+            <ul>
+                <li>ownership availability;</li>
+                <li>borrow authority;</li>
+                <li>allocation lifetime;</li>
+                <li>Arena epoch validity;</li>
+                <li>mapping lifetime;</li>
+                <li>address stability;</li>
+                <li>platform validity;</li>
+                <li>execution-context authority;</li>
+                <li>foreign retention contracts.</li>
+            </ul>
+
+            <p>
+                Satisfying one bound does not prove the others.
+            </p>
+
+            <p>
+                Physical bytes may remain present after a semantic value or reference lifetime has ended.
+                Safe Sec code still treats the old value or reference as dead.
+            </p>
+        </section>
+
+        <section id="no-lifetime-syntax">
+            <h2>Sec 0.1 Has No Programmer-Written Lifetime Syntax</h2>
+
+            <p>
+                Ordinary Sec source does not require:
+            </p>
+
+            <pre><code>lifetime names
+lifetime parameters
+lifetime arithmetic
+explicit region annotations
+outlives clauses</code></pre>
+
+            <p>
+                The compiler derives the needed relationships from existing source semantics.
+            </p>
+
+            <p>
+                Internal lifetime variables, graph nodes, regions, SCCs and dataflow states are
+                implementation techniques. They do not become source-language features.
+            </p>
+
+            <p>
+                This is deliberate: lifetime complexity belongs primarily in compiler analysis rather
+                than in ordinary user-facing signatures.
+            </p>
+        </section>
+
+        <section id="distinct-concepts">
+            <h2>Several Different “Lifetimes” Must Not Be Collapsed into One</h2>
+
+            <p>The compiler distinguishes at least:</p>
+
+            <pre><code>value lifetime
+storage lifetime
+ownership duration
+availability state
+reference lifetime
+borrow live range
+temporary lifetime
+resource lifetime
+allocation lifetime
+mapping lifetime
+closure-environment lifetime
+callback retention lifetime
+platform validity
+address stability
+generation/epoch validity
+lexical scope
+physical stack-frame lifetime
+backend lifetime metadata</code></pre>
+
+            <p>
+                These concepts interact, but they are not interchangeable.
+            </p>
+        </section>
+
+        <section id="scope-not-lifetime">
+            <h2>Lexical Scope Is Not Lifetime</h2>
+
+            <p>
+                Lexical scope is a source-code region.
+                It often provides an upper bound for locals, but semantic lifetime may end earlier.
+            </p>
+
+            <p>A value may end before scope exit because it is:</p>
+
+            <ul>
+                <li>moved;</li>
+                <li>discarded;</li>
+                <li>destroyed;</li>
+                <li>replaced;</li>
+                <li>deallocated;</li>
+                <li>invalidated;</li>
+                <li>proven dead under the destruction rules.</li>
+            </ul>
+
+            <p>
+                A borrow may also end before lexical scope exit after its final proven use and after
+                every derived dependency has ended.
+            </p>
+        </section>
+
+        <section id="storage-not-value">
+            <h2>Storage Lifetime Is Not Value Lifetime</h2>
+
+            <pre><code>let mut value := CreateFirst()
+
+value = CreateSecond()</code></pre>
+
+            <p>
+                The storage represented by the Place may continue across the assignment.
+            </p>
+
+            <p>
+                The first value's lifetime ends before the second value's lifetime begins.
+            </p>
+
+            <p>
+                Reusing storage never means the previous semantic value is still alive there.
+            </p>
+        </section>
+
+        <section id="resource-not-wrapper">
+            <h2>Resource Lifetime Is Not Wrapper Lifetime</h2>
+
+            <p>
+                A wrapper object may remain physically valid while the external resource it once
+                represented has already ended.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>files;</li>
+                <li>sockets;</li>
+                <li>device mappings;</li>
+                <li>interrupt registrations;</li>
+                <li>foreign handles;</li>
+                <li>other externally owned resources.</li>
+            </ul>
+
+            <p>
+                Storage validity alone therefore cannot prove that the external resource remains live.
+            </p>
+        </section>
+
+        <section id="sources">
+            <h2>Lifetime Sources and Bounds</h2>
+
+            <p>Lifetime constraints may arise from:</p>
+
+            <ul>
+                <li>local declarations;</li>
+                <li>parameter validity;</li>
+                <li>caller-owned storage;</li>
+                <li>return-value ownership;</li>
+                <li>reference provenance;</li>
+                <li>aggregate ownership;</li>
+                <li>active union/Option/Result state;</li>
+                <li>temporaries;</li>
+                <li>loop iterations;</li>
+                <li>static/global storage;</li>
+                <li>thread-local storage;</li>
+                <li>allocation owners;</li>
+                <li>Arena epochs;</li>
+                <li>closure environments;</li>
+                <li>callback registration;</li>
+                <li>foreign retention;</li>
+                <li>fixed-address contracts;</li>
+                <li>runtime hardware mappings;</li>
+                <li>platform availability.</li>
+            </ul>
+
+            <p>
+                When several bounds apply, usable lifetime ends at the earliest invalidating bound on
+                each control-flow path.
+            </p>
+
+            <p>
+                Unknown or opaque bounds are handled conservatively unless a compiler-visible canonical
+                contract provides stronger facts.
+            </p>
+        </section>
+
+        <section id="value-lifetime">
+            <h2>Value Lifetime</h2>
+
+            <p>
+                A value lifetime describes the period during which one particular semantic value
+                exists in a Place or owned value position.
+            </p>
+
+            <p>
+                Value lifetime is independent from whether the physical bytes remain allocated.
+            </p>
+        </section>
+
+        <section id="value-start">
+            <h2>A Value Lifetime Begins When the Value Becomes Validly Initialized</h2>
+
+            <p>
+                Construction starts a value lifetime only when the relevant value or subvalue becomes
+                valid under its type rules.
+            </p>
+
+            <p>
+                During permitted partial construction, aggregate fields may begin their lifetimes
+                independently.
+            </p>
+
+            <p>
+                Reinitializing an unavailable Place starts a new value lifetime in that Place.
+            </p>
+        </section>
+
+        <section id="value-end">
+            <h2>A Value Lifetime Ends When the Current Value Ceases to Exist</h2>
+
+            <p>A current value lifetime may end through:</p>
+
+            <ul>
+                <li>destruction;</li>
+                <li>move out;</li>
+                <li>discard;</li>
+                <li>replacement;</li>
+                <li>ownership transfer;</li>
+                <li>deallocation;</li>
+                <li>a canonical invalidating operation;</li>
+                <li>loss of active variant state.</li>
+            </ul>
+
+            <p>
+                A move does not replace the source with <code>None</code>, <code>null</code>,
+                zero or a default value.
+            </p>
+
+            <p>
+                The former value lifetime ends at the source Place, and ownership analysis marks that
+                Place unavailable.
+            </p>
+
+            <p>
+                Replacement ends the old lifetime before the new lifetime begins.
+            </p>
+        </section>
+
+        <section id="partial-values">
+            <h2>Partial Values May Have Different Sub-Place Lifetimes</h2>
+
+            <pre><code>let payload :&lt;- packet.Payload</code></pre>
+
+            <p>
+                When the partial move is legal, the lifetime of <code>packet.Payload</code> ends at
+                that source Place.
+            </p>
+
+            <p>
+                Proven-disjoint sibling fields may remain live and owned.
+            </p>
+
+            <p>
+                Reinitializing the moved field starts a new field lifetime and may restore whole-value
+                availability when all required parts are live again.
+            </p>
+        </section>
+
+        <section id="storage-lifetime">
+            <h2>Storage Lifetime</h2>
+
+            <p>
+                Storage lifetime is the period during which a storage location is valid for the uses
+                allowed by its storage contract.
+            </p>
+
+            <p>Storage may be controlled by:</p>
+
+            <ul>
+                <li>the current invocation;</li>
+                <li>the caller;</li>
+                <li>an allocation owner;</li>
+                <li>an Arena;</li>
+                <li>the static program image;</li>
+                <li>thread-local storage;</li>
+                <li>a runtime mapping;</li>
+                <li>a foreign system;</li>
+                <li>a platform or device contract.</li>
+            </ul>
+
+            <p>
+                Lifetime analysis consumes canonical storage-origin and storage-domain facts.
+                It does not guess “stack versus heap” merely from syntax.
+            </p>
+        </section>
+
+        <section id="no-hidden-extension">
+            <h2>No Hidden Lifetime Extension</h2>
+
+            <p>
+                The compiler does not extend a local value's source-level lifetime by secretly
+                promoting it to heap or Arena storage merely to make an escaping reference compile.
+            </p>
+
+            <p>This remains invalid:</p>
+
+            <pre><code>fn Invalid() ref Value {
+    let value := CreateValue()
+    return ref value
+}</code></pre>
+
+            <p>
+                Backend escape analysis may choose a different physical placement only when the
+                source program already has a valid ownership/storage lifetime.
+            </p>
+
+            <p>
+                Physical stack-to-heap placement is therefore an implementation choice only after the
+                semantic lifetime has already been proven.
+            </p>
+        </section>
+
+        <section id="availability">
+            <h2>Ownership Availability and Lifetime Are Separate Facts</h2>
+
+            <p>
+                Ownership analysis tracks whether a Place currently owns a live value:
+            </p>
+
+            <pre><code>value is available
+value is not available</code></pre>
+
+            <p>
+                <code>Available</code> means the current owner still owns a value in that Place on the
+                current path.
+            </p>
+
+            <p>
+                <code>Unavailable</code> means the owner no longer owns a live value there, for a
+                specific reason such as move, discard or destruction.
+            </p>
+
+            <p>
+                <code>ConditionallyAvailable</code> means different reachable paths have different
+                ownership states.
+            </p>
+
+            <p>
+                Availability does not prove:
+            </p>
+
+            <ul>
+                <li>borrow authority;</li>
+                <li>Arena epoch validity;</li>
+                <li>mapping validity;</li>
+                <li>device liveness;</li>
+                <li>platform access permission;</li>
+                <li>thread synchronization.</li>
+            </ul>
+        </section>
+
+        <section id="reference-lifetime">
+            <h2>Reference Lifetime</h2>
+
+            <p>
+                A safe reference cannot begin before its referent is validly initialized and available.
+            </p>
+
+            <p>
+                It cannot remain usable after any event that ends the required semantic validity,
+                including:
+            </p>
+
+            <ul>
+                <li>referent destruction;</li>
+                <li>move;</li>
+                <li>discard;</li>
+                <li>incompatible replacement;</li>
+                <li>deallocation;</li>
+                <li>invalidating remap;</li>
+                <li>Arena epoch invalidation;</li>
+                <li>loss of required platform validity.</li>
+            </ul>
+
+            <p>
+                A safe reference does not own its referent and does not automatically extend the
+                referent's lifetime.
+            </p>
+
+            <p>
+                <code>ref mut T</code> provides exclusive authority; it does not itself keep
+                <code>T</code> alive longer.
+            </p>
+        </section>
+
+        <section id="reference-bits">
+            <h2>Reference Representation Bits May Physically Remain After Validity Ends</h2>
+
+            <p>
+                A machine address may still numerically point into memory after a reference becomes
+                semantically invalid.
+            </p>
+
+            <p>
+                Safe Sec still rejects later use.
+            </p>
+
+            <p>
+                Lifetime validity is therefore not defined by “the pointer still points somewhere”
+                or by whether the bytes have been overwritten yet.
+            </p>
+        </section>
+
+        <section id="borrow-lifetime">
+            <h2>Borrow Lifetime</h2>
+
+            <p>
+                Borrow lifetime is the period during which borrowed authority must remain reserved.
+            </p>
+
+            <p>
+                It may be shorter than the lexical scope of the reference holder.
+            </p>
+
+            <p>
+                It may also be extended by derived references, captures, returned references, views,
+                aggregate fields or deferred uses.
+            </p>
+        </section>
+
+        <section id="non-lexical">
+            <h2>Sec Uses Non-Lexical Borrow Analysis</h2>
+
+            <pre><code>let value := CreateValue()
+let view := ref value
+
+Inspect(view)
+
+Consume(&lt;-value)</code></pre>
+
+            <p>
+                If <code>Inspect(view)</code> is the final use of <code>view</code> and no derived
+                dependency survives, the shared borrow ends before the later consuming call.
+            </p>
+
+            <p>
+                The compiler uses the narrowest provably correct live range rather than extending
+                every borrow to the closing brace.
+            </p>
+        </section>
+
+        <section id="reborrows">
+            <h2>Reborrows and Reference Holders Carry Derived Lifetime Obligations</h2>
+
+            <p>
+                A reborrow cannot outlive the source reference or the source borrow authority from
+                which it derives.
+            </p>
+
+            <p>
+                Moving a <code>ref mut</code> holder transfers that holder's borrow obligation rather
+                than ending the underlying exclusive borrow.
+            </p>
+
+            <p>
+                Copying a shared reference may keep the shared borrow live through the copied holder.
+            </p>
+
+            <p>
+                Move, destruction, replacement or discard of the referent remains illegal while an
+                overlapping live borrow requires that value.
+            </p>
+
+            <p>
+                Proven-disjoint Places remain independent where the borrowing rules have already
+                established disjointness.
+            </p>
+        </section>
+
+        <section id="temporaries">
+            <h2>Temporary Lifetimes</h2>
+
+            <p>
+                A temporary exists for the semantic region required to complete its containing
+                expression and every transfer, borrow, cleanup or result-position use required by that expression.
+            </p>
+
+            <p>
+                The compiler does not silently extend a temporary merely to satisfy an escaping reference.
+            </p>
+
+            <p>
+                A reference to a temporary is invalid when the reference would outlive that temporary's
+                semantic expression lifetime.
+            </p>
+
+            <p>
+                Specialized source rules may reject borrowing a non-addressable temporary entirely.
+            </p>
+        </section>
+
+        <section id="fresh-returns">
+            <h2>Fresh Owned Returns Have a New Receiving Lifetime</h2>
+
+            <p>
+                Returning a fresh owned value transfers that owned value into the receiving lifetime:
+            </p>
+
+            <pre><code>fn Create() Buffer {
+    return BuildBuffer()
+}</code></pre>
+
+            <p>
+                No return-site move marker is required for the fresh owned return.
+            </p>
+
+            <p>
+                This is fundamentally different from returning a reference into the callee's local storage.
+            </p>
+        </section>
+
+        <section id="control-flow">
+            <h2>Lifetime Analysis Is Flow-Sensitive and Path-Sensitive</h2>
+
+            <p>
+                Branching constructs preserve the facts of each continuing path.
+            </p>
+
+            <p>This includes:</p>
+
+            <ul>
+                <li><code>if</code>;</li>
+                <li><code>switch</code>;</li>
+                <li><code>match</code>;</li>
+                <li><code>try</code>;</li>
+                <li>short-circuit expressions;</li>
+                <li>loops;</li>
+                <li>other branching constructs.</li>
+            </ul>
+
+            <p>
+                A path that exits through <code>return</code>, propagated failure, panic/termination or
+                another non-continuing edge does not constrain later code that cannot be reached from it.
+            </p>
+        </section>
+
+        <section id="joins">
+            <h2>Every Continuing Incoming Path Must Support a Use After a Join</h2>
+
+            <p>
+                At a control-flow join, a later reference use is valid only when all incoming paths
+                that reach that use preserve the required validity.
+            </p>
+
+            <p>
+                The compiler may keep a finite path-disjunctive set of provenance/lifetime alternatives
+                when that improves precision.
+            </p>
+
+            <p>
+                If alternatives become too complex for the deterministic implementation bound, the
+                compiler may conservatively widen and reject a use that needs stronger proof.
+            </p>
+
+            <p>
+                It may not choose one convenient incoming path and ignore another.
+            </p>
+        </section>
+
+        <section id="loops">
+            <h2>Loops Require a Lifetime Fixed Point</h2>
+
+            <p>
+                Loop analysis accounts for:
+            </p>
+
+            <ul>
+                <li>entry state;</li>
+                <li>zero iterations where possible;</li>
+                <li>normal fallthrough;</li>
+                <li><code>continue</code>;</li>
+                <li>backedges;</li>
+                <li><code>break</code>.</li>
+            </ul>
+
+            <p>
+                Iteration-local bindings begin fresh lifetimes for each iteration.
+            </p>
+
+            <p>
+                A reference that is valid in the first iteration but becomes invalid because of a
+                later iteration is rejected at the operation where validity is lost, with the causal
+                earlier operation identified when practical.
+            </p>
+        </section>
+
+        <section id="aggregates">
+            <h2>Aggregate Lifetimes Are Place-Sensitive</h2>
+
+            <p>
+                When ownership and borrowing permit independent sub-Place reasoning, lifetime analysis
+                follows fields and other sub-Places independently.
+            </p>
+
+            <p>
+                A reference to a field depends on:
+            </p>
+
+            <ul>
+                <li>that field's current value lifetime;</li>
+                <li>the containing storage;</li>
+                <li>the ownership/mapping/allocation path required to reach the field.</li>
+            </ul>
+
+            <p>
+                A legal partial move may end one field's lifetime while disjoint siblings remain live.
+            </p>
+
+            <p>
+                A type whose custom <code>free</code> forbids partial moves remains one ownership and
+                lifetime unit for those transfers.
+            </p>
+        </section>
+
+        <section id="slices">
+            <h2>Slices and Views Follow Underlying Storage Lifetime</h2>
+
+            <pre><code>let slice := ref values[..]</code></pre>
+
+            <p>
+                Copying or moving the slice descriptor does not extend the lifetime of
+                <code>values</code>.
+            </p>
+
+            <p>
+                The descriptor may physically live longer than the referenced storage and still be
+                unusable after the backing lifetime ends.
+            </p>
+
+            <p>
+                Proven-disjoint ranges may carry independent borrow constraints while sharing one
+                allocation/storage lifetime.
+            </p>
+        </section>
+
+        <section id="unions">
+            <h2>References into Union Payloads Depend on the Active Variant</h2>
+
+            <p>
+                A reference into a union payload remains valid only while:
+            </p>
+
+            <ul>
+                <li>that payload is still the active semantic variant;</li>
+                <li>the union's storage remains valid;</li>
+                <li>all ordinary borrow and ownership requirements continue to hold.</li>
+            </ul>
+
+            <p>
+                Replacing the active union variant ends references into the prior payload even when
+                the union occupies exactly the same storage address.
+            </p>
+
+            <p>
+                Borrowed <code>match</code> payloads normally remain bounded by the matching arm/guard
+                unless the general returned-reference or capture rules establish a longer valid relation.
+            </p>
+        </section>
+
+        <section id="calls">
+            <h2>Function Calls Carry Lifetime Semantics</h2>
+
+            <p>
+                Before a call commits, the compiler resolves relevant:
+            </p>
+
+            <ul>
+                <li>argument value lifetimes;</li>
+                <li>borrow regions;</li>
+                <li>ownership transfers;</li>
+                <li>alias relationships;</li>
+                <li>invalidation effects;</li>
+                <li>retention/escape behavior;</li>
+                <li>returned-reference relationships.</li>
+            </ul>
+
+            <p>
+                Argument preparation failure must not prematurely commit ownership or borrow state to
+                a call that never occurs.
+            </p>
+
+            <p>
+                After the call, lifetime state is updated from the resolved callable contract rather
+                than guessed from the return type alone.
+            </p>
+        </section>
+
+        <section id="borrowed-params">
+            <h2>Borrowed Parameters Are Call-Bounded Unless the Contract Says More</h2>
+
+            <pre><code>fn Inspect(value: ref Item) void {
+    ...
+}
+
+fn Modify(value: ref mut Item) void {
+    ...
+}</code></pre>
+
+            <p>
+                The normal borrowed-parameter contract grants borrowed authority for the call.
+            </p>
+
+            <p>
+                A callable may extend the relationship by returning a derived reference or by an
+                explicit compiler-visible retention contract.
+            </p>
+
+            <p>
+                An imported or opaque function cannot be assumed non-retaining merely because its
+                implementation body is unavailable locally.
+            </p>
+        </section>
+
+        <section id="consuming-params">
+            <h2>Consuming Parameters End the Caller-Side Source Lifetime When the Call Commits</h2>
+
+            <pre><code>fn Consume(-&gt; value: Buffer) void {
+    ...
+}
+
+Consume(&lt;-buffer)</code></pre>
+
+            <p>
+                The caller-side <code>&lt;-</code> is the ownership transfer marker.
+            </p>
+
+            <p>
+                Once the consuming call commits, the previous value lifetime at
+                <code>buffer</code> has ended and the source Place becomes unavailable.
+            </p>
+
+            <p>
+                Lifetime analysis consumes that ownership fact; it does not redefine move syntax.
+            </p>
+        </section>
+
+        <section id="returned-references">
+            <h2>Returned References Require an Exportable Lifetime Relation</h2>
+
+            <p>
+                A returned safe reference must derive from storage that remains valid after the call
+                for the complete caller-visible use.
+            </p>
+
+            <p>
+                Sec infers unambiguous returned-reference relations and exports them as compiler/module metadata.
+            </p>
+
+            <p>
+                The user does not write lifetime names into the function signature.
+            </p>
+        </section>
+
+        <section id="local-return">
+            <h2>Returning a Reference to Ordinary Local Automatic Storage Is Invalid</h2>
+
+            <pre><code>fn Invalid() ref Value {
+    let value := CreateValue()
+    return ref value
+}</code></pre>
+
+            <p>
+                <code>value</code> stops existing when the function exits.
+            </p>
+
+            <p>
+                The compiler rejects the function even if a particular optimization could physically
+                keep the bytes somewhere longer.
+            </p>
+
+            <p>
+                Safe alternatives include returning an owned value or borrowing storage supplied by the caller.
+            </p>
+        </section>
+
+        <section id="parameter-return">
+            <h2>A Reference Derived from a Borrowed Parameter May Be Returned</h2>
+
+            <pre><code>fn First(value: ref Pair) ref Item {
+    return ref value.First
+}</code></pre>
+
+            <p>
+                The returned reference depends on the caller-owned <code>Pair</code> and specifically
+                on the lifetime of its <code>First</code> field/storage.
+            </p>
+
+            <p>
+                The function's exported metadata records the relation so callers can validate it even
+                when the function body is unavailable.
+            </p>
+        </section>
+
+        <section id="receiver-return">
+            <h2>A Returned Reference May Derive from <code>self</code></h2>
+
+            <p>
+                A borrowing method may return a reference into its receiver when the relation is
+                representable and safe.
+            </p>
+
+            <p>
+                The returned lifetime is bounded by the receiver's referent and any narrower field,
+                allocation, mapping or epoch validity.
+            </p>
+        </section>
+
+        <section id="multi-source-return">
+            <h2>Multiple Possible Return Sources Require a Conservative Representable Relation</h2>
+
+            <p>
+                A function may select a returned reference from several borrowed inputs.
+            </p>
+
+            <p>
+                The exported lifetime relation must remain safe for every path.
+            </p>
+
+            <p>
+                Sec 0.1 prefers a conservative lifetime intersection or rejection when no stable,
+                caller-visible relation can represent the alternatives soundly.
+            </p>
+
+            <p>
+                The compiler does not invent source lifetime annotations to rescue an ambiguous API.
+            </p>
+        </section>
+
+        <section id="mutable-return">
+            <h2>A Returned Mutable Reference Extends Exclusive Borrow Authority</h2>
+
+            <p>
+                A <code>ref mut</code> result derived from a <code>ref mut</code> input may continue
+                the exclusive borrow after the call returns.
+            </p>
+
+            <p>
+                The caller's original granting authority remains restricted for the complete live
+                range of the returned mutable reference.
+            </p>
+
+            <p>
+                A shared input cannot be used to manufacture a mutable returned reference.
+            </p>
+        </section>
+
+        <section id="exported-relations">
+            <h2>Lifetime Relations Are Exported in Compiler Metadata</h2>
+
+            <p>
+                Public/importable callable metadata preserves every caller-relevant relation that
+                cannot be reconstructed safely from ordinary source types alone.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>returned-reference origin;</li>
+                <li>receiver-derived result;</li>
+                <li>parameter-derived result;</li>
+                <li>finite multi-source result;</li>
+                <li>retention/non-retention;</li>
+                <li>captured dependency escape;</li>
+                <li>invalidation effects;</li>
+                <li>mapping/view dependency;</li>
+                <li>storage-domain dependency;</li>
+                <li>Arena epoch dependency.</li>
+            </ul>
+
+            <p>
+                Bodyless declarations such as interfaces and extern functions may need dedicated
+                source contract syntax where ordinary types are insufficient.
+            </p>
+
+            <p>
+                This lifetime model deliberately does not invent such syntax prematurely.
+            </p>
+        </section>
+
+        <section id="methods">
+            <h2>Methods and Receiver Lifetime</h2>
+
+            <p>
+                A borrowing receiver may return references into <code>self</code> when the relation is safe.
+            </p>
+
+            <p>
+                A mutable method may invalidate references into fields that it replaces, moves,
+                destroys or structurally invalidates.
+            </p>
+
+            <p>
+                Proven-disjoint stable fields may remain valid when the canonical method-effect summary
+                proves the mutation does not touch them.
+            </p>
+
+            <p>
+                Ordinary Sec methods do not consume whole <code>self</code>.
+                Specialized lifecycle operations such as Arena <code>Release()</code> remain explicit exceptions.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closure Capture Lifetime Follows the Capture Mode</h2>
+
+            <pre><code>capture(value)
+capture(&lt;-value)
+capture(ref value)
+capture(ref mut value)</code></pre>
+
+            <p>
+                An owned copied or moved capture lives according to the closure environment's owned lifetime.
+            </p>
+
+            <p>
+                A borrowed capture never extends the referent's lifetime.
+            </p>
+
+            <p>
+                Lifetime analysis consumes the capture mode resolved by the lambda/ownership rules.
+            </p>
+        </section>
+
+        <section id="escaping-callables">
+            <h2>Escaping Callables Cannot Borrow Shorter-Lived Local Data</h2>
+
+            <p>
+                A callable proven to execute only during the current call may borrow data that remains
+                valid for that call.
+            </p>
+
+            <p>
+                A callable that may be stored, returned, scheduled, retained or invoked later is an
+                escaping execution use.
+            </p>
+
+            <p>
+                Such a callable cannot carry a borrowed reference to ordinary shorter-lived local storage.
+            </p>
+
+            <p>
+                Owned captures may allow escape when the closure environment itself owns storage and
+                destruction for the complete required lifetime.
+            </p>
+
+            <p>
+                Callable types/summaries must preserve retention and lifetime relations across indirect calls.
+            </p>
+        </section>
+
+        <section id="defer">
+            <h2>Registered <code>defer</code> Creates a Delayed Lifetime Dependency</h2>
+
+            <pre><code>let resource := Open()
+
+defer {
+    Use(resource)
+}
+
+Consume(&lt;-resource)    // invalid</code></pre>
+
+            <p>
+                Once the defer is registered, <code>resource</code> must remain valid until the deferred
+                use executes.
+            </p>
+
+            <p>
+                Lifetime analysis therefore rejects move, discard, destruction, replacement,
+                deallocation or other invalidation that would break the later cleanup use.
+            </p>
+
+            <p>
+                Place precision still applies: a defer using one field should not keep unrelated
+                disjoint sibling fields live without reason.
+            </p>
+
+            <p>
+                Lifetime analysis also respects the unified LIFO ordering between deferred cleanup and
+                automatic destruction.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Allocation Lifetime Bounds References into Allocated Storage</h2>
+
+            <p>
+                An allocation lifetime begins when allocation succeeds and ends when the owning
+                allocation domain deallocates or invalidates it.
+            </p>
+
+            <p>
+                A reference into allocated storage is bounded both by:
+            </p>
+
+            <ul>
+                <li>the allocation's validity;</li>
+                <li>the narrower semantic value lifetime of the referred object within that storage.</li>
+            </ul>
+
+            <p>
+                A <code>RawPtr[T]</code> does not extend allocation lifetime.
+            </p>
+        </section>
+
+        <section id="arena">
+            <h2>Arena References Are Bounded by Domain and Epoch</h2>
+
+            <pre><code>let values := try arena.Alloc[int](100)
+
+Process(values)
+
+arena.Reset()</code></pre>
+
+            <p>
+                The reference may remain valid until the final use before Reset.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>let values := try arena.Alloc[int](100)
+
+arena.Reset()
+
+Process(values)</code></pre>
+
+            <p>
+                Reset starts a new Arena validity epoch.
+                References tied to the previous epoch are no longer valid even though the same
+                physical backing bytes may still exist and be reused.
+            </p>
+
+            <p>
+                Control-flow joins conservatively merge epoch state.
+            </p>
+        </section>
+
+        <section id="generation-availability">
+            <h2>Arena Epoch Validity Is Not Ownership Availability</h2>
+
+            <p>
+                These questions are different:
+            </p>
+
+            <pre><code>Does this owner still own a value in this Place?
+Is this reference still tied to the current valid storage epoch?</code></pre>
+
+            <p>
+                <code>value is available</code> answers the first question.
+            </p>
+
+            <p>
+                Arena/reference generation metadata answers the second.
+            </p>
+
+            <p>
+                Neither fact substitutes for the other.
+            </p>
+        </section>
+
+        <section id="static">
+            <h2>Static and Global Storage May Live Long, but Access Still Has Rules</h2>
+
+            <p>
+                Static or global storage may have program-long or target-defined lifetime.
+            </p>
+
+            <p>
+                Long storage lifetime does not imply unrestricted safe access.
+            </p>
+
+            <p>
+                Mutable static/global references remain subject to:
+            </p>
+
+            <ul>
+                <li>initialization;</li>
+                <li>borrow authority;</li>
+                <li>synchronization;</li>
+                <li>target access rules;</li>
+                <li>shutdown lifetime;</li>
+                <li>other storage-specific validity conditions.</li>
+            </ul>
+
+            <p>
+                Lifetime correctness alone does not prove race freedom or synchronization correctness.
+            </p>
+        </section>
+
+        <section id="thread-local">
+            <h2>Thread-Local Storage Has an Execution-Context Lifetime Bound</h2>
+
+            <p>
+                A reference into thread-local storage is additionally tied to the thread/execution
+                contract of that storage.
+            </p>
+
+            <p>
+                Such a reference cannot simply cross into another thread or execution context because
+                the underlying bytes may physically continue to exist.
+            </p>
+
+            <p>
+                A specialized thread-local rule must prove that storage identity and access remain valid
+                for the destination context.
+            </p>
+        </section>
+
+        <section id="fixed-address">
+            <h2>A Fixed Address Does Not Mean an Infinite Lifetime</h2>
+
+            <pre><code>@address(Peripheral.GPIOA)
+let mut GPIOA: GPIORegisters</code></pre>
+
+            <p>
+                The physical address may be stable while other validity conditions remain bounded.
+            </p>
+
+            <p>A fixed address alone does not prove:</p>
+
+            <ul>
+                <li>initialization;</li>
+                <li>ownership;</li>
+                <li>availability;</li>
+                <li>device liveness;</li>
+                <li>mapping validity;</li>
+                <li>access authority;</li>
+                <li>permanent safe use.</li>
+            </ul>
+
+            <p>
+                <code>AddressStability.Fixed</code> prevents relocation under its contract.
+                It does not create ownership or extend another lifetime.
+            </p>
+
+            <p>
+                A source-level fixed-address name referring to platform-owned storage does not make
+                the program the owner of that storage.
+            </p>
+        </section>
+
+        <section id="mappings">
+            <h2>Runtime Mappings Own Mapping Lifetime</h2>
+
+            <p>
+                When a platform API returns an owning mapping resource, that resource's contract
+                controls the lifetime of the mapping.
+            </p>
+
+            <p>
+                A typed register or memory view derived from the mapping is normally non-owning.
+            </p>
+
+            <p>
+                The view cannot outlive the mapping owner.
+            </p>
+
+            <p>
+                Destroying, unmapping or invalidating the owner therefore invalidates dependent views.
+            </p>
+
+            <p>
+                A remap that changes physical realization ends old views unless the platform contract
+                proves preserved identity and address stability.
+            </p>
+
+            <p>
+                The compiler never retargets a live safe view to different physical storage merely
+                because the new mapping has compatible type and layout.
+            </p>
+        </section>
+
+        <section id="volatile">
+            <h2>Volatile Access Is Not Lifetime</h2>
+
+            <p>
+                Volatile semantics control observable physical access.
+                They do not themselves extend or shorten a Sec value or reference lifetime.
+            </p>
+
+            <p>
+                A value read from volatile storage becomes an ordinary Sec value snapshot:
+            </p>
+
+            <pre><code>let status := Device.Status</code></pre>
+
+            <p>
+                The later lifetime of <code>status</code> follows ordinary value rules even if the
+                hardware changes the underlying register immediately afterward.
+            </p>
+
+            <p>
+                External hardware mutation is not automatically a Sec ownership transfer or borrow conflict.
+            </p>
+
+            <p>
+                Conversely, lifetime optimization must never remove, merge, duplicate, speculate or
+                reorder volatile accesses in a way forbidden by the hardware-access contract.
+            </p>
+        </section>
+
+        <section id="rawptr">
+            <h2><code>RawPtr[T]</code> Does Not Carry a Safe Lifetime</h2>
+
+            <p>
+                A raw pointer carries no automatic:
+            </p>
+
+            <ul>
+                <li>ownership;</li>
+                <li>non-null guarantee;</li>
+                <li>bounds;</li>
+                <li>borrow relationship;</li>
+                <li>retention guarantee;</li>
+                <li>safe lifetime.</li>
+            </ul>
+
+            <p>
+                Copying a raw pointer does not extend the lifetime of the pointed-to storage.
+            </p>
+
+            <p>
+                Converting a raw pointer into a safe reference requires proof of the complete safe
+                reference lifetime, bounds, provenance and authority obligations.
+            </p>
+
+            <p>
+                Raw pointer semantics are covered fully in the Unsafe and Raw Pointers chapters.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI Requires Explicit Lifetime and Retention Contracts</h2>
+
+            <p>
+                C/C++ pointer types alone are not enough to establish safe Sec lifetime behavior.
+            </p>
+
+            <p>Foreign contracts may need to distinguish:</p>
+
+            <ul>
+                <li>call-bounded borrow;</li>
+                <li>retained pointer;</li>
+                <li>returned owned pointer;</li>
+                <li>returned borrow derived from input;</li>
+                <li>static foreign storage;</li>
+                <li>valid-until-next-call storage;</li>
+                <li>explicit-release lifetime;</li>
+                <li>callback retention;</li>
+                <li>foreign thread-local storage.</li>
+            </ul>
+
+            <p>
+                A safe wrapper translates those behaviors into Sec ownership/reference semantics.
+            </p>
+
+            <p>
+                Unresolved foreign uncertainty remains inside explicit unsafe code.
+            </p>
+
+            <p>
+                A pointer retained by foreign code cannot safely refer to an ordinary local Sec value
+                unless the foreign retention is proven to end before that local lifetime ends.
+            </p>
+        </section>
+
+        <section id="escaping-contexts">
+            <h2>Escaping Execution Contexts Need Storage That Outlives the Escape</h2>
+
+            <p>
+                Any callable, reference, view or captured dependency that may be used after the
+                current call returns is an escaping lifetime use.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>task queues;</li>
+                <li>threads;</li>
+                <li>retained callbacks;</li>
+                <li>event registrations;</li>
+                <li>foreign callbacks;</li>
+                <li>other deferred execution objects.</li>
+            </ul>
+
+            <p>
+                Such execution cannot borrow ordinary call-local storage beyond its valid lifetime.
+            </p>
+
+            <p>
+                Owned capture or transfer may be valid when the destination execution object owns
+                storage and cleanup covering the complete use.
+            </p>
+
+            <p>
+                Sufficient lifetime still does not prove synchronization, race freedom, transferability,
+                ISR safety or access-context legality. Those are separate analyses.
+            </p>
+        </section>
+
+        <section id="interrupts">
+            <h2>Interrupt Registration Is an Escaping Lifetime Boundary</h2>
+
+            <p>
+                A handler that may run after its registration call is an escaping execution context.
+            </p>
+
+            <p>
+                Ordinary references into registration-call local storage therefore cannot escape into
+                the handler without a specialized interrupt contract that proves a valid arrangement.
+            </p>
+
+            <p>
+                Static, global and fixed-address storage may be long-lived enough, but still needs
+                correct synchronization, volatile/hardware semantics, execution authority and ISR safety.
+            </p>
+
+            <p>
+                Long lifetime alone never makes data safe to access from an interrupt.
+            </p>
+        </section>
+
+        <section id="error-handling">
+            <h2>Error Handling Produces Ordinary Lifetime Control-Flow Edges</h2>
+
+            <p>
+                <code>try</code>, local handlers and propagation participate in the same lifetime analysis
+                as other branches.
+            </p>
+
+            <p>
+                An unmatched propagated failure leaves the success continuation and therefore does not
+                constrain later success-only code except through cleanup that executes on the failing path.
+            </p>
+
+            <p>
+                A handler that continues must establish a lifetime-valid recovery state.
+            </p>
+
+            <p>
+                References stored inside <code>Result</code>, <code>Option</code> or another
+                payload-bearing union remain bounded by:
+            </p>
+
+            <ul>
+                <li>their underlying referent/storage lifetime;</li>
+                <li>the lifetime of the active payload variant;</li>
+                <li>ordinary ownership/borrow validity.</li>
+            </ul>
+
+            <p>
+                Consuming <code>.Ok()</code> or <code>.Err()</code> ends the source Result value
+                lifetime according to ownership rules.
+            </p>
+
+            <p>
+                Borrowed projections such as <code>OkRef</code> and <code>ErrRef</code> remain bounded
+                by the Result payload and the underlying referent validity.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generic Code Must Be Lifetime-Safe for Every Admitted Instantiation</h2>
+
+            <p>
+                Generic source cannot assume stronger lifetime behavior than its declared type,
+                ownership and borrow contracts provide.
+            </p>
+
+            <p>
+                Concrete monomorphization may improve precision using:
+            </p>
+
+            <ul>
+                <li>field layout;</li>
+                <li>copyability;</li>
+                <li>destruction classification;</li>
+                <li>storage facts;</li>
+                <li>reference provenance.</li>
+            </ul>
+
+            <p>
+                Compiler-internal lifetime relations may be symbolic or parameterized without adding
+                programmer-written lifetime parameters to Sec source.
+            </p>
+        </section>
+
+        <section id="summaries">
+            <h2>Separate Compilation Preserves Lifetime Summaries</h2>
+
+            <p>
+                A caller must remain safe even when the callee body is not locally available.
+            </p>
+
+            <p>
+                Importable function, method, callable, interface and generic metadata therefore keeps
+                lifetime-relevant relations needed by the caller.
+            </p>
+
+            <p>
+                Recursive and mutually recursive summary inference uses a terminating fixed-point
+                strategy with conservative widening where required.
+            </p>
+
+            <p>
+                Summary generation is deterministic and must not depend on source traversal order,
+                map iteration order, worker scheduling or declaration ordering.
+            </p>
+        </section>
+
+        <section id="inference">
+            <h2>The Compiler May Internally Solve Lifetime Constraints</h2>
+
+            <p>Conceptual constraints include:</p>
+
+            <pre><code>reference R must not outlive target Place P
+
+reborrow B must not outlive source reference S
+
+borrow B must cover every use of holder H
+
+returned reference R derives from parameter P
+
+closure C must not outlive captured reference R
+
+aggregate A must not outlive reference field F
+
+mapping view V must not outlive mapping M
+
+value V must remain live through deferred use D</code></pre>
+
+            <p>
+                Constraint direction matters.
+                Reversing an outlives relation is a compiler correctness bug.
+            </p>
+
+            <p>
+                If the compiler cannot find a sound conservative lifetime assignment or a representable
+                caller contract, the program is rejected.
+            </p>
+
+            <p>It is not repaired using:</p>
+
+            <ul>
+                <li>hidden allocation;</li>
+                <li>hidden retention;</li>
+                <li>hidden ownership conversion;</li>
+                <li>unsound metadata;</li>
+                <li>backend accidents.</li>
+            </ul>
+        </section>
+
+        <section id="semantic-ir">
+            <h2>Semantic IR Preserves Lifetime Facts Until They Are No Longer Needed</h2>
+
+            <p>Before lifetime-sensitive source semantics can be erased, the compiler retains facts such as:</p>
+
+            <ul>
+                <li>storage origin/domain;</li>
+                <li>Place/provenance relations;</li>
+                <li>reference/reborrow relations;</li>
+                <li>borrow begin/end or equivalent live-range facts;</li>
+                <li>ownership transfer and invalidation;</li>
+                <li>replacement/reinitialization;</li>
+                <li>allocation and mapping dependencies;</li>
+                <li>generation/epoch constraints;</li>
+                <li>returned-reference summaries;</li>
+                <li>closure capture lifetime and escape;</li>
+                <li>FFI retention facts;</li>
+                <li>defer-delayed dependencies;</li>
+                <li>partial/conditional availability interactions.</li>
+            </ul>
+
+            <p>
+                Semantic IR verification rejects impossible or contradictory lifetime states rather
+                than relying on a lower backend to rediscover source semantics.
+            </p>
+        </section>
+
+        <section id="backend">
+            <h2>Backend Lifetime Metadata Does Not Define Sec Lifetimes</h2>
+
+            <p>
+                LLVM <code>lifetime.start</code>, <code>lifetime.end</code> and similar backend
+                annotations are optimization metadata derived from already-proven Sec semantics.
+            </p>
+
+            <p>
+                The compiler must not emit an early lifetime-end marker while any Sec reference,
+                borrow, defer, cleanup, mapping/view dependency or observable storage requirement still exists.
+            </p>
+
+            <p>
+                Likewise, alias metadata such as <code>noalias</code> may be emitted only to the extent
+                proven by Sec borrow/provenance analysis.
+            </p>
+
+            <p>
+                Foreign aliases, volatile storage, hardware aliases, raw pointers and opaque calls
+                must never receive stronger assumptions than their contracts justify.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Lifetime errors are mandatory safety errors, not optional lints.
+            </p>
+
+            <p>
+                Diagnostics should explain the programmer-visible cause rather than showing internal
+                region IDs as the primary model.
+            </p>
+
+            <h3>Returned local reference</h3>
+
+            <pre><code>cannot return this reference
+
+`value` is local to `Invalid` and stops existing when the function returns
+
+help: return an owned Value
+help: return a reference derived from caller-owned storage</code></pre>
+
+            <h3>Use after Arena Reset</h3>
+
+            <pre><code>`values` is no longer valid
+
+`values` refers to the Arena epoch that ended here:
+    arena.Reset()
+
+help: finish using `values` before Reset
+help: acquire a new reference after Reset</code></pre>
+
+            <h3>Move while borrowed</h3>
+
+            <pre><code>cannot move `resource`
+
+a live shared reference still depends on `resource`
+
+borrow created here:
+    let view := ref resource
+
+later use:
+    Inspect(view)
+
+help: move `resource` after the final use of `view`</code></pre>
+
+            <h3>Deferred future use</h3>
+
+            <pre><code>cannot consume `resource`
+
+a registered defer still requires it:
+    defer {
+        Use(resource)
+    }
+
+help: remove or restructure the deferred dependency
+help: consume the resource before registering the defer</code></pre>
+
+            <h3>Mapping lifetime</h3>
+
+            <pre><code>cannot return `registers`
+
+the register view depends on mapping `deviceMap`
+
+`deviceMap` is destroyed when this function exits
+
+help: return the mapping owner together with an owning abstraction
+help: keep the mapping owner in a longer-lived scope</code></pre>
+
+            <h3>Escaping callback</h3>
+
+            <pre><code>callback may outlive captured reference `state`
+
+`state` is local to this call
+
+the callback contract allows retention after return
+
+help: capture owned storage
+help: use a non-retaining callback API
+help: move the required owned state into the callback environment</code></pre>
+
+            <p>A useful diagnostic identifies, where possible:</p>
+
+            <ul>
+                <li>the invalid value/reference/view;</li>
+                <li>where its dependency began;</li>
+                <li>the operation that ended or may end validity;</li>
+                <li>the later rejected use;</li>
+                <li>the relevant branch/path;</li>
+                <li>one practical safe restructuring.</li>
+            </ul>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                The LSP consumes compiler/Sema lifetime facts rather than reimplementing lifetime
+                inference independently.
+            </p>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>reference origin;</li>
+                <li>owner;</li>
+                <li>borrow dependency;</li>
+                <li>returned-reference source;</li>
+                <li>Arena epoch;</li>
+                <li>mapping owner;</li>
+                <li>invalidation cause;</li>
+                <li>final-use point;</li>
+                <li>captured/retained dependency;</li>
+                <li>lifetime-relevant callable summary.</li>
+            </ul>
+
+            <p>
+                Internal region IDs should not be the primary user-facing explanation.
+            </p>
+
+            <p>
+                A code action is appropriate only when the compiler can prove that the transformation
+                preserves semantics and safety.
+            </p>
+
+            <p>Tooling must not automatically:</p>
+
+            <ul>
+                <li>add hidden allocation;</li>
+                <li>convert arbitrary borrowed data into owned copies;</li>
+                <li>weaken hardware/volatile semantics;</li>
+                <li>invent lifetime annotations that Sec does not have.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Think in terms of ownership, references, storage and final use rather than manually naming lifetimes.</li>
+                <li>Keep borrowed data tied to storage whose owner clearly outlives the borrow.</li>
+                <li>Return owned values when returning a borrowed relation would be ambiguous or tied to local storage.</li>
+                <li>When returning a reference, prefer a clear relation to one input reference or the receiver.</li>
+                <li>Use final-use structure naturally; Sec can end borrows before lexical scope exit.</li>
+                <li>Do not keep references alive unnecessarily if later moves or mutations need the underlying value.</li>
+                <li>Do not rely on physical bytes remaining present after semantic lifetime ends.</li>
+                <li>Do not use <code>is available</code> as proof of borrow, mapping, Arena epoch or synchronization validity.</li>
+                <li>Remember that copying a reference/view does not extend the underlying storage lifetime.</li>
+                <li>End all old-epoch dependencies before <code>Arena.Reset()</code>.</li>
+                <li>Keep runtime mapping owners alive for every derived register/memory view.</li>
+                <li>Use owned capture/transfer for work that may execute after the current call returns.</li>
+                <li>Make FFI retention explicit; never infer lifetime from a C pointer type alone.</li>
+                <li>Treat fixed-address storage as a platform contract, not as automatically immortal memory.</li>
+                <li>Remember that lifetime safety and concurrency safety are separate obligations.</li>
+                <li>Let the compiler carry lifetime relations through module metadata instead of adding manual source annotations.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Lifetime analysis is mandatory compile-time semantic analysis in Sec.</li>
+                <li>It is not a lint, optimization mode or backend convenience.</li>
+                <li>Sec 0.1 does not require programmer-written lifetime names, parameters, arithmetic or region annotations.</li>
+                <li>The compiler derives lifetimes from ownership, borrowing, storage, control flow, calls, captures, allocation, mappings, platform contracts and unsafe/FFI boundaries.</li>
+                <li>The core invariant is that every safe non-owning use remains within complete referent and storage validity.</li>
+                <li>Use lifetime is bounded by reference lifetime, referent value lifetime and required storage validity.</li>
+                <li>Additional bounds may include availability, borrow authority, allocation lifetime, epoch validity, mapping lifetime, address stability, platform authority and foreign retention.</li>
+                <li>Satisfying one validity dimension does not prove the others.</li>
+                <li>Physical bytes may remain after semantic lifetime ends without making the old value/reference safe to use.</li>
+                <li>Value lifetime, storage lifetime, ownership duration, availability, reference lifetime and borrow live range are distinct concepts.</li>
+                <li>Temporary lifetime, resource lifetime, allocation lifetime, mapping lifetime and closure/callback lifetime are also distinct.</li>
+                <li>Lexical scope is not lifetime.</li>
+                <li>A value or borrow may end before lexical scope exit.</li>
+                <li>Storage may host several sequential values with distinct value lifetimes.</li>
+                <li>External resource lifetime is not implied by the wrapper object's storage lifetime.</li>
+                <li>When several lifetime bounds apply, the earliest invalidating bound limits safe use on that path.</li>
+                <li>Unknown lifetime bounds are treated conservatively unless a canonical contract provides stronger facts.</li>
+                <li>A value lifetime begins when the value is validly initialized.</li>
+                <li>Reinitialization starts a new value lifetime.</li>
+                <li>A value lifetime may end through destruction, move, discard, replacement, transfer, deallocation, invalidation or variant replacement.</li>
+                <li>A move does not replace the source with None, null, zero or a default value.</li>
+                <li>Partial aggregates may have independent sub-Place lifetimes where ownership rules permit.</li>
+                <li>A legal partial move ends only the moved sub-Place lifetime.</li>
+                <li>Reinitializing a moved field starts a new field lifetime.</li>
+                <li>Storage lifetime is controlled by the relevant canonical storage owner/domain rather than guessed from syntax.</li>
+                <li>The compiler does not secretly extend storage lifetime by promoting locals merely to make references escape.</li>
+                <li>Backend stack/heap placement can change only after source-level lifetime is already valid.</li>
+                <li>Ownership availability and lifetime are separate dimensions.</li>
+                <li><code>is available</code> does not prove borrow authority, epoch validity, mapping validity, device liveness or synchronization.</li>
+                <li>A safe reference cannot begin before the referent is initialized and available.</li>
+                <li>A safe reference cannot remain usable after destruction, move, discard, replacement, deallocation, remap or epoch invalidation.</li>
+                <li>A safe reference does not own or automatically extend its referent lifetime.</li>
+                <li><code>ref mut T</code> exclusivity does not itself extend T's lifetime.</li>
+                <li>Reference representation bits may physically remain after semantic validity ends.</li>
+                <li>Sec uses non-lexical borrow analysis based on actual uses and derived dependencies.</li>
+                <li>A borrow may end after its final proven use even while the holder remains lexically in scope.</li>
+                <li>A reborrow cannot outlive its source reference/borrow authority.</li>
+                <li>Moving a <code>ref mut</code> holder transfers the borrow obligation rather than ending it.</li>
+                <li>Copying a shared reference may keep the shared borrow live.</li>
+                <li>Move, replacement, destruction, discard or deallocation are invalid while an overlapping borrow remains live.</li>
+                <li>Lifetime analysis preserves proven Place disjointness instead of collapsing everything to the root object.</li>
+                <li>Temporary values live only for the semantic region required by their expression and dependent operations.</li>
+                <li>Temporary lifetimes are not silently extended merely to satisfy an escaping reference.</li>
+                <li>Fresh owned returns establish a receiving ownership lifetime without a return-site move marker.</li>
+                <li>Owned return and borrowed return have different lifetime models.</li>
+                <li>Lifetime analysis is flow-sensitive and path-sensitive.</li>
+                <li>Terminated branches do not constrain unreachable later continuation.</li>
+                <li>A use after a control-flow join must be safe for every incoming path that reaches it.</li>
+                <li>The compiler may preserve finite path-disjunctive provenance when useful.</li>
+                <li>Conservative widening is allowed when lifetime alternatives exceed deterministic implementation bounds.</li>
+                <li>Loop analysis computes a fixed point including zero iterations, backedges, continue and break states.</li>
+                <li>Iteration-local bindings begin fresh lifetimes each iteration.</li>
+                <li>Aggregate/field lifetime analysis is Place-sensitive where independent sub-Place reasoning is legal.</li>
+                <li>Slices and views follow the lifetime of their underlying elements/storage, not merely their descriptor.</li>
+                <li>Copying or moving a view does not extend backing lifetime.</li>
+                <li>A union payload reference is valid only while that payload remains the active variant and storage remains valid.</li>
+                <li>Replacing a union variant invalidates references into the previous payload even if the storage address is unchanged.</li>
+                <li>Calls resolve lifetime, borrow, transfer, retention and returned-reference relations before commit.</li>
+                <li>Failed argument preparation must not prematurely commit a call's transfer state.</li>
+                <li>Borrowed parameters are normally call-bounded unless the callable contract retains or returns a derived reference.</li>
+                <li>Opaque/imported functions cannot be assumed non-retaining without compiler-visible metadata.</li>
+                <li>A consuming <code>-&gt;</code> parameter ends the caller source lifetime when the call commits.</li>
+                <li>The caller-side <code>&lt;-</code> remains the ownership transfer syntax.</li>
+                <li>A returned safe reference must depend on storage valid for the complete caller-visible lifetime.</li>
+                <li>Returning a reference to ordinary local automatic storage is invalid.</li>
+                <li>The compiler rejects a returned local reference even if optimization could physically keep the bytes alive.</li>
+                <li>A reference derived from a borrowed parameter may be returned when the relation is safe.</li>
+                <li>A borrowing method may return a reference derived from self.</li>
+                <li>Multiple possible returned-reference sources require a conservative representable relation or rejection.</li>
+                <li>A mutable returned reference may extend an exclusive borrow beyond call return.</li>
+                <li>Returned-reference and retention relations are exported in compiler/module metadata without source lifetime names.</li>
+                <li>Bodyless declarations may eventually require dedicated lifetime-contract syntax where ordinary types are insufficient; the current lifetime model does not invent that syntax.</li>
+                <li>A mutable method may invalidate references into fields it replaces, moves or destroys.</li>
+                <li>Proven-disjoint stable fields may remain valid when method effects prove they are unaffected.</li>
+                <li>Ordinary Sec methods do not consume whole self except for specialized compiler-known lifecycle operations defined elsewhere.</li>
+                <li>Closure lifetime depends on explicit capture mode.</li>
+                <li>Owned captures live with the closure environment.</li>
+                <li>Borrowed captures never extend referent lifetime.</li>
+                <li>A non-escaping callable may borrow call-local data that covers the call.</li>
+                <li>An escaping callable cannot borrow shorter-lived local data.</li>
+                <li>Callable summaries preserve lifetime-relevant retention information across indirect calls.</li>
+                <li>A registered <code>defer</code> creates a delayed future lifetime dependency.</li>
+                <li>Move, replacement, destruction or deallocation are invalid when they would break a later deferred use.</li>
+                <li>Deferred lifetime dependencies preserve Place precision.</li>
+                <li>Lifetime analysis respects the unified defer/destruction cleanup order.</li>
+                <li>An allocation lifetime begins on successful allocation and ends when its allocation owner deallocates or invalidates it.</li>
+                <li>References into allocations are bounded by both allocation validity and narrower object/value lifetime.</li>
+                <li><code>RawPtr[T]</code> does not extend allocation lifetime.</li>
+                <li>Arena-backed references are bounded by ArenaDomain/epoch validity.</li>
+                <li><code>Arena.Reset()</code> invalidates references from the previous epoch even when backing bytes remain.</li>
+                <li>Arena epoch validity and ownership availability are separate facts.</li>
+                <li>Static/global storage may live a long time without implying unrestricted safe access.</li>
+                <li>References into mutable static storage remain subject to initialization, borrowing, synchronization and shutdown rules.</li>
+                <li>Thread-local storage adds a thread/execution-context lifetime bound.</li>
+                <li>A fixed physical address does not by itself imply unlimited lifetime, ownership, initialization or safety.</li>
+                <li>Address stability does not create ownership or extend another validity contract.</li>
+                <li>Runtime register/memory views cannot outlive the mapping or owner establishing their validity.</li>
+                <li>Remapping invalidates old views unless identity/address stability is explicitly preserved.</li>
+                <li>Mapping lifetime and external device liveness are separate facts.</li>
+                <li>Volatile semantics are not lifetime semantics.</li>
+                <li>A volatile read produces an ordinary Sec value snapshot.</li>
+                <li>Lifetime optimization must not violate required volatile/hardware access ordering.</li>
+                <li>Raw pointers carry no automatic safe lifetime, ownership, bounds or retention guarantee.</li>
+                <li>Raw-pointer-to-safe-reference conversion requires proof of all safe lifetime/authority obligations.</li>
+                <li>FFI safe wrappers require explicit compiler-visible retention/lifetime contracts.</li>
+                <li>C/C++ pointer types alone do not establish Sec lifetime relations.</li>
+                <li>Foreign-retained pointers must not outlive borrowed Sec storage.</li>
+                <li>Tasks, threads, callbacks, event handlers and other deferred execution contexts are escaping lifetime uses when they may run after the current call returns.</li>
+                <li>Escaping execution requires storage/capture ownership that covers the full possible use.</li>
+                <li>Sufficient lifetime does not imply race freedom, transferability, synchronization or ISR safety.</li>
+                <li>Interrupt registrations are escaping contexts when handlers may run after registration returns.</li>
+                <li>Long-lived static/fixed-address storage still requires interrupt-safe access semantics.</li>
+                <li><code>try</code> and error propagation create ordinary lifetime control-flow edges.</li>
+                <li>A continuing error handler must establish a lifetime-valid recovery state.</li>
+                <li>References inside Result/Option/union payloads remain bounded by referent and active-payload lifetimes.</li>
+                <li>Consuming Result projections end the source Result lifetime according to ownership rules.</li>
+                <li>Generic code must be lifetime-safe for every admitted concrete instantiation.</li>
+                <li>Monomorphization may improve lifetime precision using concrete type/storage facts.</li>
+                <li>Compiler-internal generic lifetime relations need not become source lifetime parameters.</li>
+                <li>Separate compilation preserves returned-reference, retention, invalidation, mapping/storage-domain and epoch summaries.</li>
+                <li>Recursive summary inference uses a terminating fixed-point strategy.</li>
+                <li>Lifetime summaries must be deterministic.</li>
+                <li>Compiler-internal constraint graphs do not create source-visible lifetime syntax.</li>
+                <li>If no sound conservative assignment or exported relation exists, Sec rejects the program instead of inventing hidden allocation or retention.</li>
+                <li>Semantic IR preserves lifetime relations until every later consumer has equivalent verified information.</li>
+                <li>Semantic IR must reject impossible or contradictory lifetime states.</li>
+                <li>LLVM lifetime markers are optimization hints derived from Sec semantics; they do not define Sec lifetime.</li>
+                <li>Backend lifetime-end markers must never precede any remaining Sec dependency.</li>
+                <li>Alias/noalias optimization may use only facts actually proven by Sec borrow/provenance analysis.</li>
+                <li>Lifetime safety violations are compile errors and cannot be downgraded by lint configuration.</li>
+                <li>Lifetime diagnostics should explain origin, invalidating event, rejected later use, path and practical safe restructuring.</li>
+                <li>LSP lifetime information comes from compiler/Sema facts rather than an independent editor lifetime engine.</li>
+                <li>Tooling should avoid exposing internal region IDs as the primary user model.</li>
+                <li>Lifetime code actions must not add hidden allocation, arbitrary owned copies or weakened hardware semantics merely to silence an error.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="41-arena.html">Previous: Arenas</a>
+            <a href="43-destruction.html">Next: Destruction</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

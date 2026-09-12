@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Attributes - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#attributes">Attributes</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#closed-set">Closed Attribute Set</a>
+        <a href="#attribute-list">Sec 0.1 Attributes</a>
+        <a href="#categories">Attribute Categories</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#arguments">Arguments</a>
+        <a href="#compile-time">Compile-Time Arguments</a>
+        <a href="#attachment">Attachment</a>
+        <a href="#comments">Comments and Whitespace</a>
+        <a href="#top-level">Top-Level Only</a>
+        <a href="#multiple">Multiple Attributes</a>
+        <a href="#order">Attribute Order</a>
+        <a href="#duplicates">Duplicates</a>
+        <a href="#conflicts">Conflicts</a>
+        <a href="#redundant">Redundant Attributes</a>
+        <a href="#target">@target</a>
+        <a href="#when">@when</a>
+        <a href="#address">@address</a>
+        <a href="#interrupt">@interrupt</a>
+        <a href="#isr">@isr</a>
+        <a href="#interrupt-safe">@interruptSafe</a>
+        <a href="#no-copy">@noCopy</a>
+        <a href="#no-alloc">@noAlloc</a>
+        <a href="#no-panic">@noPanic</a>
+        <a href="#no-block">@noBlock</a>
+        <a href="#link-name">@link_name</a>
+        <a href="#implications">Attribute Implications</a>
+        <a href="#extern">Attributes on extern</a>
+        <a href="#validation-order">Validation Order</a>
+        <a href="#formatter">Formatter</a>
+        <a href="#tooling">LSP and Tooling</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html" class="active">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Attributes</div>
+
+        <h1 id="attributes">Attributes</h1>
+
+        <p>
+            Attributes attach compiler-understood semantics to declarations without adding a new
+            declaration keyword for every orthogonal property.
+        </p>
+
+        <pre><code>@noPanic
+fn Calculate() Result[int, ArithmeticError] {
+    ...
+}</code></pre>
+
+        <p>
+            Attributes can control source selection, target binding, verification guarantees,
+            nominal type policy and foreign symbol binding.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Sec 0.1 has a closed set of compiler-known attributes.
+            An attribute is part of language semantics, not passive metadata.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+            <p>Attributes are used when a property belongs to a declaration, changes compilation or
+            verification, is orthogonal to ordinary declaration grammar and must be understood by
+            the compiler.</p>
+            <p>Attributes are not comments, macros, textual preprocessing or arbitrary user metadata.</p>
+            <p><code>static</code> also remains separate: it describes storage duration/type
+            association, not physical placement or target binding.</p>
+        </section>
+
+        <section id="closed-set">
+            <h2>Closed Attribute Set</h2>
+            <p>Only attributes known to the selected compiler version and language profile are accepted.</p>
+            <pre><code>@audit(category: "finance")
+fn PostInvoice() void {
+}</code></pre>
+            <p>The example above is invalid in Sec 0.1. Unknown attributes are not preserved as passive metadata.</p>
+        </section>
+
+        <section id="attribute-list">
+            <h2>Sec 0.1 Compiler-Known Attributes</h2>
+            <pre><code>@target(...)
+@when(...)
+@address(...)
+@interrupt(...)
+@isr
+@interruptSafe
+@noCopy
+@noAlloc
+@noPanic
+@noBlock
+@link_name("foreign-symbol")</code></pre>
+        </section>
+
+        <section id="categories">
+            <h2>Attribute Categories</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Category</th><th>Attributes</th><th>Purpose</th></tr></thead>
+                    <tbody>
+                        <tr><td>Selection</td><td><code>@target</code>, <code>@when</code></td><td>Select active source</td></tr>
+                        <tr><td>Target binding</td><td><code>@address</code>, <code>@interrupt</code></td><td>Bind storage or interrupt machinery</td></tr>
+                        <tr><td>Verified guarantees</td><td><code>@isr</code>, <code>@interruptSafe</code>, <code>@noAlloc</code>, <code>@noPanic</code>, <code>@noBlock</code></td><td>Require compiler-verified guarantees</td></tr>
+                        <tr><td>Nominal policy</td><td><code>@noCopy</code></td><td>Change nominal copy classification</td></tr>
+                        <tr><td>Foreign binding</td><td><code>@link_name</code></td><td>Select the foreign symbol</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+            <pre><code>@isr
+
+@address(0x40021000)
+
+@interrupt(vector: Interrupt.Timer0)
+
+@target(os: "linux", arch: "amd64")
+
+@when(config.telemetry)</code></pre>
+            <p>An individual attribute defines whether its arguments are positional, named or absent.</p>
+        </section>
+
+        <section id="arguments">
+            <h2>Attribute Arguments</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Attribute</th><th>Arguments</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>@address(value)</code></td><td>One positional compile-time address expression</td></tr>
+                        <tr><td><code>@interrupt(vector: value)</code></td><td>One named vector argument</td></tr>
+                        <tr><td><code>@target(...)</code></td><td>Named target selectors</td></tr>
+                        <tr><td><code>@when(condition)</code></td><td>One positional compile-time boolean expression</td></tr>
+                        <tr><td><code>@link_name("symbol")</code></td><td>One non-empty string literal</td></tr>
+                        <tr><td>Guarantee/policy attributes</td><td>No arguments</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>Using the wrong argument form is a compile-time error.</p>
+        </section>
+
+        <section id="compile-time">
+            <h2>Attribute Arguments Are Evaluated at Plan Time</h2>
+            <p>Initial attribute arguments must be available while the compilation plan is constructed or validated.</p>
+            <p>They cannot depend on runtime execution, allocation, I/O, mutable runtime state,
+            ordinary user-function calls, dynamic dispatch or foreign calls.</p>
+            <p>Compiler-known target constants and build configuration values are available only
+            where the specific attribute permits them.</p>
+        </section>
+
+        <section id="attachment">
+            <h2>Attachment</h2>
+            <p>An attribute normally applies to the next allowed top-level statement:</p>
+            <pre><code>@noPanic
+fn Calculate() int {
+    return 10
+}</code></pre>
+            <p>Consecutive attributes form one attribute set for the same declaration:</p>
+            <pre><code>@noAlloc
+@noPanic
+@noBlock
+fn PollDevice() Result[State, DeviceError] {
+    ...
+}</code></pre>
+            <p>An attribute left without an attached statement before end-of-file is invalid.</p>
+        </section>
+
+        <section id="comments">
+            <h2>Comments and Whitespace Do Not Break Attachment</h2>
+            <pre><code>@noPanic
+
+// Public arithmetic entrypoint.
+fn Add(left: int, right: int) Result[int, ArithmeticError] {
+    let result := try left + right
+    return Ok(result)
+}</code></pre>
+        </section>
+
+        <section id="top-level">
+            <h2>Sec 0.1 Attributes Attach at Compilation-Unit Level</h2>
+            <p>The initial attribute system does not decorate arbitrary local statements or expressions.</p>
+            <pre><code>fn Work() void {
+    @target(os: "linux")    // invalid
+    PerformLinuxOperation()
+}</code></pre>
+        </section>
+
+        <section id="multiple">
+            <h2>Multiple Attributes on One Declaration</h2>
+            <pre><code>@target(device: "controller-a")
+@address(Peripheral.GPIOA)
+let mut GPIOA: GPIORegisters</code></pre>
+            <p>Both attributes attach directly to <code>GPIOA</code>. One attribute does not create a scope for another.</p>
+        </section>
+
+        <section id="order">
+            <h2>Attribute Order</h2>
+            <p>Initial attribute semantics are order-independent inside one attachment set.</p>
+            <p>Selection attributes are best written before binding and verification attributes because
+            that follows the conceptual compilation order.</p>
+        </section>
+
+        <section id="duplicates">
+            <h2>Duplicate Attributes and Arguments</h2>
+            <pre><code>@noCopy
+@noCopy    // invalid
+type Identity struct {
+    Value: uint64
+}</code></pre>
+            <p>Repeat target selectors in one attribute instead:</p>
+            <pre><code>@target(os: "linux", arch: "amd64")
+fn Open() void {
+}</code></pre>
+            <p>A named argument may also appear only once.</p>
+        </section>
+
+        <section id="conflicts">
+            <h2>Conflicting Attributes</h2>
+            <p>The compiler rejects semantic conflicts such as two addresses, two interrupt vectors,
+            contradictory target selectors or a verified guarantee contradicted by required behavior.</p>
+        </section>
+
+        <section id="redundant">
+            <h2>Redundant Attributes May Be Written Explicitly</h2>
+            <pre><code>@interrupt(vector: Interrupt.Timer0)
+@isr
+@noPanic
+@noAlloc
+@noBlock
+fn Timer0Handler() void {
+}</code></pre>
+            <p>This is valid even though the stronger attributes imply several of the written guarantees.
+            Tooling may report redundancy informationally, but the formatter does not delete it automatically.</p>
+        </section>
+
+        <section id="target">
+            <h2><code>@target</code></h2>
+            <p><code>@target</code> selects source according to target identity.</p>
+            <pre><code>@target(os: "linux", arch: "amd64")
+fn RawWrite(...) Result[int, WriteError] {
+    ...
+}</code></pre>
+            <p>Initial selector names are:</p>
+            <pre><code>os
+arch
+cpu
+device
+board</code></pre>
+            <p>At least one selector is required. Omitted selectors impose no restriction, and all
+            supplied selectors must match the active compilation plan.</p>
+            <p><code>@target</code> can select an entire source file when it is the first source-bearing
+            line, or the next top-level declaration when used later in the file.</p>
+            <p>Detailed source-selection semantics belong to chapter 38.</p>
+        </section>
+
+        <section id="when">
+            <h2><code>@when</code></h2>
+            <p><code>@when</code> conditionally includes the next top-level declaration according to
+            typed compile-time configuration.</p>
+            <pre><code>@when(config.telemetry)
+fn SendTelemetry() Result[void, TelemetryError] {
+    ...
+}</code></pre>
+            <p>It does not create runtime branching. The declaration is either part of the current
+            compilation plan or it is not.</p>
+            <p>The initial condition language includes boolean configuration parameters,
+            <code>true</code>, <code>false</code>, <code>!</code>, <code>&amp;&amp;</code>,
+            <code>||</code>, <code>==</code>, <code>!=</code> and parentheses.</p>
+            <p>Target identity belongs in <code>@target</code>; typed program configuration belongs
+            in <code>@when</code>.</p>
+        </section>
+
+        <section id="address">
+            <h2><code>@address</code></h2>
+            <p><code>@address</code> binds one module-scope storage declaration to a compile-time address:</p>
+            <pre><code>@address(Peripheral.GPIOA)
+let mut GPIOA: GPIORegisters</code></pre>
+            <p>Raw numeric form is also valid when the active target provides a compatible region:</p>
+            <pre><code>@address(0x40021000)
+let mut GPIO: GPIORegisters</code></pre>
+            <p>The declaration refers to storage that already exists. It does not allocate ordinary
+            storage, and its reads use volatile semantics.</p>
+            <p><code>mut</code> determines whether writes are permitted.</p>
+            <p>The compiler validates target pointer width, address space, complete region coverage,
+            alignment, physical access width, permissions, representation compatibility, required
+            privilege and detectable overlap.</p>
+            <p>A numeric address by itself is never sufficient proof of a valid binding, and
+            <code>unsafe</code> does not waive this validation.</p>
+            <p><code>@address</code> applies to exactly one module-scope <code>let</code> declaration,
+            not to locals, parameters, fields, functions or types.</p>
+            <p>Hardware placement is covered in detail in chapter 50.</p>
+        </section>
+
+        <section id="interrupt">
+            <h2><code>@interrupt</code></h2>
+            <p><code>@interrupt</code> binds a function to a target interrupt vector:</p>
+            <pre><code>@interrupt(vector: Interrupt.Timer0)
+fn Timer0Handler() void {
+}</code></pre>
+            <p>The vector must resolve at compile time to an identity accepted by the selected target.
+            Named target-provided vectors are preferred where available.</p>
+            <p>The compiler validates vector availability, unique binding, signature, ABI and ISR requirements.</p>
+            <p><code>@interrupt(...)</code> implies <code>@isr</code>. The reverse is not true.</p>
+        </section>
+
+        <section id="isr">
+            <h2><code>@isr</code></h2>
+            <p><code>@isr</code> declares and verifies an interrupt service routine without itself
+            choosing a vector:</p>
+            <pre><code>@isr
+fn SharedInterruptHandler() void {
+}</code></pre>
+            <p>The verified contract includes at least:</p>
+            <ul>
+                <li>no panic;</li>
+                <li>no allocation;</li>
+                <li>no blocking;</li>
+                <li>interrupt-safe call graph;</li>
+                <li>target-compatible signature and entry/return behavior;</li>
+                <li>bounded stack requirements;</li>
+                <li>no forbidden lock acquisition;</li>
+                <li>no ordinary scheduler suspension;</li>
+                <li>safe shared-state access under the approved synchronization model.</li>
+            </ul>
+            <p>A target may reject <code>@isr</code> when it has no defined ISR ABI.</p>
+        </section>
+
+        <section id="interrupt-safe">
+            <h2><code>@interruptSafe</code></h2>
+            <p><code>@interruptSafe</code> verifies that a function may be called from ISR code:</p>
+            <pre><code>@interruptSafe
+fn ReadStatus() Status {
+    ...
+}</code></pre>
+            <p>It does not make the function an ISR and does not bind a vector.</p>
+            <p>The guarantee includes no panic, no allocation, no blocking, compatible synchronization,
+            safe shared-state access, compatible callees and acceptable stack behavior under ISR policy.</p>
+        </section>
+
+        <section id="no-copy">
+            <h2><code>@noCopy</code></h2>
+            <p><code>@noCopy</code> is a nominal type policy:</p>
+            <pre><code>@noCopy
+type SessionID struct {
+    Value: uint64
+}</code></pre>
+            <p>It forbids compiler-derived implicit copy.</p>
+            <p>Implicit copy is invalid:</p>
+            <pre><code>let second := first</code></pre>
+            <p>Explicit ownership transfer may remain valid:</p>
+            <pre><code>let second :&lt;- first</code></pre>
+            <p>Copyability is distinct from movability, relocatability and pinning.</p>
+            <p>Explicit methods named <code>Copy</code>, <code>Clone</code>, <code>Duplicate</code>,
+            <code>Snapshot</code> or <code>ToOwned</code> remain ordinary APIs.</p>
+            <p><code>@noCopy</code> applies to nominal user-defined types rather than individual
+            variables, fields, parameters or functions.</p>
+            <p>A containing aggregate becomes non-copyable when it stores a non-copyable field unless
+            another rule introduces copyable indirection.</p>
+        </section>
+
+        <section id="no-alloc">
+            <h2><code>@noAlloc</code></h2>
+            <p><code>@noAlloc</code> is a transitive compiler-verified guarantee:</p>
+            <pre><code>@noAlloc
+fn Process(
+    buffer: ref byte[],
+) Result[void, ProcessError] {
+    ...
+}</code></pre>
+            <p>No reachable execution path may allocate.</p>
+            <p>Verification includes the body, reachable callees, generic specializations, closures,
+            defer bodies, reachable destructors, foreign declarations and compiler-generated operations.</p>
+            <p>Unknown allocation behavior violates the guarantee.</p>
+            <p>Using <code>try</code> on an allocating operation does not make it compatible with
+            <code>@noAlloc</code>; fallible allocation still allocates when it succeeds.</p>
+        </section>
+
+        <section id="no-panic">
+            <h2><code>@noPanic</code></h2>
+            <p><code>@noPanic</code> is a transitive compiler-verified panic-free guarantee:</p>
+            <pre><code>@noPanic
+fn Add(
+    left: int,
+    right: int,
+) Result[int, ArithmeticError] {
+    let result := try left + right
+    return Ok(result)
+}</code></pre>
+            <p>No reachable panic-capable operation may remain unresolved.</p>
+            <p>The compiler checks panic-capable operations and calls, unproven assertions, reachable
+            checked <code>unreachable</code>, explicit panic once finalized, foreign abort/unwind
+            behavior and panic-capable cleanup.</p>
+            <p><code>@noPanic</code> does not catch panic. It requires the panic effect to be absent.</p>
+        </section>
+
+        <section id="no-block">
+            <h2><code>@noBlock</code></h2>
+            <p><code>@noBlock</code> verifies that no reachable execution path waits for an unbounded
+            external event or parks the current execution domain:</p>
+            <pre><code>@noBlock
+fn PollStatus() Status {
+    ...
+}</code></pre>
+            <p>Blocking includes blocking I/O, sleep, waiting on mutexes/semaphores, condition waits,
+            thread joins, blocking task waits, scheduler parking, unbounded external waits and foreign
+            calls declared as blocking.</p>
+            <p>Finite computation, statically bounded loops, nonblocking polling, try-lock and
+            separately proven bounded lock-free retry are not forbidden merely by <code>@noBlock</code>.</p>
+            <p>Nonblocking is not the same as bounded execution time.</p>
+        </section>
+
+        <section id="link-name">
+            <h2><code>@link_name</code></h2>
+            <p><code>@link_name</code> selects the external symbol used by an <code>extern</code> declaration:</p>
+            <pre><code>@link_name("foreign_symbol")
+extern "C" fn SecName(...) C::int</code></pre>
+            <p>It is valid only on an extern declaration and requires one non-empty string literal.</p>
+            <p>It changes only the foreign/link symbol. It does not change the Sec name, calling
+            convention, safety, ownership, effects, dependency metadata or ABI compatibility.</p>
+        </section>
+
+        <section id="implications">
+            <h2>Attribute Implications</h2>
+            <pre><code>@interrupt(...)
+    =&gt; @isr
+
+@isr
+    =&gt; @noPanic
+    =&gt; @noAlloc
+    =&gt; @noBlock
+    =&gt; interrupt-safe call graph
+
+@interruptSafe
+    =&gt; @noPanic
+    =&gt; @noAlloc
+    =&gt; @noBlock</code></pre>
+            <p>Effective guarantees are semantic facts even when only the stronger attribute is
+            written explicitly.</p>
+        </section>
+
+        <section id="extern">
+            <h2>Verified Attributes on <code>extern</code> Declarations</h2>
+            <p>For ordinary Sec functions with bodies, guarantee attributes are proven from the
+            implementation and reachable call graph.</p>
+            <p>For an extern declaration, the compiler normally cannot inspect the foreign body.
+            An applicable guarantee is therefore a trusted foreign contract, not proof of the
+            foreign implementation.</p>
+            <p>The compiler preserves this trust provenance and treats unspecified foreign effects conservatively.</p>
+        </section>
+
+        <section id="validation-order">
+            <h2>Attribute Validation Order</h2>
+            <p>Conceptually:</p>
+            <ol>
+                <li>parse files and attributes;</li>
+                <li>evaluate file-level target selection;</li>
+                <li>evaluate top-level <code>@target</code> and <code>@when</code>;</li>
+                <li>construct the active source/symbol set;</li>
+                <li>validate overlapping declaration variants;</li>
+                <li>perform ordinary semantic analysis on active declarations;</li>
+                <li>verify nominal/effect attributes;</li>
+                <li>validate target bindings;</li>
+                <li>lower active declarations.</li>
+            </ol>
+            <p>Selection attributes therefore participate before active semantic analysis, while
+            verification attributes depend on the resolved semantic program.</p>
+        </section>
+
+        <section id="formatter">
+            <h2>Formatter Behavior</h2>
+            <p>The canonical formatter writes one attribute per line:</p>
+            <pre><code>@target(os: "linux")
+@when(config.telemetry)
+@noPanic
+fn SendTelemetry() Result[void, TelemetryError] {
+    ...
+}</code></pre>
+            <p>Formatting preserves attachment and does not silently delete explicitly written
+            attributes simply because another attribute implies them.</p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+            <p>Tooling should understand attributes semantically, including:</p>
+            <ul>
+                <li>completion restricted to compiler-known attributes;</li>
+                <li>completion restricted by allowed attachment target;</li>
+                <li>argument-name and target-selector completion;</li>
+                <li>hover describing the attribute contract;</li>
+                <li>display of implied guarantees;</li>
+                <li>display of source excluded by the active compilation plan;</li>
+                <li>cause chains for failed verified guarantees;</li>
+                <li>navigation to target/device/interrupt knowledge;</li>
+                <li>trusted provenance display for extern guarantees.</li>
+            </ul>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <h3>Unknown attribute</h3>
+            <pre><code>unknown attribute `@audit`
+
+Sec 0.1 accepts only compiler-known attributes</code></pre>
+
+            <h3>Wrong attachment target</h3>
+            <pre><code>`@noCopy` cannot be applied to variable `session`
+
+`@noCopy` is a nominal type policy
+
+help: apply it to the declared type instead</code></pre>
+
+            <h3>Duplicate attribute</h3>
+            <pre><code>duplicate attribute `@noPanic`
+
+the attribute already appears in this attachment set</code></pre>
+
+            <h3>Duplicate argument</h3>
+            <pre><code>duplicate argument `os` in `@target`
+
+each named argument may appear only once</code></pre>
+
+            <h3>Unattached attribute</h3>
+            <pre><code>`@noPanic` has no declaration to attach to
+
+an attribute must be followed by an allowed top-level statement</code></pre>
+
+            <h3>Argument not available at plan time</h3>
+            <pre><code>`@when` condition is not available at compilation-plan time
+
+attribute arguments cannot depend on runtime state or ordinary function calls</code></pre>
+
+            <h3>Verified guarantee violation</h3>
+            <pre><code>`PollStatus` does not satisfy `@noBlock`
+
+call path:
+    PollStatus
+    -&gt; WaitForDevice
+
+`WaitForDevice` may block indefinitely</code></pre>
+
+            <p>
+                Guarantee diagnostics should show the semantic cause chain rather than pointing only
+                at the attribute line.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+            <ul>
+                <li>Use only compiler-known attributes with defined Sec semantics.</li>
+                <li>Keep one attribute per line.</li>
+                <li>Write selection attributes before binding and guarantee attributes for readability.</li>
+                <li>Use <code>@target</code> for target identity and <code>@when</code> for typed program configuration.</li>
+                <li>Prefer named target-provided addresses and interrupt vectors where available.</li>
+                <li>Use <code>@noCopy</code> on nominal types, not individual variables.</li>
+                <li>Treat <code>@noAlloc</code>, <code>@noPanic</code> and <code>@noBlock</code> as verified contracts, not documentation comments.</li>
+                <li>Use <code>@interruptSafe</code> for reusable ISR-safe helpers rather than marking them as ISR entrypoints.</li>
+                <li>Use <code>@interrupt</code> when the function owns a concrete vector binding.</li>
+                <li>Use <code>@isr</code> without <code>@interrupt</code> only when vector binding is supplied elsewhere.</li>
+                <li>Use <code>@link_name</code> only to map a Sec extern declaration to its actual foreign symbol.</li>
+                <li>Keep native library dependencies in project/package/build metadata rather than inventing per-function library attributes.</li>
+                <li>Do not depend on source order of attributes for semantics.</li>
+                <li>Do not mechanically remove redundant attributes that intentionally document a stronger contract.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+            <ul>
+                <li>Attributes attach compiler-understood semantics to top-level declarations.</li>
+                <li>Sec 0.1 has a closed compiler-known attribute set.</li>
+                <li>Unknown attributes are compile-time errors and are not retained as passive metadata.</li>
+                <li>Attributes are not macros, textual preprocessing or arbitrary runtime reflection metadata.</li>
+                <li>The initial set is <code>@target</code>, <code>@when</code>, <code>@address</code>, <code>@interrupt</code>, <code>@isr</code>, <code>@interruptSafe</code>, <code>@noCopy</code>, <code>@noAlloc</code>, <code>@noPanic</code>, <code>@noBlock</code> and <code>@link_name</code>.</li>
+                <li>Selection attributes choose active source for one compilation plan.</li>
+                <li>Target-binding attributes connect declarations to target storage or interrupt machinery.</li>
+                <li>Verified guarantee attributes are compiler-proven for ordinary Sec implementations.</li>
+                <li><code>@noCopy</code> changes nominal copy policy.</li>
+                <li><code>@link_name</code> changes only the foreign symbol of an extern declaration.</li>
+                <li>Every attribute defines its own valid attachment targets and argument form.</li>
+                <li>Initial attribute arguments must be available at compilation-plan time.</li>
+                <li>Runtime execution, arbitrary user-function calls, I/O, allocation and mutable runtime state cannot be required to evaluate initial attribute arguments.</li>
+                <li>An attribute normally attaches to the next allowed top-level statement.</li>
+                <li>Consecutive attributes form one attachment set for the same declaration.</li>
+                <li>Whitespace and comments do not break attachment.</li>
+                <li>Sec 0.1 attributes do not attach to arbitrary local statements or expressions.</li>
+                <li>Initial attribute semantics are order-independent within one attachment set.</li>
+                <li>Duplicate attributes are invalid unless repetition is explicitly defined.</li>
+                <li>Duplicate named arguments are invalid.</li>
+                <li>Conflicting attribute semantics are compile-time errors.</li>
+                <li>Explicitly written redundant implied attributes are valid.</li>
+                <li><code>@target</code> selects source by target identity.</li>
+                <li>Initial target selector names are <code>os</code>, <code>arch</code>, <code>cpu</code>, <code>device</code> and <code>board</code>.</li>
+                <li>All supplied target selectors must match the active compilation plan.</li>
+                <li><code>@when</code> conditionally includes a top-level declaration using typed plan-time configuration.</li>
+                <li><code>@when</code> does not create runtime branching.</li>
+                <li><code>@address</code> binds one module-scope storage declaration to a target-validated compile-time address.</li>
+                <li><code>@address</code> does not allocate ordinary storage.</li>
+                <li><code>@address</code> implies volatile access semantics.</li>
+                <li>A raw numeric address alone does not prove a valid target binding.</li>
+                <li><code>unsafe</code> does not waive address-space, region, privilege, alignment or representation validation.</li>
+                <li><code>@interrupt</code> binds a function to a target interrupt vector.</li>
+                <li><code>@interrupt</code> implies <code>@isr</code>.</li>
+                <li><code>@isr</code> verifies ISR behavior without itself selecting a vector.</li>
+                <li><code>@interruptSafe</code> verifies that a helper may be called from ISR code.</li>
+                <li><code>@interruptSafe</code> does not make the function an ISR.</li>
+                <li><code>@isr</code> and <code>@interruptSafe</code> imply no-panic, no-allocation and no-block requirements.</li>
+                <li><code>@noCopy</code> forbids compiler-derived implicit copy of a nominal type.</li>
+                <li><code>@noCopy</code> does not imply immovability, non-relocatability or pinning.</li>
+                <li>Explicit named duplication APIs remain ordinary APIs even on an <code>@noCopy</code> type.</li>
+                <li><code>@noAlloc</code> verifies that no reachable execution path allocates.</li>
+                <li>Fallible allocation is still allocation and remains incompatible with <code>@noAlloc</code>.</li>
+                <li><code>@noPanic</code> verifies absence of reachable panic behavior; it does not catch panic.</li>
+                <li><code>@noBlock</code> verifies absence of unbounded waits and scheduler parking.</li>
+                <li>Nonblocking behavior alone does not imply bounded execution time.</li>
+                <li><code>@link_name</code> is valid only on extern declarations and requires one non-empty string literal.</li>
+                <li><code>@link_name</code> does not alter ABI, safety, ownership, effects or native dependency metadata.</li>
+                <li>For ordinary Sec functions, verified guarantee attributes are proven by the compiler.</li>
+                <li>For extern declarations, applicable guarantee attributes are trusted foreign contracts.</li>
+                <li>Trust provenance from extern guarantees remains visible to compiler analysis.</li>
+                <li>Unknown foreign effects are treated conservatively.</li>
+                <li>The formatter writes one attribute per line and preserves explicit attributes and attachment.</li>
+                <li>LSP and analysis should understand valid targets, arguments, implied guarantees, active/excluded source and trusted foreign provenance.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="36-defer.html">Previous: Defer and Cleanup</a>
+            <a href="38-conditional-compilation.html">Next: Conditional Compilation and Build Selection</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

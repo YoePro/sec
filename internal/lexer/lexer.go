@@ -276,11 +276,19 @@ func (l *Lexer) Restore(state State) {
 }
 
 // NextToken classifies source tokens and records lexical errors without changing
-// their original spelling. Rules: rules/foundations/lexical_structure.md —
-// "6.1 Identifier form", "6.2 Unicode normalization", and token boundaries.
+// their original spelling. Unknown token starts are delegated to
+// readInvalidSourceCharacter for focused one-scalar recovery.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §6.1 "Identifier form"
+//   - rules/foundations/lexical_structure.md — §6.2 "Unicode normalization"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+//
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 // 2026-09-06 10:01 UTC: Validate identifier NFC before keyword classification;
 // include underscore-prefixed combining-mark candidates in diagnostic recovery.
+// 2026-09-12: Emit L1020 for otherwise unrecognized source characters.
 func (l *Lexer) NextToken() Token {
 	l.skipWhitespaceAndComments()
 
@@ -288,7 +296,7 @@ func (l *Lexer) NextToken() Token {
 	column := l.column
 	ch := l.peek()
 
-	if ch == 0 {
+	if l.atEnd() {
 		return l.token(EOF, "", line, column)
 	}
 
@@ -500,7 +508,32 @@ func (l *Lexer) NextToken() Token {
 		return l.readOne(RBRACKET)
 	}
 
-	return l.readOne(ILLEGAL)
+	return l.readInvalidSourceCharacter()
+}
+
+// readInvalidSourceCharacter consumes one unrecognized Unicode scalar and
+// emits L1020 unless source decoding already assigned a more specific lexer
+// diagnostic to the same position.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func (l *Lexer) readInvalidSourceCharacter() Token {
+	line := l.line
+	column := l.column
+	ch := l.peek()
+	token := l.readOne(ILLEGAL)
+	for _, diagnostic := range l.diagnostics {
+		definition, known := compilerdiagnostics.Lookup(diagnostic.ID)
+		if known && definition.Family == "lexer" && diagnostic.Primary.File == token.File && diagnostic.Primary.Line == line && diagnostic.Primary.Column == column {
+			return token
+		}
+	}
+	l.diagnostics = append(l.diagnostics, Diagnostic{
+		ID:      compilerdiagnostics.LexerInvalidSourceCharacter,
+		Message: fmt.Sprintf("invalid source character U+%04X; remove it or replace it with valid Sec syntax", ch),
+		Primary: token,
+	})
+	return token
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
@@ -515,7 +548,7 @@ func (l *Lexer) skipBlockComment() {
 	depth := 0
 
 	for {
-		if l.peek() == 0 {
+		if l.atEnd() {
 			return
 		}
 
@@ -551,14 +584,22 @@ func (l *Lexer) readLineComment() Token {
 	l.advance()
 	l.advance()
 
-	for !isPhysicalLineEnding(l.peek()) && l.peek() != 0 {
+	for !isPhysicalLineEnding(l.peek()) && !l.atEnd() {
 		l.advance()
 	}
 
 	return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
 }
 
+// readBlockComment retains one complete nested comment token and emits one
+// focused diagnostic if the outer depth does not close before end of file.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-12: Emit L1015 for unterminated nested block comments.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.2 "Block comments"
+//   - rules/foundations/lexical_structure.md — §5.3 "Nested block comments"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) readBlockComment() Token {
 	line := l.line
 	column := l.column
@@ -566,8 +607,15 @@ func (l *Lexer) readBlockComment() Token {
 	depth := 0
 
 	for {
-		if l.peek() == 0 {
-			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		if l.atEnd() {
+			lexeme := string(l.input[start:l.pos])
+			token := l.token(ILLEGAL, lexeme, line, column)
+			l.diagnostics = append(l.diagnostics, Diagnostic{
+				ID:      compilerdiagnostics.LexerUnterminatedBlockComment,
+				Message: "unterminated block comment; add */ to close the outer comment",
+				Primary: token,
+			})
+			return token
 		}
 
 		if l.peek() == '/' && l.peekNext() == '*' {
@@ -639,6 +687,7 @@ func (l *Lexer) identifierToken(literal string, line, column int) Token {
 // 2026-09-10 20:49 CEST: Retain maximal malformed base-prefixed candidates
 // and emit L1010/L1011/L1012 while preserving parser-owned legacy suffix migration.
 // 2026-09-12 11:14 CEST: Retain invalid decimal suffix tails and emit L1013.
+// 2026-09-12: Emit L1014 when exponent digits are missing.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §12.2 "Decimal integer literals"
@@ -652,6 +701,7 @@ func (l *Lexer) readNumber() (string, TokenType) {
 	typ := INT
 	valid := true
 	invalidSuffix := false
+	missingExponentDigits := false
 
 	if l.peek() == '0' {
 		switch l.peekNext() {
@@ -674,11 +724,12 @@ func (l *Lexer) readNumber() (string, TokenType) {
 	}
 	if l.peek() == 'e' || l.peek() == 'E' {
 		typ = FLOAT
-		exponentValid, exponentSeparator := l.readDecimalExponent()
+		exponentValid, exponentSeparator, exponentMissingDigits := l.readDecimalExponent()
 		if !exponentValid {
 			valid = false
 		}
 		invalidSeparator = invalidSeparator || exponentSeparator
+		missingExponentDigits = exponentMissingDigits
 	}
 	if isCanonicalNumericSuffix(l.peek()) {
 		suffix := l.peek()
@@ -704,6 +755,10 @@ func (l *Lexer) readNumber() (string, TokenType) {
 	lexeme := string(l.input[start:l.pos])
 	if invalidSeparator {
 		l.recordInvalidDigitSeparator(lexeme, line, column)
+		return lexeme, ILLEGAL
+	}
+	if missingExponentDigits {
+		l.recordMissingExponentDigits(lexeme, line, column)
 		return lexeme, ILLEGAL
 	}
 	if invalidSuffix {
@@ -786,6 +841,7 @@ func isMalformedNumericContinuation(ch rune) bool {
 // its first digit, retaining invalid suffix tails as one diagnosed token.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 // 2026-09-12 11:14 CEST: Retain invalid suffix tails and emit L1013.
+// 2026-09-12: Emit L1014 when exponent digits are missing.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §12.4 "Fractional literals"
@@ -801,12 +857,14 @@ func (l *Lexer) readLeadingDotNumber() Token {
 	_, valid, invalidSeparator := l.readDigitSequence(isDigit)
 	invalidSuffix := false
 	legacySuffix := false
+	missingExponentDigits := false
 	if l.peek() == 'e' || l.peek() == 'E' {
-		exponentValid, exponentSeparator := l.readDecimalExponent()
+		exponentValid, exponentSeparator, exponentMissingDigits := l.readDecimalExponent()
 		if !exponentValid {
 			valid = false
 		}
 		invalidSeparator = invalidSeparator || exponentSeparator
+		missingExponentDigits = exponentMissingDigits
 	}
 	if isFractionalNumericSuffix(l.peek()) {
 		l.advance()
@@ -828,6 +886,10 @@ func (l *Lexer) readLeadingDotNumber() Token {
 		l.recordInvalidDigitSeparator(lexeme, line, column)
 		return l.token(ILLEGAL, lexeme, line, column)
 	}
+	if missingExponentDigits {
+		l.recordMissingExponentDigits(lexeme, line, column)
+		return l.token(ILLEGAL, lexeme, line, column)
+	}
 	if invalidSuffix {
 		l.recordInvalidNumericSuffix(lexeme, line, column)
 		return l.token(ILLEGAL, lexeme, line, column)
@@ -840,14 +902,19 @@ func (l *Lexer) readLeadingDotNumber() Token {
 }
 
 // readDecimalExponent consumes an exponent marker, an optional sign, and its
-// required decimal digits. The caller retains the complete malformed token.
-func (l *Lexer) readDecimalExponent() (bool, bool) {
+// required decimal digits while distinguishing an absent digit sequence from
+// an invalid separator sequence.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+//   - rules/foundations/lexical_structure.md — §12.6 "Digit separators"
+func (l *Lexer) readDecimalExponent() (valid bool, invalidSeparator bool, missingDigits bool) {
 	l.advance()
 	if l.peek() == '+' || l.peek() == '-' {
 		l.advance()
 	}
 	digits, valid, invalidSeparator := l.readDigitSequence(isDigit)
-	return digits && valid, invalidSeparator
+	return digits && valid, invalidSeparator, !digits
 }
 
 func (l *Lexer) readDigitSequence(validDigit func(rune) bool) (bool, bool, bool) {
@@ -901,25 +968,62 @@ func (l *Lexer) recordInvalidNumericSuffix(lexeme string, line int, column int) 
 	})
 }
 
+// recordMissingExponentDigits emits the focused diagnostic for an exponent
+// marker and optional sign without a following decimal digit.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func (l *Lexer) recordMissingExponentDigits(lexeme string, line int, column int) {
+	token := l.token(ILLEGAL, lexeme, line, column)
+	l.diagnostics = append(l.diagnostics, Diagnostic{
+		ID:      compilerdiagnostics.LexerMissingExponentDigits,
+		Message: "scientific exponent requires at least one ASCII decimal digit after its marker and optional sign",
+		Primary: token,
+	})
+}
+
+// readPlainString retains an ordinary string token and emits a focused lexical
+// diagnostic if a physical line ending or end of file occurs before its closing
+// quote. The line ending remains available as the next token boundary.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-12: Emit L1016 for unterminated ordinary strings.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.1 "Ordinary strings"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) readPlainString() Token {
 	line := l.line
 	column := l.column
+	diagnosticStart := len(l.diagnostics)
 	lit, ok := l.readStringBody(false)
 
 	if !ok {
-		return l.token(ILLEGAL, lit, line, column)
+		token := l.token(ILLEGAL, lit, line, column)
+		if len(l.diagnostics) == diagnosticStart {
+			l.diagnostics = append(l.diagnostics, Diagnostic{
+				ID:      compilerdiagnostics.LexerUnterminatedOrdinaryString,
+				Message: "unterminated ordinary string; add a closing double quote before the end of the line",
+				Primary: token,
+			})
+		}
+		return token
 	}
 
 	return l.token(STRING, lit, line, column)
 }
 
-// readCharLiteral implements rules/foundations/lexical_structure.md character
-// literal boundaries. Physical line endings are rejected per correction.md.
-// readCharLiteral counts each source rune or validated escape as one scalar,
-// preserving spelling and avoiding length cascades after invalid escapes.
-// Rules: rules/foundations/lexical_structure.md — "13. Character literals", "15. Escapes".
+// readCharLiteral retains character-literal spelling, validates its decoded
+// scalar count, and emits a focused error when a physical line ending or EOF
+// occurs before the closing quote. Existing escape errors suppress dependent
+// length and unterminated-literal diagnostics.
 // 2026-09-09: Validate decoded scalar count; mirrored in bootstrap readCharLiteral.
+// 2026-09-12: Emit L1018 for unterminated character literals.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
+//   - rules/foundations/lexical_structure.md — §15 "Escapes"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) readCharLiteral() Token {
 	line := l.line
 	column := l.column
@@ -929,8 +1033,16 @@ func (l *Lexer) readCharLiteral() Token {
 	l.advance()
 	for {
 		ch := l.peek()
-		if ch == 0 || isPhysicalLineEnding(ch) {
-			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		if l.atEnd() || isPhysicalLineEnding(ch) {
+			token := l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+			if len(l.diagnostics) == diagnosticStart {
+				l.diagnostics = append(l.diagnostics, Diagnostic{
+					ID:      compilerdiagnostics.LexerUnterminatedCharacterLiteral,
+					Message: "unterminated character literal; add a closing single quote before the end of the line",
+					Primary: token,
+				})
+			}
+			return token
 		}
 		if ch == '\\' {
 			// 2026-09-08 07:27 UTC: Validate Sec escapes; mirrored in bootstrap.
@@ -955,19 +1067,33 @@ func (l *Lexer) readCharLiteral() Token {
 	}
 }
 
+// readRawString retains raw source spelling, including physical line endings,
+// and emits a focused lexical diagnostic if EOF occurs before the closing
+// backtick.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-12: Emit L1017 for unterminated raw strings.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.2 "Raw strings"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) readRawString() Token {
 	line := l.line
 	column := l.column
 	start := l.pos
 
 	l.advance()
-	for l.peek() != '`' && l.peek() != 0 {
+	for l.peek() != '`' && !l.atEnd() {
 		l.advance()
 	}
 
 	if l.peek() != '`' {
-		return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		token := l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		l.diagnostics = append(l.diagnostics, Diagnostic{
+			ID:      compilerdiagnostics.LexerUnterminatedRawString,
+			Message: "unterminated raw string; add a closing backtick before the end of the file",
+			Primary: token,
+		})
+		return token
 	}
 
 	l.advance()
@@ -976,19 +1102,30 @@ func (l *Lexer) readRawString() Token {
 
 // readPrefixedString preserves an interpolated token while balancing expression
 // braces and using ordinary token boundaries for nested literals and comments.
-// Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings", "15. Escapes".
+// It emits L1019 when EOF or a physical line ending prevents closure, unless a
+// more specific nested lexer diagnostic already owns the malformed candidate.
 // 2026-09-06 10:13 UTC: Balanced interpolation scanning mirrored in bootstrap.
+// 2026-09-12: Emit L1019 for unterminated interpolated strings.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/foundations/lexical_structure.md — §15 "Escapes"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) readPrefixedString(typ TokenType) Token {
 	line := l.line
 	column := l.column
 	start := l.pos
+	diagnosticStart := len(l.diagnostics)
 
 	l.advance() // $
 	l.advance() // opening quote
 	for {
+		if l.atEnd() {
+			return l.unterminatedInterpolatedStringToken(start, line, column, diagnosticStart)
+		}
 		switch l.peek() {
-		case 0, '\n', '\r':
-			return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+		case '\n', '\r':
+			return l.unterminatedInterpolatedStringToken(start, line, column, diagnosticStart)
 		case '"':
 			l.advance()
 			return l.token(typ, string(l.input[start:l.pos]), line, column)
@@ -1000,7 +1137,7 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 			if l.peek() == '{' {
 				l.advance()
 			} else if !l.readInterpolationExpression() {
-				return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+				return l.unterminatedInterpolatedStringToken(start, line, column, diagnosticStart)
 			}
 		case '}':
 			l.advance()
@@ -1012,6 +1149,24 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 			l.advance()
 		}
 	}
+}
+
+// unterminatedInterpolatedStringToken retains the complete malformed candidate
+// and records L1019 only when no nested lexer diagnostic already explains it.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func (l *Lexer) unterminatedInterpolatedStringToken(start int, line int, column int, diagnosticStart int) Token {
+	token := l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+	if len(l.diagnostics) == diagnosticStart {
+		l.diagnostics = append(l.diagnostics, Diagnostic{
+			ID:      compilerdiagnostics.LexerUnterminatedInterpolatedString,
+			Message: "unterminated interpolated string; close its interpolation expression and final double quote before the end of the line",
+			Primary: token,
+		})
+	}
+	return token
 }
 
 // readInterpolationExpression consumes through the matching expression brace.
@@ -1050,7 +1205,7 @@ func (l *Lexer) readStringBody(prefixed bool) (string, bool) {
 	for {
 		ch := l.peek()
 
-		if ch == 0 || isPhysicalLineEnding(ch) {
+		if l.atEnd() || isPhysicalLineEnding(ch) {
 			return string(l.input[start:l.pos]), false
 		}
 
@@ -1129,14 +1284,23 @@ func (l *Lexer) peekOffset(offset int) rune {
 	return l.input[index]
 }
 
+// atEnd distinguishes the source boundary from an embedded U+0000 scalar.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §2 "Source text and encoding"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func (l *Lexer) atEnd() bool {
+	return l.pos >= len(l.input)
+}
+
 // advance maintains source positions according to
 // rules/foundations/lexical_structure.md. correction.md requires CRLF to be
 // consumed as one physical line ending and bare CR to advance one line.
 func (l *Lexer) advance() rune {
-	ch := l.peek()
-	if ch == 0 {
+	if l.atEnd() {
 		return 0
 	}
+	ch := l.peek()
 
 	if ch == '\r' {
 		l.pos++

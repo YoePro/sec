@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf16"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -2838,7 +2839,7 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 
 	keywords := secKeywords
 	if context.ContractModifier {
-		keywords = []string{"range", "in", "multipleOf", "notEmpty", "unique", "finite", "odd", "even"}
+		keywords = contractCompletionWords
 	} else if context.TypeForm {
 		keywords = []string{"struct", "union", "enum", "interface", "register"}
 	}
@@ -3053,15 +3054,23 @@ func contextHasFunction(context completionContext) bool {
 // completion spellings. Lowercase arena and sec are ordinary identifiers and
 // must not appear here.
 // Rules: rules/foundations/lexical_structure.md — sections 7 and 9.
-var secKeywords = []string{
+var secKeywords = append([]string{
 	"after", "asm", "assert", "await", "break", "cancel", "case", "capture", "continue", "default",
-	"defer", "detach", "discard", "else", "enum", "even", "extends", "extern", "fallthrough", "false", "finite", "fn", "for", "free",
+	"defer", "detach", "discard", "else", "enum", "extends", "extern", "fallthrough", "false", "fn", "for", "free",
 	"get", "if", "impl", "implements", "import", "in", "interface",
-	"let", "match", "module", "multipleOf", "mut", "new", "notEmpty", "odd", "panic", "process",
+	"let", "match", "module", "mut", "new", "panic", "process",
 	"property", "range", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
-	"require", "switch", "task", "thread", "true", "try", "type", "unique", "unit", "union",
+	"require", "switch", "task", "thread", "true", "try", "type", "unit", "union",
 	"unsafe", "where", "while",
-}
+}, lexer.ContractWords()...)
+
+// contractCompletionWords derives contextual contract completions from the
+// lexer-owned canonical inventory while retaining the two hard contract words.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
+//   - rules/foundations/grammar.md — "Type contracts"
+var contractCompletionWords = append([]string{"range", "in"}, lexer.ContractWords()...)
 
 func typeCompletionKind(typ sema.Type) int {
 	switch typ.Kind {
@@ -3823,7 +3832,7 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 
 	diagnostics := []diagnostic{}
 	for _, parserError := range parseResult.Diagnostics {
-		diagnostics = append(diagnostics, structuredParserDiagnostic(parserError))
+		diagnostics = append(diagnostics, structuredParserDiagnostic(parserError, text))
 	}
 	if parseResult.Fatal {
 		return diagnostics
@@ -5163,7 +5172,7 @@ func parserDiagnostic(message string) diagnostic {
 	}
 }
 
-func structuredParserDiagnostic(value parser.Diagnostic) diagnostic {
+func structuredParserDiagnostic(value parser.Diagnostic, text string) diagnostic {
 	result := parserDiagnostic(value.Message)
 	if value.Help != "" {
 		result.Message += "\n\nhelp: " + value.Help
@@ -5177,16 +5186,81 @@ func structuredParserDiagnostic(value parser.Diagnostic) diagnostic {
 		primary = *value.Unexpected
 	}
 	if primary.Line > 0 && primary.Column > 0 {
-		width := len([]rune(primary.Lexeme))
-		if width == 0 {
-			width = 1
-		}
-		result.Range = lspRange{
-			Start: position{Line: primary.Line - 1, Character: primary.Column - 1},
-			End:   position{Line: primary.Line - 1, Character: primary.Column - 1 + width},
-		}
+		result.Range = diagnosticTokenRange(primary, text)
 	}
 	return result
+}
+
+// diagnosticTokenRange maps a complete lexer token, including multiline
+// comments and malformed literals, from compiler Unicode-scalar coordinates to
+// one exclusive LSP UTF-16 range.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
+//   - rules/tooling/lsp.md — "A.6 Structured parser diagnostics"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func diagnosticTokenRange(token lexer.Token, text string) lspRange {
+	start := diagnosticTokenStart(text, token)
+	end := start
+	runes := []rune(token.Lexeme)
+	if len(runes) == 0 {
+		end.Character++
+		return lspRange{Start: start, End: end}
+	}
+	for index, current := range runes {
+		switch current {
+		case '\r':
+			end.Line++
+			end.Character = 0
+			if index+1 < len(runes) && runes[index+1] == '\n' {
+				continue
+			}
+		case '\n':
+			if index > 0 && runes[index-1] == '\r' {
+				continue
+			}
+			end.Line++
+			end.Character = 0
+		default:
+			width := utf16.RuneLen(current)
+			if width < 1 {
+				width = 1
+			}
+			end.Character += width
+		}
+	}
+	return lspRange{Start: start, End: end}
+}
+
+// diagnosticTokenStart converts a lexer's one-based Unicode-scalar column to
+// the zero-based UTF-16 coordinate used by the current protocol connection.
+// Physical line normalization matches lexer handling of LF, CRLF, and bare CR.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
+//   - rules/foundations/lexical_structure.md — §1.3 "Unicode scalar values"
+//   - rules/foundations/lexical_structure.md — §2 "Line endings"
+func diagnosticTokenStart(text string, token lexer.Token) position {
+	line := max(token.Line-1, 0)
+	scalarColumn := max(token.Column-1, 0)
+	normalized := strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	lines := strings.Split(normalized, "\n")
+	if line >= len(lines) {
+		return position{Line: line, Character: scalarColumn}
+	}
+	runes := []rune(lines[line])
+	if scalarColumn > len(runes) {
+		scalarColumn = len(runes)
+	}
+	character := 0
+	for _, current := range runes[:scalarColumn] {
+		width := utf16.RuneLen(current)
+		if width < 1 {
+			width = 1
+		}
+		character += width
+	}
+	return position{Line: line, Character: character}
 }
 
 func (s *server) respond(id json.RawMessage, result any) error {

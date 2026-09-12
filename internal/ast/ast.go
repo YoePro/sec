@@ -151,6 +151,18 @@ func (ie *InvalidExpression) String() string {
 type Program struct {
 	Statements       []Statement
 	SourceProvenance map[string]SourceProvenance
+	Documentation    []DocumentationAttachment
+}
+
+// DocumentationAttachment preserves an ordered documentation-comment group
+// and the declaration node to which the parser attached it.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/tooling/formatter.md — "Documentation comment"
+type DocumentationAttachment struct {
+	Comments    []lexer.Token
+	Declaration Node
 }
 
 // SourceProvenance is immutable trust metadata assigned by a source loader.
@@ -272,6 +284,10 @@ type UnionVariant struct {
 	PayloadFields []*StructField
 	Default       bool
 	DefaultToken  lexer.Token
+}
+
+func (uv *UnionVariant) TokenLiteral() string {
+	return uv.Token.Lexeme
 }
 
 func (gp *GenericParameter) TokenLiteral() string {

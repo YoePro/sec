@@ -1,0 +1,8 @@
+module missing_exponent_digits_invalid
+
+let bare := 1e
+let positive := 1e+
+let negativeFraction := 1.5E-
+let leadingDot := .5e+
+let identifierTail := 1eunknown
+let following := 7

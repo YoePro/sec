@@ -1,0 +1,17 @@
+module malformed_decimal_candidates_invalid
+
+let integerSeparator := 12__34tail
+let fractionSeparator := 1._5tail
+let leadingFractionSeparator := .5__tail
+let exponentSeparator := 1.5e+_3tail
+
+let integerSuffix := 10unknown
+let fractionSuffix := 1.5u32
+let leadingFractionSuffix := .5rune
+let exponentSuffix := 1e3float
+
+let integerExponent := 1e+missing
+let fractionExponent := 1.5E-following
+let leadingFractionExponent := .5e+absent
+
+let recovery := 7

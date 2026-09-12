@@ -23,6 +23,7 @@ integrations:
       - rules/compiler/parser_recovery.md
     code:
       - internal/lexer/escapes.go
+      - internal/lexer/contract_words.go
       - internal/lexer/lexer.go
       - internal/diagnostics/diagnostics.go
       - ../bootstrap/internal/lexer/lexer.sec
@@ -45,12 +46,21 @@ integrations:
       - internal/lexer/escapes_test.go
       - testdata/lexer/escape_diagnostics_invalid.sec
       - internal/lexer/lexer_test.go
+      - internal/lexer/diagnostic_categories_test.go
       - testdata/lexer/byte_string_absent.sec
       - cmd/compiler/lexer_cli_test.go
       - testdata/lexer/cli_diagnostics_invalid.sec
       - testdata/lexer/malformed_base_literals_invalid.sec
       - testdata/lexer/digit_separators_invalid.sec
       - testdata/lexer/invalid_numeric_suffix_invalid.sec
+      - testdata/lexer/missing_exponent_digits_invalid.sec
+      - testdata/lexer/malformed_decimal_candidates_invalid.sec
+      - testdata/lexer/unterminated_block_comment_invalid.sec
+      - testdata/lexer/unterminated_ordinary_string_invalid.sec
+      - testdata/lexer/unterminated_raw_string_invalid.sec
+      - testdata/lexer/unterminated_character_literal_invalid.sec
+      - testdata/lexer/unterminated_interpolated_string_invalid.sec
+      - testdata/lexer/invalid_source_character_invalid.sec
       - testdata/lexer/keyword_inventory_valid.sec
       - testdata/parser/semicolon_invalid.sec
       - internal/diagnostics/diagnostics_test.go
@@ -59,6 +69,7 @@ integrations:
       - testdata/lexer/identifier_nfc_valid.sec
       - testdata/lexer/identifier_nfc_invalid.sec
       - internal/parser/parser_test.go
+      - testdata/parser/documentation_attachment_valid.sec
       - internal/parser/interpolation_test.go
       - internal/codegen/llvm/generator_test.go
       - testdata/parser/interpolation_parts_valid.sec
@@ -84,6 +95,7 @@ integrations:
       - NFC diagnostics preserve source positions and snapshot rollback and propagate through parser errors and LSP diagnostics without normalizing literal or comment contents
       - ASCII digits after identifier start
       - canonical hard-keyword lookup is synchronized across the normative lexical inventory, Go lexer, bootstrap lexer, LSP completion vocabulary, and TextMate highlighting; extends is hard while arena, sec, and contextual set remain identifiers
+      - the complete six-word contextual contract inventory is centralized in the lexer with value/marker grammar roles, consumed by the parser and LSP contract completion, mirrored in bootstrap source, and tested to remain IDENT tokens rather than hard keywords
       - unused ARENA, SEC, and SET token categories are removed from the Go lexer; bootstrap additionally removes its stale BYTES placeholder and adds EXTENDS
       - dedicated bare underscore tokens while underscore-prefixed names remain identifiers
       - decimal integer literals
@@ -112,6 +124,11 @@ integrations:
       - legacy LLVM interpolation placeholder now explicitly rejects unsupported materialization instead of silently emitting source spelling and omitting expression evaluation
       - line comments
       - nested block comments
+      - unterminated outer or nested block comments are retained through end of file as one ILLEGAL token with mandatory L1015 lexer.unterminated-block-comment; parser recovery preserves the invalid token without P2007 or Sema cascades, CLI/LSP publish only L1015, and multiline LSP ranges end at the true exclusive source position
+      - unterminated ordinary strings are retained from their opening quote through the first physical line boundary or end of file as one ILLEGAL token with mandatory L1016 lexer.unterminated-ordinary-string; the line ending remains unconsumed so parsing resumes on the following line, parser recovery, CLI, and LSP preserve single-diagnostic lexer ownership and exact source ranges, and a more specific terminal escape diagnostic suppresses L1016 cascades
+      - unterminated raw strings are retained from their opening backtick through end of file as one multiline ILLEGAL token with mandatory L1017 lexer.unterminated-raw-string; parser recovery suppresses P2007 and Sema cascades, CLI/LSP publish only L1017, and the LSP range ends at the true exclusive EOF position
+      - unterminated character literals are retained from their opening quote through the first physical line boundary or end of file as one ILLEGAL token with mandatory L1018 lexer.unterminated-character-literal; LF, CRLF, and bare-CR recovery resumes on the following line, parser/CLI/LSP preserve single-diagnostic lexer ownership and exact ranges, and a more specific terminal escape diagnostic suppresses L1018 cascades
+      - unterminated interpolated strings are retained from their $" prefix through the first physical line boundary or end of file as one ILLEGAL token with mandatory L1019 lexer.unterminated-interpolated-string, including EOF inside a started interpolation expression; line endings remain unconsumed for following-line recovery, parser/CLI/LSP preserve lexer ownership and exact ranges, and more specific nested lexer diagnostics suppress L1019 cascades
       - comment tokens
       - LF, CRLF, and bare-CR physical-line accounting, line-comment termination, and ordinary string/character newline rejection
       - comments treated as parser trivia before, between, and after struct-literal fields, including trailing line comments after commas
@@ -126,7 +143,10 @@ integrations:
       - LSP hover information from adjacent documentation comments above function declarations
       - common arithmetic, logical, bitwise, range, spread, delimiter, and assignment tokens
       - longest matching for existing multi-character punctuation
-      - ILLEGAL tokens for some unterminated literals and comments
+      - focused unterminated-token diagnostics are implemented for block comments, ordinary strings, raw strings, character literals, and interpolated strings with L1015-L1019
+      - otherwise unrecognized ASCII and Unicode source scalars emit one L1020 lexer.invalid-source-character ILLEGAL token and advance exactly one scalar; embedded U+0000 is distinguished from physical EOF, remains ordinary content inside literals/comments, and cannot truncate following source; parser recovery suppresses dependent parser/Sema errors, CLI/LSP preserve focused diagnostics and exact ranges, and positions already owned by invalid UTF-8 or another specific lexer diagnostic do not receive L1020
+      - structured lexer/parser diagnostic token ranges map one-based compiler Unicode-scalar columns to zero-based LSP UTF-16 positions for both starts and exclusive ends; astral scalars before or inside a token occupy two protocol character units, while LF, CRLF, and bare-CR multiline ranges retain their existing exact line mapping
+      - every required lexical error category in lexical_structure.md §20 is covered by active mandatory stable IDs L1001-L1020 and an exhaustive representative lexer test that rejects missing, duplicate, retired, non-lexer, non-error, optional, generic, or overlapping diagnostic ownership; invalid escape syntax deliberately has separate unknown and malformed distinctions
       - lexer snapshot and restore
       - strict UTF-8 source decoding with L1001 diagnostics retained through parser results, including invalid bytes inside literals and comments
       - one optional initial UTF-8 byte-order mark ignored without shifting the first token position and removed by the formatter
@@ -146,10 +166,13 @@ integrations:
       - parser, lex/token CLI, diagnostic registry, and bootstrap lexer paths preserve the focused base-literal IDs; legacy c/d/f suffixes remain owned by the existing parser migration diagnostic
       - invalid digit separators in decimal integers, fractions, exponents, and base-prefixed integers emit one L1012 lexer.invalid-digit-separator over the complete retained numeric token; parser, lex/token CLI, LSP, registry, and bootstrap paths preserve the ID
       - invalid decimal, fractional, and exponent suffixes emit one L1013 lexer.invalid-numeric-suffix over the maximal identifier-like numeric candidate; canonical suffixes followed by extra letters/digits are rejected as one token, fractional/exponent i/u/t/r suffixes are diagnosed, and legacy standalone c/d/f spellings retain parser-owned migration guidance
+      - exponent markers whose optional sign is not followed by an ASCII decimal digit emit one L1014 lexer.missing-exponent-digits over the maximal malformed candidate; invalid exponent separators retain the more specific L1012 classification, and parser, CLI, LSP, registry, and bootstrap paths preserve lexer ownership
+      - maximal malformed non-base decimal candidates are exhaustively covered across integer, fractional, leading-period fractional, and exponent shapes; identifier-like tails stay in one ILLEGAL token, L1012/L1013/L1014 precedence remains focused, and lexer, parser, CLI, and LSP recover at the following reliable token boundary without cascades
+      - documentation block comments beginning with /** attach in the parser to source-ordered AST declaration nodes at top level, in statement blocks, and across struct, register, enum, union, interface, and impl member lists; raw comment tokens and contiguous groups are preserved, blank lines detach them, and /// remains an ordinary line comment
     partial:
       - escape decoding/materialization in downstream string and character handling; lexical escape validation is implemented
       - interpolation expression semantic traversal, formatting contracts, ownership/effects, escape materialization, and runtime lowering remain incomplete; AST/parser expression parts and source ranges are implemented
-      - comment attachment for formatter and documentation
+      - ordinary, trailing, and detached comment attachment for formatter and source-to-source consumers; documentation-comment AST attachment is implemented
       - >-
         reserved declaration-name enforcement is incomplete: compiler-known
         lowercase type names are protected against user type, enum, interface,
@@ -167,17 +190,15 @@ integrations:
         implemented, but their independent status as reserved declaration names
         is not yet enforced consistently outside contract positions
       - source-position integration across lexer, parser, diagnostics, and LSP
-      - documentation-comment support in LSP hover without AST-level comment attachment
+      - LSP documentation hover still uses its legacy adjacent-source scan rather than consuming the implemented AST documentation attachments
       - downstream character escape decoding and semantic type compatibility; lexical scalar count is implemented
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
       - confusable-identifier warnings
-      - maximal malformed numeric-token recovery and stable focused diagnostics for remaining non-base decimal, fractional, and missing-exponent candidates; invalid suffix candidates are implemented
       - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
       - port interpolation AST parts and expression parsing to the bootstrap parser
       - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
-      - complete reserved contract-word inventory
       - >-
         centralize reserved-symbol validation so hard keywords, context-specific
         reserved words, compiler-known lowercase type names, contract words, and
@@ -188,9 +209,6 @@ integrations:
         add focused negative tests for declarations using int, map, task, thread,
         process, even, finite, multipleOf, notEmpty, odd, and unique, plus positive
         tests proving that ordinary identifier uses of contextual `set` remain valid
-      - documentation-comment attachment in parser and AST
-      - dedicated lexical tests for every invalid category
-      - stable lexer diagnostic IDs for all categories
       - formatter and complete LSP support for all contextual classifications in rules/foundations/lexical_structure.md
     verification:
       - command: go test ./...
@@ -213,12 +231,34 @@ integrations:
         result: passed; lex and token reject retained-token diagnostics, print stable IDs and positions, preserve unstructured ILLEGAL counting, and deduplicate structured diagnostics throughout enclosing ILLEGAL token spans
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'MalformedBase|LegacyBase|RegistryIsValid|KnownDiagnostic|LexerCLI' -count=1
         result: passed; maximal base candidates emit L1010/L1011 once, parser, CLI, and LSP preserve them, registry metadata is valid, and legacy suffix mentor diagnostics retain ownership
+      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'ContractWord|ContractModifier|ContractSequence' -count=1 && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed; the canonical six-word inventory drives parser recognition and LSP completion, remains lexically contextual, returns defensive copies, and is mirrored by parser-valid bootstrap source
+      - command: go test ./internal/lexer ./internal/parser ./cmd/compiler ./cmd/lsp -run 'MalformedDecimalCandidate' -count=1
+        result: passed; eleven invalid candidates cover separator, suffix, and missing-exponent diagnostics across every decimal shape with maximal tokens, exact diagnostic ownership, CLI rejection, LSP publication, and parser recovery without cascades
+      - command: go test ./internal/parser ./internal/ast ./internal/formatter ./cmd/lsp -run 'Documentation|Comment' -count=1
+        result: passed; documentation groups attach to source-ordered declaration AST nodes across top-level, block, aggregate, interface, and impl contexts while blank-line-detached and /// comments remain unattached
       - command: go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
         result: passed; synchronized bootstrap maximal base-literal recovery, separator-state propagation, and L1010/L1011/L1012 emission are parser-valid
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'DigitSeparator|MalformedBase|Numeric|LexerCLI|KnownDiagnostic|Registry' -count=1
         result: passed; eight invalid separator placements emit exactly one L1012 over each full token, survive parser and CLI consumption, preserve following source, and the focused LSP path retains L1012
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'InvalidNumericSuffix|RegistryIsValid|KnownDiagnostic' -count=1
         result: passed; invalid suffix tails remain one ILLEGAL token with L1013, parser, CLI, and LSP preserve the diagnostic, and bootstrap lexer source remains parser-valid
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'MalformedScientificExponent|MissingExponent|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; missing exponent digits emit one L1014 over the maximal token, parser-owned reconstruction is removed, CLI and LSP preserve the lexer diagnostic, and bootstrap lexer source remains parser-valid
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedBlockComment|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; nested unmatched depth emits exactly one L1015, parser and Sema cascades are suppressed, CLI and LSP preserve lexer ownership, multiline LSP range mapping is exact, and bootstrap lexer source remains parser-valid
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedOrdinaryString|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; EOF, LF, CRLF, and bare-CR boundaries emit exactly one L1016 over the retained string candidate, following-line tokenization resumes, parser and Sema cascades are suppressed, CLI/LSP preserve lexer ownership, and the LSP range excludes the physical line ending
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedRawString|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; multiline raw-string candidates remain one ILLEGAL token through EOF with exactly one L1017, parser and Sema cascades are suppressed, CLI/LSP preserve lexer ownership, and the LSP range ends at the exclusive multiline EOF position
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedCharacterLiteral|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; EOF, LF, CRLF, and bare-CR boundaries emit exactly one L1018 over the retained character candidate, following-line tokenization resumes, terminal escape errors suppress L1018 cascades, CLI/LSP preserve lexer ownership, and the LSP range excludes the physical line ending
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedInterpolatedString|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; text and expression EOF plus LF, CRLF, and bare-CR boundaries emit one L1019 over the retained candidate, following-line tokenization resumes, terminal escape errors suppress L1019 cascades, and CLI/LSP preserve lexer ownership and exact ranges
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'InvalidSourceCharacter|InvalidUTF8|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; ASCII, BMP/astral Unicode-symbol, and U+0000 token starts each emit one L1020 and advance one scalar, U+0000 inside ordinary/raw strings and comments does not imitate EOF, following source survives parser recovery, CLI/LSP preserve lexer ownership, astral prefixes map to exact UTF-16 ranges, and invalid UTF-8 retains only its more specific L1001
+      - command: go test ./internal/lexer -run TestRequiredLexicalErrorCategoriesHaveStableDiagnostics -count=1
+        result: passed; all nineteen required lexical error categories and their twenty stable diagnostic distinctions have representative inputs that emit exactly one active mandatory lexer error ID across L1001-L1020
       - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'CanonicalKeyword|HardKeyword|ContextualKeyword|KeywordCompletion|ContextualSet|Property|ImplExtend' -count=1
         result: passed; all canonical hard keywords map correctly, contextual spellings remain identifiers, property set and impl extends still parse, and LSP completion contains every hard word without arena or sec
       - command: node -e 'JSON.parse(require("fs").readFileSync("vscode/syntaxes/sec.tmLanguage.json", "utf8"))'

@@ -5,6 +5,7 @@ This repository contains a minimal Visual Studio Code extension for the SEC lang
 ## Features
 
 - Syntax highlighting for `.sec` and `.se` files
+- SEC file icons in light and dark VS Code themes
 - Comment support for `//` line comments and `/* ... */` block comments
 - Keyword highlighting for SEC language constructs
 - Current grammar coverage for modules, imports, target directives, functions,
@@ -80,6 +81,7 @@ Initial LSP features should be:
 
 - `package.json` - VS Code extension manifest
 - `language-configuration.json` - bracket and comment rules
+- `images/sec-language.svg` - default language file icon
 - `syntaxes/sec.tmLanguage.json` - TextMate grammar for syntax highlighting
 
 ## Usage

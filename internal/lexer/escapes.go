@@ -15,7 +15,7 @@ func (l *Lexer) readEscape(quote rune) {
 	id, message := "", ""
 	l.advance()
 	kind := l.peek()
-	if kind == 0 || isPhysicalLineEnding(kind) {
+	if l.atEnd() || isPhysicalLineEnding(kind) {
 		id, message = diagnostics.LexerMalformedEscape, "incomplete escape; a backslash must be followed by a valid escape code on the same line"
 	} else {
 		l.advance()
@@ -38,7 +38,7 @@ func (l *Lexer) readEscape(quote rune) {
 			l.advance()
 			digitStart := l.pos
 			valid := true
-			for l.peek() != '}' && l.peek() != quote && l.peek() != '\\' && l.peek() != 0 && !isPhysicalLineEnding(l.peek()) {
+			for l.peek() != '}' && l.peek() != quote && l.peek() != '\\' && !l.atEnd() && !isPhysicalLineEnding(l.peek()) {
 				valid = valid && isEscapeHex(l.peek())
 				l.advance()
 			}

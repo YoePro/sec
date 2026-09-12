@@ -1,0 +1,2158 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Foreign Function Interfaces - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#ffi">Foreign Function Interfaces</a>
+        <a href="#scope">Scope</a>
+        <a href="#foreign-declarations">Foreign Declarations</a>
+        <a href="#calling-conventions">Calling Conventions</a>
+        <a href="#extern-safety">extern vs unsafe extern</a>
+        <a href="#abi-not-source">ABI, Not C Source</a>
+        <a href="#c-fundamental">C Fundamental Types</a>
+        <a href="#c-binding-types">C Binding Namespaces</a>
+        <a href="#type-identity">C and Sec Type Identity</a>
+        <a href="#scalar-conversion">Scalar Conversion</a>
+        <a href="#fixed-width">Fixed-Width Sec Scalars</a>
+        <a href="#bool-char-rune">bool, char and rune</a>
+        <a href="#raw-pointers">Raw Pointers</a>
+        <a href="#null">null</a>
+        <a href="#reference-parameters">Reference Parameters</a>
+        <a href="#pointer-returns">Pointer Returns</a>
+        <a href="#stored-pointers">Stored Pointer Fields</a>
+        <a href="#c-structs">C-Compatible Structs</a>
+        <a href="#struct-init">Struct Initialization</a>
+        <a href="#incomplete-structs">Incomplete Structs</a>
+        <a href="#c-unions">C-Compatible Unions</a>
+        <a href="#c-enums">C-Compatible Enums</a>
+        <a href="#bitfields">C Bitfields</a>
+        <a href="#fixed-arrays">Fixed C Arrays</a>
+        <a href="#flex-arrays">Flexible-Array Members</a>
+        <a href="#layout">Packing and Alignment</a>
+        <a href="#function-pointers">C Function Pointers</a>
+        <a href="#callbacks">Callbacks</a>
+        <a href="#callback-state">Callback State</a>
+        <a href="#varargs">C Variadic Functions</a>
+        <a href="#vararg-values">C Variadic Arguments</a>
+        <a href="#strings">Sec string Is Not a C String</a>
+        <a href="#encoding">Encoding and Termination</a>
+        <a href="#embedded-zero">Embedded Zero</a>
+        <a href="#buffers">Length-Delimited Buffers</a>
+        <a href="#incoming-strings">Incoming Foreign Strings</a>
+        <a href="#char-arrays">Character Arrays</a>
+        <a href="#pointer-to-pointer">Pointer-to-Pointer Data</a>
+        <a href="#ownership">Foreign Resource Ownership</a>
+        <a href="#transfer">Ownership Transfer</a>
+        <a href="#refcount">Foreign Reference Counting</a>
+        <a href="#cleanup">Cleanup and Close</a>
+        <a href="#failure">Foreign Failure Conventions</a>
+        <a href="#error-state">Auxiliary Error State</a>
+        <a href="#no-unwind">No Unwind Across FFI</a>
+        <a href="#effects">Foreign Effects</a>
+        <a href="#link-name">Foreign Symbol Names</a>
+        <a href="#native-deps">Native Dependencies</a>
+        <a href="#legal-types">FFI-Legal Types</a>
+        <a href="#forbidden-types">Types Requiring Wrappers</a>
+        <a href="#position-restricted">Position-Restricted Types</a>
+        <a href="#generics">Generics</a>
+        <a href="#target-validation">Target and ABI Validation</a>
+        <a href="#wrappers">Safe Sec Wrappers</a>
+        <a href="#exports">Sec-to-C Export Boundary</a>
+        <a href="#lowering">Compiler and Lowering Boundary</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html" class="active">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Foreign Function Interfaces</div>
+
+        <h1 id="ffi">Foreign Function Interfaces</h1>
+
+        <p>
+            Sec's Foreign Function Interface describes how Sec source code interacts with functions,
+            data and resources defined by a foreign ABI.
+        </p>
+
+        <pre><code>extern "C" fn GetVersion() C::int
+
+extern "system" fn GetSystemValue() uint32</code></pre>
+
+        <p>
+            The FFI is deliberately an ABI and binding boundary.
+            It does not turn Sec into a C or C++ source-language frontend.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Raw FFI declarations describe the real foreign ABI.
+            Ordinary Sec wrappers then add the ownership, lifetime, nullability, encoding,
+            error and domain semantics needed by normal Sec code.
+        </div>
+
+        <section id="scope">
+            <h2>Scope</h2>
+
+            <p>
+                Sec 0.1 FFI is primarily designed to consume existing C-compatible and platform
+                libraries such as operating-system APIs, libc-like libraries, OpenSSL-style native
+                libraries and similar interfaces.
+            </p>
+
+            <p>The Sec compiler does not:</p>
+
+            <ul>
+                <li>parse C or C++ header files;</li>
+                <li>run a C preprocessor;</li>
+                <li>interpret <code>#define</code>, <code>#if</code> or <code>#ifdef</code>;</li>
+                <li>parse C typedef source declarations;</li>
+                <li>compile C inline functions;</li>
+                <li>import C source expressions.</li>
+            </ul>
+
+            <p>
+                A separate binding-generation tool may eventually parse foreign headers and generate
+                ordinary Sec FFI declarations, but such a tool is outside the language itself.
+            </p>
+
+            <p>
+                General export of arbitrary Sec functions or libraries as user-named C ABI symbols
+                is not part of Sec 0.1.
+                Callback adaptation needed to consume C APIs is supported separately.
+            </p>
+        </section>
+
+        <section id="foreign-declarations">
+            <h2>Foreign Function Declarations</h2>
+
+            <p>
+                An imported foreign function is declared with <code>extern</code> and has no Sec body.
+            </p>
+
+            <pre><code>extern "C" fn GetVersion() C::int
+
+extern "system" fn GetSystemValue() uint32</code></pre>
+
+            <p>This is invalid in Sec 0.1:</p>
+
+            <pre><code>extern "C" fn GetVersion() C::int {
+    return 1
+}</code></pre>
+
+            <p>
+                The declaration describes a function implemented outside the current Sec source program.
+            </p>
+        </section>
+
+        <section id="calling-conventions">
+            <h2>Calling Conventions</h2>
+
+            <p>The canonical foreign declaration families include:</p>
+
+            <pre><code>extern "C"
+extern "system"
+extern "Sec"</code></pre>
+
+            <p>
+                <code>extern "C"</code> uses the active target C ABI.
+            </p>
+
+            <p>
+                <code>extern "system"</code> uses the selected platform's system ABI.
+            </p>
+
+            <p>
+                <code>extern "Sec"</code> uses the Sec ABI when an external declaration explicitly
+                requires it.
+            </p>
+
+            <p>
+                Unknown calling-convention strings are compile-time errors.
+            </p>
+
+            <p>
+                The active <code>CompilationPlan</code> and resolved ABI model determine the final
+                physical register, stack, aggregate and return classification.
+            </p>
+        </section>
+
+        <section id="extern-safety">
+            <h2><code>extern</code> and <code>unsafe extern</code> Are Different</h2>
+
+            <p>
+                Every foreign implementation is outside compiler verification, but that fact does
+                not automatically require <code>unsafe</code> at every call site.
+            </p>
+
+            <p>An ordinary foreign declaration may be called normally when its Sec signature fully expresses the caller contract:</p>
+
+            <pre><code>extern "C" fn GetProcessId() C::int
+
+let processId := GetProcessId()</code></pre>
+
+            <p>
+                Use <code>unsafe extern</code> when the caller has additional proof obligations that
+                are not fully expressed or verifiable by the declaration:
+            </p>
+
+            <pre><code>unsafe extern "C" fn CopyMemory(
+    destination: RawPtr[byte],
+    source: RawPtr[byte],
+    length: c::stddef::size_t,
+) RawPtr[byte]</code></pre>
+
+            <p>Calling that function requires an unsafe context:</p>
+
+            <pre><code>unsafe {
+    CopyMemory(destination, source, length)
+}</code></pre>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Declaration</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>extern</code></td>
+                            <td>Foreign/compiler-unverified implementation boundary</td>
+                        </tr>
+                        <tr>
+                            <td><code>unsafe extern</code></td>
+                            <td>Foreign boundary plus additional caller proof obligations</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <code>unsafe</code> never disables ownership, borrowing, effects, cleanup,
+                target validation or ABI validation.
+            </p>
+        </section>
+
+        <section id="abi-not-source">
+            <h2>FFI Describes the ABI, Not the Foreign Source Syntax</h2>
+
+            <p>
+                A binding author writes the Sec representation required by the foreign ABI.
+            </p>
+
+            <p>
+                If a C header uses macros or typedef chains internally, the Sec compiler does not
+                need to reproduce that source structure.
+            </p>
+
+            <p>
+                The Sec declaration expresses the resolved ABI contract.
+            </p>
+
+            <p>
+                A wrapper may use safer Sec names and domain types as long as the raw declaration
+                remains faithful to the foreign ABI.
+            </p>
+        </section>
+
+        <section id="c-fundamental">
+            <h2>Fundamental C ABI Scalar Types</h2>
+
+            <p>
+                Compiler-known fundamental C scalar types use uppercase <code>C::</code> qualification.
+            </p>
+
+            <pre><code>C::char
+C::schar
+C::uchar
+
+C::short
+C::ushort
+
+C::int
+C::uint
+
+C::long
+C::ulong
+
+C::long_long
+C::ulong_long
+
+C::float
+C::double
+C::long_double
+
+C::bool</code></pre>
+
+            <p>
+                <code>C::</code> is compiler-known foreign type-family qualification.
+                It is not ordinary member access and does not imply a runtime object named
+                <code>C</code>.
+            </p>
+
+            <p>
+                Physical width and alignment are determined by the active C ABI model.
+                For example, <code>C::long</code> may differ between otherwise similar targets.
+            </p>
+        </section>
+
+        <section id="c-binding-types">
+            <h2>C Library and Platform Binding Namespaces</h2>
+
+            <p>
+                Standard-library, implementation-specific and platform-specific C binding types use
+                lowercase hierarchical <code>c::</code> qualification.
+            </p>
+
+            <pre><code>c::stddef::size_t
+c::stddef::ptrdiff_t
+c::time::time_t
+c::stdarg::va_list
+c::posix::socklen_t</code></pre>
+
+            <p>
+                These names are not necessarily compiler primitives.
+                Their concrete definitions come from the selected target/library binding environment.
+            </p>
+
+            <p>
+                Ordinary identifiers may still use the same spelling:
+            </p>
+
+            <pre><code>let mut c: int := 24
+let size: c::stddef::size_t := 0</code></pre>
+
+            <p>
+                The local variable <code>c</code> does not affect resolution of the foreign namespace.
+            </p>
+        </section>
+
+        <section id="type-identity">
+            <h2>C and Sec Scalar Types Remain Distinct</h2>
+
+            <p>
+                Equal physical representation does not create source-level type identity.
+            </p>
+
+            <pre><code>let foreignValue: C::int := 42
+let secValue: int32 := 42</code></pre>
+
+            <p>
+                On a target where both happen to be 32-bit signed integers, they may still be distinct
+                Sec types.
+            </p>
+
+            <p>
+                Assignment does not become implicit merely because the current ABI gives both values
+                the same machine representation.
+            </p>
+        </section>
+
+        <section id="scalar-conversion">
+            <h2>C-to-Sec and Sec-to-C Scalar Conversion</h2>
+
+            <p>
+                Conversion uses ordinary explicit Sec conversion semantics.
+            </p>
+
+            <pre><code>let foreignValue: C::int := 42
+let secValue := int32(foreignValue)
+
+let other: int32 := 42
+let foreignOther := C::int(other)</code></pre>
+
+            <p>
+                If the target type can represent the complete source value domain, conversion is infallible.
+            </p>
+
+            <p>
+                If range may be lost, conversion is checked and requires <code>try</code>:
+            </p>
+
+            <pre><code>let wide: int64 := ReadWideValue()
+let narrow := try C::int(wide)</code></pre>
+
+            <p>
+                A representation-identical conversion may lower to no machine instruction.
+                The source-level type conversion remains semantically explicit.
+            </p>
+
+            <p>Literal shaping remains separate:</p>
+
+            <pre><code>let count: C::int := 10</code></pre>
+
+            <p>
+                This is valid when the literal is representable.
+            </p>
+        </section>
+
+        <section id="fixed-width">
+            <h2>ABI-Stable Fixed-Width Sec Scalars</h2>
+
+            <p>
+                Fixed-width Sec numeric types may appear directly in FFI signatures when they exactly
+                describe the foreign ABI type and the active ABI verifies compatibility.
+            </p>
+
+            <p>Examples include:</p>
+
+            <pre><code>byte
+int8
+uint8
+int16
+uint16
+int32
+uint32
+int64
+uint64
+float32
+float64</code></pre>
+
+            <p>For example:</p>
+
+            <pre><code>extern "C" fn CRC32(
+    data: RawPtr[byte],
+    length: uint32,
+) uint32</code></pre>
+
+            <p>
+                When the foreign source type is ABI-defined rather than fixed-width, use the foreign type:
+            </p>
+
+            <pre><code>C::int</code></pre>
+
+            <p>
+                Do not hard-code <code>int32</code> merely because one current target implements
+                C <code>int</code> as 32 bits.
+            </p>
+        </section>
+
+        <section id="bool-char-rune">
+            <h2>Sec <code>bool</code>, <code>char</code> and <code>rune</code> Are Not C Substitutes</h2>
+
+            <p>
+                Sec language scalars do not automatically stand in for superficially similar C types.
+            </p>
+
+            <p>Use:</p>
+
+            <pre><code>C::bool
+C::char</code></pre>
+
+            <p>
+                or the appropriate binding-specific wide-character type when that is what the ABI requires.
+            </p>
+
+            <p>
+                Sec <code>rune</code> is not a universal FFI replacement for <code>wchar_t</code>,
+                UTF-16 units or foreign platform character types.
+            </p>
+        </section>
+
+        <section id="raw-pointers">
+            <h2>Raw Pointers at Foreign Boundaries</h2>
+
+            <p>
+                Use <code>RawPtr[T]</code> when no safe call-bounded Sec borrow contract is established.
+            </p>
+
+            <pre><code>extern "C" fn GetCurrent() RawPtr[Device]</code></pre>
+
+            <p>A raw pointer:</p>
+
+            <ul>
+                <li>may contain a foreign null address;</li>
+                <li>does not imply ownership;</li>
+                <li>does not establish lifetime;</li>
+                <li>does not establish non-nullness;</li>
+                <li>does not establish bounds;</li>
+                <li>does not establish aliasing guarantees;</li>
+                <li>does not establish retention behavior.</li>
+            </ul>
+
+            <p>
+                Moving or consuming the <code>RawPtr[T]</code> value never means that ownership of
+                the pointee was transferred.
+            </p>
+        </section>
+
+        <section id="null">
+            <h2><code>null</code> Is an Unsafe Foreign/Raw-Pointer Sentinel</h2>
+
+            <p>
+                <code>null</code> is not an ordinary Sec value.
+            </p>
+
+            <p>
+                It may be used only inside an unsafe context explicitly permitted by the unsafe/FFI rules.
+            </p>
+
+            <pre><code>unsafe {
+    if raw is null {
+        return None
+    }
+}</code></pre>
+
+            <p>
+                Null testing uses <code>is</code>.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>unsafe {
+    if raw == null {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                <code>null</code> has no standalone inferred type:
+            </p>
+
+            <pre><code>unsafe {
+    let value := null    // invalid
+}</code></pre>
+
+            <p>A target type may provide raw-pointer context:</p>
+
+            <pre><code>unsafe {
+    let value: RawPtr[Device] := null
+}</code></pre>
+
+            <p>
+                A numeric zero byte used as a C string terminator is not the foreign null-pointer sentinel.
+            </p>
+        </section>
+
+        <section id="reference-parameters">
+            <h2>Safe References in Foreign Parameters</h2>
+
+            <p>
+                An extern parameter may use <code>ref T</code> or <code>ref mut T</code> when the
+                foreign contract really is a non-null call-bounded borrow.
+            </p>
+
+            <pre><code>extern "C" fn Inspect(value: ref Header) C::int
+
+extern "C" fn Modify(value: ref mut Header) C::int</code></pre>
+
+            <p>The contracts are:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Contract</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>ref T</code></td>
+                            <td>Non-null, shared, valid for the call, not retained by foreign code</td>
+                        </tr>
+                        <tr>
+                            <td><code>ref mut T</code></td>
+                            <td>Non-null, exclusive mutable, valid for the call, not retained by foreign code</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The foreign declaration may still be <code>unsafe extern</code> when additional
+                proof obligations remain.
+            </p>
+
+            <pre><code>unsafe extern "C" fn ProcessBuffer(
+    first: ref mut byte,
+    length: c::stddef::size_t,
+) void</code></pre>
+
+            <p>
+                Here the reference proves the first byte's borrow contract.
+                It does not prove that <code>length</code> bytes are valid.
+            </p>
+        </section>
+
+        <section id="pointer-returns">
+            <h2>Foreign Pointer Returns Use <code>RawPtr[T]</code></h2>
+
+            <p>
+                A raw extern declaration must not return <code>ref T</code> or <code>ref mut T</code>.
+            </p>
+
+            <pre><code>extern "C" fn GetCurrent() RawPtr[Device]</code></pre>
+
+            <p>
+                A returned foreign pointer does not establish a Sec lifetime.
+            </p>
+
+            <p>
+                A wrapper must establish nullability, ownership, lifetime and any other foreign
+                invariant before exposing a safe abstraction.
+            </p>
+        </section>
+
+        <section id="stored-pointers">
+            <h2>Stored Foreign Pointer Fields Use <code>RawPtr[T]</code></h2>
+
+            <pre><code>extern "C" type Node struct {
+    value: C::int,
+    next: RawPtr[Node],
+}</code></pre>
+
+            <p>
+                Stored foreign pointer fields do not use <code>ref</code> or <code>ref mut</code>.
+            </p>
+
+            <p>
+                Their nullability, lifetime, aliasing, retention and ownership are properties of the
+                foreign data contract rather than call-bounded Sec borrowing.
+            </p>
+        </section>
+
+        <section id="c-structs">
+            <h2>C-Compatible Structs</h2>
+
+            <p>The canonical C struct form is:</p>
+
+            <pre><code>extern "C" type Point struct {
+    x: C::int,
+    y: C::int,
+}</code></pre>
+
+            <p>
+                This declares a nominal Sec type whose stored representation matches a C struct under
+                the active C ABI.
+            </p>
+
+            <p>The compiler preserves:</p>
+
+            <ul>
+                <li>representation-significant source field order;</li>
+                <li>natural C ABI field alignment;</li>
+                <li>natural C ABI padding;</li>
+                <li>nested foreign representation compatibility.</li>
+            </ul>
+
+            <p>
+                Ordinary behavior may be added through <code>impl</code>.
+            </p>
+
+            <p>
+                An ordinary Sec struct is not C-compatible merely because its current fields happen
+                to have matching sizes.
+            </p>
+        </section>
+
+        <section id="struct-init">
+            <h2>Foreign Struct Representation Does Not Imply C Initialization Semantics</h2>
+
+            <p>
+                An <code>extern "C"</code> struct is not implicitly Defaultable merely because its
+                individual fields would have defaults in ordinary Sec.
+            </p>
+
+            <p>
+                Complete explicit construction is required unless a dedicated binding/helper defines
+                another valid initialization path:
+            </p>
+
+            <pre><code>let point := Point {
+    x: 10,
+    y: 20,
+}</code></pre>
+
+            <p>
+                Omitted foreign fields are errors unless the foreign declaration has an explicit
+                initialization rule that permits omission.
+            </p>
+        </section>
+
+        <section id="incomplete-structs">
+            <h2>Incomplete C Structs</h2>
+
+            <p>
+                A bodyless C struct declaration represents an incomplete/opaque C type:
+            </p>
+
+            <pre><code>extern "C" type Context struct</code></pre>
+
+            <p>
+                Sec does not know the concrete size or stored layout.
+            </p>
+
+            <p>Valid uses may include:</p>
+
+            <pre><code>RawPtr[Context]
+ref Context
+ref mut Context</code></pre>
+
+            <p>Invalid uses include:</p>
+
+            <ul>
+                <li>passing by value;</li>
+                <li>returning by value;</li>
+                <li>direct construction;</li>
+                <li>operations requiring known size or layout.</li>
+            </ul>
+
+            <p>
+                No separate <code>opaque</code> keyword is required.
+            </p>
+        </section>
+
+        <section id="c-unions">
+            <h2>C-Compatible Unions</h2>
+
+            <p>The canonical C union form is:</p>
+
+            <pre><code>extern "C" type Value union {
+    integer: C::int,
+    real: C::double,
+}</code></pre>
+
+            <p>An <code>extern "C"</code> union:</p>
+
+            <ul>
+                <li>has overlapping C storage;</li>
+                <li>has no hidden Sec tag;</li>
+                <li>has no compiler-tracked active Sec variant;</li>
+                <li>uses the active C ABI layout.</li>
+            </ul>
+
+            <p>
+                Direct member access is semantically foreign-unsafe because Sec does not know which
+                member is currently active.
+            </p>
+
+            <p>
+                The explicit foreign union declaration already marks this representation boundary,
+                so Sec does not require repetitive explicit <code>unsafe</code> syntax solely for
+                every member access.
+            </p>
+
+            <p>
+                Safe wrappers should hide raw member selection when the foreign protocol supplies a
+                discriminator or another reliable active-member contract.
+            </p>
+        </section>
+
+        <section id="c-enums">
+            <h2>C-Compatible Enums Are Open</h2>
+
+            <p>The canonical C enum declaration is:</p>
+
+            <pre><code>extern "C" type Color enum {
+    Red = 1,
+    Green = 2,
+    Blue = 3,
+}</code></pre>
+
+            <p>
+                Representation is selected by the active C ABI.
+            </p>
+
+            <p>
+                Unlike an ordinary closed Sec enum, a C enum is open over values representable by
+                the resolved foreign representation.
+            </p>
+
+            <p>
+                Foreign code may therefore return an undeclared numeric value.
+            </p>
+
+            <pre><code>match color {
+    Color.Red => HandleRed()
+    Color.Green => HandleGreen()
+    Color.Blue => HandleBlue()
+    _ => HandleUnknownColor()
+}</code></pre>
+
+            <p>
+                Exhaustive interpretation must account for unknown foreign values.
+            </p>
+        </section>
+
+        <section id="bitfields">
+            <h2>C Bitfields</h2>
+
+            <p>
+                A C bitfield uses a C base type followed by a bitfield width:
+            </p>
+
+            <pre><code>extern "C" type Flags struct {
+    enabled: C::uint bit[1],
+    mode: C::uint bit[3],
+    reserved: C::uint bit[28],
+}</code></pre>
+
+            <p>
+                Inside this declaration form, <code>bit[N]</code> is a C bitfield width declarator,
+                not a standalone Sec type.
+            </p>
+
+            <p>The active C ABI determines:</p>
+
+            <ul>
+                <li>allocation unit;</li>
+                <li>bitfield placement;</li>
+                <li>ordering;</li>
+                <li>packing;</li>
+                <li>alignment effects.</li>
+            </ul>
+
+            <p>
+                Sec register <code>lsb-first</code>/<code>msb-first</code> semantics do not control
+                C bitfield layout.
+            </p>
+
+            <p>Unnamed bitfields use <code>_</code>:</p>
+
+            <pre><code>_: C::uint bit[4],</code></pre>
+
+            <p>A zero-width bitfield is valid only when unnamed:</p>
+
+            <pre><code>_: C::uint bit[0],</code></pre>
+
+            <p>C bitfields are not independently addressable:</p>
+
+            <pre><code>ref flags.mode          // invalid
+ref mut flags.mode      // invalid
+flags.mode.Ptr          // invalid</code></pre>
+
+            <p>
+                Assignment uses Sec checked-range semantics rather than silently inheriting C
+                truncation or wrapping behavior.
+            </p>
+
+            <p>
+                C bitfields do not imply atomic, volatile, MMIO or thread-safe access.
+            </p>
+        </section>
+
+        <section id="fixed-arrays">
+            <h2>Fixed C Arrays</h2>
+
+            <p>
+                A fixed C array stored inside C-compatible data maps to inline fixed-array storage:
+            </p>
+
+            <pre><code>extern "C" type Address struct {
+    bytes: byte[16],
+}</code></pre>
+
+            <p>
+                The field does not contain a Sec slice or list descriptor.
+            </p>
+
+            <p>
+                C array parameters use their actual ABI pointer representation rather than by-value
+                Sec fixed arrays.
+            </p>
+        </section>
+
+        <section id="flex-arrays">
+            <h2>C Flexible-Array Members</h2>
+
+            <p>A C flexible-array member uses:</p>
+
+            <pre><code>C::flex[T]</code></pre>
+
+            <p>Example:</p>
+
+            <pre><code>extern "C" type Packet struct {
+    length: c::stddef::size_t,
+    data: C::flex[byte],
+}</code></pre>
+
+            <p>A flexible-array member:</p>
+
+            <ul>
+                <li>is valid only inside an <code>extern "C"</code> struct;</li>
+                <li>must be the final stored field;</li>
+                <li>has no Sec slice descriptor;</li>
+                <li>has no implicit runtime length;</li>
+                <li>does not automatically produce a safe slice/view;</li>
+                <li>derives usable extent from the foreign allocation/protocol contract.</li>
+            </ul>
+
+            <p>
+                <code>Packet.SizeOf</code> describes only the fixed C struct portion and excludes
+                runtime trailing elements.
+            </p>
+
+            <p>
+                A wrapper must establish the actual extent before creating a safe view.
+            </p>
+        </section>
+
+        <section id="layout">
+            <h2>Packing, Alignment and Explicit Layout</h2>
+
+            <p>
+                <code>extern "C"</code> selects ordinary layout under the active C ABI.
+            </p>
+
+            <p>
+                Packed, over-aligned, explicitly offset or otherwise overridden layouts use Sec's
+                canonical explicit-layout mechanism.
+            </p>
+
+            <p>
+                FFI does not invent a second packing/alignment syntax.
+            </p>
+
+            <p>
+                A packed or otherwise misaligned field may use compiler-supported unaligned
+                read/write operations when the target allows them.
+            </p>
+
+            <p>
+                Creating <code>ref</code> or <code>ref mut</code> to a misaligned field is invalid
+                unless the required alignment is proven.
+            </p>
+        </section>
+
+        <section id="function-pointers">
+            <h2>C Function-Pointer Types</h2>
+
+            <p>
+                A C ABI function-pointer type uses:
+            </p>
+
+            <pre><code>C::fn(ParameterTypes) ReturnType</code></pre>
+
+            <p>Examples:</p>
+
+            <pre><code>C::fn(C::int) void
+C::fn(RawPtr[Context], C::int) C::bool</code></pre>
+
+            <p>
+                A C function pointer is not a native Sec callable type.
+            </p>
+
+            <pre><code>fn(C::int) void       // native Sec callable
+C::fn(C::int) void    // C ABI function pointer</code></pre>
+
+            <p>
+                A C function pointer obtained from foreign data may be null.
+            </p>
+
+            <p>
+                Calling a possibly-null C function pointer is valid only after non-nullness has been established.
+            </p>
+        </section>
+
+        <section id="callbacks">
+            <h2>C Callbacks</h2>
+
+            <p>
+                Sec 0.1 supports callbacks needed to consume foreign C APIs.
+            </p>
+
+            <p>The explicit adapter is:</p>
+
+            <pre><code>C::callback(callable)</code></pre>
+
+            <p>
+                It produces a non-null <code>C::fn(...) R</code> value with the matching C ABI signature.
+            </p>
+
+            <pre><code>fn OnValue(value: C::int) void {
+    ProcessValue(int32(value))
+}
+
+let callback := C::callback(OnValue)</code></pre>
+
+            <p>The source callable must be:</p>
+
+            <ul>
+                <li>reusable;</li>
+                <li>environment-free;</li>
+                <li>non-capturing;</li>
+                <li>compatible with the exact foreign-facing parameter and return types.</li>
+            </ul>
+
+            <p>
+                Capturing closures cannot be directly adapted to C callbacks in Sec 0.1.
+            </p>
+
+            <p>
+                <code>mut fn</code> and <code>-&gt; fn</code> callables are not directly adaptable.
+            </p>
+
+            <p>
+                The compiler may generate a private C ABI thunk required to implement the adapter.
+                That is callback interoperation, not general Sec-to-C symbol export.
+            </p>
+        </section>
+
+        <section id="callback-state">
+            <h2>Stateful Foreign Callbacks Use Foreign Context Pointers</h2>
+
+            <p>
+                When a C API provides an explicit userdata/context pointer, that pointer is the
+                canonical Sec 0.1 state-transport mechanism.
+            </p>
+
+            <p>
+                A binding typically adapts an environment-free Sec callback and passes state through
+                the foreign API's context parameter.
+            </p>
+
+            <p>
+                The binding/wrapper remains responsible for:
+            </p>
+
+            <ul>
+                <li>context lifetime;</li>
+                <li>retention duration;</li>
+                <li>thread/callback affinity;</li>
+                <li>ownership;</li>
+                <li>unregistration ordering;</li>
+                <li>preventing callbacks after context destruction.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 does not silently capture a Sec closure environment behind
+                <code>C::callback</code>.
+            </p>
+        </section>
+
+        <section id="varargs">
+            <h2>C Variadic Functions</h2>
+
+            <p>
+                C varargs are distinct from native Sec typed variadics.
+            </p>
+
+            <p>Native Sec typed variadic:</p>
+
+            <pre><code>fn Sum(values: ...int) int {
+    ...
+}</code></pre>
+
+            <p>C varargs:</p>
+
+            <pre><code>unsafe extern "C" fn Printf(
+    format: RawPtr[C::char],
+    ...
+) C::int</code></pre>
+
+            <p>
+                A bare final <code>...</code> is permitted only for C foreign variadic signatures
+                and C function-pointer types.
+            </p>
+
+            <p>
+                A C variadic declaration must be <code>unsafe extern</code> because the fixed signature
+                cannot express all caller obligations.
+            </p>
+
+            <p>
+                The marker must be final.
+            </p>
+        </section>
+
+        <section id="vararg-values">
+            <h2>C Variadic Arguments</h2>
+
+            <p>
+                Additional C vararg values must already be C-ABI-representable values.
+            </p>
+
+            <p>
+                An ordinary Sec scalar must be explicitly converted to the intended C type before it
+                enters a C vararg position.
+            </p>
+
+            <p>
+                The compiler then applies the active C ABI's default argument promotions to values
+                that are already C-typed.
+            </p>
+
+            <p>Examples include promotion of:</p>
+
+            <ul>
+                <li><code>C::float</code> to the appropriate promoted C floating type;</li>
+                <li>small C integer types to the appropriate promoted C integer type.</li>
+            </ul>
+
+            <p>
+                <code>ref</code> and <code>ref mut</code> are not passed directly through C varargs.
+                Use the correct raw foreign pointer representation when the protocol expects a pointer.
+            </p>
+
+            <p>
+                C-compatible aggregates are allowed in varargs only when the active ABI model supports
+                their variadic classification.
+            </p>
+
+            <p>
+                Sec spread does not apply to C varargs.
+            </p>
+
+            <p>
+                An untyped <code>null</code> cannot be passed as a C vararg because no pointer type
+                provides the target representation.
+            </p>
+
+            <p>
+                <code>c::stdarg::va_list</code> is a target C binding type, never a native Sec variadic pack.
+            </p>
+        </section>
+
+        <section id="strings">
+            <h2>Sec <code>string</code> Is Not a C String</h2>
+
+            <p>
+                Sec <code>string</code> has no direct C ABI representation.
+            </p>
+
+            <p>This raw foreign declaration is invalid:</p>
+
+            <pre><code>extern "C" fn Open(path: string) C::int</code></pre>
+
+            <p>A C character pointer is represented as an actual pointer type:</p>
+
+            <pre><code>RawPtr[C::char]</code></pre>
+
+            <p>That pointer does not by itself imply:</p>
+
+            <ul>
+                <li>text;</li>
+                <li>encoding;</li>
+                <li>NUL termination;</li>
+                <li>ownership;</li>
+                <li>length;</li>
+                <li>mutability;</li>
+                <li>non-nullness.</li>
+            </ul>
+        </section>
+
+        <section id="encoding">
+            <h2>String Encoding and Termination Must Be Explicit</h2>
+
+            <p>
+                FFI defines no universal encoding for C <code>char*</code>.
+            </p>
+
+            <p>A binding may define contracts such as:</p>
+
+            <ul>
+                <li>UTF-8;</li>
+                <li>ASCII;</li>
+                <li>locale/code-page text;</li>
+                <li>filesystem bytes;</li>
+                <li>protocol-specific bytes;</li>
+                <li>non-text binary data.</li>
+            </ul>
+
+            <p>
+                Converting Sec text to NUL-terminated foreign storage must define:
+            </p>
+
+            <ul>
+                <li>encoding;</li>
+                <li>element type;</li>
+                <li>termination rules;</li>
+                <li>embedded-zero behavior;</li>
+                <li>ownership;</li>
+                <li>allocation/storage;</li>
+                <li>lifetime.</li>
+            </ul>
+
+            <p>
+                A generic encoding-agnostic helper named <code>ToCString()</code> is not, by itself,
+                a complete FFI contract.
+            </p>
+        </section>
+
+        <section id="embedded-zero">
+            <h2>Embedded Zero and C String Terminators</h2>
+
+            <p>
+                A C string terminator is a numeric zero code unit in character storage.
+                It is not the <code>null</code> pointer sentinel.
+            </p>
+
+            <p>
+                If a conversion to NUL-terminated storage rejects embedded zero, that conversion is fallible.
+            </p>
+
+            <p>
+                A binding must not silently truncate Sec text at an embedded zero.
+            </p>
+        </section>
+
+        <section id="buffers">
+            <h2>Length-Delimited Text and Binary Buffers</h2>
+
+            <p>
+                Pointer-plus-length APIs are distinct from NUL-terminated string APIs.
+            </p>
+
+            <pre><code>extern "C" fn ConsumeText(
+    data: RawPtr[C::char],
+    length: c::stddef::size_t,
+) C::int</code></pre>
+
+            <p>
+                The wrapper must know what the length counts.
+            </p>
+
+            <p>Possible units include:</p>
+
+            <ul>
+                <li>bytes;</li>
+                <li>C character elements;</li>
+                <li>UTF-16 code units;</li>
+                <li>another protocol-defined element;</li>
+                <li>capacity including or excluding a terminator.</li>
+            </ul>
+
+            <p>
+                Sec must not assume that a foreign length is equal to a Sec string's length property.
+            </p>
+
+            <p>
+                Raw declarations use the actual pointer and length parameters.
+                A safe wrapper may accept a slice/view and explicitly derive the raw pointer and length.
+            </p>
+
+            <p>
+                Sec performs no hidden slice-to-pointer-plus-length decomposition in raw extern signatures.
+            </p>
+        </section>
+
+        <section id="incoming-strings">
+            <h2>Incoming Foreign Strings</h2>
+
+            <p>
+                A foreign pointer returned as character data remains a raw pointer until a wrapper
+                establishes the complete text contract.
+            </p>
+
+            <p>The wrapper must establish:</p>
+
+            <ul>
+                <li>nullability;</li>
+                <li>readable extent;</li>
+                <li>termination or explicit length;</li>
+                <li>lifetime;</li>
+                <li>ownership;</li>
+                <li>encoding.</li>
+            </ul>
+
+            <p>
+                Decoding invalid foreign text may be fallible.
+            </p>
+
+            <p>
+                Wide-character representations are binding-specific.
+                FFI does not universally equate <code>wchar_t*</code> with UTF-16, UTF-32 or Sec
+                <code>string</code>.
+            </p>
+        </section>
+
+        <section id="char-arrays">
+            <h2>Fixed and Flexible Character Arrays Remain Arrays</h2>
+
+            <pre><code>extern "C" type User struct {
+    name: C::char[64],
+}</code></pre>
+
+            <p>
+                This field is an inline fixed foreign character array.
+                It is not automatically a Sec <code>string</code>.
+            </p>
+
+            <pre><code>extern "C" type Message struct {
+    length: c::stddef::size_t,
+    data: C::flex[C::char],
+}</code></pre>
+
+            <p>
+                The wrapper decides whether such storage represents text and which encoding/protocol applies.
+            </p>
+        </section>
+
+        <section id="pointer-to-pointer">
+            <h2>Pointer-to-Pointer Data Is Explicit</h2>
+
+            <p>
+                Foreign pointer nesting is represented directly:
+            </p>
+
+            <pre><code>RawPtr[RawPtr[C::char]]</code></pre>
+
+            <p>
+                It does not automatically become <code>string[]</code>.
+            </p>
+
+            <p>
+                Before a safe Sec collection can be exposed, the wrapper must know:
+            </p>
+
+            <ul>
+                <li>count or sentinel rules;</li>
+                <li>element nullability;</li>
+                <li>lifetime;</li>
+                <li>encoding;</li>
+                <li>ownership.</li>
+            </ul>
+        </section>
+
+        <section id="ownership">
+            <h2>Foreign Resource Ownership</h2>
+
+            <p>
+                Raw pointers and scalar handles never imply resource ownership by themselves.
+            </p>
+
+            <p>
+                An owning foreign resource is represented by an ordinary nominal Sec wrapper:
+            </p>
+
+            <pre><code>extern "C" type SSLContextRaw struct
+
+type SSLContext struct {
+    raw: RawPtr[SSLContextRaw],
+}
+
+impl SSLContext {
+    free {
+        SSLContextFreeRaw(self.raw)
+    }
+}</code></pre>
+
+            <p>
+                The wrapper may become an owner only when the foreign contract establishes that
+                ownership was transferred to Sec.
+            </p>
+
+            <p>
+                A borrowed or library-owned foreign pointer must never be silently upgraded to an owning wrapper.
+            </p>
+        </section>
+
+        <section id="transfer">
+            <h2>Ownership Transfer to Foreign Code</h2>
+
+            <p>
+                Foreign ownership transfer uses ordinary Sec ownership semantics on the owning wrapper.
+            </p>
+
+            <p>
+                It is not modeled by consuming a <code>RawPtr[T]</code> value and pretending that
+                ownership of the pointee changed.
+            </p>
+
+            <p>
+                A wrapper that consumes an owning Sec resource implements the foreign operation's
+                real success/failure transfer contract.
+            </p>
+
+            <p>
+                If foreign code accepts ownership only on success, the wrapper retains ownership
+                until success has been established.
+            </p>
+
+            <p>
+                On failure, the wrapper must clean up, return ownership explicitly, or otherwise follow
+                its declared Sec API contract.
+            </p>
+        </section>
+
+        <section id="refcount">
+            <h2>Foreign Reference Counting Does Not Create Implicit Copy</h2>
+
+            <p>
+                A foreign object using retain/release or up-ref/down-ref semantics does not make the
+                Sec wrapper implicitly copyable.
+            </p>
+
+            <p>
+                An ordinary Sec copy must not hide a foreign retain operation.
+            </p>
+
+            <p>
+                Foreign retain/clone operations are explicit operations and may carry:
+            </p>
+
+            <ul>
+                <li>effects;</li>
+                <li>failure;</li>
+                <li>thread restrictions;</li>
+                <li>allocation or external-state mutation.</li>
+            </ul>
+
+            <p>
+                A resource-owning wrapper with cleanup is move-only by default unless ordinary Sec
+                copy semantics explicitly define an independent safe copy.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Foreign Cleanup and Fallible Close</h2>
+
+            <p>
+                Lifecycle <code>free</code> performs mandatory cleanup and does not propagate
+                user-visible errors.
+            </p>
+
+            <p>
+                If the foreign resource has a meaningful fallible close, shutdown, flush or commit
+                operation, expose an explicit <code>Result</code>-returning operation.
+            </p>
+
+            <p>
+                After successful explicit close or ownership transfer, the wrapper must prevent
+                double release.
+            </p>
+
+            <p>
+                Foreign invalid/sentinel values are binding-specific.
+                <code>null</code> is only one possible foreign sentinel.
+            </p>
+        </section>
+
+        <section id="failure">
+            <h2>Foreign Failure Conventions Stay Foreign at the Raw Boundary</h2>
+
+            <p>
+                Raw extern declarations expose the actual foreign protocol.
+            </p>
+
+            <p>FFI does not automatically turn these into <code>Result</code> or <code>Option</code>:</p>
+
+            <ul>
+                <li>negative integer results;</li>
+                <li>status codes;</li>
+                <li>null pointers;</li>
+                <li>errno-style state;</li>
+                <li>Windows-style last-error state;</li>
+                <li>OpenSSL-style error queues;</li>
+                <li>out-parameter protocols.</li>
+            </ul>
+
+            <p>
+                A Sec wrapper performs the explicit normalization.
+            </p>
+
+            <p>
+                <code>try</code> does not apply to a raw foreign failure convention unless the
+                declaration itself actually returns an ordinary Sec fallible type.
+            </p>
+        </section>
+
+        <section id="error-state">
+            <h2>Auxiliary Foreign Error State</h2>
+
+            <p>
+                APIs with thread-local or auxiliary error state require binding-specific sequencing.
+            </p>
+
+            <p>
+                A wrapper must retrieve the error information before another operation may invalidate it.
+            </p>
+
+            <p>
+                Compiler and LSP analyses may use explicit binding contracts to diagnose invalid sequencing.
+            </p>
+
+            <p>
+                They must not guess semantics merely from identifiers such as <code>errno</code>,
+                <code>GetLastError</code> or similarly named functions.
+            </p>
+        </section>
+
+        <section id="no-unwind">
+            <h2>No Unwind Across an Active FFI Boundary</h2>
+
+            <p>
+                Sec 0.1 does not permit unwind or non-local control transfer to cross an active FFI
+                boundary in either direction.
+            </p>
+
+            <p>This includes:</p>
+
+            <ul>
+                <li>foreign exceptions crossing Sec frames;</li>
+                <li><code>longjmp</code> or equivalent transfer across active Sec frames;</li>
+                <li>Sec unwind crossing a C callback boundary.</li>
+            </ul>
+
+            <p>
+                <code>unsafe</code> does not make these transfers legal.
+            </p>
+
+            <p>
+                A foreign library that may throw must use a foreign-side shim or equivalent boundary
+                that translates the failure into an ordinary status/error protocol before returning to Sec.
+            </p>
+
+            <p>
+                A Sec callback must similarly translate fallible behavior into the callback protocol
+                instead of unwinding through C.
+            </p>
+        </section>
+
+        <section id="effects">
+            <h2>Foreign Effects</h2>
+
+            <p>
+                Existing Sec effect-guarantee attributes may be attached to extern declarations when
+                the attribute's target rules permit functions.
+            </p>
+
+            <p>
+                For ordinary Sec implementations, such guarantees are compiler-verified.
+            </p>
+
+            <p>
+                For extern declarations, the same statement is a trusted foreign contract.
+            </p>
+
+            <p>
+                The compiler preserves provenance indicating that the fact came from trusted foreign metadata.
+            </p>
+
+            <p>
+                Unknown foreign effects are treated conservatively.
+            </p>
+
+            <p>
+                <code>unsafe</code> never erases or overrides effect analysis.
+            </p>
+        </section>
+
+        <section id="link-name">
+            <h2>Foreign Symbol Names</h2>
+
+            <p>
+                When the foreign symbol differs from the Sec declaration name, use:
+            </p>
+
+            <pre><code>@link_name("foreign_symbol")
+extern "C" fn SecName(...) C::int</code></pre>
+
+            <p><code>@link_name</code> changes only the foreign/link symbol.</p>
+
+            <p>It does not change:</p>
+
+            <ul>
+                <li>the Sec declaration name;</li>
+                <li>calling convention;</li>
+                <li>safety;</li>
+                <li>ownership;</li>
+                <li>effects;</li>
+                <li>library dependency;</li>
+                <li>ABI compatibility.</li>
+            </ul>
+        </section>
+
+        <section id="native-deps">
+            <h2>Native Library and Object Dependencies Belong to the Build Plan</h2>
+
+            <p>
+                Native libraries, import libraries, frameworks, object files, search paths and
+                equivalent dependencies are project/package/build metadata.
+            </p>
+
+            <p>
+                Sec 0.1 does not repeat those dependencies as ordinary per-function FFI annotations.
+            </p>
+
+            <p>
+                The active <code>CompilationPlan</code> resolves logical dependencies into concrete
+                linker inputs for the selected target.
+            </p>
+
+            <p>
+                Reusable binding packages may carry their own native dependency metadata through the
+                package/build model.
+            </p>
+
+            <p>
+                Dynamic lookup APIs such as <code>dlopen</code>, <code>dlsym</code>,
+                <code>LoadLibrary</code> and <code>GetProcAddress</code> are ordinary foreign APIs,
+                not special compile-time linking syntax.
+            </p>
+        </section>
+
+        <section id="legal-types">
+            <h2>FFI-Representable and FFI-Legal Are Different Questions</h2>
+
+            <p>
+                The compiler distinguishes:
+            </p>
+
+            <pre><code>FFI-representable
+    the ABI model can describe the physical representation
+
+FFI-legal in this position
+    Sec FFI rules permit the type in this exact source position</code></pre>
+
+            <p>Types commonly legal in appropriate foreign positions include:</p>
+
+            <ul>
+                <li>fundamental <code>C::</code> scalar types;</li>
+                <li>resolved <code>c::</code> binding types;</li>
+                <li>ABI-stable fixed-width Sec numeric scalars;</li>
+                <li><code>RawPtr[T]</code>;</li>
+                <li>call-bounded <code>ref T</code> and <code>ref mut T</code> parameters;</li>
+                <li><code>C::fn(...) R</code>;</li>
+                <li>complete <code>extern "C"</code> structs;</li>
+                <li><code>extern "C"</code> enums;</li>
+                <li><code>extern "C"</code> unions;</li>
+                <li>fixed arrays stored in foreign data;</li>
+                <li><code>C::flex[T]</code> in its restricted final-field position.</li>
+            </ul>
+        </section>
+
+        <section id="forbidden-types">
+            <h2>Types That Do Not Cross a Raw C/System ABI Directly</h2>
+
+            <p>
+                The following require another explicit foreign representation or a wrapper:
+            </p>
+
+            <ul>
+                <li>Sec <code>string</code>;</li>
+                <li>native dynamic collections;</li>
+                <li><code>list[T]</code>;</li>
+                <li><code>map[K, V]</code>;</li>
+                <li><code>set[T]</code>;</li>
+                <li>vector/matrix/tensor ownership descriptors;</li>
+                <li><code>Option[T]</code>;</li>
+                <li><code>Result[T, E]</code>;</li>
+                <li>interface values;</li>
+                <li>ordinary Sec tagged unions;</li>
+                <li>ordinary Sec structs without explicit foreign representation;</li>
+                <li>native Sec callable values;</li>
+                <li>capturing closures;</li>
+                <li>unresolved generic templates;</li>
+                <li>types with hidden Sec ownership/runtime state and no declared foreign ABI representation.</li>
+            </ul>
+
+            <p>
+                Sec <code>bool</code>, <code>char</code> and <code>rune</code> also do not
+                automatically substitute for C boolean/character representations.
+            </p>
+        </section>
+
+        <section id="position-restricted">
+            <h2>Incomplete and Position-Restricted Foreign Types</h2>
+
+            <p>
+                An incomplete foreign type may appear behind:
+            </p>
+
+            <pre><code>RawPtr[T]
+ref T
+ref mut T</code></pre>
+
+            <p>
+                when the foreign contract permits it.
+            </p>
+
+            <p>
+                It cannot be passed or returned by value.
+            </p>
+
+            <p>
+                <code>ref</code> and <code>ref mut</code> are permitted as call-bounded foreign
+                parameters, but not as raw foreign returns or stored C pointer fields.
+            </p>
+
+            <p>
+                Fixed arrays are valid as inline C data fields but do not represent C array
+                parameters by value.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generics Must Be Concrete Before ABI Formation</h2>
+
+            <p>This unresolved generic extern declaration is invalid:</p>
+
+            <pre><code>extern "C" fn Process[T](value: T) void</code></pre>
+
+            <p>
+                Only concrete monomorphized types can acquire a concrete ABI representation.
+            </p>
+
+            <p>
+                Even a concrete generic Sec type is not automatically FFI-compatible.
+                Its concrete representation must independently satisfy the foreign rules for the exact
+                position where it is used.
+            </p>
+        </section>
+
+        <section id="target-validation">
+            <h2>Target and ABI Validation</h2>
+
+            <p>
+                FFI legality is validated before target code generation.
+            </p>
+
+            <p>The compiler rejects declarations or uses when, for example:</p>
+
+            <ul>
+                <li>the calling convention is unavailable;</li>
+                <li>the foreign representation is unsupported by the selected ABI;</li>
+                <li>an incomplete type is used by value;</li>
+                <li>a required foreign layout cannot be represented;</li>
+                <li>a C bitfield layout is unsupported by the selected ABI model;</li>
+                <li>a variadic aggregate has no legal target classification;</li>
+                <li>a C function-pointer signature is unsupported;</li>
+                <li>required native dependency metadata cannot be resolved.</li>
+            </ul>
+
+            <p>
+                Frontend semantics must not hard-code one target's register or aggregate calling rules.
+            </p>
+
+            <p>
+                The active ABI model owns physical parameter and return classification.
+            </p>
+        </section>
+
+        <section id="wrappers">
+            <h2>Safe Sec Wrappers</h2>
+
+            <p>
+                Raw bindings should normally be hidden behind domain-oriented Sec APIs.
+            </p>
+
+            <p>A wrapper may be responsible for:</p>
+
+            <ul>
+                <li>null normalization;</li>
+                <li>encoding conversion;</li>
+                <li>pointer/length validation;</li>
+                <li>ownership establishment;</li>
+                <li>lifetime establishment;</li>
+                <li>cleanup;</li>
+                <li>foreign error translation;</li>
+                <li>safe references or views;</li>
+                <li>domain-specific named types.</li>
+            </ul>
+
+            <p>For example, a raw declaration may remain very close to the foreign ABI:</p>
+
+            <pre><code>extern "C" fn LookupDevice() RawPtr[DeviceRaw]</code></pre>
+
+            <p>
+                while the public Sec API exposes an explicit safe abstraction after validating the
+                foreign contract.
+            </p>
+
+            <p>
+                A wrapper must never invent ownership, non-nullness, lifetime or encoding that the
+                foreign API does not actually guarantee.
+            </p>
+        </section>
+
+        <section id="exports">
+            <h2>General Sec-to-C Export Is Outside Sec 0.1</h2>
+
+            <p>
+                Sec 0.1 supports the private C ABI adaptation required by
+                <code>C::callback</code>.
+            </p>
+
+            <p>
+                It does not define a general source mechanism for exporting arbitrary Sec functions
+                or libraries under user-selected C ABI symbol names.
+            </p>
+
+            <p>
+                This keeps callback interoperability distinct from a future complete Sec-to-C export model.
+            </p>
+        </section>
+
+        <section id="lowering">
+            <h2>Compiler and Lowering Boundary</h2>
+
+            <p>
+                The AST and Semantic IR preserve FFI semantics until ABI-aware lowering.
+            </p>
+
+            <p>Required preserved facts include:</p>
+
+            <ul>
+                <li>calling convention;</li>
+                <li><code>unsafe extern</code> caller obligations;</li>
+                <li>foreign symbol name;</li>
+                <li>foreign type-family identity;</li>
+                <li>C struct/union/enum/incomplete type kind;</li>
+                <li>C bitfield width and base type;</li>
+                <li>flexible-array membership;</li>
+                <li>C function-pointer type;</li>
+                <li>callback adaptation;</li>
+                <li>C varargs marker;</li>
+                <li>raw pointer versus call-bounded reference;</li>
+                <li>trusted foreign effect provenance;</li>
+                <li>native dependency references;</li>
+                <li>source location for diagnostics.</li>
+            </ul>
+
+            <p>
+                ABI-aware lowering then selects the physical target representation.
+            </p>
+
+            <p>
+                Backend register or stack details must never be reverse-engineered to determine the
+                source ownership, safety or foreign type contract.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                FFI diagnostics should identify the foreign declaration, exact parameter/field/return
+                position, calling convention and selected target/ABI when relevant.
+            </p>
+
+            <h3>Unsafe extern call</h3>
+
+            <pre><code>calling `CopyMemory` requires an unsafe context
+
+`CopyMemory` is declared `unsafe extern "C"` because the caller must establish
+additional memory-range and aliasing obligations
+
+help: validate the required contract and call it inside `unsafe`</code></pre>
+
+            <h3>Invalid Sec string in raw FFI</h3>
+
+            <pre><code>Sec `string` has no direct C ABI representation
+
+help: declare the actual foreign pointer/length or terminated-string representation
+help: convert through a wrapper that defines encoding, lifetime and ownership</code></pre>
+
+            <h3>Incomplete foreign type by value</h3>
+
+            <pre><code>incomplete foreign type `Context` cannot be passed by value
+
+the declaration has no known size or layout
+
+help: use `RawPtr[Context]`, `ref Context`, or `ref mut Context`
+when that matches the foreign contract</code></pre>
+
+            <h3>Foreign pointer return</h3>
+
+            <pre><code>raw foreign declarations cannot return `ref Device`
+
+a foreign return does not establish a Sec reference lifetime
+
+help: return `RawPtr[Device]` and establish nullability/lifetime in a wrapper</code></pre>
+
+            <h3>Stored foreign reference</h3>
+
+            <pre><code>stored C pointer fields must use `RawPtr[T]`
+
+`ref T` and `ref mut T` describe non-retained call-bounded foreign parameters</code></pre>
+
+            <h3>C callback mismatch</h3>
+
+            <pre><code>capturing callable cannot be adapted with `C::callback` in Sec 0.1
+
+help: use an environment-free reusable callable
+help: pass callback state through the foreign API's userdata/context pointer</code></pre>
+
+            <h3>Invalid C vararg</h3>
+
+            <pre><code>C variadic argument is not ABI-representable
+
+help: convert the value explicitly to the intended C ABI type before the call</code></pre>
+
+            <p>Other important diagnostics include:</p>
+
+            <ul>
+                <li>unknown foreign calling convention;</li>
+                <li>extern function with a Sec body;</li>
+                <li>invalid <code>null</code> context;</li>
+                <li><code>null</code> tested with equality rather than <code>is</code>;</li>
+                <li>ordinary Sec struct used where an explicit C representation is required;</li>
+                <li>C bitfield borrowed as an independently addressable field;</li>
+                <li>flexible-array member not final;</li>
+                <li>native Sec callable used as a C function pointer;</li>
+                <li>C variadic declaration not marked <code>unsafe extern</code>;</li>
+                <li>foreign unwind across Sec frames;</li>
+                <li>foreign representation unsupported by the selected ABI.</li>
+            </ul>
+
+            <p>
+                Diagnostics should recommend a safe Sec wrapper when raw foreign semantics are
+                leaking into ordinary application code.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Keep raw ABI declarations separate from domain-oriented Sec APIs.</li>
+                <li>Use ordinary <code>extern</code> when the signature completely expresses the caller contract.</li>
+                <li>Use <code>unsafe extern</code> only when additional caller proof obligations remain.</li>
+                <li>Use <code>C::</code> for fundamental C ABI scalar types instead of hard-coding one platform's widths.</li>
+                <li>Use the appropriate <code>c::</code> binding namespace for library/platform C typedef families.</li>
+                <li>Use fixed-width Sec scalars only when the foreign ABI genuinely specifies that fixed width.</li>
+                <li>Use <code>ref</code>/<code>ref mut</code> only for non-null call-bounded foreign borrows that foreign code does not retain.</li>
+                <li>Use <code>RawPtr[T]</code> when nullability, retention, ownership or lifetime cannot be represented as a call-bounded borrow.</li>
+                <li>Use <code>extern "C"</code> data declarations for foreign layout; do not rely on accidental ordinary Sec layout.</li>
+                <li>Keep C union member selection behind a wrapper when a discriminator is available.</li>
+                <li>Treat C enums as open foreign value domains.</li>
+                <li>Do not borrow C bitfields as independently addressable Places.</li>
+                <li>Use <code>C::callback</code> only with reusable environment-free non-capturing callables.</li>
+                <li>Pass callback state through explicit foreign userdata/context parameters.</li>
+                <li>Do not confuse C varargs with native Sec typed variadics or spread.</li>
+                <li>Never assume a C character pointer is text without defining encoding, extent and termination.</li>
+                <li>Do not make foreign retain/up-ref operations implicit copies.</li>
+                <li>Model foreign resources with nominal owning wrappers and deterministic cleanup.</li>
+                <li>Translate raw foreign error conventions into <code>Result</code>/<code>Option</code> only in explicit wrappers.</li>
+                <li>Do not allow unwind or foreign non-local control transfer across active Sec frames.</li>
+                <li>Keep native library/object dependencies in project/package/build metadata, not per-function FFI annotations.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec FFI is an ABI and binding boundary, not a C/C++ source-language subsystem.</li>
+                <li>The compiler does not parse C headers, run a preprocessor, compile inline C or import C source expressions.</li>
+                <li>General Sec-to-C named symbol export is outside Sec 0.1.</li>
+                <li>Imported foreign functions use bodyless <code>extern</code> declarations.</li>
+                <li>Canonical calling conventions include <code>extern "C"</code>, <code>extern "system"</code> and <code>extern "Sec"</code>.</li>
+                <li>The active <code>CompilationPlan</code> and ABI model determine physical ABI classification.</li>
+                <li>Ordinary <code>extern</code> does not automatically require an unsafe call site.</li>
+                <li><code>unsafe extern</code> means that additional caller proof obligations are not fully expressed by the signature.</li>
+                <li>Calling <code>unsafe extern</code> requires explicit unsafe context.</li>
+                <li><code>unsafe</code> does not disable ownership, borrowing, effects, cleanup or ABI validation.</li>
+                <li>FFI declarations describe resolved ABI representation, not foreign header source syntax.</li>
+                <li>Fundamental C ABI scalars use uppercase <code>C::</code> qualification.</li>
+                <li>Platform/library C binding types use lowercase hierarchical <code>c::</code> qualification.</li>
+                <li><code>C::int</code> and <code>int32</code> may have equal representation while remaining different Sec types.</li>
+                <li>C/Sec scalar conversions are explicit and may require <code>try</code> when range may be lost.</li>
+                <li>Fixed-width Sec numeric scalars may cross FFI directly when they exactly match the foreign ABI contract.</li>
+                <li>Use C ABI types for ABI-defined C scalars instead of assuming one target width.</li>
+                <li>Sec <code>bool</code>, <code>char</code> and <code>rune</code> do not automatically substitute for C boolean or character types.</li>
+                <li><code>RawPtr[T]</code> is the foreign raw-pointer representation when no safe call-bounded borrow contract exists.</li>
+                <li>Raw pointers do not establish ownership, lifetime, non-nullness, bounds, aliasing or retention.</li>
+                <li><code>null</code> is an unsafe foreign/raw-pointer sentinel, not an ordinary Sec value.</li>
+                <li>Null testing uses <code>is null</code>, not <code>== null</code>.</li>
+                <li>Untyped standalone <code>null</code> has no inferred type.</li>
+                <li>Extern parameters may use <code>ref T</code>/<code>ref mut T</code> for non-null call-bounded non-retained foreign borrows.</li>
+                <li>A raw foreign declaration must not return <code>ref T</code> or <code>ref mut T</code>.</li>
+                <li>Foreign pointer returns use <code>RawPtr[T]</code>.</li>
+                <li>Stored C-compatible pointer fields use <code>RawPtr[T]</code>, not safe references.</li>
+                <li>C-compatible structs use <code>extern "C" type Name struct { ... }</code>.</li>
+                <li>Foreign struct field order is ABI-significant and natural C padding/alignment are determined by the active ABI.</li>
+                <li>Ordinary Sec structs are not C-compatible by accidental field-size agreement.</li>
+                <li>Foreign structs are not implicitly Defaultable merely because their fields are.</li>
+                <li>Bodyless <code>extern "C" type Name struct</code> declares an incomplete C type.</li>
+                <li>Incomplete foreign types may appear behind pointers/references but cannot be passed or returned by value.</li>
+                <li><code>extern "C"</code> unions use overlapping untagged C storage.</li>
+                <li>C union member access is semantically foreign-unsafe but does not require repetitive unsafe syntax solely for each access.</li>
+                <li><code>extern "C"</code> enums use the C ABI representation and are open to undeclared representable values.</li>
+                <li>Matching a C enum must account for unknown values when exhaustiveness matters.</li>
+                <li>C bitfields use <code>field: C-type bit[N]</code>.</li>
+                <li>The active C ABI determines bitfield layout; Sec register bit-order rules do not.</li>
+                <li>C bitfields are not independently addressable.</li>
+                <li>C bitfield assignment uses Sec checked-range semantics rather than silent C-style truncation.</li>
+                <li>Fixed C arrays inside foreign structs map to inline fixed-array storage.</li>
+                <li>C array parameters use the actual ABI pointer form rather than by-value Sec fixed arrays.</li>
+                <li>Flexible-array members use <code>C::flex[T]</code>, are final fields and have no hidden Sec descriptor or length.</li>
+                <li><code>SizeOf</code> for a flexible-array struct covers the fixed portion only.</li>
+                <li>Explicit packing/alignment uses Sec's canonical layout mechanism rather than a second FFI-specific syntax.</li>
+                <li>C ABI function pointers use <code>C::fn(...) R</code> and are distinct from native Sec callable types.</li>
+                <li>C function pointers obtained from foreign data may be null and must be proven non-null before call.</li>
+                <li><code>C::callback(callable)</code> adapts a reusable environment-free non-capturing Sec callable to a C function pointer.</li>
+                <li>Capturing closures, <code>mut fn</code> and consuming callables are not directly adaptable with <code>C::callback</code> in Sec 0.1.</li>
+                <li>Callback adaptation may generate a private C ABI thunk but does not create a general exported C symbol.</li>
+                <li>Foreign userdata/context pointers are the canonical Sec 0.1 mechanism for callback state.</li>
+                <li>C varargs use a final bare <code>...</code> and are distinct from native Sec typed variadics.</li>
+                <li>C variadic declarations must be <code>unsafe extern "C"</code>.</li>
+                <li>C vararg values must already be C-ABI-representable; ordinary Sec values are explicitly converted first.</li>
+                <li>The active C ABI applies default argument promotions to C-typed vararg values.</li>
+                <li><code>ref</code>/<code>ref mut</code> are not passed directly through C varargs.</li>
+                <li>Sec spread does not apply to C varargs.</li>
+                <li>Sec <code>string</code> has no direct C ABI representation.</li>
+                <li>A <code>RawPtr[C::char]</code> does not by itself imply text, encoding, termination, ownership, length, mutability or non-nullness.</li>
+                <li>String wrappers must define encoding, terminator rules, embedded-zero behavior, ownership, storage and lifetime.</li>
+                <li>A C NUL terminator is a zero character code unit, not the <code>null</code> pointer sentinel.</li>
+                <li>Embedded zero must not silently truncate converted Sec text.</li>
+                <li>Pointer-plus-length APIs must define the length unit explicitly.</li>
+                <li>Raw extern declarations do not implicitly decompose Sec slices into pointer-plus-length arguments.</li>
+                <li>Incoming foreign text remains raw until nullability, extent, termination/length, lifetime, ownership and encoding are established.</li>
+                <li>Foreign fixed/flexible character arrays remain arrays, not automatic Sec strings.</li>
+                <li><code>RawPtr[RawPtr[C::char]]</code> does not automatically become a Sec string collection.</li>
+                <li>Raw pointers and scalar foreign handles never imply ownership.</li>
+                <li>Owning foreign resources are represented by nominal Sec wrapper types.</li>
+                <li>A borrowed/library-owned foreign pointer must not be silently upgraded to an owning wrapper.</li>
+                <li>Ownership transfer to foreign code is expressed through ordinary Sec ownership of the wrapper, not by consuming a raw pointer.</li>
+                <li>Foreign success/failure transfer semantics must be implemented explicitly by the wrapper.</li>
+                <li>Foreign reference counting does not make the Sec wrapper implicitly Copyable.</li>
+                <li>Foreign retain/clone operations are explicit and may have effects or failure behavior.</li>
+                <li>Mandatory lifecycle cleanup belongs in <code>free</code>; meaningful fallible close/shutdown/commit uses an explicit Result-returning operation.</li>
+                <li>FFI does not automatically translate foreign status/null/errno/out-parameter protocols into <code>Result</code> or <code>Option</code>.</li>
+                <li><code>try</code> does not understand an undeclared foreign error convention.</li>
+                <li>Auxiliary error-state sequencing is binding-specific and must be explicit.</li>
+                <li>No unwind or non-local control transfer may cross an active FFI boundary in either direction in Sec 0.1.</li>
+                <li>Foreign effect guarantees are trusted contracts whose provenance remains visible to the compiler.</li>
+                <li>Unknown foreign effects are conservative.</li>
+                <li><code>@link_name</code> changes only the foreign symbol name.</li>
+                <li>Native library/object/framework/search-path dependencies belong to project/package/build metadata.</li>
+                <li>Per-function native library dependency annotations are not the Sec 0.1 model.</li>
+                <li>The compiler distinguishes physical FFI representability from legality in a specific source position.</li>
+                <li><code>Option</code>, <code>Result</code>, Sec strings, ordinary structs/unions, interfaces, native callable values, capturing closures and ownership-bearing collection descriptors do not cross a raw C/system ABI directly without an explicit foreign representation.</li>
+                <li>Unresolved generic extern declarations are invalid.</li>
+                <li>Concrete generic types must independently satisfy the relevant FFI representation rules.</li>
+                <li>FFI validation is target-aware and occurs before code generation.</li>
+                <li>The active ABI model owns physical parameter and return classification.</li>
+                <li>Raw bindings should normally be wrapped by safe/domain-oriented Sec APIs.</li>
+                <li>Safe wrappers must never invent foreign ownership, lifetime, encoding or non-nullness guarantees.</li>
+                <li>Semantic IR preserves FFI contracts until ABI-aware lowering chooses the concrete physical representation.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="30-unsafe.html">Previous: Unsafe and Raw Pointers</a>
+            <a href="32-visibility.html">Next: Visibility</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>rm 

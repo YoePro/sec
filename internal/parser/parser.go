@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -97,6 +98,7 @@ type Parser struct {
 	stopBeforeBrace        bool
 	inRefExpression        bool
 	skipExpressionComments bool
+	documentation          []ast.DocumentationAttachment
 }
 
 type diagnosticKey struct {
@@ -185,11 +187,26 @@ func (p *Parser) Parse() ParseResult {
 
 func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{}
+	p.documentation = nil
+	defer func() {
+		sort.SliceStable(p.documentation, func(left, right int) bool {
+			leftToken := p.documentation[left].Comments[0]
+			rightToken := p.documentation[right].Comments[0]
+			if leftToken.File != rightToken.File {
+				return leftToken.File < rightToken.File
+			}
+			if leftToken.Line != rightToken.Line {
+				return leftToken.Line < rightToken.Line
+			}
+			return leftToken.Column < rightToken.Column
+		})
+		program.Documentation = append([]ast.DocumentationAttachment(nil), p.documentation...)
+	}()
 	for p.curToken.Type != lexer.EOF {
 		p.endRecoveryEpisode()
-		p.skipComments()
+		documentation := p.collectLeadingDocumentation()
 
-		if p.curToken.Type == lexer.EOF {
+		if p.curToken.Type == lexer.EOF || p.curToken.Type == lexer.COMMENT && p.peekToken.Type == lexer.EOF {
 			break
 		}
 
@@ -198,7 +215,11 @@ func (p *Parser) ParseProgram() *ast.Program {
 		}
 
 		if p.curToken.Type == lexer.IMPORT && p.peekToken.Type == lexer.LPAREN {
-			program.Statements = append(program.Statements, p.parseImportGroup()...)
+			imports := p.parseImportGroup()
+			program.Statements = append(program.Statements, imports...)
+			if len(imports) > 0 {
+				p.attachDocumentation(documentation, imports[0])
+			}
 			p.nextToken()
 			continue
 		}
@@ -209,6 +230,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 		if parsedStatementPresent(stmt) {
 			program.Statements = append(program.Statements, stmt)
+			p.attachDocumentation(documentation, stmt)
 			p.endRecoveryEpisode()
 			p.nextToken()
 			continue
@@ -243,6 +265,14 @@ func (p *Parser) isTargetDirectiveStart() bool {
 		p.peekToken.Lexeme == "target"
 }
 
+// parseStatement dispatches a source statement and retains already diagnosed
+// ILLEGAL tokens as invalid syntax without manufacturing dependent parser or
+// semantic intent.
+//
+// Rules:
+//   - rules/foundations/grammar.md — statement grammar
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+//   - rules/compiler/parser_recovery.md — "Interaction with Sema"
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case lexer.HASH:
@@ -354,6 +384,18 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.ILLEGAL:
+		if diagnostic, ok := p.lexerDiagnosticForToken(p.curToken); ok {
+			return &ast.InvalidStatement{
+				Token: p.curToken,
+				Recovery: &ast.RecoveryInfo{
+					DiagnosticID: diagnostic.ID,
+					Message:      diagnostic.Message,
+					Start:        p.curToken,
+					End:          p.curToken,
+					Skipped:      1,
+				},
+			}
+		}
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.INCREMENT, lexer.DECREMENT:
@@ -1301,14 +1343,22 @@ func (p *Parser) parseSwitchCaseItem(subjectless bool) ast.SwitchCaseItem {
 func (p *Parser) parseSwitchCaseBody() *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.CASE && p.curToken.Type != lexer.DEFAULT {
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			p.nextToken()
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.peekToken.Type == lexer.CASE || p.peekToken.Type == lexer.DEFAULT) {
+				p.nextToken()
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF || p.curToken.Type == lexer.CASE || p.curToken.Type == lexer.DEFAULT {
+				break
+			}
 		}
 
 		stmt := p.parseStatement()
 		if stmt != nil {
 			block.Statements = append(block.Statements, stmt)
+			p.attachDocumentation(documentation, stmt)
 			p.nextToken()
 			continue
 		}
@@ -2056,8 +2106,15 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.endRecoveryEpisode()
 		p.nextToken()
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 		switch p.curToken.Type {
 		case lexer.FN:
@@ -2066,6 +2123,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 				return nil
 			}
 			stmt.Methods = append(stmt.Methods, fn)
+			p.attachDocumentation(documentation, fn)
 		case lexer.MUT:
 			if !p.expectPeek(lexer.FN) {
 				return nil
@@ -2076,6 +2134,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			}
 			fn.ReceiverCapability = ast.ReceiverMutable
 			stmt.Methods = append(stmt.Methods, fn)
+			p.attachDocumentation(documentation, fn)
 		case lexer.CONSUME_ARROW:
 			if !p.expectPeek(lexer.FN) {
 				return nil
@@ -2086,6 +2145,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			}
 			fn.ReceiverCapability = ast.ReceiverConsuming
 			stmt.Methods = append(stmt.Methods, fn)
+			p.attachDocumentation(documentation, fn)
 		case lexer.STATIC:
 			// rules/declarations/static.md, sections 11-12; properties.md,
 			// section 10. Interfaces preserve the static/instance category.
@@ -2097,6 +2157,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 				}
 				fn.Static = true
 				stmt.Methods = append(stmt.Methods, fn)
+				p.attachDocumentation(documentation, fn)
 				break
 			}
 			if p.peekToken.Type == lexer.PROPERTY {
@@ -2107,6 +2168,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 				}
 				property.Static = true
 				stmt.Properties = append(stmt.Properties, property)
+				p.attachDocumentation(documentation, property)
 				break
 			}
 			p.addError("static inside interface must modify fn or property at %d:%d", p.curToken.Line, p.curToken.Column)
@@ -2117,6 +2179,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 				return nil
 			}
 			stmt.Properties = append(stmt.Properties, property)
+			p.attachDocumentation(documentation, property)
 		case lexer.IDENT:
 			if p.curToken.Lexeme != "event" {
 				if p.peekToken.Type == lexer.COLON {
@@ -2137,6 +2200,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 				return nil
 			}
 			stmt.Events = append(stmt.Events, event)
+			p.attachDocumentation(documentation, event)
 		default:
 			p.addError("interface block may only contain fn, property, and event requirements at %d:%d", p.curToken.Line, p.curToken.Column)
 			p.skipCurrentBlock()
@@ -2377,8 +2441,15 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	seenValue := false
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.nextToken()
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 		if p.curToken.Type != lexer.IDENT {
 			p.addError("expected enum value name, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
@@ -2408,11 +2479,14 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 			}
 		}
 		enum.Values = append(enum.Values, value)
-		p.skipPeekComments()
+		p.attachDocumentation(documentation, value)
+		p.skipPeekOrdinaryComments()
 
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
+		case lexer.COMMENT:
+			continue
 		case lexer.RBRACE:
 			continue
 		default:
@@ -2809,9 +2883,16 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	p.nextToken()
 	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
 		p.endRecoveryEpisode()
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			p.nextToken()
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				p.nextToken()
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 
 		start := p.curToken
@@ -2819,6 +2900,7 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 		stmt := p.parseStatement()
 		if parsedStatementPresent(stmt) {
 			block.Statements = append(block.Statements, stmt)
+			p.attachDocumentation(documentation, stmt)
 			p.endRecoveryEpisode()
 			p.nextToken()
 			continue
@@ -3018,8 +3100,15 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.nextToken()
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 		if p.curToken.Type != lexer.IDENT && p.curToken.Type != lexer.UNDERSCORE {
 			p.addError("expected register field name, got %q", p.curToken.Lexeme)
@@ -3073,13 +3162,16 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 		}
 
 		fields = append(fields, field)
-		p.skipPeekComments()
+		p.attachDocumentation(documentation, field)
+		p.skipPeekOrdinaryComments()
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
 			if p.peekToken.Type == lexer.RBRACE {
 				return fields
 			}
+		case lexer.COMMENT:
+			continue
 		case lexer.RBRACE:
 			return fields
 		default:
@@ -3210,8 +3302,15 @@ func (p *Parser) parseUnionType() []*ast.UnionVariant {
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.nextToken()
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 		if p.curToken.Type != lexer.IDENT {
 			p.addError("expected union variant name at %d:%d", p.curToken.Line, p.curToken.Column)
@@ -3249,6 +3348,7 @@ func (p *Parser) parseUnionType() []*ast.UnionVariant {
 		}
 
 		variants = append(variants, variant)
+		p.attachDocumentation(documentation, variant)
 		if p.peekToken.Type == lexer.COMMA {
 			p.nextToken()
 		}
@@ -3269,9 +3369,16 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.nextToken()
+		var documentation []lexer.Token
 
 		if p.curToken.Type == lexer.COMMENT {
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 
 		if p.curToken.Type != lexer.IDENT {
@@ -3311,6 +3418,7 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		if p.isContractStart(p.peekToken) {
 			field.Contract = p.parseContractSequence()
 		}
+		p.attachDocumentation(documentation, field)
 		if p.peekToken.Type == lexer.RAW_STRING {
 			p.nextToken()
 			tags, ok := p.parseStructTag(p.curToken)
@@ -3334,6 +3442,8 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 			if p.peekToken.Type == lexer.RBRACE {
 				return fields
 			}
+		case lexer.COMMENT:
+			continue
 		case lexer.RBRACE:
 			return fields
 		default:
@@ -3490,8 +3600,15 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 		p.endRecoveryEpisode()
 		p.nextToken()
+		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
-			continue
+			documentation = p.collectLeadingDocumentation()
+			if p.curToken.Type == lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF) {
+				break
+			}
+			if p.curToken.Type == lexer.RBRACE || p.curToken.Type == lexer.EOF {
+				break
+			}
 		}
 
 		switch p.curToken.Type {
@@ -3501,38 +3618,38 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			if !ok {
 				continue
 			}
-			stmt.Members = append(stmt.Members, typeDecl)
+			p.appendImplMember(stmt, documentation, typeDecl)
 		case lexer.UNIT:
 			parsed := p.parseUnitDeclStatement()
 			unitDecl, ok := parsed.(*ast.UnitDeclStatement)
 			if !ok {
 				continue
 			}
-			stmt.Members = append(stmt.Members, unitDecl)
+			p.appendImplMember(stmt, documentation, unitDecl)
 		case lexer.ENUM:
 			enum := p.parseEnumDeclaration()
 			if enum == nil {
 				continue
 			}
-			stmt.Members = append(stmt.Members, enum)
+			p.appendImplMember(stmt, documentation, enum)
 		case lexer.FN:
 			fn := p.parseFunctionDeclaration()
 			if fn == nil {
 				continue
 			}
-			stmt.Members = append(stmt.Members, fn)
+			p.appendImplMember(stmt, documentation, fn)
 		case lexer.AT:
 			parsed := p.parseNoPanicDeclaration()
 			fn, ok := parsed.(*ast.FunctionDeclaration)
 			if !ok || fn == nil {
 				continue
 			}
-			stmt.Members = append(stmt.Members, fn)
+			p.appendImplMember(stmt, documentation, fn)
 		case lexer.IDENT:
 			if p.curToken.Lexeme == "init" && p.peekToken.Type == lexer.LPAREN {
 				initializer := p.parseInitDeclaration()
 				if initializer != nil {
-					stmt.Members = append(stmt.Members, initializer)
+					p.appendImplMember(stmt, documentation, initializer)
 				}
 				continue
 			}
@@ -3541,13 +3658,13 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				if event == nil {
 					continue
 				}
-				stmt.Members = append(stmt.Members, event)
+				p.appendImplMember(stmt, documentation, event)
 				continue
 			}
 			message := "impl block may only contain type, unit, enum, property, event, init, and fn declarations"
 			if p.peekToken.Type == lexer.COLON {
 				if p.isUnitMetadataName(p.curToken.Lexeme) {
-					stmt.Members = append(stmt.Members, p.parseUnitMetadataDeclaration())
+					p.appendImplMember(stmt, documentation, p.parseUnitMetadataDeclaration())
 					continue
 				}
 				message = "stored fields are not allowed inside impl"
@@ -3556,7 +3673,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			start, diagnosticStart := p.curToken, len(p.diagnostics)
 			recovery := p.skipInvalidImplMember()
-			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
+			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.STATIC:
 			if p.peekToken.Type == lexer.FN {
 				p.nextToken()
@@ -3565,13 +3682,13 @@ func (p *Parser) parseImplStatement() ast.Statement {
 					continue
 				}
 				fn.Static = true
-				stmt.Members = append(stmt.Members, fn)
+				p.appendImplMember(stmt, documentation, fn)
 				continue
 			}
 			if p.peekToken.Type == lexer.LET {
 				parsed := p.parseStaticStatement()
 				if let, ok := parsed.(*ast.LetStatement); ok {
-					stmt.Members = append(stmt.Members, let)
+					p.appendImplMember(stmt, documentation, let)
 				}
 				continue
 			}
@@ -3584,13 +3701,13 @@ func (p *Parser) parseImplStatement() ast.Statement {
 					continue
 				}
 				property.Static = true
-				stmt.Members = append(stmt.Members, property)
+				p.appendImplMember(stmt, documentation, property)
 				continue
 			}
 			start, diagnosticStart := p.curToken, len(p.diagnostics)
 			message := "static inside impl must modify fn, let, or property"
 			recovery := p.skipInvalidImplMember()
-			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
+			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.FREE:
 			start, diagnosticStart := p.curToken, len(p.diagnostics)
 			message := "free operations are reserved for destruction but are not implemented yet"
@@ -3601,18 +3718,18 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			} else {
 				recovery = p.skipInvalidImplMember()
 			}
-			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
+			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.PROPERTY:
 			property := p.parsePropertyDeclaration()
 			if property == nil {
 				continue
 			}
-			stmt.Members = append(stmt.Members, property)
+			p.appendImplMember(stmt, documentation, property)
 		case lexer.STRUCT:
 			start, diagnosticStart := p.curToken, len(p.diagnostics)
 			message := "struct declarations inside impl must use type Name struct"
 			recovery := p.skipInvalidImplMember()
-			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
+			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.LET:
 			// rules/declarations/static.md section 6 and
 			// rules/declarations/impl.md section 13 make a direct immutable let
@@ -3621,17 +3738,20 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			parsed := p.parseLetStatement()
 			switch declaration := parsed.(type) {
 			case *ast.LetStatement:
-				stmt.Members = append(stmt.Members, declaration)
+				p.appendImplMember(stmt, documentation, declaration)
 			case *ast.LetGroupStatement:
-				for _, member := range declaration.Lets {
-					stmt.Members = append(stmt.Members, member)
+				for index, member := range declaration.Lets {
+					if index > 0 {
+						documentation = nil
+					}
+					p.appendImplMember(stmt, documentation, member)
 				}
 			}
 		default:
 			message := "impl block may only contain type, unit, enum, property, event, and fn declarations"
 			if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
 				if p.isUnitMetadataName(p.curToken.Lexeme) {
-					stmt.Members = append(stmt.Members, p.parseUnitMetadataDeclaration())
+					p.appendImplMember(stmt, documentation, p.parseUnitMetadataDeclaration())
 					continue
 				}
 				message = "stored fields are not allowed inside impl"
@@ -3640,7 +3760,7 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			}
 			start, diagnosticStart := p.curToken, len(p.diagnostics)
 			recovery := p.skipInvalidImplMember()
-			stmt.Members = append(stmt.Members, p.invalidMember(start, diagnosticStart, recovery, message))
+			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		}
 	}
 
@@ -3649,6 +3769,17 @@ func (p *Parser) parseImplStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+// appendImplMember retains one parsed impl member and consumes any immediately
+// preceding documentation group for that declaration.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/tooling/formatter.md — "Documentation comment"
+func (p *Parser) appendImplMember(stmt *ast.ImplStatement, documentation []lexer.Token, member ast.ImplMember) {
+	stmt.Members = append(stmt.Members, member)
+	p.attachDocumentation(documentation, member)
 }
 
 func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
@@ -4547,10 +4678,10 @@ func (p *Parser) parseCurrentContract() ast.Contract {
 	case p.curToken.Type == lexer.IN:
 		return p.parseMembershipContract()
 	case p.curToken.Type == lexer.IDENT:
-		switch p.curToken.Lexeme {
-		case "multipleOf":
-			return p.parseValueContract("multipleOf")
-		case "notEmpty", "unique", "finite", "odd", "even":
+		switch lexer.ContractWordRoleOf(p.curToken.Lexeme) {
+		case lexer.ValueContractWord:
+			return p.parseValueContract(p.curToken.Lexeme)
+		case lexer.MarkerContractWord:
 			return &ast.MarkerContract{Token: p.curToken, Name: p.curToken.Lexeme}
 		}
 	}
@@ -4562,16 +4693,7 @@ func (p *Parser) isContractStart(token lexer.Token) bool {
 	if token.Type == lexer.RANGE_KW || token.Type == lexer.IN {
 		return true
 	}
-	return token.Type == lexer.IDENT && isNamedContract(token.Lexeme)
-}
-
-func isNamedContract(name string) bool {
-	switch name {
-	case "multipleOf", "notEmpty", "unique", "finite", "odd", "even":
-		return true
-	default:
-		return false
-	}
+	return token.Type == lexer.IDENT && lexer.IsContractWord(token.Lexeme)
 }
 
 func (p *Parser) parseMembershipContract() ast.Contract {
@@ -4875,6 +4997,30 @@ func (p *Parser) collectLexerDiagnostics() {
 		p.lexerDiagnostics++
 		p.addDiagnostic(diagnostic.ID, diagnostic.Primary, nil, nil, "%s", diagnostic.Message)
 	}
+}
+
+// lexerDiagnosticForToken keeps an already diagnosed ILLEGAL token under
+// lexer ownership when Pratt parsing retains it as an InvalidExpression. This
+// prevents a second parser diagnostic after a stable statement boundary while
+// still preserving the malformed token for Sema and tooling.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Lexer errors"
+//   - rules/compiler/parser_recovery.md — "Recovery episodes and cascading-diagnostic suppression"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func (p *Parser) lexerDiagnosticForToken(token lexer.Token) (Diagnostic, bool) {
+	for index := len(p.diagnostics) - 1; index >= 0; index-- {
+		diagnostic := p.diagnostics[index]
+		definition, known := compilerdiagnostics.Lookup(diagnostic.ID)
+		if !known || definition.Family != "lexer" {
+			continue
+		}
+		primary := diagnostic.Primary
+		if primary.File == token.File && primary.Line == token.Line && primary.Column == token.Column && primary.Lexeme == token.Lexeme {
+			return diagnostic, true
+		}
+	}
+	return Diagnostic{}, false
 }
 
 func (p *Parser) addError(format string, args ...any) {
@@ -6095,8 +6241,121 @@ func (p *Parser) skipComments() {
 	}
 }
 
+// collectLeadingDocumentation consumes comment trivia and retains only a
+// contiguous `/** ... */` group immediately followed by source on the next
+// physical line. Ordinary comments, inline documentation comments, and blank
+// lines detach the pending group.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§5.4–5.5
+//   - rules/tooling/formatter.md — "Documentation comment"
+func (p *Parser) collectLeadingDocumentation() []lexer.Token {
+	documentation := []lexer.Token{}
+	for p.curToken.Type == lexer.COMMENT {
+		comment := p.curToken
+		if strings.HasPrefix(comment.Lexeme, "/**") {
+			if len(documentation) > 0 {
+				previous := documentation[len(documentation)-1]
+				if comment.Line != tokenEndLine(previous)+1 {
+					documentation = nil
+				}
+			}
+			documentation = append(documentation, comment)
+		} else {
+			documentation = nil
+		}
+		if p.peekToken.Type != lexer.COMMENT && (p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || p.peekToken.Type == lexer.CASE || p.peekToken.Type == lexer.DEFAULT) {
+			return nil
+		}
+		p.nextToken()
+	}
+	if len(documentation) == 0 {
+		return nil
+	}
+	last := documentation[len(documentation)-1]
+	if p.curToken.Line != tokenEndLine(last)+1 {
+		return nil
+	}
+	return documentation
+}
+
+// attachDocumentation records a comment group only for declaration AST
+// nodes. A documentation comment before an executable statement is not
+// silently reinterpreted as declaration documentation.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/tooling/formatter.md — "Documentation comment"
+func (p *Parser) attachDocumentation(documentation []lexer.Token, node ast.Node) {
+	if len(documentation) == 0 {
+		return
+	}
+	if isDocumentableDeclaration(node) {
+		comments := append([]lexer.Token(nil), documentation...)
+		p.documentation = append(p.documentation, ast.DocumentationAttachment{
+			Comments:    comments,
+			Declaration: node,
+		})
+	}
+}
+
+// isDocumentableDeclaration identifies declaration-shaped AST nodes accepted
+// as documentation targets by the current grammar.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/foundations/grammar.md — declaration grammar
+func isDocumentableDeclaration(node ast.Node) bool {
+	switch node.(type) {
+	case *ast.ModuleStatement, *ast.ImportStatement,
+		*ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration,
+		*ast.EnumValue, *ast.UnionVariant, *ast.InterfaceDeclaration, *ast.InterfaceProperty,
+		*ast.InterfaceEvent, *ast.StructStatement, *ast.StructField,
+		*ast.RegisterField,
+		*ast.FunctionDeclaration, *ast.LetStatement, *ast.LetGroupStatement,
+		*ast.ImplStatement, *ast.InitDeclaration, *ast.PropertyDeclaration,
+		*ast.EventDeclaration, *ast.UnitMetadataDeclaration:
+		return true
+	default:
+		return false
+	}
+}
+
+// tokenEndLine returns the one-based physical line containing a token's final
+// source scalar, treating CRLF as one line ending.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §2 "Line endings"
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+func tokenEndLine(token lexer.Token) int {
+	line := token.Line
+	runes := []rune(token.Lexeme)
+	for index, current := range runes {
+		switch current {
+		case '\r':
+			line++
+		case '\n':
+			if index == 0 || runes[index-1] != '\r' {
+				line++
+			}
+		}
+	}
+	return line
+}
+
 func (p *Parser) skipPeekComments() {
 	for p.peekToken.Type == lexer.COMMENT {
+		p.nextToken()
+	}
+}
+
+// skipPeekOrdinaryComments consumes ordinary comment trivia while leaving a
+// documentation comment for the enclosing declaration-list parser to attach.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§5.4–5.5
+func (p *Parser) skipPeekOrdinaryComments() {
+	for p.peekToken.Type == lexer.COMMENT && !strings.HasPrefix(p.peekToken.Lexeme, "/**") {
 		p.nextToken()
 	}
 }

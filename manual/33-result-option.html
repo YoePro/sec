@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Result and Option - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#result-option">Result and Option</a>
+        <a href="#carrier-types">Carrier Types</a>
+        <a href="#option">Option[T]</a>
+        <a href="#some-none">Some and None</a>
+        <a href="#option-not-error">Option Is Not an Error</a>
+        <a href="#optional-references">Optional References</a>
+        <a href="#option-return">Returning Option</a>
+        <a href="#result">Result[T, E]</a>
+        <a href="#error-channel">The Error Channel</a>
+        <a href="#precise-open">Precise and Open Error Channels</a>
+        <a href="#ok-err">Ok and Err</a>
+        <a href="#void-success">Result[void, E]</a>
+        <a href="#result-return">Returning Result</a>
+        <a href="#no-implicit-wrap">No Implicit Wrapping</a>
+        <a href="#match-option">Matching Option</a>
+        <a href="#match-result">Matching Result</a>
+        <a href="#patterns">Carrier Patterns Must Match</a>
+        <a href="#projections">Result Projections</a>
+        <a href="#ok-projection">Ok()</a>
+        <a href="#err-projection">Err()</a>
+        <a href="#borrowed-projections">OkRef and ErrRef</a>
+        <a href="#projection-choice">Choosing a Projection</a>
+        <a href="#must-use">Result Is Must-Use</a>
+        <a href="#discard">Explicit Discard</a>
+        <a href="#ownership">Ownership of Payloads</a>
+        <a href="#copy-move">Copy and Move</a>
+        <a href="#terminal-return">Terminal Return</a>
+        <a href="#borrowing">Borrowing Carrier Payloads</a>
+        <a href="#destruction">Destruction</a>
+        <a href="#default-values">Default Values</a>
+        <a href="#try-preview">try Preview</a>
+        <a href="#no-cross-channel">No Result/Option Cross-Conversion</a>
+        <a href="#null">Option Is Not null</a>
+        <a href="#generic-identity">Generic Type Identity</a>
+        <a href="#representation">Representation</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html" class="active">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Result and Option</div>
+
+        <h1 id="result-option">Result and Option</h1>
+
+        <p>
+            Sec uses explicit carrier types for two common situations:
+        </p>
+
+        <pre><code>Option[T]
+Result[T, E]</code></pre>
+
+        <p>
+            <code>Option[T]</code> represents the presence or absence of an ordinary value.
+            <code>Result[T, E]</code> represents successful completion or a typed error.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Absence and failure are different concepts.
+            <code>None</code> is not an error, and <code>Err(...)</code> is not absence.
+        </div>
+
+        <section id="carrier-types">
+            <h2>Carrier Types</h2>
+
+            <p>
+                <code>Option[T]</code> and <code>Result[T, E]</code> are predeclared generic types
+                available without a standard-library import.
+            </p>
+
+            <p>Their logical states are:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>State 1</th>
+                            <th>State 2</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Option[T]</code></td>
+                            <td><code>Some(T)</code></td>
+                            <td><code>None</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>Result[T, E]</code></td>
+                            <td><code>Ok(T)</code></td>
+                            <td><code>Err(E)</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                The active state determines which payload, if any, is currently owned by the carrier.
+            </p>
+        </section>
+
+        <section id="option">
+            <h2><code>Option[T]</code></h2>
+
+            <p>
+                <code>Option[T]</code> represents an optional value of type <code>T</code>.
+            </p>
+
+            <pre><code>fn FindDevice(name: string) Option[Device] {
+    ...
+}</code></pre>
+
+            <p>
+                The result is either:
+            </p>
+
+            <pre><code>Some(device)
+None</code></pre>
+
+            <p>
+                Use <code>Option</code> when absence is a normal part of the domain rather than a
+                failure that needs an error value.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>searching for an item that may not exist;</li>
+                <li>looking up an optional configuration value;</li>
+                <li>representing an optional safe reference;</li>
+                <li>an iterator reaching the end of its sequence.</li>
+            </ul>
+        </section>
+
+        <section id="some-none">
+            <h2><code>Some</code> and <code>None</code></h2>
+
+            <p>
+                <code>Some(value)</code> constructs the present state.
+            </p>
+
+            <pre><code>return Some(device)</code></pre>
+
+            <p>
+                <code>None</code> constructs the absent state.
+            </p>
+
+            <pre><code>return None</code></pre>
+
+            <p>
+                <code>Some(value)</code> requires <code>value</code> to be assignable to the
+                declared payload type <code>T</code>.
+            </p>
+
+            <p>
+                <code>None</code> carries no <code>T</code> payload.
+            </p>
+        </section>
+
+        <section id="option-not-error">
+            <h2><code>Option</code> Is Not an Error Channel</h2>
+
+            <p>
+                <code>None</code> represents absence only.
+            </p>
+
+            <p>It does not contain:</p>
+
+            <ul>
+                <li>an error code;</li>
+                <li>an exception;</li>
+                <li>a hidden reason string;</li>
+                <li>a default <code>error</code> value.</li>
+            </ul>
+
+            <p>
+                When callers need to know why an operation failed, use an appropriate
+                <code>Result[T, E]</code> instead.
+            </p>
+        </section>
+
+        <section id="optional-references">
+            <h2>Optional Safe References</h2>
+
+            <p>
+                Safe references are non-null, so optional reference semantics use
+                <code>Option</code>:
+            </p>
+
+            <pre><code>Option[ref Device]
+Option[ref mut Device]</code></pre>
+
+            <p>
+                This keeps absence explicit without adding a null state to <code>ref T</code> or
+                <code>ref mut T</code>.
+            </p>
+
+            <p>
+                When the option contains a reference, normal reference lifetime and borrowing rules
+                remain active.
+            </p>
+        </section>
+
+        <section id="option-return">
+            <h2>Returning an <code>Option</code></h2>
+
+            <p>Construct the state explicitly when returning a payload or absence:</p>
+
+            <pre><code>fn FindDevice(name: string) Option[Device] {
+    if HasDevice(name) {
+        return Some(LoadDevice(name))
+    }
+
+    return None
+}</code></pre>
+
+            <p>
+                If an expression already has the exact compatible <code>Option[T]</code> type, the
+                complete carrier may be returned directly:
+            </p>
+
+            <pre><code>fn Find() Option[Device] {
+    ...
+}
+
+fn FindPreferred() Option[Device] {
+    return Find()
+}</code></pre>
+
+            <p>
+                Direct return preserves whichever state is active.
+                The carrier is not unwrapped and reconstructed.
+            </p>
+        </section>
+
+        <section id="result">
+            <h2><code>Result[T, E]</code></h2>
+
+            <p>
+                <code>Result</code> is a predeclared nominal generic type with exactly two type arguments:
+            </p>
+
+            <pre><code>Result[ValueType, ErrorType]</code></pre>
+
+            <p>For:</p>
+
+            <pre><code>Result[T, E]</code></pre>
+
+            <ul>
+                <li><code>T</code> is the success type;</li>
+                <li><code>E</code> is the error-channel type;</li>
+                <li>the active value is either <code>Ok(T)</code> or <code>Err(E)</code>.</li>
+            </ul>
+
+            <p>Examples:</p>
+
+            <pre><code>Result[Data, IOError]
+Result[Data, error]
+Result[void, ParseError]</code></pre>
+
+            <p>Invalid examples:</p>
+
+            <pre><code>Result[int]
+Result[int, IOError, string]
+Result[int, string]</code></pre>
+
+            <p>
+                The error type must satisfy the Sec error-type rules.
+            </p>
+        </section>
+
+        <section id="error-channel">
+            <h2>The Error Channel</h2>
+
+            <p>
+                <code>E</code> must be either:
+            </p>
+
+            <ul>
+                <li>the compiler-known root type <code>error</code>;</li>
+                <li>a concrete type declared as a Sec error type.</li>
+            </ul>
+
+            <p>
+                Ordinary types such as <code>string</code>, <code>int</code> or an unrelated struct
+                cannot be used as the error channel merely because they could describe a failure.
+            </p>
+
+            <p>
+                Concrete error declarations are covered in the next chapter.
+            </p>
+        </section>
+
+        <section id="precise-open">
+            <h2>Precise and Open Error Channels</h2>
+
+            <p>
+                Prefer a concrete error type when the API can describe its failure domain precisely:
+            </p>
+
+            <pre><code>fn Read() Result[Data, IOError] {
+    ...
+}</code></pre>
+
+            <p>
+                Use <code>error</code> when the API intentionally accepts or forwards heterogeneous
+                Sec error values:
+            </p>
+
+            <pre><code>fn RunPipeline() Result[Data, error] {
+    ...
+}</code></pre>
+
+            <p>
+                <code>Result[T, IOError]</code> has a precise concrete error channel.
+                <code>Result[T, error]</code> has an open error channel.
+            </p>
+
+            <p>
+                Widening a concrete error into <code>error</code> preserves its concrete identity,
+                active variant, payload and ownership state.
+            </p>
+        </section>
+
+        <section id="ok-err">
+            <h2><code>Ok</code> and <code>Err</code></h2>
+
+            <p>
+                <code>Ok</code> and <code>Err</code> construct the two <code>Result</code> states:
+            </p>
+
+            <pre><code>return Ok(value)
+return Err(IOError.ReadError)</code></pre>
+
+            <p>
+                <code>Ok(value)</code> requires <code>value</code> to be assignable to the declared
+                success type.
+            </p>
+
+            <p>
+                <code>Err(errorValue)</code> requires the error value to be assignable to the
+                declared error channel.
+            </p>
+
+            <p>
+                A concrete error may therefore be returned through <code>Result[T, error]</code>
+                using normal error widening.
+            </p>
+        </section>
+
+        <section id="void-success">
+            <h2><code>Result[void, E]</code></h2>
+
+            <p>
+                When success carries no value, use <code>void</code> as the success type:
+            </p>
+
+            <pre><code>fn Save() Result[void, IOError] {
+    ...
+    return Ok()
+}</code></pre>
+
+            <p>
+                <code>Ok()</code> is valid only when the success type is <code>void</code>.
+            </p>
+
+            <p>This is invalid for a value-bearing result:</p>
+
+            <pre><code>fn Read() Result[Data, IOError] {
+    return Ok()    // invalid
+}</code></pre>
+        </section>
+
+        <section id="result-return">
+            <h2>Returning a Complete <code>Result</code></h2>
+
+            <p>
+                An expression that already has the compatible complete <code>Result[T, E]</code>
+                type may be returned directly:
+            </p>
+
+            <pre><code>fn ReadFromDevice() Result[Data, IOError] {
+    ...
+}
+
+fn Read() Result[Data, IOError] {
+    return ReadFromDevice()
+}</code></pre>
+
+            <p>
+                The active <code>Ok</code> or <code>Err</code> state is forwarded unchanged.
+            </p>
+
+            <p>
+                Direct carrier return does not unwrap and then reconstruct the value.
+            </p>
+        </section>
+
+        <section id="no-implicit-wrap">
+            <h2>Plain Values Are Not Implicitly Wrapped</h2>
+
+            <p>
+                Returning a complete carrier directly does not create an implicit payload conversion.
+            </p>
+
+            <p>This remains invalid:</p>
+
+            <pre><code>fn Find() Option[Device] {
+    let device := LoadDevice()
+    return device    // invalid
+}</code></pre>
+
+            <p>Write:</p>
+
+            <pre><code>return Some(device)</code></pre>
+
+            <p>Likewise, this is invalid:</p>
+
+            <pre><code>fn Read() Result[Data, IOError] {
+    let data := LoadData()
+    return data    // invalid
+}</code></pre>
+
+            <p>Write:</p>
+
+            <pre><code>return Ok(data)</code></pre>
+
+            <p>
+                The carrier state remains explicit whenever the expression being returned is only the payload.
+            </p>
+        </section>
+
+        <section id="match-option">
+            <h2>Matching <code>Option</code></h2>
+
+            <p>
+                <code>match</code> is the general explicit way to handle both states of an
+                <code>Option[T]</code>.
+            </p>
+
+            <pre><code>match FindDevice(name) {
+    Some(device) =&gt; Use(device)
+    None =&gt; HandleMissing()
+}</code></pre>
+
+            <p>
+                A complete <code>Option[T]</code> match has exactly two carrier states:
+                <code>Some(...)</code> and <code>None</code>.
+            </p>
+
+            <p>
+                The binding inside <code>Some(...)</code> follows ordinary match ownership,
+                borrowing and guard rules.
+            </p>
+        </section>
+
+        <section id="match-result">
+            <h2>Matching <code>Result</code></h2>
+
+            <p>
+                <code>match</code> can make success and failure equally explicit:
+            </p>
+
+            <pre><code>match Read() {
+    Ok(data) =&gt; Process(data)
+    Err(errorValue) =&gt; Handle(errorValue)
+}</code></pre>
+
+            <p>
+                The <code>Ok</code> branch receives the success payload.
+                The <code>Err</code> branch receives the declared error payload.
+            </p>
+
+            <p>
+                For a precise error type, the error payload may then be matched more specifically
+                according to that error type's enum or union structure.
+            </p>
+
+            <p>
+                For <code>Result[T, error]</code>, exhaustive handling of the open error channel
+                requires an appropriate fallback when concrete error cases do not cover the complete domain.
+            </p>
+        </section>
+
+        <section id="patterns">
+            <h2>Carrier Patterns Must Match the Carrier Type</h2>
+
+            <p>
+                Result patterns and Option patterns are not interchangeable.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>match FindDevice(name) {
+    Ok(device) =&gt; Use(device)    // invalid: subject is Option[Device]
+    Err(_) =&gt; {}
+}</code></pre>
+
+            <p>Use:</p>
+
+            <pre><code>match FindDevice(name) {
+    Some(device) =&gt; Use(device)
+    None =&gt; {}
+}</code></pre>
+
+            <p>Likewise, this is invalid for a <code>Result</code>:</p>
+
+            <pre><code>match Read() {
+    Some(data) =&gt; Process(data)    // invalid
+    None =&gt; {}
+}</code></pre>
+
+            <p>
+                The compiler and LSP should explain the carrier family and suggest the correct
+                pattern names rather than reporting only a generic mismatch.
+            </p>
+        </section>
+
+        <section id="projections">
+            <h2><code>Result</code> Projections</h2>
+
+            <p>
+                <code>Result[T, E]</code> has four compiler-known projections for intentionally
+                keeping one side and forgetting the other.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Member</th>
+                            <th>Result type</th>
+                            <th>Receiver behavior</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Ok()</code></td>
+                            <td><code>Option[T]</code></td>
+                            <td>Consumes the Result</td>
+                        </tr>
+                        <tr>
+                            <td><code>Err()</code></td>
+                            <td><code>Option[E]</code></td>
+                            <td>Consumes the Result</td>
+                        </tr>
+                        <tr>
+                            <td><code>OkRef</code></td>
+                            <td><code>Option[ref T]</code></td>
+                            <td>Shared non-consuming property</td>
+                        </tr>
+                        <tr>
+                            <td><code>ErrRef</code></td>
+                            <td><code>Option[ref E]</code></td>
+                            <td>Shared non-consuming property</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                These members do not provide an unchecked unwrap operation.
+                Every projection still returns an <code>Option</code>.
+            </p>
+        </section>
+
+        <section id="ok-projection">
+            <h2><code>result.Ok()</code></h2>
+
+            <p>
+                The consuming success projection keeps the success payload when the Result is
+                <code>Ok</code>:
+            </p>
+
+            <pre><code>Ok(value).Ok()  -&gt; Some(value)
+Err(error).Ok() -&gt; None</code></pre>
+
+            <p>
+                The complete Result receiver is consumed.
+            </p>
+
+            <p>
+                When the retained payload is move-only, it is moved into the returned
+                <code>Option[T]</code>.
+            </p>
+
+            <p>
+                The operation does not clone the payload.
+            </p>
+        </section>
+
+        <section id="err-projection">
+            <h2><code>result.Err()</code></h2>
+
+            <p>
+                The consuming error projection keeps the error payload when the Result is
+                <code>Err</code>:
+            </p>
+
+            <pre><code>Err(error).Err() -&gt; Some(error)
+Ok(value).Err()  -&gt; None</code></pre>
+
+            <p>
+                As with <code>Ok()</code>, the complete Result receiver is consumed.
+            </p>
+
+            <p>
+                If the active non-retained payload requires non-discardable handling, the projection
+                is invalid unless control-flow analysis proves that such a state cannot occur.
+            </p>
+        </section>
+
+        <section id="borrowed-projections">
+            <h2><code>OkRef</code> and <code>ErrRef</code></h2>
+
+            <p>
+                Borrowed projections inspect one side without consuming the Result.
+            </p>
+
+            <pre><code>let result := Read()
+
+if result.ErrRef is Some(errorValue) {
+    Inspect(errorValue)
+}
+
+Use(result)</code></pre>
+
+            <p>Their semantics are:</p>
+
+            <pre><code>Ok(value).OkRef   -&gt; Some(ref value)
+Err(error).OkRef  -&gt; None
+
+Err(error).ErrRef -&gt; Some(ref error)
+Ok(value).ErrRef  -&gt; None</code></pre>
+
+            <p>These properties:</p>
+
+            <ul>
+                <li>do not consume the Result;</li>
+                <li>do not copy or clone a payload;</li>
+                <li>create a normal shared borrow only when the requested payload is active;</li>
+                <li>cannot outlive the Result or the active payload.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 does not define mutable borrowed Result projections.
+            </p>
+        </section>
+
+        <section id="projection-choice">
+            <h2>Choosing Between Consuming and Borrowed Projections</h2>
+
+            <p>
+                Use <code>Ok()</code> or <code>Err()</code> when the complete Result is no longer needed:
+            </p>
+
+            <pre><code>if Clear().Err() is Some(errorValue) {
+    Handle(errorValue)
+}</code></pre>
+
+            <p>
+                Use <code>OkRef</code>, <code>ErrRef</code> or a borrowed
+                <code>match</code> when the original Result must remain available:
+            </p>
+
+            <pre><code>let result := Read()
+
+if result.ErrRef is Some(errorValue) {
+    Inspect(errorValue)
+}
+
+Use(result)</code></pre>
+
+            <p>
+                After a consuming projection, later use of the original Result is invalid:
+            </p>
+
+            <pre><code>let result := Read()
+let value := result.Ok()
+
+Use(result)    // invalid</code></pre>
+        </section>
+
+        <section id="must-use">
+            <h2><code>Result</code> Is Always Must-Use</h2>
+
+            <p>
+                A Result-producing operation cannot be silently ignored.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>TryWriteLog()</code></pre>
+
+            <p>Valid handling includes:</p>
+
+            <ul>
+                <li>using <code>try</code>;</li>
+                <li>using <code>match</code>;</li>
+                <li>binding the complete Result;</li>
+                <li>returning the Result;</li>
+                <li>passing it to a valid consuming context;</li>
+                <li>explicitly discarding it when the complete carrier is discardable;</li>
+                <li>using <code>.Ok()</code> or <code>.Err()</code> to intentionally select one side.</li>
+            </ul>
+
+            <p>
+                Must-use prevents an error result from disappearing accidentally.
+            </p>
+        </section>
+
+        <section id="discard">
+            <h2>Explicitly Discarding a <code>Result</code></h2>
+
+            <p>
+                When both success and failure are intentionally ignored, say so explicitly:
+            </p>
+
+            <pre><code>discard TryWriteLog()</code></pre>
+
+            <p>
+                This means the complete Result is intentionally discarded.
+            </p>
+
+            <p>
+                It is legal only when whichever payload may be active is itself legally discardable.
+            </p>
+
+            <p>
+                <code>discard</code> does not silently suppress cleanup obligations.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Carrier Payloads Follow Normal Ownership Rules</h2>
+
+            <p>
+                <code>Option</code> and <code>Result</code> do not create a separate ownership model.
+            </p>
+
+            <p>
+                The active payload may itself own data or be move-only.
+            </p>
+
+            <pre><code>let optional := Some(&lt;-resource)
+let result := Ok(&lt;-buffer)</code></pre>
+
+            <p>
+                In a non-terminal construction, moving an existing reusable source into the carrier
+                uses the normal explicit move syntax.
+            </p>
+
+            <p>
+                Once stored in the carrier, the carrier owns the active owned payload.
+            </p>
+        </section>
+
+        <section id="copy-move">
+            <h2>Copy and Move Behavior Is Derived from the Payloads</h2>
+
+            <p>
+                The carrier does not secretly clone move-only payloads.
+            </p>
+
+            <p>
+                If the active payload cannot be implicitly copied, an operation that would require
+                such a copy is invalid.
+            </p>
+
+            <p>
+                Moving a carrier transfers its active payload according to ordinary move semantics.
+            </p>
+
+            <p>
+                Consuming projections similarly move the retained move-only payload into the returned
+                Option rather than cloning it.
+            </p>
+        </section>
+
+        <section id="terminal-return">
+            <h2>Terminal Return Forwards the Carrier and Active Payload</h2>
+
+            <p>
+                Returning a complete carrier uses ordinary terminal-return ownership forwarding:
+            </p>
+
+            <pre><code>fn Read() Result[Data, IOError] {
+    let result := ReadFromDevice()
+    return result
+}</code></pre>
+
+            <p>
+                Likewise for <code>Option</code>:
+            </p>
+
+            <pre><code>fn Find() Option[Device] {
+    let result := FindDevice()
+    return result
+}</code></pre>
+
+            <p>
+                No redundant return-site move marker is required.
+            </p>
+
+            <p>
+                The active payload is forwarded with the carrier rather than copied merely because
+                it crosses the return boundary.
+            </p>
+        </section>
+
+        <section id="borrowing">
+            <h2>Borrowing Carrier Payloads</h2>
+
+            <p>
+                Borrowed match patterns may inspect an active payload without taking ownership:
+            </p>
+
+            <pre><code>let result := Read()
+
+match result {
+    Ok(ref data) =&gt; Inspect(data)
+    Err(ref errorValue) =&gt; InspectError(errorValue)
+}</code></pre>
+
+            <p>
+                The resulting references are ordinary safe borrows.
+                They cannot outlive the carrier payload they reference.
+            </p>
+
+            <p>
+                <code>OkRef</code> and <code>ErrRef</code> provide compiler-known shorthand for the
+                common shared-inspection case.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction Follows the Active State</h2>
+
+            <p>
+                When a carrier is destroyed, only the currently active payload requires payload destruction.
+            </p>
+
+            <p>
+                The payload follows its ordinary deterministic destruction rules.
+            </p>
+
+            <p>
+                Consuming projections destroy the non-retained active payload exactly once when such
+                destruction is required and legal.
+            </p>
+
+            <p>
+                There is no hidden garbage-collection or exception-based cleanup model for
+                <code>Option</code> or <code>Result</code>.
+            </p>
+        </section>
+
+        <section id="default-values">
+            <h2>Do Not Assume an Implicit Default Carrier State</h2>
+
+            <p>
+                The representation of <code>Option[T]</code> or <code>Result[T, E]</code> does not
+                by itself define an implicit default value.
+            </p>
+
+            <p>In particular, the compiler must not infer a default merely because one of these states exists:</p>
+
+            <pre><code>None
+Ok(default(T))
+Err(default(E))</code></pre>
+
+            <p>
+                Defaultability requires an explicit canonical rule for the carrier.
+            </p>
+
+            <p>
+                Do not treat representation zero as sufficient proof that a valid carrier default exists.
+            </p>
+        </section>
+
+        <section id="try-preview">
+            <h2>A Short Preview of <code>try</code></h2>
+
+            <p>
+                <code>try</code> can short-circuit both carrier families:
+            </p>
+
+            <pre><code>fn ReadData() Result[Data, IOError] {
+    let data := try ReadFile()
+    return Ok(data)
+}</code></pre>
+
+            <pre><code>fn Resolve() Option[Device] {
+    let device := try FindDevice()
+    return Some(device)
+}</code></pre>
+
+            <p>For a Result:</p>
+
+            <pre><code>Ok(value) -&gt; success value
+Err(error) -&gt; propagated or locally handled failure</code></pre>
+
+            <p>For an Option:</p>
+
+            <pre><code>Some(value) -&gt; success value
+None        -&gt; propagated or locally handled absence</code></pre>
+
+            <p>
+                The complete <code>try</code> syntax, local handlers, guards, failure propagation and
+                fallible operations are covered in <a href="34-error-handling.html">Errors and try</a>.
+            </p>
+        </section>
+
+        <section id="no-cross-channel">
+            <h2>No Implicit Conversion Between Absence and Error</h2>
+
+            <p>
+                Sec never invents a mapping between the two carrier families.
+            </p>
+
+            <pre><code>None -/&gt; Err(...)
+Err(...) -/&gt; None</code></pre>
+
+            <p>
+                An Option-returning function cannot propagate a Result error merely because both
+                operations can short-circuit.
+            </p>
+
+            <p>
+                A Result-returning function cannot silently reinterpret <code>None</code> as an error.
+            </p>
+
+            <p>
+                When an API needs such a conversion, the programmer states the mapping explicitly.
+            </p>
+        </section>
+
+        <section id="null">
+            <h2><code>Option</code> Is Not <code>null</code></h2>
+
+            <p>
+                Sec does not use a null safe-reference state for ordinary optionality.
+            </p>
+
+            <p>Use:</p>
+
+            <pre><code>Option[ref Device]</code></pre>
+
+            <p>rather than inventing:</p>
+
+            <pre><code>null ref Device</code></pre>
+
+            <p>
+                The unsafe FFI/raw-pointer <code>null</code> sentinel is a different concept covered
+                by the Unsafe and FFI chapters.
+            </p>
+        </section>
+
+        <section id="generic-identity">
+            <h2>Each Generic Carrier Specialization Has Its Own Type</h2>
+
+            <p>
+                Different concrete carrier specializations are not interchangeable merely because
+                their active state currently looks similar.
+            </p>
+
+            <pre><code>Option[Device]
+Option[Socket]
+
+Result[Data, IOError]
+Result[Data, ParseError]</code></pre>
+
+            <p>
+                A plain payload does not implicitly convert into a carrier, and one incompatible
+                carrier specialization does not silently become another.
+            </p>
+
+            <p>
+                Error widening to the root <code>error</code> is the specific exception defined by
+                the Sec error model.
+            </p>
+        </section>
+
+        <section id="representation">
+            <h2>Carrier Representation Is Not Source Semantics</h2>
+
+            <p>
+                The source model guarantees the carrier states and their ownership behavior.
+            </p>
+
+            <p>
+                It does not require one universal physical representation.
+            </p>
+
+            <p>
+                A backend may use:
+            </p>
+
+            <ul>
+                <li>tagged storage;</li>
+                <li>niche representations;</li>
+                <li>direct branches that avoid materializing a temporary carrier;</li>
+                <li>other target-appropriate representations.</li>
+            </ul>
+
+            <p>
+                Such lowering is valid only when observable Sec semantics remain identical.
+            </p>
+
+            <p>
+                Representation choices must not change whether a payload is present, whether an
+                error is active, ownership, destruction, borrow lifetime or must-use behavior.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Diagnostics should identify the carrier family, active semantic requirement and
+                ownership consequence rather than reducing every mistake to a generic type mismatch.
+            </p>
+
+            <h3>Wrong carrier pattern</h3>
+
+            <pre><code>`FindDevice()` returns `Option[Device]`
+
+`Ok(...)` is a Result pattern and cannot match Option
+
+help: use `Some(device)` and `None`</code></pre>
+
+            <h3>Implicit Option wrapping</h3>
+
+            <pre><code>cannot return `Device` from a function returning `Option[Device]`
+
+help: return `Some(device)`
+help: return `None` when the value is absent</code></pre>
+
+            <h3>Implicit Result wrapping</h3>
+
+            <pre><code>cannot return `Data` from a function returning `Result[Data, IOError]`
+
+help: return `Ok(data)`
+help: return `Err(errorValue)` on failure</code></pre>
+
+            <h3>Invalid Result error type</h3>
+
+            <pre><code>`string` cannot be used as the error channel of `Result[int, string]`
+
+the error type must be `error` or a concrete Sec error type</code></pre>
+
+            <h3>Ignored Result</h3>
+
+            <pre><code>result of `TryWriteLog()` must be handled
+
+help: use `try`
+help: match the Result
+help: bind or return the Result
+help: explicitly discard it when both payload states are discardable</code></pre>
+
+            <h3>Use after consuming projection</h3>
+
+            <pre><code>`result` is unavailable after `result.Ok()`
+
+`Ok()` consumes the complete Result receiver
+
+help: use `OkRef` for shared non-consuming inspection
+help: inspect the Result with a borrowed match pattern</code></pre>
+
+            <h3>Invalid cross-channel propagation</h3>
+
+            <pre><code>cannot propagate `None` through `Result[Device, LookupError]`
+
+Option absence is not a Result error
+
+help: map `None` to an explicit error value
+help: handle the absence locally</code></pre>
+        </section>
+
+        <section id="tooling">
+            <h2>Language-Server and Tooling Behavior</h2>
+
+            <p>
+                Tooling should expose the semantic structure of carriers directly.
+            </p>
+
+            <p>Hover and analysis may show:</p>
+
+            <ul>
+                <li><code>Option[T]</code> payload type;</li>
+                <li><code>Result[T, E]</code> success and error types;</li>
+                <li>whether a Result error channel is concrete or the open <code>error</code> root;</li>
+                <li>whether <code>Ok()</code> or <code>Err()</code> consumes the receiver;</li>
+                <li>the result type of a projection;</li>
+                <li>the borrow created by <code>OkRef</code> or <code>ErrRef</code>;</li>
+                <li>the source location that consumed a carrier before an invalid later use;</li>
+                <li>the correct <code>Some</code>/<code>None</code> or <code>Ok</code>/<code>Err</code> patterns;</li>
+                <li>the alternate state that a later <code>try</code> will propagate.</li>
+            </ul>
+
+            <p>
+                Completion should not suggest Result patterns for an Option subject or Option
+                patterns for a Result subject.
+            </p>
+
+            <p>
+                Formatter behavior preserves canonical casing:
+            </p>
+
+            <pre><code>Option[T]
+Some(value)
+None
+
+Result[T, E]
+Ok(value)
+Err(errorValue)
+
+result.Ok()
+result.Err()
+result.OkRef
+result.ErrRef</code></pre>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>Option[T]</code> when absence is an ordinary domain outcome rather than an error.</li>
+                <li>Use <code>Result[T, E]</code> when callers need an explicit typed failure channel.</li>
+                <li>Prefer a concrete error type over the root <code>error</code> when the API has a well-defined failure domain.</li>
+                <li>Use <code>Result[T, error]</code> when heterogeneous Sec errors intentionally cross one API boundary.</li>
+                <li>Construct payload states explicitly with <code>Some</code>, <code>Ok</code> and <code>Err</code>.</li>
+                <li>Return an already-compatible complete carrier directly instead of unpacking and rebuilding it.</li>
+                <li>Use <code>match</code> when both carrier states should be explicit in source.</li>
+                <li>Use <code>Ok()</code> or <code>Err()</code> only when consuming the complete Result is intended.</li>
+                <li>Use <code>OkRef</code>, <code>ErrRef</code> or borrowed matching when the Result must remain available.</li>
+                <li>Do not ignore a Result-producing operation accidentally.</li>
+                <li>Use <code>discard</code> only when both possible active payloads may legally be discarded.</li>
+                <li>Do not expect carrier construction or projection to clone move-only payloads.</li>
+                <li>Do not use <code>Option</code> as a disguised error channel when callers need failure information.</li>
+                <li>Do not use <code>Result</code> merely to represent ordinary optionality.</li>
+                <li>Do not convert between <code>None</code> and <code>Err</code> implicitly; state the mapping explicitly.</li>
+                <li>Use <code>Option[ref T]</code> rather than nullable safe references.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>Option[T]</code> and <code>Result[T, E]</code> are predeclared generic carrier types available without a standard-library import.</li>
+                <li><code>Option[T]</code> represents ordinary presence or absence.</li>
+                <li>The two Option states are <code>Some(T)</code> and <code>None</code>.</li>
+                <li><code>None</code> is not an error and carries no hidden error value.</li>
+                <li>Optional safe references use forms such as <code>Option[ref T]</code> and <code>Option[ref mut T]</code>.</li>
+                <li>Safe references themselves remain non-null.</li>
+                <li><code>Some(value)</code> explicitly constructs a present Option value.</li>
+                <li><code>None</code> explicitly constructs the absent Option state.</li>
+                <li>A complete compatible <code>Option[T]</code> expression may be returned directly.</li>
+                <li>Direct Option return preserves the complete active carrier state.</li>
+                <li>A plain <code>T</code> is not implicitly wrapped in <code>Some(T)</code>.</li>
+                <li><code>Result[T, E]</code> has exactly two generic arguments.</li>
+                <li><code>T</code> is the success type.</li>
+                <li><code>E</code> is the declared error-channel type.</li>
+                <li><code>E</code> must be <code>error</code> or a concrete Sec error type.</li>
+                <li>The two Result states are <code>Ok(T)</code> and <code>Err(E)</code>.</li>
+                <li><code>Ok(value)</code> explicitly constructs the success state.</li>
+                <li><code>Err(errorValue)</code> explicitly constructs the failure state.</li>
+                <li><code>Result[void, E]</code> represents successful completion without a success payload.</li>
+                <li><code>Ok()</code> is the success constructor for <code>Result[void, E]</code>.</li>
+                <li><code>Ok()</code> is invalid for a value-bearing Result success type.</li>
+                <li>A concrete error may widen into a <code>Result[T, error]</code> error channel while preserving concrete error identity and payload.</li>
+                <li><code>Result[T, ConcreteError]</code> is a precise concrete error channel.</li>
+                <li><code>Result[T, error]</code> is an intentionally open error channel.</li>
+                <li>A complete compatible <code>Result[T, E]</code> expression may be returned directly.</li>
+                <li>Direct Result return forwards the complete active carrier rather than unwrapping and rebuilding it.</li>
+                <li>A plain success payload <code>T</code> is not implicitly converted to <code>Result[T, E]</code>.</li>
+                <li>Option matching uses <code>Some(...)</code> and <code>None</code>.</li>
+                <li>Result matching uses <code>Ok(...)</code> and <code>Err(...)</code>.</li>
+                <li>Option and Result pattern families are not interchangeable.</li>
+                <li><code>match</code> is the general explicit construct for handling both carrier states.</li>
+                <li>Result has compiler-known consuming projections <code>Ok()</code> and <code>Err()</code>.</li>
+                <li><code>result.Ok()</code> returns <code>Option[T]</code>.</li>
+                <li><code>result.Err()</code> returns <code>Option[E]</code>.</li>
+                <li><code>Ok(value).Ok()</code> becomes <code>Some(value)</code>.</li>
+                <li><code>Err(error).Ok()</code> becomes <code>None</code>.</li>
+                <li><code>Err(error).Err()</code> becomes <code>Some(error)</code>.</li>
+                <li><code>Ok(value).Err()</code> becomes <code>None</code>.</li>
+                <li><code>Ok()</code> and <code>Err()</code> consume the complete owned Result receiver.</li>
+                <li>Consuming projections do not clone move-only payloads.</li>
+                <li>A retained move-only payload is moved into the returned Option.</li>
+                <li>The non-retained active payload is destroyed exactly once according to ordinary destruction rules.</li>
+                <li>A consuming projection is invalid when it could abandon a non-discardable active obligation.</li>
+                <li>Result has compiler-known non-consuming shared projections <code>OkRef</code> and <code>ErrRef</code>.</li>
+                <li><code>OkRef</code> returns <code>Option[ref T]</code>.</li>
+                <li><code>ErrRef</code> returns <code>Option[ref E]</code>.</li>
+                <li>Borrowed projections do not consume or clone the Result payload.</li>
+                <li>Borrowed projections create an ordinary shared borrow only when the selected payload is active.</li>
+                <li>A borrowed projection cannot outlive the Result payload it references.</li>
+                <li>Sec 0.1 defines no mutable borrowed Result projection.</li>
+                <li>Use consuming projections when the complete Result is no longer required.</li>
+                <li>Use borrowed projections or borrowed matching when the Result must remain usable afterward.</li>
+                <li><code>Result[T, E]</code> is always must-use.</li>
+                <li>A bare standalone Result-producing call cannot silently disappear.</li>
+                <li>Result may be handled through <code>try</code>, <code>match</code>, binding, returning, a valid consuming context, explicit discard, or an intentional consuming projection.</li>
+                <li>Explicitly discarding a Result ignores both states intentionally and is legal only when the complete carrier is discardable.</li>
+                <li>Option and Result active payloads follow ordinary ownership, copy/move, borrowing, lifetime, discardability and destruction rules.</li>
+                <li>Non-terminal construction of an owned move-only payload uses ordinary explicit move syntax.</li>
+                <li>The carrier owns an active owned payload once construction commits.</li>
+                <li>Carrier operations never invent a hidden clone for move-only payloads.</li>
+                <li>Terminal return forwards the complete carrier and active payload without a redundant return-site move marker.</li>
+                <li>Borrowed patterns may inspect active payloads without transferring ownership.</li>
+                <li>Carrier destruction destroys only the active payload according to its normal deterministic destruction semantics.</li>
+                <li>Option and Result do not receive an implicit default merely from their physical representation.</li>
+                <li><code>None</code>, <code>Ok(default(T))</code> and <code>Err(default(E))</code> are not automatically inferred defaults.</li>
+                <li><code>try</code> treats <code>Some(value)</code> and <code>Ok(value)</code> as success states.</li>
+                <li><code>try</code> treats <code>None</code> as absence and <code>Err(error)</code> as failure.</li>
+                <li><code>None</code> can propagate only through a compatible Option return channel unless explicitly handled.</li>
+                <li>Result failure can propagate only through a compatible Result error channel unless explicitly handled.</li>
+                <li>There is no implicit <code>None -&gt; Err(...)</code> conversion.</li>
+                <li>There is no implicit <code>Err(...) -&gt; None</code> conversion.</li>
+                <li>Different concrete Option and Result specializations retain their own generic type identity.</li>
+                <li>Carrier source semantics do not require one universal backend representation.</li>
+                <li>The backend may optimize carrier representation or eliminate temporary carriers only when observable Sec semantics remain identical.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="32-visibility.html">Previous: Visibility and Scopes</a>
+            <a href="34-error-handling.html">Next: Errors and try</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

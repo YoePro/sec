@@ -1,0 +1,1628 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Errors and try - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#errors-try">Errors and try</a>
+        <a href="#error-root">The error Root Type</a>
+        <a href="#assignability">Error Assignability</a>
+        <a href="#no-inheritance">No General Inheritance</a>
+        <a href="#enum-errors">Enum Errors</a>
+        <a href="#union-errors">Union Errors</a>
+        <a href="#owned-error-data">Errors May Own Data</a>
+        <a href="#fallible-contracts">Fallible Contracts</a>
+        <a href="#try-model">The try Model</a>
+        <a href="#try-operands">What try Accepts</a>
+        <a href="#result-try">try with Result</a>
+        <a href="#option-try">try with Option</a>
+        <a href="#language-failures">Language-Defined Failures</a>
+        <a href="#failure-sets">Compiler Failure Sets</a>
+        <a href="#naked-try">Naked try Propagation</a>
+        <a href="#error-propagation">Result Error Propagation</a>
+        <a href="#option-propagation">Option Absence Propagation</a>
+        <a href="#no-cross-channel">No Cross-Channel Conversion</a>
+        <a href="#try-boundary">try Expression Boundary</a>
+        <a href="#general-expression">try as an Expression</a>
+        <a href="#local-handlers">Local try Handlers</a>
+        <a href="#no-success-handlers">No Success Handlers</a>
+        <a href="#partial-handlers">Partial Handlers</a>
+        <a href="#err-discard">Err(_)</a>
+        <a href="#handler-order">Handler Order</a>
+        <a href="#guards">Handler Guards</a>
+        <a href="#guard-ownership">Ownership and Guards</a>
+        <a href="#recovery-values">Recovery Values</a>
+        <a href="#block-results">Handler Block Results</a>
+        <a href="#void-success">void Success</a>
+        <a href="#handler-failures">Handler Failures</a>
+        <a href="#fallible-assignment">Fallible Assignment</a>
+        <a href="#fallible-setter">Fallible Property Setters</a>
+        <a href="#getter-rule">Getters Are Infallible</a>
+        <a href="#fallible-init">Fallible Initializers</a>
+        <a href="#return-try">return try</a>
+        <a href="#try-vs-match">try vs match</a>
+        <a href="#open-error-match">Matching Result[T, error]</a>
+        <a href="#option-if">One-Branch Option Tests</a>
+        <a href="#ownership">Ownership</a>
+        <a href="#cleanup">Cleanup and defer</a>
+        <a href="#panic">try Does Not Catch Panic</a>
+        <a href="#runtime">No Exception Runtime</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">Tooling</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html" class="active">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Errors and try</div>
+
+        <h1 id="errors-try">Errors and <code>try</code></h1>
+
+        <p>
+            Sec uses explicit, statically typed error handling.
+            Failure contracts appear in function types, error types and source control flow rather
+            than through hidden exceptions.
+        </p>
+
+        <pre><code>fn Read() Result[Data, IOError] {
+    let data := try ReadFile()
+    return Ok(data)
+}</code></pre>
+
+        <p>
+            <code>try</code> is the language's specialized short-circuit form for fallible or
+            alternate-state operations.
+            It can propagate failure, recover from selected cases locally, or forward a fallible
+            operation directly from a return position.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>try</code> handles declared fallible or short-circuit
+            behavior. It is not an exception mechanism and it never catches panic.
+        </div>
+
+        <section id="error-root">
+            <h2>The <code>error</code> Root Type</h2>
+
+            <p>
+                <code>error</code> is a compiler-known fundamental Sec type available without import:
+            </p>
+
+            <pre><code>error</code></pre>
+
+            <p>
+                It is the common root of Sec error types.
+            </p>
+
+            <p>It is not:</p>
+
+            <ul>
+                <li>a general object base class;</li>
+                <li>ordinary inheritance;</li>
+                <li>an exception base class;</li>
+                <li>a mandatory heap object;</li>
+                <li>a fixed message/code structure;</li>
+                <li>a permission for arbitrary runtime conversion between types.</li>
+            </ul>
+
+            <p>
+                The relation is specific to error assignability.
+            </p>
+        </section>
+
+        <section id="assignability">
+            <h2>Error Assignability</h2>
+
+            <p>For a concrete Sec error type <code>MyError</code>:</p>
+
+            <pre><code>MyError -&gt; MyError    valid
+MyError -&gt; error      valid implicit widening
+error   -&gt; MyError    no implicit conversion
+ErrorA  -&gt; ErrorB     no implicit conversion</code></pre>
+
+            <p>
+                Widening a concrete error to <code>error</code> preserves:
+            </p>
+
+            <ul>
+                <li>the concrete error type;</li>
+                <li>the active error variant;</li>
+                <li>payload data;</li>
+                <li>ownership state;</li>
+                <li>destruction behavior.</li>
+            </ul>
+
+            <p>
+                Sec 0.1 does not define a general implicit narrowing from <code>error</code> to a
+                concrete error type.
+            </p>
+        </section>
+
+        <section id="no-inheritance">
+            <h2>Error Types Do Not Introduce General Inheritance</h2>
+
+            <p>
+                Declaring an error type creates only the error-specific relation:
+            </p>
+
+            <pre><code>concrete error type -&gt; error</code></pre>
+
+            <p>
+                It does not create inheritance between arbitrary user-defined types.
+            </p>
+        </section>
+
+        <section id="enum-errors">
+            <h2>Closed Enum Errors</h2>
+
+            <p>
+                A fieldless closed error family may be declared as an enum:
+            </p>
+
+            <pre><code>enum IOError error {
+    OpenError
+    ReadError
+    WriteError
+    NotFound
+    PermissionDenied
+}</code></pre>
+
+            <p>
+                The final <code>error</code> marker makes values of the enum assignable to the root
+                <code>error</code> type.
+            </p>
+
+            <p>
+                An explicit underlying enum type may still be used:
+            </p>
+
+            <pre><code>enum ProtocolError uint16 error {
+    InvalidFrame = 1
+    UnsupportedVersion = 2
+}</code></pre>
+
+            <p>
+                The enum otherwise follows ordinary closed nominal enum rules.
+            </p>
+        </section>
+
+        <section id="union-errors">
+            <h2>Payload-Bearing Union Errors</h2>
+
+            <p>
+                An error family that needs per-variant data uses a tagged union error:
+            </p>
+
+            <pre><code>type DetailedError union error {
+    OpenError {
+        Path: string
+        Code: int
+    }
+
+    ReadError {
+        Path: string
+        Offset: uint64
+        Code: int
+    }
+}</code></pre>
+
+            <p>
+                The concrete error type decides which payload fields exist.
+            </p>
+
+            <p>
+                The root <code>error</code> type does not impose universal fields such as
+                <code>Message</code>, <code>Id</code>, <code>Code</code> or
+                <code>Description</code>.
+            </p>
+        </section>
+
+        <section id="owned-error-data">
+            <h2>Error Values May Own Data</h2>
+
+            <p>
+                Error payloads are ordinary Sec values and may contain owned or move-only resources
+                when their containing declaration permits them.
+            </p>
+
+            <p>Error values follow normal:</p>
+
+            <ul>
+                <li>ownership;</li>
+                <li>copy/move rules;</li>
+                <li>borrowing;</li>
+                <li>destruction;</li>
+                <li>discardability;</li>
+                <li>lifetime rules.</li>
+            </ul>
+
+            <p>
+                Sec never inserts a hidden clone simply because a value is an error.
+            </p>
+        </section>
+
+        <section id="fallible-contracts">
+            <h2>Fallible Contracts Are Explicit</h2>
+
+            <p>
+                Ordinary fallible functions use <code>Result[T, E]</code>:
+            </p>
+
+            <pre><code>fn Read() Result[Data, IOError] {
+    ...
+}</code></pre>
+
+            <p>
+                A precise concrete error type is preferred when the API has a closed known failure
+                domain.
+            </p>
+
+            <p>
+                The root type is used when heterogeneous errors intentionally cross one API boundary:
+            </p>
+
+            <pre><code>fn RunPipeline() Result[Data, error] {
+    ...
+}</code></pre>
+
+            <p>
+                <code>Result</code> and <code>Option</code> carrier details are covered in the
+                previous chapter.
+            </p>
+        </section>
+
+        <section id="try-model">
+            <h2>The <code>try</code> Model</h2>
+
+            <p>
+                <code>try</code> is a language-level short-circuit expression.
+            </p>
+
+            <p>It provides:</p>
+
+            <ul>
+                <li>an implicit success path;</li>
+                <li>optional local handling of alternate/failure states;</li>
+                <li>implicit propagation of unhandled compatible alternate/failure states.</li>
+            </ul>
+
+            <p>
+                Conceptually it resembles a specialized partial <code>match</code>, but the compiler
+                is not required to lower it through a source-level match expression.
+            </p>
+
+            <p>
+                <code>match</code> remains the general explicit and exhaustive construct.
+            </p>
+        </section>
+
+        <section id="try-operands">
+            <h2>What <code>try</code> Accepts</h2>
+
+            <p>
+                <code>try</code> is not restricted to expressions whose surface type is
+                <code>Result[T, E]</code>.
+            </p>
+
+            <p>
+                Its operand must be a language-defined fallible or short-circuit operation for which
+                the compiler knows:
+            </p>
+
+            <ul>
+                <li>the success type;</li>
+                <li>the possible alternate/failure states;</li>
+                <li>the propagation behavior of those states.</li>
+            </ul>
+
+            <p>Sec 0.1 includes at least:</p>
+
+            <pre><code>let data := try Read()
+let item := try Find()
+let sum := try left + right
+let value := try values[index]
+let percent := try Percent(raw)
+let connection := try new Connection(address)</code></pre>
+
+            <p>These categories include:</p>
+
+            <ul>
+                <li><code>Result[T, E]</code> expressions;</li>
+                <li><code>Option[T]</code> expressions;</li>
+                <li>language-defined fallible runtime checks;</li>
+                <li>fallible arithmetic/conversions/constrained constructions;</li>
+                <li>fallible property assignments;</li>
+                <li>fallible lifecycle construction through <code>new</code>.</li>
+            </ul>
+
+            <p>
+                An ordinary infallible value is not a valid <code>try</code> operand simply because
+                it could theoretically be wrapped in a carrier.
+            </p>
+        </section>
+
+        <section id="result-try">
+            <h2><code>try</code> with <code>Result[T, E]</code></h2>
+
+            <pre><code>Ok(value)  -&gt; success value T
+Err(error) -&gt; error alternate</code></pre>
+
+            <p>
+                On success, the <code>try</code> expression evaluates to the success payload.
+            </p>
+
+            <p>
+                On error, a matching local handler may recover; otherwise the error propagates when
+                compatible with the enclosing error channel.
+            </p>
+        </section>
+
+        <section id="option-try">
+            <h2><code>try</code> with <code>Option[T]</code></h2>
+
+            <pre><code>Some(value) -&gt; success value T
+None        -&gt; absence alternate</code></pre>
+
+            <p>
+                <code>None</code> remains ordinary absence.
+                It does not become an error.
+            </p>
+        </section>
+
+        <section id="language-failures">
+            <h2>Language-Defined Fallible Operations</h2>
+
+            <p>
+                Some Sec operations are fallible without materializing an explicit source-level
+                <code>Result</code> value.
+            </p>
+
+            <pre><code>let value := try values[index]
+let total := try left + right
+let percentage := try Percent(raw)</code></pre>
+
+            <p>
+                The compiler knows the success type and possible failure types from the owning
+                language rule.
+            </p>
+
+            <p>
+                Lowering may branch directly to success/failure control flow rather than constructing
+                a temporary carrier.
+            </p>
+        </section>
+
+        <section id="failure-sets">
+            <h2>One Protected Expression May Have Several Failure Sources</h2>
+
+            <p>
+                A protected expression can contain more than one fallible point:
+            </p>
+
+            <pre><code>let value := try values[index] + amount</code></pre>
+
+            <p>
+                The index operation and arithmetic operation may fail with different concrete error types.
+            </p>
+
+            <p>
+                Internally the compiler may track a heterogeneous failure set such as:
+            </p>
+
+            <pre><code>BoundsError
+ArithmeticError</code></pre>
+
+            <p>This internal set does not create:</p>
+
+            <ul>
+                <li>an anonymous source-language union;</li>
+                <li>an inferred public error type;</li>
+                <li>automatic user-union wrapping;</li>
+                <li>automatic error variant selection.</li>
+            </ul>
+
+            <p>
+                Evaluation stops at the first failure according to normal source evaluation order.
+            </p>
+
+            <p>
+                <code>Err(_)</code> can handle a heterogeneous failure set because it does not need a
+                payload binding type.
+            </p>
+
+            <p>
+                A catch-all <code>Err(errorValue)</code> binding is valid only when all remaining
+                failure paths already share one compiler-resolved concrete or explicitly declared
+                common error channel, including a declared <code>error</code> channel.
+            </p>
+
+            <p>
+                The compiler does not infer <code>error</code> merely to make an otherwise
+                heterogeneous local binding possible.
+            </p>
+        </section>
+
+        <section id="naked-try">
+            <h2>Naked <code>try</code> Propagation</h2>
+
+            <p>The simplest form is:</p>
+
+            <pre><code>try expression</code></pre>
+
+            <p>
+                Success continues normally.
+                Any unhandled alternate/failure state propagates only when the enclosing return
+                channel is compatible.
+            </p>
+        </section>
+
+        <section id="error-propagation">
+            <h2>Result Error Propagation</h2>
+
+            <pre><code>fn ReadData() Result[Data, IOError] {
+    let data := try ReadFile()
+    return Ok(data)
+}</code></pre>
+
+            <p>
+                Every unhandled propagated error must be assignable to the declared enclosing error type.
+            </p>
+
+            <p>Widening to the root <code>error</code> is valid:</p>
+
+            <pre><code>fn Run() Result[Data, error] {
+    let data := try ReadFile()
+    return Ok(data)
+}</code></pre>
+
+            <p>
+                The concrete error identity and payload remain intact through widening.
+            </p>
+
+            <p>
+                No hidden wrapper error is invented.
+            </p>
+        </section>
+
+        <section id="option-propagation">
+            <h2>Option Absence Propagation</h2>
+
+            <p>
+                Naked <code>try</code> on an <code>Option[T]</code> may propagate <code>None</code>
+                only through an enclosing compatible <code>Option[...]</code> return channel:
+            </p>
+
+            <pre><code>fn Resolve() Option[Device] {
+    let device := try FindDevice()
+    return Some(device)
+}</code></pre>
+
+            <p>
+                <code>None</code> stays absence.
+            </p>
+        </section>
+
+        <section id="no-cross-channel">
+            <h2>No Implicit Cross-Channel Conversion</h2>
+
+            <pre><code>None       -/&gt; Err(...)
+Err(error) -/&gt; None</code></pre>
+
+            <p>
+                The compiler never invents a mapping between absence and failure.
+            </p>
+
+            <p>
+                When a program wants such a conversion, it states the mapping explicitly.
+            </p>
+        </section>
+
+        <section id="try-boundary">
+            <h2><code>try</code> Protects the Complete Following Expression</h2>
+
+            <p>Canonical:</p>
+
+            <pre><code>let total := try left + right * quantity</code></pre>
+
+            <p>Conceptual grouping:</p>
+
+            <pre><code>let total := try (left + (right * quantity))</code></pre>
+
+            <p>Parentheses can narrow the protected region:</p>
+
+            <pre><code>let total := left + (try right * quantity)</code></pre>
+
+            <p>Natural boundaries include:</p>
+
+            <ul>
+                <li>statement completion;</li>
+                <li>commas separating arguments or elements;</li>
+                <li>closing parentheses, brackets or braces;</li>
+                <li><code>match</code>/<code>select</code> arrows;</li>
+                <li>the local try-handler block.</li>
+            </ul>
+
+            <p>
+                <code>try</code> does not change ordinary evaluation order.
+                The first encountered failure short-circuits the protected expression.
+            </p>
+        </section>
+
+        <section id="general-expression">
+            <h2><code>try</code> Is a General Expression Form</h2>
+
+            <p>
+                The success value may appear wherever its success type is legal:
+            </p>
+
+            <pre><code>let value := try Read()
+
+Process(try Read())
+
+if try IsReady() {
+    Proceed()
+}
+
+let item := Container {
+    Value: try ReadValue()
+}
+
+let result := Calculate(try ReadLeft(), try ReadRight())</code></pre>
+
+            <p>
+                Assignment remains a statement in Sec 0.1.
+                <code>try</code> does not turn assignment into a value-producing expression.
+            </p>
+
+            <p>This remains invalid:</p>
+
+            <pre><code>if result = try Setup() {
+    Proceed()
+}</code></pre>
+        </section>
+
+        <section id="local-handlers">
+            <h2>Local <code>try</code> Handlers</h2>
+
+            <p>
+                A <code>try</code> expression may handle selected alternate/failure states locally.
+            </p>
+
+            <p>Result/error example:</p>
+
+            <pre><code>let config := try LoadConfig() {
+    Err(IOError.NotFound) =&gt; DefaultConfig()
+}</code></pre>
+
+            <p>Option example:</p>
+
+            <pre><code>let device := try FindDevice() {
+    None =&gt; DefaultDevice()
+}</code></pre>
+
+            <p>
+                The handler list describes only alternate/failure states.
+                The success path stays implicit.
+            </p>
+
+            <p>
+                The obsolete nested wrapper form is invalid:
+            </p>
+
+            <pre><code>try Read() {
+    match {
+        Err(errorValue) =&gt; Handle(errorValue)
+    }
+}</code></pre>
+
+            <p>Write the handlers directly:</p>
+
+            <pre><code>try Read() {
+    Err(errorValue) =&gt; Handle(errorValue)
+}</code></pre>
+        </section>
+
+        <section id="no-success-handlers">
+            <h2>Success Handlers Are Not Allowed in <code>try</code></h2>
+
+            <p>This is invalid for a Result:</p>
+
+            <pre><code>try Read() {
+    Ok(value) =&gt; Use(value)    // invalid
+}</code></pre>
+
+            <p>This is invalid for an Option:</p>
+
+            <pre><code>try Find() {
+    Some(value) =&gt; Use(value)  // invalid
+}</code></pre>
+
+            <p>
+                Use <code>match</code> when both success and alternate states should be explicit.
+            </p>
+        </section>
+
+        <section id="partial-handlers">
+            <h2>Local Handlers Are Intentionally Partial</h2>
+
+            <pre><code>let value := try Read() {
+    Err(IOError.NotFound) =&gt; DefaultValue()
+}</code></pre>
+
+            <p>
+                If <code>Read()</code> can produce another error, the unmatched error continues through
+                normal <code>try</code> propagation when compatible with the enclosing error channel.
+            </p>
+
+            <div class="rule">
+                <strong>Difference:</strong> <code>try</code> may handle only selected failure states
+                and propagate the rest. <code>match</code> handles the complete resolved subject exhaustively.
+            </div>
+
+            <p>An explicit catch-all handles every remaining Result/error failure locally:</p>
+
+            <pre><code>let value := try Read() {
+    Err(_) =&gt; DefaultValue()
+}</code></pre>
+
+            <p>
+                For <code>Option[T]</code>, handling <code>None</code> covers its only alternate state.
+            </p>
+        </section>
+
+        <section id="err-discard">
+            <h2><code>Err(_)</code> Explicitly Acknowledges and Ignores the Error Payload</h2>
+
+            <pre><code>try Read() {
+    Err(_) =&gt; Recover()
+}</code></pre>
+
+            <p>
+                This explicitly states that an error state is being handled while its payload is not needed.
+            </p>
+
+            <p>
+                It is conceptually similar to:
+            </p>
+
+            <pre><code>try Read() {
+    Err(errorValue) =&gt; {
+        discard errorValue
+        Recover()
+    }
+}</code></pre>
+
+            <p>
+                <code>Err(_)</code> is legal only when discarding the matched payload is itself legal
+                under ordinary ownership and discardability rules.
+            </p>
+
+            <p>
+                This is deliberately different from a generic <code>_</code> match arm that could
+                otherwise hide an unhandled Result error.
+            </p>
+        </section>
+
+        <section id="handler-order">
+            <h2>Handler Order Is Semantically Significant</h2>
+
+            <p>
+                Handlers are tested from top to bottom.
+                The first matching handler wins.
+            </p>
+
+            <pre><code>try Read() {
+    Err(IOError.NotFound) =&gt; UseDefault()
+    Err(IOError.PermissionDenied) =&gt; RequestAccess()
+    Err(_) =&gt; Fallback()
+}</code></pre>
+
+            <p>
+                A later handler that is provably covered by an earlier unguarded handler is a compile error:
+            </p>
+
+            <pre><code>try Read() {
+    Err(_) =&gt; Fallback()
+    Err(IOError.NotFound) =&gt; UseDefault()    // unreachable
+}</code></pre>
+        </section>
+
+        <section id="guards">
+            <h2>Handler Guards</h2>
+
+            <p>
+                <code>try</code> handlers use the same <code>where</code> spelling as
+                <code>match</code>:
+            </p>
+
+            <pre><code>try Read() {
+    Err(errorValue) where errorValue.Code == 404 =&gt; UseDefault()
+    Err(errorValue) =&gt; Handle(errorValue)
+}</code></pre>
+
+            <p>Rules:</p>
+
+            <ul>
+                <li>the pattern is tested first;</li>
+                <li>the guard runs only after pattern success;</li>
+                <li>the guard must produce <code>bool</code>;</li>
+                <li>pattern bindings are visible inside the guard;</li>
+                <li>a false guard continues to the next handler;</li>
+                <li>a guarded handler does not cover the complete underlying pattern;</li>
+                <li>the first matching pattern with a true guard wins.</li>
+            </ul>
+
+            <p>
+                Guard and handler code are outside the protected operation set of the surrounding
+                <code>try</code>.
+            </p>
+
+            <p>
+                If they are fallible, they need their own explicit <code>try</code>.
+            </p>
+        </section>
+
+        <section id="guard-ownership">
+            <h2>Ownership Is Committed Only After Guard Success</h2>
+
+            <p>
+                Handler bindings follow the same copy/move/borrow model as equivalent
+                <code>match</code> patterns.
+            </p>
+
+            <p>
+                For a prospective move-only by-value binding with a guard, ownership transfer is not
+                committed merely because the pattern matched.
+            </p>
+
+            <p>Commit occurs only after:</p>
+
+            <ol>
+                <li>the pattern matches;</li>
+                <li>the guard succeeds, if present;</li>
+                <li>the handler is selected.</li>
+            </ol>
+
+            <p>
+                A guard may inspect or borrow the prospective payload, but it must not consume it
+                before selection when a later handler or propagation path may still need the value.
+            </p>
+        </section>
+
+        <section id="recovery-values">
+            <h2>Recovery Values Must Match the Success Type</h2>
+
+            <p>
+                When <code>try expression { ... }</code> is used in value position, a locally handled
+                path that continues execution must produce a value assignable to the protected
+                operation's success type.
+            </p>
+
+            <pre><code>let config := try LoadConfig() {
+    Err(IOError.NotFound) =&gt; DefaultConfig()
+}</code></pre>
+
+            <p>
+                If the success type is <code>Config</code>, <code>DefaultConfig()</code> must also
+                produce a compatible <code>Config</code>.
+            </p>
+
+            <p>
+                A handler that terminates control flow does not need a recovery value:
+            </p>
+
+            <pre><code>let config := try LoadConfig() {
+    Err(IOError.PermissionDenied) =&gt; {
+        return Err(AppError.ConfigurationDenied)
+    }
+}</code></pre>
+        </section>
+
+        <section id="block-results">
+            <h2>Handler Blocks May Produce Their Recovery Value</h2>
+
+            <p>
+                In a value-producing handler, the final expression of the handler block may provide
+                the recovery value:
+            </p>
+
+            <pre><code>let config := try LoadConfig() {
+    Err(IOError.NotFound) =&gt; {
+        Log("Using default configuration")
+        DefaultConfig()
+    }
+}</code></pre>
+
+            <p>
+                This is the contextual result position of a handler block.
+                It does not make arbitrary Sec blocks general expression values.
+            </p>
+        </section>
+
+        <section id="void-success">
+            <h2><code>void</code> Success Needs No Recovery Value</h2>
+
+            <p>
+                When the protected operation has <code>void</code> success, a handled failure may
+                complete normally:
+            </p>
+
+            <pre><code>try ClearCache() {
+    Err(CacheError.AlreadyEmpty) =&gt; {
+        Log("Cache was already empty")
+    }
+}</code></pre>
+
+            <p>
+                No artificial success payload is manufactured.
+            </p>
+        </section>
+
+        <section id="handler-failures">
+            <h2>Handler Failures Are Outside the Protected Set</h2>
+
+            <p>
+                A handler does not recursively catch failures produced by its own recovery code.
+            </p>
+
+            <pre><code>let config := try LoadConfig() {
+    Err(ConfigError.NotFound) =&gt; try LoadDefaultConfig()
+}</code></pre>
+
+            <p>
+                The outer <code>try</code> protects <code>LoadConfig()</code>.
+                The inner <code>try</code> handles or propagates failures from
+                <code>LoadDefaultConfig()</code>.
+            </p>
+
+            <p>
+                The same rule applies to fallible guard expressions.
+            </p>
+        </section>
+
+        <section id="fallible-assignment">
+            <h2>Fallible Assignment Uses <code>try</code></h2>
+
+            <p>Naked propagation:</p>
+
+            <pre><code>try vehicle.TopSpeed = requestedSpeed</code></pre>
+
+            <p>Local handling:</p>
+
+            <pre><code>try vehicle.TopSpeed = requestedSpeed {
+    Err(SpeedError.TooHigh) =&gt; {
+        Log("Requested speed was too high")
+    }
+}</code></pre>
+
+            <p>Rules:</p>
+
+            <ul>
+                <li>the assignment target must resolve to a fallible assignment path;</li>
+                <li>success completes the assignment and produces no value;</li>
+                <li>failure preserves destination state according to the setter/assignment transaction rule;</li>
+                <li>unhandled compatible failure propagates;</li>
+                <li>local handlers use ordinary partial-handler, guard and ordering rules;</li>
+                <li><code>Ok(...)</code> handlers remain invalid;</li>
+                <li>a fallible assignment without <code>try</code> is invalid.</li>
+            </ul>
+
+            <p>
+                Assignment success is ordinary control flow, not a source-level synthetic
+                <code>Ok(())</code>.
+            </p>
+        </section>
+
+        <section id="fallible-setter">
+            <h2>Fallible Property Setters</h2>
+
+            <p>
+                A fallible setter declares its error type on the setter line:
+            </p>
+
+            <pre><code>property TopSpeed: Speed {
+    try set value SpeedError {
+        if value &lt; MinimumSpeed {
+            return Err(SpeedError.TooLow)
+        }
+
+        self._speed = value
+    }
+}</code></pre>
+
+            <p>
+                The setter error type must be <code>error</code> or a concrete Sec error type.
+            </p>
+
+            <p>Setter completion rules are:</p>
+
+            <pre><code>normal body completion -&gt; success
+return                 -&gt; early success
+return Err(errorValue) -&gt; failure</code></pre>
+
+            <p>
+                <code>return Ok()</code> is invalid inside a <code>try set</code> body.
+            </p>
+
+            <p>
+                The setter is not modeled in source as an ordinary function returning
+                <code>Result[void, E]</code>.
+            </p>
+
+            <p>An interface declares the same fallible setter contract:</p>
+
+            <pre><code>property Position: Point {
+    try set value PositionError
+}</code></pre>
+        </section>
+
+        <section id="getter-rule">
+            <h2>Property Getters Are Infallible in Sec 0.1</h2>
+
+            <p>
+                Sec 0.1 does not define:
+            </p>
+
+            <pre><code>try get ErrorType</code></pre>
+
+            <p>
+                If reading a property inherently requires a typed failure channel, use an ordinary
+                fallible function or method API instead.
+            </p>
+        </section>
+
+        <section id="fallible-init">
+            <h2>Fallible Initializers</h2>
+
+            <p>
+                A fallible initializer places the construction error type after its parameter list:
+            </p>
+
+            <pre><code>impl Connection {
+    init(address: Address) ConnectError {
+        if invalid {
+            return Err(ConnectError.InvalidAddress)
+        }
+
+        self.address = address
+    }
+}</code></pre>
+
+            <p>
+                The trailing <code>ConnectError</code> is the construction error type, not the
+                success return type.
+            </p>
+
+            <p>
+                Normal successful completion produces the initialized instance.
+            </p>
+
+            <p>
+                A failed initializer produces no completed instance and follows the lifecycle rules
+                for partially initialized state.
+            </p>
+
+            <p>Construction uses ordinary <code>try</code>:</p>
+
+            <pre><code>let connection := try new Connection(address)</code></pre>
+        </section>
+
+        <section id="return-try">
+            <h2><code>return try expression</code></h2>
+
+            <p>
+                Sec permits direct forwarding from a fallible expression in Result-return position:
+            </p>
+
+            <pre><code>fn Load() Result[Config, IOError] {
+    return try ReadConfig()
+}</code></pre>
+
+            <p>For an enclosing <code>Result[T, E]</code>:</p>
+
+            <pre><code>protected success S -&gt; return Ok(value), when S is assignable to T
+protected failure F -&gt; propagate, when F is assignable to E</code></pre>
+
+            <p>
+                This is a special return-position forwarding rule.
+            </p>
+
+            <p>
+                It does not create a general implicit conversion from <code>T</code> to
+                <code>Result[T, E]</code>.
+            </p>
+
+            <p>Outside <code>return try</code>, ordinary success return remains explicit:</p>
+
+            <pre><code>return Ok(value)</code></pre>
+
+            <p>
+                Sec 0.1 does not add an analogous implicit <code>Some(...)</code> wrapping rule for
+                Option returns.
+            </p>
+        </section>
+
+        <section id="try-vs-match">
+            <h2><code>try</code> and <code>match</code> Serve Different Purposes</h2>
+
+            <p>Use <code>try</code> when success should continue implicitly:</p>
+
+            <pre><code>let value := try Read() {
+    Err(IOError.NotFound) =&gt; DefaultValue()
+}</code></pre>
+
+            <p>Use <code>match</code> when all subject states should be explicit:</p>
+
+            <pre><code>match Read() {
+    Ok(value) =&gt; Use(value)
+    Err(_) =&gt; Fallback()
+}</code></pre>
+
+            <p>
+                <code>try</code> may be partial and propagate unmatched failure.
+                <code>match</code> is exhaustive over the resolved subject.
+            </p>
+        </section>
+
+        <section id="open-error-match">
+            <h2>Matching <code>Result[T, error]</code></h2>
+
+            <p>
+                Widening to <code>error</code> preserves concrete error identity, so error-specific
+                patterns may narrow inside an explicit <code>Err(...)</code> branch:
+            </p>
+
+            <pre><code>match result {
+    Ok(value) =&gt; Use(value)
+    Err(IOError.NotFound) =&gt; UseDefault()
+    Err(errorValue) =&gt; Handle(errorValue)
+}</code></pre>
+
+            <p>
+                This is an error-specific narrowing rule.
+                It does not enable arbitrary runtime type patterns for unrelated Sec values.
+            </p>
+
+            <p>
+                Because <code>error</code> is an open domain, a match over
+                <code>Result[T, error]</code> needs a remaining error fallback such as:
+            </p>
+
+            <pre><code>Err(errorValue)
+Err(_)</code></pre>
+
+            <p>
+                unless control-flow facts prove a narrower closed state.
+            </p>
+
+            <p>
+                A generic match catch-all <code>_</code> must not silently hide an otherwise
+                unhandled Result error.
+                Use explicit <code>Err(_)</code> when the error state is intentionally acknowledged.
+            </p>
+        </section>
+
+        <section id="option-if">
+            <h2>One-Branch Tests for <code>Option</code></h2>
+
+            <p>Canonical presence/absence tests include:</p>
+
+            <pre><code>if Clear().Err() is not None {
+    HandleFailure()
+}</code></pre>
+
+            <p>The narrow positive binding convenience is:</p>
+
+            <pre><code>if Clear().Err() is Some(errorValue) {
+    Handle(errorValue)
+}</code></pre>
+
+            <p>
+                The binding exists only inside the true branch.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>if option is not Some(value) {
+    Use(value)    // invalid
+}</code></pre>
+
+            <p>
+                No <code>value</code> exists on the true path of the negative test.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Error Handling Preserves Ordinary Ownership Semantics</h2>
+
+            <p>
+                Error handling never suspends Sec's ownership rules.
+            </p>
+
+            <p>The compiler tracks consumption caused by:</p>
+
+            <ul>
+                <li>by-value <code>match</code> and <code>try</code> bindings;</li>
+                <li>consuming Result projections;</li>
+                <li>explicit <code>&lt;-</code> moves;</li>
+                <li><code>discard</code>;</li>
+                <li>return/forwarding of owned values;</li>
+                <li>ownership transfer into error payloads.</li>
+            </ul>
+
+            <p>
+                A value consumed on one path becomes unavailable according to the normal
+                path-sensitive ownership merge rules.
+            </p>
+
+            <p>
+                Use-after-consume is a semantic error, not an optional lint.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Error Propagation Runs Normal Cleanup and <code>defer</code></h2>
+
+            <p>
+                Propagation is a normal control-flow exit.
+                It executes the same required deterministic cleanup as any other return path.
+            </p>
+
+            <p>Propagation must preserve:</p>
+
+            <ul>
+                <li>lexical cleanup;</li>
+                <li>active <code>defer</code> execution;</li>
+                <li>destruction of initialized locals;</li>
+                <li>partial initialization state;</li>
+                <li>borrow termination;</li>
+                <li>moved/discarded state;</li>
+                <li>lifecycle obligations.</li>
+            </ul>
+
+            <p>
+                <code>try</code> never bypasses cleanup.
+            </p>
+
+            <p>
+                A Result produced inside deferred code remains must-use and must itself be handled
+                according to the defer/error/panic rules.
+            </p>
+        </section>
+
+        <section id="panic">
+            <h2><code>try</code> Does Not Catch Panic</h2>
+
+            <p>
+                <code>try</code> converts only language-defined fallible/short-circuit behavior of
+                its protected expression.
+            </p>
+
+            <pre><code>let result := try Calculate() + value</code></pre>
+
+            <p>
+                If <code>Calculate()</code> may independently panic, that panic effect remains.
+            </p>
+
+            <p>
+                <code>try</code> does not catch, unwind or resume arbitrary panic.
+            </p>
+
+            <p>
+                Error handling and panic are separate mechanisms.
+                Panic is covered in the next chapter.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>Error Handling Requires No General Exception Runtime</h2>
+
+            <p>
+                Sec error handling can lower to ordinary control flow, tagged carriers, direct
+                branches or target-specific helpers.
+            </p>
+
+            <p>
+                The implementation does not require a general exception runtime.
+            </p>
+
+            <p>
+                The backend may optimize away temporary Result/Option representations when observable
+                source semantics remain identical.
+            </p>
+
+            <p>
+                Lowering must preserve:
+            </p>
+
+            <ul>
+                <li>evaluation order;</li>
+                <li>success type;</li>
+                <li>concrete error identity;</li>
+                <li>handler source order;</li>
+                <li>guard behavior;</li>
+                <li>partial-handler propagation;</li>
+                <li>ownership commit points;</li>
+                <li>cleanup/destruction edges;</li>
+                <li>remaining panic effects.</li>
+            </ul>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Error diagnostics should explain the programmer-visible cause and consequence rather
+                than requiring compiler-theory terminology.
+            </p>
+
+            <h3>Incompatible propagation</h3>
+
+            <pre><code>cannot propagate `ParseError` from this `try`
+
+the enclosing function returns:
+    Result[Config, IOError]
+
+`ParseError` is not assignable to `IOError`
+
+help: handle the ParseError locally
+help: map it to an IOError
+help: widen the enclosing error channel when that matches the API contract</code></pre>
+
+            <h3>Missing try on fallible assignment</h3>
+
+            <pre><code>assignment to `vehicle.TopSpeed` may fail
+
+the setter declares:
+    SpeedError
+
+help: write:
+    try vehicle.TopSpeed = requestedSpeed
+
+help: add a local try handler when selected errors should recover here</code></pre>
+
+            <h3>Success handler in try</h3>
+
+            <pre><code>`Ok(...)` is not valid in a try handler
+
+the success path of `try` is implicit
+
+help: use `match` when success and failure should both be written explicitly</code></pre>
+
+            <h3>Unreachable handler</h3>
+
+            <pre><code>this try handler can never be selected
+
+an earlier unguarded handler already covers the same failure:
+    Err(_) =&gt; Fallback()
+
+help: move the specific handler before the catch-all</code></pre>
+
+            <h3>Recovery type mismatch</h3>
+
+            <pre><code>try handler returns `string`, but the protected success type is `Config`
+
+help: return a Config-compatible recovery value
+help: leave control flow from the handler instead</code></pre>
+
+            <h3>Heterogeneous catch-all binding</h3>
+
+            <pre><code>cannot bind all remaining failures as one named error value
+
+the protected expression has multiple failure types with no declared common channel
+
+help: use `Err(_)`
+help: split the expression
+help: map the failures explicitly to a common error type</code></pre>
+
+            <p>
+                Diagnostics should identify the source operation that consumed, propagated, moved or
+                discarded a value whenever that fact causes a later error.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>Language-Server and Tooling Behavior</h2>
+
+            <p>Hover and analysis should expose:</p>
+
+            <ul>
+                <li>the success type of a <code>try</code> expression;</li>
+                <li>the failure/absence states that may propagate;</li>
+                <li>concrete-to-<code>error</code> widening;</li>
+                <li>which local handlers cover which states;</li>
+                <li>which states remain unhandled;</li>
+                <li>handler binding type and ownership mode;</li>
+                <li>fallible property setter error type;</li>
+                <li>fallible initializer error type;</li>
+                <li>source locations of ownership consumption;</li>
+                <li>the distinction between Result and Option pattern families.</li>
+            </ul>
+
+            <p>
+                Completion should suggest only alternate/failure handlers appropriate to the resolved
+                protected operation.
+            </p>
+
+            <p>
+                The formatter preserves canonical spellings:
+            </p>
+
+            <pre><code>try expression
+
+try expression {
+    Err(pattern) where condition =&gt; recovery
+}
+
+try assignment
+
+return try expression</code></pre>
+
+            <p>
+                Tooling must not reintroduce obsolete nested <code>match { ... }</code> syntax inside
+                a try handler block.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use concrete error types when an API has a clear closed failure domain.</li>
+                <li>Use <code>Result[T, error]</code> only when heterogeneous errors intentionally cross the API boundary.</li>
+                <li>Use naked <code>try</code> when the current function cannot add useful local recovery.</li>
+                <li>Use local <code>try</code> handlers when a small number of failure cases have obvious local recovery.</li>
+                <li>Use <code>match</code> when success and failure should both be explicit.</li>
+                <li>Put specific handlers before catch-all <code>Err(_)</code> handlers.</li>
+                <li>Use <code>Err(_)</code> when the error state is intentionally handled but its payload is not needed.</li>
+                <li>Keep recovery code simple; use a nested <code>try</code> when recovery itself is fallible.</li>
+                <li>Use <code>where</code> guards only when pattern identity alone cannot express the recovery condition.</li>
+                <li>Remember that guarded move-only bindings do not commit ownership until the handler is actually selected.</li>
+                <li>Use <code>return try expression</code> for direct Result-return forwarding instead of manually unpacking and rebuilding the same success/failure channel.</li>
+                <li>Do not expect <code>return try</code> to create a general implicit Result conversion elsewhere.</li>
+                <li>Use <code>try</code> on fallible property assignment; never ignore setter failure.</li>
+                <li>Use a method instead of a property getter when reads can fail in Sec 0.1.</li>
+                <li>Do not use <code>try</code> as a panic-catching mechanism.</li>
+                <li>Let deterministic cleanup and <code>defer</code> run normally on propagated failure paths.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec uses explicit statically typed error handling without hidden exceptions.</li>
+                <li><code>error</code> is a compiler-known root type available without import.</li>
+                <li>The error-root relation is error-specific and does not introduce general inheritance.</li>
+                <li>A concrete error implicitly widens to <code>error</code>.</li>
+                <li><code>error</code> does not implicitly narrow to a concrete error type.</li>
+                <li>One concrete error type does not implicitly convert to another.</li>
+                <li>Error widening preserves concrete type, variant, payload, ownership and destruction behavior.</li>
+                <li>Closed fieldless error families may be declared as <code>enum Name error</code>.</li>
+                <li>An error enum may also have an explicit ordinary enum underlying type before the final <code>error</code> marker.</li>
+                <li>Payload-bearing error families use <code>type Name union error</code>.</li>
+                <li>The root <code>error</code> type does not impose universal Message/Code/Description fields.</li>
+                <li>Error payloads may own ordinary and move-only Sec values.</li>
+                <li>Error values obey ordinary ownership, copy/move, borrowing, lifetime, destruction and discardability rules.</li>
+                <li>Fallible functions normally expose <code>Result[T, E]</code> explicitly.</li>
+                <li><code>try</code> is a first-class short-circuit expression form.</li>
+                <li>The success path of <code>try</code> is implicit.</li>
+                <li>Unhandled compatible failure/alternate states propagate.</li>
+                <li><code>try</code> accepts Result, Option and compiler-defined fallible language operations.</li>
+                <li>Fallible operations need not materialize a temporary Result carrier.</li>
+                <li>For Result, <code>Ok(value)</code> is success and <code>Err(error)</code> is the alternate failure state.</li>
+                <li>For Option, <code>Some(value)</code> is success and <code>None</code> is the alternate absence state.</li>
+                <li><code>None</code> never becomes an error implicitly.</li>
+                <li>A protected expression may contain multiple fallible points with different concrete failure types.</li>
+                <li>The compiler may track a heterogeneous internal failure set without creating an anonymous source-language error union.</li>
+                <li>Sequential failure is not aggregated; ordinary evaluation stops at the first encountered failure.</li>
+                <li><code>Err(_)</code> can handle heterogeneous failures without requiring one payload binding type.</li>
+                <li>A named catch-all error binding requires a single compiler-resolved common error channel.</li>
+                <li>The compiler does not infer <code>error</code> solely to make a heterogeneous local binding possible.</li>
+                <li>Naked <code>try expression</code> propagates unhandled compatible failure/absence.</li>
+                <li>Result failures propagate only when assignable to the enclosing Result error channel.</li>
+                <li>Concrete errors may propagate through an enclosing <code>error</code> channel by normal widening.</li>
+                <li>Option absence propagates only through a compatible Option return channel.</li>
+                <li>Sec never invents implicit Result-to-Option or Option-to-Result conversion.</li>
+                <li><code>try</code> protects the complete following expression until its natural grammar boundary.</li>
+                <li>Parentheses may narrow the protected expression.</li>
+                <li><code>try</code> preserves ordinary evaluation order.</li>
+                <li>The first failure encountered short-circuits the protected expression.</li>
+                <li><code>try</code> may appear anywhere its success value is legal as an expression.</li>
+                <li><code>try</code> does not turn assignment into an expression value.</li>
+                <li>A local handler block contains alternate/failure handlers only.</li>
+                <li><code>Ok(...)</code> is invalid in a Result try handler.</li>
+                <li><code>Some(...)</code> is invalid in an Option try handler.</li>
+                <li>Use <code>match</code> when success and alternate states must both be explicit.</li>
+                <li>The obsolete nested <code>match { ... }</code> wrapper inside a try handler block is invalid.</li>
+                <li>Try handlers are intentionally partial.</li>
+                <li>Unmatched compatible failures continue normal propagation.</li>
+                <li><code>Err(_)</code> explicitly acknowledges and ignores the matched error payload.</li>
+                <li><code>Err(_)</code> is legal only when discarding the payload is legal.</li>
+                <li>Handler order is top-to-bottom and the first successful match wins.</li>
+                <li>A provably unreachable later handler is a compile-time error.</li>
+                <li>Try-handler guards use <code>where</code>.</li>
+                <li>Pattern bindings are visible inside their guard.</li>
+                <li>A false guard continues to later handlers or propagation.</li>
+                <li>Guard and recovery-code failures are outside the surrounding try's protected set.</li>
+                <li>Fallible guard/recovery code uses its own explicit <code>try</code>.</li>
+                <li>Prospective move-only handler bindings commit ownership only after pattern match, guard success and handler selection.</li>
+                <li>A continuing recovery path in value position must produce a value assignable to the protected success type.</li>
+                <li>A terminating recovery path needs no fallback value.</li>
+                <li>A handler block may use its final expression as the recovery value in contextual result position.</li>
+                <li>That rule does not make arbitrary Sec blocks general expression values.</li>
+                <li>For <code>void</code> success, a handled failure may complete normally without manufacturing a value.</li>
+                <li>Fallible assignment uses <code>try assignment</code>.</li>
+                <li>A fallible assignment without <code>try</code> is invalid.</li>
+                <li>Successful fallible assignment produces no source-level Result value.</li>
+                <li>A fallible property setter uses <code>try set value ErrorType</code>.</li>
+                <li>Normal completion of a try setter is success.</li>
+                <li>Bare <code>return</code> in a try setter is early success.</li>
+                <li><code>return Err(errorValue)</code> is setter failure.</li>
+                <li><code>return Ok()</code> is invalid inside a try setter.</li>
+                <li>Property getters are infallible in Sec 0.1.</li>
+                <li>A fallible read should use an ordinary fallible method/function rather than a property getter.</li>
+                <li>A fallible initializer declares its error type after the initializer parameter list.</li>
+                <li>The initializer's trailing error type is not a success return type.</li>
+                <li>Successful initializer completion produces the initialized instance.</li>
+                <li>Failed initialization produces no completed instance and follows partial-initialization cleanup rules.</li>
+                <li>Fallible construction uses <code>try new Type(...)</code>.</li>
+                <li><code>return try expression</code> is a special Result-return forwarding rule.</li>
+                <li>In <code>return try</code>, compatible success forwards as <code>Ok(value)</code> and compatible failure propagates.</li>
+                <li><code>return try</code> does not introduce a general implicit <code>T -&gt; Result[T,E]</code> conversion.</li>
+                <li>Ordinary successful Result returns outside that special form remain explicit with <code>Ok(value)</code>.</li>
+                <li>Sec 0.1 defines no analogous implicit <code>Some(...)</code> wrapping through <code>return try</code>.</li>
+                <li><code>try</code> is partial-success-oriented sugar; <code>match</code> is explicit exhaustive matching.</li>
+                <li>Concrete error identity survives widening into <code>Result[T, error]</code>.</li>
+                <li>Open <code>error</code> matches may narrow using concrete error-specific patterns inside explicit <code>Err(...)</code>.</li>
+                <li>Error-specific narrowing does not introduce general runtime type patterns.</li>
+                <li>A match over the open <code>error</code> domain needs an explicit remaining Err fallback unless proven narrower.</li>
+                <li>A generic <code>_</code> match arm must not silently hide an otherwise unhandled Result error.</li>
+                <li>Use explicit <code>Err(_)</code> when intentionally acknowledging an error while ignoring its payload.</li>
+                <li>Positive <code>is Some(binding)</code> is the Sec 0.1 one-branch Option payload-binding convenience.</li>
+                <li>Bindings from <code>is Some(binding)</code> exist only inside the true branch.</li>
+                <li>Negative <code>is not Some(binding)</code> cannot provide that binding on the true path.</li>
+                <li>Error handling never disables ordinary ownership semantics.</li>
+                <li>Use-after-consume after try/match/projection/move/discard remains a compile-time error.</li>
+                <li>Propagation is a normal control-flow exit and executes deterministic cleanup.</li>
+                <li>Active <code>defer</code> blocks run on propagated failure paths.</li>
+                <li><code>try</code> does not bypass destruction, borrow termination or partial-initialization cleanup.</li>
+                <li><code>try</code> does not catch, unwind or resume panic.</li>
+                <li>Error handling and panic are separate Sec mechanisms.</li>
+                <li>Sec error handling requires no general exception runtime.</li>
+                <li>Backend lowering may optimize carriers/control flow only when observable source semantics remain unchanged.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="33-result-option.html">Previous: Result and Option</a>
+            <a href="35-panic.html">Next: Panic, Assertions and Runtime Checks</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

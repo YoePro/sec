@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Borrowing - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#borrowing">Borrowing</a>
+        <a href="#purpose">Temporary Authority</a>
+        <a href="#borrow-kinds">Borrow Kinds</a>
+        <a href="#shared-borrow">Shared Borrow</a>
+        <a href="#mutable-borrow">Mutable Borrow</a>
+        <a href="#not-ownership">Borrowing Is Not Ownership</a>
+        <a href="#conflict-matrix">Conflict Matrix</a>
+        <a href="#creation">Creating Borrows</a>
+        <a href="#addressable">Addressable Places</a>
+        <a href="#source-validity">Source Validity</a>
+        <a href="#availability">Availability vs Borrowing</a>
+        <a href="#mutability">Mutability Authority</a>
+        <a href="#live-ranges">Borrow Live Ranges</a>
+        <a href="#holders">Borrow Holders</a>
+        <a href="#shared-owner-access">Owner Access During Shared Borrow</a>
+        <a href="#mutable-owner-access">Owner Access During Mutable Borrow</a>
+        <a href="#reborrowing">Reborrowing</a>
+        <a href="#shared-reborrow">Shared Reborrow</a>
+        <a href="#mutable-reborrow">Mutable Reborrow</a>
+        <a href="#place-overlap">Place Overlap</a>
+        <a href="#fields">Fields and Aggregates</a>
+        <a href="#properties">Properties</a>
+        <a href="#arrays">Arrays and Indices</a>
+        <a href="#slice-ranges">Slice Ranges</a>
+        <a href="#structural-mutation">Structural Mutation</a>
+        <a href="#parameters">Borrowed Parameters</a>
+        <a href="#implicit-call-borrow">Call-Bounded Borrowing</a>
+        <a href="#argument-conflicts">Argument Conflicts</a>
+        <a href="#methods">Method Receivers</a>
+        <a href="#branches">Branches and Joins</a>
+        <a href="#loops">Loops</a>
+        <a href="#match">match Borrowing</a>
+        <a href="#closures">Closure Captures</a>
+        <a href="#defer">defer and Delayed Use</a>
+        <a href="#move-conflicts">Moves While Borrowed</a>
+        <a href="#discard">discard While Borrowed</a>
+        <a href="#replacement">Replacement and Reinitialization</a>
+        <a href="#destruction">Destruction</a>
+        <a href="#returned-references">Returned References</a>
+        <a href="#ffi">FFI Borrowing</a>
+        <a href="#physical-storage">Physical and Volatile Storage</a>
+        <a href="#epochs">Generation and Epoch Validity</a>
+        <a href="#concurrency">Concurrency</a>
+        <a href="#generics">Generics and Interfaces</a>
+        <a href="#runtime">Runtime Cost</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html" class="active">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Borrowing</div>
+
+        <h1 id="borrowing">Borrowing</h1>
+
+        <p>
+            Borrowing grants temporary authority to access an existing Sec Place without transferring
+            ownership of the borrowed value.
+        </p>
+
+        <pre><code>let shared := ref value
+let writable := ref mut value</code></pre>
+
+        <p>
+            Shared borrowing permits compatible read access.
+            Mutable borrowing grants exclusive mutable authority over the overlapping Place for the
+            borrow's live range.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Borrowing is a compile-time aliasing and authority discipline.
+            It does not require runtime borrow counters, runtime borrow locks, garbage collection or
+            programmer-written lifetime annotations.
+        </div>
+
+        <section id="purpose">
+            <h2>Temporary Authority</h2>
+
+            <p>
+                Ownership answers who is responsible for a value.
+                Borrowing answers who may temporarily access that value while ownership remains elsewhere.
+            </p>
+
+            <p>A borrow has semantic facts such as:</p>
+
+            <ul>
+                <li>borrow kind;</li>
+                <li>the referent Place or finite set of possible Places;</li>
+                <li>the holder that keeps the borrow live;</li>
+                <li>where the borrow begins;</li>
+                <li>where its authority is still needed;</li>
+                <li>its mutability authority;</li>
+                <li>its source provenance.</li>
+            </ul>
+
+            <p>
+                These facts are tracked by the compiler.
+                They are not fields the programmer manually stores in a reference object.
+            </p>
+        </section>
+
+        <section id="borrow-kinds">
+            <h2>Borrow Kinds</h2>
+
+            <p>Sec has two core safe borrow kinds:</p>
+
+            <pre><code>ref T
+ref mut T</code></pre>
+
+            <p>
+                The distinction is an authority distinction, not merely a spelling difference.
+            </p>
+        </section>
+
+        <section id="shared-borrow">
+            <h2>Shared Borrow</h2>
+
+            <pre><code>let view := ref value</code></pre>
+
+            <p>
+                A shared borrow permits reading the referent.
+            </p>
+
+            <p>
+                It does not permit mutation through that shared reference.
+            </p>
+
+            <p>
+                Any number of compatible shared borrows may coexist over overlapping storage:
+            </p>
+
+            <pre><code>let first := ref value
+let second := ref value
+
+Inspect(first)
+Inspect(second)</code></pre>
+
+            <p>
+                The owner remains the owner throughout these borrows.
+            </p>
+        </section>
+
+        <section id="mutable-borrow">
+            <h2>Mutable Borrow</h2>
+
+            <pre><code>let writable := ref mut value</code></pre>
+
+            <p>
+                A mutable borrow permits reading and writing the referent through the borrowed authority.
+            </p>
+
+            <p>
+                It reserves exclusive mutable authority over the overlapping Place for its live range.
+            </p>
+
+            <p>
+                Therefore an overlapping mutable borrow cannot coexist with:
+            </p>
+
+            <ul>
+                <li>another unrelated mutable borrow;</li>
+                <li>an overlapping shared borrow;</li>
+                <li>direct conflicting use through the owner;</li>
+                <li>an ownership-invalidating operation on the same Place.</li>
+            </ul>
+
+            <p>
+                Legal parent/child reborrowing is the important exception and is described later in this chapter.
+            </p>
+        </section>
+
+        <section id="not-ownership">
+            <h2>Borrowing Is Not Ownership</h2>
+
+            <p>
+                Neither <code>ref T</code> nor <code>ref mut T</code> becomes owner of the referenced
+                <code>T</code>.
+            </p>
+
+            <pre><code>let mut item := CreateItem()
+let writable := ref mut item</code></pre>
+
+            <p>
+                <code>item</code> remains the owner.
+                <code>writable</code> temporarily holds exclusive borrowed authority.
+            </p>
+
+            <p>
+                Mutable authority also does not imply permission to move an owned move-only subvalue
+                out of borrowed storage.
+            </p>
+        </section>
+
+        <section id="conflict-matrix">
+            <h2>Borrow Conflict Matrix</h2>
+
+            <p>
+                For overlapping Places, the fundamental compatibility rules are:
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Existing authority</th>
+                            <th>New shared borrow</th>
+                            <th>New mutable borrow</th>
+                            <th>Owner read</th>
+                            <th>Owner mutation / move / discard / destruction</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>None</td>
+                            <td>Allowed</td>
+                            <td>Allowed with mutable authority</td>
+                            <td>Allowed</td>
+                            <td>Allowed when other rules permit</td>
+                        </tr>
+                        <tr>
+                            <td>Shared borrow</td>
+                            <td>Allowed</td>
+                            <td>Conflict</td>
+                            <td>Allowed</td>
+                            <td>Conflict</td>
+                        </tr>
+                        <tr>
+                            <td>Mutable borrow</td>
+                            <td>Conflict unless legal child reborrow</td>
+                            <td>Conflict unless legal child reborrow</td>
+                            <td>Conflict through competing authority</td>
+                            <td>Conflict through competing authority</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                This matrix applies only when the Places overlap.
+                Proven disjoint Places may remain independently usable.
+            </p>
+        </section>
+
+        <section id="creation">
+            <h2>Creating Borrows</h2>
+
+            <p>An explicit shared local borrow is written:</p>
+
+            <pre><code>let view := ref value</code></pre>
+
+            <p>An explicit mutable local borrow is written:</p>
+
+            <pre><code>let view := ref mut value</code></pre>
+
+            <p>
+                Borrow creation begins temporary access authority.
+                It does not copy the referent and does not move ownership.
+            </p>
+        </section>
+
+        <section id="addressable">
+            <h2>Explicit Borrowing Requires an Addressable Place</h2>
+
+            <p>
+                General explicit borrow syntax requires a reusable addressable Place with sufficient authority.
+            </p>
+
+            <p>Examples of borrowable Places include:</p>
+
+            <pre><code>value
+object.Field
+values[index]</code></pre>
+
+            <p>
+                A non-addressable computed expression cannot be borrowed merely because its result
+                type could otherwise be referenced:
+            </p>
+
+            <pre><code>let view := ref (left + right)       // invalid
+let item := ref CreateItem()         // invalid as a general local borrow</code></pre>
+
+            <p>
+                Sec 0.1 does not generally extend arbitrary temporary-expression lifetimes to make
+                such borrows valid.
+            </p>
+        </section>
+
+        <section id="source-validity">
+            <h2>The Borrowed Place Must Contain a Valid Value</h2>
+
+            <p>
+                Borrow creation requires an initialized value available on the current path.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>let mut item: Item
+let view := ref item</code></pre>
+
+            <p>
+                The Place is uninitialized.
+            </p>
+
+            <p>This is also invalid after ownership transfer:</p>
+
+            <pre><code>let item := CreateItem()
+Consume(&lt;-item)
+
+let view := ref item</code></pre>
+
+            <p>
+                The Place is unavailable.
+            </p>
+
+            <p>
+                A conditionally available Place must first be refined to an available path before
+                it can be borrowed.
+            </p>
+        </section>
+
+        <section id="availability">
+            <h2>Availability and Borrow Compatibility Are Separate</h2>
+
+            <p>
+                Ownership availability asks whether the current owner still owns a value in a Place.
+                Borrow compatibility asks whether that Place may currently be accessed with the
+                requested shared or mutable authority.
+            </p>
+
+            <pre><code>if package.Payload is available {
+    Use(package.Payload)
+}</code></pre>
+
+            <p>
+                proves ownership availability only.
+                It does not prove that no conflicting borrow is active.
+            </p>
+
+            <p>
+                A Place may therefore be <code>Available</code> and still be temporarily inaccessible
+                through the owner because an exclusive mutable borrow is live.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>is available</code> is not a borrow-status test,
+                lock-status test, generation-validity test, Option test or null check.
+            </div>
+        </section>
+
+        <section id="mutability">
+            <h2>Mutability Authority</h2>
+
+            <p>
+                A shared borrow may be created from immutable or mutable storage when reading is permitted.
+            </p>
+
+            <pre><code>let immutable := 10
+let shared := ref immutable</code></pre>
+
+            <p>
+                A mutable borrow requires actual mutable authority:
+            </p>
+
+            <pre><code>let mut value := 10
+let writable := ref mut value</code></pre>
+
+            <p>This is invalid:</p>
+
+            <pre><code>let value := 10
+let writable := ref mut value</code></pre>
+
+            <p>
+                <code>ref mut</code> does not upgrade immutable storage to mutable storage.
+            </p>
+        </section>
+
+        <section id="live-ranges">
+            <h2>Borrow Live Ranges</h2>
+
+            <p>
+                Sec derives borrow live ranges from control flow and actual use.
+                The programmer does not write lifetime parameters or lifetime annotations.
+            </p>
+
+            <pre><code>let mut value := 10
+
+let view := ref value
+Inspect(view)
+
+value = 20</code></pre>
+
+            <p>
+                If <code>view</code> has no later reachable use or surviving dependency, its shared
+                borrow may end after <code>Inspect(view)</code>.
+            </p>
+
+            <p>
+                The lexical scope of <code>view</code> may therefore be longer than the semantic
+                borrow live range.
+            </p>
+        </section>
+
+        <section id="holders">
+            <h2>Borrow Holders</h2>
+
+            <p>
+                Borrowed authority remains live while something still needs it.
+            </p>
+
+            <p>Borrow holders can include:</p>
+
+            <ul>
+                <li>a reference value;</li>
+                <li>a slice or view;</li>
+                <li>a copied shared reference;</li>
+                <li>a moved mutable-reference holder;</li>
+                <li>a closure capture;</li>
+                <li>a returned-reference dependency;</li>
+                <li>a defer dependency;</li>
+                <li>a parameter binding;</li>
+                <li>a compiler-known temporary relation.</li>
+            </ul>
+
+            <p>
+                Copying <code>ref T</code> creates another holder and may keep the shared borrow live longer.
+            </p>
+
+            <p>
+                Moving a <code>ref mut T</code> holder transfers the holder's borrow obligation to
+                the destination. It does not end the borrow of the referent.
+            </p>
+        </section>
+
+        <section id="shared-owner-access">
+            <h2>Owner Access During a Shared Borrow</h2>
+
+            <p>
+                While only compatible shared borrows are active, direct owner reads of the
+                overlapping Place remain legal.
+            </p>
+
+            <p>
+                Overlapping mutation or ownership invalidation is not allowed while the shared borrow
+                remains live.
+            </p>
+
+            <p>Blocked operations include:</p>
+
+            <ul>
+                <li>mutation;</li>
+                <li>replacement;</li>
+                <li>reinitialization that invalidates the borrowed incarnation;</li>
+                <li>move;</li>
+                <li><code>discard</code>;</li>
+                <li>destruction;</li>
+                <li>structural mutation that invalidates the borrowed storage.</li>
+            </ul>
+        </section>
+
+        <section id="mutable-owner-access">
+            <h2>Owner Access During a Mutable Borrow</h2>
+
+            <p>
+                A mutable borrow reserves exclusive authority over its overlapping Place.
+            </p>
+
+            <pre><code>let mut value := 10
+let writable := ref mut value
+
+writable += 1</code></pre>
+
+            <p>
+                While <code>writable</code> remains live, competing direct access through
+                <code>value</code> is invalid:
+            </p>
+
+            <pre><code>Print(value)       // invalid while the mutable borrow is live
+value = 20         // invalid while the mutable borrow is live</code></pre>
+
+            <p>
+                Access through the mutable reference itself, or through a legal reborrow derived
+                from it, is not treated as competing owner access.
+            </p>
+        </section>
+
+        <section id="reborrowing">
+            <h2>Reborrowing</h2>
+
+            <p>
+                Reborrowing creates narrower or equal borrowed authority from an existing safe reference.
+                It does not transfer ownership of the referent.
+            </p>
+
+            <p>
+                Passing a mutable reference to a borrowed parameter is normally a reborrow, not a
+                move of the caller's mutable-reference holder.
+            </p>
+        </section>
+
+        <section id="shared-reborrow">
+            <h2>Shared Reborrow</h2>
+
+            <p>A shared reference can provide another shared borrow:</p>
+
+            <pre><code>fn Inspect(value: ref Item) void {
+    ...
+}
+
+fn Use(value: ref Item) void {
+    Inspect(value)
+}</code></pre>
+
+            <p>
+                A mutable reference may also provide a temporary shared reborrow.
+                During that child borrow, conflicting mutable use through the parent is restricted.
+            </p>
+        </section>
+
+        <section id="mutable-reborrow">
+            <h2>Mutable Reborrow</h2>
+
+            <p>
+                A mutable reference may provide a child mutable reborrow:
+            </p>
+
+            <pre><code>fn Reset(value: ref mut Item) void {
+    value.State = State.Empty
+}
+
+fn Process(value: ref mut Item) void {
+    Reset(value)
+    value.State = State.Ready
+}</code></pre>
+
+            <p>
+                Passing <code>value</code> to <code>Reset</code> does not consume the caller's
+                <code>ref mut Item</code> holder.
+            </p>
+
+            <p>
+                During the child reborrow, the parent may not exercise conflicting authority.
+                After the child reborrow ends, the parent may become usable again.
+            </p>
+        </section>
+
+        <section id="place-overlap">
+            <h2>Borrow Conflicts Are Based on Place Overlap</h2>
+
+            <p>
+                Borrow analysis operates on semantic Places, not merely root variable names.
+            </p>
+
+            <p>Important rules include:</p>
+
+            <ul>
+                <li>a whole Place overlaps every descendant Place;</li>
+                <li>equal Places overlap;</li>
+                <li>distinct struct fields may be disjoint;</li>
+                <li>constant indexes into non-overlapping elements may be disjoint;</li>
+                <li>runtime indexes overlap conservatively unless proven otherwise;</li>
+                <li>statically disjoint slice intervals may be borrowed independently;</li>
+                <li>unknown provenance is handled conservatively.</li>
+            </ul>
+        </section>
+
+        <section id="fields">
+            <h2>Fields and Aggregate Places</h2>
+
+            <p>
+                Proven disjoint fields can be borrowed independently:
+            </p>
+
+            <pre><code>type Pair struct {
+    Left: int,
+    Right: int,
+}
+
+let mut pair := Pair {
+    Left: 1,
+    Right: 2,
+}
+
+let left := ref mut pair.Left
+let right := ref mut pair.Right</code></pre>
+
+            <p>
+                Borrowing the whole aggregate overlaps every field.
+            </p>
+        </section>
+
+        <section id="properties">
+            <h2>Properties Are Not Automatically Independent Storage</h2>
+
+            <p>
+                A property uses member syntax, but that does not mean it is an independently
+                addressable stored field.
+            </p>
+
+            <p>
+                Until compiler-known property metadata proves narrower behavior, property borrowing
+                or mutation conservatively overlaps the receiver storage that the property may access.
+            </p>
+        </section>
+
+        <section id="arrays">
+            <h2>Arrays and Indexed Places</h2>
+
+            <p>
+                Distinct compile-time constant indexes may be proven disjoint:
+            </p>
+
+            <pre><code>let left := ref mut values[0]
+let right := ref mut values[1]</code></pre>
+
+            <p>
+                Dynamic indexes require proof:
+            </p>
+
+            <pre><code>let left := ref mut values[a]
+let right := ref mut values[b]</code></pre>
+
+            <p>
+                The compiler cannot assume <code>a != b</code> merely because two different variables
+                appear in source.
+            </p>
+        </section>
+
+        <section id="slice-ranges">
+            <h2>Slice Range Overlap</h2>
+
+            <p>
+                Statically known slice intervals are normalized for overlap analysis.
+            </p>
+
+            <pre><code>let first := ref mut values[0..&lt;4]
+let second := ref mut values[4..&lt;8]</code></pre>
+
+            <p>
+                These ranges may be borrowed independently when proven disjoint.
+            </p>
+
+            <p>
+                A compile-time-known empty interval borrows no elements.
+                Symbolic or runtime ranges overlap conservatively unless disjointness is proven.
+            </p>
+        </section>
+
+        <section id="structural-mutation">
+            <h2>Structural Mutation While Borrowed</h2>
+
+            <p>
+                A live element, slice or view borrow blocks structural operations that may invalidate
+                the referenced storage.
+            </p>
+
+            <pre><code>let view := ref values[..]
+
+try values.Append(10)    // invalid while view requires the current backing</code></pre>
+
+            <p>
+                Conflicting structural operations include those that may relocate backing storage,
+                change element addresses, remove borrowed elements or replace the backing incarnation.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Borrowed Parameters</h2>
+
+            <p>A shared borrowed parameter is declared:</p>
+
+            <pre><code>fn Inspect(value: ref Item) void {
+    ...
+}</code></pre>
+
+            <p>A mutable borrowed parameter is declared:</p>
+
+            <pre><code>fn Reset(value: ref mut Item) void {
+    value.State = State.Empty
+}</code></pre>
+
+            <p>
+                In both cases the caller remains owner of the referent.
+            </p>
+        </section>
+
+        <section id="implicit-call-borrow">
+            <h2>Owned Values Can Create Call-Bounded Borrows</h2>
+
+            <p>
+                At a function call, an owned compatible Place may be passed directly to a borrowed parameter:
+            </p>
+
+            <pre><code>fn Inspect(value: ref Item) void {
+    ...
+}
+
+let item := CreateItem()
+Inspect(item)</code></pre>
+
+            <p>
+                The call creates a call-bounded shared borrow.
+                The caller does not need to write a separate <code>ref</code> marker.
+            </p>
+
+            <p>Mutable call-bounded borrowing works the same way:</p>
+
+            <pre><code>fn Reset(value: ref mut Item) void {
+    ...
+}
+
+let mut item := CreateItem()
+Reset(item)</code></pre>
+
+            <div class="rule">
+                <strong>Important:</strong> This call-site borrowing is permitted because ownership
+                is not consumed. It must not be confused with <code>&lt;-</code>, which marks
+                ownership transfer to a consuming parameter.
+            </div>
+
+            <p>
+                This is a call-specific borrowing rule, not a general implicit owner-to-reference
+                conversion in arbitrary expressions.
+            </p>
+        </section>
+
+        <section id="argument-conflicts">
+            <h2>Borrow Conflicts Between Call Arguments</h2>
+
+            <p>
+                Function arguments evaluate left to right, but the final call must satisfy borrow
+                compatibility across overlapping call live ranges.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>fn UpdateBoth(
+    left: ref mut Item,
+    right: ref mut Item,
+) void {
+    ...
+}
+
+UpdateBoth(item, item)</code></pre>
+
+            <p>
+                The call would require two overlapping mutable borrows.
+            </p>
+
+            <p>
+                A mutable-reference argument also conflicts with another overlapping shared/reference
+                or direct-access argument while their call live ranges overlap.
+            </p>
+        </section>
+
+        <section id="methods">
+            <h2>Method Receivers</h2>
+
+            <p>
+                Borrow rules apply to method receivers just as they apply to equivalent Places.
+            </p>
+
+            <p>
+                A method requiring shared access may be called through compatible shared authority.
+                A method requiring mutation must receive compatible mutable/exclusive receiver authority.
+            </p>
+
+            <p>
+                Receiver borrowing is checked against argument borrowing.
+                Borrowing never grants an ordinary method permission to consume complete <code>self</code>.
+            </p>
+        </section>
+
+        <section id="branches">
+            <h2>Branches and Control-Flow Joins</h2>
+
+            <p>
+                Borrow state is path-sensitive.
+            </p>
+
+            <p>
+                A borrow that remains live on any continuing incoming path remains potentially live
+                after the merge.
+            </p>
+
+            <p>
+                Branch-local holders that cannot escape their branch can end before the merge.
+                A terminating branch does not impose its borrow state on code it never reaches.
+            </p>
+
+            <p>
+                Finite sets of possible reference origins may be retained statically and checked
+                against every alternative without runtime borrow tags.
+            </p>
+        </section>
+
+        <section id="loops">
+            <h2>Loops</h2>
+
+            <p>
+                Borrow validity must hold across every possible loop iteration and backedge.
+            </p>
+
+            <p>
+                A borrow that may survive a backedge is considered live when the next condition and
+                iteration are validated.
+            </p>
+
+            <p>
+                Fresh non-escaping loop-body holders may end at the iteration boundary.
+                <code>continue</code> contributes to the next-iteration borrow state, and
+                <code>break</code> contributes to the post-loop exits it reaches.
+            </p>
+
+            <p>
+                Collection iteration also preserves structural-stability restrictions.
+            </p>
+        </section>
+
+        <section id="match">
+            <h2><code>match</code> Borrowing</h2>
+
+            <p>Shared payload borrow:</p>
+
+            <pre><code>match optional {
+    Some(ref value) =&gt; Inspect(value)
+    None =&gt; {}
+}</code></pre>
+
+            <p>Mutable payload borrow:</p>
+
+            <pre><code>match optional {
+    Some(ref mut value) =&gt; Reset(value)
+    None =&gt; {}
+}</code></pre>
+
+            <p>
+                The mutable form requires mutable authority over the reusable subject.
+            </p>
+
+            <p>
+                Pattern borrows are normally arm-scoped and are visible in that arm's
+                <code>where</code> guard and body.
+            </p>
+
+            <p>
+                If a guarded candidate arm is rejected, borrow authority created only for that
+                candidate ends before matching continues.
+            </p>
+
+            <p>
+                Borrowed subject authority never permits ownership move-out of a move-only payload.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closure and Lambda Borrow Captures</h2>
+
+            <p>Shared capture:</p>
+
+            <pre><code>capture(ref value)</code></pre>
+
+            <p>Mutable capture:</p>
+
+            <pre><code>capture(ref mut value)</code></pre>
+
+            <p>
+                The closure environment keeps the corresponding borrowed authority live while it may
+                still use the capture.
+            </p>
+
+            <p>
+                A closure containing a mutable-reference capture is move-only as a closure value.
+            </p>
+
+            <p>
+                Borrowed captures may escape only when every captured borrow remains valid for the
+                complete possible escaped use.
+            </p>
+
+            <p>
+                <code>capture(value)</code> and <code>capture(&lt;-value)</code> are copy/move
+                operations, not borrow forms.
+            </p>
+        </section>
+
+        <section id="defer">
+            <h2><code>defer</code> and Delayed Use</h2>
+
+            <p>
+                A registered <code>defer</code> may extend the effective future use of a value or
+                reference until the deferred operation executes.
+            </p>
+
+            <p>
+                If the deferred operation will later read or borrow a Place, an earlier move,
+                <code>discard</code>, destruction or invalidation that would make that future use
+                invalid is rejected.
+            </p>
+
+            <p>
+                Place-sensitive defer analysis may narrow conflicts to proven sub-Places.
+                Otherwise overlap is conservative.
+            </p>
+        </section>
+
+        <section id="move-conflicts">
+            <h2>Moving While Borrowed</h2>
+
+            <p>
+                Moving an owned Place is invalid while an incompatible overlapping borrow remains live.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+let view := ref resource
+
+Consume(&lt;-resource)    // invalid while view is live
+Inspect(view)</code></pre>
+
+            <p>
+                Moving a proven disjoint sub-Place may remain legal when the active borrow does not
+                overlap that sub-Place and the ownership/destruction rules permit the move.
+            </p>
+        </section>
+
+        <section id="discard">
+            <h2><code>discard</code> While Borrowed</h2>
+
+            <p>
+                <code>discard</code> cannot destroy or invalidate a value while an incompatible
+                overlapping borrow still requires it.
+            </p>
+
+            <p>
+                Discarding a reference holder ends that holder according to reference-value semantics.
+                It does not discard or destroy the referent.
+            </p>
+        </section>
+
+        <section id="replacement">
+            <h2>Replacement and Reinitialization</h2>
+
+            <p>
+                Replacing an available Place is invalid while an incompatible borrow overlaps the
+                old value that replacement would destroy or invalidate.
+            </p>
+
+            <pre><code>let mut item := CreateItem()
+let view := ref item
+
+item = CreateItem()    // invalid while view is live</code></pre>
+
+            <p>
+                Reinitialization must likewise not invalidate a borrow that still legally designates
+                the previous storage incarnation.
+            </p>
+
+            <p>
+                Collection backing replacement must reject or otherwise canonically invalidate
+                incompatible references before replacement commits.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction While Borrowed</h2>
+
+            <p>
+                Automatic destruction cannot occur while a live borrow still requires the value.
+            </p>
+
+            <p>
+                Borrow liveness may constrain the earliest legal destruction point.
+                It does not transfer destruction responsibility from the owner to the reference holder.
+            </p>
+        </section>
+
+        <section id="returned-references">
+            <h2>Returned References Preserve Borrow Dependencies</h2>
+
+            <p>
+                A returned safe reference must satisfy the reference-origin and lifetime rules
+                defined by the reference model.
+            </p>
+
+            <p>
+                A reference to ordinary function-local storage cannot be returned when that storage
+                ends with the invocation.
+            </p>
+
+            <p>
+                Valid returned references may propagate authority from parameters, receivers,
+                Arena/static domains, stable storage or other recognized origins.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI Borrowing</h2>
+
+            <p>
+                Where the FFI contract permits safe-reference parameters, <code>ref T</code> and
+                <code>ref mut T</code> are non-null safe Sec borrows specialized to the foreign call boundary.
+            </p>
+
+            <p>
+                Such borrows are call-bounded unless an explicit foreign retention contract says otherwise.
+            </p>
+
+            <p>
+                Foreign code must not retain a call-bounded safe-reference address after the call.
+            </p>
+
+            <p>
+                Nullable pointers, retained raw addresses, unproven aliases and raw pointer returns
+                use <code>RawPtr[T]</code> or another explicit FFI abstraction.
+            </p>
+        </section>
+
+        <section id="physical-storage">
+            <h2>Physical, Addressed and Volatile Storage</h2>
+
+            <p>
+                Borrowing a Sec value and observing volatile or physical storage are separate semantics.
+            </p>
+
+            <p>
+                A volatile read may produce an ordinary Sec snapshot whose later borrows follow
+                normal Sec borrowing rules.
+            </p>
+
+            <p>
+                A physical address, MMIO mapping, register width or volatile contract does not by
+                itself grant safe <code>ref</code> or <code>ref mut</code> authority.
+            </p>
+
+            <p>
+                Safe borrowing from hardware-backed storage must satisfy the specialized platform
+                contract as well as ordinary reference and borrowing guarantees.
+            </p>
+        </section>
+
+        <section id="epochs">
+            <h2>Borrow Compatibility and Generation Validity Are Separate</h2>
+
+            <p>
+                Runtime generation or epoch validity does not grant borrow authority.
+            </p>
+
+            <p>
+                A matching generation does not make conflicting mutable/shared borrows legal.
+            </p>
+
+            <p>
+                Conversely, a compile-time-valid borrow may still require runtime generation
+                validation when temporal storage validity cannot be proven statically.
+            </p>
+
+            <p>
+                Constrained targets may use address-only references when lifetime and invalidation
+                are statically proven; the borrowing rules remain unchanged.
+            </p>
+        </section>
+
+        <section id="concurrency">
+            <h2>Borrowing Does Not Make Shared State Thread-Safe</h2>
+
+            <p>
+                Borrow correctness and concurrency correctness are separate requirements.
+            </p>
+
+            <p>
+                A borrow crossing a task, thread or other concurrency boundary must also satisfy
+                send/share, data-race, synchronization and concurrency-memory rules.
+            </p>
+
+            <p>
+                <code>ref mut T</code> exclusivity is not by itself proof of safe cross-thread
+                transfer or synchronization.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generics, Interfaces and Opaque Calls</h2>
+
+            <p>
+                Generic specialization preserves <code>ref</code> and <code>ref mut</code>
+                parameter modes exactly.
+            </p>
+
+            <p>
+                A concrete type becoming copyable does not change a borrowed parameter into a
+                by-value parameter, and a move-only type does not make a by-value parameter a borrow.
+            </p>
+
+            <p>
+                Interface and callable compatibility preserve borrow mode as part of the signature.
+            </p>
+
+            <p>
+                Opaque or imported calls with insufficient retention/effect information are analyzed
+                conservatively rather than assumed to have a shorter borrow.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>Borrow Checking Does Not Require Runtime Borrow State</h2>
+
+            <p>
+                Borrow legality is resolved before low-level backend code generation.
+            </p>
+
+            <p>
+                Backend lowering may erase borrow bookkeeping entirely when safety is proven statically.
+            </p>
+
+            <p>
+                Runtime metadata may still exist for independent requirements such as reference
+                epoch validation or bounds.
+            </p>
+
+            <p>
+                Such metadata is not a runtime borrow checker.
+            </p>
+
+            <p>
+                Conservative widening may reject more programs when alias analysis loses precision,
+                but it must never make an unsafe alias pattern legal.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Borrow Diagnostics</h2>
+
+            <p>
+                Borrow diagnostics should explain the programmer's conflicting actions directly.
+            </p>
+
+            <p>A useful diagnostic identifies:</p>
+
+            <ul>
+                <li>the Place the programmer tried to use;</li>
+                <li>the requested action;</li>
+                <li>the existing shared or mutable borrow;</li>
+                <li>where that borrow was created or retained;</li>
+                <li>why the Places overlap;</li>
+                <li>why the borrow is still live;</li>
+                <li>what safe restructuring is available.</li>
+            </ul>
+
+            <h3>Shared borrow blocks mutation</h3>
+
+            <pre><code>cannot modify `value` while a shared borrow is still live
+
+the shared borrow was created here:
+    let view := ref value
+
+and is used later here:
+    Inspect(view)
+
+help: move the mutation after the final use of `view`
+help: narrow the borrowed Place when only a disjoint sub-Place is needed</code></pre>
+
+            <h3>Mutable borrow blocks owner access</h3>
+
+            <pre><code>cannot read `item` through the owner while `writable` has exclusive authority
+
+the mutable borrow was created here:
+    let writable := ref mut item
+
+help: access the value through `writable`
+help: end the mutable borrow before reading through `item`</code></pre>
+
+            <h3>Two dynamic indexes may overlap</h3>
+
+            <pre><code>cannot create two mutable borrows of these indexed Places
+
+`values[left]` and `values[right]` may refer to the same element
+
+help: prove the indexes disjoint
+help: restructure the operation so the borrows do not overlap</code></pre>
+
+            <h3>Availability is not borrow authority</h3>
+
+            <pre><code>`package.Payload` is available, but it cannot be accessed through the owner here
+
+an overlapping mutable borrow is still active
+
+help: use the active borrowed authority
+help: end the borrow before direct owner access</code></pre>
+
+            <p>
+                Diagnostics should not tell the programmer to add explicit lifetime syntax.
+                Sec has no programmer-written lifetime annotations for ordinary borrowing.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use shared borrowing when temporary read access is sufficient.</li>
+                <li>Use mutable borrowing only for the smallest Place that genuinely needs exclusive mutation.</li>
+                <li>Keep borrow holders' useful live ranges short; the compiler can end authority after final use.</li>
+                <li>Borrow disjoint fields or ranges instead of the complete aggregate when independent access is required.</li>
+                <li>Do not assume two runtime indexes are disjoint unless the program proves it.</li>
+                <li>Pass owned Places directly to <code>ref</code>/<code>ref mut</code> parameters; call-bounded borrowing does not require ceremonial call-site markers.</li>
+                <li>Use <code>&lt;-</code> only for ownership transfer, never to express borrowing.</li>
+                <li>Use reborrowing when temporarily delegating authority from an existing reference.</li>
+                <li>End slice/view/reference use before structural operations that may relocate backing storage.</li>
+                <li>Remember that <code>is available</code> says nothing about current borrow conflicts.</li>
+                <li>Do not move, discard, replace or destroy storage while a live borrow still requires it.</li>
+                <li>Remember that borrowing proves alias authority, not synchronization or thread safety.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Borrowing grants temporary access authority without transferring ownership.</li>
+                <li>Borrowing is compile-time aliasing and authority analysis.</li>
+                <li>Sec does not require runtime borrow counters, borrow locks, garbage collection or explicit lifetime annotations.</li>
+                <li><code>ref T</code> represents shared borrowed authority.</li>
+                <li><code>ref mut T</code> represents exclusive mutable borrowed authority.</li>
+                <li>Multiple compatible shared borrows may overlap.</li>
+                <li>An overlapping shared and mutable borrow conflict.</li>
+                <li>Two unrelated overlapping mutable borrows conflict.</li>
+                <li>Mutable authority is not ownership authority.</li>
+                <li>A shared borrow blocks overlapping mutation, replacement, move, discard, destruction and structural invalidation while live.</li>
+                <li>A mutable borrow blocks competing direct owner reads and writes over the overlapping Place.</li>
+                <li>Disjoint Places remain independently usable when the compiler proves non-overlap.</li>
+                <li>Explicit local borrowing uses <code>ref value</code> or <code>ref mut value</code>.</li>
+                <li>General explicit borrow creation requires a reusable addressable Place.</li>
+                <li>Sec 0.1 does not generally extend arbitrary temporary-expression lifetimes for borrowing.</li>
+                <li>An uninitialized, unavailable or unrefined conditionally available Place cannot be borrowed.</li>
+                <li>Availability and borrow compatibility are independent dimensions.</li>
+                <li><code>is available</code> is not a borrow-status test.</li>
+                <li>A Place may be available but temporarily inaccessible through its owner because a mutable borrow is live.</li>
+                <li>A shared borrow may originate from immutable or mutable readable storage.</li>
+                <li>A mutable borrow requires actual mutable authority.</li>
+                <li>Borrow live ranges are derived from control flow and actual use rather than lexical scope alone.</li>
+                <li>A borrow may end after its final reachable use when no surviving dependency remains.</li>
+                <li>Copying a shared reference creates another borrow holder.</li>
+                <li>Moving a mutable-reference holder transfers its borrow obligation rather than ending the referent borrow.</li>
+                <li>Reborrowing creates narrower or equal authority from an existing reference.</li>
+                <li>Passing <code>ref mut T</code> to a borrowed <code>ref mut T</code> parameter is a reborrow, not a move of the reference holder.</li>
+                <li>During a child reborrow, the parent reference cannot exercise conflicting authority.</li>
+                <li>After the child reborrow ends, the parent may become usable again.</li>
+                <li>Borrow overlap is based on semantic Places and provenance.</li>
+                <li>A whole Place overlaps every descendant Place.</li>
+                <li>Distinct struct fields may be borrowed independently when proven disjoint.</li>
+                <li>Properties are not automatically independent addressable storage.</li>
+                <li>Distinct constant array indexes may be proven disjoint.</li>
+                <li>Runtime indexes conservatively overlap unless disjointness is proven.</li>
+                <li>Statically disjoint slice ranges may be borrowed independently.</li>
+                <li>A compile-time-known empty range borrows no elements.</li>
+                <li>Structural collection operations conflict with live borrows when they may invalidate backing storage.</li>
+                <li>A parameter <code>value: ref T</code> receives shared borrowed authority.</li>
+                <li>A parameter <code>value: ref mut T</code> receives mutable borrowed authority.</li>
+                <li>The caller remains owner of the referent for both parameter forms.</li>
+                <li>An owned Place may be passed directly to a borrowed parameter and create a call-bounded borrow.</li>
+                <li>Call-bounded borrowing does not require a separate <code>ref</code> or <code>ref mut</code> call-site marker.</li>
+                <li>Implicit call-site borrowing is not ownership transfer and must not be confused with <code>&lt;-</code>.</li>
+                <li>A call cannot create overlapping mutable argument borrows.</li>
+                <li>A mutable argument borrow conflicts with overlapping shared/direct argument access while their live ranges overlap.</li>
+                <li>Method receiver borrows obey the same overlap rules as equivalent Places.</li>
+                <li>Borrow state is path-sensitive across branches.</li>
+                <li>A borrow live on any continuing incoming path remains potentially live after a merge.</li>
+                <li>Terminating paths do not contribute borrow state to later unreachable joins.</li>
+                <li>Borrow validity must hold across loop backedges and later iterations.</li>
+                <li><code>Some(ref value)</code> creates a shared payload borrow in <code>match</code>.</li>
+                <li><code>Some(ref mut value)</code> creates a mutable payload borrow when the subject provides mutable authority.</li>
+                <li>Match candidate borrows end when a guarded candidate is rejected.</li>
+                <li><code>capture(ref value)</code> retains a shared borrow in a closure.</li>
+                <li><code>capture(ref mut value)</code> retains a mutable borrow and blocks conflicting outer access.</li>
+                <li>Escaping closures must not outlive their captured borrow origins.</li>
+                <li><code>defer</code> may extend the effective future use that keeps a borrow dependency live.</li>
+                <li>Moving an owned Place is invalid while an incompatible overlapping borrow is live.</li>
+                <li><code>discard</code> cannot invalidate a live borrowed referent.</li>
+                <li>Replacement and reinitialization cannot invalidate a still-required borrow.</li>
+                <li>Automatic destruction cannot occur while a live borrow still requires the value.</li>
+                <li>Returned references preserve their origin and borrow dependencies.</li>
+                <li>FFI safe-reference parameters are call-bounded unless an explicit retention contract says otherwise.</li>
+                <li>Physical addresses, MMIO mappings and volatile contracts do not automatically grant safe borrow authority.</li>
+                <li>Generation/epoch validity and borrow compatibility are separate safety dimensions.</li>
+                <li>Borrowing does not make shared state thread-safe.</li>
+                <li>Generic specialization preserves declared borrow modes exactly.</li>
+                <li>Borrow legality is resolved before low-level code generation.</li>
+                <li>Backend lowering may erase borrow bookkeeping entirely when safety is statically proven.</li>
+                <li>Runtime reference-validity metadata is not a runtime borrow checker.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="25-copy-move.html">Previous: Copying and Moving</a>
+            <a href="27-spread.html">Next: Spread</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

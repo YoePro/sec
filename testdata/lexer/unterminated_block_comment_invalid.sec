@@ -1,0 +1,6 @@
+module unterminated_block_comment_invalid
+
+let before := 7
+/* outer comment
+   /* nested comment */
+   outer comment remains open

@@ -35,7 +35,11 @@
         "id": "sec",
         "aliases": ["SEC", "SEC Language", "sec"],
         "extensions": [".sec", ".se"],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/sec-language.svg",
+          "dark": "./images/sec-language.svg"
+        }
       }
     ],
     "grammars": [

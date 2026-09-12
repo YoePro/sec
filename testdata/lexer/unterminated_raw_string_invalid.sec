@@ -1,0 +1,5 @@
+module unterminated_raw_string_invalid
+
+let broken := `first raw line
+second raw line
+still open

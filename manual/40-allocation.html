@@ -1,0 +1,1591 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Memory Allocation - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#allocation">Memory Allocation</a>
+        <a href="#core-principles">Core Principles</a>
+        <a href="#allocation-capable">Allocation-Capable Operations</a>
+        <a href="#no-hidden-allocation">Operations That Do Not Silently Allocate</a>
+        <a href="#new">new Does Not Mean Heap Allocation</a>
+        <a href="#default-model">Default Allocation Model</a>
+        <a href="#allocation-context">Allocation Context</a>
+        <a href="#propagation">Implicit Context Propagation</a>
+        <a href="#allocation-effect">Allocation Is an Effect</a>
+        <a href="#explicit-context">Explicit Arena Selection</a>
+        <a href="#manual-allocation">Manual Typed Allocation</a>
+        <a href="#allocation-failure">Allocation Failure</a>
+        <a href="#no-null">No null Safe Reference on Failure</a>
+        <a href="#no-escape-promotion">No Hidden Escape Promotion</a>
+        <a href="#storage-vs-value">Storage Ownership vs Value Ownership</a>
+        <a href="#initialization">Allocation vs Initialization</a>
+        <a href="#destruction">Destruction vs Reclamation</a>
+        <a href="#arena-reset">Arena Reset and Release</a>
+        <a href="#storage-origin">Storage Origin</a>
+        <a href="#collections">Collections and Owning Values</a>
+        <a href="#strings">Strings</a>
+        <a href="#views">Views Stay Allocation-Free</a>
+        <a href="#closures">Closures and Escapes</a>
+        <a href="#ffi">Foreign Allocation</a>
+        <a href="#hardware">Hardware and Fixed Addresses</a>
+        <a href="#profiles">Target and Build Profiles</a>
+        <a href="#hosted">Hosted Profile</a>
+        <a href="#embedded">Embedded Arena Profile</a>
+        <a href="#noalloc-profile">No-Allocation Profile</a>
+        <a href="#noalloc-attribute">@noAlloc</a>
+        <a href="#interrupts">Interrupt Contexts</a>
+        <a href="#capacity">Capacity, Size and Alignment</a>
+        <a href="#overflow">Allocation-Size Overflow</a>
+        <a href="#proof">Static Capacity Proof</a>
+        <a href="#elimination">Allocation Elimination</a>
+        <a href="#static-placement">Static/Stack Placement</a>
+        <a href="#gc">No Mandatory GC or Reference Counting</a>
+        <a href="#cte">Compile-Time Allocation</a>
+        <a href="#backend">Backend Responsibilities</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Analysis</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html" class="active">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Memory Allocation</div>
+
+        <h1 id="allocation">Memory Allocation</h1>
+
+        <p>
+            Sec separates the semantic act of requesting dynamic storage from the low-level choice of
+            allocator implementation.
+        </p>
+
+        <p>
+            An operation allocates only when its canonical contract says that it may allocate.
+            Ordinary application code normally does not need to pass allocator handles through every
+            function call.
+        </p>
+
+        <pre><code>let values := try list[int].WithCapacity(100)
+let text := try string.From(source)</code></pre>
+
+        <p>
+            These operations may allocate because their API contracts permit allocation.
+            The source does not need to name an allocator merely to make that fact true.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Dynamic allocation is explicit in the semantic operation.
+            Selection and propagation of the allocation context are normally implicit.
+        </div>
+
+        <section id="core-principles">
+            <h2>Core Principles</h2>
+
+            <ul>
+                <li>Only operations whose canonical contracts permit allocation may dynamically allocate.</li>
+                <li>The compiler must not introduce dynamic allocation merely for implementation convenience.</li>
+                <li>Allocation-context selection is normally compiler-managed.</li>
+                <li>Allocation is separate from ownership transfer.</li>
+                <li>Allocation is separate from initialization.</li>
+                <li>Allocation is separate from destruction.</li>
+                <li>Allocation is separate from raw-storage reclamation.</li>
+                <li>Allocation is separate from safe-reference validity.</li>
+                <li>Allocation is separate from MMIO, fixed-address binding and volatile access.</li>
+                <li>Allocation semantics are resolved before backend lowering.</li>
+            </ul>
+
+            <p>
+                LLVM, MLIR and target code generation may implement an already-resolved allocation
+                decision, but they must not invent a new source-level allocator policy.
+            </p>
+        </section>
+
+        <section id="allocation-capable">
+            <h2>Allocation-Capable Operations</h2>
+
+            <p>
+                An operation is allocation-capable only when the owning language, core-library,
+                collection, shaped-type, string, platform or standard-library contract explicitly
+                permits allocation.
+            </p>
+
+            <p>Examples include operations such as:</p>
+
+            <pre><code>let values := try list[int].WithCapacity(100)
+let text := try string.From(source)</code></pre>
+
+            <p>
+                An API may be allocation-capable even though no allocator argument appears in normal
+                source syntax.
+            </p>
+
+            <p>
+                Conversely, an operation defined as allocation-free must remain allocation-free in
+                every conforming implementation.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> “No allocator is visible in the source” does not mean
+                “this operation cannot allocate”.
+            </div>
+        </section>
+
+        <section id="no-hidden-allocation">
+            <h2>Operations That Do Not Silently Allocate</h2>
+
+            <p>
+                The following operations must not dynamically allocate merely because the compiler
+                finds allocation convenient:
+            </p>
+
+            <h3>Copy</h3>
+
+            <pre><code>let second := first</code></pre>
+
+            <h3>Assignment</h3>
+
+            <pre><code>target = source</code></pre>
+
+            <h3>Move</h3>
+
+            <pre><code>let second :&lt;- first
+destination &lt;- source</code></pre>
+
+            <h3>Parameter passing</h3>
+
+            <pre><code>Inspect(value)
+Consume(&lt;-resource)</code></pre>
+
+            <h3>Return</h3>
+
+            <pre><code>return value</code></pre>
+
+            <h3>Reference and view creation</h3>
+
+            <pre><code>let item := ref value
+let slice := ref values[..]</code></pre>
+
+            <p>The same prohibition applies to allocation introduced merely because of:</p>
+
+            <ul>
+                <li>borrow analysis;</li>
+                <li>control-flow merging;</li>
+                <li><code>match</code>;</li>
+                <li><code>try</code>;</li>
+                <li><code>if</code>, <code>switch</code> or loops;</li>
+                <li><code>discard</code>;</li>
+                <li>ordinary destruction;</li>
+                <li>escape analysis;</li>
+                <li>lifetime repair;</li>
+                <li>closure capture repair.</li>
+            </ul>
+
+            <p>
+                If one of these operations would only become valid by secretly moving data into
+                longer-lived storage, the program is invalid instead.
+            </p>
+        </section>
+
+        <section id="new">
+            <h2><code>new</code> Does Not Mean Heap Allocation</h2>
+
+            <p>
+                In Sec, <code>new</code> selects lifecycle construction through <code>init</code> or
+                another permitted construction path:
+            </p>
+
+            <pre><code>let point := new Point(10, 20)
+
+let connection := try new Connection(address)</code></pre>
+
+            <p>
+                <code>new</code> is a construction marker, not an allocation keyword.
+            </p>
+
+            <p>
+                The resulting value may live in:
+            </p>
+
+            <ul>
+                <li>SSA form;</li>
+                <li>registers;</li>
+                <li>stack storage;</li>
+                <li>inline aggregate storage;</li>
+                <li>another valid storage location chosen by ordinary placement rules.</li>
+            </ul>
+
+            <p>
+                Dynamic allocation occurs only when the selected construction semantics actually
+                require an allocation-capable operation.
+            </p>
+
+            <div class="rule">
+                <strong>Distinction:</strong> Construction creates a valid value.
+                Allocation obtains storage. One does not imply the other.
+            </div>
+        </section>
+
+        <section id="default-model">
+            <h2>Default Dynamic-Allocation Model</h2>
+
+            <p>
+                Arena allocation is the default dynamic-allocation model for Sec 0.1.
+            </p>
+
+            <p>
+                When the active target and build profile permit dynamic allocation, the compiler
+                maintains a canonical active allocation context for allocation-capable operations.
+            </p>
+
+            <p>That context may be backed by:</p>
+
+            <ul>
+                <li>a compiler-managed local Arena;</li>
+                <li>a caller-propagated Arena;</li>
+                <li>an explicitly selected Arena;</li>
+                <li>a target-provided Arena;</li>
+                <li>another allocation domain defined by a canonical rule;</li>
+                <li>no domain at all when the active profile forbids dynamic allocation.</li>
+            </ul>
+
+            <p>
+                The normal programmer is not required to add an Arena parameter to every ordinary
+                function merely because a nested operation may allocate.
+            </p>
+
+            <p>
+                The detailed programmer-visible Arena model is covered in
+                <a href="41-arena.html">Arenas</a>.
+            </p>
+        </section>
+
+        <section id="allocation-context">
+            <h2>The Allocation Context Is a Compiler Semantic Fact</h2>
+
+            <p>
+                The active allocation context is not a source-level global variable.
+            </p>
+
+            <p>
+                It is compiler-visible semantic state associated with allocation-capable execution.
+            </p>
+
+            <p>
+                The compiler may propagate that context through call boundaries when the callable's
+                contract permits allocation.
+            </p>
+
+            <p>
+                This allows ordinary source code to remain focused on the operation being requested
+                rather than on plumbing allocator handles through every layer.
+            </p>
+        </section>
+
+        <section id="propagation">
+            <h2>Implicit Allocation-Context Propagation</h2>
+
+            <p>
+                Allocation context is propagated only through operations whose semantic effects
+                permit allocation.
+            </p>
+
+            <p>
+                A caller may therefore provide the active context to a callee without adding a visible
+                Arena parameter to the ordinary source signature.
+            </p>
+
+            <p>
+                Imported functions, indirect calls, interface calls, generic specializations,
+                recursive call graphs and bodyless declarations need sufficient allocation metadata
+                for the compiler to reason about this correctly.
+            </p>
+
+            <p>
+                Unknown allocation behavior is treated conservatively when a caller or profile
+                requires proof that no allocation occurs.
+            </p>
+        </section>
+
+        <section id="allocation-effect">
+            <h2>Allocation Is a Compiler-Visible Effect</h2>
+
+            <p>
+                A callable that may allocate carries a compiler-visible allocation effect.
+            </p>
+
+            <p>
+                Allocation effect is independent from other effect categories such as:
+            </p>
+
+            <ul>
+                <li>panic;</li>
+                <li>I/O;</li>
+                <li>blocking;</li>
+                <li>mutation;</li>
+                <li>FFI;</li>
+                <li>volatile access;</li>
+                <li>synchronization.</li>
+            </ul>
+
+            <p>
+                A function may, for example, be panic-free while still allocating, or allocation-free
+                while still performing I/O.
+            </p>
+
+            <p>
+                Effect summaries are shared by compilation, LSP, ISR analysis, project policy and lowering.
+            </p>
+        </section>
+
+        <section id="explicit-context">
+            <h2>Explicit Arena Selection</h2>
+
+            <p>
+                Systems, embedded, allocator, FFI-wrapper and deterministic-memory code may select an
+                Arena explicitly when the API offers that form:
+            </p>
+
+            <pre><code>let values := try Type.Create(ref mut arena, arguments)</code></pre>
+
+            <p>
+                The equivalent normal form may omit the Arena when implicit context selection is allowed:
+            </p>
+
+            <pre><code>let values := try Type.Create(arguments)</code></pre>
+
+            <p>
+                Passing <code>ref mut arena</code> is ordinary mutable borrowing.
+                It gives the operation authority to update Arena allocation state for the call.
+            </p>
+
+            <p>
+                Explicit selection does not transfer ownership of the Arena unless the API separately
+                declares a consuming contract.
+            </p>
+
+            <p>
+                Sec 0.1 introduces no general <code>alloc</code> keyword and no special scoped-Arena
+                block syntax through the allocation model.
+            </p>
+        </section>
+
+        <section id="manual-allocation">
+            <h2>Manual Typed Allocation</h2>
+
+            <p>
+                The canonical safe manual allocation surface is provided by <code>Arena</code>.
+            </p>
+
+            <p>Examples include:</p>
+
+            <pre><code>let value := try arena.New[Value]()
+let values := try arena.Alloc[Value](count)</code></pre>
+
+            <p>Conceptually:</p>
+
+            <pre><code>fn New[T]() Result[ref mut T, AllocationError]
+
+fn Alloc[T](
+    count: uint,
+) Result[ref mut T[], AllocationError]</code></pre>
+
+            <p>
+                These are Arena instance methods.
+                The Arena receiver is mutated during allocation, but the temporary mutable borrow of
+                Arena control state ends when the call returns.
+            </p>
+
+            <p>
+                The returned reference or slice keeps a dependency on the Arena allocation domain
+                rather than an exclusive borrow of the entire Arena control value.
+            </p>
+
+            <p>
+                Repeated allocation is therefore possible while capacity remains available.
+            </p>
+
+            <p>
+                <code>Alloc[T](count)</code> interprets <code>count</code> as a number of
+                <code>T</code> elements, not an untyped byte count.
+            </p>
+
+            <p>
+                Exact Arena type restrictions, initialization rules, growth, reset and release are
+                covered in chapter 41.
+            </p>
+        </section>
+
+        <section id="allocation-failure">
+            <h2>Allocation Failure Uses Ordinary Sec Error Handling</h2>
+
+            <p>
+                A safe dynamic allocation that may fail reports failure through the ordinary Sec
+                fallibility model.
+            </p>
+
+            <p>
+                The standard error type is <code>AllocationError</code> where the owning API specifies it.
+            </p>
+
+            <pre><code>let values := try arena.Alloc[int](count)</code></pre>
+
+            <p>
+                Failure is handled with normal <code>Result</code>, <code>try</code> and error rules.
+            </p>
+
+            <p>
+                Ordinary capacity exhaustion is not automatically a reason to panic or terminate the process.
+            </p>
+
+            <p>
+                An allocation may be treated as infallible only when the compiler/platform contract
+                proves the necessary storage, capacity, layout, alignment and other preconditions.
+            </p>
+        </section>
+
+        <section id="no-null">
+            <h2>Safe Allocation Failure Does Not Return <code>null</code></h2>
+
+            <p>A failed safe allocation must not:</p>
+
+            <ul>
+                <li>return <code>null</code> as a safe reference;</li>
+                <li>return an invalid safe reference;</li>
+                <li>return a shorter allocation without an explicit API contract saying so;</li>
+                <li>expose partially initialized readable storage;</li>
+                <li>silently select an unrelated allocator;</li>
+                <li>silently select another Arena;</li>
+                <li>panic merely because ordinary allocation failed;</li>
+                <li>terminate the process merely because capacity was insufficient.</li>
+            </ul>
+
+            <p>
+                Safe references preserve their non-null validity model.
+                Allocation failure remains an explicit typed failure.
+            </p>
+        </section>
+
+        <section id="no-escape-promotion">
+            <h2>No Hidden Escape Promotion</h2>
+
+            <p>
+                The compiler never allocates merely because a value or reference escapes its
+                original scope.
+            </p>
+
+            <p>This is invalid:</p>
+
+            <pre><code>fn Invalid() ref byte[] {
+    let data: byte[16] := [...]
+    return ref data[..]
+}</code></pre>
+
+            <p>
+                The returned reference would outlive its local backing storage.
+            </p>
+
+            <p>The compiler must not “repair” the program by secretly moving <code>data</code> into:</p>
+
+            <ul>
+                <li>an Arena;</li>
+                <li>a hidden heap object;</li>
+                <li>a hidden box;</li>
+                <li>a reference-counted cell;</li>
+                <li>a closure environment;</li>
+                <li>another longer-lived storage domain.</li>
+            </ul>
+
+            <p>
+                If the program needs escaping storage, an owning operation must intentionally create
+                that storage through an allocation-capable API.
+            </p>
+
+            <p>
+                This rule applies equally to returns, closures, callbacks, tasks, threads, deferred
+                work, ISR handoff, FFI retention and stored references.
+            </p>
+        </section>
+
+        <section id="storage-vs-value">
+            <h2>Storage Ownership and Value Ownership Are Different</h2>
+
+            <p>
+                An allocation domain may control the raw storage while an ordinary Sec value owns the
+                value stored in that memory.
+            </p>
+
+            <pre><code>allocation domain
+    controls raw storage
+
+owned value
+    controls value lifetime and owned subresources
+
+reference or slice
+    borrows live initialized storage</code></pre>
+
+            <p>
+                Arena-backed storage therefore does not change the ordinary ownership rules for the
+                value placed there.
+            </p>
+
+            <p>
+                Likewise, owning a value does not imply authority to reclaim the raw storage backing
+                that value.
+            </p>
+
+            <p>
+                Allocation analysis must keep those responsibilities separate.
+            </p>
+        </section>
+
+        <section id="initialization">
+            <h2>Allocation and Initialization Are Separate</h2>
+
+            <p>
+                Allocation produces storage.
+                It does not by itself prove that a valid readable <code>T</code> exists in that storage.
+            </p>
+
+            <p>
+                A safe API that returns readable <code>T</code> or <code>T[]</code> must complete all
+                required initialization before exposing the result.
+            </p>
+
+            <p>
+                Partial initialization follows the ordinary construction and destruction rules.
+            </p>
+
+            <p>
+                If initialization fails after storage was acquired, every already-initialized
+                non-trivial subvalue must be cleaned up correctly.
+            </p>
+
+            <p>
+                Reclaiming raw bytes is not a substitute for required value destruction.
+            </p>
+
+            <div class="rule">
+                <strong>Distinction:</strong> Storage may exist before a valid typed value exists in it.
+                Safe APIs must not expose that intermediate state as an ordinary readable safe reference.
+            </div>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction and Reclamation Are Separate</h2>
+
+            <p>
+                Destroying a value ends that value's lifetime and runs any required cleanup.
+            </p>
+
+            <p>
+                Reclaiming allocation-domain storage makes raw storage reusable or unavailable.
+            </p>
+
+            <p>
+                Those are not the same operation.
+            </p>
+
+            <p>
+                A value stored in Arena-backed memory is destroyed at its ordinary ownership boundary;
+                the Arena does not automatically delay destruction until Reset or Release.
+            </p>
+
+            <p>
+                Conversely, Arena storage cannot be reclaimed while a live value or safe reference
+                still requires it.
+            </p>
+
+            <p>
+                Arena is not an implicit registry of arbitrary destructors.
+            </p>
+        </section>
+
+        <section id="arena-reset">
+            <h2>Arena Reset and Release Affect Storage Lifetime</h2>
+
+            <p>
+                The detailed rules belong to the next chapter, but the allocation model establishes
+                the general relationship:
+            </p>
+
+            <ul>
+                <li><code>Reset</code> reclaims allocations tied to the affected Arena validity epoch while keeping the Arena alive;</li>
+                <li><code>Release</code> terminates the Arena allocation domain;</li>
+                <li>live values, references, views, captures, deferred operations and returned dependencies may block reclamation;</li>
+                <li>statically provable invalid Reset/Release is a compile-time error;</li>
+                <li>runtime validity epochs may participate where static proof alone is insufficient under the selected profile.</li>
+            </ul>
+
+            <p>
+                Repeated ordinary allocation from one live Arena does not by itself invalidate earlier allocations.
+            </p>
+        </section>
+
+        <section id="storage-origin">
+            <h2>Storage Origin Is Preserved Explicitly</h2>
+
+            <p>
+                Arena-allocated storage has Arena storage origin.
+            </p>
+
+            <p>
+                Storage origin is separate from:
+            </p>
+
+            <ul>
+                <li>nominal type identity;</li>
+                <li>foreign provenance;</li>
+                <li>fixed-address status;</li>
+                <li>address stability;</li>
+                <li>mutability;</li>
+                <li>volatility;</li>
+                <li>reclamation authority;</li>
+                <li>device liveness;</li>
+                <li>interrupt accessibility.</li>
+            </ul>
+
+            <p>
+                Two references may therefore have the same Sec type while referring to storage with
+                different origins and lifetimes.
+            </p>
+
+            <p>
+                The broader storage model is covered in chapter 22 and the later layout/storage chapters.
+            </p>
+        </section>
+
+        <section id="collections">
+            <h2>Collections and Other Dynamic Owning Values</h2>
+
+            <p>
+                Collection, shaped-type and string rulebooks define exactly which operations allocate.
+            </p>
+
+            <p>For example:</p>
+
+            <ul>
+                <li>creating an empty owner may be allocation-free when its canonical representation permits it;</li>
+                <li>growing an owning collection may allocate when the growth operation is declared allocation-capable;</li>
+                <li>materializing a new owning value may allocate;</li>
+                <li>borrowing or taking a view must not allocate when the operation is defined as allocation-free.</li>
+            </ul>
+
+            <p>
+                Those operations all consume the same canonical allocation-context and allocation-effect model.
+            </p>
+        </section>
+
+        <section id="strings">
+            <h2>String Operations Allocate Only When Their Contracts Permit It</h2>
+
+            <p>
+                Ordinary string operations such as copy, move, comparison, indexing, borrowing and
+                iteration do not allocate merely because strings may sometimes own dynamic storage.
+            </p>
+
+            <p>
+                Operations that intentionally materialize new runtime string storage may allocate
+                through the canonical allocation context.
+            </p>
+
+            <p>
+                Compile-time-folded string data stored in the output image is not a runtime dynamic allocation.
+            </p>
+
+            <p>
+                Allocation analysis tracks actual string storage facts rather than assuming every
+                string is heap-backed.
+            </p>
+        </section>
+
+        <section id="views">
+            <h2>Views and Non-Owning Transformations Stay Allocation-Free</h2>
+
+            <p>
+                Operations that merely produce a new view of existing storage must remain
+                allocation-free when their owning contract says so.
+            </p>
+
+            <p>Examples may include:</p>
+
+            <ul>
+                <li>slices;</li>
+                <li>borrows;</li>
+                <li>reshapes;</li>
+                <li>transposes;</li>
+                <li>other non-owning shaped views.</li>
+            </ul>
+
+            <p>
+                The backend must not allocate a hidden buffer merely because that would simplify implementation.
+            </p>
+
+            <p>
+                An operation that intentionally materializes new owning storage is a different operation
+                and may be allocation-capable.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closures and Escaping Execution Do Not Trigger Hidden Allocation</h2>
+
+            <p>
+                Closure capture cannot allocate merely to make an otherwise invalid captured reference
+                live long enough.
+            </p>
+
+            <p>
+                If a closure representation is canonically allocation-capable, that fact belongs to
+                its semantic effect and must preserve the declared capture ownership model.
+            </p>
+
+            <p>
+                The compiler never performs implicit heap promotion just because a closure escapes.
+            </p>
+
+            <p>
+                Long-lived owned closure storage must be created by an operation whose canonical
+                contract explicitly creates such storage.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>Foreign Allocation Is Not Automatically Sec Arena Allocation</h2>
+
+            <p>
+                Foreign libraries may allocate storage under their own ownership and reclamation rules.
+            </p>
+
+            <p>
+                A foreign allocation does not become Arena allocation simply because Sec stores or wraps
+                the resulting handle.
+            </p>
+
+            <p>
+                FFI contracts independently describe:
+            </p>
+
+            <ul>
+                <li>ownership;</li>
+                <li>retention;</li>
+                <li>lifetime;</li>
+                <li>foreign deallocation responsibility;</li>
+                <li>safe-wrapper conversion;</li>
+                <li>failure behavior.</li>
+            </ul>
+
+            <p>
+                A wrapper may convert foreign allocation failure into a normal Sec <code>Result</code>.
+            </p>
+
+            <p>
+                A pointer returned by a foreign allocator does not automatically become a safe Sec reference.
+            </p>
+
+            <p>
+                Sec also does not silently copy foreign storage into an Arena merely to obtain safe provenance.
+                Such materialization must be an explicit operation when desired.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>Fixed-Address and Hardware Storage Are Not Dynamic Allocation</h2>
+
+            <p>
+                Storage existing at a physical or virtual device address is not Arena allocation merely
+                because Sec provides a typed view of it.
+            </p>
+
+            <pre><code>@address(Peripheral.GPIOA)
+let mut GPIOA: GPIORegisters</code></pre>
+
+            <p>
+                Fixed-address binding, MMIO and volatile access belong to platform/hardware storage semantics.
+            </p>
+
+            <p>
+                Mapping a device or OS memory region may itself be a fallible resource operation, but
+                the physical backing is not thereby reclassified as Arena storage.
+            </p>
+
+            <p>
+                Volatile reads and writes are storage accesses, not allocations.
+            </p>
+        </section>
+
+        <section id="profiles">
+            <h2>Target and Build Profiles May Restrict Allocation</h2>
+
+            <p>
+                Sec preserves the same ownership, borrowing, lifetime, destruction and reference
+                semantics across different allocation capabilities.
+            </p>
+
+            <p>Typical allocation configurations include:</p>
+
+            <pre><code>hosted
+    compiler-managed allocation context available
+
+embedded-arena
+    fixed or program/platform-supplied Arena available
+
+noalloc
+    dynamic allocation unavailable</code></pre>
+
+            <p>
+                A profile may also require that allocation is statically bounded or comes from a
+                preallocated domain.
+            </p>
+
+            <p>
+                Runtime-free bare-metal Sec must remain possible.
+            </p>
+        </section>
+
+        <section id="hosted">
+            <h2>Hosted Allocation</h2>
+
+            <p>
+                A hosted compilation plan may provide a compiler-managed active allocation context.
+            </p>
+
+            <p>
+                The concrete provider may ultimately use operating-system services, runtime support,
+                target helpers or another verified backing strategy.
+            </p>
+
+            <p>
+                That provider choice does not change source-level ownership, error handling,
+                reference validity or destruction semantics.
+            </p>
+
+            <p>
+                Ordinary Sec code still observes the allocation contract of the operation rather
+                than the implementation details of the provider.
+            </p>
+        </section>
+
+        <section id="embedded">
+            <h2>Embedded and Preallocated Arena Profiles</h2>
+
+            <p>
+                Embedded systems may use fixed or program/platform-provided Arena capacity instead of
+                a general-purpose hosted provider.
+            </p>
+
+            <p>
+                Allocation-capable operations remain ordinary Sec operations but must fit the active
+                domain's capacity and restrictions.
+            </p>
+
+            <p>
+                A compiler may prove sufficient capacity statically, or an allocation may fail
+                normally with <code>AllocationError</code> when runtime capacity is insufficient.
+            </p>
+
+            <p>
+                The detailed Arena backing and capacity model is covered in chapter 41.
+            </p>
+        </section>
+
+        <section id="noalloc-profile">
+            <h2>No-Allocation Profiles</h2>
+
+            <p>
+                A target or build profile may make dynamic allocation unavailable.
+            </p>
+
+            <p>
+                In such a plan, an unresolved reachable use of an allocation-capable operation is a
+                compile-time error:
+            </p>
+
+            <pre><code>fn BuildMessage() string {
+    ...
+}</code></pre>
+
+            <p>
+                If <code>BuildMessage</code> reaches a string materialization operation that requires
+                dynamic storage, the build cannot simply substitute an allocator that the profile forbids.
+            </p>
+
+            <p>
+                However, an allocation-capable source operation may still be accepted when the compiler
+                completely proves that dynamic allocation can be eliminated while preserving every
+                observable Sec semantic requirement.
+            </p>
+        </section>
+
+        <section id="noalloc-attribute">
+            <h2><code>@noAlloc</code></h2>
+
+            <p>
+                <code>@noAlloc</code> is a transitive compiler-verified guarantee for one callable:
+            </p>
+
+            <pre><code>@noAlloc
+fn Process(
+    buffer: ref byte[],
+) Result[void, ProcessError] {
+    ...
+}</code></pre>
+
+            <p>
+                No reachable execution path may allocate dynamically.
+            </p>
+
+            <p>
+                Verification includes:
+            </p>
+
+            <ul>
+                <li>direct operations;</li>
+                <li>reachable callees;</li>
+                <li>indirect/interface calls;</li>
+                <li>generic specializations;</li>
+                <li>closures;</li>
+                <li>defer bodies;</li>
+                <li>reachable destruction;</li>
+                <li>foreign contracts;</li>
+                <li>compiler-generated operations.</li>
+            </ul>
+
+            <p>
+                Using <code>try</code> around an allocating operation does not make the operation allocation-free.
+                Allocation that succeeds still allocates.
+            </p>
+
+            <p>
+                A no-allocation build profile is a plan-wide capability restriction.
+                <code>@noAlloc</code> is a callable-level verified guarantee.
+            </p>
+        </section>
+
+        <section id="interrupts">
+            <h2>Interrupt and Restricted Execution Contexts</h2>
+
+            <p>
+                ISR and interrupt policy may forbid dynamic allocation entirely.
+            </p>
+
+            <p>
+                Any allocation-capable operation reachable from such a root must therefore be rejected
+                unless the applicable interrupt/target rule explicitly permits the selected preallocated domain.
+            </p>
+
+            <p>
+                The compiler must not hide allocation inside an apparently allocation-free helper reachable
+                from ISR code.
+            </p>
+
+            <p>
+                This is why allocation effect must be visible to call-graph and ISR analysis.
+            </p>
+        </section>
+
+        <section id="capacity">
+            <h2>Capacity, Size and Alignment</h2>
+
+            <p>
+                Allocation size is computed from the target-correct layout of the requested type.
+            </p>
+
+            <p>For a typed count, the conceptual calculation includes:</p>
+
+            <pre><code>payloadSize = CheckedMultiply(count, SizeOf(T))
+alignedStart = AlignUp(currentOffset, AlignOf(T))
+endOffset = CheckedAdd(alignedStart, payloadSize)</code></pre>
+
+            <p>
+                Alignment padding consumes capacity.
+            </p>
+
+            <p>
+                Required alignment comes from the canonical type/layout model for the active
+                compilation plan.
+            </p>
+
+            <p>
+                A fixed-capacity domain fails an allocation that cannot fit unless the compiler has
+                already proven the request impossible and reports that problem statically.
+            </p>
+        </section>
+
+        <section id="overflow">
+            <h2>Allocation-Size Arithmetic Is Checked</h2>
+
+            <p>
+                Count, size, alignment and end-offset arithmetic must not silently wrap.
+            </p>
+
+            <p>
+                The compiler/runtime checks overflow before reserving storage.
+            </p>
+
+            <p>
+                This matters especially when a count is multiplied by a target-dependent
+                <code>SizeOf(T)</code>.
+            </p>
+
+            <p>
+                An impossible request must not become a smaller allocation merely because arithmetic overflowed.
+            </p>
+        </section>
+
+        <section id="proof">
+            <h2>Static Capacity Proof</h2>
+
+            <p>
+                A compiler or target profile may prove that a bounded allocation cannot fail.
+            </p>
+
+            <p>
+                A complete proof may need to account for:
+            </p>
+
+            <ul>
+                <li>all allocation-capable operations;</li>
+                <li>control-flow multiplicity;</li>
+                <li>loops;</li>
+                <li>recursion;</li>
+                <li>call graph;</li>
+                <li>target layout;</li>
+                <li>alignment padding;</li>
+                <li>simultaneously live allocations;</li>
+                <li>profile capacity limits.</li>
+            </ul>
+
+            <p>
+                A successful proof may remove runtime allocation-failure checks.
+            </p>
+
+            <p>
+                It does not silently change the source-level API type.
+            </p>
+        </section>
+
+        <section id="elimination">
+            <h2>The Compiler May Eliminate Dynamic Allocation After Proof</h2>
+
+            <p>
+                An allocation-capable source operation does not force the final machine code to call a
+                dynamic allocator if all observable semantics can be preserved without doing so.
+            </p>
+
+            <p>
+                Valid optimization may eliminate allocation only when it preserves:
+            </p>
+
+            <ul>
+                <li>storage lifetime;</li>
+                <li>capacity;</li>
+                <li>address stability;</li>
+                <li>provenance;</li>
+                <li>ownership;</li>
+                <li>destruction timing;</li>
+                <li>reference validity;</li>
+                <li>failure behavior;</li>
+                <li>concurrency and reentrancy correctness.</li>
+            </ul>
+
+            <p>
+                Allocation elimination is an optimization.
+                It must never be used as hidden escape repair.
+            </p>
+        </section>
+
+        <section id="static-placement">
+            <h2>Stack or Static Placement May Replace Dynamic Storage Only When Proven Correct</h2>
+
+            <p>
+                The compiler may choose stack, static or another non-dynamic placement for an
+                allocation-capable operation when the proof is complete.
+            </p>
+
+            <p>The proof must account for:</p>
+
+            <ul>
+                <li>complete required lifetime;</li>
+                <li>capacity;</li>
+                <li>alignment;</li>
+                <li>recursion;</li>
+                <li>reentrancy;</li>
+                <li>concurrency;</li>
+                <li>ISR execution;</li>
+                <li>multiple simultaneous live instances;</li>
+                <li>address-stability requirements;</li>
+                <li>failure semantics.</li>
+            </ul>
+
+            <p>
+                Static placement must never accidentally share one storage region between independent
+                live values that require distinct identities.
+            </p>
+        </section>
+
+        <section id="gc">
+            <h2>Sec Allocation Does Not Require Garbage Collection or Reference Counting</h2>
+
+            <p>
+                Ordinary Sec allocation semantics do not require a mandatory garbage collector.
+            </p>
+
+            <p>
+                They also do not require mandatory reference counting.
+            </p>
+
+            <p>
+                Arena validity epochs are not GC handles or reference counts.
+            </p>
+
+            <p>
+                Ownership, deterministic destruction, Arena-domain reclamation and reference validity
+                remain separate mechanisms.
+            </p>
+
+            <p>
+                A target may therefore implement Sec without a general managed runtime.
+            </p>
+        </section>
+
+        <section id="cte">
+            <h2>Compile-Time Allocation Is Separate from Runtime Dynamic Allocation</h2>
+
+            <p>
+                Semantic compile-time evaluation may use transient evaluator storage while computing a value.
+            </p>
+
+            <p>
+                That storage belongs to the compiler evaluator and is not a target runtime allocation.
+            </p>
+
+            <p>
+                Likewise, a compile-time-folded string or aggregate placed directly into the program
+                image is not a runtime dynamic allocation merely because bytes exist in the final artifact.
+            </p>
+
+            <p>
+                The compiler must not confuse private evaluator storage with a program-visible Arena
+                or runtime allocator resource.
+            </p>
+
+            <p>
+                Compile-time materialization is covered in chapter 39.
+            </p>
+        </section>
+
+        <section id="backend">
+            <h2>Allocation Semantics Are Fixed Before Backend Lowering</h2>
+
+            <p>
+                Every dynamic allocation that survives semantic analysis must carry explicit compiler
+                facts describing at least:
+            </p>
+
+            <ul>
+                <li>allocation kind;</li>
+                <li>selected allocation domain/context;</li>
+                <li>requested type;</li>
+                <li>count and size;</li>
+                <li>alignment;</li>
+                <li>fallibility;</li>
+                <li>resulting storage origin/domain;</li>
+                <li>ownership/borrow mode;</li>
+                <li>lifetime or validity-epoch dependency where needed;</li>
+                <li>destruction responsibility;</li>
+                <li>allocation effect.</li>
+            </ul>
+
+            <p>
+                Lowering preserves those facts until equivalent lower-level behavior exists.
+            </p>
+
+            <p>
+                MLIR/LLVM must not select a different allocator simply because it is easier to lower.
+            </p>
+
+            <p>
+                Backends may remove a dynamic allocation only after semantics-preserving proof.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Allocation diagnostics should explain the allocating operation, the active profile,
+                the allocation context and a practical alternative where possible.
+            </p>
+
+            <h3>Allocation disabled by the build</h3>
+
+            <pre><code>this call may allocate, but dynamic allocation is disabled for this build
+
+`BuildMessage()` may call `string.Concat`, which requires an allocation context
+
+help: use a preallocated buffer
+help: select a build profile that permits allocation</code></pre>
+
+            <h3>Hidden escape promotion is not allowed</h3>
+
+            <pre><code>cannot return this reference
+
+`data` is local storage and does not live long enough for the returned reference
+
+Sec does not move escaping local storage into a hidden Arena or heap object
+
+help: return an owning value
+help: allocate the required storage explicitly through an allocation-capable API
+help: borrow from storage whose lifetime already covers the return</code></pre>
+
+            <h3>Allocation effect violates <code>@noAlloc</code></h3>
+
+            <pre><code>`Process` does not satisfy `@noAlloc`
+
+call path:
+    Process
+    -&gt; Normalize
+    -&gt; string.From
+
+`string.From` may allocate</code></pre>
+
+            <h3>Insufficient Arena capacity</h3>
+
+            <pre><code>allocation cannot be proven to fit the selected fixed Arena
+
+requested:
+    256 elements of Packet
+
+required size depends on:
+    Packet.SizeOf
+    target alignment
+    allocation multiplicity
+
+help: handle AllocationError at runtime
+help: increase the Arena capacity
+help: reduce the maximum allocation demand</code></pre>
+
+            <h3>Allocation-size overflow</h3>
+
+            <pre><code>allocation size overflows the target size domain
+
+requested element count:
+    count
+
+element type:
+    Packet
+
+help: validate the requested count before allocation</code></pre>
+
+            <h3>Invalid allocation context</h3>
+
+            <pre><code>no compatible allocation context is available for this operation
+
+active profile:
+    noalloc
+
+operation:
+    list[int].WithCapacity(100)</code></pre>
+
+            <p>
+                Diagnostics should distinguish allocation failure from ordinary value construction
+                failure, invalid lifetime/escape, destruction errors and target-address binding errors.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Analysis</h2>
+
+            <p>
+                The LSP and <code>sec analyse</code> consume the same canonical allocation facts as compilation.
+            </p>
+
+            <p>Tooling may expose whether a callable:</p>
+
+            <ul>
+                <li>is proven allocation-free;</li>
+                <li>may allocate;</li>
+                <li>has unresolved allocation behavior;</li>
+                <li>requires a particular allocation capability;</li>
+                <li>receives an implicit allocation context;</li>
+                <li>selects an explicit Arena;</li>
+                <li>contains an allocation that can be statically eliminated.</li>
+            </ul>
+
+            <p>
+                Hover or analysis should be able to navigate from a transitive allocation warning to
+                the operation that introduced the effect.
+            </p>
+
+            <p>
+                Incremental analysis must invalidate cached allocation summaries when relevant
+                function bodies, imports, profiles or allocation-capable API contracts change.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer ordinary allocation-capable APIs and let the compiler propagate the active context in normal application code.</li>
+                <li>Use an explicit Arena when storage lifetime, capacity or provider choice is intentionally part of the design.</li>
+                <li>Do not pass Arena handles through every layer merely because a deeper operation may allocate.</li>
+                <li>Use <code>@noAlloc</code> when allocation freedom is an actual verified API requirement.</li>
+                <li>Remember that <code>new</code> selects construction; it does not request heap allocation.</li>
+                <li>Do not assume copy, move, return, borrow or closure capture may allocate to repair lifetime problems.</li>
+                <li>Design escaping data around an owning storage operation rather than relying on hidden promotion.</li>
+                <li>Handle <code>AllocationError</code> as an ordinary typed failure where the operation may fail.</li>
+                <li>Do not use <code>null</code> as the failure representation of a safe allocation.</li>
+                <li>Keep value ownership separate from raw-storage reclamation authority.</li>
+                <li>Keep initialization and destruction separate from raw storage acquisition/reclamation.</li>
+                <li>Prefer views and borrows when no new owning storage is required.</li>
+                <li>Use device/fixed-address APIs for hardware storage rather than treating MMIO as allocation.</li>
+                <li>Use preallocated/fixed-capacity domains for deterministic embedded designs where appropriate.</li>
+                <li>Let static capacity proofs remove failure paths when possible, but keep source contracts stable.</li>
+                <li>Do not depend on a garbage collector or reference counter unless a separate library/runtime abstraction explicitly provides one.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Dynamic allocation is explicit in the semantic operation being performed.</li>
+                <li>Selection and propagation of the allocation context are normally implicit.</li>
+                <li>Only canonically allocation-capable operations may allocate.</li>
+                <li>An allocation-free operation must remain allocation-free in conforming lowering.</li>
+                <li>Copy must not silently allocate.</li>
+                <li>Ordinary assignment must not silently allocate.</li>
+                <li>Move initialization and move assignment must not silently allocate.</li>
+                <li>Parameter passing must not allocate merely because a value crosses a call boundary.</li>
+                <li>Return must not allocate merely because a value or ownership crosses the return boundary.</li>
+                <li>Creating a safe reference, slice or view must not allocate merely to make the reference legal.</li>
+                <li>Control-flow constructs such as match, try, if, switch and loops do not gain hidden allocation semantics.</li>
+                <li>Ordinary destruction does not allocate merely because cleanup analysis is complex.</li>
+                <li><code>new</code> selects lifecycle construction and does not imply heap allocation.</li>
+                <li>A value constructed with <code>new</code> may live in SSA, registers, stack or inline storage.</li>
+                <li>Dynamic allocation occurs during construction only when the selected construction semantics actually require it.</li>
+                <li>Arena is the default Sec 0.1 dynamic-allocation domain.</li>
+                <li>The compiler maintains an active allocation context where the selected target/profile provides one.</li>
+                <li>The active allocation context is a compiler semantic fact, not a source-level global variable.</li>
+                <li>Ordinary application code is not required to thread an Arena parameter through every call.</li>
+                <li>Allocation context propagates only through call paths whose semantic effects permit allocation.</li>
+                <li>Allocation is a compiler-visible semantic effect.</li>
+                <li>Allocation effect is independent from panic, I/O, blocking, mutation, FFI, volatile and synchronization effects.</li>
+                <li>Imported, indirect, interface, generic, recursive and bodyless callables require sufficient allocation-effect metadata or conservative treatment.</li>
+                <li>Explicit Arena selection may be offered by an allocation-capable API.</li>
+                <li>An explicit mutable Arena reference is ordinary borrowing of the Arena control value.</li>
+                <li>Explicit Arena selection does not transfer Arena ownership unless the API separately declares that transfer.</li>
+                <li>Sec 0.1 introduces no general allocation keyword or special scoped-Arena syntax through the allocation model.</li>
+                <li>Manual safe typed allocation is provided by the canonical Arena API.</li>
+                <li><code>arena.New[T]()</code> returns <code>Result[ref mut T, AllocationError]</code>.</li>
+                <li><code>arena.Alloc[T](count)</code> returns <code>Result[ref mut T[], AllocationError]</code>.</li>
+                <li><code>Alloc[T](count)</code> interprets count as elements of T, not bytes.</li>
+                <li>A temporary mutable borrow of Arena control state ends when the allocation operation returns.</li>
+                <li>Returned Arena-backed references retain a storage-domain dependency.</li>
+                <li>Allocation failure uses ordinary Result/try/error handling.</li>
+                <li><code>AllocationError</code> is the standard allocation failure type where the canonical API specifies it.</li>
+                <li>Ordinary safe allocation failure does not return null.</li>
+                <li>Ordinary safe allocation failure does not return an invalid reference or partial readable storage.</li>
+                <li>Ordinary allocation failure must not panic or terminate the process merely because capacity was insufficient.</li>
+                <li>An allocation can be treated as infallible only after proof of all required capacity/layout/alignment preconditions.</li>
+                <li>The compiler never performs hidden escape promotion.</li>
+                <li>An invalid escaping local reference is rejected rather than moved into an Arena, heap, hidden box or reference-counted cell.</li>
+                <li>Escaping owned storage must be created intentionally by an allocation-capable operation.</li>
+                <li>The no-hidden-promotion rule applies to returns, closures, callbacks, tasks, threads, defer, ISR handoff, FFI retention and stored references.</li>
+                <li>Raw-storage ownership and value ownership are distinct.</li>
+                <li>An Arena controls raw-storage reclamation while an ordinary owned value controls value lifetime and owned subresources.</li>
+                <li>A reference or slice into Arena-backed storage is non-owning.</li>
+                <li>Destroying an Arena-backed value does not necessarily reclaim its bytes immediately.</li>
+                <li>Reclaiming raw Arena bytes does not replace required destruction of live non-trivial values.</li>
+                <li>Allocation produces storage; initialization produces valid readable typed values.</li>
+                <li>Safe APIs must fully initialize readable T/T[] storage before exposing it.</li>
+                <li>Partial initialization follows ordinary construction/destruction cleanup rules.</li>
+                <li>Destruction and raw-storage reclamation are different operations.</li>
+                <li>Arena allocation does not delay ordinary value destruction until Reset/Release.</li>
+                <li>Arena is not an implicit arbitrary-destructor registry.</li>
+                <li>Reset and Release may reclaim/invalidate Arena storage according to Arena lifetime rules.</li>
+                <li>Live values, references, views, captures and deferred uses may prevent reclamation.</li>
+                <li>Repeated allocation from one live Arena does not by itself invalidate earlier allocations.</li>
+                <li>Validity epochs are not garbage-collector handles or reference counts.</li>
+                <li>Storage origin is separate from nominal type, provenance, fixed-address status, mutability, volatility and reclamation authority.</li>
+                <li>Two references with the same Sec type may refer to storage with different origins and lifetimes.</li>
+                <li>Collection, string and shaped-type rulebooks define which operations allocate.</li>
+                <li>An empty owning collection may be allocation-free when its canonical representation permits it.</li>
+                <li>Growing an owning collection may allocate only when the operation is canonically allocation-capable.</li>
+                <li>Materialization of new owning storage may allocate.</li>
+                <li>Slices, borrows, reshapes, transposes and other non-owning views remain allocation-free where their contracts define them that way.</li>
+                <li>String copy, move, borrow, comparison, indexing and iteration do not allocate unless their owning rules explicitly permit it.</li>
+                <li>Compile-time-folded constant string storage is not runtime dynamic allocation.</li>
+                <li>Closure capture does not allocate merely to repair an invalid escaping reference lifetime.</li>
+                <li>A closure representation may allocate only when that allocation is part of its canonical semantic effect.</li>
+                <li>Sec does not perform automatic heap promotion for escaping closure captures.</li>
+                <li>Foreign allocation does not automatically become Arena allocation.</li>
+                <li>FFI allocation contracts independently define ownership, retention, lifetime and deallocation responsibility.</li>
+                <li>A foreign allocated pointer does not automatically become a safe reference.</li>
+                <li>Sec does not silently copy foreign storage into an Arena merely to manufacture safe provenance.</li>
+                <li>Fixed-address storage, MMIO and hardware registers are not dynamic allocation.</li>
+                <li>Volatile reads and writes are storage accesses, not allocations.</li>
+                <li>Target/build profiles may permit, restrict or forbid dynamic allocation.</li>
+                <li>Typical configurations include hosted, embedded-arena and noalloc.</li>
+                <li>Ownership, borrowing, lifetime, destruction and reference semantics remain consistent across allocation profiles.</li>
+                <li>A no-allocation profile rejects unresolved reachable dynamic allocation.</li>
+                <li>Runtime-free bare-metal Sec remains possible.</li>
+                <li><code>@noAlloc</code> is a transitive compiler-verified callable guarantee.</li>
+                <li>Using try around an allocation does not make the successful path allocation-free.</li>
+                <li>ISR/interrupt policy may prohibit allocation and relies on the same allocation-effect facts.</li>
+                <li>Allocation size uses target-correct type layout.</li>
+                <li>Allocation-size arithmetic is checked for overflow.</li>
+                <li>Alignment follows the allocated type and active target layout/ABI.</li>
+                <li>Alignment padding consumes allocation capacity.</li>
+                <li>A fixed-capacity domain fails or rejects allocations that do not fit.</li>
+                <li>Static capacity proof may remove runtime failure checks only after complete proof.</li>
+                <li>Capacity analysis must account for loops, recursion, call graph, multiplicity, layout and all relevant allocation-capable operations.</li>
+                <li>The compiler may eliminate a dynamic allocation only when all observable Sec semantics are preserved.</li>
+                <li>Allocation elimination must preserve lifetime, capacity, address stability, provenance, ownership, destruction and failure behavior.</li>
+                <li>Stack/static placement may replace dynamic storage only after proof including recursion, reentrancy, concurrency and simultaneous live-instance requirements.</li>
+                <li>Static placement must not accidentally share storage between logically independent live values.</li>
+                <li>A no-allocation target may accept allocation-capable source when dynamic allocation is completely proven away.</li>
+                <li>Ordinary Sec allocation requires neither mandatory garbage collection nor mandatory reference counting.</li>
+                <li>Transient semantic-CTE allocation is compiler-evaluator storage, not target runtime allocation.</li>
+                <li>Constant data emitted into the program image is not automatically runtime dynamic allocation.</li>
+                <li>Every surviving dynamic allocation is explicit in the compiler's semantic representation before backend lowering.</li>
+                <li>Lowering must preserve the selected allocation domain, alignment, overflow checks, capacity checks, lifetime dependencies and source-level failure semantics.</li>
+                <li>MLIR/LLVM/backend stages may not invent or substitute a different allocator merely for convenience.</li>
+                <li>LSP and <code>sec analyse</code> consume the same allocation effects and context facts as compilation.</li>
+                <li>Tooling should trace transitive allocation causes and report the active allocation profile/domain where useful.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="39-compile-time-evaluation.html">Previous: Compile-Time Evaluation</a>
+            <a href="41-arena.html">Next: Arenas</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,1727 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Memory Layout and Representation - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#layout">Memory Layout and Representation</a>
+        <a href="#status">Partial Chapter Status</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#not-layout">What Layout Does Not Define</a>
+        <a href="#principles">Core Principles</a>
+        <a href="#plan">CompilationPlan</a>
+        <a href="#levels">Three Layout Levels</a>
+        <a href="#semantic">Semantic Layout</a>
+        <a href="#native">Native Layout</a>
+        <a href="#explicit">Explicit Layout</a>
+        <a href="#stability">Layout Stability</a>
+        <a href="#complete">Complete and Incomplete Layout</a>
+        <a href="#sized">Sized Values</a>
+        <a href="#size">Size</a>
+        <a href="#alignment">Alignment</a>
+        <a href="#stride">Stride</a>
+        <a href="#padding">Padding</a>
+        <a href="#field-placement">Field Placement</a>
+        <a href="#fixed-arrays">Fixed Arrays</a>
+        <a href="#structs">Struct Layout</a>
+        <a href="#empty-structs">Empty and Zero-Sized Structs</a>
+        <a href="#enums">Enum Layout</a>
+        <a href="#unions">Tagged Union Layout</a>
+        <a href="#result-option">Result and Option</a>
+        <a href="#registers">Register Layout</a>
+        <a href="#scalars">Scalar Layout</a>
+        <a href="#pointer-sized">int and uint</a>
+        <a href="#bool">bool</a>
+        <a href="#rune">rune</a>
+        <a href="#floats">Floating Point</a>
+        <a href="#decimal">decimal and decimal128</a>
+        <a href="#rawptr">RawPtr Layout</a>
+        <a href="#named-types">Named Types and Units</a>
+        <a href="#strings">String Layout</a>
+        <a href="#descriptors">Collection Descriptors</a>
+        <a href="#references">Safe Reference Layout</a>
+        <a href="#zst">Zero-Sized Types</a>
+        <a href="#recursive">Recursive Layout</a>
+        <a href="#generics">Generic Layout</a>
+        <a href="#packing">Packing</a>
+        <a href="#explicit-alignment">Explicit Alignment</a>
+        <a href="#offsets">Explicit Field Offsets</a>
+        <a href="#endianness">Endianness</a>
+        <a href="#validity">Representation Validity</a>
+        <a href="#initialization">Initialization and Padding</a>
+        <a href="#compatibility">Layout Compatibility</a>
+        <a href="#queries">Layout Queries</a>
+        <a href="#ffi">FFI Layout</a>
+        <a href="#hardware">Hardware Layout</a>
+        <a href="#observability">Representation Observability</a>
+        <a href="#ir">Semantic IR and Lowering</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Tooling</a>
+        <a href="#future-updates">Required Future Updates</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html" class="active">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Memory Layout and Representation</div>
+
+        <h1 id="layout">Memory Layout and Representation</h1>
+
+        <div class="rule" id="status">
+            <strong>Partial chapter — revision 0.9.</strong>
+            The core layout semantics in this chapter are already normative for Sec 0.1, but several
+            user-facing explicit-layout features are not finished. In particular, the final source
+            syntax for packing, explicit alignment, explicit field offsets, explicit endianness and
+            general representation contracts is not yet locked. Those sections describe the semantic
+            contract only and intentionally do not invent source syntax.
+        </div>
+
+        <p>
+            Layout describes how a materialized Sec value is represented in storage for one concrete
+            compilation plan.
+        </p>
+
+        <p>It answers questions such as:</p>
+
+        <pre><code>How many bytes does this value occupy?
+What alignment does it require?
+Where does each stored field begin?
+What stride separates array elements?
+Where is a union tag stored?
+Which byte ranges are padding?
+Which bit patterns are valid values?</code></pre>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                The layout model connects Sec's semantic types to concrete storage representation.
+                It is used by allocation, raw memory access, FFI, hardware access, ABI lowering,
+                compile-time layout queries and backend code generation.
+            </p>
+
+            <p>
+                Layout is always resolved under the active target/profile rather than copied from the
+                machine that happens to run the compiler.
+            </p>
+        </section>
+
+        <section id="not-layout">
+            <h2>What Layout Does Not Define</h2>
+
+            <p>Layout does not decide:</p>
+
+            <ul>
+                <li>who owns a value;</li>
+                <li>where the storage came from;</li>
+                <li>how long the storage remains valid;</li>
+                <li>whether the storage may relocate;</li>
+                <li>how storage is allocated;</li>
+                <li>how function parameters are passed in registers/stack;</li>
+                <li>whether a value may cross an FFI boundary;</li>
+                <li>how values are serialized;</li>
+                <li>whether a reference is valid.</li>
+            </ul>
+
+            <p>
+                Ownership, storage, allocation, lifetime, ABI and FFI rules consume layout facts but
+                remain separate semantic systems.
+            </p>
+        </section>
+
+        <section id="principles">
+            <h2>Core Principles</h2>
+
+            <ul>
+                <li>Layout is resolved for one concrete <code>CompilationPlan</code>.</li>
+                <li>Sec distinguishes semantic layout, native layout and explicit layout.</li>
+                <li>Materialized struct fields retain declaration order.</li>
+                <li>Native padding is not semantic data.</li>
+                <li>Physical layout similarity does not imply type compatibility.</li>
+                <li>Storage layout and callable ABI are separate.</li>
+                <li>A by-value stored value requires complete sized layout.</li>
+                <li>Size and alignment do not prove that every bit pattern is valid.</li>
+                <li>Initialization is separate from layout.</li>
+                <li>Direct recursive by-value layout is invalid.</li>
+                <li>Generic layout is resolved per concrete instantiation.</li>
+                <li>Backends consume Sec-resolved layout and do not redefine it independently.</li>
+            </ul>
+        </section>
+
+        <section id="plan">
+            <h2>Layout Depends on the <code>CompilationPlan</code></h2>
+
+            <p>Layout-relevant plan facts include:</p>
+
+            <ul>
+                <li>architecture;</li>
+                <li>pointer width;</li>
+                <li>target data layout;</li>
+                <li>target endianness;</li>
+                <li>selected ABI;</li>
+                <li>target profile;</li>
+                <li>supported scalar and aggregate alignments;</li>
+                <li>supported unaligned accesses;</li>
+                <li>explicit layout contracts;</li>
+                <li>concrete generic arguments;</li>
+                <li>selected safe-reference representation;</li>
+                <li>selected descriptor representation.</li>
+            </ul>
+
+            <p>
+                The same semantic Sec type may therefore have a different native size, alignment or
+                descriptor representation on different targets.
+            </p>
+
+            <p>
+                Multi-output builds resolve layout independently for every concrete output plan.
+            </p>
+        </section>
+
+        <section id="levels">
+            <h2>Three Layout Levels</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Level</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Semantic layout</td><td>Representation facts fixed by the language/type model</td></tr>
+                        <tr><td>Native layout</td><td>Concrete physical representation selected for one compilation plan</td></tr>
+                        <tr><td>Explicit layout</td><td>Physical properties constrained by an explicit representation contract</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="semantic">
+            <h2>Semantic Layout</h2>
+
+            <p>Semantic layout includes facts such as:</p>
+
+            <ul>
+                <li>a struct contains its stored fields;</li>
+                <li>stored struct fields retain declaration order;</li>
+                <li><code>T[N]</code> contains exactly <code>N</code> inline elements;</li>
+                <li>fixed-array elements occur in increasing index order;</li>
+                <li>an enum has its selected underlying representation;</li>
+                <li>a union has one active variant and stable declaration-order variant identities;</li>
+                <li>a register has its declared semantic bit width;</li>
+                <li>named types retain nominal identity;</li>
+                <li>properties and methods do not add stored instance fields.</li>
+            </ul>
+
+            <p>
+                Semantic layout does not necessarily fix byte size, alignment, padding or field offsets.
+            </p>
+        </section>
+
+        <section id="native">
+            <h2>Native Layout</h2>
+
+            <p>
+                Native layout is the target-resolved physical representation chosen by Sec under one
+                concrete compilation plan.
+            </p>
+
+            <p>It may include:</p>
+
+            <ul>
+                <li>size;</li>
+                <li>alignment;</li>
+                <li>field offsets;</li>
+                <li>padding ranges;</li>
+                <li>element stride;</li>
+                <li>union tag type and offset;</li>
+                <li>union payload placement;</li>
+                <li>descriptor representation;</li>
+                <li>reference representation;</li>
+                <li>validity metadata representation.</li>
+            </ul>
+
+            <p>
+                Native layout may differ across targets, ABIs, profiles and compiler versions.
+                It is not automatically a portable serialization or persistence format.
+            </p>
+        </section>
+
+        <section id="explicit">
+            <h2>Explicit Layout</h2>
+
+            <p>
+                Explicit layout constrains physical representation beyond ordinary native layout.
+            </p>
+
+            <p>A representation contract may eventually constrain properties such as:</p>
+
+            <ul>
+                <li>field order;</li>
+                <li>field offsets;</li>
+                <li>field alignment;</li>
+                <li>aggregate alignment;</li>
+                <li>packing;</li>
+                <li>total size;</li>
+                <li>endianness;</li>
+                <li>tag representation;</li>
+                <li>payload placement.</li>
+            </ul>
+
+            <p>
+                Only properties explicitly fixed by the contract become guarantees.
+                Unconstrained properties continue to use native layout rules.
+            </p>
+
+            <p>An explicit layout contract does not automatically:</p>
+
+            <ul>
+                <li>change nominal type identity;</li>
+                <li>make a type FFI-compatible;</li>
+                <li>make a type serializable;</li>
+                <li>make raw byte reinterpretation safe;</li>
+                <li>override ownership, lifetime, allocation or destruction rules.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Not yet final:</strong> Sec 0.1's final user-facing syntax for these explicit
+                layout contracts is not locked. This manual therefore describes semantics without
+                showing speculative <code>packed</code>, <code>align</code>, <code>offset</code>,
+                <code>endian</code> or <code>layout</code> syntax.
+            </div>
+        </section>
+
+        <section id="stability">
+            <h2>Layout Stability</h2>
+
+            <p>Useful semantic stability classes are:</p>
+
+            <pre><code>CompilationLocal
+TargetStable
+ContractStable</code></pre>
+
+            <p>
+                Ordinary native layout is compilation-local unless a stronger target/profile or
+                explicit contract guarantees selected properties.
+            </p>
+
+            <p>
+                Target-stable representation is stable only within the named target/profile guarantee.
+            </p>
+
+            <p>
+                Contract-stable representation guarantees only the properties actually named by the
+                explicit representation contract.
+            </p>
+
+            <p>
+                Equal native layout observed today is never by itself a cross-version or cross-target guarantee.
+            </p>
+        </section>
+
+        <section id="complete">
+            <h2>Complete and Incomplete Layout</h2>
+
+            <p>
+                A layout is complete when every physical property required by the current use has
+                been resolved.
+            </p>
+
+            <p>
+                Layout may remain incomplete while target information or concrete generic arguments
+                are not yet available.
+            </p>
+
+            <p>Complete layout is required before operations such as:</p>
+
+            <ul>
+                <li>by-value storage;</li>
+                <li>field-offset queries;</li>
+                <li>ABI materialization;</li>
+                <li>raw memory access;</li>
+                <li>layout-sensitive lowering.</li>
+            </ul>
+
+            <p>
+                The compiler never assigns guessed size or alignment to an incomplete type.
+            </p>
+        </section>
+
+        <section id="sized">
+            <h2>Sized Values</h2>
+
+            <p>
+                A by-value materialized type must have finite target-representable size.
+            </p>
+
+            <p>
+                Zero-sized types are still sized types.
+            </p>
+
+            <p>
+                Runtime-sized backing storage does not make a descriptor value itself unsized.
+                In particular, a bare owning dynamic array <code>T[]</code> is a sized descriptor
+                whose element backing storage is separate.
+            </p>
+
+            <p>
+                Likewise, <code>ref T[]</code> and <code>ref mut T[]</code> are sized non-owning
+                descriptor/reference values under the active reference profile.
+            </p>
+        </section>
+
+        <section id="size">
+            <h2>Size</h2>
+
+            <p>
+                <code>TypeName.SizeOf</code> returns the byte size of the complete materialized
+                representation of a type for the active plan.
+            </p>
+
+            <pre><code>let pointSize: uint := Point.SizeOf
+let valueSize: uint := value.SizeOf</code></pre>
+
+            <p>Size:</p>
+
+            <ul>
+                <li>includes required padding inside the representation;</li>
+                <li>includes required tail padding;</li>
+                <li>excludes separately owned backing storage unless embedded by the type representation;</li>
+                <li>uses checked arithmetic;</li>
+                <li>is evaluated using target layout, not compiler-host layout.</li>
+            </ul>
+
+            <p>
+                Descriptor size is the size of the descriptor itself, not the total memory reachable
+                through that descriptor.
+            </p>
+
+            <p>
+                <code>void</code> has no ordinary materialized value layout, so <code>void.SizeOf</code>
+                is invalid.
+            </p>
+        </section>
+
+        <section id="alignment">
+            <h2>Alignment</h2>
+
+            <p>
+                Alignment is the placement requirement for the beginning of a materialized value.
+            </p>
+
+            <p>
+                Native alignment is target-dependent unless a semantic or explicit contract fixes it.
+            </p>
+
+            <p>
+                Alignment is not automatically equal to size.
+                A wide scalar may legally have alignment smaller than its byte size.
+            </p>
+
+            <p>
+                A safe reference cannot be formed to storage that fails the alignment required by its
+                referent representation.
+            </p>
+
+            <p>
+                <code>unsafe</code> does not create hardware support for unaligned accesses.
+                Unaligned operations require target-supported semantics.
+            </p>
+
+            <div class="rule">
+                <strong>Partial surface:</strong> The semantic concept of alignment is defined, but the
+                final public source spelling for a general <code>AlignOf</code> layout query and
+                explicit alignment contracts still needs to be locked.
+            </div>
+        </section>
+
+        <section id="stride">
+            <h2>Stride</h2>
+
+            <p>
+                Stride is the byte distance between corresponding starts of adjacent elements in a
+                materialized sequence.
+            </p>
+
+            <p>
+                Stride must satisfy the element's size, alignment and target layout rules.
+                It may exceed semantic element data size because of padding.
+            </p>
+
+            <p>
+                Raw-pointer <code>Offset(elements)</code> uses the canonical element size/stride
+                semantics defined by raw-pointer and layout rules.
+            </p>
+
+            <div class="rule">
+                <strong>Partial surface:</strong> Stride semantics are defined, but the final
+                user-facing query spelling is not yet established in this manual.
+            </div>
+        </section>
+
+        <section id="padding">
+            <h2>Padding</h2>
+
+            <p>
+                Padding is physical representation space that does not belong to a semantic field,
+                element or active payload.
+            </p>
+
+            <p>Padding:</p>
+
+            <ul>
+                <li>has no semantic Sec type;</li>
+                <li>has no field identity;</li>
+                <li>has no object lifetime;</li>
+                <li>is not initialized merely because surrounding fields are initialized;</li>
+                <li>need not contain deterministic bytes.</li>
+            </ul>
+
+            <p>
+                Ordinary equality, hashing and serialization must not accidentally treat unspecified
+                padding as semantic data.
+            </p>
+
+            <p>
+                A low-level representation copy may copy padding when that is representation-safe, but
+                safe code must not thereby gain observable access to uninitialized padding.
+            </p>
+
+            <p>
+                FFI or byte-export paths must prevent padding leaks where their security/ABI contract
+                requires deterministic or initialized representation.
+            </p>
+        </section>
+
+        <section id="field-placement">
+            <h2>Stored Field Placement</h2>
+
+            <p>
+                Native Sec struct layout preserves stored fields in declaration order.
+            </p>
+
+            <p>
+                The compiler may insert padding between fields and after the final field, but does not
+                reorder ordinary stored fields merely to reduce size.
+            </p>
+
+            <p>The following do not add stored instance bytes:</p>
+
+            <ul>
+                <li>properties;</li>
+                <li>methods;</li>
+                <li>nested type declarations;</li>
+                <li>constants;</li>
+                <li>interface conformance;</li>
+                <li>documentation;</li>
+                <li>visibility metadata;</li>
+                <li>ordinary impl declarations.</li>
+            </ul>
+        </section>
+
+        <section id="fixed-arrays">
+            <h2>Fixed Arrays</h2>
+
+            <p>
+                <code>T[N]</code> contains exactly <code>N</code> inline element slots.
+            </p>
+
+            <p>
+                The length is compile-time known.
+                Zero-length fixed arrays are valid where the element/layout rules permit them.
+            </p>
+
+            <p>
+                A fixed array contains no hidden pointer, length, capacity or allocator field.
+            </p>
+
+            <p>
+                Total size is computed using canonical element stride and count with checked arithmetic.
+            </p>
+
+            <p>
+                Embedded fixed arrays move and relocate with their enclosing storage.
+            </p>
+        </section>
+
+        <section id="structs">
+            <h2>Struct Layout</h2>
+
+            <p>For a normal native struct, layout conceptually follows declaration order:</p>
+
+            <pre><code>currentOffset = 0
+
+for each stored field:
+    align currentOffset for the field
+    place the field
+    advance by field size
+
+align total size for the aggregate</code></pre>
+
+            <p>
+                All layout arithmetic is checked.
+                Overflow is a compile-time layout error.
+            </p>
+
+            <pre><code>type Example struct {
+    first: byte
+    second: uint32
+    third: byte
+}</code></pre>
+
+            <p>Physical order remains:</p>
+
+            <pre><code>first
+padding when required
+second
+third
+tail padding when required</code></pre>
+
+            <p>
+                The compiler does not place <code>second</code> first merely to reduce padding.
+            </p>
+        </section>
+
+        <section id="empty-structs">
+            <h2>Empty Structs and Zero-Sized Fields</h2>
+
+            <p>An empty struct has:</p>
+
+            <pre><code>size:      0
+alignment: 1</code></pre>
+
+            <p>
+                It remains a real semantic type and value.
+            </p>
+
+            <p>
+                Zero-sized stored fields retain semantic field identity even though they consume no
+                payload bytes and may share a numeric address with other zero-sized values or surrounding storage.
+            </p>
+
+            <p>
+                Semantic identity must never be inferred solely from a numeric address.
+            </p>
+        </section>
+
+        <section id="enums">
+            <h2>Enum Layout</h2>
+
+            <p>
+                A fieldless enum with a selected scalar underlying representation occupies that
+                representation unless another canonical enum/layout rule requires more.
+            </p>
+
+            <p>
+                Explicit enum values must fit the selected underlying type.
+            </p>
+
+            <p>
+                Bit-backed enums use their canonical bit width.
+            </p>
+
+            <p>
+                String-underlying enums remain semantic enum types and follow their canonical
+                string-backed representation rather than being silently lowered as C integers.
+            </p>
+
+            <p>
+                Backend legacy paths must not force all default enums to <code>i32</code> when the
+                Sec type/target model requires another representation.
+            </p>
+        </section>
+
+        <section id="unions">
+            <h2>Tagged Union Layout</h2>
+
+            <p>
+                A tagged Sec union needs:
+            </p>
+
+            <ul>
+                <li>a discriminator identifying the active variant;</li>
+                <li>payload storage large/aligned enough for every possible payload.</li>
+            </ul>
+
+            <p>
+                Variant semantic identity and order come from the declaration.
+                Native tag width and placement may be target/layout dependent.
+            </p>
+
+            <p>
+                Inactive payload bytes and padding are not semantic data.
+                The compiler must not read inactive payload storage as another variant.
+            </p>
+
+            <p>
+                Niche/tag-elision optimization is legal only after Sec proves that every semantic,
+                ownership, reference and representation-validity invariant is preserved.
+            </p>
+        </section>
+
+        <section id="result-option">
+            <h2><code>Result</code> and <code>Option</code></h2>
+
+            <p>
+                <code>Result[T,E]</code> and <code>Option[T]</code> are semantic variant values.
+            </p>
+
+            <p>
+                Their physical representation may use a canonical niche or tag optimization, but their
+                semantic alternatives remain explicit.
+            </p>
+
+            <p>
+                Backend code must not invent a niche optimization independently of Sec-resolved layout.
+            </p>
+
+            <p>
+                Representation optimization must preserve matching, ownership, destruction, references and FFI semantics.
+            </p>
+        </section>
+
+        <section id="registers">
+            <h2>Register Layout</h2>
+
+            <p>
+                Register declarations have exact semantic bit widths defined by the register rules.
+            </p>
+
+            <p>
+                Register bit fields describe semantic hardware bit positions, not ordinary struct byte offsets.
+            </p>
+
+            <p>
+                Before physical access, the target must validate:
+            </p>
+
+            <ul>
+                <li>storage unit;</li>
+                <li>alignment;</li>
+                <li>access width;</li>
+                <li>endianness;</li>
+                <li>hardware-access constraints.</li>
+            </ul>
+
+            <p>
+                Signal polarity such as active-high/active-low is not layout semantics.
+            </p>
+        </section>
+
+        <section id="scalars">
+            <h2>Scalar Layout</h2>
+
+            <p>Fixed-width integer byte sizes are exact:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Type</th><th>Size</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>int8</code> / <code>uint8</code></td><td>1 byte</td></tr>
+                        <tr><td><code>int16</code> / <code>uint16</code></td><td>2 bytes</td></tr>
+                        <tr><td><code>int32</code> / <code>uint32</code></td><td>4 bytes</td></tr>
+                        <tr><td><code>int64</code> / <code>uint64</code></td><td>8 bytes</td></tr>
+                        <tr><td><code>int128</code> / <code>uint128</code></td><td>16 bytes</td></tr>
+                        <tr><td><code>int256</code> / <code>uint256</code></td><td>32 bytes</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Their natural alignment follows the active target data layout and need not equal size.
+            </p>
+
+            <p>
+                <code>byte</code> has the same native physical layout as <code>uint8</code> while
+                remaining its own canonical Sec scalar type.
+            </p>
+        </section>
+
+        <section id="pointer-sized">
+            <h2><code>int</code> and <code>uint</code> Are Pointer-Sized</h2>
+
+            <pre><code>32-bit plan:
+    int  = 32-bit signed integer
+    uint = 32-bit unsigned integer
+
+64-bit plan:
+    int  = 64-bit signed integer
+    uint = 64-bit unsigned integer</code></pre>
+
+            <p>
+                Their size follows the canonical pointer width of the active compilation plan.
+            </p>
+
+            <p>
+                This rule must be used consistently in semantic analysis, layout queries, enum
+                representation, MLIR, LLVM, ABI and FFI validation.
+            </p>
+        </section>
+
+        <section id="bool">
+            <h2><code>bool</code></h2>
+
+            <p>
+                An addressable <code>bool</code> occupies one byte and has alignment one.
+            </p>
+
+            <p>
+                Only canonical false and true representations are valid safe materialized bool values.
+            </p>
+
+            <p>
+                A backend may use a narrower SSA/register representation internally when the value is
+                not materialized and conversions preserve the canonical stored representation.
+            </p>
+        </section>
+
+        <section id="rune">
+            <h2><code>rune</code></h2>
+
+            <p>
+                <code>rune</code> uses a 32-bit scalar representation.
+            </p>
+
+            <p>
+                Only valid Unicode scalar values are valid safe <code>rune</code> representations.
+                Surrogates and values outside the Unicode scalar range are invalid.
+            </p>
+        </section>
+
+        <section id="floats">
+            <h2>Floating-Point Values</h2>
+
+            <pre><code>float32
+    IEEE-754 binary32
+    size: 4 bytes
+
+float64
+    IEEE-754 binary64
+    size: 8 bytes
+
+float
+    same numeric width and native layout as float64</code></pre>
+
+            <p>
+                Alignment follows the active target data layout.
+            </p>
+        </section>
+
+        <section id="decimal">
+            <h2><code>decimal</code> and <code>decimal128</code></h2>
+
+            <p>The canonical native component representations are:</p>
+
+            <pre><code>decimal:
+    coefficient: int64
+    scale:       int32
+
+decimal128:
+    coefficient: int128
+    scale:       int32</code></pre>
+
+            <p>
+                These composite scalar representations use ordinary target-resolved aggregate
+                placement for their components, including any required padding.
+            </p>
+        </section>
+
+        <section id="rawptr">
+            <h2><code>RawPtr[T]</code> Layout</h2>
+
+            <p>
+                <code>RawPtr[T]</code> uses the selected target raw-pointer representation for its
+                address space.
+            </p>
+
+            <p>
+                The pointee type does not change ordinary raw-pointer width.
+            </p>
+
+            <p>
+                Capability/tagged/non-flat targets may require a richer raw-pointer representation.
+            </p>
+
+            <p>Raw-pointer layout never implies:</p>
+
+            <ul>
+                <li>ownership;</li>
+                <li>valid provenance;</li>
+                <li>pointee validity;</li>
+                <li>bounds;</li>
+                <li>non-nullness;</li>
+                <li>lifetime.</li>
+            </ul>
+        </section>
+
+        <section id="named-types">
+            <h2>Named Types, Contracts and Units</h2>
+
+            <p>
+                A named type normally uses the same native physical layout as its underlying type
+                unless a future explicit representation contract says otherwise.
+            </p>
+
+            <pre><code>type CustomerID uint64
+type ProductID uint64
+type Percent int range 0..100
+type Meter decimal&lt;m&gt;</code></pre>
+
+            <p>The following do not add hidden per-value bytes merely by existing:</p>
+
+            <ul>
+                <li>nominal identity;</li>
+                <li>range contracts;</li>
+                <li>unit metadata;</li>
+                <li>regex/length contracts;</li>
+                <li>methods;</li>
+                <li>properties;</li>
+                <li>impl blocks;</li>
+                <li>interface conformance.</li>
+            </ul>
+
+            <p>
+                Two named types may have exactly the same physical layout and still be incompatible
+                semantic Sec types.
+            </p>
+        </section>
+
+        <section id="strings">
+            <h2>String Layout</h2>
+
+            <p>
+                The materialized <code>string</code> descriptor representation is selected by the
+                canonical string/reference/layout model for the active plan.
+            </p>
+
+            <p>
+                <code>string.SizeOf</code> describes the descriptor representation, not separately
+                stored character backing.
+            </p>
+
+            <p>
+                Static literal storage, borrowed/view storage and owned string storage may use
+                different storage contracts without changing semantic string identity where the string rules allow it.
+            </p>
+
+            <p>
+                Layout must not assume that every string owns heap storage.
+            </p>
+        </section>
+
+        <section id="descriptors">
+            <h2>Collection Descriptors</h2>
+
+            <p>
+                Owning dynamic collection values are sized descriptors unless their specific
+                collection rule defines an embedded representation.
+            </p>
+
+            <p>
+                Descriptor layout contains only state physically stored in the descriptor.
+                Separately owned element backing is not part of the descriptor's <code>SizeOf</code>.
+            </p>
+
+            <p>
+                Length, capacity and reference/pointer representation are selected by the canonical
+                collection/layout/profile model.
+            </p>
+        </section>
+
+        <section id="references">
+            <h2>Safe Reference Layout</h2>
+
+            <p>
+                Source-level <code>ref T</code> and <code>ref mut T</code> do not require one universal
+                physical representation across all profiles.
+            </p>
+
+            <p>
+                A proven reference may lower to one machine address when all required validity facts
+                are statically established.
+            </p>
+
+            <p>
+                Other profiles may require metadata for generation, epoch, capability or address space.
+            </p>
+
+            <p>
+                Safe-reference layout remains semantically distinct from <code>RawPtr[T]</code> even
+                where both happen to occupy one machine word on a particular target.
+            </p>
+        </section>
+
+        <section id="zst">
+            <h2>Zero-Sized Types</h2>
+
+            <p>
+                Zero-sized types have size zero while remaining real semantic values.
+            </p>
+
+            <p>
+                Arrays of zero-sized elements retain their semantic element count.
+            </p>
+
+            <p>
+                Numeric addresses alone cannot be used to infer identity between distinct zero-sized
+                fields or elements.
+            </p>
+
+            <p>
+                Pointer/reference arithmetic for zero-sized element types requires dedicated canonical
+                semantics and is not inferred from arbitrary address changes.
+            </p>
+        </section>
+
+        <section id="recursive">
+            <h2>Recursive Layout</h2>
+
+            <p>
+                Layout resolution follows a by-value dependency graph.
+            </p>
+
+            <p>This is invalid in principle:</p>
+
+            <pre><code>type Node struct {
+    Next: Node
+}</code></pre>
+
+            <p>
+                Direct recursive by-value containment has no finite complete representation.
+            </p>
+
+            <p>
+                Recursion through a reference, raw pointer, owning dynamic descriptor or another
+                valid indirection/storage boundary may be valid because the recursive payload is not
+                embedded inline by value.
+            </p>
+
+            <p>
+                Generic instantiation can introduce a recursive layout cycle even when the generic
+                declaration alone appears harmless.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generic Layout</h2>
+
+            <p>
+                Generic declarations do not have one universal concrete native layout.
+            </p>
+
+            <pre><code>type Pair[A, B] struct {
+    first: A
+    second: B
+}</code></pre>
+
+            <p>These may all resolve differently:</p>
+
+            <pre><code>Pair[int32, byte]
+Pair[decimal, string]
+Pair[CustomerID, ProductID]</code></pre>
+
+            <p>
+                Layout is resolved and cached using concrete semantic type identity together with all
+                relevant compilation-plan facts.
+            </p>
+        </section>
+
+        <section id="packing">
+            <h2>Packing</h2>
+
+            <p>
+                Packing is an explicit layout contract that reduces or removes ordinary padding and/or
+                alignment placement.
+            </p>
+
+            <p>
+                Packing does not change semantic field identity or declaration order.
+            </p>
+
+            <p>
+                Packed fields may become physically misaligned.
+                Sec must never form an ordinary aligned safe reference to a misaligned field.
+            </p>
+
+            <p>
+                Access may require compiler-generated unaligned operations or explicit
+                target-supported unsafe/platform operations.
+            </p>
+
+            <div class="rule">
+                <strong>Requires update:</strong> Packing semantics are defined, but Sec 0.1 does not
+                yet have a finalized source spelling for requesting packed layout.
+            </div>
+        </section>
+
+        <section id="explicit-alignment">
+            <h2>Explicit Alignment</h2>
+
+            <p>
+                An explicit layout contract may raise or otherwise constrain a value's required
+                alignment subject to target capability.
+            </p>
+
+            <p>
+                Over-aligned storage also requires an allocator/storage provider capable of satisfying
+                that alignment.
+            </p>
+
+            <p>
+                Explicit alignment changes placement requirements but does not by itself change
+                semantic type compatibility.
+            </p>
+
+            <div class="rule">
+                <strong>Requires update:</strong> The representation semantics are defined; final
+                source syntax for explicit alignment is not.
+            </div>
+        </section>
+
+        <section id="offsets">
+            <h2>Explicit Field Offsets</h2>
+
+            <p>
+                Explicit offsets may constrain where stored fields begin.
+            </p>
+
+            <p>A valid contract must respect:</p>
+
+            <ul>
+                <li>field size;</li>
+                <li>required alignment unless explicit unaligned semantics permit otherwise;</li>
+                <li>total representation bounds;</li>
+                <li>ordinary struct non-overlap rules.</li>
+            </ul>
+
+            <p>
+                Overlapping stored fields require an explicitly defined union/overlay representation.
+                Ordinary structs do not gain accidental overlap.
+            </p>
+
+            <div class="rule">
+                <strong>Requires update:</strong> Field-offset semantics are defined, but final
+                source syntax and the complete explicit-layout attribute/declaration surface remain open.
+            </div>
+        </section>
+
+        <section id="endianness">
+            <h2>Endianness</h2>
+
+            <p>
+                Target endianness is part of the active <code>CompilationPlan</code>.
+            </p>
+
+            <p>
+                Native integer and scalar representation follows target endianness where representation
+                becomes observable through low-level operations.
+            </p>
+
+            <p>
+                Endianness is not ordinary semantic numeric identity.
+                The integer value <code>1</code> is still the same numeric value regardless of byte order.
+            </p>
+
+            <p>
+                Network/protocol serialization order remains the responsibility of serialization and
+                protocol APIs unless an explicit representation contract deliberately fixes storage byte order.
+            </p>
+
+            <div class="rule">
+                <strong>Requires update:</strong> Explicit endian-layout contracts have semantic
+                requirements, but the final Sec source spelling is not yet locked.
+            </div>
+        </section>
+
+        <section id="validity">
+            <h2>Representation Validity</h2>
+
+            <p>
+                Correct size and alignment are not enough to make arbitrary bits a valid value of a Sec type.
+            </p>
+
+            <p>Validity may include:</p>
+
+            <ul>
+                <li>valid enum discriminants;</li>
+                <li>valid active union state;</li>
+                <li>canonical bool representation;</li>
+                <li>valid rune/character values;</li>
+                <li>safe-reference invariants;</li>
+                <li>representation-relevant named-type invariants;</li>
+                <li>other canonical type constraints.</li>
+            </ul>
+
+            <p>
+                Raw or uninitialized storage cannot become readable <code>T</code> until the validity
+                obligations for <code>T</code> have been established.
+            </p>
+
+            <p>
+                <code>unsafe</code> may create proof obligations, but it cannot make a compiler-proven
+                invalid representation valid.
+            </p>
+
+            <div class="rule">
+                <strong>Implementation incomplete:</strong> Representation-validity metadata and
+                zero-initialization validity checking are not yet complete across the compiler.
+            </div>
+        </section>
+
+        <section id="initialization">
+            <h2>Initialization and Padding</h2>
+
+            <p>
+                Initializing an object establishes semantic fields and payload values.
+                It does not necessarily assign deterministic semantic content to padding bytes.
+            </p>
+
+            <p>
+                Safe code must not observe uninitialized padding as semantic data.
+            </p>
+
+            <p>
+                Zero-initializing raw bytes is a valid way to construct <code>T</code> only when
+                <code>T</code>'s representation rules say the all-zero bit pattern is a valid value.
+            </p>
+
+            <p>
+                Semantic default initialization is therefore not synonymous with “fill every byte with zero”.
+            </p>
+
+            <div class="rule">
+                <strong>Implementation incomplete:</strong> Padding initialization/leak diagnostics
+                and comprehensive field/element/payload partial-initialization tracking still need work.
+            </div>
+        </section>
+
+        <section id="compatibility">
+            <h2>Layout Compatibility</h2>
+
+            <p>
+                Equal size, alignment and field offsets do not make two Sec types safely interchangeable.
+            </p>
+
+            <p>
+                Layout compatibility is a separately verified relation for a specific purpose, such as
+                FFI or an explicit representation conversion.
+            </p>
+
+            <p>A compatibility proof may need to include:</p>
+
+            <ul>
+                <li>representation validity;</li>
+                <li>alignment;</li>
+                <li>field/variant meaning;</li>
+                <li>endianness;</li>
+                <li>ABI requirements;</li>
+                <li>target constraints.</li>
+            </ul>
+
+            <p>
+                Native layout coincidence is never a portable compatibility guarantee.
+            </p>
+        </section>
+
+        <section id="queries">
+            <h2>Layout Queries</h2>
+
+            <p>The currently established user-facing size queries are:</p>
+
+            <pre><code>TypeName.SizeOf
+value.SizeOf</code></pre>
+
+            <p>
+                Layout semantics also define concepts corresponding to alignment, stride and field
+                offset queries where compiler-known-member rules provide a source surface.
+            </p>
+
+            <p>
+                Any query requiring target-resolved layout runs under one concrete compilation plan.
+            </p>
+
+            <p>
+                A query fails at compile time when the requested layout is incomplete or unavailable.
+            </p>
+
+            <p>
+                Observing a layout through a query does not make that layout stable across other plans
+                or compiler versions.
+            </p>
+
+            <div class="rule">
+                <strong>Requires update:</strong> <code>AlignOf</code>, <code>StrideOf</code> and
+                <code>FieldOffset</code> semantics exist in the layout model, but their final
+                user-facing API/spelling is not yet complete and should be documented here only after
+                the compiler-known-member surface is locked.
+            </div>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI Layout</h2>
+
+            <p>
+                Native Sec layout is not automatically C-compatible merely because measured sizes look similar.
+            </p>
+
+            <p>
+                Foreign structs, unions and enums require explicit compatibility with the selected
+                ABI and foreign representation contract.
+            </p>
+
+            <p>
+                Padding, alignment, packing and endianness requirements must be represented and validated.
+            </p>
+
+            <p>
+                Function calling convention and ABI classification remain separate from storage layout,
+                although ABI lowering consumes resolved layout.
+            </p>
+
+            <div class="rule">
+                <strong>Implementation incomplete:</strong> Complete explicit foreign-layout validation
+                is not yet implemented across all FFI cases.
+            </div>
+        </section>
+
+        <section id="hardware">
+            <h2>Hardware and Register Layout</h2>
+
+            <p>
+                Fixed-address placement does not change the type's layout.
+                It changes where and how the storage is accessed.
+            </p>
+
+            <p>
+                MMIO may require exact access widths that are stricter than ordinary load/store choices.
+            </p>
+
+            <p>
+                Register views and mappings therefore combine:
+            </p>
+
+            <ul>
+                <li>canonical register/layout facts;</li>
+                <li>target storage requirements;</li>
+                <li>volatile/MMIO access contracts;</li>
+                <li>fixed-address or runtime mapping rules.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Implementation incomplete:</strong> Target-specific register storage alignment,
+                access-unit validation and some explicit hardware-layout checks still need completion.
+            </div>
+        </section>
+
+        <section id="observability">
+            <h2>Representation Observability</h2>
+
+            <p>
+                Ordinary safe Sec code should not depend on unspecified native padding or backend-only
+                representation details.
+            </p>
+
+            <p>Representation becomes observable through operations such as:</p>
+
+            <ul>
+                <li>layout queries;</li>
+                <li>FFI;</li>
+                <li>raw/unsafe memory access;</li>
+                <li>serialization adapters;</li>
+                <li>hardware/register access;</li>
+                <li>inline assembly;</li>
+                <li>other canonical low-level interfaces.</li>
+            </ul>
+
+            <p>
+                Once representation is observably part of a contract, optimization must preserve that contract.
+            </p>
+        </section>
+
+        <section id="ir">
+            <h2>Semantic IR and Lowering</h2>
+
+            <p>
+                Layout-sensitive lowering must consume one canonical Sec-resolved layout model rather
+                than allowing MLIR and LLVM to independently redefine source representation.
+            </p>
+
+            <p>A resolved layout service needs facts such as:</p>
+
+            <ul>
+                <li>semantic type identity;</li>
+                <li>compilation-plan identity;</li>
+                <li>size;</li>
+                <li>alignment;</li>
+                <li>completeness;</li>
+                <li>field identities and offsets;</li>
+                <li>array stride;</li>
+                <li>union representation;</li>
+                <li>padding where relevant;</li>
+                <li>representation validity;</li>
+                <li>stability and explicit-contract provenance.</li>
+            </ul>
+
+            <p>
+                MLIR/LLVM data-layout facilities may assist target calculation.
+                They are not a second normative Sec layout engine.
+            </p>
+
+            <p>
+                Lowering must not silently reorder fields, change enum width, reinterpret pointer-sized
+                <code>int</code>/<code>uint</code>, choose incompatible union tags or ignore explicit contracts.
+            </p>
+
+            <div class="rule">
+                <strong>Implementation incomplete:</strong> The compiler has not yet converged on one
+                complete shared <code>ResolvedLayout</code>/<code>ResolvedFieldLayout</code> service
+                with canonical offsets, padding, stride, validity and stability facts for every concrete plan.
+            </div>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Layout diagnostics should identify:</p>
+
+            <ul>
+                <li>the affected type;</li>
+                <li>the target/compilation plan;</li>
+                <li>the unresolved or conflicting layout requirement;</li>
+                <li>the relevant field, variant or recursive path;</li>
+                <li>requested versus target-supported size/alignment/offset when applicable.</li>
+            </ul>
+
+            <h3>Recursive by-value layout</h3>
+
+            <pre><code>cannot resolve layout of `Node`
+
+by-value layout cycle:
+    Node
+    -&gt; Node.Next
+    -&gt; Node
+
+help: introduce an owning or reference indirection</code></pre>
+
+            <h3>Unsupported alignment</h3>
+
+            <pre><code>required alignment cannot be represented by the selected target
+
+type:
+    Packet
+
+required alignment:
+    64 bytes
+
+target maximum supported alignment:
+    16 bytes</code></pre>
+
+            <h3>Incomplete layout query</h3>
+
+            <pre><code>layout of `T` is incomplete here
+
+`T.SizeOf` requires a concrete target-resolved layout
+
+help: perform the query after the generic type has been concretely instantiated</code></pre>
+
+            <h3>Physical similarity is not type compatibility</h3>
+
+            <pre><code>`CustomerID` and `ProductID` have compatible native size
+
+they remain distinct Sec types
+
+physical representation does not create an implicit conversion</code></pre>
+
+            <p>
+                Diagnostics should use programmer-facing terms such as field, offset, alignment,
+                padding and target rather than exposing backend-only LLVM details.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                LSP and <code>sec analyse</code> consume the same resolved layout service as compilation.
+            </p>
+
+            <p>Tooling may expose:</p>
+
+            <ul>
+                <li>size;</li>
+                <li>alignment;</li>
+                <li>field offsets;</li>
+                <li>stride;</li>
+                <li>padding;</li>
+                <li>layout class/stability;</li>
+                <li>target dependence;</li>
+                <li>explicit contract provenance;</li>
+                <li>descriptor/reference representation;</li>
+                <li>incomplete-layout causes.</li>
+            </ul>
+
+            <p>
+                Tooling must not independently approximate layout from syntax alone.
+            </p>
+
+            <p>
+                When no target is resolved, displayed layout information must clearly say that the
+                result is target-dependent or currently unresolved.
+            </p>
+        </section>
+
+        <section id="future-updates">
+            <h2>Required Future Updates</h2>
+
+            <p>
+                This page should be rewritten or promoted to revision 1.0 after the following areas are locked
+                and implemented consistently:
+            </p>
+
+            <ul>
+                <li><strong>Explicit layout source syntax:</strong> final spelling/attachment model for packing, alignment, field offsets, total size, endianness and representation contracts.</li>
+                <li><strong>Layout queries:</strong> final user-facing forms for alignment, stride and field-offset queries.</li>
+                <li><strong>Canonical compiler model:</strong> one shared resolved-layout phase and representation for every concrete compilation plan.</li>
+                <li><strong>Field offsets and padding:</strong> canonical Semantic IR representation of field offsets, padding ranges and aggregate alignment.</li>
+                <li><strong>Array stride:</strong> complete target-correct stride representation and queries.</li>
+                <li><strong>Union representation:</strong> canonical tag selection, tag placement, payload placement and resolved-layout object.</li>
+                <li><strong>Reference/descriptor layout:</strong> one canonical layout record for safe references, slices and owning descriptors under each profile.</li>
+                <li><strong>Representation validity:</strong> complete validity metadata and zero-initialization checks.</li>
+                <li><strong>Padding safety:</strong> complete initialization and padding-leak diagnostics.</li>
+                <li><strong>Packed/misaligned access:</strong> final safe-reference rejection and target-supported unaligned lowering behavior.</li>
+                <li><strong>FFI validation:</strong> complete explicit foreign-layout/ABI validation.</li>
+                <li><strong>Hardware validation:</strong> target-specific storage alignment, access unit and MMIO width validation.</li>
+                <li><strong>Stability contracts:</strong> final source-facing way to request or describe target-stable/contract-stable layout where required.</li>
+                <li><strong>Cross-rulebook synchronization:</strong> adjacent type, collection, FFI, ABI, register, reference and target-profile documentation must use the same canonical resolved-layout model.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Manual policy until then:</strong> use the stable semantic rules in this chapter,
+                but do not copy placeholder implementation syntax from compiler internals into user code.
+            </div>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Do not rely on ordinary native layout as a stable file/network/FFI format.</li>
+                <li>Use <code>TypeName.SizeOf</code> or <code>value.SizeOf</code> when actual target-resolved byte size is required.</li>
+                <li>Do not assume alignment equals size.</li>
+                <li>Keep stored struct field declaration order intentional; Sec preserves it.</li>
+                <li>Remember that padding is not semantic field data.</li>
+                <li>Do not inspect arbitrary padding bytes in safe code.</li>
+                <li>Do not treat all-zero bytes as a valid default for every type.</li>
+                <li>Do not infer type compatibility from equal size or field offsets.</li>
+                <li>Do not infer reference safety from raw pointer layout.</li>
+                <li>Use a canonical explicit representation contract for FFI, shared-memory or hardware layouts once the final syntax is available.</li>
+                <li>Do not invent packing/alignment/offset syntax while the language surface remains open.</li>
+                <li>Keep target dependence visible in tooling and documentation.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Layout describes physical representation of materialized Sec values.</li>
+                <li>Layout is resolved for one concrete CompilationPlan.</li>
+                <li>The same semantic type may have different native layout on different plans.</li>
+                <li>Sec distinguishes semantic, native and explicit layout.</li>
+                <li>Semantic layout contains language/type representation facts independent of one target.</li>
+                <li>Native layout selects concrete size, alignment, offsets, padding, stride and descriptor/reference representation.</li>
+                <li>Explicit layout constrains selected representation properties beyond native layout.</li>
+                <li>Final source syntax for explicit layout is not yet locked.</li>
+                <li>The manual intentionally does not invent <code>layout</code>, <code>packed</code>, <code>align</code>, <code>offset</code> or <code>endian</code> syntax.</li>
+                <li>Ordinary native layout is not automatically stable across targets, profiles, ABIs or compiler versions.</li>
+                <li>By-value materialization requires complete sized layout.</li>
+                <li>Zero-sized types are still sized semantic values.</li>
+                <li><code>T[]</code> is a sized owning descriptor; runtime-sized element backing is separate storage.</li>
+                <li><code>ref T[]</code> and <code>ref mut T[]</code> are sized non-owning descriptors/references.</li>
+                <li><code>TypeName.SizeOf</code> and <code>value.SizeOf</code> report materialized representation size for the active plan.</li>
+                <li>Size includes required padding and excludes separate reachable backing storage.</li>
+                <li>Alignment is target-dependent and is not automatically equal to size.</li>
+                <li>Misaligned safe references are invalid.</li>
+                <li><code>unsafe</code> does not create target support for unaligned access.</li>
+                <li>Stride is the byte distance between adjacent materialized elements and may exceed semantic data size.</li>
+                <li>Padding is physical representation space, not semantic Sec data.</li>
+                <li>Padding has no field identity or ordinary object lifetime.</li>
+                <li>Safe equality/hash/serialization must not accidentally depend on unspecified padding contents.</li>
+                <li>Stored struct fields retain declaration order under native Sec layout.</li>
+                <li>Native layout may add inter-field and tail padding but does not reorder ordinary fields.</li>
+                <li>Properties, methods, nested declarations, impls and interface conformance do not add stored instance fields.</li>
+                <li>Fixed arrays contain exactly N inline element slots and no hidden pointer/length/capacity/allocator fields.</li>
+                <li>Fixed-array layout uses checked element-stride arithmetic.</li>
+                <li>Empty structs have size zero and alignment one.</li>
+                <li>Zero-sized fields retain semantic field identity despite consuming no payload bytes.</li>
+                <li>Enum layout follows its canonical underlying representation and value constraints.</li>
+                <li>String-underlying enums are not silently represented as C integers.</li>
+                <li>Tagged unions contain discriminator semantics plus sufficient payload representation.</li>
+                <li>Inactive union payload bytes are not semantic data.</li>
+                <li>Niche/tag-elision optimization requires Sec-level proof.</li>
+                <li>Result and Option may use canonical physical optimizations without changing semantic alternatives.</li>
+                <li>Register bit positions are hardware bit layout, not ordinary struct byte offsets.</li>
+                <li>Fixed-width integer byte sizes are exact while alignments follow the active target.</li>
+                <li><code>int</code> and <code>uint</code> use the active target's canonical pointer-sized integer width.</li>
+                <li>Addressable <code>bool</code> occupies one byte; internal SSA may use a narrower representation.</li>
+                <li><code>rune</code> uses 32-bit storage but not every 32-bit pattern is a valid rune.</li>
+                <li><code>float32</code> and <code>float64</code> use IEEE binary32/binary64 representation.</li>
+                <li><code>decimal</code> and <code>decimal128</code> use canonical coefficient/scale component representations.</li>
+                <li><code>RawPtr[T]</code> uses the target raw-pointer/address-space representation.</li>
+                <li>Raw pointer layout does not imply ownership, provenance, bounds, non-nullness or lifetime.</li>
+                <li>Named types usually reuse underlying physical layout without losing nominal type identity.</li>
+                <li>Contracts, units, methods and properties do not automatically add hidden per-value bytes.</li>
+                <li>String SizeOf describes its descriptor, not separate character backing.</li>
+                <li>Dynamic collection SizeOf describes descriptor state, not separately owned element backing.</li>
+                <li>Safe reference representation may differ by profile and remains distinct from RawPtr semantics.</li>
+                <li>Direct recursive by-value layout is invalid.</li>
+                <li>Recursive types may be valid through reference/raw-pointer/dynamic-storage indirection.</li>
+                <li>Generic layout is resolved per concrete instantiation and compilation plan.</li>
+                <li>Packing, explicit alignment and explicit offsets have defined semantic requirements but unfinished source syntax.</li>
+                <li>Target endianness is a compilation-plan fact, not ordinary numeric value identity.</li>
+                <li>Correct size/alignment does not imply that every bit pattern is a valid value.</li>
+                <li>Raw/uninitialized storage cannot be read as T until T's representation validity is established.</li>
+                <li>Semantic default initialization is not equivalent to zero-filling all bytes.</li>
+                <li>Equal physical layout does not imply Sec type compatibility.</li>
+                <li>Native layout is not automatically C-compatible.</li>
+                <li>Hardware/fixed-address placement consumes layout but remains a separate storage/access contract.</li>
+                <li>Representation becomes observable through low-level contracts such as FFI, raw access, hardware, inline assembly and layout queries.</li>
+                <li>Once representation is observable, optimization must preserve the corresponding contract.</li>
+                <li>Semantic IR and lowering must consume canonical Sec-resolved layout rather than letting backends redefine it.</li>
+                <li>The canonical shared ResolvedLayout implementation is not yet complete.</li>
+                <li>Layout tooling must use compiler-resolved facts rather than approximate syntax-only calculations.</li>
+                <li>This chapter remains partial until explicit-layout syntax, layout queries and canonical compiler representation are completed.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="43-destruction.html">Previous: Destruction</a>
+            <a href="45-collections.html">Next: Collections</a>
+        </div>
+    </main>
+</div>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 0.9 &middot; Partial &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

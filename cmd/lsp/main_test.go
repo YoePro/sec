@@ -932,6 +932,22 @@ func TestAnalyzePublishesMalformedBaseLiteralDiagnostics(t *testing.T) {
 	}
 }
 
+func TestAnalyzePublishesInvalidNumericSuffixDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/invalid_numeric_suffix_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, diagnostic := range analyze("file:///tmp/invalid_numeric_suffix_invalid.sec", string(input)) {
+		if diagnostic.Code == diagnostics.LexerInvalidNumericSuffix {
+			count++
+		}
+	}
+	if count != 6 {
+		t.Fatalf("LSP invalid numeric suffix count = %d, want 6", count)
+	}
+}
+
 func TestAnalyzePublishesUnimplementedFunctionHelp(t *testing.T) {
 	input, err := os.ReadFile("../../testdata/parser/function_stubs_invalid.sec")
 	if err != nil {

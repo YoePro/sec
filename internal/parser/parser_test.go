@@ -5787,6 +5787,25 @@ func TestParserPreservesInvalidDigitSeparatorDiagnostics(t *testing.T) {
 	}
 }
 
+// Rules: rules/foundations/lexical_structure.md — §12.7 "Numeric family
+// suffixes", §18 "Token boundaries", and §20 "Lexical errors".
+func TestParserPreservesInvalidNumericSuffixDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/lexer/invalid_numeric_suffix_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := New(lexer.NewWithFile(string(input), "invalid_numeric_suffix_invalid.sec")).Parse()
+	count := 0
+	for _, diagnostic := range result.Diagnostics {
+		if diagnostic.ID == diagnostics.LexerInvalidNumericSuffix {
+			count++
+		}
+	}
+	if !result.HasErrors || len(result.Diagnostics) != 6 || count != 6 {
+		t.Fatalf("invalid numeric suffix diagnostics = %+v", result.Diagnostics)
+	}
+}
+
 func TestParserPreservesLexerDiagnosticIDs(t *testing.T) {
 	tests := []struct {
 		name  string

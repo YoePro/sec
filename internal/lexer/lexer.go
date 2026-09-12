@@ -638,11 +638,20 @@ func (l *Lexer) identifierToken(literal string, line, column int) Token {
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 // 2026-09-10 20:49 CEST: Retain maximal malformed base-prefixed candidates
 // and emit L1010/L1011/L1012 while preserving parser-owned legacy suffix migration.
+// 2026-09-12 11:14 CEST: Retain invalid decimal suffix tails and emit L1013.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.2 "Decimal integer literals"
+//   - rules/foundations/lexical_structure.md — §12.4 "Fractional literals"
+//   - rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+//   - rules/foundations/lexical_structure.md — §12.7 "Numeric family suffixes"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
 func (l *Lexer) readNumber() (string, TokenType) {
 	start := l.pos
 	line, column := l.line, l.column
 	typ := INT
 	valid := true
+	invalidSuffix := false
 
 	if l.peek() == '0' {
 		switch l.peekNext() {
@@ -676,6 +685,7 @@ func (l *Lexer) readNumber() (string, TokenType) {
 		l.advance()
 		if typ == FLOAT && !isFractionalNumericSuffix(suffix) {
 			valid = false
+			invalidSuffix = true
 		}
 		if suffix == 'g' || suffix == 'm' {
 			typ = FLOAT
@@ -684,9 +694,20 @@ func (l *Lexer) readNumber() (string, TokenType) {
 		l.advance()
 		valid = false
 	}
+	if isMalformedNumericContinuation(l.peek()) {
+		invalidSuffix = true
+		valid = false
+		for isMalformedNumericContinuation(l.peek()) {
+			l.advance()
+		}
+	}
 	lexeme := string(l.input[start:l.pos])
 	if invalidSeparator {
 		l.recordInvalidDigitSeparator(lexeme, line, column)
+		return lexeme, ILLEGAL
+	}
+	if invalidSuffix {
+		l.recordInvalidNumericSuffix(lexeme, line, column)
 		return lexeme, ILLEGAL
 	}
 	if !valid {
@@ -750,14 +771,27 @@ func (l *Lexer) readBasePrefixedInteger(start int, baseName string, validDigit f
 }
 
 // isMalformedNumericContinuation identifies the maximal source spelling owned
-// by a malformed numeric candidate without consuming punctuation or whitespace.
+// by a malformed base literal or invalid numeric suffix without consuming
+// punctuation or whitespace.
 //
-// Rule: rules/foundations/lexical_structure.md — "12.3 Base-prefixed integer literals".
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.3 "Base-prefixed integer literals"
+//   - rules/foundations/lexical_structure.md — §12.7 "Numeric family suffixes"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
 func isMalformedNumericContinuation(ch rune) bool {
 	return isLetter(ch) || isDigit(ch) || unicode.IsMark(ch) || ch == '_'
 }
 
+// readLeadingDotNumber scans a fractional literal whose decimal point precedes
+// its first digit, retaining invalid suffix tails as one diagnosed token.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-09-12 11:14 CEST: Retain invalid suffix tails and emit L1013.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.4 "Fractional literals"
+//   - rules/foundations/lexical_structure.md — §12.5 "Exponent notation"
+//   - rules/foundations/lexical_structure.md — §12.7 "Numeric family suffixes"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
 func (l *Lexer) readLeadingDotNumber() Token {
 	line := l.line
 	column := l.column
@@ -765,6 +799,8 @@ func (l *Lexer) readLeadingDotNumber() Token {
 
 	l.advance()
 	_, valid, invalidSeparator := l.readDigitSequence(isDigit)
+	invalidSuffix := false
+	legacySuffix := false
 	if l.peek() == 'e' || l.peek() == 'E' {
 		exponentValid, exponentSeparator := l.readDecimalExponent()
 		if !exponentValid {
@@ -775,12 +811,25 @@ func (l *Lexer) readLeadingDotNumber() Token {
 	if isFractionalNumericSuffix(l.peek()) {
 		l.advance()
 	} else if isCanonicalNumericSuffix(l.peek()) || isLegacyNumericSuffix(l.peek()) {
+		legacySuffix = isLegacyNumericSuffix(l.peek())
 		l.advance()
 		valid = false
+		invalidSuffix = !legacySuffix
+	}
+	if isMalformedNumericContinuation(l.peek()) {
+		invalidSuffix = true
+		valid = false
+		for isMalformedNumericContinuation(l.peek()) {
+			l.advance()
+		}
 	}
 	lexeme := string(l.input[start:l.pos])
 	if invalidSeparator {
 		l.recordInvalidDigitSeparator(lexeme, line, column)
+		return l.token(ILLEGAL, lexeme, line, column)
+	}
+	if invalidSuffix {
+		l.recordInvalidNumericSuffix(lexeme, line, column)
 		return l.token(ILLEGAL, lexeme, line, column)
 	}
 	if !valid {
@@ -832,6 +881,22 @@ func (l *Lexer) recordInvalidDigitSeparator(lexeme string, line int, column int)
 	l.diagnostics = append(l.diagnostics, Diagnostic{
 		ID:      compilerdiagnostics.LexerInvalidDigitSeparator,
 		Message: "digit separators must occur between valid digits of the same numeric component",
+		Primary: token,
+	})
+}
+
+// recordInvalidNumericSuffix emits the stable diagnostic required for a
+// maximal decimal, fractional, or exponent literal with a disallowed suffix.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.7 "Numeric family suffixes"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func (l *Lexer) recordInvalidNumericSuffix(lexeme string, line int, column int) {
+	token := l.token(ILLEGAL, lexeme, line, column)
+	l.diagnostics = append(l.diagnostics, Diagnostic{
+		ID:      compilerdiagnostics.LexerInvalidNumericSuffix,
+		Message: "numeric suffix must be one canonical family letter; fractional and exponent forms accept only g or m",
 		Primary: token,
 	})
 }

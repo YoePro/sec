@@ -1225,6 +1225,14 @@ Invalid:
 
 A suffix must be adjacent to the literal.
 
+For decimal-form literals, an identifier-like continuation is one malformed
+numeric candidate when it is not exactly one permitted family suffix. A suffix
+that is valid for integer-form literals but forbidden on fractional or exponent
+forms is diagnosed by the same rule. The lexer consumes the maximal candidate
+and emits `L1013` (`lexer.invalid-numeric-suffix`) over its complete source
+range. A standalone legacy `c`, `d`, or `f` suffix retains its dedicated parser
+migration diagnostic.
+
 ---
 
 ## 12.8 Range disambiguation

@@ -18,6 +18,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		LexerMalformedBaseLiteral:    SeverityError,
 		LexerInvalidBaseDigit:        SeverityError,
 		LexerInvalidDigitSeparator:   SeverityError,
+		LexerInvalidNumericSuffix:    SeverityError,
 		ParserSyntaxError:            SeverityError,
 		MissingModuleDeclaration:     SeverityError,
 		DuplicateModuleDeclaration:   SeverityError,

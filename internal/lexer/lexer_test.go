@@ -774,6 +774,29 @@ func TestFractionalLiteralsRejectIntegerOnlySuffixes(t *testing.T) {
 	}
 }
 
+// TestInvalidNumericSuffixIsSingleDiagnosedToken covers the maximal-token and
+// stable-diagnostic requirements for invalid numeric suffixes.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §12.7 "Numeric family suffixes"
+//   - rules/foundations/lexical_structure.md — §18 "Token boundaries"
+//   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+func TestInvalidNumericSuffixIsSingleDiagnosedToken(t *testing.T) {
+	for _, input := range []string{"10meters", "10z", "10u32", "1.5t", ".5r", "1e3r", "10π"} {
+		t.Run(input, func(t *testing.T) {
+			l := NewWithFile(input+" following", "suffix.sec")
+			token := l.NextToken()
+			if token.Type != ILLEGAL || token.Lexeme != input {
+				t.Fatalf("token = %+v, want one ILLEGAL %q", token, input)
+			}
+			assertLexerDiagnostic(t, l.Diagnostics(), compilerdiagnostics.LexerInvalidNumericSuffix, 1, 1, input)
+			if following := l.NextToken(); following.Type != IDENT || following.Lexeme != "following" {
+				t.Fatalf("recovery token = %+v, want following identifier", following)
+			}
+		})
+	}
+}
+
 func TestMalformedScientificExponentIsOneIllegalToken(t *testing.T) {
 	for _, input := range []string{"1e", "1e+", "1.5E-", ".5e+"} {
 		t.Run(input, func(t *testing.T) {

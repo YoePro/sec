@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-11"
+    revised: "2026-09-12"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -50,6 +50,7 @@ integrations:
       - testdata/lexer/cli_diagnostics_invalid.sec
       - testdata/lexer/malformed_base_literals_invalid.sec
       - testdata/lexer/digit_separators_invalid.sec
+      - testdata/lexer/invalid_numeric_suffix_invalid.sec
       - testdata/lexer/keyword_inventory_valid.sec
       - testdata/parser/semicolon_invalid.sec
       - internal/diagnostics/diagnostics_test.go
@@ -144,6 +145,7 @@ integrations:
       - malformed binary, octal, and hexadecimal candidates are retained as one maximal ILLEGAL token; L1010 lexer.malformed-base-literal covers missing digits and invalid suffix tails while L1011 lexer.invalid-base-digit identifies decimal digits outside the selected base
       - parser, lex/token CLI, diagnostic registry, and bootstrap lexer paths preserve the focused base-literal IDs; legacy c/d/f suffixes remain owned by the existing parser migration diagnostic
       - invalid digit separators in decimal integers, fractions, exponents, and base-prefixed integers emit one L1012 lexer.invalid-digit-separator over the complete retained numeric token; parser, lex/token CLI, LSP, registry, and bootstrap paths preserve the ID
+      - invalid decimal, fractional, and exponent suffixes emit one L1013 lexer.invalid-numeric-suffix over the maximal identifier-like numeric candidate; canonical suffixes followed by extra letters/digits are rejected as one token, fractional/exponent i/u/t/r suffixes are diagnosed, and legacy standalone c/d/f spellings retain parser-owned migration guidance
     partial:
       - escape decoding/materialization in downstream string and character handling; lexical escape validation is implemented
       - interpolation expression semantic traversal, formatting contracts, ownership/effects, escape materialization, and runtime lowering remain incomplete; AST/parser expression parts and source ranges are implemented
@@ -171,7 +173,7 @@ integrations:
     remaining:
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
       - confusable-identifier warnings
-      - maximal malformed numeric-token recovery for remaining non-base decimal, fractional, exponent, and suffix candidates
+      - maximal malformed numeric-token recovery and stable focused diagnostics for remaining non-base decimal, fractional, and missing-exponent candidates; invalid suffix candidates are implemented
       - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
       - port interpolation AST parts and expression parsing to the bootstrap parser
       - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
@@ -215,6 +217,8 @@ integrations:
         result: passed; synchronized bootstrap maximal base-literal recovery, separator-state propagation, and L1010/L1011/L1012 emission are parser-valid
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'DigitSeparator|MalformedBase|Numeric|LexerCLI|KnownDiagnostic|Registry' -count=1
         result: passed; eight invalid separator placements emit exactly one L1012 over each full token, survive parser and CLI consumption, preserve following source, and the focused LSP path retains L1012
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'InvalidNumericSuffix|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; invalid suffix tails remain one ILLEGAL token with L1013, parser, CLI, and LSP preserve the diagnostic, and bootstrap lexer source remains parser-valid
       - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'CanonicalKeyword|HardKeyword|ContextualKeyword|KeywordCompletion|ContextualSet|Property|ImplExtend' -count=1
         result: passed; all canonical hard keywords map correctly, contextual spellings remain identifiers, property set and impl extends still parse, and LSP completion contains every hard word without arena or sec
       - command: node -e 'JSON.parse(require("fs").readFileSync("vscode/syntaxes/sec.tmLanguage.json", "utf8"))'

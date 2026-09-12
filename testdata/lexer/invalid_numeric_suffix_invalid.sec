@@ -1,0 +1,9 @@
+module invalid_numeric_suffix_invalid
+
+let unitTail := 10meters
+let unknownFamily := 10z
+let suffixWidth := 10u32
+let fractionalIntegerFamily := 1.5t
+let leadingFractionRuneFamily := .5r
+let exponentRuneFamily := 1e3r
+let following := 7

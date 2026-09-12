@@ -70,6 +70,24 @@ func TestLexerCLICommandsReportInvalidDigitSeparators(t *testing.T) {
 	}
 }
 
+func TestLexerCLICommandsReportInvalidNumericSuffixes(t *testing.T) {
+	fixture := "../../testdata/lexer/invalid_numeric_suffix_invalid.sec"
+	for _, command := range []string{"lex", "token"} {
+		t.Run(command, func(t *testing.T) {
+			process := exec.Command(os.Args[0], "-test.run=^TestLexerCLIProcess$", "--", command, fixture)
+			process.Env = append(os.Environ(), "SEC_LEXER_CLI_TEST_PROCESS=1")
+			output, err := process.CombinedOutput()
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("exit error = %v, want code 2; output: %s", err, output)
+			}
+			if strings.Count(string(output), diagnostics.LexerInvalidNumericSuffix) != 6 || !strings.Contains(string(output), "summary: 6 errors") {
+				t.Fatalf("wrong numeric suffix diagnostics: %s", output)
+			}
+		})
+	}
+}
+
 func TestLexerCLIProcess(t *testing.T) {
 	if os.Getenv("SEC_LEXER_CLI_TEST_PROCESS") != "1" {
 		return

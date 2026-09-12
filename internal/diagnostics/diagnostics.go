@@ -35,6 +35,7 @@ const (
 	LexerMalformedBaseLiteral    = "L1010"
 	LexerInvalidBaseDigit        = "L1011"
 	LexerInvalidDigitSeparator   = "L1012"
+	LexerInvalidNumericSuffix    = "L1013"
 	ParserSyntaxError            = "P2001"
 	ParserMissingToken           = "P2002"
 	ParserUnexpectedToken        = "P2003"
@@ -93,6 +94,7 @@ var registry = map[string]Definition{
 	LexerMalformedBaseLiteral:   {ID: LexerMalformedBaseLiteral, Name: "lexer.malformed-base-literal", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerInvalidBaseDigit:       {ID: LexerInvalidBaseDigit, Name: "lexer.invalid-base-digit", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerInvalidDigitSeparator:  {ID: LexerInvalidDigitSeparator, Name: "lexer.invalid-digit-separator", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
+	LexerInvalidNumericSuffix:   {ID: LexerInvalidNumericSuffix, Name: "lexer.invalid-numeric-suffix", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerNonNFCIdentifier: {
 		ID: LexerNonNFCIdentifier, Name: "lexer.non-nfc-identifier", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true,
 	},

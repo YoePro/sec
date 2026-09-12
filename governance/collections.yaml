@@ -2,6 +2,50 @@ schema_version: 1
 area: collections
 purpose: Collection APIs, shaped values, and iteration semantics.
 integrations:
+  - id: frontend.shaped-types
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    summary: >-
+      Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
+      and MemorySpace independently from ordinary collections. The canonical
+      shaped rulebook now also specifies runtime-shaped owning tensors,
+      compiler-known shaped properties, affine view slicing and step semantics,
+      explicit broadcasting, ownership-preserving reshape operations,
+      structured storage requests and transfers, vector algebra, matrix
+      multiplication, and general tensor contraction.
+    rules:
+      - rules/collections/shaped-types.md
+    implemented:
+      - parser and AST accept mixed type/value generic arguments used by shaped types
+      - Sema recognizes vector, matrix, tensor, and tensor_view identities and validates basic arity and dimensions
+      - loader-proven core sources may attach additive impl helpers to all shaped families and their Shape, Strides,
+        TensorLayout, and MemorySpace support identities without redefining compiler-owned intrinsic semantics
+      - rank-one vector values participate in iterable type inference
+      - contextual x parsing, multiplicative precedence, and static matrix/matrix and matrix/vector Sema with inner-dimension checks; scalar result algebra is partial
+    remaining:
+      - recognize owning runtime-shaped tensor[T, Shape[Rank]] without conflating it with tensor_view
+      - implement Rank, Shape, Len, Strides, Layout, MemorySpace, IsContiguous, Ptr, and shaped instance SizeOf member semantics
+      - implement ShapedStorageRequest composition with StorageRequest and explicit Create request validation
+      - implement Reshape as borrowed zero-copy view formation with runtime ShapeError checking where required
+      - implement ToShape as consuming zero-copy ownership-preserving shape reinterpretation
+      - implement Materialize as fallible new owning backing from tensor_view
+      - implement explicit TransferTo and Relayout storage-producing semantics without implicit cross-space transfer
+      - implement Axes and AxisList compiler-known identities and validation
+      - implement Permute and rank-two Transpose as zero-copy view transformations
+      - implement multidimensional shaped slicing with exactly one selector per axis and scalar/range rank reduction rules
+      - implement step on shaped range selectors including negative step reversal and zero-step rejection
+      - implement right-aligned explicit BroadcastTo with zero-stride aliasing and shared-only expanded views
+      - implement elementwise shaped + - * / with no implicit shaped broadcasting
+      - complete contextual x scalar product/result algebra, accumulation proof, Semantic IR, lowering, and runtime ShapeError checking; static matrix/matrix and matrix/vector Sema already exists partially
+      - implement Dot, Outer, Magnitude, Normalize Option semantics, and extent-three Cross
+      - implement explicit Contract with AxisList pairs and canonical result-axis ordering
+      - preserve no-allocation semantics for logical shaped arithmetic and view transformations
+      - integrate shaped runtime checks with ShapeError, IndexError, RangeError, and StorageError
+      - integrate shaped Place/view overlap, borrow, lifetime, escape, and destruction semantics
+      - synchronize shaped operations and invariants with the canonical rules/mlir dialect and lowering documents
+      - add formatter, LSP hover/completion, diagnostic, valid/invalid, analysis, and end-to-end shaped test coverage
+
   - id: frontend.collections
     area: frontend
     status: partial

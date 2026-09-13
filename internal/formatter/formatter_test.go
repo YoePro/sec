@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"sec/internal/ast"
 )
 
 func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
@@ -26,6 +28,56 @@ func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
 	}
 	if again := Format(Source{Text: got}, Options{}).Text; again != got {
 		t.Fatalf("contextual x formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+// rules/foundations/grammar.md "Collection and shaped types" and
+// rules/tooling/formatter.md "Contextual set" require type-context formatting
+// without rewriting the same spelling when it is an ordinary identifier.
+func TestFormatContextualCollectionAndShapedTypeNames(t *testing.T) {
+	input := "fn Use() void {\nlet values: list[ int, 8 ]\nlet lookup: map[ string, int ]\nlet flags: set[ string ]\nlet position: vector[ float64, 3 ]\nlet transform: matrix[ float32, 4, 4 ]\nlet image: tensor[ float32, 3, 224, 224 ]\nlet view: tensor_view[ float32, 3 ]\nlet set := 1\ndiscard set\n}\n"
+	want := "fn Use() void {\n    let values: list[int, 8]\n    let lookup: map[string, int]\n    let flags: set[string]\n    let position: vector[float64, 3]\n    let transform: matrix[float32, 4, 4]\n    let image: tensor[float32, 3, 224, 224]\n    let view: tensor_view[float32, 3]\n    let set := 1\n    discard set\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong contextual type-name formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("contextual type-name formatting is not idempotent:\n%s", again)
+	}
+}
+
+// rules/foundations/lexical_structure.md §§22–23 require the formatter to
+// preserve contextual spellings and metadata while normalizing surrounding
+// whitespace.
+func TestFormatPreservesLexicalContextSpellings(t *testing.T) {
+	input := "/** Packet docs */\ntype Count int multipleOf 2\ntype Wire struct {\nvalue: int `wire:\"value\"`,\n}\nfn Work() void {}\nfn Use() void {\nlet job := spawn thread Work()\nmatch job {\n_=>{}\n}\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	for _, spelling := range []string{
+		"/** Packet docs */",
+		"multipleOf 2",
+		"`wire:\"value\"`",
+		"spawn thread Work()",
+		"_ => {}",
+	} {
+		if !strings.Contains(got, spelling) {
+			t.Fatalf("formatter lost contextual spelling %q:\n%s", spelling, got)
+		}
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("contextual lexical formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+func TestFormatReturnsAttachmentsForCanonicalOutput(t *testing.T) {
+	result := Format(Source{Text: "fn Use() void {\n// leading\nlet value := 1 // trailing\n\n// detached\n\ndiscard value\n}\n"}, Options{})
+	want := []ast.CommentPlacement{ast.CommentLeading, ast.CommentTrailing, ast.CommentDetached}
+	if len(result.Comments) != len(want) {
+		t.Fatalf("formatter comments = %#v\n%s", result.Comments, result.Text)
+	}
+	for index, placement := range want {
+		if result.Comments[index].Placement != placement {
+			t.Errorf("formatter attachment %d = %q, want %q", index, result.Comments[index].Placement, placement)
+		}
 	}
 }
 

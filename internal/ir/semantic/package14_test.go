@@ -367,9 +367,9 @@ fn Next128() int128 {
 }
 
 fn NestedArrays(row: uint, column: uint) int32[2][2] {
-    let mut matrix: int32[2][2] := [[1, 2], [3, 4]]
-    matrix[row][column] = Next32()
-    return matrix
+    let mut grid: int32[2][2] := [[1, 2], [3, 4]]
+    grid[row][column] = Next32()
+    return grid
 }
 
 fn StructInArray(index: uint) Pair[2] {

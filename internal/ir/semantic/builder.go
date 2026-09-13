@@ -1161,6 +1161,12 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	case *ast.BooleanLiteral:
 		v := e.Value
 		return fb.result(Operation{Kind: OpConstBool, Bool: &v, Location: loc}, typeID), nil
+	case *ast.CharLiteral:
+		value, ok := singleScalarValue(e.Value)
+		if !ok {
+			return builtValue{}, fmt.Errorf("invalid decoded character literal %q", e.Token.Lexeme)
+		}
+		return fb.result(Operation{Kind: OpConstInt, Integer: big.NewInt(int64(value)), Location: loc}, typeID), nil
 	case *ast.StringLiteral:
 		return fb.result(Operation{Kind: OpConstString, String: e.Value, Location: loc}, typeID), nil
 	case *ast.FloatLiteral:
@@ -2994,6 +3000,8 @@ func expressionToken(e ast.Expression) lexer.Token {
 		return x.Token
 	case *ast.StringLiteral:
 		return x.Token
+	case *ast.CharLiteral:
+		return x.Token
 	case *ast.CallExpression:
 		return x.Token
 	case *ast.ConversionExpression:
@@ -3010,6 +3018,20 @@ func expressionToken(e ast.Expression) lexer.Token {
 		return x.Token
 	}
 	return lexer.Token{}
+}
+
+// singleScalarValue extracts the exact Unicode scalar represented by a decoded
+// character literal before it is emitted as a typed Semantic IR constant.
+//
+// Rules:
+//   - rules/compiler/semantic_ir.md — §11 "Constants"
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
+func singleScalarValue(value string) (rune, bool) {
+	runes := []rune(value)
+	if len(runes) != 1 {
+		return 0, false
+	}
+	return runes[0], true
 }
 func statementToken(s ast.Statement) lexer.Token {
 	switch x := s.(type) {

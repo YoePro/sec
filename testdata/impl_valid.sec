@@ -1,4 +1,4 @@
-module impl
+module impl_examples
 
 // -----------------------------------------------------------------------------
 // Shared named types

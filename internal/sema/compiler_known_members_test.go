@@ -116,16 +116,16 @@ func TestCompilerKnownCollectionPropertiesAndMethods(t *testing.T) {
 	input := `
 module main
 
-fn Test(values: int[], view: ref mut int[], users: list[int], entries: map[int, string], unique: set[int]) Result[void, CollectionError] {
+fn Test(values: int[], view: ref mut int[], users: list[int], entries: map[int, string], members: set[int]) Result[void, CollectionError] {
 	let arrayLength: uint := values.Len
 	let empty: bool := values.IsEmpty
 	let bytes: uint := view.SizeOf
 	let listLength: uint := users.Len
 	let mapLength: uint := entries.Len
-	let setLength: uint := unique.Len
+	let setLength: uint := members.Len
 	let signedListLength: int := len(users)
 	let signedMapLength: int := len(entries)
-	let signedSetLength: int := len(unique)
+	let signedSetLength: int := len(members)
 	view.Fill(3)
 	view.Reverse()
 	try values.Append(4)
@@ -187,7 +187,7 @@ fn Compare(left: int, right: int) int {
 	return left - right
 }
 
-fn Test(users: list[int], entries: map[int, string], unique: set[int], other: set[int]) Result[void, CollectionError] {
+fn Test(users: list[int], entries: map[int, string], members: set[int], other: set[int]) Result[void, CollectionError] {
 	let capacity: uint := users.Capacity
 	try users.Append(1)
 	let inserted: bool := try users.Insert(0, 2)
@@ -203,14 +203,14 @@ fn Test(users: list[int], entries: map[int, string], unique: set[int], other: se
 	let hasKey: bool := entries.ContainsKey(1)
 	entries.Clear()
 
-	let added: bool := try unique.Add(1)
-	let setRemoved: bool := unique.Remove(1)
-	let setContains: bool := unique.Contains(1)
-	let combined: set[int] := try unique.Union(other)
-	let common: set[int] := try unique.Intersection(other)
-	let difference: set[int] := try unique.Difference(other)
-	let symmetric: set[int] := try unique.SymmetricDifference(other)
-	unique.Clear()
+	let added: bool := try members.Add(1)
+	let setRemoved: bool := members.Remove(1)
+	let setContains: bool := members.Contains(1)
+	let combined: set[int] := try members.Union(other)
+	let common: set[int] := try members.Intersection(other)
+	let difference: set[int] := try members.Difference(other)
+	let symmetric: set[int] := try members.SymmetricDifference(other)
+	members.Clear()
 
 	discard capacity
 	discard inserted

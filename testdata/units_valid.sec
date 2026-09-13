@@ -95,7 +95,7 @@ type RequestRate decimal<request/s>
 
 fn LiteralInitialization() void {
     let distance: Distance := 100
-    let duration: Duration := 9.58
+    let elapsed: Duration := 9.58
     let mass: Mass := 75
     let speed: Speed := 10.5
     let area: Area := 25
@@ -182,17 +182,17 @@ fn ScaleMoney(price: Money, quantity: int) void {
 // Basic dimensional derivation
 // =============================================================================
 
-fn CalculateSpeed(distance: Distance, duration: Duration) Speed {
-    return distance / duration
+fn CalculateSpeed(distance: Distance, elapsed: Duration) Speed {
+    return distance / elapsed
 }
 
-fn ReconstructDistance(speed: Speed, duration: Duration) Distance {
-    return speed * duration
+fn ReconstructDistance(speed: Speed, elapsed: Duration) Distance {
+    return speed * elapsed
 }
 
-fn ReconstructDistanceReverse(duration: Duration, speed: Speed) Distance {
+fn ReconstructDistanceReverse(elapsed: Duration, speed: Speed) Distance {
     // Dimension matching must not depend on operand order.
-    return duration * speed
+    return elapsed * speed
 }
 
 fn ReconstructDuration(distance: Distance, speed: Speed) Duration {
@@ -207,24 +207,24 @@ fn RecoverLength(area: Area, width: Distance) Distance {
     return area / width
 }
 
-fn CalculateAcceleration(speed: Speed, duration: Duration) Acceleration {
-    return speed / duration
+fn CalculateAcceleration(speed: Speed, elapsed: Duration) Acceleration {
+    return speed / elapsed
 }
 
 fn CalculateAccelerationFromDistance(
     distance: Distance,
-    duration: Duration,
+    elapsed: Duration,
 ) Acceleration {
     // Repeated division produces m/s/s without exponent syntax.
-    return distance / duration / duration
+    return distance / elapsed / elapsed
 }
 
 fn CalculateAccelerationGrouped(
     distance: Distance,
-    duration: Duration,
+    elapsed: Duration,
 ) Acceleration {
     // Grouping must normalize to the same dimension as repeated division.
-    return distance / (duration * duration)
+    return distance / (elapsed * elapsed)
 }
 
 // =============================================================================
@@ -243,21 +243,21 @@ fn CalculateMomentumReverse(mass: Mass, speed: Speed) Momentum {
 fn CalculateForceSequential(
     mass: Mass,
     distance: Distance,
-    duration: Duration,
+    elapsed: Duration,
 ) Force {
-    return mass * distance / duration / duration
+    return mass * distance / elapsed / elapsed
 }
 
 fn CalculateForceGrouped(
     mass: Mass,
     distance: Distance,
-    duration: Duration,
+    elapsed: Duration,
 ) Force {
-    return (mass * distance) / (duration * duration)
+    return (mass * distance) / (elapsed * elapsed)
 }
 
-fn ForceToMomentum(force: Force, duration: Duration) Momentum {
-    return force * duration
+fn ForceToMomentum(force: Force, elapsed: Duration) Momentum {
+    return force * elapsed
 }
 
 fn MomentumToSpeed(momentum: Momentum, mass: Mass) Speed {
@@ -283,9 +283,9 @@ fn MoneyRatio(first: Money, second: Money) decimal {
 fn CompleteTripRatio(
     distance: Distance,
     speed: Speed,
-    duration: Duration,
+    elapsed: Duration,
 ) decimal {
-    return distance / (speed * duration)
+    return distance / (speed * elapsed)
 }
 
 fn AliasDimensionRatio(
@@ -300,12 +300,12 @@ fn AliasDimensionRatio(
 // Inverse dimensions and frequency
 // =============================================================================
 
-fn FrequencyFromDuration(duration: Duration) Frequency {
-    return 1 / duration
+fn FrequencyFromDuration(elapsed: Duration) Frequency {
+    return 1 / elapsed
 }
 
-fn FrequencyCycleRatio(frequency: Frequency, duration: Duration) decimal {
-    return frequency * duration
+fn FrequencyCycleRatio(frequency: Frequency, elapsed: Duration) decimal {
+    return frequency * elapsed
 }
 
 fn InverseDistanceRoundTrip(distance: Distance) decimal {
@@ -328,21 +328,21 @@ fn AnonymousDistancePerMassRoundTrip(
 
 fn AnonymousMassPerDurationRoundTrip(
     mass: Mass,
-    duration: Duration,
+    elapsed: Duration,
 ) Mass {
     // No named decimal<kg/s> type is declared.
-    let massRate := mass / duration
-    return massRate * duration
+    let massRate := mass / elapsed
+    return massRate * elapsed
 }
 
 fn AnonymousCompositeCancellation(
     distance: Distance,
     mass: Mass,
-    duration: Duration,
+    elapsed: Duration,
 ) Speed {
     // (m/kg) * (kg/s) normalizes to m/s.
     let distancePerMass := distance / mass
-    let massPerDuration := mass / duration
+    let massPerDuration := mass / elapsed
     return distancePerMass * massPerDuration
 }
 
@@ -364,16 +364,16 @@ fn CalculateUnitPrice(total: Money, count: ItemAmount) UnitPrice {
 
 fn CalculatePacketRate(
     packets: PacketAmount,
-    duration: Duration,
+    elapsed: Duration,
 ) PacketRate {
-    return packets / duration
+    return packets / elapsed
 }
 
 fn RecoverPacketAmount(
     rate: PacketRate,
-    duration: Duration,
+    elapsed: Duration,
 ) PacketAmount {
-    return rate * duration
+    return rate * elapsed
 }
 
 fn CalculateItemsPerBatch(
@@ -392,10 +392,10 @@ fn RecoverItemAmount(
 
 fn CalculateRequestRate(
     requests: RequestAmount,
-    duration: Duration,
+    elapsed: Duration,
 ) RequestRate {
     // The request dimension is not a built-in physical alias.
-    return requests / duration
+    return requests / elapsed
 }
 
 // =============================================================================

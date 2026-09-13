@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lambdas and Closures - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#lambdas-closures">Lambdas and Closures</a>
+        <a href="#lambda-vs-closure">Lambda vs Closure</a>
+        <a href="#syntax">Lambda Syntax</a>
+        <a href="#expression-body">Expression Bodies</a>
+        <a href="#parameters">Parameters</a>
+        <a href="#return-types">Return Types</a>
+        <a href="#function-types">Function Types</a>
+        <a href="#callable-capability">Callable Capability</a>
+        <a href="#storing-calling">Storing and Calling</a>
+        <a href="#named-function-values">Named Function Values</a>
+        <a href="#overloads">Overload Resolution</a>
+        <a href="#passing">Passing Lambdas</a>
+        <a href="#returning">Returning Lambdas</a>
+        <a href="#capture">Explicit Capture</a>
+        <a href="#no-implicit-capture">No Implicit Capture</a>
+        <a href="#capture-timing">Capture Timing</a>
+        <a href="#value-capture">Value Capture</a>
+        <a href="#ownership">Capture Ownership</a>
+        <a href="#closure-copy">Copy and Move</a>
+        <a href="#environment">Closure Environment</a>
+        <a href="#escape">Escaping Closures</a>
+        <a href="#scope">Scope</a>
+        <a href="#control-flow">Control-Flow Boundary</a>
+        <a href="#errors">Result and try</a>
+        <a href="#defer">Defer</a>
+        <a href="#recursion">Recursion</a>
+        <a href="#option">Optional Callables</a>
+        <a href="#comparison">Equality and Ordering</a>
+        <a href="#generic-code">Generic Code</a>
+        <a href="#ffi">FFI Callbacks</a>
+        <a href="#concurrency">Concurrency Boundary</a>
+        <a href="#allocation">No Hidden Heap</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html" class="active">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Lambdas and Closures</div>
+
+        <h1 id="lambdas-closures">Lambdas and Closures</h1>
+
+        <div class="rule" id="status">
+            <strong>Partial chapter — revision 0.9.</strong>
+            This document is just partly done - there are some open decisions before this page becomes final.
+        </div>
+
+        <p>
+            Sec treats anonymous functions as ordinary statically typed callable values.
+            A lambda uses the same <code>fn</code> vocabulary as a named function, while a
+            closure is a lambda that explicitly carries values from an enclosing local scope.
+        </p>
+
+        <pre><code>let double := fn(value: int) int {
+    return value * 2
+}
+
+let result := double(21)</code></pre>
+
+        <p>
+            Lambdas may be stored, passed to functions, returned from functions and invoked
+            through function values. Capture is explicit so ownership, lifetime and allocation
+            behavior remain visible to both the programmer and the compiler.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> A lambda is an anonymous <code>fn</code>. A closure is a
+            lambda with an explicit captured environment. Neither form introduces a separate
+            dynamic function system.
+        </div>
+
+        <section id="lambda-vs-closure">
+            <h2>Lambda vs Closure</h2>
+
+            <p>A non-capturing lambda depends only on its parameters and non-local module-visible symbols:</p>
+
+            <pre><code>let positive := fn(value: int) bool {
+    return value &gt; 0
+}</code></pre>
+
+            <p>
+                No local environment is required for this callable beyond its code identity.
+            </p>
+
+            <p>A closure explicitly captures one or more enclosing local bindings:</p>
+
+            <pre><code>fn MakeOffset(offset: int) fn(int) int {
+    return capture(offset) fn(value: int) int {
+        return value + offset
+    }
+}</code></pre>
+
+            <p>
+                The returned callable has the same source-level parameter and return signature as
+                any other <code>fn(int) int</code>, but it also carries an environment containing
+                the captured <code>offset</code> value.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Form</th><th>Local environment</th><th>Example</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Lambda</td><td>None</td><td><code>fn(x: int) int { return x + 1 }</code></td></tr>
+                        <tr><td>Closure</td><td>Explicit captures</td><td><code>capture(n) fn(x: int) int { return x + n }</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="syntax">
+            <h2>Lambda Syntax</h2>
+
+            <p>A block-bodied lambda omits the function name:</p>
+
+            <pre><code>fn(parameter: Type) ReturnType {
+    statements
+}</code></pre>
+
+            <p>For comparison, a named function is:</p>
+
+            <pre><code>fn Add(left: int, right: int) int {
+    return left + right
+}</code></pre>
+
+            <p>The corresponding anonymous callable is:</p>
+
+            <pre><code>fn(left: int, right: int) int {
+    return left + right
+}</code></pre>
+
+            <p>
+                Parameter syntax, ownership modes, return checking, <code>Result</code> behavior
+                and ordinary expression rules are shared with named functions.
+            </p>
+
+            <h3>No separate arrow-only language</h3>
+
+            <p>
+                Sec does not use an unrelated shorthand such as <code>x =&gt; x + 1</code> where
+                the function type and parameter declaration disappear. The callable remains an
+                <code>fn</code> expression.
+            </p>
+        </section>
+
+        <section id="expression-body">
+            <h2>Expression Bodies</h2>
+
+            <p>
+                A lambda whose complete body is one expression may use the concise expression-body form:
+            </p>
+
+            <pre><code>let double := fn(value: int) int =&gt; value * 2
+let isEven := fn(value: int) bool =&gt; value % 2 == 0</code></pre>
+
+            <p>The expression is the lambda's returned value.</p>
+
+            <p>It is equivalent in meaning to:</p>
+
+            <pre><code>let double := fn(value: int) int {
+    return value * 2
+}</code></pre>
+
+            <p>
+                The return type remains explicit. The shorthand changes only the body shape;
+                it does not introduce implicit parameter types or a separate callable type.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Parameters</h2>
+
+            <p>Lambda parameters use ordinary function parameter syntax:</p>
+
+            <pre><code>let compare := fn(left: int, right: int) bool {
+    return left &lt; right
+}</code></pre>
+
+            <p>A trailing comma is allowed in multiline parameter lists:</p>
+
+            <pre><code>let compare := fn(
+    left: int,
+    right: int,
+) bool {
+    return left &lt; right
+}</code></pre>
+
+            <p>
+                Parameter types are explicit. Borrowing and consuming parameter modes use the
+                normal function rules:
+            </p>
+
+            <pre><code>let inspect := fn(value: ref Buffer) uint {
+    return value.Length
+}
+
+let update := fn(value: ref mut Counter) void {
+    value.Increment()
+}
+
+let consume := fn(-&gt; value: Resource) void {
+    Use(value)
+}</code></pre>
+
+            <p>
+                A lambda parameter is local to that lambda body. Duplicate parameter names are invalid.
+            </p>
+
+            <pre><code>let invalid := fn(value: int, value: int) int {
+    return value
+}</code></pre>
+        </section>
+
+        <section id="return-types">
+            <h2>Return Types</h2>
+
+            <p>The return type is written explicitly after the parameter list:</p>
+
+            <pre><code>let identity := fn(value: int) int {
+    return value
+}
+
+let notify := fn(message: string) void {
+    fmt.Println(message)
+}</code></pre>
+
+            <p>
+                Normal function return analysis applies. Every continuing path in a non-<code>void</code>
+                lambda must produce the declared result type.
+            </p>
+
+            <pre><code>let invalid := fn() int {
+    // invalid: no return on this path
+}</code></pre>
+
+            <p>A <code>void</code> lambda may use a bare <code>return</code>:</p>
+
+            <pre><code>let stop := fn() void {
+    return
+}</code></pre>
+        </section>
+
+        <section id="function-types">
+            <h2>Function Types</h2>
+
+            <p>A callable value has a statically known function type.</p>
+
+            <pre><code>fn(int) int
+fn(int, int) bool
+fn(string) void
+fn() bool</code></pre>
+
+            <p>
+                Parameter names are not part of the function type. Parameter types, ownership
+                modes, callable capability, variadic shape, return type and other verified callable
+                properties are part of compatibility.
+            </p>
+
+            <pre><code>let predicate: fn(int) bool := fn(value: int) bool {
+    return value &gt; 0
+}</code></pre>
+
+            <p>
+                A lambda whose signature does not match the target callable type cannot be assigned.
+            </p>
+
+            <pre><code>let predicate: fn(int) bool := fn(value: string) bool {
+    return value.IsEmpty
+}</code></pre>
+
+            <p>This is a type error.</p>
+        </section>
+
+        <section id="callable-capability">
+            <h2>Callable Environment Capability</h2>
+
+            <p>
+                A callable type also describes what authority invocation requires over the callable
+                value or closure environment.
+            </p>
+
+            <pre><code>fn(int) int
+mut fn() int
+-&gt; fn() Resource</code></pre>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Callable type</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>fn</code></td><td>Reusable callable requiring only shared access to its environment</td></tr>
+                        <tr><td><code>mut fn</code></td><td>Invocation requires mutable / exclusive environment authority</td></tr>
+                        <tr><td><code>-&gt; fn</code></td><td>Invocation consumes the callable value</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>Callable capability is independent of parameter ownership:</p>
+
+            <pre><code>fn(-&gt; Resource) void</code></pre>
+
+            <p>
+                describes a reusable callable that consumes its argument, whereas:
+            </p>
+
+            <pre><code>-&gt; fn() Resource</code></pre>
+
+            <p>
+                describes a callable that is itself consumed when invoked.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Do not infer ownership loss from a parameter list alone.
+                Parameter consumption and callable-environment consumption are separate properties.
+            </div>
+        </section>
+
+        <section id="storing-calling">
+            <h2>Storing and Calling Function Values</h2>
+
+            <p>A lambda expression may initialize a local binding:</p>
+
+            <pre><code>let operation := fn(a: int, b: int) int {
+    return a + b
+}
+
+let result := operation(10, 20)</code></pre>
+
+            <p>The variable's type is inferred from the complete lambda signature.</p>
+
+            <p>A function value may also have an explicit type:</p>
+
+            <pre><code>let operation: fn(int, int) int := fn(a: int, b: int) int {
+    return a + b
+}</code></pre>
+
+            <p>Any expression producing a compatible callable may be invoked:</p>
+
+            <pre><code>operation(1, 2)
+callbacks[index](value)
+GetHandler()(event)</code></pre>
+
+            <p>
+                Argument count, type, borrow mode, consuming mode and return behavior are checked
+                exactly as for a named function call.
+            </p>
+        </section>
+
+        <section id="named-function-values">
+            <h2>Named Function Values</h2>
+
+            <p>A resolved named function may be used as a callable value:</p>
+
+            <pre><code>fn IsPositive(value: int) bool {
+    return value &gt; 0
+}
+
+let predicate: fn(int) bool := IsPositive</code></pre>
+
+            <p>
+                The function itself is not copied into the variable. The variable receives a
+                callable value referring to the resolved function according to the implementation's
+                callable representation.
+            </p>
+        </section>
+
+        <section id="overloads">
+            <h2>Overload Resolution</h2>
+
+            <p>
+                An overloaded function name must resolve to one concrete callable before it can be
+                used as a function value.
+            </p>
+
+            <pre><code>fn Convert(value: int) string {
+    ...
+}
+
+fn Convert(value: string) int {
+    ...
+}
+
+let converter: fn(int) string := Convert</code></pre>
+
+            <p>The target function type provides enough context to select the first overload.</p>
+
+            <p>Without sufficient context, the function value is ambiguous:</p>
+
+            <pre><code>let converter := Convert    // invalid: overload is unresolved</code></pre>
+
+            <p>
+                A lambda itself is never an overload set. Each lambda expression has exactly one
+                concrete callable signature.
+            </p>
+        </section>
+
+        <section id="passing">
+            <h2>Passing Lambdas</h2>
+
+            <p>Functions may accept function values as ordinary typed parameters:</p>
+
+            <pre><code>fn Apply(value: int, operation: fn(int) int) int {
+    return operation(value)
+}</code></pre>
+
+            <p>A lambda may be supplied directly:</p>
+
+            <pre><code>let result := Apply(
+    10,
+    fn(value: int) int =&gt; value * 2,
+)</code></pre>
+
+            <p>
+                The lambda's full callable type participates in overload resolution. Return type
+                alone still does not distinguish otherwise identical overload declarations.
+            </p>
+        </section>
+
+        <section id="returning">
+            <h2>Returning Lambdas</h2>
+
+            <p>A function may return a callable value:</p>
+
+            <pre><code>fn SelectOperation(add: bool) fn(int, int) int {
+    if add {
+        return fn(a: int, b: int) int =&gt; a + b
+    }
+
+    return fn(a: int, b: int) int =&gt; a - b
+}</code></pre>
+
+            <p>
+                Every returned callable must be compatible with the declared function return type.
+            </p>
+
+            <p>A captured closure may also be returned when its captured environment has valid ownership:</p>
+
+            <pre><code>fn MakeMultiplier(factor: int) fn(int) int {
+    return capture(factor) fn(value: int) int =&gt; value * factor
+}</code></pre>
+        </section>
+
+        <section id="capture">
+            <h2>Explicit Capture</h2>
+
+            <p>
+                Enclosing local bindings are captured explicitly with <code>capture(...)</code>
+                immediately before <code>fn</code>.
+            </p>
+
+            <pre><code>let factor: int := 2
+
+let multiply := capture(factor) fn(value: int) int {
+    return value * factor
+}</code></pre>
+
+            <p>Multiple names are comma-separated:</p>
+
+            <pre><code>let inRange := capture(minimum, maximum) fn(value: int) bool {
+    return value &gt;= minimum &amp;&amp; value &lt;= maximum
+}</code></pre>
+
+            <p>A trailing comma is allowed:</p>
+
+            <pre><code>let inRange := capture(
+    minimum,
+    maximum,
+) fn(value: int) bool =&gt; value &gt;= minimum &amp;&amp; value &lt;= maximum</code></pre>
+
+            <p>
+                Capture entries name visible enclosing local bindings. Arbitrary expressions are
+                not written directly in the capture list; compute the value first and capture its name.
+            </p>
+
+            <pre><code>let offset := base + 1
+let apply := capture(offset) fn(value: int) int =&gt; value + offset</code></pre>
+        </section>
+
+        <section id="no-implicit-capture">
+            <h2>No Implicit Capture</h2>
+
+            <p>A lambda may not silently reach into an enclosing local scope.</p>
+
+            <pre><code>fn MakeMultiplier(factor: int) fn(int) int {
+    return fn(value: int) int {
+        return value * factor    // invalid
+    }
+}</code></pre>
+
+            <p>The capture must be visible:</p>
+
+            <pre><code>fn MakeMultiplier(factor: int) fn(int) int {
+    return capture(factor) fn(value: int) int {
+        return value * factor
+    }
+}</code></pre>
+
+            <p>
+                Module-level functions, constants, imported symbols and visible type declarations do
+                not require capture. They are resolved normally rather than stored as local closure state.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Local state is never captured merely because a lambda refers to it.
+                The capture list is the source-level ownership boundary.
+            </div>
+        </section>
+
+        <section id="capture-timing">
+            <h2>Capture Timing</h2>
+
+            <p>A capture is evaluated when execution reaches the lambda expression.</p>
+
+            <pre><code>let mut value: int := 1
+
+let first := capture(value) fn() int =&gt; value
+
+value = 2
+
+let second := capture(value) fn() int =&gt; value</code></pre>
+
+            <p>Here:</p>
+
+            <ul>
+                <li><code>first()</code> returns <code>1</code>;</li>
+                <li><code>second()</code> returns <code>2</code>.</li>
+            </ul>
+
+            <p>
+                Capture expressions are evaluated in capture-list order and exactly once for each
+                closure creation.
+            </p>
+
+            <p>A closure created inside a loop is therefore created independently for each iteration:</p>
+
+            <pre><code>for value in values {
+    let current := capture(value) fn() int =&gt; value
+    Use(current)
+}</code></pre>
+        </section>
+
+        <section id="value-capture">
+            <h2>Value Capture</h2>
+
+            <p>
+                A plain capture entry captures the value of the named binding at closure creation.
+            </p>
+
+            <pre><code>let mut factor: int := 2
+let multiply := capture(factor) fn(value: int) int =&gt; value * factor
+
+factor = 4
+
+let result := multiply(10)    // 20</code></pre>
+
+            <p>
+                The captured binding is part of the closure environment. Later reassignment of the
+                outer binding does not rewrite that captured value.
+            </p>
+
+            <p>
+                A plain value capture is not an aliasing shortcut to the outer variable. Any form that
+                requires shared or mutable borrowing must obey the ordinary borrowing and lifetime rules
+                and must be represented explicitly by the applicable capture model.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Capture Ownership</h2>
+
+            <p>
+                Capture follows the captured value's copy and move classification. The compiler does
+                not silently clone a resource merely because it appears in a capture list.
+            </p>
+
+            <p>For a copyable value, capture may copy the value into the environment:</p>
+
+            <pre><code>let factor: int := 2
+let multiply := capture(factor) fn(value: int) int =&gt; value * factor
+
+Use(factor)    // factor remains available</code></pre>
+
+            <p>
+                For a move-only value, capture transfers ownership into the closure environment when
+                the capture is consuming according to the resolved ownership rules. The original source
+                then becomes unavailable.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+
+let closeLater := capture(resource) fn() void {
+    Close(resource)
+}
+
+Use(resource)    // invalid if ownership moved into closeLater</code></pre>
+
+            <p>
+                The compiler reports use-after-move at the later use and points back to the capture that
+                transferred ownership.
+            </p>
+        </section>
+
+        <section id="closure-copy">
+            <h2>Closure Copy and Move</h2>
+
+            <p>A closure's own copy classification is derived from its environment.</p>
+
+            <ul>
+                <li>A closure containing only safely copyable captured state may be copyable.</li>
+                <li>A closure containing move-only captured state is move-only.</li>
+                <li>A closure requiring exclusive mutable environment authority cannot be freely duplicated.</li>
+                <li>Copying a closure must never silently duplicate an external resource.</li>
+            </ul>
+
+            <p>
+                Moving a closure transfers its environment ownership exactly like moving any other
+                move-only value.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A closure does not become copyable merely because its runtime
+                representation could be copied bit-for-bit.
+            </div>
+        </section>
+
+        <section id="environment">
+            <h2>Closure Environment</h2>
+
+            <p>
+                A capturing closure conceptually consists of callable code plus an environment carrying
+                its captures.
+            </p>
+
+            <pre><code>capture(factor) fn(value: int) int {
+    return value * factor
+}</code></pre>
+
+            <p>may be lowered conceptually as:</p>
+
+            <pre><code>code(environment, value) -&gt; int</code></pre>
+
+            <p>
+                The hidden environment argument is an implementation detail. It does not appear in:
+            </p>
+
+            <ul>
+                <li>the source parameter list;</li>
+                <li>ordinary call syntax;</li>
+                <li>the visible argument count;</li>
+                <li>overload resolution as an extra source parameter.</li>
+            </ul>
+
+            <p>
+                The environment still matters semantically through ownership, lifetime, callable capability,
+                destruction and transferability.
+            </p>
+        </section>
+
+        <section id="escape">
+            <h2>Escaping Closures</h2>
+
+            <p>
+                A closure escapes when it may outlive the lexical scope in which it was created. Returning
+                a closure is the simplest example:
+            </p>
+
+            <pre><code>fn MakeOffset(offset: int) fn(int) int {
+    return capture(offset) fn(value: int) int =&gt; value + offset
+}</code></pre>
+
+            <p>
+                Because the closure owns its captured <code>offset</code>, the captured value remains valid
+                after <code>MakeOffset</code> returns.
+            </p>
+
+            <p>
+                Escaping borrowed captures are valid only when the borrow can outlive every possible use of
+                the closure. Sec does not extend the owner lifetime merely to make a closure compile.
+            </p>
+
+            <p>
+                Escape analysis determines whether the environment can remain in local storage or needs an
+                owned representation with a longer lifetime. This analysis must preserve the no-hidden-heap rule.
+            </p>
+        </section>
+
+        <section id="scope">
+            <h2>Scope</h2>
+
+            <p>A lambda body creates its own function scope.</p>
+
+            <p>The scope contains:</p>
+
+            <ul>
+                <li>its parameters;</li>
+                <li>its explicit captures;</li>
+                <li>its local declarations;</li>
+                <li>ordinary nested block scopes.</li>
+            </ul>
+
+            <p>It may also resolve visible module and imported declarations normally.</p>
+
+            <p>Normal no-shadowing and duplicate-declaration rules apply inside the lambda.</p>
+        </section>
+
+        <section id="control-flow">
+            <h2>Lambda as a Control-Flow Boundary</h2>
+
+            <p>
+                A lambda is a function boundary. Control-flow statements inside it belong to the lambda,
+                not to the function or loop that created the lambda.
+            </p>
+
+            <h3>return</h3>
+
+            <pre><code>fn Test() int {
+    let operation := fn(value: int) int {
+        return value * 2
+    }
+
+    return operation(10)
+}</code></pre>
+
+            <p>The inner <code>return</code> exits <code>operation</code>.</p>
+
+            <h3>break and continue</h3>
+
+            <p>A lambda cannot use <code>break</code> or <code>continue</code> to target an outer loop:</p>
+
+            <pre><code>for item in items {
+    let operation := fn() void {
+        break    // invalid
+    }
+}</code></pre>
+
+            <p>
+                A loop created inside the lambda establishes its own valid <code>break</code> and
+                <code>continue</code> targets.
+            </p>
+        </section>
+
+        <section id="errors">
+            <h2>Result and <code>try</code></h2>
+
+            <p>Lambdas use the ordinary typed error model.</p>
+
+            <pre><code>let load := fn(path: string) Result[Data, IOError] {
+    let data := try Read(path)
+    return Ok(data)
+}</code></pre>
+
+            <p>
+                Error propagation stops at the lambda boundary. A <code>try</code> inside the lambda
+                must be compatible with the lambda's own declared return type.
+            </p>
+
+            <pre><code>let load := fn(path: string) Data {
+    return try Read(path)    // invalid when Read returns Result[Data, IOError]
+}</code></pre>
+
+            <p>
+                The enclosing function's return type does not provide an error propagation route through
+                the lambda boundary.
+            </p>
+        </section>
+
+        <section id="defer">
+            <h2>Defer inside Lambdas</h2>
+
+            <p>
+                A lambda has its own function cleanup boundary. A <code>defer</code> registered inside a
+                lambda executes when that lambda invocation exits, not when the enclosing function exits.
+            </p>
+
+            <pre><code>let operation := fn() void {
+    defer {
+        Log("lambda complete")
+    }
+
+    Work()
+}</code></pre>
+
+            <p>
+                Captured values used by deferred code remain subject to the same ownership and lifetime
+                checks as every other closure use.
+            </p>
+        </section>
+
+        <section id="recursion">
+            <h2>Recursion</h2>
+
+            <p>
+                An unnamed lambda does not automatically gain a self-name. The variable being initialized
+                is not available as a recursively callable binding inside its own initializer.
+            </p>
+
+            <pre><code>let factorial := fn(value: int) int {
+    return value * factorial(value - 1)    // invalid direct self-reference
+}</code></pre>
+
+            <p>Use a named function when direct recursion is required:</p>
+
+            <pre><code>fn Factorial(value: int) int {
+    if value &lt;= 1 {
+        return 1
+    }
+
+    return value * Factorial(value - 1)
+}</code></pre>
+        </section>
+
+        <section id="option">
+            <h2>Optional Callables</h2>
+
+            <p>A function value is either a valid callable value or no value exists at all.</p>
+
+            <p>Sec does not use a null function value. Optionality is explicit:</p>
+
+            <pre><code>let handler: Option[fn(Event) void]</code></pre>
+
+            <p>
+                Code must then handle <code>Some</code> and <code>None</code> through the ordinary
+                <code>Option</code> rules.
+            </p>
+        </section>
+
+        <section id="comparison">
+            <h2>Equality and Ordering</h2>
+
+            <p>Function values and closures do not have general semantic equality.</p>
+
+            <pre><code>if first == second {    // invalid
+}</code></pre>
+
+            <p>
+                Code identity, environment identity and captured values do not define one useful
+                language-wide equality relation for arbitrary callables.
+            </p>
+
+            <p>Ordering comparisons are likewise invalid:</p>
+
+            <pre><code>first &lt; second     // invalid
+first &gt;= second    // invalid</code></pre>
+        </section>
+
+        <section id="generic-code">
+            <h2>Lambdas and Generic Code</h2>
+
+            <p>
+                Generic functions may accept concrete function values like any other typed parameter.
+            </p>
+
+            <pre><code>fn Transform[T, U](value: T, mapper: fn(T) U) U {
+    return mapper(value)
+}</code></pre>
+
+            <p>A call may provide a concrete lambda:</p>
+
+            <pre><code>let text := Transform(42, fn(value: int) string {
+    return value.ToString()
+})</code></pre>
+
+            <p>
+                The lambda expression itself has one concrete callable signature. Generic behavior that
+                introduces its own type parameters belongs in a named generic function declaration.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI Callbacks</h2>
+
+            <p>
+                A Sec closure is not automatically a C-compatible function pointer. A capturing closure
+                may require both code and environment state, while a foreign ABI may accept only one raw
+                code address.
+            </p>
+
+            <p>
+                Passing a Sec callable through FFI therefore requires the explicit callback and trampoline
+                rules defined by the FFI boundary. The compiler must not silently discard the environment
+                or invent a foreign lifetime contract.
+            </p>
+        </section>
+
+        <section id="concurrency">
+            <h2>Closures and Concurrency</h2>
+
+            <p>
+                A closure transferred to another task, thread or process carries the ownership and
+                transferability requirements of its environment.
+            </p>
+
+            <p>
+                Capturing a value does not automatically make that value safe to transfer across a
+                concurrency boundary. The later concurrency chapters define the required transferability,
+                data-race and lifetime checks.
+            </p>
+
+            <p>
+                This keeps closure syntax independent from concurrency policy: the closure records what
+                it owns or borrows; the concurrency operation validates whether that state may cross its boundary.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>No Hidden Heap Allocation</h2>
+
+            <p>
+                Closure creation does not grant the compiler permission to silently introduce a heap
+                allocation merely because an environment exists.
+            </p>
+
+            <ul>
+                <li>Non-capturing lambdas need no capture environment.</li>
+                <li>Non-escaping environments should remain in local storage when possible.</li>
+                <li>Constant environments may be represented statically when semantics permit.</li>
+                <li>Optimization may eliminate an environment entirely.</li>
+                <li>An escaping environment requires a valid owned storage strategy.</li>
+            </ul>
+
+            <p>
+                If the required lifetime cannot be represented under the active allocation rules, the
+                program is rejected rather than silently changing its allocation model.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Closure lifetime may affect representation, but representation
+                must not invent hidden heap ownership.
+            </div>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Useful lambda and closure diagnostics identify the source-level cause.</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Problem</th><th>Diagnostic focus</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Implicit local capture</td><td>Name the outer binding and require explicit capture</td></tr>
+                        <tr><td>Duplicate capture</td><td>Name the duplicate captured binding</td></tr>
+                        <tr><td>Wrong callable type</td><td>Show source and required function types</td></tr>
+                        <tr><td>Use after captured move</td><td>Point to both the invalid use and the ownership-transferring capture</td></tr>
+                        <tr><td>Invalid borrowed escape</td><td>Identify the owner lifetime and escaping closure path</td></tr>
+                        <tr><td>Wrong call capability</td><td>Explain whether shared, mutable or consuming callable authority is required</td></tr>
+                        <tr><td>Outer break / continue</td><td>Explain that a lambda is a function boundary</td></tr>
+                        <tr><td>Invalid try propagation</td><td>Show the lambda's own return type</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Diagnostics should describe ownership and capability in source-language terms. Backend
+                details such as environment pointer layout are not useful as primary user diagnostics.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use a lambda when the behavior is small, local and has one concrete callable signature.</li>
+                <li>Use the expression-body form for genuinely simple one-expression lambdas.</li>
+                <li>Use a named function when the behavior needs direct recursion or deserves a stable name.</li>
+                <li>Keep capture lists small and intentional.</li>
+                <li>Do not capture a large value merely to avoid passing an explicit parameter.</li>
+                <li>Prefer value capture when the closure should own a stable snapshot.</li>
+                <li>Respect copy and move behavior; capture is not a cloning mechanism.</li>
+                <li>Use <code>Option[fn(...)]</code> when a callable may be absent.</li>
+                <li>Do not rely on closure identity or equality.</li>
+                <li>Keep foreign callback adaptation at an explicit FFI boundary.</li>
+                <li>Keep long-lived closures easy to reason about by minimizing borrowed environment state.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A lambda is an anonymous <code>fn</code>.</li>
+                <li>A closure is a lambda with explicit captured local state.</li>
+                <li>Block bodies use <code>fn(...) ReturnType { ... }</code>.</li>
+                <li>Single-expression bodies may use <code>fn(...) ReturnType =&gt; expression</code>.</li>
+                <li>Parameter and return rules are the ordinary function rules.</li>
+                <li>Function values are statically typed.</li>
+                <li><code>fn</code>, <code>mut fn</code> and <code>-&gt; fn</code> distinguish callable-environment capability.</li>
+                <li>Named functions may become function values after overload resolution.</li>
+                <li>Local capture is explicit through <code>capture(...)</code>.</li>
+                <li>Local variables are never captured implicitly.</li>
+                <li>Capture occurs when the lambda expression is evaluated.</li>
+                <li>Capture follows ordinary copy, move, borrow and lifetime semantics.</li>
+                <li>A closure's copyability depends on its captured environment.</li>
+                <li>A lambda is a boundary for <code>return</code>, loop control and error propagation.</li>
+                <li>Callable values are never null; use <code>Option</code> for absence.</li>
+                <li>Function values have no general equality or ordering.</li>
+                <li>Closure creation does not authorize hidden heap allocation.</li>
+                <li>FFI and concurrency boundaries validate their own additional callable requirements.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="46-shaped-types.html">Previous: Shaped Types</a>
+            <a href="48-effects.html">Next: Effects and Verified Guarantees</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

@@ -43,6 +43,8 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 			return value{typ: "i1", ref: "true"}, nil
 		}
 		return value{typ: "i1", ref: "false"}, nil
+	case *ast.CharLiteral:
+		return emitCharacterLiteral(expr)
 	case *ast.StringLiteral:
 		return g.emitStringLiteral(expr)
 	case *ast.InterpolatedStringLiteral:
@@ -84,6 +86,25 @@ func (g *Generator) emitExpression(expr ast.Expression) (value, error) {
 	default:
 		return value{}, fmt.Errorf("emit-llvm does not support expression %T yet", expr)
 	}
+}
+
+// emitCharacterLiteral lowers the parser-decoded Unicode scalar through the
+// legacy LLVM path. Contextual coercion widens ASCII character literals when a
+// rune is required by a return, argument, or conversion target.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
+//   - rules/types/types.md — "char", "rune", and "Context shaping"
+func emitCharacterLiteral(expr *ast.CharLiteral) (value, error) {
+	runes := []rune(expr.Value)
+	if len(runes) != 1 {
+		return value{}, fmt.Errorf("emit-llvm requires one decoded character scalar for %q", expr.Token.Lexeme)
+	}
+	typ := "i8"
+	if runes[0] > 0xFF {
+		typ = "i32"
+	}
+	return value{typ: typ, ref: strconv.FormatInt(int64(runes[0]), 10), unsigned: true}, nil
 }
 
 func (g *Generator) emitTryExpression(expr *ast.TryExpression) (value, error) {

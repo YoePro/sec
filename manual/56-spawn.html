@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Spawn - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#spawn">Spawn</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#default-task">Default Task Spawn</a>
+        <a href="#execution-kinds">Execution Kinds</a>
+        <a href="#contextual-modifiers">Contextual Modifiers</a>
+        <a href="#callable">Callable Operand</a>
+        <a href="#result-type">Result Types</a>
+        <a href="#return-type">Complete Callable Return Type</a>
+        <a href="#creation-failure">Creation Failure</a>
+        <a href="#eager">Eager Creation</a>
+        <a href="#synchronous">Synchronous Calls Stay Synchronous</a>
+        <a href="#argument-evaluation">Argument Evaluation</a>
+        <a href="#ownership-transfer">Ownership Transfer</a>
+        <a href="#borrows">Borrowed Arguments</a>
+        <a href="#mutable-borrows">Mutable Borrows</a>
+        <a href="#escaping">Escaping Spawned Work</a>
+        <a href="#detached">Detached Work</a>
+        <a href="#captures">Captures and Callable Values</a>
+        <a href="#methods">Spawned Methods</a>
+        <a href="#context">Current Execution Context</a>
+        <a href="#parent-child">Parent and Child Tasks</a>
+        <a href="#handle-ownership">Handle Ownership</a>
+        <a href="#lifecycle">Lifecycle Resolution</a>
+        <a href="#expressions">Spawn in Expressions</a>
+        <a href="#loops">Spawn in Loops</a>
+        <a href="#recursive">Recursive Spawn</a>
+        <a href="#scheduling">Scheduling Independence</a>
+        <a href="#blocking">Creation Does Not Await Completion</a>
+        <a href="#cancellation">Cancellation Inheritance</a>
+        <a href="#target-support">Target Support</a>
+        <a href="#analysis">Static Analysis</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html" class="active">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Spawn</div>
+
+        <h1 id="spawn">Spawn</h1>
+
+        <p>
+            <code>spawn</code> is Sec's explicit boundary between synchronous execution and newly
+            created concurrent execution. A normal call executes in the current execution entity.
+            Adding <code>spawn</code> requests a new task, thread or process and returns a handle that
+            represents the resulting lifecycle responsibility.
+        </p>
+
+        <pre><code>let value := Calculate()          // synchronous call
+let task := try spawn Calculate() // new task</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>spawn</code> never means “run this somehow in the
+            background”. It requests one explicit execution kind, preserves the callable's complete
+            return type, has a fallible creation boundary and produces an owning lifecycle handle.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+            <p>
+                Sec keeps asynchronous creation separate from function declaration. Functions do not
+                become asynchronous because of their names, return types or internal behavior. The
+                same callable may be invoked synchronously in one place and spawned in another.
+            </p>
+            <p>
+                The spawn boundary gives the compiler one precise point at which to validate
+                ownership transfer, retained borrows, captures, lifecycle responsibility, target
+                support and resource limits.
+            </p>
+        </section>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+            <pre><code>spawn expression
+spawn task expression
+spawn thread expression
+spawn process expression</code></pre>
+            <p>Typical source code:</p>
+            <pre><code>let worker := try spawn Work()
+let taskWorker := try spawn task Work()
+let threadWorker := try spawn thread Work()
+let childProcess := try spawn process Program()</code></pre>
+            <p>
+                The initial model requires the operand to resolve to a callable expression. Named
+                functions, methods and callable values may therefore be spawned when their ordinary
+                call semantics are valid.
+            </p>
+        </section>
+
+        <section id="default-task">
+            <h2>Default Task Spawn</h2>
+            <p>
+                Plain <code>spawn</code> creates a task and is exactly equivalent to
+                <code>spawn task</code>.
+            </p>
+            <pre><code>let first := try spawn Work()
+let second := try spawn task Work()</code></pre>
+            <p>
+                If <code>Work()</code> returns <code>T</code>, both successful values have type
+                <code>Task[T]</code>. The raw expressions before <code>try</code> have type
+                <code>Result[Task[T], TaskSpawnError]</code>.
+            </p>
+        </section>
+
+        <section id="execution-kinds">
+            <h2>Execution Kinds</h2>
+            <p>
+                The requested execution kind is part of source semantics. Task, thread and process
+                creation are not interchangeable optimization choices.
+            </p>
+            <pre><code>spawn Work()          // Result[Task[T], TaskSpawnError]
+spawn task Work()     // Result[Task[T], TaskSpawnError]
+spawn thread Work()   // Result[Thread[T], ThreadSpawnError]
+spawn process Work()  // process creation result defined by the process model</code></pre>
+            <p>
+                A backend must not silently lower <code>spawn thread</code> to an ordinary task or
+                <code>spawn process</code> to a thread. Unsupported execution kinds are rejected for
+                the selected target profile.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> Semantic IR records whether the source requested Task, Thread
+                or Process. The backend does not infer execution kind from the called function.
+            </div>
+        </section>
+
+        <section id="contextual-modifiers">
+            <h2>Contextual Modifiers</h2>
+            <p>
+                <code>task</code>, <code>thread</code> and <code>process</code> are contextual spawn
+                modifiers when they occur directly after <code>spawn</code>. They do not need to become
+                general-purpose reserved words merely because the spawn grammar uses them.
+            </p>
+            <pre><code>let thread := "worker"
+let process := "encoder"</code></pre>
+        </section>
+
+        <section id="callable">
+            <h2>Callable Operand</h2>
+            <p>The operand must resolve to a valid callable operation.</p>
+            <pre><code>let first := try spawn Work()
+let second := try spawn Process(value)
+let third := try spawn service.Run()
+let fourth := try spawn callback(value)</code></pre>
+            <p>
+                Ordinary overload resolution, receiver validation, argument typing, ownership rules
+                and effect validation still apply. <code>spawn</code> does not make an otherwise
+                invalid call legal.
+            </p>
+        </section>
+
+        <section id="result-type">
+            <h2>Result Types</h2>
+            <p>
+                Creation is fallible. A successful spawn produces an execution handle; a failed spawn
+                produces the creation error for that execution kind.
+            </p>
+            <pre><code>fn Calculate() int {
+    return 42
+}
+
+let calculation := try spawn Calculate()</code></pre>
+            <p>
+                The raw expression <code>spawn Calculate()</code> has type
+                <code>Result[Task[int], TaskSpawnError]</code>. After successful <code>try</code>,
+                <code>calculation</code> has type <code>Task[int]</code>.
+            </p>
+            <p>
+                For physical threads, <code>spawn thread Work()</code> has raw type
+                <code>Result[Thread[T], ThreadSpawnError]</code>.
+            </p>
+        </section>
+
+        <section id="return-type">
+            <h2>Complete Callable Return Type</h2>
+            <p>
+                <code>spawn</code> preserves the callable's complete declared return type. It does not
+                unwrap <code>Result</code>, flatten nested result types or reinterpret application
+                errors as execution failures.
+            </p>
+            <pre><code>fn Load() Result[Image, IOError] {
+    // ...
+}
+
+let loading := try spawn Load()</code></pre>
+            <p>The successfully created task has type:</p>
+            <pre><code>Task[Result[Image, IOError]]</code></pre>
+            <p>
+                If <code>Load()</code> later returns <code>Err(IOError.NotFound)</code>, that is a normal
+                return from the task function. Creation failure, task execution outcome and the
+                function's own <code>Result</code> remain distinct concepts.
+            </p>
+        </section>
+
+        <section id="creation-failure">
+            <h2>Creation Failure</h2>
+            <p>
+                Creation failure occurs before an execution handle exists. It is therefore distinct
+                from every later terminal state of successfully created work.
+            </p>
+            <pre><code>match spawn Work() {
+    Ok(worker) => {
+        Use(worker)
+    }
+
+    Err(error) => {
+        HandleSpawnError(error)
+    }
+}</code></pre>
+            <p>
+                Resource exhaustion or another creation-time failure does not produce a failed
+                <code>TaskOutcome[T]</code>. No <code>Task[T]</code> exists in that branch.
+            </p>
+        </section>
+
+        <section id="eager">
+            <h2>Eager Creation</h2>
+            <p>
+                Task spawn is eager. After successful creation, the new task is scheduled, running or
+                may already have completed. The implementation may begin executing the callable
+                immediately.
+            </p>
+            <p>
+                Sec does not guarantee that the spawned callable executes before the next source
+                statement. It does guarantee that successful creation has submitted the work to the
+                selected task execution mechanism.
+            </p>
+            <p>
+                Thread-specific configuration may define additional start behavior such as deferred
+                start. Those details belong to the thread chapter rather than to ordinary task spawn.
+            </p>
+        </section>
+
+        <section id="synchronous">
+            <h2>Synchronous Calls Stay Synchronous</h2>
+            <pre><code>let value := CalculateAsync()          // synchronous
+let task := try spawn CalculateAsync() // concurrent task</code></pre>
+            <p>
+                An <code>Async</code> suffix has no language meaning. Sec does not require
+                <code>async fn</code> merely so a function can be spawned. The concurrency boundary is
+                at the call site.
+            </p>
+        </section>
+
+        <section id="argument-evaluation">
+            <h2>Argument Evaluation</h2>
+            <p>
+                Spawn arguments are evaluated in normal Sec evaluation order before ownership is
+                transferred to the newly created execution entity.
+            </p>
+            <pre><code>let worker := try spawn Process(CreateFirst(), CreateSecond())</code></pre>
+            <p>
+                Successfully evaluated argument values are then copied, moved or retained as borrows
+                according to their resolved types and parameter modes. The backend must not reorder
+                observable argument evaluation across the spawn boundary.
+            </p>
+        </section>
+
+        <section id="ownership-transfer">
+            <h2>Ownership Transfer</h2>
+            <p>
+                Owned parameters follow ordinary Sec copy and move rules. Spawning does not invent a
+                hidden clone operation.
+            </p>
+            <pre><code>fn Process(data: Data) void {
+    // task owns data
+}
+
+let data := Data.Create()
+let worker := try spawn Process(&lt;-data)</code></pre>
+            <p>If <code>Data</code> is move-only:</p>
+            <ul>
+                <li>ownership moves into the task;</li>
+                <li>the caller may not use <code>data</code> afterward;</li>
+                <li>the task owns the value until it transfers or destroys it.</li>
+            </ul>
+            <p>
+                Copyable arguments may copy according to normal language rules. Move-only values are
+                never silently duplicated because of spawn.
+            </p>
+        </section>
+
+        <section id="borrows">
+            <h2>Borrowed Arguments</h2>
+            <p>
+                A spawned task may receive a shared borrow only when the compiler can prove that the
+                referenced owner remains valid for the complete time in which the task may use it.
+            </p>
+            <pre><code>fn Inspect(data: ref Data) void {
+    // ...
+}
+
+fn Run() void {
+    let data := Data.Create()
+    let worker := try spawn Inspect(ref data)
+    let outcome := await worker
+    Handle(outcome)
+}</code></pre>
+            <p>
+                The borrow remains active while the task may use it. The owner cannot be destroyed,
+                moved or mutated in a conflicting way until task completion or another proven
+                lifetime boundary.
+            </p>
+        </section>
+
+        <section id="mutable-borrows">
+            <h2>Mutable Borrows</h2>
+            <p>
+                A <code>ref mut</code> argument gives the spawned task exclusive access for the
+                lifetime of the borrow.
+            </p>
+            <pre><code>fn Update(data: ref mut Data) void {
+    // ...
+}
+
+let mut data := Data.Create()
+let worker := try spawn Update(ref mut data)</code></pre>
+            <p>
+                The parent may not access <code>data</code> directly or create another overlapping
+                borrow while the child may still use the mutable reference.
+            </p>
+        </section>
+
+        <section id="escaping">
+            <h2>Escaping Spawned Work</h2>
+            <p>
+                A spawned task that borrows scope-owned data may not outlive that data. Returning,
+                storing or otherwise transferring the task handle can therefore be invalid even when
+                moving the handle itself would normally be allowed.
+            </p>
+            <pre><code>fn Invalid() Task[void] {
+    let data := Data.Create()
+    let worker := try spawn Inspect(ref data)
+    return worker
+}</code></pre>
+            <pre><code>task worker cannot escape while borrowing local value data</code></pre>
+        </section>
+
+        <section id="detached">
+            <h2>Detached Work</h2>
+            <p>
+                Detached work cannot retain references whose owners may disappear while that work
+                continues. The normal detached pattern is therefore to transfer ownership of the
+                needed data into the execution entity.
+            </p>
+            <pre><code>fn Valid() void {
+    let data := Data.Create()
+    let worker := try spawn Process(&lt;-data)
+    detach worker
+}</code></pre>
+            <p>
+                Static or program-owned references still require valid concurrency-safe access.
+                Static lifetime alone does not make shared mutation race-free.
+            </p>
+        </section>
+
+        <section id="captures">
+            <h2>Captures and Callable Values</h2>
+            <p>
+                A spawned lambda or callable value follows the normal capture rules. Captured values
+                are copied or moved according to their types. Captured references must remain valid
+                for the complete spawned lifetime.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> <code>MutexGuard[T]</code> must not be captured, moved or
+                borrowed into another task. Mutex guards are task-bound.
+            </div>
+        </section>
+
+        <section id="methods">
+            <h2>Spawned Methods</h2>
+            <pre><code>let worker := try spawn service.Run()</code></pre>
+            <p>Receiver handling follows the method signature:</p>
+            <ul>
+                <li>a value receiver is copied or moved;</li>
+                <li>a shared receiver creates or propagates a shared borrow;</li>
+                <li>a mutable receiver creates or propagates an exclusive mutable borrow.</li>
+            </ul>
+            <p>
+                The receiver must remain valid for the complete task use when its access is borrowed.
+            </p>
+        </section>
+
+        <section id="context">
+            <h2>Current Execution Context</h2>
+            <p>
+                A newly spawned task executes with a new logical task context. Ordinary calls made by
+                that task continue in the same task context until another explicit spawn boundary is
+                crossed.
+            </p>
+            <p>
+                <code>spawn thread</code> creates a distinct physical thread context.
+                <code>spawn process</code> creates a separate process isolation domain. These are
+                different execution identities and handle types.
+            </p>
+        </section>
+
+        <section id="parent-child">
+            <h2>Parent and Child Tasks</h2>
+            <p>
+                When a task spawns another task, the currently executing task becomes the logical
+                parent of the child.
+            </p>
+            <pre><code>fn Parent() void {
+    let child := try spawn Child()
+    let outcome := await child
+    Handle(outcome)
+}</code></pre>
+            <p>
+                Parenthood does not replace ownership. The binding that receives the task handle
+                remains responsible for resolving the child lifecycle.
+            </p>
+        </section>
+
+        <section id="handle-ownership">
+            <h2>Handle Ownership</h2>
+            <p>
+                Successful creation yields a move-only lifecycle owner: <code>Task[T]</code>,
+                <code>Thread[T]</code> or the process-specific owning handle. The handle is not merely
+                an identifier; it represents unresolved lifecycle responsibility.
+            </p>
+            <p>
+                Moving the handle transfers that responsibility. A second owning copy must not be
+                created merely because the underlying implementation might use a small machine handle.
+            </p>
+        </section>
+
+        <section id="lifecycle">
+            <h2>Lifecycle Resolution</h2>
+            <p>
+                Spawned execution must not be silently forgotten. Before an owning handle leaves
+                scope unresolved, it must be awaited, joined, detached, moved to another valid owner
+                or consumed by another lifecycle operation defined for that execution kind.
+            </p>
+            <pre><code>spawn Work() // invalid when both creation result and lifecycle handle are ignored</code></pre>
+            <p>
+                This rule prevents implicit fire-and-forget execution.
+            </p>
+        </section>
+
+        <section id="expressions">
+            <h2>Spawn in Expressions</h2>
+            <p>
+                <code>spawn</code> is an expression and may be used anywhere its fallible creation
+                result and resulting lifecycle ownership are valid.
+            </p>
+            <pre><code>let first := try spawn First()
+let second: Task[int] := try spawn Second()
+
+match spawn Third() {
+    Ok(worker) => Use(worker)
+    Err(error) => Handle(error)
+}</code></pre>
+        </section>
+
+        <section id="loops">
+            <h2>Spawn in Loops</h2>
+            <p>
+                Spawning inside a loop is allowed, but every created execution entity must still have
+                resolved ownership and bounded resource behavior.
+            </p>
+            <p>The compiler should diagnose statically evident hazards such as:</p>
+            <ul>
+                <li>lost handles;</li>
+                <li>detached spawn in unbounded loops;</li>
+                <li>recursive spawn cycles;</li>
+                <li>exponential child creation.</li>
+            </ul>
+            <p>
+                Target profiles may also impose task-count, thread-count or process-count limits.
+            </p>
+        </section>
+
+        <section id="recursive">
+            <h2>Recursive Spawn</h2>
+            <p>
+                Recursive spawn is legal only when the selected profile permits it and creation is
+                bounded.
+            </p>
+            <pre><code>fn Bomb() void {
+    let first := try spawn Bomb()
+    let second := try spawn Bomb()
+
+    await first
+    await second
+}</code></pre>
+            <p>
+                This example creates an exponentially expanding task tree and should be diagnosed as
+                unbounded task creation rather than accepted as ordinary recursion.
+            </p>
+        </section>
+
+        <section id="scheduling">
+            <h2>Scheduling Independence</h2>
+            <p>
+                Plain task spawn does not select a physical thread. A target may implement tasks with
+                native threads, lightweight workers, cooperative scheduling, event loops, RTOS tasks
+                or statically allocated state machines as long as source semantics remain unchanged.
+            </p>
+            <p>
+                By contrast, <code>spawn thread</code> explicitly requests a native physical thread
+                or the target profile's declared native-thread equivalent.
+            </p>
+        </section>
+
+        <section id="blocking">
+            <h2>Creation Does Not Await Completion</h2>
+            <p>
+                A spawn expression may perform the work needed to create and schedule the new
+                execution entity. It must not wait for the callable to finish.
+            </p>
+            <p>
+                If creation is unavailable or resources are exhausted, that condition is handled by
+                the creation-failure model. Sec must not silently execute the whole callable
+                synchronously as a fallback.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation Inheritance</h2>
+            <p>
+                A child task may inherit cancellation linkage or already-requested cancellation state
+                from its parent according to the concurrency rules. Spawn must not silently clear
+                cancellation state.
+            </p>
+            <p>
+                Detailed cancellation propagation is covered in chapter 59.
+            </p>
+        </section>
+
+        <section id="target-support">
+            <h2>Target Support</h2>
+            <p>
+                The active target profile must support the requested execution kind. Unsupported
+                kinds are compile-time target errors, not requests for silent fallback.
+            </p>
+            <pre><code>target profile does not provide task execution
+
+target profile does not support physical threads
+
+target profile does not support process creation</code></pre>
+        </section>
+
+        <section id="analysis">
+            <h2>Static Analysis</h2>
+            <p>The compiler must determine at least:</p>
+            <ul>
+                <li>the requested execution kind;</li>
+                <li>the callable target and complete return type;</li>
+                <li>the creation result and handle type;</li>
+                <li>argument evaluation order;</li>
+                <li>copied and moved values;</li>
+                <li>retained shared and mutable borrows;</li>
+                <li>captured values;</li>
+                <li>the parent task where applicable;</li>
+                <li>whether spawned work may escape;</li>
+                <li>whether the selected target profile supports creation;</li>
+                <li>whether lifecycle responsibility is eventually resolved.</li>
+            </ul>
+            <p>
+                These facts belong in semantic analysis and Semantic IR. The backend must not infer
+                ownership or borrowing later from low-level loads and stores.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+            <pre><code>spawned task result must be owned, awaited, joined or detached
+
+task worker cannot escape while borrowing local value data
+
+detached task worker cannot retain reference to local value data
+
+cannot move value data into task because it is currently borrowed
+
+cannot spawn task with MutexGuard[State]; mutex guards are task-bound
+
+target profile does not provide task execution
+
+unbounded recursive task creation detected: Bomb -&gt; spawn Bomb</code></pre>
+            <p>
+                Diagnostics should identify both the spawn site and the ownership, borrow, lifecycle
+                or target fact that makes the operation invalid.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+            <p>
+                Spawn support is currently <strong>partial</strong>. The compiler recognizes spawned
+                callable forms and already participates in task lifecycle analysis, but the complete
+                fallible creation model has not yet converged across every execution kind.
+            </p>
+            <p>Current task-spawn support includes:</p>
+            <ul>
+                <li>spawned named callables and callable values;</li>
+                <li>spawned lambda forms;</li>
+                <li>compiler-known <code>Task[T]</code>;</li>
+                <li>move-only task lifecycle ownership;</li>
+                <li>partial lifecycle and detach checking;</li>
+                <li>ownership and capture information used by current semantic analysis.</li>
+            </ul>
+            <p>
+                The main known task-spawn mismatch is creation typing: some frontend paths still use
+                the older direct <code>Task[T]</code> model instead of the intended raw
+                <code>Result[Task[T], TaskSpawnError]</code> type.
+            </p>
+            <p>
+                Physical-thread creation is also incomplete. <code>Thread[T]</code> exists and is
+                move-only, but <code>spawn thread</code> has not yet fully converged on
+                <code>Result[Thread[T], ThreadSpawnError]</code>, thread configuration, runtime
+                creation and lowering.
+            </p>
+            <p>
+                Process creation has a separate process rulebook. <code>spawn process</code> selects
+                that distinct process model rather than reusing task or thread semantics.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+            <ul>
+                <li>Use a normal call for synchronous execution and <code>spawn</code> only for an intentional execution boundary.</li>
+                <li>Use plain <code>spawn</code> for logical tasks unless physical-thread semantics are actually required.</li>
+                <li>Handle creation failure separately from later task or thread outcome.</li>
+                <li>Remember that <code>spawn</code> preserves the complete callable return type.</li>
+                <li>Move owned data into detached work instead of retaining short-lived borrows.</li>
+                <li>Keep spawned borrows scoped tightly and synchronize before referenced owners become invalid.</li>
+                <li>Never transfer a mutex guard across task boundaries.</li>
+                <li>Resolve every owning execution handle explicitly.</li>
+                <li>Review loops and recursion for bounded execution creation.</li>
+                <li>Do not assume that task spawn creates a native thread.</li>
+                <li>Do not rely on synchronous fallback when a target lacks the requested execution capability.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+            <ul>
+                <li><code>spawn</code> is the explicit boundary between synchronous calls and newly created concurrent execution.</li>
+                <li>Plain <code>spawn</code> is exactly equivalent to <code>spawn task</code>.</li>
+                <li><code>spawn thread</code> requests physical-thread semantics.</li>
+                <li><code>spawn process</code> requests the separate process model.</li>
+                <li>Task, thread and process handles are distinct types.</li>
+                <li>Creation is fallible and occurs before an execution handle exists.</li>
+                <li>Task creation has raw type <code>Result[Task[T], TaskSpawnError]</code>.</li>
+                <li>Thread creation has raw type <code>Result[Thread[T], ThreadSpawnError]</code>.</li>
+                <li><code>T</code> is the complete callable return type and is never unwrapped by spawn.</li>
+                <li>Task spawn is eager by default.</li>
+                <li>Normal calls remain synchronous regardless of function naming.</li>
+                <li>Spawn arguments are evaluated normally before copy, move or borrow transfer.</li>
+                <li>Move-only values are transferred, never silently cloned.</li>
+                <li>Spawned borrows remain active until completion or another proven lifetime boundary.</li>
+                <li>Detached or escaping work may not retain invalid short-lived references.</li>
+                <li>Captures remain subject to ownership, borrowing and transferability analysis.</li>
+                <li>Successful creation produces a move-only lifecycle owner that must be resolved explicitly.</li>
+                <li>Loop and recursive spawn remain subject to bounded-resource analysis.</li>
+                <li>The selected target profile must support the requested execution kind.</li>
+                <li>Current compiler support remains partial, especially around fallible creation typing and thread lowering.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="55-tasks.html">Previous: Tasks</a>
+            <a href="57-await.html">Next: Await and Task Outcomes</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

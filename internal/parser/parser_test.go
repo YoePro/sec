@@ -5892,6 +5892,49 @@ func TestDocumentationCommentsAttachToDeclarationAST(t *testing.T) {
 	}
 }
 
+// rules/tooling/formatter.md "Comment attachment" requires parser-owned
+// leading, trailing, detached, and documentation relationships.
+func TestParserClassifiesAllCommentAttachments(t *testing.T) {
+	result := New(lexer.New(`module comments
+// leading
+let first := 1
+let second := 2 // trailing
+
+// detached
+
+let third := 3
+/** documented */
+fn Read() int { return third }
+`)).Parse()
+	if result.HasErrors {
+		t.Fatalf("parse errors: %+v", result.Diagnostics)
+	}
+	if len(result.Program.Comments) != 4 {
+		t.Fatalf("comment attachments = %#v", result.Program.Comments)
+	}
+	want := []ast.CommentPlacement{
+		ast.CommentLeading,
+		ast.CommentTrailing,
+		ast.CommentDetached,
+		ast.CommentDocumentation,
+	}
+	for index, placement := range want {
+		attachment := result.Program.Comments[index]
+		if attachment.Placement != placement {
+			t.Errorf("attachment %d placement = %q, want %q", index, attachment.Placement, placement)
+		}
+		if attachment.Anchor.Type == "" {
+			t.Errorf("attachment %d lacks lexical anchor", index)
+		}
+	}
+	if result.Program.Comments[0].Target == nil || result.Program.Comments[3].Target == nil {
+		t.Fatalf("attached comments lack AST targets: %#v", result.Program.Comments)
+	}
+	if result.Program.Comments[2].Target != nil {
+		t.Fatalf("detached comment unexpectedly targets %T", result.Program.Comments[2].Target)
+	}
+}
+
 func documentationTargetName(node ast.Node) string {
 	switch node := node.(type) {
 	case *ast.ModuleStatement:

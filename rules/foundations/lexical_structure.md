@@ -1449,6 +1449,11 @@ which produces:
 
 String escapes remain available in the non-expression portions.
 
+For a valid interpolated string, the frontend materializes each non-expression
+text portion with the same escape inventory as an ordinary string. Doubled
+braces first become one literal brace. Parser and tooling data retain the exact
+source spelling and range independently of this decoded text value.
+
 Interpolated strings cannot contain an unescaped physical newline.
 
 An unterminated interpolated string is one lexical error beginning at its `$"`
@@ -1463,6 +1468,12 @@ malformed escape, suppresses the additional unterminated-string diagnostic.
 The frontend may initially tokenize the entire interpolated string as one token,
 but parser-visible interpolation expressions must retain accurate nested source
 ranges and normal Sec expression diagnostics.
+
+Each embedded expression is analyzed as an ordinary expression in the current
+scope. Name resolution, type facts, ownership checks, and effects therefore
+apply at the embedded expression's own source range. The complete interpolated
+literal has type `string`; the later conversion and materialization of embedded
+values does not suppress frontend analysis.
 
 ---
 

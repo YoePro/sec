@@ -23,7 +23,7 @@ func TestInterpolationPartsAndSourcePositions(t *testing.T) {
 	if len(literal.Parts) != 5 {
 		t.Fatalf("parts: %+v", literal.Parts)
 	}
-	if literal.Parts[0].Text != "α {ok} " || literal.Parts[2].Text != " :: " || literal.Parts[4].Text != ` end\n` {
+	if literal.Parts[0].Text != "α {ok} " || literal.Parts[2].Text != " :: " || literal.Parts[4].Text != " end\n" {
 		t.Fatalf("incorrect text parts: %+v", literal.Parts)
 	}
 	line := strings.Split(string(input), "\n")[3]
@@ -54,6 +54,34 @@ func TestInterpolationPartsAndSourcePositions(t *testing.T) {
 	}
 	if literal.Value != literal.Token.Lexeme || literal.String() != literal.Token.Lexeme {
 		t.Fatal("original spelling lost")
+	}
+}
+
+// Text portions use the same lexer-owned Sec escape decoder as ordinary
+// strings while their tokens continue to retain exact source spelling.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§14.3 and 15
+func TestInterpolationTextMaterializesSecEscapes(t *testing.T) {
+	result := New(lexer.NewWithFile(`module main
+fn Render() string {
+	return $"line\n\t\\\"\'\x41\u{03A9}\0 {1}"
+}
+`, "escapes.sec")).Parse()
+	if result.HasErrors {
+		t.Fatalf("unexpected diagnostics: %+v", result.Diagnostics)
+	}
+	function := result.Program.Statements[1].(*ast.FunctionDeclaration)
+	literal := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InterpolatedStringLiteral)
+	if len(literal.Parts) != 2 {
+		t.Fatalf("parts = %+v", literal.Parts)
+	}
+	want := "line\n\t\\\"'AΩ\x00 "
+	if literal.Parts[0].Text != want {
+		t.Fatalf("decoded interpolation text = %q, want %q", literal.Parts[0].Text, want)
+	}
+	if literal.Parts[0].Token.Lexeme != `line\n\t\\\"\'\x41\u{03A9}\0 ` {
+		t.Fatalf("source spelling = %q", literal.Parts[0].Token.Lexeme)
 	}
 }
 

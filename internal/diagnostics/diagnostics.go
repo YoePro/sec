@@ -89,11 +89,13 @@ const (
 	OperatorRemainderByZero             = "S1025"
 	RedundantAssociatedStatic           = "S1026"
 	InvalidGenericParameterName         = "S1027"
+	ReservedDeclarationName             = "S1028"
 	LargeValueParameter                 = "A2001"
 )
 
 var registry = map[string]Definition{
 	InvalidGenericParameterName:         {ID: InvalidGenericParameterName, Name: "names.invalid-generic-type-parameter", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerUnknownEscape:                  {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerMalformedEscape:                {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerInvalidUnicodeEscape:           {ID: LexerInvalidUnicodeEscape, Name: "lexer.invalid-unicode-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},

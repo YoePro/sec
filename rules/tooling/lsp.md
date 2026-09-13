@@ -478,6 +478,13 @@ Implemented:
   implemented `@noCopy` path;
 - resilience against selected panics during active editing.
 
+Every multiline lexer token that receives semantic highlighting is encoded as
+separate single-line semantic tokens. In particular, every non-empty physical
+line of an ordinary, documentation, or nested block comment receives the same
+comment classification and modifiers as its enclosing lexer token. Segment
+starts and lengths use the protocol's UTF-16 code-unit coordinates, including
+when astral Unicode scalars occur before or inside the segment.
+
 `new` is classified as a keyword. Bare lifecycle `init` and `free` members are
 recognized contextually inside impl bodies without changing the classification
 of an ordinary function named `init`.

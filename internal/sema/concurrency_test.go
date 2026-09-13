@@ -307,8 +307,8 @@ func TestThreadHandleIsMoveOnlyAndNotDiscardable(t *testing.T) {
 	input := `
 module main
 
-fn Invalid(thread: Thread[int]) void {
-    discard thread
+fn Invalid(worker: Thread[int]) void {
+    discard worker
 }
 `
 
@@ -322,7 +322,7 @@ func TestThreadAndThreadLocalTypesResolve(t *testing.T) {
 	input := `
 module main
 
-fn Use(thread: Thread[int], local: ThreadLocal[string], context: ThreadContext) void {
+fn Use(worker: Thread[int], local: ThreadLocal[string], context: ThreadContext) void {
     let status: ThreadStatus := ThreadStatus.Running
     discard local
     discard context

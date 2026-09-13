@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -322,6 +321,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.loopBreakFrames = nil
 	a.scopeDepth = 0
 	a.allocationContext = AllocationContext{Available: false, Origin: StorageOriginUnknown}
+	a.validateReservedDeclarationNames(program)
 	a.validateModuleDeclaration(program)
 	a.validateModuleDeclarationNamespace(program)
 	a.registerTypeDeclarations(program)
@@ -1103,6 +1103,11 @@ func (a *Analyzer) collectCompileTimeIntegerBindings(program *ast.Program) {
 
 func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Token) bool {
 	existing, exists := a.types[name]
+	if lexer.IsReservedDeclarationName(name) && (!exists || !existing.Intrinsic) {
+		a.addErrorAtTokenWithID(token, diagnostics.ReservedDeclarationName, "type name %s is reserved by the language and cannot be declared", name)
+		a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
+		return true
+	}
 	if !exists || !existing.Intrinsic {
 		return false
 	}
@@ -1115,7 +1120,7 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 	if isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token) {
 		return false
 	}
-	a.addErrorAtToken(token, "type name %s is compiler-known and cannot be redeclared", name)
+	a.addErrorAtTokenWithID(token, diagnostics.ReservedDeclarationName, "type name %s is compiler-known and cannot be redeclared", name)
 	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
 	return true
 }
@@ -1131,10 +1136,15 @@ func isCoreBuiltinDeclaration(name string) bool {
 
 func (a *Analyzer) rejectUnitNameCollision(name string, token lexer.Token) bool {
 	existing, intrinsic := a.types[name]
+	if name != "bit" && lexer.IsReservedDeclarationName(name) && (!intrinsic || !existing.Intrinsic) {
+		a.addErrorAtTokenWithID(token, diagnostics.ReservedDeclarationName, "unit name %s is reserved by the language and cannot be declared", name)
+		a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
+		return true
+	}
 	if name != "bit" && (!intrinsic || !existing.Intrinsic) {
 		return false
 	}
-	a.addErrorAtToken(token, "unit name %s is compiler-known and cannot be declared", name)
+	a.addErrorAtTokenWithID(token, diagnostics.ReservedDeclarationName, "unit name %s is compiler-known and cannot be declared", name)
 	a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
 	return true
 }
@@ -1832,14 +1842,20 @@ func normalizeUnitMetadataName(name string) string {
 	return strings.ReplaceAll(strings.ToLower(name), "_", "")
 }
 
+// parseUnitMetadataString decodes quoted metadata with Sec's escape grammar
+// while retaining the identifier form accepted by unit metadata declarations.
+//
+// Rules:
+//   - rules/types/units.md — unit metadata
+//   - rules/foundations/lexical_structure.md — §15 "Escapes"
 func parseUnitMetadataString(tokens []lexer.Token) (string, bool) {
 	if len(tokens) != 1 {
 		return "", false
 	}
 	switch tokens[0].Type {
 	case lexer.STRING:
-		value, err := strconv.Unquote(tokens[0].Lexeme)
-		if err != nil {
+		value, ok := lexer.DecodeStringLiteral(tokens[0].Lexeme)
+		if !ok {
 			return "", false
 		}
 		return value, true
@@ -4257,7 +4273,7 @@ func (a *Analyzer) analyzeAsmBlock(stmt *ast.AsmStatement) {
 		if outputType.Kind == InvalidType || outputType.Kind == VoidType {
 			outputType = Type{Name: "int64", Kind: IntType}
 		}
-		if a.defineSymbol(output.Name, outputType, false, stmt.Token) {
+		if a.defineSymbol(output.Name, outputType, false, output.Token) {
 			a.assigned[output.Name] = true
 		}
 	}
@@ -12484,8 +12500,10 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 		}
 		return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
-	case *ast.StringLiteral, *ast.InterpolatedStringLiteral:
+	case *ast.StringLiteral:
 		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
+	case *ast.InterpolatedStringLiteral:
+		return a.inferInterpolatedStringLiteral(expr)
 	case *ast.CharLiteral:
 		if !validCharLiteral(expr.Token.Lexeme) {
 			a.addErrorAtToken(expr.Token, "character literal must contain exactly one character")
@@ -12622,6 +12640,24 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 	}
 }
 
+// inferInterpolatedStringLiteral analyzes every embedded expression with the
+// ordinary expression rules while retaining string as the type of the complete
+// literal. This records definition, type, ownership, and effect facts at the
+// parser-preserved nested source positions and lets ordinary diagnostics reach
+// editor and compiler clients.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/tooling/lsp.md — "Incomplete-source handling"
+func (a *Analyzer) inferInterpolatedStringLiteral(expr *ast.InterpolatedStringLiteral) (Type, expressionValue) {
+	for _, part := range expr.Parts {
+		if part.Expression != nil {
+			a.inferExpression(part.Expression)
+		}
+	}
+	return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
+}
+
 func (a *Analyzer) validUnicodeScalarLiteral(expr *ast.IntegerLiteral) bool {
 	value, ok := ast.ParseIntegerLiteralLexeme(expr.Token.Lexeme)
 	if !ok || value.Sign() < 0 || value.Cmp(big.NewInt(0x10FFFF)) > 0 || (value.Cmp(big.NewInt(0xD800)) >= 0 && value.Cmp(big.NewInt(0xDFFF)) <= 0) {
@@ -12631,6 +12667,12 @@ func (a *Analyzer) validUnicodeScalarLiteral(expr *ast.IntegerLiteral) bool {
 	return true
 }
 
+// inferExpressionWithExpected applies contextual literal shaping and records
+// the resolved expression type consumed by Semantic IR and other clients.
+//
+// Rules:
+//   - rules/types/types.md — "Context shaping" and "Character literal"
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
 func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Type) (Type, expressionValue) {
 	if tryExpr, ok := expr.(*ast.TryExpression); ok && tryExpr.Expression != nil {
 		a.expectedExpressionTypes[tryExpr.Expression] = expected
@@ -12640,8 +12682,14 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		a.expectedExpressionTypes[expr] = expected
 		defer delete(a.expectedExpressionTypes, expr)
 	}
-	if _, ok := expr.(*ast.CharLiteral); ok && expected.Kind == RuneType {
-		return Type{Name: "rune", Kind: RuneType}, expressionValue{Display: expr.String()}
+	if literal, ok := expr.(*ast.CharLiteral); ok && expected.Kind == RuneType {
+		typ := Type{Name: "rune", Kind: RuneType}
+		if !validCharLiteral(literal.Token.Lexeme) {
+			a.addErrorAtToken(literal.Token, "character literal must contain exactly one character")
+			typ = Type{Kind: InvalidType}
+		}
+		a.expressionTypes[expr] = typ
+		return typ, expressionValue{Display: expr.String()}
 	}
 	if lit, ok := expr.(*ast.ArrayLiteral); ok {
 		return a.inferArrayLiteralWithExpected(lit, expected)
@@ -20945,45 +20993,15 @@ func isBitwiseOperator(operator string) bool {
 	}
 }
 
+// validCharLiteral shares the lexer-owned Sec escape decoder so Sema validates
+// the language's \u{H...} spelling rather than Go's quoted-literal grammar.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §13 "Character literals"
+//   - rules/foundations/lexical_structure.md — §15 "Escapes"
 func validCharLiteral(lexeme string) bool {
-	if len(lexeme) < 3 || lexeme[0] != '\'' || lexeme[len(lexeme)-1] != '\'' {
-		return false
-	}
-
-	body := lexeme[1 : len(lexeme)-1]
-	if body[0] != '\\' {
-		return utf8.ValidString(body) && utf8.RuneCountInString(body) == 1
-	}
-	if len(body) < 2 {
-		return false
-	}
-
-	switch body[1] {
-	case '\\', '\'', '"', 'n', 'r', 't', '0':
-		return len(body) == 2
-	case 'x':
-		if len(body) != 4 {
-			return false
-		}
-		_, err := strconv.ParseUint(body[2:], 16, 8)
-		return err == nil
-	case 'u':
-		if len(body) < 5 || body[2] != '{' || body[len(body)-1] != '}' {
-			return false
-		}
-		digits := body[3 : len(body)-1]
-		if len(digits) == 0 || len(digits) > 6 {
-			return false
-		}
-		value, err := strconv.ParseUint(digits, 16, 32)
-		if err != nil {
-			return false
-		}
-		r := rune(value)
-		return utf8.ValidRune(r) && (r < 0xD800 || r > 0xDFFF)
-	default:
-		return false
-	}
+	_, ok := lexer.DecodeCharacterLiteral(lexeme)
+	return ok
 }
 
 func isUntypedNumericExpression(expr ast.Expression) bool {

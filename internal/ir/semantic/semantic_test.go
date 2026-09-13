@@ -132,6 +132,50 @@ func TestExactConstantsAndDeterministicFormat(t *testing.T) {
 	}
 }
 
+// rules/compiler/semantic_ir.md §11 requires char/rune constants to retain
+// their exact Sec scalar values after language escape decoding.
+func TestCharacterAndRuneLiteralsBuildExactScalarConstants(t *testing.T) {
+	module, err := analyzedModule(t, `module main
+fn Character() char { return '\x41' }
+fn Rune() rune { return '\u{03A9}' }
+fn Text() string { return "A\u{03A9}\n" }
+`, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	wantIntegers := map[string]int64{"Character": 0x41, "Rune": 0x03A9}
+	for _, function := range module.Functions {
+		want, expected := wantIntegers[function.Name]
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				if expected && operation.Kind == OpConstInt && operation.Integer != nil && operation.Integer.Int64() == want {
+					delete(wantIntegers, function.Name)
+				}
+				if function.Name == "Text" && operation.Kind == OpConstString && operation.String == "AΩ\n" {
+					delete(wantIntegers, "Text")
+				}
+			}
+		}
+	}
+	if len(wantIntegers) != 0 {
+		t.Fatalf("missing exact scalar constants for %v\n%s", wantIntegers, Format(module))
+	}
+	textFound := false
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, operation := range block.Operations {
+				textFound = textFound || operation.Kind == OpConstString && operation.String == "AΩ\n"
+			}
+		}
+	}
+	if !textFound {
+		t.Fatalf("missing decoded string constant\n%s", Format(module))
+	}
+}
+
 func TestPackage2RejectsPackage3Construct(t *testing.T) {
 	tests := []struct{ name, source, feature string }{
 		{"mutable", "module main\nfn F() int {\n  let mut x := 1\n  return x\n}\n", "mutable local storage"},

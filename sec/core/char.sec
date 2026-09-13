@@ -1,5 +1,70 @@
 module core
 
+enum CodePages {
+    // --- Global & Universal Standards ---
+    ASCII,
+    UTF8,
+    UTF16_LE,
+    UTF16_BE,
+    UTF32,
+
+    // --- ISO-8859 Series (Complete) ---
+    ISO8859_1,     // Latin-1 (Western Europe)
+    ISO8859_2,     // Latin-2 (Central Europe)
+    ISO8859_3,     // Latin-3 (Southern Europe, Maltese, Esperanto)
+    ISO8859_4,     // Latin-4 (Northern Europe, Baltic languages)
+    ISO8859_5,     // Cyrillic alphabet
+    ISO8859_6,     // Arabic
+    ISO8859_7,     // Greek
+    ISO8859_8,     // Hebrew
+    ISO8859_9,     // Latin-5 (Turkish)
+    ISO8859_10,    // Latin-6 (Nordic/Sami languages)
+    ISO8859_11,    // Thai
+    ISO8859_13,    // Latin-7 (Baltic languages)
+    ISO8859_14,    // Latin-8 (Celtic languages)
+    ISO8859_15,    // Latin-9 (Updated Western Europe with Euro symbol)
+    ISO8859_16,    // Latin-10 (South-Eastern Europe)
+
+    // --- Windows Code Pages (ANSI - Complete Primary Series) ---
+    CP1250,    // Central Europe
+    CP1251,    // Cyrillic alphabet
+    CP1252,    // Western Europe
+    CP1253,    // Greek
+    CP1254,    // Turkish
+    CP1255,    // Hebrew
+    CP1256,    // Arabic
+    CP1257,    // Baltic languages
+    CP1258,    // Vietnamese
+
+    // --- IBM/DOS Code Pages (OEM - Most Common) ---
+    CP437,    // Original IBM-PC (USA)
+    CP737,    // Greek DOS
+    CP775,    // Baltic DOS
+    CP850,    // Western European DOS
+    CP852,    // Central European DOS
+    CP855,    // Cyrillic DOS
+    CP857,    // Turkish DOS
+    CP860,    // Portuguese DOS
+    CP861,    // Icelandic DOS
+    CP862,    // Hebrew DOS
+    CP863,    // Canadian-French DOS
+    CP864,    // Arabic DOS
+    CP865,    // Nordic/Northern European DOS
+    CP866,    // Russian DOS
+    CP869,    // Modern Greek DOS
+    CP874,    // Thai DOS
+
+    // --- East Asian Encodings (Multi-byte) ---
+    CP932,    // Shift-JIS (Japanese)
+    CP936,    // GBK (Simplified Chinese)
+    CP949,    // EUC-KR (Korean)
+    CP950,    // Big5 (Traditional Chinese)
+
+    // --- Macintosh Code Pages ---
+    MAC_ROMAN,      // Legacy Apple Western Europe
+    MAC_CYRILLIC    // Legacy Apple Russia/Eastern Europe
+}
+
 impl char {
     fn ToString() string {
         return string.FromByteArray([byte(self)])
@@ -70,7 +135,7 @@ impl char {
 
     /** Returns the intvalue of a char or None() */
     fn ToNumericValue() Option[int] {
-        if self >= 48t && self <= 57t {
+        if self in 48t..57t {
             return Some(int(self) - 48)
         }
         return None()
@@ -79,7 +144,7 @@ impl char {
     /** Returns the lowercase variant of a letter when possible */
     fn ToLower() char {
         // TODO: We need to cover other formats such as Latin1 and not just ASCII
-        if self >= 65t && self <= 90t {
+        if self in 65t..90t {
             return char(int(self) | 0x20)
         }
 
@@ -89,7 +154,7 @@ impl char {
     /** Returns the uppercase variant of a letter when possible */
     fn ToUpper() char {
         // TODO: We need to cover other formats such as Latin1 and not just ASCII
-        if self >= 97t && self <= 122t {
+        if self in 97t..122t {
             return char(int(self) & 0xDF)
         }
 

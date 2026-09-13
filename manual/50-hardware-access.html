@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Fixed Addresses, Volatile and Hardware Access - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#hardware-access">Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#model">Source Model</a>
+        <a href="#endpoints">Named Hardware Endpoints</a>
+        <a href="#binding">The @address Binding</a>
+        <a href="#defining-endpoints">Defining Endpoints</a>
+        <a href="#numeric-addresses">Numeric Addresses</a>
+        <a href="#volatile">Volatile Semantics</a>
+        <a href="#mutability">Mutability and Writability</a>
+        <a href="#ordinary-values">Ordinary Values and Snapshots</a>
+        <a href="#operations">Logical Operations and Access Planning</a>
+        <a href="#aliasing">Aliasing and Shared Resources</a>
+        <a href="#width-ordering">Width, Ordering and Completion</a>
+        <a href="#methods">Methods and Properties</a>
+        <a href="#rawptr">@address vs RawPtr</a>
+        <a href="#cross-compilation">Target Resolution and Cross Compilation</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#current-status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html" class="active">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Fixed Addresses, Volatile and Hardware Access</div>
+
+        <h1 id="hardware-access">Fixed Addresses, Volatile and Hardware Access</h1>
+
+        <p>
+            Sec provides typed access to hardware without forcing normal code to build raw pointers,
+            scatter numeric addresses or manually express every register access in masks and shifts.
+            The preferred model is not “some integer happens to be a useful address”. The preferred
+            model is that the selected platform or project defines <em>named hardware endpoints</em>,
+            and source code binds register types to those endpoints through <code>@address</code>.
+        </p>
+
+        <p>
+            This chapter is therefore not only about volatile reads and writes. It defines the full
+            source-level contract between Sec code, the active <code>CompilationPlan</code>, the
+            platform's hardware registry and the physical endpoint operations that eventually reach
+            a device, peripheral block, CSR bank or memory-mapped register region.
+        </p>
+
+        <div class="rule">
+            <strong>Rule:</strong> When hardware is a stable named resource, code should bind to a
+            compiler-known endpoint such as <code>Platform.GPIOA</code> or
+            <code>Project.FpgaControl</code>. Raw numeric addresses are a restricted fallback, not
+            the primary source model.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Register types already describe <em>what</em> a register layout looks like. This
+                chapter describes <em>where</em> the storage comes from and <em>how</em> accesses are
+                interpreted. The language must know more than a number: it may need address-domain
+                information, alignment, legal access widths, alias relationships, read side effects,
+                write-completion rules and whether multiple symbolic endpoints really refer to one
+                physical resource.
+            </p>
+
+            <p>
+                Sec therefore separates four things:
+            </p>
+
+            <ol>
+                <li>the register type definition;</li>
+                <li>the named endpoint or validated address binding;</li>
+                <li>the logical register operation requested by source code;</li>
+                <li>the physical endpoint operation plan selected by the compiler and target model.</li>
+            </ol>
+
+            <pre><code>source field read/write
+        |
+        v
+logical register operation
+        |
+        v
+register-operation plan
+        |
+        v
+physical endpoint operation(s)</code></pre>
+        </section>
+
+        <section id="model">
+            <h2>Source Model</h2>
+
+            <p>
+                The normal source pattern is a register type plus an addressed binding.
+            </p>
+
+            <pre><code>type GpioRegisters register[32] {
+    Mode: bit[2]
+    Output: bit
+    _: bit[29]
+}
+
+@address(Platform.GPIOA)
+let mut gpio: GpioRegisters</code></pre>
+
+            <p>
+                In this model, <code>gpio</code> is not an allocated object. It is a typed view of
+                existing external storage described by the active platform model. The endpoint name
+                identifies the resource. The register type identifies the layout. The binding does
+                not silently write any initial value to the device.
+            </p>
+
+            <p>
+                This is intentionally different from a raw-pointer model. With a named endpoint,
+                the compiler and tooling can reason about the resource identity, validate the
+                address-domain contract, explain diagnostics using symbolic names and preserve
+                correctness when aliases, mirrors or platform-specific bus details exist.
+            </p>
+        </section>
+
+        <section id="endpoints">
+            <h2>Named Hardware Endpoints</h2>
+
+            <p>
+                A named endpoint is the canonical representation of a hardware access location.
+                It is not merely a constant containing an integer. It represents compiler-known
+                metadata about one endpoint or endpoint family.
+            </p>
+
+            <p>A platform or project endpoint may carry facts such as:</p>
+
+            <ul>
+                <li>the address domain or bus space;</li>
+                <li>the physical base address or platform-specific endpoint selector;</li>
+                <li>required alignment and access-width restrictions;</li>
+                <li>resource identity and alias relationships;</li>
+                <li>permissions such as read-only, write-only or read-write;</li>
+                <li>read, write or completion semantics required by the target;</li>
+                <li>whether different symbolic names refer to the same physical resource.</li>
+            </ul>
+
+            <p>
+                Typical endpoint namespaces are:
+            </p>
+
+            <pre><code>Platform.GPIOA
+Platform.UART0
+Platform.Timer2
+Project.FpgaControl
+Project.SensorWindow</code></pre>
+
+            <p>
+                Platform-defined endpoints are the normal source for standard SoC, MCU or board
+                resources. Project-defined endpoints are appropriate for external FPGA blocks,
+                memory windows or application-specific device mappings.
+            </p>
+        </section>
+
+        <section id="binding">
+            <h2>The @address Binding</h2>
+
+            <p>
+                <code>@address(...)</code> binds a declaration to existing hardware storage.
+                The declaration must name the storage type explicitly. Normal addressed register
+                bindings are written as <code>let</code> or <code>let mut</code> declarations.
+            </p>
+
+            <pre><code>@address(Platform.GPIOA)
+let mut gpio: GpioRegisters
+
+@address(Platform.Status)
+let status: StatusRegister</code></pre>
+
+            <p>
+                An addressed binding implies all of the following:
+            </p>
+
+            <ul>
+                <li>the storage already exists outside ordinary program allocation;</li>
+                <li>the binding is non-owning;</li>
+                <li>ordinary reads and writes are observable hardware operations;</li>
+                <li>the compiler must respect the endpoint contract from the active platform model;</li>
+                <li>the declaration itself does not initialize the hardware.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Declaring an addressed binding must not silently write to
+                hardware. Any hardware initialization must be visible as an explicit operation in
+                source code after the binding exists.
+            </div>
+        </section>
+
+        <section id="defining-endpoints">
+            <h2>Defining Endpoints</h2>
+
+            <p>
+                This chapter expects that stable hardware locations are defined once and then reused.
+                A project should not spread “magic addresses” through application code when those
+                locations are part of the platform contract.
+            </p>
+
+            <p>
+                In practice that means platform packages, target definitions or project platform
+                files should define the relevant endpoints first, and ordinary code should refer to
+                those names.
+            </p>
+
+            <pre><code>// preferred use in normal source code
+@address(Platform.GPIOA)
+let mut gpio: GpioRegisters
+
+// project-specific endpoint
+@address(Project.FpgaControl)
+let mut control: FpgaControlRegisters</code></pre>
+
+            <p>
+                This improves readability and portability, and it gives the compiler enough context
+                to produce diagnostics that talk about a named resource instead of an unexplained
+                integer literal.
+            </p>
+        </section>
+
+        <section id="numeric-addresses">
+            <h2>Numeric Addresses</h2>
+
+            <p>
+                A raw numeric form may still be accepted when a platform permits it:
+            </p>
+
+            <pre><code>@address(0x40021000)
+let mut gpio: GpioRegisters</code></pre>
+
+            <p>
+                However, this is not the preferred model. A numeric address is acceptable only when
+                the compiler can validate it for the selected platform and bind it to a valid address
+                domain or canonical region contract. It must not weaken the platform model into
+                “every integer is automatically a safe MMIO endpoint”.
+            </p>
+
+            <p>
+                When the resource is already known and should be named, use the named endpoint form.
+                Numeric addresses are better suited to bring-up work, tightly constrained platform
+                layers or cases where the platform deliberately exposes a validated numeric region.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Use a named endpoint whenever hardware identity matters to
+                correctness, diagnostics or maintenance. Numeric <code>@address</code> should not
+                replace the platform hardware registry.
+            </div>
+        </section>
+
+        <section id="volatile">
+            <h2>Volatile Semantics</h2>
+
+            <p>
+                Every addressed hardware binding is volatile by construction. Sec does not require
+                a separate <code>volatile</code> keyword for normal fixed-address hardware access.
+                The language already knows that the storage is external and observable because the
+                binding was established through <code>@address</code>.
+            </p>
+
+            <p>
+                Therefore the compiler must not assume that repeated reads are identical, and it
+                must not remove writes merely because they appear unused by ordinary optimization.
+            </p>
+
+            <pre><code>let first := gpio.Output
+let second := gpio.Output</code></pre>
+
+            <p>
+                These are two observable endpoint reads when <code>gpio</code> is an addressed
+                binding. They may still read the same value, but the compiler must not collapse the
+                two operations into one ordinary cached load.
+            </p>
+        </section>
+
+        <section id="mutability">
+            <h2>Mutability and Writability</h2>
+
+            <p>
+                Volatility and mutability are different properties.
+            </p>
+
+            <ul>
+                <li><code>@address + let</code> means read-only from Sec code and volatile.</li>
+                <li><code>@address + let mut</code> means writable from Sec code and volatile.</li>
+            </ul>
+
+            <pre><code>@address(Platform.Status)
+let status: StatusRegister
+
+@address(Platform.Control)
+let mut control: ControlRegister</code></pre>
+
+            <p>
+                The absence of <code>mut</code> does not mean the hardware cannot change. It means
+                only that the Sec program may not write through that binding. External hardware may
+                still update the underlying storage at any time.
+            </p>
+
+            <p>
+                Platform endpoint metadata may further restrict legal operations. For example, a
+                register block might expose only byte or word accesses, or a named endpoint may be
+                read-only even if a general-purpose register type could in theory express writes.
+            </p>
+        </section>
+
+        <section id="ordinary-values">
+            <h2>Ordinary Values and Snapshots</h2>
+
+            <p>
+                Volatility belongs to the binding, not to the register type itself. A register type
+                may also exist as an ordinary value.
+            </p>
+
+            <pre><code>let snapshot: StatusRegister := ReadStatusSnapshot()</code></pre>
+
+            <p>
+                <code>snapshot</code> is a normal value. Reads from it are not automatically volatile.
+                A method or field access on an ordinary value follows ordinary value semantics, while
+                the same operation on an addressed binding follows hardware endpoint semantics.
+            </p>
+
+            <p>
+                This distinction is important for temporary snapshots, cached copies, unit tests and
+                simulations. Copying a register value does not preserve the addressed binding unless
+                the source language explicitly keeps operating through the binding.
+            </p>
+        </section>
+
+        <section id="operations">
+            <h2>Logical Operations and Access Planning</h2>
+
+            <p>
+                Source code expresses logical register operations such as “read this field”, “write
+                this bit” or “update this multi-bit field”. The compiler must not assume that every
+                logical operation maps to one trivial machine access. Instead it forms a
+                register-operation plan based on the endpoint contract.
+            </p>
+
+            <p>
+                The plan may need to consider:
+            </p>
+
+            <ul>
+                <li>which endpoint identity is being accessed;</li>
+                <li>which resource identity that endpoint belongs to;</li>
+                <li>whether the source operation is a whole-register access or a field update;</li>
+                <li>which physical access widths are legal;</li>
+                <li>whether read-modify-write is allowed or forbidden;</li>
+                <li>whether reads or writes have collateral effects;</li>
+                <li>whether completion or ordering barriers are required.</li>
+            </ul>
+
+            <p>
+                For many ordinary MMIO registers, a field write can lower to a volatile read,
+                mask/shift update and volatile write. But the language rule is not “always perform a
+                generic RMW”. The rule is that the compiler chooses a valid plan for the selected
+                endpoint while preserving the source-level logical meaning.
+            </p>
+
+            <pre><code>control.Enabled = true
+
+// conceptual plan for one possible endpoint:
+// 1. read register
+// 2. preserve unrelated bits
+// 3. set Enabled bit
+// 4. write register</code></pre>
+        </section>
+
+        <section id="aliasing">
+            <h2>Aliasing and Shared Resources</h2>
+
+            <p>
+                Two endpoint names may refer to the same underlying hardware resource, to aliased
+                views of one block, or to mirrored addresses with different access semantics. A raw
+                integer address alone is often too weak to express these distinctions.
+            </p>
+
+            <p>
+                The platform model may therefore track both <em>endpoint identity</em> and
+                <em>resource identity</em>. This lets the compiler reason about situations such as:
+            </p>
+
+            <ul>
+                <li>two symbolic endpoints that share the same physical register bank;</li>
+                <li>one control register exposed through separate set and clear windows;</li>
+                <li>a debugger or DMA-visible alias of the same physical memory area;</li>
+                <li>multiple legal access paths that differ in width or side effects.</li>
+            </ul>
+
+            <p>
+                Language-level safety rules are not relaxed merely because aliases exist. When alias
+                behavior matters, the platform or endpoint definition must describe it explicitly.
+            </p>
+        </section>
+
+        <section id="width-ordering">
+            <h2>Width, Ordering and Completion</h2>
+
+            <p>
+                Hardware access is not only about values. The endpoint contract may require specific
+                access widths, alignment, completion guarantees or ordering constraints.
+            </p>
+
+            <p>The active platform may define facts such as:</p>
+
+            <ul>
+                <li>only 32-bit accesses are legal for this endpoint;</li>
+                <li>sub-word writes are illegal or have destructive side effects;</li>
+                <li>reads must complete before subsequent accesses to another domain;</li>
+                <li>writes may require a fence or target-specific completion operation;</li>
+                <li>bit ordering or endianness rules are platform-defined, not guessed by source code.</li>
+            </ul>
+
+            <p>
+                These are endpoint and target facts, not ad-hoc behavior invented by optimization.
+                Sec source code stays stable while the compiler and platform model determine how to
+                realize the required physical operations correctly.
+            </p>
+        </section>
+
+        <section id="methods">
+            <h2>Methods and Properties</h2>
+
+            <p>
+                Register types may have ordinary <code>impl</code> members. Methods and properties
+                belong to the type, not to the endpoint storage itself. They do not change layout and
+                they do not introduce hidden vtables or metadata.
+            </p>
+
+            <pre><code>impl StatusRegister {
+    fn IsReady(ref self) bool {
+        return self.Ready
+    }
+}</code></pre>
+
+            <p>
+                The same method behaves differently depending on receiver storage.
+            </p>
+
+            <ul>
+                <li>On an addressed binding, field access must preserve addressed hardware semantics.</li>
+                <li>On an ordinary value, field access uses ordinary value semantics.</li>
+            </ul>
+
+            <p>
+                This keeps the source model simple: methods describe behavior on the register type,
+                while the binding determines whether that behavior talks to hardware or to a normal
+                value copy.
+            </p>
+        </section>
+
+        <section id="rawptr">
+            <h2>@address vs RawPtr</h2>
+
+            <p>
+                <code>@address</code> is the preferred safe typed entry point for statically known
+                hardware resources. <code>RawPtr[T]</code> is the escape hatch for operations that
+                the compiler cannot validate from the platform model alone.
+            </p>
+
+            <p>Use <code>@address</code> when you have:</p>
+
+            <ul>
+                <li>a stable endpoint identity;</li>
+                <li>a register layout or other platform-defined storage contract;</li>
+                <li>a target that can validate the binding;</li>
+                <li>no need for arbitrary pointer arithmetic in source code.</li>
+            </ul>
+
+            <p>Use <code>RawPtr</code> and <code>unsafe</code> when you need:</p>
+
+            <ul>
+                <li>dynamic addresses;</li>
+                <li>manual pointer arithmetic;</li>
+                <li>FFI-facing pointer exchange;</li>
+                <li>operations outside the validated endpoint model.</li>
+            </ul>
+
+            <p>
+                A program should not convert every hardware access into raw pointers by habit. Doing
+                so throws away endpoint identity, target validation and most of the higher-level
+                diagnostics this chapter is trying to preserve.
+            </p>
+        </section>
+
+        <section id="cross-compilation">
+            <h2>Target Resolution and Cross Compilation</h2>
+
+            <p>
+                Hardware access must always be interpreted through the resolved
+                <code>CompilationPlan</code>. The host computer running the compiler is irrelevant.
+                A build performed on Linux for a Cortex-M target still uses the target's endpoint
+                registry, access domains, device model and hardware constraints.
+            </p>
+
+            <p>
+                This chapter therefore depends directly on the platform model from chapter 49. Named
+                endpoints are resolved from the selected platform and target profile, not from source
+                directory names or the host operating system.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Good diagnostics should talk about the actual resource model, not only about syntax.
+                Examples include:
+            </p>
+
+            <ul>
+                <li>unknown endpoint <code>Platform.GPIOA</code> for the selected platform;</li>
+                <li>binding type <code>TimerRegister</code> is incompatible with endpoint <code>Platform.UART0</code>;</li>
+                <li>numeric address <code>0x40021000</code> is not valid in the selected address domain;</li>
+                <li>field write requires a mutable addressed binding;</li>
+                <li>requested 8-bit access is illegal for endpoint <code>Platform.Control</code>;</li>
+                <li>operation may affect aliased endpoint <code>Platform.ControlSet</code>.</li>
+            </ul>
+
+            <p>
+                When a named endpoint is used, diagnostics can surface the symbolic identity and its
+                provenance from the platform definition. This is another reason to prefer endpoint
+                names over magic numbers.
+            </p>
+        </section>
+
+        <section id="current-status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The language model for this chapter is broader than the currently implemented front-end
+                subset. Today, the parser and semantic analyzer already support register types,
+                <code>@address</code> bindings, volatile marking in semantic analysis, rejection of
+                initializers on addressed bindings and basic field-width validation.
+            </p>
+
+            <p>
+                The currently implemented subset is still closer to the earlier integer-address model.
+                In particular, existing front-end checks presently require a compile-time address
+                expression and do not yet implement the full named-endpoint registry and operation-plan
+                system described here.
+            </p>
+
+            <p>
+                This chapter documents the intended normative source model: named endpoints are the
+                preferred form, numeric addresses are a restricted fallback, and hardware access is
+                mediated through endpoint-aware planning rather than naive “just load from this
+                integer” semantics.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Define stable hardware locations once as named platform or project endpoints.</li>
+                <li>Use <code>@address(Platform.Name)</code> in ordinary code rather than scattering integer literals.</li>
+                <li>Treat a numeric address as a fallback, not as the main design pattern.</li>
+                <li>Keep register layout declarations separate from platform endpoint definitions.</li>
+                <li>Remember that <code>@address</code> binds existing storage and does not initialize hardware.</li>
+                <li>Separate volatility from mutability: read-only bindings may still change externally.</li>
+                <li>Prefer ordinary register values for snapshots and tests; use addressed bindings for real endpoint access.</li>
+                <li>Do not bypass endpoint validation by converting everything to <code>RawPtr</code>.</li>
+                <li>Let the platform model describe aliases, width rules and side effects explicitly.</li>
+                <li>When diagnostics matter, choose symbolic endpoint names so the compiler can explain the resource meaningfully.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec's preferred hardware-access model is a named endpoint bound through <code>@address</code>.</li>
+                <li>A named endpoint is more than an integer; it carries canonical platform metadata.</li>
+                <li>Ordinary code should define and reuse endpoint names rather than spread magic addresses.</li>
+                <li>Numeric <code>@address</code> is a restricted fallback, not the primary design pattern.</li>
+                <li>An addressed binding refers to existing external storage and never silently allocates or initializes it.</li>
+                <li>Every addressed binding is volatile by construction; no separate volatile keyword is required.</li>
+                <li>Mutability controls whether Sec code may write; it does not control whether hardware may change the value.</li>
+                <li>Volatility belongs to the binding, not to the register type itself.</li>
+                <li>Source code expresses logical register operations that the compiler lowers through an endpoint-aware access plan.</li>
+                <li>Endpoint identity and resource identity may matter separately because aliases and mirrors exist.</li>
+                <li>Access width, alignment, collateral effects, ordering and completion are target facts, not ad-hoc optimizer choices.</li>
+                <li>Methods on register types do not change layout; the receiver binding determines whether accesses are hardware or ordinary value operations.</li>
+                <li><code>@address</code> is the preferred typed safe hardware-access entry point; <code>RawPtr</code> remains the unsafe escape hatch.</li>
+                <li>Cross compilation always uses the target's endpoint and device model, never the compiler host's.</li>
+                <li>The current front end implements only part of the full endpoint-aware model, but the normative direction is clear.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="49-platforms.html">Previous: Platforms and Target Profiles</a>
+            <a href="51-interrupts.html">Next: Interrupts and ISRs</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.1 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

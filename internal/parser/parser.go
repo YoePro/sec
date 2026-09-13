@@ -99,6 +99,8 @@ type Parser struct {
 	inRefExpression        bool
 	skipExpressionComments bool
 	documentation          []ast.DocumentationAttachment
+	sourceTokens           []lexer.Token
+	sourceTokenKeys        map[string]struct{}
 }
 
 type diagnosticKey struct {
@@ -132,6 +134,7 @@ func newParser(l *lexer.Lexer, skipExpressionComments bool) *Parser {
 		errors:                 []string{},
 		warnings:               []string{},
 		diagnosticKeys:         map[diagnosticKey]struct{}{},
+		sourceTokenKeys:        map[string]struct{}{},
 		recoveryContext:        RecoveryContextTopLevel,
 	}
 
@@ -201,6 +204,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 			return leftToken.Column < rightToken.Column
 		})
 		program.Documentation = append([]ast.DocumentationAttachment(nil), p.documentation...)
+		program.Comments = buildCommentAttachments(p.sourceTokens, program)
 	}()
 	for p.curToken.Type != lexer.EOF {
 		p.endRecoveryEpisode()
@@ -1552,6 +1556,7 @@ func (p *Parser) parseAsmOutputs() ([]ast.AsmOutput, bool) {
 				return nil, false
 			}
 			output.Name = p.curToken.Lexeme
+			output.Token = p.curToken
 			if !p.expectPeek(lexer.RPAREN) {
 				return nil, false
 			}
@@ -1678,6 +1683,7 @@ func (p *Parser) parseModuleStatement() ast.Statement {
 	p.nextToken()
 
 	nameToken := p.curToken
+	stmt.NameToken = nameToken
 	stmt.Path = p.parseDottedPath()
 	if strings.Contains(stmt.Path, ".") {
 		p.addError("module declaration must contain one identifier, got %q at %d:%d", stmt.Path, nameToken.Line, nameToken.Column)
@@ -1775,6 +1781,7 @@ func (p *Parser) parseImportStatement() ast.Statement {
 
 	if p.peekToken.Type == lexer.IDENT {
 		p.nextToken()
+		stmt.AliasToken = p.curToken
 		stmt.Alias = p.curToken.Lexeme
 	}
 
@@ -1808,6 +1815,7 @@ func (p *Parser) parseImportGroup() []ast.Statement {
 
 		stmt := &ast.ImportStatement{Token: importToken}
 		if p.curToken.Type == lexer.IDENT {
+			stmt.AliasToken = p.curToken
 			stmt.Alias = p.curToken.Lexeme
 			if !p.expectPeek(lexer.STRING) {
 				return imports
@@ -3421,6 +3429,7 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		p.attachDocumentation(documentation, field)
 		if p.peekToken.Type == lexer.RAW_STRING {
 			p.nextToken()
+			field.TagToken = p.curToken
 			tags, ok := p.parseStructTag(p.curToken)
 			if !ok {
 				// rules/declarations/struct.md, Field-tag recovery;
@@ -4409,8 +4418,11 @@ func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, 
 }
 
 func isCollectionShapedTypeName(name string) bool {
+	if lexer.IsContextualCollectionShapedTypeName(name) {
+		return true
+	}
 	switch name {
-	case "list", "map", "set", "vector", "matrix", "tensor", "tensor_view", "Shape", "Strides", "TensorLayout":
+	case "Shape", "Strides", "TensorLayout":
 		return true
 	default:
 		return false
@@ -4418,11 +4430,12 @@ func isCollectionShapedTypeName(name string) bool {
 }
 
 func collectionShapedTypeArgumentCount(name string) int {
+	if count, ok := lexer.ContextualTypeNameArgumentCount(name); ok {
+		return count
+	}
 	switch name {
 	case "Shape", "Strides", "TensorLayout":
 		return 0
-	case "map":
-		return 2
 	default:
 		return 1
 	}
@@ -4984,8 +4997,10 @@ func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
 func (p *Parser) nextToken() {
 	p.curToken = p.peekToken
 	p.peekToken = p.l.NextToken()
+	p.recordSourceToken(p.peekToken)
 	for p.skipExpressionComments && p.peekToken.Type == lexer.COMMENT {
 		p.peekToken = p.l.NextToken()
+		p.recordSourceToken(p.peekToken)
 	}
 	p.collectLexerDiagnostics()
 }
@@ -5133,7 +5148,7 @@ func (p *Parser) addWarning(format string, args ...any) {
 }
 
 func trimStringQuotes(s string) string {
-	if unquoted, err := strconv.Unquote(s); err == nil {
+	if unquoted, ok := lexer.DecodeStringLiteral(s); ok {
 		return unquoted
 	}
 
@@ -5141,7 +5156,7 @@ func trimStringQuotes(s string) string {
 }
 
 func trimCharQuotes(s string) string {
-	if unquoted, err := strconv.Unquote(s); err == nil {
+	if unquoted, ok := lexer.DecodeCharacterLiteral(s); ok {
 		return unquoted
 	}
 

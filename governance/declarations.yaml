@@ -405,3 +405,232 @@ integrations:
       result: regression test failed before the implementation because nine invalid parameter names were accepted
     - command: go test ./...
       result: passed, including Sema naming and LSP diagnostic regressions
+
+  - id: frontend.impl-extensions
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-08"
+    summary: >-
+      Adds explicit, declaration-order-independent impl extensions so one
+      primary impl may be organized with additional blocks across files of the
+      same module without permitting implicit duplicate or cross-module impls.
+      Existing backend limitations for complete method, property, event, and
+      generic lowering remain unchanged.
+    rules:
+      - rules/declarations/impl.md
+      - rules/declarations/struct.md
+      - rules/declarations/generics.md
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+      - testdata/impl_valid.sec
+      - testdata/impl_invalid.sec
+    implemented:
+      - extends reserved as a lexer keyword and contextual impl-extension marker
+      - canonical impl extends Target syntax retained explicitly in the AST
+      - one unmarked primary impl block per target
+      - any number of explicitly marked extensions with a same-module primary
+      - primary registration before extension validation independent of file and declaration order
+      - cross-file same-module method composition and forward resolution
+      - rejection of orphan extensions and cross-module extensions
+      - rejection of unmarked duplicate primary blocks with extension guidance
+      - generic target validation reused for primary and extension blocks
+      - nested type, property, event, method, and overload conflicts checked against the combined target surface
+      - LSP document-symbol distinction between primary impl and impl extends blocks
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - complete method, property, event, static-member, and generic backend lowering inherited from the primary impl pipeline
+      - LSP navigation between an extension and its primary impl declaration
+      - workspace index support for listing all extensions of a target
+      - explicit visibility policy if future nested module scopes become finer than the current module identity
+
+  - id: frontend.impl-lifecycle-construction
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Introduces the revision-2.0 lifecycle syntax boundary: contextual init
+      declarations and hard-keyword new construction remain distinct from
+      ordinary methods, conversions, and allocation placement.
+    rules:
+      - rules/declarations/impl.md
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/errors/errorhandling.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/formatter/formatter.go
+      - internal/lsp/features/semantic_tokens.go
+      - cmd/lsp/main.go
+      - vscode/syntaxes/sec.tmLanguage.json
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - new is a hard lexer keyword, LSP keyword, completion item, and TextMate keyword
+      - dedicated NewExpression AST and parser support for new Type(arguments)
+      - contextual bare init declarations with parameters, optional exact construction error type, and ordinary statement bodies
+      - init overload registration across primary and extension fragments with parameter-only signature identity
+      - separate internal initializer identity so init is not exposed as an ordinary self method
+      - new overload resolution with argument type checking and definition binding to the selected init
+      - successful new expressions infer the constructed target type
+      - fallible new requires try or local handling and preserves the exact initializer error type through existing try analysis
+      - zero-argument implicit new construction when canonical default construction exists and no matching init() overload exists, even when non-zero-argument init overloads are present
+      - initializer bodies receive implicit self and ordinary function-body semantic analysis
+      - initializer success by body completion, typed Err return for failure, and rejection of arbitrary success return values
+      - primary ordinary impl rejection when a named target belongs to another defining module
+      - canonical formatter handling for init signatures and preservation of new versus conversion syntax
+      - read-only ResolvedConstructionOf Sema facts expose the exact selected initializer, target, and construction error to tooling and lowering
+      - initializer declaration and new-expression hover render parameters, constructed type, construction error, and try or local-handling requirement separately
+      - signature help uses the Sema-selected init overload and tracks the active argument without duplicating lifecycle overload resolution in the LSP
+      - contextual completion offers init directly in impl bodies and new only in callable expression scopes while hiding internal initializer identities
+      - workspace references follow compiler definition bindings between init declarations and selected new expressions across all assembled module sources
+    remaining:
+      - full field-sensitive definite initialization and partial-self escape analysis in init
+      - construction resource-balance and failure-cleanup analysis
+      - custom free AST, parser, Sema, and destruction integration
+      - nested impl declarations and qualified nested-target ownership
+      - complete generic initializer specialization
+      - initializer signature help and overload previews while a new expression is still syntactically incomplete and Sema cannot yet select a construction
+      - targeted migration diagnostics for every declaration position that previously accepted new as an identifier
+      - Semantic IR and lowering owned by their dedicated pipeline
+    verification:
+      - command: go test ./internal/lexer -run NewIsHardKeyword -count=1
+        result: passed
+      - command: go test ./internal/parser -run InitAndNewLifecycleSyntax -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'LifecycleInitAndNewSemantics|InitOverloadIdentity' -count=1
+        result: passed
+      - command: go test ./internal/formatter -run InitAndNewLifecycleSyntax -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run 'LifecycleInitAndNewTooling|ReferencesConnectInitializer' -count=1
+        result: passed
+
+  - id: frontend.modules
+    area: frontend-projects-and-resolution
+    status: partial
+    integrated: "2026-08-14"
+    summary: >-
+      Establishes the canonical Sec module model shared by compiler and tooling.
+      The first integrated slice provides host-independent logical import-path
+      validation, root-qualified ModuleIdentity, plan-qualified ModuleInstance,
+      deterministic dependency graph ordering and SCC cycle reports, parser
+      rejection of dotted module declarations, and existing deterministic LSP
+      same-directory assembly. Full project/std/platform resolution, file-local
+      binding tables, surfaces, visibility, and incremental invalidation remain.
+    rules:
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/lexical_structure.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/platform_model.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/lsp.md
+    code:
+      - cmd/compiler/module_sources.go
+      - internal/modules/model.go
+      - internal/modules/graph.go
+      - internal/modules/instance_graph.go
+      - internal/parser/parser.go
+      - internal/lsp/server/module_sources.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - cmd/compiler/module_sources_test.go
+      - testdata/module_siblings/active.sec
+      - testdata/module_siblings/sibling.sec
+      - internal/modules/model_test.go
+      - internal/modules/graph_test.go
+      - internal/modules/instance_graph_test.go
+      - internal/parser/parser_test.go
+      - internal/lsp/server/module_sources_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - CLI semantic and build/emit entry paths assemble unselected same-module sibling files for canonical directory modules and manifest-bearing project roots before Sema; existing input files are deduplicated
+      - sibling selection is non-recursive, ordered, target-filtered, excludes automatically discovered test sources, and retains original source paths
+      - sibling parser errors block CLI compilation rather than causing misleading single-file unknown-type errors; legacy standalone paths outside canonical directory/root module naming remain isolated
+      - root-qualified canonical ModuleIdentity distinct from short source ModuleName
+      - CompilationPlan-qualified ModuleInstance identity without changing logical ModuleIdentity
+      - host-independent canonical import-path validation rejecting empty components, traversal, absolute paths, backslashes, and trailing separators
+      - parser rejection of dotted source module declarations with a dedicated explanatory diagnostic
+      - platform and regression sources migrated from legacy dotted module declarations to canonical short ModuleName declarations
+      - cross-module platform syscall entry points made explicitly public instead of relying on legacy dotted-name visibility grouping
+      - single, aliased, and grouped import syntax with canonical-path validation
+      - deterministic ModuleGraph storage, duplicate-edge and self-import rejection, strongly connected components, representative cycle paths, and dependency-first topological ordering
+      - structured deterministic module-cycle diagnostics with a canonical primary import location and navigable related import-edge locations
+      - stable delimiter-safe CrossModuleDeclarationIdentity constructed from canonical ModuleIdentity and owning declaration identity, independent of short module names and import aliases
+      - CompilationPlan-scoped ModuleInstanceGraph with stable logical ModuleIdentity, independent per-Variant selected-source sets, selected-endpoint import validation, and dependency-first semantic processing order
+      - immutable defensive ModuleDependencyFacts snapshots for initialization consumers, retaining plan, module, source-selection, and import-edge facts without defining runtime initialization or deinitialization order
+      - deterministic same-directory LSP module assembly with editor overlays and shared declaration analysis
+      - partial project, std, and platform source import discovery with deterministic source-file ordering
+    remaining:
+      - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
+      - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
+      - preserve source-file ownership for private declarations while exposing module-internal declarations across all sibling source files
+      - replace flattened imported AST inclusion with source-file-local import binding tables and module-wide dependency-edge union
+      - resolve canonical project, std, and platform ImportRootIdentity values without reserved-root fallback into project sources
+      - validate every resolved import destination's module declaration, source membership, and active-plan selection
+      - derive default qualifiers from resolved ModuleName and support aliases without rewriting declaration or module identity
+      - enforce per-file qualifier uniqueness and require aliases when distinct ModuleIdentities share one ModuleName
+      - reject duplicate canonical ModuleIdentity imports per source file and integrate canonical self-import checks with resolver diagnostics
+      - keep imported declarations qualified, prevent implicit name injection and re-export, and reject unsupported selective and wildcard imports
+      - enforce internal-directory access during canonical resolution before declaration visibility checks
+      - integrate the canonical ModuleGraph into compiler and LSP resolution, cycle diagnostics, and CompilationPlan processing
+      - implement canonical ModuleSurface creation from public declarations and reject public signatures exposing inaccessible semantic types
+      - discover only the source graph reachable for the active Target and CompilationPlan
+      - add deterministic ModuleSurface fingerprints and compatible separate-compilation serialization
+      - invalidate importer resolution only as permitted by semantic surface changes, with conservative fallback when equivalence is unproven
+      - add dependency-driven SourceFile to ModuleInstance to ModuleSurface incremental invalidation
+      - share the complete canonical resolver between command-line compilation and LSP completion, navigation, rename, and diagnostics
+      - add structured diagnostics for inconsistent module declarations, unresolved imports, illegal internal access, duplicate imports, qualifier collisions, cycles, and inaccessible public signatures
+      - preserve original import spelling, resolved identity, local qualifier, source location, access cause, and CompilationPlan in diagnostic facts
+      - add multi-module integration tests for same-name modules, file-local bindings, roots, case sensitivity, internal access, graph shapes, Variants, surfaces, invalidation, and scheduling determinism
+    excluded:
+      - implicit import re-export
+      - selective and wildcard imports
+      - conditional-import source syntax
+      - source-level dotted module declarations
+      - module graph as an implicit initialization or deinitialization order
+      - ABI, mangling, or linker spelling defined by ModuleSurface
+    verification:
+      - command: go test ./cmd/compiler -run TestSingleFileAnalysisLoadsModuleSiblings -count=1
+        result: passed; same-directory types resolve from a single-file input and assembly is idempotent
+      - command: go test ./internal/modules ./internal/parser -run 'Module|Import' -count=1
+        result: passed
+      - command: go test ./internal/modules -run 'CrossModuleDeclarationIdentity|ModuleCycleDiagnostic' -count=1
+        result: passed
+      - command: go test ./internal/modules -run 'ModuleInstanceGraph|ModuleDependencyFacts' -count=1
+        result: passed

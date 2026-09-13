@@ -677,10 +677,18 @@ func (p *Parser) skipMatchArm(start lexer.Token) RecoveryEvent {
 	return p.skipPatternEntry(start)
 }
 
+// parseSpawnExpression preserves an explicit task/thread/process token so
+// parser consumers can distinguish the contextual modifier from the implicit
+// task default.
+//
+// Rules:
+//   - rules/concurrency/tasks.md — spawn expressions
+//   - rules/foundations/lexical_structure.md — §8 contextual reserved words
 func (p *Parser) parseSpawnExpression() ast.Expression {
 	expr := &ast.SpawnExpression{Token: p.curToken, Kind: "task"}
 	if p.peekToken.Type == lexer.IDENT && isSpawnKindModifier(p.peekToken.Lexeme) {
 		p.nextToken()
+		expr.KindToken = p.curToken
 		expr.Kind = p.curToken.Lexeme
 	}
 	if p.peekToken.Type == lexer.LBRACE {

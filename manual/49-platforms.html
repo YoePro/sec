@@ -1,0 +1,1566 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Platforms and Target Profiles - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#platforms">Platforms and Target Profiles</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#portable-semantics">Portable Semantics</a>
+        <a href="#terminology">Core Terminology</a>
+        <a href="#target">Target</a>
+        <a href="#variant">Variant</a>
+        <a href="#platform">Platform</a>
+        <a href="#build-profile">BuildProfile</a>
+        <a href="#target-profile">TargetProfile</a>
+        <a href="#compilation-plan">CompilationPlan</a>
+        <a href="#multi-variant">Multi-Variant Builds</a>
+        <a href="#architecture">Architecture and CPU</a>
+        <a href="#tune-cpu">TuneCPU and Features</a>
+        <a href="#device">Device Model</a>
+        <a href="#submodels">Resolved Platform Submodels</a>
+        <a href="#memory">MemoryEnvironment</a>
+        <a href="#runtime">RuntimeEnvironment</a>
+        <a href="#execution">ExecutionEnvironment</a>
+        <a href="#abi-link">ABI and Link Environment</a>
+        <a href="#capabilities">Capability Availability</a>
+        <a href="#compiler-support">Compiler Support vs Platform Support</a>
+        <a href="#profile-families">Profile Families</a>
+        <a href="#profile-matrix">Profile Baseline Matrix</a>
+        <a href="#allocation">Allocation Policy</a>
+        <a href="#tasks-threads">Tasks, Threads and Scheduler</a>
+        <a href="#interrupt-mmio">Interrupts and MMIO</a>
+        <a href="#safety">Safety Cannot Be Weakened</a>
+        <a href="#panic">Panic Policy</a>
+        <a href="#resources">Typed Resource Limits</a>
+        <a href="#enforcement">Resource Enforcement</a>
+        <a href="#contexts">Execution Context Policies</a>
+        <a href="#resolution">Profile Resolution</a>
+        <a href="#derived">Derived Profiles</a>
+        <a href="#overrides">Overrides and Hard Constraints</a>
+        <a href="#registry">Platform Registry</a>
+        <a href="#external-definitions">External Platform Definitions</a>
+        <a href="#source-selection">Platform Source Selection</a>
+        <a href="#cross-compilation">Cross Compilation</a>
+        <a href="#fingerprints">Fingerprints and Caching</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#lsp">LSP and Tooling</a>
+        <a href="#hardware-pages">Relationship to Hardware Chapters</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html" class="active">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Platforms and Target Profiles</div>
+
+        <h1 id="platforms">Platforms and Target Profiles</h1>
+
+        <p>
+            Sec uses one language model across hosted applications, operating-system services,
+            real-time systems and bare-metal programs. Target-dependent behavior is not scattered
+            through the compiler as assumptions about operating-system names, host CPUs or source
+            directories. Instead, one resolved platform model describes the concrete environment
+            for each compilation.
+        </p>
+
+        <p>
+            The central compiler contract is the <code>CompilationPlan</code>. It combines the
+            requested Target and Variant with resolved architecture, CPU, device, memory, runtime,
+            execution, ABI, linking, source-selection and target-profile facts. Once validated, the
+            plan is frozen and becomes authoritative for that compilation.
+        </p>
+
+        <pre><code>Target + Variant + effective configuration
+                    |
+                    v
+              PlatformResolver
+                    |
+                    v
+              CompilationPlan</code></pre>
+
+        <div class="rule">
+            <strong>Rule:</strong> A platform may restrict availability, representation, lowering
+            or runtime support, but it must not silently redefine target-independent Sec language
+            semantics.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Many compiler decisions depend on facts that are not properties of the source
+                language itself. Pointer width, endianness, available CPU instructions, the ABI,
+                MMIO regions, interrupt identities, stack policy and runtime services all depend on
+                the selected target.
+            </p>
+
+            <p>
+                Sec resolves those facts once and exposes them through typed compiler models. This
+                prevents the parser, semantic analyzer, static analyses, MLIR lowering, linker,
+                language server and platform library from each inventing their own interpretation of
+                the target.
+            </p>
+
+            <p>The platform model therefore provides:</p>
+
+            <ul>
+                <li>one canonical identity for the selected architecture and platform;</li>
+                <li>one resolved set of CPU and device capabilities;</li>
+                <li>one target profile defining enabled facilities and policies;</li>
+                <li>one memory, runtime and execution environment;</li>
+                <li>one ABI and linking environment;</li>
+                <li>deterministic target-specific source selection;</li>
+                <li>typed facts for compiler analyses and lowering;</li>
+                <li>provenance explaining where each target fact came from.</li>
+            </ul>
+        </section>
+
+        <section id="portable-semantics">
+            <h2>Portable Semantics</h2>
+
+            <p>
+                Sec separates <em>language semantics</em> from <em>target capability</em>. A target
+                may be unable to implement a feature, or the current compiler may lack lowering for
+                it, without changing what the feature means in the language.
+            </p>
+
+            <p>
+                For example, a target without a native instruction for a wide integer operation does
+                not make the Sec integer type semantically invalid. The compiler may use generated
+                code or a runtime helper when such a realization is available. Likewise, target
+                atomic capabilities describe how an operation can be implemented; they do not
+                redefine the Sec concurrency memory model.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> The selected target determines whether a valid Sec operation
+                can be realized for that CompilationPlan. It does not retroactively redefine the
+                source-language rule that made the operation valid.
+            </div>
+        </section>
+
+        <section id="terminology">
+            <h2>Core Terminology</h2>
+
+            <p>
+                Five names are especially important because they describe different layers of the
+                build model:
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Term</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Target</code></td>
+                            <td>One logical buildable product.</td>
+                        </tr>
+                        <tr>
+                            <td><code>Variant</code></td>
+                            <td>One concrete requested build configuration for a Target.</td>
+                        </tr>
+                        <tr>
+                            <td><code>Platform</code></td>
+                            <td>The compiler-known system and execution environment selected for a Variant.</td>
+                        </tr>
+                        <tr>
+                            <td><code>BuildProfile</code></td>
+                            <td>Optimization, debug, stripping, LTO and similar build behavior.</td>
+                        </tr>
+                        <tr>
+                            <td><code>TargetProfile</code></td>
+                            <td>Semantic capability, policy and resource constraints for the plan.</td>
+                        </tr>
+                        <tr>
+                            <td><code>CompilationPlan</code></td>
+                            <td>The final immutable resolved compiler contract for one Target and Variant.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                These concepts may be configured together, but they are not interchangeable.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target</h2>
+
+            <p>A <code>Target</code> is one logical buildable product.</p>
+
+            <p>Examples include:</p>
+
+            <pre><code>server
+worker
+controller
+firmware</code></pre>
+
+            <p>
+                A Target is not an operating-system and architecture pair. The same logical product
+                may be built for several concrete platforms.
+            </p>
+
+            <p>
+                This distinction allows one project to describe a product once while building
+                independent variants for Linux, another hosted system, an RTOS or a bare-metal
+                device where the project permits it.
+            </p>
+        </section>
+
+        <section id="variant">
+            <h2>Variant</h2>
+
+            <p>
+                A <code>Variant</code> is one concrete requested build configuration for a Target.
+                It is input to platform resolution rather than the final resolved platform model.
+            </p>
+
+            <p>A Variant may select or override facts such as:</p>
+
+            <ul>
+                <li>operating system;</li>
+                <li>architecture;</li>
+                <li>ABI;</li>
+                <li>CPU;</li>
+                <li>CPU features;</li>
+                <li><code>TuneCPU</code>;</li>
+                <li>device;</li>
+                <li>target profile;</li>
+                <li>toolchain intent;</li>
+                <li>build-profile settings;</li>
+                <li>compile-time parameter overrides.</li>
+            </ul>
+
+            <p>
+                The resolver validates these selections and converts them into canonical identities
+                before later compiler stages consume them.
+            </p>
+        </section>
+
+        <section id="platform">
+            <h2>Platform</h2>
+
+            <p>
+                A <code>Platform</code> is the compiler-known system and execution environment
+                selected for a Variant.
+            </p>
+
+            <p>
+                Platform identity is semantic. It is not inferred from a source directory name and
+                it is not defined merely because a file happens to exist under a platform-specific
+                folder.
+            </p>
+
+            <p>The order is:</p>
+
+            <pre><code>resolve platform capabilities
+        ↓
+resolve compatible target profile
+        ↓
+freeze CompilationPlan
+        ↓
+select compatible platform sources</code></pre>
+
+            <p>
+                This matters because source files implement the selected platform; they do not
+                define the platform by accident.
+            </p>
+        </section>
+
+        <section id="build-profile">
+            <h2>BuildProfile</h2>
+
+            <p>
+                A <code>BuildProfile</code> controls build behavior such as optimization level,
+                debug information, stripping, LTO and instrumentation.
+            </p>
+
+            <p>A BuildProfile does <strong>not</strong> decide whether the target supports:</p>
+
+            <ul>
+                <li>threads;</li>
+                <li>tasks;</li>
+                <li>interrupts;</li>
+                <li>MMIO;</li>
+                <li>thread-local storage;</li>
+                <li>heap allocation;</li>
+                <li>a particular ABI.</li>
+            </ul>
+
+            <p>
+                Those are platform and target-profile facts. In particular, a release-oriented
+                BuildProfile may optimize safety checks only when the compiler can prove they are
+                unnecessary. It may not simply turn mandatory Sec safety into undefined behavior.
+            </p>
+        </section>
+
+        <section id="target-profile">
+            <h2>TargetProfile</h2>
+
+            <p>
+                A <code>TargetProfile</code> is the semantic capability, policy and resource profile
+                applied to one concrete CompilationPlan.
+            </p>
+
+            <p>It answers questions such as:</p>
+
+            <ul>
+                <li>Is heap allocation enabled?</li>
+                <li>Are native threads available and enabled?</li>
+                <li>Are Sec tasks and a scheduler available?</li>
+                <li>May execution detach from its parent?</li>
+                <li>Are interrupts and MMIO enabled?</li>
+                <li>Which execution contexts may block or allocate?</li>
+                <li>Which stack, heap or task-count limits apply?</li>
+                <li>How are relevant resource limits enforced?</li>
+                <li>Which panic policy applies?</li>
+            </ul>
+
+            <p>
+                The profile constrains facilities the platform can provide. It cannot enable a
+                capability that the resolved platform or device does not support.
+            </p>
+        </section>
+
+        <section id="compilation-plan">
+            <h2>CompilationPlan</h2>
+
+            <p>
+                A <code>CompilationPlan</code> is the authoritative immutable resolved contract for
+                one Target and one Variant.
+            </p>
+
+            <p>A conceptual plan contains facts equivalent to:</p>
+
+            <pre><code>CompilationPlan {
+    Project
+    Target
+    Variant
+    BuildProfile
+
+    PlatformIdentity
+    TargetProfile
+
+    ArchitectureModel
+    DeviceModel?
+    MemoryEnvironment
+    RuntimeEnvironment
+    ExecutionEnvironment
+    ABIModel
+    LinkEnvironment
+
+    SourceSelection
+    CompilerTargetSupport
+
+    CompilerOptions
+    CompileTimeParameters
+}</code></pre>
+
+            <p>
+                The exact compiler data structures are implementation details. The important rule is
+                that the same semantic responsibilities exist and are resolved before plan-dependent
+                compiler work begins.
+            </p>
+
+            <p>
+                After the plan is frozen, later passes do not reinterpret project configuration or
+                silently query the host to obtain missing facts. A changed configuration creates a
+                new plan.
+            </p>
+        </section>
+
+        <section id="multi-variant">
+            <h2>Multi-Variant Builds</h2>
+
+            <p>One Target may produce several Variants in a single build operation.</p>
+
+            <pre><code>Target: server
+
+Variants:
+    linux-amd64
+    linux-arm64
+    linux-armv7
+    another-hosted-amd64</code></pre>
+
+            <p>Each Variant receives its own concrete CompilationPlan:</p>
+
+            <pre><code>Plan(server, linux-amd64)
+Plan(server, linux-arm64)
+Plan(server, linux-armv7)
+Plan(server, another-hosted-amd64)</code></pre>
+
+            <p>
+                Several operating systems or architectures are never represented as one polymorphic
+                plan. Plan-independent compiler results may be shared where safe, while target-
+                dependent results remain associated with the plan that produced them.
+            </p>
+
+            <p>
+                Failure of one Variant does not make another Variant semantically invalid, even
+                though the overall build command may report failure when any requested output fails.
+            </p>
+        </section>
+
+        <section id="architecture">
+            <h2>Architecture and CPU</h2>
+
+            <p>
+                <code>Architecture</code> identifies the machine ISA family, such as a canonical Sec
+                identity for AMD64, ARM64, ARM32 or RISC-V32.
+            </p>
+
+            <p>Architecture owns machine-level fundamentals such as:</p>
+
+            <ul>
+                <li>native word properties;</li>
+                <li>pointer representation constraints;</li>
+                <li>endianness;</li>
+                <li>alignment capabilities;</li>
+                <li>legal machine-operation classes;</li>
+                <li>architectural capability bounds.</li>
+            </ul>
+
+            <p>
+                <code>CPU</code> selects the processor or microarchitecture capability baseline that
+                generated code may require.
+            </p>
+
+            <pre><code>Architecture = amd64
+CPU          = raptorlake</code></pre>
+
+            <pre><code>Architecture = arm32
+CPU          = cortex-m4</code></pre>
+
+            <p>
+                CPU names are registry identities, not language keywords. A CPU selection may enable
+                machine capabilities beyond a generic architecture baseline, but only through
+                canonical feature resolution.
+            </p>
+        </section>
+
+        <section id="tune-cpu">
+            <h2>TuneCPU and CPU Features</h2>
+
+            <p>
+                <code>TuneCPU</code> is an optimization preference. It is intentionally distinct
+                from the CPU capability baseline.
+            </p>
+
+            <pre><code>CPU     = generic-amd64
+TuneCPU = raptorlake</code></pre>
+
+            <p>
+                This may allow instruction scheduling and other optimization choices appropriate to
+                Raptor Lake while generated code remains legal for the generic AMD64 capability
+                baseline.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>TuneCPU</code> may improve generated code, but it must
+                never broaden the instruction set permitted by the resolved CPU and feature set.
+            </div>
+
+            <p>CPU feature resolution may combine:</p>
+
+            <ul>
+                <li>CPU defaults;</li>
+                <li>explicitly enabled features;</li>
+                <li>explicitly disabled features;</li>
+                <li>features required by a concrete Device.</li>
+            </ul>
+
+            <p>
+                Feature dependencies and conflicts are validated before the plan is frozen.
+            </p>
+        </section>
+
+        <section id="device">
+            <h2>Device Model</h2>
+
+            <p>
+                <code>Device</code> is an optional concrete hardware identity. It is separate from
+                CPU because two devices may use the same CPU core while exposing completely different
+                hardware around it.
+            </p>
+
+            <p>A Device may define or constrain:</p>
+
+            <ul>
+                <li>RAM and flash topology;</li>
+                <li>memory maps and MMIO regions;</li>
+                <li>interrupt controllers and named interrupt/vector identities;</li>
+                <li>peripherals;</li>
+                <li>DMA capabilities;</li>
+                <li>device-specific registers;</li>
+                <li>startup requirements;</li>
+                <li>link placement constraints;</li>
+                <li>required CPU and CPU features.</li>
+            </ul>
+
+            <p>
+                If a Device requires a Cortex-M4 CPU and configuration explicitly selects an
+                incompatible CPU, platform resolution fails. A higher-precedence CLI option does not
+                make an impossible hardware combination valid.
+            </p>
+
+            <p>
+                A Device identity is not required for an ordinary desktop or server target when the
+                architecture, CPU and platform already provide every required fact.
+            </p>
+        </section>
+
+        <section id="submodels">
+            <h2>Resolved Platform Submodels</h2>
+
+            <p>
+                The CompilationPlan exposes typed resolved submodels so each compiler subsystem can
+                ask the correct owner for a target fact.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Responsibility</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>ArchitectureModel</code></td>
+                            <td>Machine architecture, CPU, features and representation capabilities.</td>
+                        </tr>
+                        <tr>
+                            <td><code>DeviceModel</code></td>
+                            <td>Concrete hardware refinements, memory map, interrupts and constraints.</td>
+                        </tr>
+                        <tr>
+                            <td><code>MemoryEnvironment</code></td>
+                            <td>Target memory spaces, addressability and memory capabilities.</td>
+                        </tr>
+                        <tr>
+                            <td><code>RuntimeEnvironment</code></td>
+                            <td>Runtime services and their semantic contracts.</td>
+                        </tr>
+                        <tr>
+                            <td><code>ExecutionEnvironment</code></td>
+                            <td>Threads, tasks, interrupts, preemption, blocking and execution roots.</td>
+                        </tr>
+                        <tr>
+                            <td><code>ABIModel</code></td>
+                            <td>Canonical ABI selected for calls, FFI and machine-level interfaces.</td>
+                        </tr>
+                        <tr>
+                            <td><code>LinkEnvironment</code></td>
+                            <td>Object format, entry convention, startup objects and linker capabilities.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="memory">
+            <h2>MemoryEnvironment</h2>
+
+            <p>
+                <code>MemoryEnvironment</code> describes target memory topology and capabilities.
+                It may expose facts such as:
+            </p>
+
+            <ul>
+                <li>address spaces and stable memory-space identities;</li>
+                <li>addressability and pointer-related machine properties;</li>
+                <li>alignment requirements;</li>
+                <li>MMIO regions;</li>
+                <li>static or device memory regions;</li>
+                <li>CPU, DMA or accelerator accessibility;</li>
+                <li>cacheability and coherence properties where defined.</li>
+            </ul>
+
+            <p>
+                MemoryEnvironment does not redefine Sec ownership, borrowing, object lifetime or
+                reclamation authority. It provides target facts that those language rules may consume.
+            </p>
+
+            <p>
+                MMIO is not inferred by testing whether an integer address “looks like hardware”.
+                Canonical Device or memory metadata identifies MMIO regions for the volatile and
+                hardware-register rules.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>RuntimeEnvironment</h2>
+
+            <p>
+                <code>RuntimeEnvironment</code> describes services available to generated Sec code
+                under the active plan.
+            </p>
+
+            <p>Possible service domains include:</p>
+
+            <ul>
+                <li>startup;</li>
+                <li>panic handling;</li>
+                <li>allocation;</li>
+                <li>generation tracking;</li>
+                <li>thread support;</li>
+                <li>task scheduling;</li>
+                <li>synchronization helpers;</li>
+                <li>thread-local storage;</li>
+                <li>numeric and compiler-required lowering helpers.</li>
+            </ul>
+
+            <p>
+                Sec does not require one complete universal runtime. A valid target may provide only
+                the services needed by its profile and program.
+            </p>
+
+            <p>
+                Runtime services that can influence static analysis must expose semantic contracts.
+                A runtime helper may, for example, be known to allocate, block, panic, require a
+                particular execution context or be interrupt-safe.
+            </p>
+        </section>
+
+        <section id="execution">
+            <h2>ExecutionEnvironment</h2>
+
+            <p>
+                <code>ExecutionEnvironment</code> describes the execution-context model for the
+                active CompilationPlan.
+            </p>
+
+            <p>It may contain canonical relations for:</p>
+
+            <ul>
+                <li>process execution;</li>
+                <li>threads and tasks;</li>
+                <li>scheduling;</li>
+                <li>interrupts;</li>
+                <li>preemption and nesting;</li>
+                <li>blocking and reentry;</li>
+                <li>execution roots and context transitions;</li>
+                <li>physical stack domains.</li>
+            </ul>
+
+            <p>
+                Static analyses consume these relations instead of guessing behavior from an OS name
+                or raw interrupt priority number.
+            </p>
+
+            <pre><code>MayPreempt(A, B)
+CannotPreempt(A, B)
+MayNest(A, B)
+CannotNest(A, B)
+MayReenter(A)</code></pre>
+
+            <p>
+                Tasks and threads remain distinct. A Sec Task is never assumed to be identical to one
+                operating-system thread merely because a particular runtime chooses such a mapping.
+            </p>
+        </section>
+
+        <section id="abi-link">
+            <h2>ABI and Link Environment</h2>
+
+            <p>
+                <code>ABIModel</code> is selected once during platform resolution and then reused by
+                function lowering, FFI, stack reasoning, linking and debugging.
+            </p>
+
+            <p>
+                Later compiler stages must not independently infer the ABI from architecture or
+                operating-system spellings.
+            </p>
+
+            <p><code>LinkEnvironment</code> may contain:</p>
+
+            <ul>
+                <li>object format;</li>
+                <li>symbol model;</li>
+                <li>entry convention;</li>
+                <li>required startup objects;</li>
+                <li>platform libraries;</li>
+                <li>relocation model;</li>
+                <li>linker capabilities.</li>
+            </ul>
+
+            <p>
+                Toolchain availability is separate from semantic platform validity. A plan can be
+                semantically valid even when the current compiler host does not have the linker or
+                SDK needed to produce the final binary.
+            </p>
+        </section>
+
+        <section id="capabilities">
+            <h2>Capability Availability and Activation</h2>
+
+            <p>
+                Sec deliberately separates whether a target <em>can</em> provide a capability from
+                whether the active profile <em>enables</em> it.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Availability</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>Supported</code></td><td>The selected platform can provide the capability.</td></tr>
+                        <tr><td><code>Unsupported</code></td><td>The resolved platform cannot provide it or explicitly forbids it.</td></tr>
+                        <tr><td><code>Unknown</code></td><td>The compiler lacks sufficient canonical target information.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Activation</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>Enabled</code></td><td>The active plan permits or selects the capability.</td></tr>
+                        <tr><td><code>Disabled</code></td><td>The platform can provide it, but the active profile does not enable it.</td></tr>
+                        <tr><td><code>NotApplicable</code></td><td>The capability does not apply to this plan.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <code>Disabled</code> and <code>Unsupported</code> are different diagnostic causes.
+                A source-level requirement never silently changes a disabled capability to enabled.
+            </p>
+        </section>
+
+        <section id="compiler-support">
+            <h2>Compiler Support vs Platform Support</h2>
+
+            <p>
+                The target may support a capability before the current compiler can lower it.
+                These facts are kept separate.
+            </p>
+
+            <pre><code>Platform:
+    Interrupts = Supported
+
+CompilerTargetSupport:
+    InterruptLowering = Unsupported</code></pre>
+
+            <p>
+                This means the hardware/platform model supports interrupts, but this compiler build
+                cannot yet emit them for the selected target.
+            </p>
+
+            <p>
+                A missing lowering stage must not be reported as invalid Sec source or as a hardware
+                limitation. Commands such as semantic checking or static analysis may still be able
+                to operate on a plan for which object emission or linking is not yet implemented.
+            </p>
+        </section>
+
+        <section id="profile-families">
+            <h2>Target Profile Families</h2>
+
+            <p>Sec 0.1 defines three compiler-known target-profile families:</p>
+
+            <pre><code>Hosted
+RTOS
+BareMetal</code></pre>
+
+            <p>
+                These are policy and capability baselines. They are not operating-system names,
+                CPU identities, ABI identities or runtime products.
+            </p>
+
+            <ul>
+                <li><strong>Hosted</strong> does not mean every runtime facility is enabled.</li>
+                <li><strong>RTOS</strong> requires task/scheduler execution, but does not imply native OS threads.</li>
+                <li><strong>BareMetal</strong> does not mean “no runtime code is allowed”.</li>
+                <li>RTOS is not a subtype of Hosted.</li>
+            </ul>
+
+            <p>
+                A concrete platform or project may derive a profile from one family while selecting
+                additional supported facilities.
+            </p>
+        </section>
+
+        <section id="profile-matrix">
+            <h2>Profile Baseline Matrix</h2>
+
+            <p>
+                Family entries are resolution baselines. A concrete target still resolves each
+                capability against actual platform, device and runtime support.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Capability or policy</th>
+                            <th>Hosted</th>
+                            <th>RTOS</th>
+                            <th>BareMetal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Hosted process lifecycle</td><td>Required</td><td>Disabled</td><td>Disabled</td></tr>
+                        <tr><td>Heap allocation</td><td>Enabled if supported</td><td>Disabled</td><td>Disabled</td></tr>
+                        <tr><td>Native threads</td><td>Enabled if supported</td><td>Target-defined</td><td>Disabled</td></tr>
+                        <tr><td>Sec tasks</td><td>Enabled if supported</td><td>Required</td><td>Disabled</td></tr>
+                        <tr><td>Task scheduler</td><td>Enabled if supported</td><td>Required</td><td>Disabled</td></tr>
+                        <tr><td>Detached execution</td><td>Enabled if supported</td><td>Target-defined</td><td>Disabled</td></tr>
+                        <tr><td>Thread-local storage</td><td>Enabled if supported</td><td>Target-defined</td><td>Disabled</td></tr>
+                        <tr><td>Synchronization primitives</td><td>Enabled if supported</td><td>Enabled if supported</td><td>Enabled if supported</td></tr>
+                        <tr><td>Atomics</td><td>Enabled if supported</td><td>Enabled if supported</td><td>Enabled if supported</td></tr>
+                        <tr><td>Interrupt execution</td><td>Disabled</td><td>Enabled if supported</td><td>Enabled if supported</td></tr>
+                        <tr><td>MMIO/device access</td><td>Disabled</td><td>Enabled if supported</td><td>Enabled if supported</td></tr>
+                        <tr><td>Dynamic linking</td><td>Enabled if supported</td><td>Disabled</td><td>Disabled</td></tr>
+                        <tr><td>Mandatory Sec safety</td><td>Required</td><td>Required</td><td>Required</td></tr>
+                        <tr><td>Defined panic strategy</td><td>Required</td><td>Required</td><td>Required</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                A baseline of <em>Disabled</em> is not the same as physically unsupported. For
+                example, a concrete BareMetal-derived profile may enable a compatible allocator or
+                scheduler when the selected platform provides the required support and the profile
+                explicitly permits it.
+            </p>
+        </section>
+
+        <section id="allocation">
+            <h2>Allocation Policy</h2>
+
+            <p>
+                Heap allocation is a capability separate from automatic and static storage.
+                Disabling heap allocation does not forbid ordinary local values or static data whose
+                semantics require no dynamic allocation.
+            </p>
+
+            <p>
+                Hosted profiles enable supported heap allocation by default. RTOS and BareMetal
+                profiles disable it by default, but a derived concrete profile may enable it when a
+                compatible allocator and failure policy are provided.
+            </p>
+
+            <p>
+                Allocation capability and allocation budget are separate. A profile may permit heap
+                allocation while imposing a finite heap budget.
+            </p>
+        </section>
+
+        <section id="tasks-threads">
+            <h2>Tasks, Threads and Scheduler</h2>
+
+            <p>
+                Sec Tasks and native Threads are different execution entities in both the language
+                and target model.
+            </p>
+
+            <p>
+                An RTOS profile requires Sec task and scheduler support, but it need not expose native
+                operating-system threads. A Hosted profile may provide both. A BareMetal profile
+                disables task scheduling by default but can derive a profile that enables a supported
+                scheduler.
+            </p>
+
+            <p>
+                Detached execution is a separate capability. It may be enabled only when ownership,
+                shutdown, cancellation and cleanup requirements can be satisfied by the selected
+                runtime and execution environment.
+            </p>
+        </section>
+
+        <section id="interrupt-mmio">
+            <h2>Interrupts and MMIO</h2>
+
+            <p>
+                Hosted profiles disable direct interrupt execution and MMIO/device access by default.
+                RTOS and BareMetal profiles enable these capabilities only when the resolved platform,
+                Device and memory model support them.
+            </p>
+
+            <p>
+                When interrupt execution exists, the baseline interrupt context forbids heap
+                allocation and blocking unless a stronger owning interrupt rule explicitly defines a
+                safe alternative.
+            </p>
+
+            <p>
+                Interrupt identities, priority/preemption rules, binding, ISR validation and lifecycle
+                are covered in the dedicated interrupt chapter. MMIO, volatile behavior and hardware
+                register transactions are likewise covered by the following hardware chapters.
+            </p>
+        </section>
+
+        <section id="safety">
+            <h2>Safety Cannot Be Weakened</h2>
+
+            <p>Every Sec 0.1 target-profile family preserves mandatory Sec safety semantics.</p>
+
+            <p>A required safety condition must either:</p>
+
+            <ol>
+                <li>be proven statically; or</li>
+                <li>be checked dynamically when execution could otherwise violate it.</li>
+            </ol>
+
+            <p>
+                A dynamic safety check does not require a large runtime. It may lower to ordinary
+                inline machine code.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Neither a TargetProfile nor a BuildProfile may turn a mandatory
+                Sec safety condition into undefined behavior merely for performance.
+            </div>
+        </section>
+
+        <section id="panic">
+            <h2>Panic Policy</h2>
+
+            <p>
+                Every valid TargetProfile must provide a defined panic-handling strategy for reachable
+                panic behavior. This does not imply a heavy unwinding runtime.
+            </p>
+
+            <p>
+                An execution context may instead forbid panic entirely. When analysis proves that a
+                panic path is reachable from such a context, the program is invalid for that plan.
+            </p>
+
+            <p>
+                Lack of a runtime never converts reachable panic into undefined behavior.
+            </p>
+        </section>
+
+        <section id="resources">
+            <h2>Typed Resource Limits</h2>
+
+            <p>
+                Capability activation answers whether a facility may be used. Resource constraints
+                answer how much of that facility is available or permitted.
+            </p>
+
+            <p>Examples include:</p>
+
+            <pre><code>MaximumTasks:           ResourceLimit[Count]
+MaximumDetachedTasks:   ResourceLimit[Count]
+MaximumThreads:         ResourceLimit[Count]
+SchedulerQueueCapacity: ResourceLimit[Count]
+
+MainStackBudget:        ResourceLimit[Bytes]
+ThreadStackBudget:      ResourceLimit[Bytes]
+TaskStackBudget:        ResourceLimit[Bytes]
+InterruptStackBudget:   ResourceLimit[Bytes]
+
+StaticStorageBudget:    ResourceLimit[Bytes]
+HeapBudget:             ResourceLimit[Bytes]</code></pre>
+
+            <p>
+                Resource domains are typed. A count cannot accidentally be compared with a byte
+                budget simply because both happen to use integer storage.
+            </p>
+
+            <p>Resolved limits use explicit states:</p>
+
+            <ul>
+                <li><code>KnownLimit(value)</code> — a canonical finite bound is known;</li>
+                <li><code>NoDeclaredLimit</code> — the profile imposes no finite semantic bound;</li>
+                <li><code>UnknownLimit</code> — no usable canonical bound is known.</li>
+            </ul>
+
+            <p>
+                <code>UnknownLimit</code> is not zero and it is not infinity. In particular, it must
+                never be used as evidence for a positive static proof.
+            </p>
+        </section>
+
+        <section id="enforcement">
+            <h2>Resource Enforcement</h2>
+
+            <p>A resource constraint may define an enforcement policy such as:</p>
+
+            <ul>
+                <li><code>StaticRequired</code> — the owning compiler analysis must prove the bound;</li>
+                <li><code>RuntimeEnforced</code> — dynamic use is legal only when exhaustion behavior is defined;</li>
+                <li><code>Advisory</code> — the limit guides diagnostics or optimization without defining validity.</li>
+            </ul>
+
+            <p>
+                The profile supplies the constraint. Stack analysis, concurrency analysis, ISR
+                analysis or another owning analysis supplies the proof.
+            </p>
+        </section>
+
+        <section id="contexts">
+            <h2>Execution Context Policies</h2>
+
+            <p>
+                Some policies depend on the current execution context rather than one global switch.
+                Compiler-known contexts may include:
+            </p>
+
+            <pre><code>Ordinary
+Task
+Thread
+Interrupt
+Startup
+Shutdown</code></pre>
+
+            <p>
+                A context-specific policy may further restrict a globally enabled capability. It
+                cannot make a globally disabled or unavailable capability legal.
+            </p>
+
+            <p>
+                Blocking is therefore not represented by one target-wide boolean. A profile may
+                distinguish non-blocking operations, task suspension, thread blocking, indefinite
+                blocking, cancellation-aware waits and other canonical concurrency classes.
+            </p>
+        </section>
+
+        <section id="resolution">
+            <h2>Target Profile Resolution</h2>
+
+            <p>Profile resolution is explicit and ordered.</p>
+
+            <pre><code>Profile family baseline
+        +
+target/platform defaults
+        +
+device/runtime constraints
+        +
+project Target/Variant configuration
+        +
+legal explicit overrides
+        ↓
+ResolveTargetProfile
+        ↓
+ValidateTargetProfile
+        ↓
+ResolvedTargetProfile
+        ↓
+freeze CompilationPlan</code></pre>
+
+            <p>
+                A frozen plan contains resolved facts, not unresolved family dispositions or
+                implicit missing values.
+            </p>
+
+            <p>
+                Program requirements are checked <em>against</em> the frozen profile. They do not
+                mutate it.
+            </p>
+        </section>
+
+        <section id="derived">
+            <h2>Derived Profiles</h2>
+
+            <p>
+                A concrete target, platform, project or implementation may define a profile derived
+                from one canonical Sec family.
+            </p>
+
+            <pre><code>ProfileIdentity
+BaseProfileLineage
+ResolvedFacts</code></pre>
+
+            <p>
+                Sec 0.1 uses one base profile lineage. Multiple profile inheritance is not required.
+            </p>
+
+            <p>
+                A BareMetal-derived profile may, for example, enable an allocator, scheduler and
+                interrupt support while still remaining a BareMetal profile when its execution model
+                follows the BareMetal baseline.
+            </p>
+        </section>
+
+        <section id="overrides">
+            <h2>Overrides and Hard Constraints</h2>
+
+            <p>Profile precedence runs conceptually from lower to higher authority:</p>
+
+            <ol>
+                <li>canonical profile-family baseline;</li>
+                <li>target/platform defaults;</li>
+                <li>device/runtime-required constraints;</li>
+                <li>project Target/Variant configuration;</li>
+                <li>explicit CLI override where legally overridable.</li>
+            </ol>
+
+            <p>
+                Precedence chooses among legal alternatives. It does not defeat hard physical or
+                semantic constraints.
+            </p>
+
+            <p>For example:</p>
+
+            <pre><code>Device:
+    Interrupts = Unsupported</code></pre>
+
+            <p>
+                cannot be turned into interrupt support by a command-line flag. Likewise, a Device
+                that requires a Cortex-M4 CPU cannot be made compatible with an unrelated CPU simply
+                because the CLI has higher configuration precedence.
+            </p>
+
+            <p>Individual profile facts may be classified as:</p>
+
+            <pre><code>Overridable
+FixedByTarget
+FixedByDevice
+Derived</code></pre>
+        </section>
+
+        <section id="registry">
+            <h2>Platform Registry</h2>
+
+            <p>
+                Platform resolution is driven by a canonical typed registry. It may contain
+                definitions for:
+            </p>
+
+            <ul>
+                <li>operating systems;</li>
+                <li>architectures;</li>
+                <li>CPUs and CPU features;</li>
+                <li>Devices;</li>
+                <li>ABIs;</li>
+                <li>TargetProfiles;</li>
+                <li>runtime and execution models;</li>
+                <li>memory models;</li>
+                <li>link models;</li>
+                <li>platform source mappings;</li>
+                <li>compiler target support.</li>
+            </ul>
+
+            <p>
+                Aliases are normalized at registry entry. If spellings such as
+                <code>amd64</code>, <code>x86_64</code> or <code>x64</code> are accepted as aliases,
+                they resolve to one canonical identity before semantic resolution continues.
+            </p>
+
+            <p>
+                Load order, directory enumeration and “last definition wins” are not valid ways to
+                decide platform semantics.
+            </p>
+        </section>
+
+        <section id="external-definitions">
+            <h2>External Platform Definitions</h2>
+
+            <p>
+                Sec may ship built-in platform definitions, but the architecture also permits
+                declarative external definitions where supported, especially for concrete Devices
+                and platform packages.
+            </p>
+
+            <p>Such definitions may describe:</p>
+
+            <ul>
+                <li>device identity;</li>
+                <li>CPU and required features;</li>
+                <li>memory regions;</li>
+                <li>interrupt identities and metadata;</li>
+                <li>ABI selection;</li>
+                <li>platform source mappings;</li>
+                <li>runtime availability.</li>
+            </ul>
+
+            <p>
+                External platform definitions are data, not arbitrary executable compiler plugins.
+                They must be schema-validated, normalized and structurally checked before they become
+                part of a registry snapshot.
+            </p>
+
+            <p>
+                Validation includes unknown identities, duplicate definitions, invalid ranges,
+                malformed memory regions, feature conflicts, invalid interrupt metadata and
+                incompatible cross-domain selections.
+            </p>
+        </section>
+
+        <section id="source-selection">
+            <h2>Platform Source Selection</h2>
+
+            <p>
+                Platform-specific source selection is derived from the resolved plan. The compiler
+                does not infer semantic platform capabilities from directory names or file presence.
+            </p>
+
+            <p>A resolved source selection may contain:</p>
+
+            <ul>
+                <li>project sources;</li>
+                <li>platform-common sources;</li>
+                <li>architecture-specific sources;</li>
+                <li>Device-specific sources;</li>
+                <li>runtime sources;</li>
+                <li>generated sources where defined.</li>
+            </ul>
+
+            <p>
+                Selection is deterministic when several implementations exist. The registry or
+                source-routing rules decide matching and specificity; filesystem enumeration order
+                does not.
+            </p>
+
+            <p>
+                Target constraints attached to source validate compatibility with the already
+                selected plan. They do not choose or mutate the plan themselves.
+            </p>
+        </section>
+
+        <section id="cross-compilation">
+            <h2>Cross Compilation and Host Separation</h2>
+
+            <p>
+                The compiler host and program target are strictly separate environments.
+            </p>
+
+            <p>Target facts such as these come from the active CompilationPlan:</p>
+
+            <ul>
+                <li>pointer width;</li>
+                <li>endianness;</li>
+                <li>ABI;</li>
+                <li>object format;</li>
+                <li>CPU features;</li>
+                <li>memory topology;</li>
+                <li>platform source selection;</li>
+                <li>interrupt model.</li>
+            </ul>
+
+            <p>
+                They are never silently copied from the machine running the compiler.
+            </p>
+
+            <p>
+                The host CPU is not implicitly used as the target CPU. If an explicit
+                <code>native</code>-style request is supported, host discovery is an explicit resolver
+                action whose result is immediately converted to canonical target facts.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A target binary does not need to be executable on the compiler
+                host for the compilation itself to be valid.
+            </div>
+        </section>
+
+        <section id="fingerprints">
+            <h2>Fingerprints and Incremental Caching</h2>
+
+            <p>
+                Resolved target facts receive stable semantic identities and fingerprints. The
+                compiler may maintain separate dependency domains such as:
+            </p>
+
+            <pre><code>ArchitectureFingerprint
+LayoutFingerprint
+MemoryFingerprint
+RuntimeFingerprint
+ExecutionFingerprint
+ABIFingerprint
+LinkFingerprint
+OptimizationFingerprint</code></pre>
+
+            <p>
+                A fingerprint represents resolved meaning, not file modification time, registry load
+                order or display text.
+            </p>
+
+            <p>
+                This lets the compiler invalidate only the results whose dependencies changed. A
+                change to a task limit may invalidate concurrency analysis without invalidating ABI
+                layout. A change to <code>TuneCPU</code> may affect optimization results without
+                changing semantic type checking.
+            </p>
+
+            <p>
+                Conservative over-invalidation is permitted. Reusing a stale target-dependent proof
+                is not.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Platform diagnostics distinguish causes rather than collapsing everything into “invalid target”.</p>
+
+            <p>Important categories include:</p>
+
+            <ul>
+                <li>unknown platform or device definition;</li>
+                <li>invalid configuration;</li>
+                <li>unsupported combination;</li>
+                <li>supported but disabled capability;</li>
+                <li>missing required capability;</li>
+                <li>missing platform implementation;</li>
+                <li>missing compiler backend support;</li>
+                <li>missing toolchain support;</li>
+                <li>registry definition error;</li>
+                <li>resource bound exceeded;</li>
+                <li>required proof unavailable;</li>
+                <li>context-policy violation.</li>
+            </ul>
+
+            <p>
+                Diagnostics retain provenance when it helps explain the failure.
+            </p>
+
+            <pre><code>device ExampleDevice requires CPU cortex-m4,
+but CPU cortex-m7 was selected by command-line override</code></pre>
+
+            <p>
+                This is more useful than reporting a generic “invalid target” error because it tells
+                the programmer which two selections conflict and where the effective choice came from.
+            </p>
+        </section>
+
+        <section id="lsp">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                The language server uses the same project configuration, platform registry and
+                CompilationPlan resolver as command-line compilation.
+            </p>
+
+            <p>
+                The LSP must not silently assume a Hosted profile merely because the editor is
+                running on a desktop computer.
+            </p>
+
+            <p>When platform-relevant configuration changes, the LSP can:</p>
+
+            <ol>
+                <li>load the new configuration or registry snapshot;</li>
+                <li>resolve affected CompilationPlans;</li>
+                <li>compare semantic fingerprints;</li>
+                <li>invalidate only dependent state;</li>
+                <li>refresh diagnostics and analysis without requiring an editor restart.</li>
+            </ol>
+
+            <p>
+                When the new platform configuration is temporarily invalid, positive target-dependent
+                results from the previous plan must not remain presented as current proof.
+            </p>
+        </section>
+
+        <section id="hardware-pages">
+            <h2>Relationship to the Hardware Chapters</h2>
+
+            <p>
+                This chapter defines how target facts are selected and resolved. It does not duplicate
+                the source-level hardware semantics that consume those facts.
+            </p>
+
+            <p>The following chapters build on the active CompilationPlan:</p>
+
+            <ul>
+                <li><a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a> — MMIO bindings and physical access;</li>
+                <li><a href="51-interrupts.html">51 Interrupts and ISRs</a> — named interrupt identities, binding, preemption and ISR safety;</li>
+                <li><a href="52-inline-assembly.html">52 Inline Assembly</a> — explicit target-specific machine operations;</li>
+                <li><a href="53-initialization.html">53 Program Initialization and Shutdown</a> — startup, shutdown and entry requirements;</li>
+                <li><a href="54-concurrency.html">54 Concurrency</a> and later chapters — execution facilities exposed by the active profile.</li>
+            </ul>
+
+            <p>
+                The platform model provides the facts. Each owning language rule defines what those
+                facts mean for source code.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Think of a Target as a product and a Variant as one concrete build of that product.</li>
+                <li>Do not use BuildProfile settings to model semantic target capabilities.</li>
+                <li>Select the least demanding TargetProfile that still describes the intended environment.</li>
+                <li>Keep CPU capability and <code>TuneCPU</code> separate when portable binaries matter.</li>
+                <li>Use a concrete Device when memory maps, interrupts or peripherals matter to correctness.</li>
+                <li>Do not infer hardware capability from directory names or source-file presence.</li>
+                <li>Do not rely on the compiler host as evidence about the target.</li>
+                <li>Treat <code>Disabled</code>, <code>Unsupported</code> and <code>Unknown</code> as different states.</li>
+                <li>Keep resource limits typed and explicit rather than encoding them as unstructured integers.</li>
+                <li>Use profile provenance in diagnostics instead of hiding the effective configuration.</li>
+                <li>Keep external platform definitions declarative and reproducible.</li>
+                <li>Remember that a valid platform may still lack current compiler lowering or toolchain support.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec uses one target-independent language model across hosted, RTOS and bare-metal environments.</li>
+                <li>A Target is one logical product; a Variant is one concrete requested build configuration.</li>
+                <li>A Platform is the compiler-known system and execution environment selected for the Variant.</li>
+                <li>BuildProfile controls build behavior; TargetProfile controls semantic capabilities, policies and resource constraints.</li>
+                <li>The CompilationPlan is the immutable authoritative resolved contract for one Target and Variant.</li>
+                <li>Multi-Variant builds create separate CompilationPlans rather than one polymorphic target model.</li>
+                <li>Architecture, CPU, TuneCPU and Device are distinct target concepts.</li>
+                <li>TuneCPU may guide optimization but cannot broaden the legal instruction capability set.</li>
+                <li>A concrete Device may define memory maps, interrupt identities, peripherals, DMA facts and hard compatibility constraints.</li>
+                <li>Memory, runtime, execution, ABI and linking are resolved as distinct platform submodels.</li>
+                <li>Capability availability is separate from capability activation.</li>
+                <li>Platform support is separate from the current compiler's implementation support.</li>
+                <li>Sec 0.1 defines Hosted, RTOS and BareMetal target-profile families.</li>
+                <li>Hosted does not mean all facilities enabled; BareMetal does not mean no runtime; RTOS does not imply native threads.</li>
+                <li>Mandatory Sec safety semantics cannot be disabled by a target or build profile.</li>
+                <li>Every valid profile defines a panic strategy for reachable panic behavior.</li>
+                <li>Resource limits are typed and may be statically required, runtime enforced or advisory.</li>
+                <li>Program requirements are checked against a frozen profile and never silently enable disabled capabilities.</li>
+                <li>Platform definitions are canonical typed data with deterministic validation and provenance.</li>
+                <li>Platform-specific source selection follows the resolved plan rather than defining it.</li>
+                <li>Cross compilation uses target facts from the plan, never accidental facts from the compiler host.</li>
+                <li>Stable semantic fingerprints allow selective incremental invalidation.</li>
+                <li>The CLI and LSP use the same canonical platform resolution.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="48-effects.html">Previous: Effects and Verified Guarantees</a>
+            <a href="50-hardware-access.html">Next: Fixed Addresses, Volatile and Hardware Access</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

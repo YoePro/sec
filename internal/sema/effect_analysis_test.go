@@ -20,6 +20,27 @@ func TestListIndexingRecordsBoundsEffect(t *testing.T) {
 	}
 }
 
+// Embedded expressions contribute the same effects as ordinary expressions;
+// wrapping an indexing operation in string interpolation cannot hide it from
+// an enclosing contract.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/collections/collections.md — §8.3 list indexing
+func TestInterpolatedStringExpressionRecordsEffects(t *testing.T) {
+	_, errors := analyzeSourceWithAnalyzerRaw(t, `module main
+
+@noPanic
+fn Render(values: list[int], index: uint) string {
+	return $"value={values[index]}"
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function Render does not satisfy @noPanic") ||
+		!strings.Contains(errors[0].Message, string(EffectMayPanicBounds)) {
+		t.Fatalf("interpolation effects = %v, want bounds-panic @noPanic violation", errors)
+	}
+}
+
 func TestArithmeticTryTransformsOnlyItsResolvedFailureEffect(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

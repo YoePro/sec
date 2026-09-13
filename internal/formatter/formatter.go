@@ -15,9 +15,22 @@ import (
 
 type Options struct{ Fix bool }
 type Source struct{ Text string }
-type Result struct{ Text string }
+type Result struct {
+	Text     string
+	Comments []ast.CommentAttachment
+}
 
-func Format(source Source, options Options) Result { return Result{Text: format(source.Text, options)} }
+// Format returns canonical source together with parser-owned comment
+// attachments whose positions describe the formatted output.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Comment attachment"
+//   - rules/tooling/formatter.md — Appendix A.5 "Build lossless syntax and trivia support"
+func Format(source Source, options Options) Result {
+	text := format(source.Text, options)
+	program := parser.New(lexer.New(text)).ParseProgram()
+	return Result{Text: text, Comments: append([]ast.CommentAttachment(nil), program.Comments...)}
+}
 
 type branch struct {
 	depth         int

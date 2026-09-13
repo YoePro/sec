@@ -38,7 +38,11 @@ func (p *Parser) parseInterpolatedStringLiteral() ast.Expression {
 			start := position(textStart)
 			start.Type = lexer.STRING
 			start.Lexeme = string(source[textStart:end])
-			literal.Parts = append(literal.Parts, ast.InterpolatedStringPart{Token: start, End: position(end), Text: text.String()})
+			materialized := text.String()
+			if decoded, ok := lexer.DecodeStringText(materialized); ok {
+				materialized = decoded
+			}
+			literal.Parts = append(literal.Parts, ast.InterpolatedStringPart{Token: start, End: position(end), Text: materialized})
 		}
 		text.Reset()
 	}

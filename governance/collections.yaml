@@ -99,3 +99,118 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'ListIndex' -count=1
         result: passed
+
+  - id: frontend.collection-member-migration
+    area: frontend-and-tooling
+    status: partial
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections/collections.md
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - one canonical Sema registry supplies compiler and LSP member availability
+      - Len, IsEmpty, Ptr, and property-form instance and associated SizeOf resolution
+      - global len and SizeOf(T) validation without treating the type operand as a runtime value
+      - list, map, set, dynamic-array, and mutable-slice member surfaces with stable semantic IDs
+      - LSP completion, hover, and semantic-token classification consume registry and resolved Sema facts
+      - removed LSP-local array, rune-sequence, and RawPtr completion duplication
+    remaining:
+      - migrate remaining bootstrap and source-corpus uses of legacy .len and .ptr spellings
+      - represent stable member IDs and collection payload-byte SizeOf explicitly in Semantic IR and lowering
+      - add target-layout evaluation and backend verification for instance and type SizeOf
+      - complete synthetic definitions and signature documentation for editor navigation
+
+  - id: frontend.dynamic-array-public-api
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections/collections.md
+      - rules/mlir/packages/sec-mlir-dialect_package18.md
+    depends_on:
+      - SEC-MLIR-P18
+      - allocation-context semantics from P19 where required
+    implemented:
+      - Sema and LSP expose exactly Len, IsEmpty, Ptr, SizeOf, Append, Clear, RemoveAt, and ToString
+      - Append validates element type and returns Result[void, CollectionError]
+      - Append accepts contextually typed struct literals directly as values, including under naked try propagation
+      - Clear resolves as infallible void mutation
+      - RemoveAt validates an integer index and returns Option[T]
+    remaining:
+      - resolve omitted mutable T[] initialization as an allocation-free empty owning value with zero length, zero internal capacity, no backing storage, and no live elements
+      - implement transactional Append on the P18 growth substrate
+      - make Clear reverse-destroy live elements while retaining backing
+      - make RemoveAt return Option[T], compact the suffix, and preserve the initialized prefix
+      - enforce active-borrow and storage-invalidation rules on mutating methods
+    tests:
+      - internal/sema/compiler_known_members_test.go
+    verification:
+      - command: go test ./internal/sema -run TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry -v
+        result: passed
+
+  - id: frontend.compiler-known-fill
+    area: frontend-and-lowering
+    status: partial
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections/collections.md
+      - rules/compiler/compiler_known_members.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/compiler_known_members.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/ir/test_fixed_array_fill.sec
+    implemented:
+      - reserve fill as a compiler-known global and expose it through ordinary compiler/LSP function inventories
+      - resolve fixed-array fill(value) from expected target element type and extent
+      - resolve fallible dynamic-array fill(value, count) and string fill(fragment, count) from expected target type
+      - reject missing target context, wrong arity, incompatible values, and non-integer counts
+      - expose mutable-slice Fill only on ref mut T[] and reject non-copyable element types
+      - lower fixed-array fill to one source-value evaluation followed by one inline aggregate insertion per element without allocation, runtime helpers, memset, or a runtime fill symbol
+    remaining:
+      - lower dynamic-array and string fill through explicit allocation and CollectionError paths
+      - represent fill and mutable-slice Fill as stable Semantic IR operations
+    verification:
+      - command: go test ./internal/codegen/mlir -run 'TestGenerateFixedArray' -v
+        result: passed
+      - command: go run ./cmd/compiler emit-mlir testdata/ir/test_fixed_array_fill.sec --verify -o /tmp/sec-fixed-array-fill.mlir
+        result: passed; value evaluated once, seven total inline insertions emitted, and no allocation or runtime fill dependency introduced
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./... && go vet ./...
+        result: passed
+
+  - id: frontend.map-indexed-upsert
+    area: frontend
+    status: planned
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections/collections.md
+    remaining:
+      - make existing map entries produce indexed Places and missing lookup use checked key-access failure
+      - make indexed assignment an upsert, including bodyless try for fallible upsert
+      - support key-value iteration with unspecified order
+      - do not add map Set or repurpose declaration assignment as mutation
+
+  - id: frontend.collection-errors
+    area: frontend-and-core
+    status: planned
+    integrated: "2026-08-11"
+    rules:
+      - rules/collections/collections.md
+      - rules/library/core-library.md
+    remaining:
+      - use bool or Option for normal absence and rejection where specified
+      - normalize CollectionError with AllocationFailed, CapacityExceeded, and SizeOverflow
+      - map lower-level AllocationError at collection API boundaries
+      - retain IndexError, RangeError, and key-access errors for checked access

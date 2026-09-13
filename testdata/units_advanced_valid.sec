@@ -476,10 +476,10 @@ fn ExplicitLengthConversions(value: m) void {
     let feet: ft := ft(value)
 }
 
-fn ExplicitMassAndTimeConversions(mass: kg, duration: s) void {
+fn ExplicitMassAndTimeConversions(mass: kg, elapsed: s) void {
     let grams: g := g(mass)
-    let minutes: min := min(duration)
-    let hours: h := h(duration)
+    let minutes: min := min(elapsed)
+    let hours: h := h(elapsed)
 }
 
 fn ExplicitSpeedConversions(speed: mps) void {
@@ -497,16 +497,16 @@ fn ExplicitFrequencyConversions(frequency: Hz, rotation: rpm) void {
 // Scale-aware algebra
 // =============================================================================
 
-fn MetresPerSecond(distance: m, duration: s) mps {
-    return distance / duration
+fn MetresPerSecond(distance: m, elapsed: s) mps {
+    return distance / elapsed
 }
 
-fn KilometresPerHour(distance: km, duration: h) kph {
-    return distance / duration
+fn KilometresPerHour(distance: km, elapsed: h) kph {
+    return distance / elapsed
 }
 
-fn Acceleration(speed: mps, duration: s) mps2 {
-    return speed / duration
+fn Acceleration(speed: mps, elapsed: s) mps2 {
+    return speed / elapsed
 }
 
 fn Force(mass: kg, acceleration: mps2) N {
@@ -517,8 +517,8 @@ fn ScaledEnergy(force: kN, distance: m) kJ {
     return force * distance
 }
 
-fn ScaledPower(energy: kJ, duration: s) kW {
-    return energy / duration
+fn ScaledPower(energy: kJ, elapsed: s) kW {
+    return energy / elapsed
 }
 
 // =============================================================================
@@ -537,16 +537,16 @@ fn Work(force: N, distance: m) J {
     return force * distance
 }
 
-fn PowerFromEnergy(energy: J, duration: s) W {
-    return energy / duration
+fn PowerFromEnergy(energy: J, elapsed: s) W {
+    return energy / elapsed
 }
 
 fn PowerFromForce(force: N, speed: mps) W {
     return force * speed
 }
 
-fn MomentumFromForce(force: N, duration: s) Momentum {
-    return force * duration
+fn MomentumFromForce(force: N, elapsed: s) Momentum {
+    return force * elapsed
 }
 
 fn MomentumFromMass(mass: kg, speed: mps) Momentum {
@@ -564,9 +564,9 @@ fn EnergyFromPressureVolume(
 
 fn DynamicViscosityFromPressureTime(
     pressure: Pa,
-    duration: s,
+    elapsed: s,
 ) DynamicViscosity {
-    return pressure * duration
+    return pressure * elapsed
 }
 
 fn HeatCapacity(
@@ -589,12 +589,12 @@ fn Conductivity(
 // Electrical dimension chains
 // =============================================================================
 
-fn Charge(current: A, duration: s) C {
-    return current * duration
+fn Charge(current: A, elapsed: s) C {
+    return current * elapsed
 }
 
-fn Current(charge: C, duration: s) A {
-    return charge / duration
+fn Current(charge: C, elapsed: s) A {
+    return charge / elapsed
 }
 
 fn VoltageFromPower(power: W, current: A) V {
@@ -617,8 +617,8 @@ fn Capacitance(charge: C, voltage: V) F {
     return charge / voltage
 }
 
-fn Flux(voltage: V, duration: s) Wb {
-    return voltage * duration
+fn Flux(voltage: V, elapsed: s) Wb {
+    return voltage * elapsed
 }
 
 fn FluxDensity(flux: Wb, width: m, height: m) T {
@@ -657,8 +657,8 @@ fn AbsorbedDose(energy: J, mass: kg) Gy {
     return energy / mass
 }
 
-fn CatalyticActivity(amount: mol, duration: s) kat {
-    return amount / duration
+fn CatalyticActivity(amount: mol, elapsed: s) kat {
+    return amount / elapsed
 }
 
 // =============================================================================
@@ -669,8 +669,8 @@ fn BatchDensity(items: Item, batches: Batch) ItemsPerBatch {
     return items / batches
 }
 
-fn PacketRate(packets: Packet, duration: s) PacketsPerSecond {
-    return packets / duration
+fn PacketRate(packets: Packet, elapsed: s) PacketsPerSecond {
+    return packets / elapsed
 }
 
 fn UnitPrice(total: SEK, items: Item) SEKPerItem {
@@ -710,9 +710,9 @@ fn NormalizeReorderedForce(
     return distance * mass / secondDuration / firstDuration
 }
 
-fn AnonymousInverseTime(duration: s) void {
+fn AnonymousInverseTime(elapsed: s) void {
     // Hz, Bq and rpm share this dimension. Without a target, the result remains
     // anonymous instead of selecting one named unit arbitrarily.
-    let inverseTime := 1 / duration
-    let identity: decimal := inverseTime * duration
+    let inverseTime := 1 / elapsed
+    let identity: decimal := inverseTime * elapsed
 }

@@ -436,6 +436,57 @@ func TestCharLiteral(t *testing.T) {
 	}
 }
 
+// rules/foundations/lexical_structure.md §§13–15 require downstream literal
+// materialization to use Sec escape syntax, including \u{H...}.
+func TestDecodeQuotedLiteralsUsesSecEscapeGrammar(t *testing.T) {
+	strings := []struct {
+		lexeme string
+		want   string
+	}{
+		{`"line\n"`, "line\n"},
+		{`"\x41\u{03A9}"`, "AΩ"},
+		{`"\0"`, string([]byte{0})},
+	}
+	for _, test := range strings {
+		if got, ok := DecodeStringLiteral(test.lexeme); !ok || got != test.want {
+			t.Errorf("DecodeStringLiteral(%q) = %q, %t; want %q", test.lexeme, got, ok, test.want)
+		}
+	}
+
+	characters := []struct {
+		lexeme string
+		want   string
+	}{
+		{`'\n'`, "\n"},
+		{`'\xFF'`, "ÿ"},
+		{`'\u{10FFFF}'`, string(rune(0x10FFFF))},
+		{`'\''`, "'"},
+	}
+	for _, test := range characters {
+		if got, ok := DecodeCharacterLiteral(test.lexeme); !ok || got != test.want {
+			t.Errorf("DecodeCharacterLiteral(%q) = %q, %t; want %q", test.lexeme, got, ok, test.want)
+		}
+	}
+	for _, invalid := range []string{`'AB'`, `'\u{}'`, `"\u{D800}"`, `"\q"`} {
+		if _, ok := decodeQuotedLiteral(invalid, rune(invalid[0]), invalid[0] == '\''); ok {
+			t.Errorf("decodeQuotedLiteral(%q) unexpectedly succeeded", invalid)
+		}
+	}
+}
+
+func TestDecodeStringTextUsesSecEscapeGrammarWithoutDelimiters(t *testing.T) {
+	got, ok := DecodeStringText(`line\n\t\\\"\'\x41\u{03A9}\0`)
+	want := "line\n\t\\\"'AΩ\x00"
+	if !ok || got != want {
+		t.Fatalf("DecodeStringText = %q, %t; want %q", got, ok, want)
+	}
+	for _, malformed := range []string{`\q`, `\x1`, `\u{D800}`, "line\n"} {
+		if decoded, ok := DecodeStringText(malformed); ok {
+			t.Errorf("DecodeStringText(%q) = %q, true; want failure", malformed, decoded)
+		}
+	}
+}
+
 func TestCharAndRuneNumericSuffixes(t *testing.T) {
 	input := `65t 0r 0b1000001t 0o101r 0x41r 0x41t`
 
@@ -642,6 +693,80 @@ func TestContractWordInventoryIsCompleteAndContextual(t *testing.T) {
 	}
 	if role := ContractWordRoleOf("futureContract"); role != NotContractWord {
 		t.Errorf("unknown contract role = %v, want NotContractWord", role)
+	}
+}
+
+func TestContextualCollectionShapedTypeNameInventory(t *testing.T) {
+	want := []string{"list", "map", "set", "vector", "matrix", "tensor", "tensor_view"}
+	got := ContextualCollectionShapedTypeNames()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ContextualCollectionShapedTypeNames() = %v, want %v", got, want)
+	}
+
+	for _, spelling := range want {
+		if !IsContextualCollectionShapedTypeName(spelling) {
+			t.Errorf("IsContextualCollectionShapedTypeName(%q) = false", spelling)
+		}
+		if tokenType := lookupIdent(spelling); tokenType != IDENT {
+			t.Errorf("lookupIdent(%q) = %s, want IDENT", spelling, tokenType)
+		}
+		count, ok := ContextualTypeNameArgumentCount(spelling)
+		if !ok {
+			t.Errorf("ContextualTypeNameArgumentCount(%q) is unknown", spelling)
+		} else if wantCount := 1 + map[bool]int{true: 1}[spelling == "map"]; count != wantCount {
+			t.Errorf("ContextualTypeNameArgumentCount(%q) = %d, want %d", spelling, count, wantCount)
+		}
+	}
+
+	for _, spelling := range want[:3] {
+		if role := ContextualTypeNameRoleOf(spelling); role != CollectionTypeName {
+			t.Errorf("%s role = %v, want CollectionTypeName", spelling, role)
+		}
+	}
+	for _, spelling := range want[3:] {
+		if role := ContextualTypeNameRoleOf(spelling); role != ShapedTypeName {
+			t.Errorf("%s role = %v, want ShapedTypeName", spelling, role)
+		}
+	}
+
+	got[0] = "changed"
+	if ContextualCollectionShapedTypeNames()[0] != "list" {
+		t.Error("contextual type inventory returned mutable canonical storage")
+	}
+	if IsContextualCollectionShapedTypeName("Shape") || IsContextualCollectionShapedTypeName("future_type") {
+		t.Error("contextual lowercase inventory includes an unrelated spelling")
+	}
+	if _, ok := ContextualTypeNameArgumentCount("Shape"); ok {
+		t.Error("Shape unexpectedly belongs to the lowercase contextual inventory")
+	}
+}
+
+func TestReservedDeclarationNameInventory(t *testing.T) {
+	for _, spelling := range []string{
+		"while", "static", "task", "thread", "process",
+		"even", "finite", "multipleOf", "notEmpty", "odd", "unique",
+		"int", "map", "vector", "tensor_view", "bit", "register", "_",
+	} {
+		if !IsReservedDeclarationName(spelling) {
+			t.Errorf("IsReservedDeclarationName(%q) = false", spelling)
+		}
+	}
+	for _, spelling := range []string{"set", "x", "not", "init", "arena", "sec", "ordinary"} {
+		if IsReservedDeclarationName(spelling) {
+			t.Errorf("contextual or ordinary spelling %q is reserved", spelling)
+		}
+	}
+	if kind := ReservedDeclarationNameKindOf("while"); kind != HardKeywordDeclarationName {
+		t.Errorf("while kind = %v, want hard keyword", kind)
+	}
+	if kind := ReservedDeclarationNameKindOf("task"); kind != ContextReservedDeclarationName {
+		t.Errorf("task kind = %v, want context-reserved", kind)
+	}
+	if kind := ReservedDeclarationNameKindOf("even"); kind != ContractDeclarationName {
+		t.Errorf("even kind = %v, want contract", kind)
+	}
+	if kind := ReservedDeclarationNameKindOf("int"); kind != CompilerKnownTypeDeclarationName {
+		t.Errorf("int kind = %v, want compiler-known type", kind)
 	}
 }
 

@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Inline Assembly - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#inline-assembly">Inline Assembly</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#core-principle">Core Principle</a>
+        <a href="#target-assembly">Target Machine Assembly</a>
+        <a href="#not-ir">Not MLIR or LLVM IR</a>
+        <a href="#unsafe">Unsafe Boundary</a>
+        <a href="#structure">Structured asm Block</a>
+        <a href="#inputs">Inputs</a>
+        <a href="#constraints">Physical Constraints</a>
+        <a href="#operand-types">Direct Operand Types</a>
+        <a href="#widths">Exact Widths</a>
+        <a href="#rawptr">RawPtr Operands</a>
+        <a href="#outputs">Outputs</a>
+        <a href="#ownership">Ownership Boundary</a>
+        <a href="#clobbers">Clobbers</a>
+        <a href="#observability">Observable by Default</a>
+        <a href="#no-volatile-asm">No asm volatile</a>
+        <a href="#memory">memory Clobber</a>
+        <a href="#ordering">Compiler vs Hardware Ordering</a>
+        <a href="#atomics">Atomics and Synchronization</a>
+        <a href="#control-flow">Control Flow</a>
+        <a href="#stack">Stack and ABI</a>
+        <a href="#symbols">Symbols and Relocations</a>
+        <a href="#directives">Assembler Directives</a>
+        <a href="#target-validation">Target Validation</a>
+        <a href="#privilege">Privilege and Authority</a>
+        <a href="#syscalls">System Calls and Environment Transitions</a>
+        <a href="#errors">Raw Results and Faults</a>
+        <a href="#effects">Effects and Analysis</a>
+        <a href="#isr">Inline Assembly in ISRs</a>
+        <a href="#cross-compilation">Cross Compilation</a>
+        <a href="#lowering">Lowering Pipeline</a>
+        <a href="#diagnostics">Diagnostics and Tooling</a>
+        <a href="#example">Complete Example</a>
+        <a href="#current-status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html" class="active">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Inline Assembly</div>
+
+        <h1 id="inline-assembly">Inline Assembly</h1>
+
+        <p>
+            Inline assembly is Sec's explicit escape hatch for machine operations that cannot be
+            expressed adequately through ordinary Sec code or a compiler/platform-known primitive.
+            It allows real target instructions to appear inside Sec source while keeping the compiler
+            responsible for the surrounding type, ownership, borrowing, effect, stack, target and
+            control-flow model.
+        </p>
+
+        <p>
+            Inline assembly is deliberately narrow. It is not a second programming language inside
+            Sec and it is not a way to bypass the compiler. The assembly text describes the target
+            instructions; the structured Sec contract around it tells the compiler what crosses the
+            boundary and what machine state may change.
+        </p>
+
+        <pre><code>unsafe {
+    asm {
+        "syscall"
+
+        inputs:
+            rax(number)
+
+        outputs:
+            rax(result)
+
+        clobbers:
+            rcx
+            r11
+            memory
+    }
+}</code></pre>
+
+        <div class="rule">
+            <strong>Rule:</strong> Inline assembly escapes Sec's ordinary instruction vocabulary.
+            It does not escape Sec's compiler model.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>Inline assembly is appropriate for operations such as:</p>
+
+            <ul>
+                <li>system-call and supervisor-call instructions;</li>
+                <li>special CPU instructions without a normal Sec primitive;</li>
+                <li>target-specific startup or runtime-free platform glue;</li>
+                <li>low-level hardware operations where a canonical platform primitive does not yet exist;</li>
+                <li>ABI adapters and carefully constrained machine-state operations.</li>
+            </ul>
+
+            <p>
+                When a normal Sec operation or compiler-known platform primitive already expresses the
+                required semantics, that form is preferred. A canonical primitive can expose stronger
+                machine-independent guarantees than opaque user assembly can safely claim.
+            </p>
+        </section>
+
+        <section id="core-principle">
+            <h2>Core Principle</h2>
+
+            <p>The compiler continues to own the surrounding semantics:</p>
+
+            <ul>
+                <li>type checking;</li>
+                <li>unsafe obligations;</li>
+                <li>ownership and borrowing;</li>
+                <li>effects;</li>
+                <li>control flow and cleanup;</li>
+                <li>stack accounting;</li>
+                <li>target and execution-context validation;</li>
+                <li>interrupt restrictions;</li>
+                <li>link dependencies and diagnostics.</li>
+            </ul>
+
+            <p>
+                Where the compiler does not have a declared semantic contract, it remains conservative.
+                It does not infer correctness-critical properties merely by recognizing a mnemonic.
+            </p>
+        </section>
+
+        <section id="target-assembly">
+            <h2>Target Machine Assembly</h2>
+
+            <p>
+                The template inside <code>asm</code> is real assembly for the selected build target.
+                Register names, instruction names and addressing forms therefore come from the target's
+                canonical assembler dialect.
+            </p>
+
+            <p>
+                An asm block does not select its own architecture. It is validated against the already
+                resolved <code>CompilationPlan</code>.
+            </p>
+
+            <pre><code>// On an amd64 target:
+asm {
+    "syscall"
+    ...
+}</code></pre>
+
+            <p>
+                The same source cannot silently reinterpret <code>syscall</code>, <code>rax</code> or
+                another target concept according to the compiler host. Cross compilation always uses
+                the selected target.
+            </p>
+        </section>
+
+        <section id="not-ir">
+            <h2>Not MLIR or LLVM IR</h2>
+
+            <p>
+                Inline assembly is machine assembly. It is not source syntax for injecting Sec MLIR or
+                LLVM IR.
+            </p>
+
+            <pre><code>Sec source asm
+    != Sec MLIR injection
+    != LLVM IR injection</code></pre>
+
+            <p>
+                An LLVM-based backend may eventually materialize a Sec asm operation through LLVM's
+                inline-assembly facilities, but LLVM constraint strings and LLVM-specific flags are
+                backend details. They are not the Sec source contract.
+            </p>
+        </section>
+
+        <section id="unsafe">
+            <h2>Unsafe Boundary</h2>
+
+            <p>
+                Inline assembly is an unsafe operation and therefore requires an explicit
+                <code>unsafe</code> context.
+            </p>
+
+            <p>
+                Declaring the surrounding function as <code>unsafe fn</code> does not make its body an
+                implicit unsafe context.
+            </p>
+
+            <pre><code>unsafe fn ReadMachineState() uint64 {
+    unsafe {
+        asm {
+            "..."
+            outputs:
+                rax(result)
+        }
+    }
+
+    return result
+}</code></pre>
+
+            <p>
+                Unsafe does not disable type checking, borrowing, effects, stack analysis, ISR analysis,
+                target validation or cleanup requirements. It accepts the specific proof obligations of
+                the machine boundary; it does not mean “trust everything”.
+            </p>
+        </section>
+
+        <section id="structure">
+            <h2>Structured asm Block</h2>
+
+            <p>A Sec asm operation consists conceptually of two parts:</p>
+
+            <pre><code>target assembly template
++
+compiler-visible Sec contract</code></pre>
+
+            <p>The contract may describe:</p>
+
+            <ul>
+                <li>inputs and outputs;</li>
+                <li>fixed registers or other target operand constraints;</li>
+                <li>clobbers;</li>
+                <li>memory and external effects;</li>
+                <li>control-flow behavior;</li>
+                <li>stack effects;</li>
+                <li>symbol dependencies;</li>
+                <li>target, feature and execution-environment requirements.</li>
+            </ul>
+
+            <p>
+                The assembler template itself is not a complete compiler contract. Correctness-critical
+                facts must be represented explicitly or supplied by a stronger compiler/platform-known
+                primitive.
+            </p>
+        </section>
+
+        <section id="inputs">
+            <h2>Inputs</h2>
+
+            <p>
+                An input contains an ordinary Sec expression. The expression is type-checked, evaluated
+                exactly once before the asm operation, and then materialized according to the declared
+                target operand constraint.
+            </p>
+
+            <pre><code>inputs:
+    rdi(argument)</code></pre>
+
+            <p>
+                The backend may choose how to materialize that value, but it must not duplicate the
+                evaluation of <code>argument</code> merely because register allocation requires movement.
+            </p>
+        </section>
+
+        <section id="constraints">
+            <h2>Physical Constraints</h2>
+
+            <p>
+                In a fixed-register operand such as <code>rax(number)</code>, <code>rax</code> is a
+                physical target constraint. It is not a Sec variable.
+            </p>
+
+            <p>Targets may expose operand categories equivalent to:</p>
+
+            <ul>
+                <li>fixed register;</li>
+                <li>register class;</li>
+                <li>immediate;</li>
+                <li>memory operand;</li>
+                <li>address operand;</li>
+                <li>target-defined machine operand class.</li>
+            </ul>
+
+            <p>
+                Constraint names resolve against the selected target. An x86-64 register name is invalid
+                for an AArch64 compilation plan even if the compiler happens to run on x86-64.
+            </p>
+        </section>
+
+        <section id="operand-types">
+            <h2>Direct Operand Types</h2>
+
+            <p>
+                Sec 0.1 keeps the direct asm boundary intentionally small. Direct machine operands are
+                limited to low-level representations that have an unambiguous machine meaning.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Allowed category</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>int8</code> / <code>uint8</code></td><td>Fixed-width integer operands.</td></tr>
+                        <tr><td><code>int16</code> / <code>uint16</code></td><td>Fixed-width integer operands.</td></tr>
+                        <tr><td><code>int32</code> / <code>uint32</code></td><td>Fixed-width integer operands.</td></tr>
+                        <tr><td><code>int64</code> / <code>uint64</code></td><td>Fixed-width integer operands.</td></tr>
+                        <tr><td><code>int128</code> / <code>uint128</code></td><td>Only when the target operand class supports that width.</td></tr>
+                        <tr><td><code>float32</code> / <code>float64</code></td><td>Only when the target operand class supports the representation.</td></tr>
+                        <tr><td><code>RawPtr[T]</code></td><td>When the target supports the corresponding raw address width and address space.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                High-level values such as strings, structs, unions, arrays, collections, references,
+                interfaces, closures and shaped values do not cross the ordinary register asm boundary
+                directly. They must be explicitly decomposed into the primitive representation the
+                machine operation actually requires.
+            </p>
+        </section>
+
+        <section id="widths">
+            <h2>Exact Widths</h2>
+
+            <p>
+                A fixed-width asm operand requires a Sec value with the same logical bit width. Inline
+                assembly performs no implicit integer widening, narrowing, sign extension or zero
+                extension.
+            </p>
+
+            <pre><code>// Conceptual rule:
+32-bit machine operand -> int32 or uint32
+64-bit machine operand -> int64 or uint64</code></pre>
+
+            <p>
+                If a conversion is intended, perform it explicitly in Sec before crossing the asm
+                boundary.
+            </p>
+
+            <p>
+                Target-sized <code>int</code> and <code>uint</code> are not direct fixed-width asm register
+                operands merely because their resolved size happens to match the current target.
+                Low-level ABI code should use the explicit fixed-width type required by the machine
+                contract.
+            </p>
+        </section>
+
+        <section id="rawptr">
+            <h2>RawPtr Operands</h2>
+
+            <p>
+                <code>RawPtr[T]</code> is the canonical raw-address operand when assembly needs an
+                address. Passing a raw pointer does not create a safe reference, establish ownership,
+                extend lifetime or prove that the addressed memory is valid.
+            </p>
+
+            <p>
+                Assembly also does not acquire hardware authority merely because a pointer value can be
+                placed in a machine register. Address-space and execution-context requirements remain
+                part of the selected platform contract.
+            </p>
+        </section>
+
+        <section id="outputs">
+            <h2>Outputs</h2>
+
+            <p>
+                An output names a physical location whose final representation produces a new low-level
+                Sec value after normal completion of the asm operation.
+            </p>
+
+            <pre><code>outputs:
+    rax(result)</code></pre>
+
+            <p>
+                The output is not available before the assembly executes. The physical register width
+                does not by itself determine the Sec output type; the Sec contract must resolve the
+                output type explicitly or unambiguously.
+            </p>
+
+            <p>
+                Ordinary asm outputs remain low-level. They do not directly fabricate safe references,
+                owned resources, constrained nominal values or high-level aggregates. Construct or
+                validate those values after returning to ordinary Sec semantics.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership Boundary</h2>
+
+            <p>
+                Moving bits into or out of registers does not itself copy or transfer Sec ownership.
+                Ordinary inline assembly has no implicit consuming operand semantics.
+            </p>
+
+            <p>
+                The same physical register may be both an input and an output:
+            </p>
+
+            <pre><code>inputs:
+    rax(number)
+
+outputs:
+    rax(result)</code></pre>
+
+            <p>
+                This means the initial machine value comes from <code>number</code> and the final machine
+                value produces <code>result</code>. It does not mean that the Sec variable
+                <code>number</code> is mutated in place.
+            </p>
+        </section>
+
+        <section id="clobbers">
+            <h2>Clobbers</h2>
+
+            <p>
+                A clobber declares a machine resource that may be destroyed by the assembly operation
+                and whose final value is not represented as a Sec output.
+            </p>
+
+            <pre><code>clobbers:
+    rcx
+    r11</code></pre>
+
+            <p>
+                Registers already declared as outputs do not also need to appear as clobbers merely
+                because they are written. Conversely, raw inline assembly has no hidden target-specific
+                default clobber set. If the actual instruction sequence destroys a compiler-visible
+                machine resource, the contract must say so.
+            </p>
+
+            <p>
+                Target clobbers may also include condition flags, floating-point status, vector state or
+                other target-defined machine resources.
+            </p>
+        </section>
+
+        <section id="observability">
+            <h2>Observable by Default</h2>
+
+            <p>
+                Ordinary <code>asm</code> is observable by default. If execution reaches a live asm
+                operation, the compiler must preserve that occurrence even when its outputs are unused.
+            </p>
+
+            <p>
+                This does not make the containing function or module globally live. An unreachable
+                private function may still be removed according to normal link reachability.
+            </p>
+
+            <p>
+                Observable asm is also not a global optimizer barrier. Independent surrounding code may
+                still move or optimize when data, memory, machine-state and ordering contracts allow it.
+            </p>
+        </section>
+
+        <section id="no-volatile-asm">
+            <h2>No asm volatile</h2>
+
+            <p>Sec 0.1 does not define:</p>
+
+            <pre><code>asm volatile
+volatile asm
+@volatile asm</code></pre>
+
+            <p>
+                The word <code>volatile</code> belongs to physical-storage access semantics. Inline asm
+                observability is a separate concept and is already the default for ordinary asm.
+            </p>
+        </section>
+
+        <section id="memory">
+            <h2>memory Clobber</h2>
+
+            <p>
+                The special <code>memory</code> clobber says that the operation may access memory whose
+                complete footprint is not otherwise described precisely.
+            </p>
+
+            <pre><code>clobbers:
+    memory</code></pre>
+
+            <p>
+                This forces conservative compiler memory reasoning around the operation. It does
+                <strong>not</strong> mean Acquire, Release or SeqCst, and it does not emit a CPU fence,
+                cache operation, DMA handoff or device-completion sequence.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>memory</code> is a compiler-visible unknown-memory effect,
+                not a hardware synchronization primitive.
+            </div>
+        </section>
+
+        <section id="ordering">
+            <h2>Compiler vs Hardware Ordering</h2>
+
+            <p>
+                Compiler ordering and hardware ordering are distinct. An asm memory effect may prevent
+                the compiler from reordering memory operations across the boundary while still emitting
+                no physical fence instruction.
+            </p>
+
+            <p>
+                Likewise, hardware ordering and hardware completion are separate. A fence, read-back or
+                target-specific completion instruction only provides a positive Sec guarantee when the
+                owning platform contract states exactly what relation it establishes.
+            </p>
+
+            <p>
+                The compiler must not infer a completion guarantee merely because it recognizes a
+                familiar instruction mnemonic.
+            </p>
+        </section>
+
+        <section id="atomics">
+            <h2>Atomics and Synchronization</h2>
+
+            <p>
+                A machine instruction can be physically atomic without automatically becoming a proven
+                Sec atomic operation. Raw assembly does not create a second memory model.
+            </p>
+
+            <p>
+                If Sec relies on an operation for synchronization, race freedom or a memory-order proof,
+                the stronger semantics must come from a canonical Atomic or platform primitive contract.
+                The same principle applies to interrupt masking: raw mask-manipulation instructions do
+                not automatically establish a proven Sec critical section.
+            </p>
+        </section>
+
+        <section id="control-flow">
+            <h2>Control Flow</h2>
+
+            <p>
+                Local labels, loops and branches are allowed inside one asm operation when the target
+                assembler supports them. That internal machine control flow must remain inside the asm
+                boundary.
+            </p>
+
+            <p>Ordinary inline assembly must not:</p>
+
+            <ul>
+                <li>jump from asm into an arbitrary Sec basic block;</li>
+                <li>jump from Sec into an internal asm label;</li>
+                <li>use a machine <code>ret</code> to return directly from the enclosing Sec function;</li>
+                <li>use an interrupt/exception-return instruction as a normal source-level ISR return.</li>
+            </ul>
+
+            <p>
+                A truly non-returning asm operation requires an explicit compiler-visible
+                <code>NoReturn</code> or equivalent semantic contract so that the Sec control-flow graph
+                becomes terminal at that point.
+            </p>
+        </section>
+
+        <section id="stack">
+            <h2>Stack and ABI</h2>
+
+            <p>
+                Ordinary asm executes inside the surrounding Sec function's resolved ABI. The compiler
+                still owns the prologue, epilogue, frame layout, stack alignment, return convention and
+                required callee-saved preservation.
+            </p>
+
+            <p>
+                On normal fallthrough, the stack pointer must be restored to the state required by the
+                enclosing function. Listing the stack pointer as a clobber is not enough to authorize a
+                persistent stack change.
+            </p>
+
+            <p>
+                Temporary stack usage is possible only when the compiler-visible contract can describe
+                the required final delta, maximum additional stack consumption and alignment facts needed
+                by stack analysis. Unknown or unbounded stack use cannot satisfy a context that requires a
+                finite positive stack proof.
+            </p>
+
+            <p>
+                Permanent stack switching or naked machine entry/exit is not ordinary inline assembly.
+                It requires a stronger compiler/platform contract.
+            </p>
+        </section>
+
+        <section id="symbols">
+            <h2>Symbols and Relocations</h2>
+
+            <p>
+                Ordinary Sec calls remain preferred when normal call semantics are sufficient. When
+                assembly must refer to a Sec, foreign or platform symbol, the dependency must remain
+                compiler-visible so the linker can preserve reachability, relocation and ABI semantics.
+            </p>
+
+            <p>
+                Source assembly should not depend on final compiler-mangled symbol spelling as its
+                canonical link model. Local labels inside the asm template remain assembler-local and do
+                not become Sec declarations.
+            </p>
+        </section>
+
+        <section id="directives">
+            <h2>Assembler Directives</h2>
+
+            <p>
+                Inline assembly may use target-approved local directives and raw instruction encodings
+                when the target contract allows them. It must not use ordinary inline asm to take over
+                the compiler's object model or build system.
+            </p>
+
+            <p>Forms equivalent to the following are not ordinary asm responsibilities:</p>
+
+            <pre><code>.section
+.global
+.weak
+.org
+.include
+.incbin</code></pre>
+
+            <p>
+                Compiler-owned debug and unwind metadata are similarly not ordinary source asm. If the
+                program needs a global symbol, separate section, startup root or object dependency, use
+                the language/project/linking mechanism that owns that concept.
+            </p>
+        </section>
+
+        <section id="target-validation">
+            <h2>Target Validation</h2>
+
+            <p>
+                The target assembler being able to encode an instruction is not sufficient proof that
+                the instruction is valid for the selected <code>CompilationPlan</code>.
+            </p>
+
+            <p>Validation may additionally require:</p>
+
+            <ul>
+                <li>a CPU feature or ISA extension;</li>
+                <li>a particular execution mode;</li>
+                <li>target availability;</li>
+                <li>platform authority;</li>
+                <li>a compatible security state;</li>
+                <li>a compatible ABI or environment contract.</li>
+            </ul>
+
+            <p>
+                Inline assembly and assembler directives cannot silently enable a CPU feature absent
+                from the compilation plan.
+            </p>
+        </section>
+
+        <section id="privilege">
+            <h2>Privilege and Authority</h2>
+
+            <p>
+                Unsafe is not privilege. A privileged instruction remains invalid when the current
+                execution environment does not provide the required authority, even if the instruction
+                is valid for the processor and encodable by the assembler.
+            </p>
+
+            <pre><code>ISA-valid != userspace-valid
+unsafe    != privileged</code></pre>
+
+            <p>
+                The same principle applies to hardware authority, address-space access and security
+                modes. Assembly cannot create capabilities that the selected platform profile does not
+                provide.
+            </p>
+        </section>
+
+        <section id="syscalls">
+            <h2>System Calls and Environment Transitions</h2>
+
+            <p>
+                Inline assembly may implement architectural transitions such as system calls,
+                supervisor calls, hypercalls, firmware calls, secure-monitor calls, debug traps or
+                target-defined RTOS kernel entries.
+            </p>
+
+            <p>
+                Such a transition is not an ordinary Sec function call. Its input locations, output
+                locations, clobbers, memory effects, blocking behavior, privilege transition, fault
+                behavior and raw error convention come from the platform contract.
+            </p>
+
+            <p>
+                One instruction can therefore have strong effects. Instruction count says nothing about
+                whether an operation may block, perform I/O, mutate external state or terminate control
+                flow.
+            </p>
+        </section>
+
+        <section id="errors">
+            <h2>Raw Results and Faults</h2>
+
+            <p>
+                Assembly transports machine-level values. A platform convention such as “negative
+                integer means errno” does not automatically produce a Sec <code>Result</code>.
+            </p>
+
+            <p>
+                A higher-level Sec or platform wrapper interprets the raw result and constructs
+                <code>Result</code>, <code>Option</code> or another domain type using normal Sec rules.
+            </p>
+
+            <p>
+                Likewise, page faults, bus faults, illegal instructions, alignment faults, privilege
+                faults and architectural traps do not automatically become ordinary
+                <code>Err(...)</code> propagation. Their behavior is defined by the target, runtime or
+                interrupt model.
+            </p>
+        </section>
+
+        <section id="effects">
+            <h2>Effects and Analysis</h2>
+
+            <p>
+                Inline assembly contributes effects to the normal Sec effect analysis. Depending on the
+                declared or platform-known contract, those facts may include effects equivalent to:
+            </p>
+
+            <ul>
+                <li><code>MayPanic</code>;</li>
+                <li><code>MayAllocate</code>;</li>
+                <li><code>MayBlock</code>;</li>
+                <li><code>MaySuspend</code>;</li>
+                <li><code>MayIO</code>;</li>
+                <li><code>MayAccessVolatile</code>;</li>
+                <li><code>MayMutateExternalState</code>;</li>
+                <li><code>MayUseNondeterministicInput</code>;</li>
+                <li>machine-state or target-specific trusted effects.</li>
+            </ul>
+
+            <p>
+                Raw asm does not become pure merely because the source contains no Sec-level function
+                calls. A stronger pure contract requires an explicit compiler/core/platform-known
+                semantic guarantee.
+            </p>
+        </section>
+
+        <section id="isr">
+            <h2>Inline Assembly in ISRs</h2>
+
+            <p>
+                Inline assembly remains subject to the complete ISR contract. Using asm inside an ISR
+                does not waive <code>noPanic</code>, <code>noAlloc</code>, <code>noBlock</code>, stack,
+                target-authority, race, deadlock or runtime-context requirements.
+            </p>
+
+            <p>
+                Raw assembly that manipulates interrupt masks also does not automatically prove the
+                exclusion relation required by ISR or race analysis. Canonical platform primitives are
+                preferred when the program needs positive masking, ordering or completion guarantees.
+            </p>
+        </section>
+
+        <section id="cross-compilation">
+            <h2>Cross Compilation</h2>
+
+            <p>
+                Inline assembly is interpreted for the target, never for the compiler host. If Sec is
+                running on Linux/amd64 while building bare-metal Cortex-M4 code, the assembly dialect,
+                register set, features, ABI and privilege model are those of the Cortex-M4 target.
+            </p>
+
+            <p>
+                Host assembler capabilities must never silently influence target semantics. The CLI and
+                LSP must resolve the same target facts from the same <code>CompilationPlan</code>.
+            </p>
+        </section>
+
+        <section id="lowering">
+            <h2>Lowering Pipeline</h2>
+
+            <p>
+                Inline assembly remains a first-class semantic operation until all analyses that depend
+                on its contract have consumed or preserved the required information.
+            </p>
+
+            <pre><code>Sec source asm
+        |
+        v
+resolved inline-assembly operation
+        |
+        v
+Semantic IR
+        |
+        v
+Sec MLIR / target lowering
+        |
+        v
+backend inline asm / target assembler
+        |
+        v
+machine encoding</code></pre>
+
+            <p>
+                A backend must reject a valid Sec contract it cannot represent faithfully rather than
+                silently weakening operand width, clobber, observability, control-flow, ordering,
+                completion or symbol semantics.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>Sec distinguishes three broad diagnostic classes:</p>
+
+            <ol>
+                <li><strong>Sec contract errors</strong> — such as wrong operand width, forbidden operand type, missing unsafe context or illegal control flow;</li>
+                <li><strong>target assembler errors</strong> — such as an unknown mnemonic, invalid instruction form or illegal addressing mode;</li>
+                <li><strong>backend/materialization errors</strong> — where a valid Sec contract cannot be represented correctly by the selected backend.</li>
+            </ol>
+
+            <p>
+                Multiline assembler diagnostics should map back to the original Sec source line inside
+                the asm template. User-facing diagnostics speak in Sec terms such as register, operand
+                type, width, clobber, target, symbol and effect rather than exposing LLVM constraint
+                syntax as the primary model.
+            </p>
+        </section>
+
+        <section id="example">
+            <h2>Complete Example</h2>
+
+            <p>
+                The following illustrates the intended shape of a Linux/amd64 raw syscall wrapper using
+                fixed-width machine ABI values. The wrapper remains unsafe because it exposes a raw
+                execution-environment transition rather than a typed higher-level OS API.
+            </p>
+
+            <pre><code>#target(os: "linux", arch: "amd64")
+
+unsafe fn RawSyscall1(number: uint64, arg1: uint64) int64 {
+    unsafe {
+        asm {
+            "syscall"
+
+            inputs:
+                rax(number)
+                rdi(arg1)
+
+            outputs:
+                rax(result)
+
+            clobbers:
+                rcx
+                r11
+                memory
+        }
+    }
+
+    return result
+}</code></pre>
+
+            <p>
+                The source explicitly describes the fixed machine registers used by the ABI and the
+                machine resources destroyed by the transition. The raw scalar result remains a raw
+                scalar. Any Linux error decoding belongs in a higher-level wrapper.
+            </p>
+        </section>
+
+        <section id="current-status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The inline-assembly rulebook is normative, while implementation is currently
+                <strong>partial</strong>.
+            </p>
+
+            <p>Implemented today:</p>
+
+            <ul>
+                <li>the parser recognizes asm statements and the structured asm block form;</li>
+                <li>assembly template, inputs, outputs and clobbers are retained by the parser;</li>
+                <li>semantic analysis requires an explicit unsafe context;</li>
+                <li>asm input expressions are visited and output bindings are created in the current model;</li>
+                <li>the legacy LLVM path can emit LLVM inline asm with observable/side-effect semantics;</li>
+                <li>fixed-register inputs, one fixed-register output and explicit clobbers have initial lowering support;</li>
+                <li>Linux/amd64 raw syscall code already exercises the structured form.</li>
+            </ul>
+
+            <p>Important current mismatches with the normative model include:</p>
+
+            <ul>
+                <li>the legacy LLVM path currently supports only one output and hardcodes it as <code>i64</code>;</li>
+                <li>current lowering coerces asm inputs to <code>i64</code> instead of enforcing exact Sec operand widths;</li>
+                <li>pointer operands are not yet preserved as complete target-aware <code>RawPtr</code> contracts;</li>
+                <li>current lowering may add implicit <code>rcx</code>/<code>r11</code> clobbers, which the normative model forbids;</li>
+                <li>the current frontend still requires an output in cases where instruction-only observable asm should be legal;</li>
+                <li>target register classes, feature requirements, privilege, dialect, stack and full effect contracts are not yet modeled end-to-end through <code>CompilationPlan</code>;</li>
+                <li>the complete first-class Semantic IR / Sec MLIR asm operation is still pending.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Manual examples in this chapter describe the normative Sec 0.1
+                model. Existing compiler acceptance must not be used to infer a different language rule
+                when the current backend is still partial.
+            </div>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer ordinary Sec code or compiler/platform-known primitives whenever they express the operation correctly.</li>
+                <li>Keep asm blocks small and give the compiler the most precise contract available.</li>
+                <li>Use explicit fixed-width integer types at machine ABI boundaries.</li>
+                <li>Use <code>RawPtr[T]</code> for raw addresses rather than silently converting addresses to integers.</li>
+                <li>Declare every destroyed compiler-visible machine resource as a clobber unless it is already an output.</li>
+                <li>Do not invent <code>asm volatile</code>; ordinary Sec asm is already observable.</li>
+                <li>Do not treat <code>memory</code> as a CPU fence or synchronization primitive.</li>
+                <li>Do not rely on raw atomic instructions or interrupt masking as positive Sec synchronization proof.</li>
+                <li>Do not return from a Sec function using a machine <code>ret</code> inside ordinary asm.</li>
+                <li>Do not permanently switch stacks inside ordinary inline assembly.</li>
+                <li>Do not create sections, global symbols or hidden build dependencies through ordinary asm directives.</li>
+                <li>Validate machine features and privilege against the selected target, not against the compiler host.</li>
+                <li>Wrap raw syscall or firmware conventions in ordinary Sec APIs that construct typed errors and values.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Inline assembly is an explicit unsafe target-machine escape hatch.</li>
+                <li>It escapes Sec's instruction vocabulary, not Sec's compiler model.</li>
+                <li>The assembly template uses the canonical dialect of the selected target.</li>
+                <li>Sec inline assembly is neither MLIR nor LLVM IR source injection.</li>
+                <li>An <code>unsafe fn</code> still needs an explicit unsafe context around asm.</li>
+                <li>Inputs are ordinary Sec expressions evaluated exactly once before the asm operation.</li>
+                <li>Fixed registers and operand classes are physical target constraints, not Sec variables.</li>
+                <li>Direct operand types are intentionally limited to fixed-width machine primitives and <code>RawPtr</code>.</li>
+                <li>Inline assembly performs no implicit integer width conversion.</li>
+                <li>Outputs produce new low-level Sec values after normal completion.</li>
+                <li>Physical register movement does not implicitly create or transfer Sec ownership.</li>
+                <li>Clobbers explicitly describe machine resources destroyed without a corresponding output.</li>
+                <li>Ordinary asm is observable by default and Sec 0.1 has no <code>asm volatile</code>.</li>
+                <li><code>memory</code> is conservative compiler memory reasoning, not a hardware fence.</li>
+                <li>Compiler ordering, hardware ordering and hardware completion are separate concepts.</li>
+                <li>Raw machine atomicity does not automatically create Sec synchronization proof.</li>
+                <li>Local machine control flow may remain inside one asm operation, but ordinary asm cannot jump into or out of the Sec CFG.</li>
+                <li>The compiler retains ownership of the surrounding function ABI and stack discipline.</li>
+                <li>Inline assembly cannot create absent CPU features, privilege or platform authority.</li>
+                <li>Raw syscall results and machine faults remain distinct from typed Sec <code>Result</code> handling.</li>
+                <li>Inline assembly contributes normal Sec effects and remains subject to ISR, stack, race and deadlock analysis.</li>
+                <li>Cross compilation validates assembly for the target, never for the compiler host.</li>
+                <li>The normative rulebook is complete, while current implementation remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="51-interrupts.html">Previous: Interrupts and ISRs</a>
+            <a href="53-initialization.html">Next: Program Initialization and Shutdown</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Effects and Verified Guarantees - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#effects">Effects and Verified Guarantees</a>
+        <a href="#purpose">Why Effects Matter</a>
+        <a href="#not-effect-language">No General Effect Language</a>
+        <a href="#inferred-vs-guaranteed">Inferred vs Guaranteed</a>
+        <a href="#public-contracts">Public Contracts</a>
+        <a href="#may-effects">Summary May-Effects</a>
+        <a href="#direct-transitive">Direct and Transitive Effects</a>
+        <a href="#path-sensitive">Path-Sensitive Analysis</a>
+        <a href="#call-graph">Call Graph and Recursion</a>
+        <a href="#errors">Errors Are Not Effects</a>
+        <a href="#runtime-checks">Runtime Checks and try</a>
+        <a href="#no-panic">@noPanic</a>
+        <a href="#no-alloc">@noAlloc</a>
+        <a href="#no-block">@noBlock</a>
+        <a href="#block-vs-suspend">Blocking vs Suspension</a>
+        <a href="#spawn-io-external">Spawn, I/O and External State</a>
+        <a href="#volatile">Volatile Access</a>
+        <a href="#nondeterminism">Nondeterministic Input</a>
+        <a href="#interrupt-contracts">Interrupt Contracts</a>
+        <a href="#cleanup">Cleanup, defer and Destruction</a>
+        <a href="#callables">Function Values and Callbacks</a>
+        <a href="#interfaces">Interfaces</a>
+        <a href="#generics">Generics and Specialization</a>
+        <a href="#ffi">FFI and Trusted Effects</a>
+        <a href="#arenas">Arena Lifetime Effects</a>
+        <a href="#quantitative">Quantitative Resource Facts</a>
+        <a href="#optimizer">Guarantees Do Not Depend on Optimization</a>
+        <a href="#compilation-plan">Compilation Plans and Targets</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#tooling">LSP and Tooling</a>
+        <a href="#runtime">No Mandatory Runtime</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html" class="active">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Effects and Verified Guarantees</div>
+
+        <h1 id="effects">Effects and Verified Guarantees</h1>
+
+        <p>
+            Sec tracks more than types. The compiler also analyzes what reachable execution may
+            do: whether it may panic, allocate, block, suspend, create concurrent work, perform
+            I/O, touch volatile storage, mutate externally visible state or depend on
+            nondeterministic input.
+        </p>
+
+        <p>
+            Most of this information is inferred automatically. The programmer does not write an
+            effect list on every function. Instead, Sec exposes a small set of compiler-verified
+            guarantees such as <code>@noPanic</code>, <code>@noAlloc</code> and
+            <code>@noBlock</code> when an API needs to make a stable promise.
+        </p>
+
+        <pre><code>@noAlloc
+@noPanic
+@noBlock
+fn DecodeHeader(input: ref byte[]) Result[Header, DecodeError] {
+    ...
+}</code></pre>
+
+        <div class="rule">
+            <strong>Rule:</strong> Inferred effects describe what the current implementation may
+            do. A declared verified guarantee is a stable contract that every reachable operation
+            must satisfy.
+        </div>
+
+        <section id="purpose">
+            <h2>Why Effects Matter</h2>
+
+            <p>
+                Type correctness alone cannot answer every question needed by systems code.
+                A function may have a perfectly valid return type and still be unsuitable for a
+                particular execution context.
+            </p>
+
+            <p>The compiler may need to know whether a call can:</p>
+
+            <ul>
+                <li>panic;</li>
+                <li>allocate storage;</li>
+                <li>wait synchronously;</li>
+                <li>suspend and resume later;</li>
+                <li>create another execution instance;</li>
+                <li>perform file, socket or device I/O;</li>
+                <li>read or write volatile storage;</li>
+                <li>mutate state visible outside local computation;</li>
+                <li>depend on time, randomness or another nondeterministic source.</li>
+            </ul>
+
+            <p>
+                These facts are useful for ordinary APIs, but they become essential for interrupt
+                handlers, embedded targets, bounded-memory code, deterministic cleanup and
+                concurrency analysis.
+            </p>
+        </section>
+
+        <section id="not-effect-language">
+            <h2>No General Effect Language</h2>
+
+            <p>
+                Sec 0.1 does not expose a general algebraic-effect language. There are no
+                programmer-written effect sets, effect handlers or runtime effect objects that must
+                accompany ordinary functions.
+            </p>
+
+            <p>
+                The compiler owns the detailed analysis. Source code uses ordinary Sec syntax and,
+                where a stable promise matters, one of the compiler-known verified attributes.
+            </p>
+
+            <pre><code>fn ReadConfiguration() Result[Config, ConfigError] {
+    ...
+}
+
+@noAlloc
+fn ParseFixedHeader(input: ref byte[]) Result[Header, ParseError] {
+    ...
+}</code></pre>
+
+            <p>
+                The first function still receives an inferred effect summary even though it declares
+                no effect attribute. The second additionally promises that no reachable path performs
+                dynamic allocation.
+            </p>
+        </section>
+
+        <section id="inferred-vs-guaranteed">
+            <h2>Inferred Effects vs Declared Guarantees</h2>
+
+            <p>Every analyzed callable receives inferred effect information.</p>
+
+            <pre><code>fn AddOne(value: int) Result[int, ArithmeticError] {
+    let result := try value + 1
+    return Ok(result)
+}</code></pre>
+
+            <p>
+                The compiler may prove that this implementation does not panic, allocate, block or
+                suspend. Those are implementation facts.
+            </p>
+
+            <p>A declared guarantee turns the relevant fact into a source-level contract:</p>
+
+            <pre><code>@noPanic
+fn AddOne(value: int) Result[int, ArithmeticError] {
+    let result := try value + 1
+    return Ok(result)
+}</code></pre>
+
+            <p>
+                If a later implementation change introduces a reachable panic-capable operation,
+                compilation fails. The compiler does not silently weaken the declared promise.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Kind</th><th>Meaning</th><th>Stable API promise?</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Inferred effect</td><td>Fact about the currently analyzed implementation</td><td>No, not by itself</td></tr>
+                        <tr><td>Declared guarantee</td><td>Verified requirement on all reachable behavior</td><td>Yes</td></tr>
+                        <tr><td>Implied guarantee</td><td>Requirement inherited from a composite contract such as <code>@isr</code></td><td>Yes</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="public-contracts">
+            <h2>Public Contract Boundaries</h2>
+
+            <p>
+                The absence of an inferred effect is not automatically a public guarantee across a
+                separate compilation boundary.
+            </p>
+
+            <p>Public callers may rely on guarantees established by:</p>
+
+            <ul>
+                <li>explicit verified attributes;</li>
+                <li>interface requirements;</li>
+                <li>function or callback contracts once their effect syntax is defined;</li>
+                <li>generic constraints that establish the required behavior;</li>
+                <li>compiler-known intrinsic contracts;</li>
+                <li>target knowledge exposed as part of a target contract.</li>
+            </ul>
+
+            <p>
+                A private implementation may be more restrictive than its public contract. That can
+                help optimization and local verification without accidentally promising the stronger
+                property to external callers.
+            </p>
+        </section>
+
+        <section id="may-effects">
+            <h2>Summary May-Effects</h2>
+
+            <p>
+                Internally, Sec records positive facts describing effects that may occur on at least
+                one reachable execution path. The canonical summary set includes:
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Compiler fact</th><th>Meaning</th><th>Typical causes</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>MayPanic</code></td><td>A reachable path may panic</td><td>failed runtime check, explicit panic, panic-capable call</td></tr>
+                        <tr><td><code>MayAllocate</code></td><td>Dynamic storage may be acquired</td><td>heap allocation, arena allocation, collection growth</td></tr>
+                        <tr><td><code>MayBlock</code></td><td>Execution may wait synchronously</td><td>blocking I/O, lock wait, sleep, join</td></tr>
+                        <tr><td><code>MaySuspend</code></td><td>Execution may suspend and resume later</td><td>await or scheduler suspension</td></tr>
+                        <tr><td><code>MaySpawn</code></td><td>Concurrent execution may be created</td><td>task or thread creation</td></tr>
+                        <tr><td><code>MayIO</code></td><td>External I/O may occur</td><td>file, socket, terminal or device operation</td></tr>
+                        <tr><td><code>MayAccessVolatile</code></td><td>Volatile storage may be accessed</td><td>addressed storage, hardware registers</td></tr>
+                        <tr><td><code>MayMutateExternalState</code></td><td>Externally visible state may change</td><td>shared, foreign, device or persistent state</td></tr>
+                        <tr><td><code>MayUseNondeterministicInput</code></td><td>Result may depend on non-parameter input</td><td>clock, random source, environment, device state</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                These names describe compiler facts. They are not additional function modifiers that
+                ordinary Sec source must spell out.
+            </p>
+
+            <p>
+                Effects are combined conservatively. If one reachable path may allocate and another
+                may block, the callable may have both effects even when no single path performs both.
+            </p>
+        </section>
+
+        <section id="direct-transitive">
+            <h2>Direct and Transitive Effects</h2>
+
+            <p>A direct effect is introduced by an operation in the body itself:</p>
+
+            <pre><code>fn ReadStatus() Result[Status, IOError] {
+    return DeviceRead()
+}</code></pre>
+
+            <p>
+                If <code>DeviceRead()</code> performs I/O, the call introduces that behavior into the
+                containing function.
+            </p>
+
+            <p>Effects are transitive. Reachable behavior includes more than obvious function calls:</p>
+
+            <ul>
+                <li>ordinary function and method calls;</li>
+                <li>generic specializations;</li>
+                <li>closures and indirect function values;</li>
+                <li>interface dispatch;</li>
+                <li>destructors and automatic cleanup;</li>
+                <li><code>defer</code> bodies;</li>
+                <li>implicit compiler-generated operations;</li>
+                <li>foreign functions;</li>
+                <li>inline assembly declarations;</li>
+                <li>target-specific intrinsics;</li>
+                <li>task and thread operations.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> A verified guarantee covers the complete reachable behavior,
+                including cleanup and implicit operations. It is never limited to the visibly written
+                statements in the function body.
+            </div>
+        </section>
+
+        <section id="path-sensitive">
+            <h2>Path-Sensitive Analysis</h2>
+
+            <p>
+                An effect contributes only when the corresponding path remains reachable after
+                semantic analysis and required control-flow proof.
+            </p>
+
+            <pre><code>if false {
+    PanicCapableOperation()
+}</code></pre>
+
+            <p>The unreachable branch does not make the surrounding function panic-capable.</p>
+
+            <p>Proof may also eliminate the failure path of an ordinary checked operation:</p>
+
+            <pre><code>if divisor != 0 {
+    let result := total / divisor
+    Use(result)
+}</code></pre>
+
+            <p>
+                When the compiler can prove the divisor is nonzero on this path, the division does
+                not contribute a division-by-zero panic effect.
+            </p>
+
+            <p>
+                A runtime branch whose alternatives are both possible contributes effects from every
+                reachable branch.
+            </p>
+        </section>
+
+        <section id="call-graph">
+            <h2>Call Graph and Recursion</h2>
+
+            <p>
+                Transitive effect verification operates on the active call graph for the selected
+                compilation plan.
+            </p>
+
+            <p>
+                Recursive and mutually recursive call groups are analyzed to a fixed point. If one
+                reachable member of a recursive group may allocate, callers in that group inherit the
+                allocation effect unless path or contract proof excludes it.
+            </p>
+
+            <pre><code>fn A() void {
+    B()
+}
+
+fn B() void {
+    C()
+}
+
+fn C() void {
+    A()
+}</code></pre>
+
+            <p>
+                The compiler does not stop at one call edge. It computes a stable summary for the
+                reachable recursive component.
+            </p>
+
+            <p>
+                Unknown indirect call targets are conservative. A strong guarantee cannot be proven
+                by simply assuming that an unresolved call happens to be harmless.
+            </p>
+        </section>
+
+        <section id="errors">
+            <h2>Errors Are Not Effects</h2>
+
+            <p>
+                Returning <code>Result[T, E]</code> is ordinary typed control flow, not an effect by
+                itself.
+            </p>
+
+            <pre><code>fn Open() Result[File, OpenError] {
+    ...
+}</code></pre>
+
+            <p>
+                The function may still allocate, block or perform I/O. Conversely, returning
+                <code>Err(...)</code> does not mean the function panicked.
+            </p>
+
+            <p>
+                This distinction keeps expected failure explicit in the type system while allowing
+                effect analysis to describe execution behavior independently.
+            </p>
+        </section>
+
+        <section id="runtime-checks">
+            <h2>Runtime Checks and <code>try</code></h2>
+
+            <p>
+                Language-defined runtime checks contribute effects according to their control flow.
+                Checked arithmetic is a common example.
+            </p>
+
+            <pre><code>let total := left + right</code></pre>
+
+            <p>
+                If overflow is possible and ordinary checked arithmetic would panic, the operation may
+                contribute <code>MayPanic</code>.
+            </p>
+
+            <p>Using <code>try</code> can convert that supported failure into explicit error flow:</p>
+
+            <pre><code>let total := try left + right</code></pre>
+
+            <p>
+                The overflow path is then represented as an ordinary error result rather than panic.
+                This can make the operation compatible with <code>@noPanic</code>.
+            </p>
+
+            <p><code>try</code> removes only the failure mode it explicitly handles.</p>
+
+            <pre><code>let value := try allocator.New[Value]()</code></pre>
+
+            <p>
+                Allocation failure may be explicit and panic-free, but the allocation effect remains.
+                Likewise, <code>try network.Read()</code> does not erase I/O or blocking behavior.
+            </p>
+        </section>
+
+        <section id="no-panic">
+            <h2><code>@noPanic</code></h2>
+
+            <p>
+                <code>@noPanic</code> is a compiler-verified transitive guarantee that
+                <code>MayPanic</code> is absent from every reachable path covered by the contract.
+            </p>
+
+            <pre><code>@noPanic
+fn Add(left: int, right: int) Result[int, ArithmeticError] {
+    let result := try left + right
+    return Ok(result)
+}</code></pre>
+
+            <p>The guarantee excludes reachable:</p>
+
+            <ul>
+                <li>explicit panic;</li>
+                <li>panic-capable operations whose safety is not proven;</li>
+                <li>panic-capable callees;</li>
+                <li>unproven assertions;</li>
+                <li>checked-unreachable failures;</li>
+                <li>panic-capable cleanup;</li>
+                <li>unknown foreign abort or unwind behavior accepted as safe.</li>
+            </ul>
+
+            <p>
+                <code>@noPanic</code> does not catch or suppress a panic. The compiler proves that
+                the relevant panic path does not exist.
+            </p>
+        </section>
+
+        <section id="no-alloc">
+            <h2><code>@noAlloc</code></h2>
+
+            <p>
+                <code>@noAlloc</code> requires the dynamic-allocation effect to be absent throughout
+                reachable execution.
+            </p>
+
+            <pre><code>@noAlloc
+fn Inspect(packet: ref Packet) bool {
+    return packet.Valid
+}</code></pre>
+
+            <p>Dynamic allocation includes operations such as:</p>
+
+            <ul>
+                <li>heap allocation;</li>
+                <li>arena allocation that consumes arena capacity;</li>
+                <li>collection growth;</li>
+                <li>closure-environment allocation where storage must be acquired;</li>
+                <li>task or thread control storage allocation;</li>
+                <li>foreign allocation;</li>
+                <li>compiler helpers that acquire dynamic storage.</li>
+            </ul>
+
+            <p>The following are not allocation merely because they exist:</p>
+
+            <ul>
+                <li>fixed stack locals;</li>
+                <li>fixed arrays;</li>
+                <li>static storage;</li>
+                <li>addressed storage;</li>
+                <li>register values;</li>
+                <li>caller-provided storage;</li>
+                <li>an arena view over caller-provided storage;</li>
+                <li>reuse of already available collection capacity without growth.</li>
+            </ul>
+
+            <p>
+                Bounded arena allocation is still allocation. <code>@noAlloc</code> means no dynamic
+                allocation, not merely “no heap allocation”.
+            </p>
+        </section>
+
+        <section id="no-block">
+            <h2><code>@noBlock</code></h2>
+
+            <p>
+                <code>@noBlock</code> guarantees that reachable execution does not synchronously wait
+                for an unbounded external event or park the current execution domain.
+            </p>
+
+            <pre><code>@noBlock
+fn PollStatus() Status {
+    return ReadReadyState()
+}</code></pre>
+
+            <p>Blocking behavior includes:</p>
+
+            <ul>
+                <li>blocking I/O;</li>
+                <li>sleep;</li>
+                <li>waiting for a mutex or semaphore;</li>
+                <li>condition-variable waiting;</li>
+                <li>thread join;</li>
+                <li>a task wait classified as blocking;</li>
+                <li>scheduler parking;</li>
+                <li>waiting for external input without a proven bounded policy;</li>
+                <li>foreign calls declared or conservatively treated as blocking.</li>
+            </ul>
+
+            <p><code>@noBlock</code> does not automatically forbid:</p>
+
+            <ul>
+                <li>ordinary finite computation;</li>
+                <li>statically bounded loops;</li>
+                <li>nonblocking polling;</li>
+                <li>try-lock;</li>
+                <li>bounded lock-free retry when separately proven;</li>
+                <li>ordinary memory-mapped status reads.</li>
+            </ul>
+
+            <p>
+                Nonblocking does not mean constant-time. Worst-case latency and execution-time bounds
+                are separate analyses.
+            </p>
+        </section>
+
+        <section id="block-vs-suspend">
+            <h2>Blocking and Suspension Are Different</h2>
+
+            <p>
+                Sec tracks synchronous blocking separately from asynchronous suspension.
+                A suspending operation may yield execution so other work can proceed without
+                synchronously blocking an execution thread.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Behavior</th><th>Compiler fact</th><th>Forbidden by <code>@noBlock</code>?</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Synchronous wait</td><td><code>MayBlock</code></td><td>Yes</td></tr>
+                        <tr><td>Asynchronous suspension</td><td><code>MaySuspend</code></td><td>No, not by <code>@noBlock</code> alone</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Interrupt-safe contracts are stronger: ISR execution may not block, park, yield or
+                resume later as an ordinary task continuation, so those contracts forbid both
+                blocking and suspension.
+            </p>
+        </section>
+
+        <section id="spawn-io-external">
+            <h2>Spawn, I/O and External State</h2>
+
+            <p>
+                Some effect facts exist because several analyses need to distinguish behaviors that
+                would otherwise look superficially similar.
+            </p>
+
+            <h3>Creating concurrent work</h3>
+
+            <p>
+                Creating a task, thread or other execution instance contributes the spawn effect.
+                The same operation may also allocate, suspend or mutate external scheduler state.
+            </p>
+
+            <h3>I/O</h3>
+
+            <p>
+                File, socket, terminal, device, foreign and platform services may contribute
+                <code>MayIO</code>. I/O can be blocking, nonblocking, suspending or polling, so
+                <code>MayIO</code> is not equivalent to <code>MayBlock</code>.
+            </p>
+
+            <h3>External mutation</h3>
+
+            <p>
+                Mutating globals, shared state, foreign state, device state or persistent storage
+                may contribute <code>MayMutateExternalState</code>. Mutating a purely local temporary
+                does not by itself do so.
+            </p>
+
+            <pre><code>fn Normalize(value: int) int {
+    let mut local := value
+    ...
+    return local
+}</code></pre>
+
+            <p>Local mutation alone is not externally observable state mutation.</p>
+        </section>
+
+        <section id="volatile">
+            <h2>Volatile Access</h2>
+
+            <p>
+                Access to addressed or otherwise volatile storage is tracked separately as
+                <code>MayAccessVolatile</code>.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>reading from a fixed hardware address;</li>
+                <li>writing addressed storage;</li>
+                <li>volatile register access;</li>
+                <li>compiler-known hardware register operations.</li>
+            </ul>
+
+            <p>
+                Volatile operations are observable. The compiler may not remove, duplicate, merge or
+                reorder them in ways that violate volatile semantics.
+            </p>
+
+            <p>
+                Volatile access is not automatically the same thing as file or socket I/O, and it is
+                not automatically forbidden in interrupt code. Target knowledge decides whether a
+                specific hardware operation is valid in that context.
+            </p>
+        </section>
+
+        <section id="nondeterminism">
+            <h2>Nondeterministic Input</h2>
+
+            <p>
+                A function may depend on information that can vary independently of its ordinary
+                explicit parameters. Sec tracks this separately as nondeterministic input.
+            </p>
+
+            <p>Typical sources include:</p>
+
+            <ul>
+                <li>clock values;</li>
+                <li>random sources;</li>
+                <li>environment state;</li>
+                <li>process or thread identity;</li>
+                <li>uncontrolled external device state;</li>
+                <li>foreign nondeterministic input.</li>
+            </ul>
+
+            <p>
+                One operation may carry several effect facts. A volatile device read may also be
+                nondeterministic, for example, without collapsing the two concepts into one flag.
+            </p>
+        </section>
+
+        <section id="interrupt-contracts">
+            <h2>Interrupt Contracts</h2>
+
+            <p>
+                Interrupt attributes are composite verified contracts. They combine effect analysis
+                with stack, target, ABI and synchronization requirements.
+            </p>
+
+            <h3><code>@interruptSafe</code></h3>
+
+            <p>
+                <code>@interruptSafe</code> verifies that a function or method may be called from ISR
+                code. It does not bind an interrupt vector and does not turn the function into an ISR
+                entrypoint.
+            </p>
+
+            <p>The contract requires at least:</p>
+
+            <ul>
+                <li>no reachable panic;</li>
+                <li>no dynamic allocation;</li>
+                <li>no synchronous blocking;</li>
+                <li>no asynchronous suspension;</li>
+                <li>no forbidden spawning;</li>
+                <li>interrupt-compatible volatile and external-state behavior;</li>
+                <li>an interrupt-safe reachable call graph;</li>
+                <li>acceptable stack behavior;</li>
+                <li>no unresolved unknown effect source.</li>
+            </ul>
+
+            <h3><code>@isr</code></h3>
+
+            <p>
+                <code>@isr</code> applies the interrupt-entry safety contract. It implies
+                <code>@noPanic</code>, <code>@noAlloc</code> and <code>@noBlock</code>, together with
+                additional ISR-specific restrictions.
+            </p>
+
+            <h3><code>@interrupt(...)</code></h3>
+
+            <p>
+                <code>@interrupt(...)</code> binds the function to target interrupt metadata and
+                implies <code>@isr</code>. The interrupt chapter defines vector binding and the target
+                entry model in detail.
+            </p>
+
+            <p>
+                Target knowledge matters. A bounded register acknowledgement or interrupt-flag write
+                may be valid even though it is externally observable. Interrupt safety is not
+                implemented as a blanket ban on every hardware effect.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Cleanup, <code>defer</code> and Destruction</h2>
+
+            <p>
+                Verified guarantees include cleanup that can execute on reachable exits.
+                This is important because effects may occur after the last visibly written ordinary
+                statement.
+            </p>
+
+            <pre><code>@noBlock
+fn Work() void {
+    defer {
+        BlockingClose()
+    }
+}</code></pre>
+
+            <p>
+                This function violates <code>@noBlock</code>. The deferred operation executes during
+                cleanup and therefore participates in the function's effective behavior.
+            </p>
+
+            <p>Effect analysis includes applicable cleanup on:</p>
+
+            <ul>
+                <li>normal return;</li>
+                <li>early return;</li>
+                <li>explicit error propagation;</li>
+                <li>scope exit;</li>
+                <li>cancellation paths where cleanup is defined;</li>
+                <li>contained panic cleanup where the panic model requires it.</li>
+            </ul>
+
+            <p>
+                Destructors may also contribute allocation, blocking, I/O, volatile access or
+                external mutation unless another rule forbids those behaviors. A containing guarantee
+                must account for the destructor behavior that can actually run.
+            </p>
+        </section>
+
+        <section id="callables">
+            <h2>Function Values and Callbacks</h2>
+
+            <p>
+                Effect guarantees participate in callable compatibility. A function with fewer
+                possible effects may be used where a more permissive callable is accepted; a
+                more-effectful function cannot satisfy a stricter requirement.
+            </p>
+
+            <p>Conceptually:</p>
+
+            <pre><code>stricter callable requirements
+    accept an equal or stronger implementation
+    reject an implementation with additional forbidden effects</code></pre>
+
+            <p>
+                The exact source syntax for effect-constrained function types is not fixed in Sec 0.1.
+                The semantic compatibility rule is fixed even though the general type syntax is not.
+            </p>
+
+            <p>
+                A public function that invokes a callback cannot claim a guarantee such as
+                <code>@noPanic</code> unless the callback contract or resolved callable target
+                establishes the required absence of panic.
+            </p>
+
+            <p>
+                The compiler must not infer a public callback guarantee merely from the particular
+                call sites visible in one executable build.
+            </p>
+        </section>
+
+        <section id="interfaces">
+            <h2>Interfaces</h2>
+
+            <p>
+                Interface methods may carry verified effect requirements. Every implementation must
+                satisfy the interface contract.
+            </p>
+
+            <p>
+                An implementation may be stronger. For example, an interface method that permits
+                allocation may be implemented by a method that is allocation-free.
+            </p>
+
+            <p>The reverse is invalid:</p>
+
+            <pre><code>interface requirement: no allocation
+implementation: may allocate
+
+// invalid</code></pre>
+
+            <p>
+                This follows the same subset principle as callback compatibility: fewer possible
+                effects are compatible with a context that allows more; additional forbidden effects
+                are not.
+            </p>
+        </section>
+
+        <section id="generics">
+            <h2>Generics and Specialization</h2>
+
+            <p>
+                Generic effect behavior may depend on operations available on type parameters,
+                destruction behavior, callbacks, selected implementations and target-specific
+                specialization.
+            </p>
+
+            <pre><code>fn Apply[T](value: T) void {
+    ...
+}</code></pre>
+
+            <p>
+                When effect-relevant behavior depends on <code>T</code>, the compiler may retain a
+                symbolic or conservative summary until a concrete specialization is known.
+            </p>
+
+            <p>
+                A concrete specialization may prove fewer effects than the generic upper bound.
+                This stronger inferred fact may be used internally for optimization and local
+                verification.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Specialization may strengthen inferred facts. It may not
+                weaken an explicit public guarantee declared by the generic API.
+            </div>
+
+            <p>
+                The exact source syntax for generic effect constraints remains separate from the
+                basic generic type syntax and is not invented by this chapter.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI and Trusted Effects</h2>
+
+            <p>
+                The compiler can analyze Sec source, but it cannot automatically inspect arbitrary
+                foreign implementation behavior with the same certainty.
+            </p>
+
+            <p>
+                Unknown foreign code is therefore conservative. Unless an explicit FFI contract or
+                compiler-known platform description establishes otherwise, foreign code may perform
+                effects that prevent strong guarantees from being proven.
+            </p>
+
+            <p>
+                A verified-looking attribute on an extern declaration is not ordinary proof of the
+                foreign body. Foreign guarantees cross a trust boundary and must preserve that
+                provenance.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Source of fact</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Sec source</td><td>Compiler proves the behavior from language-visible operations</td></tr>
+                        <tr><td>Compiler intrinsic</td><td>Behavior comes from compiler-defined semantics</td></tr>
+                        <tr><td>Target knowledge</td><td>Behavior is guaranteed by the selected target contract</td></tr>
+                        <tr><td>Unsafe FFI contract</td><td>Behavior is trusted across an explicit foreign boundary</td></tr>
+                        <tr><td>Inline assembly contract</td><td>Behavior depends on an explicit trusted assembly declaration</td></tr>
+                        <tr><td>Unknown</td><td>The compiler must remain conservative</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <code>unsafe</code> itself is not modeled as a general <code>MayUnsafe</code> effect.
+                Instead, the compiler records that a proof depends on a trusted or unsafe boundary.
+            </p>
+        </section>
+
+        <section id="arenas">
+            <h2>Arena Lifetime Effects</h2>
+
+            <p>
+                Not every effect can be represented as an unordered “may happen” flag. Arena
+                operations change storage validity in an order-sensitive way.
+            </p>
+
+            <p>The compiler tracks conceptual events such as:</p>
+
+            <pre><code>ArenaCreate(A)
+ArenaAllocate(A, size)
+ArenaReset(A)
+ArenaRelease(A)</code></pre>
+
+            <p>Order matters:</p>
+
+            <pre><code>let arena := Arena.FromBuffer(ref buffer)
+let value := arena.New[Value]()
+arena.Reset()
+
+Use(ref value)    // invalid: backing lifetime epoch was reset</code></pre>
+
+            <p>
+                The programmer sees ordinary <code>Arena</code> operations and references. Sec does
+                not expose general source-level region variables merely to support this analysis.
+            </p>
+
+            <p>
+                Branches and loops merge arena state together with ordinary flow facts. A later use
+                is valid only when every continuing path preserves the required storage validity.
+            </p>
+        </section>
+
+        <section id="quantitative">
+            <h2>Quantitative Resource Facts</h2>
+
+            <p>
+                Some resource properties are numeric rather than boolean. Sec keeps those separate
+                from the summary may-effect set.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li>maximum live arena allocation;</li>
+                <li>remaining arena capacity;</li>
+                <li>unknown allocation bounds;</li>
+                <li>maximum stack contribution;</li>
+                <li>maximum simultaneous task creation where provable;</li>
+                <li>path-specific resource peaks.</li>
+            </ul>
+
+            <p>
+                A function can therefore be known to allocate and, separately, have a proven maximum
+                amount of allocation in a particular bounded storage domain.
+            </p>
+
+            <p>
+                These facts feed later static-analysis and target checks without changing the source
+                meaning of <code>@noAlloc</code>.
+            </p>
+        </section>
+
+        <section id="optimizer">
+            <h2>Guarantees Do Not Depend on Optional Optimization</h2>
+
+            <p>
+                A declared guarantee must hold because the program semantics and required compiler
+                analyses prove it, not because one optimization setting happens to remove an effect.
+            </p>
+
+            <p>A guarantee may rely on required proofs such as:</p>
+
+            <ul>
+                <li>semantic constant evaluation;</li>
+                <li>dead-path proof;</li>
+                <li>mandatory escape analysis;</li>
+                <li>required call-graph resolution;</li>
+                <li>type and contract proof;</li>
+                <li>compiler-known intrinsic semantics.</li>
+            </ul>
+
+            <p>It must not be true only because:</p>
+
+            <ul>
+                <li>release optimization removed an allocation;</li>
+                <li>inlining happened to erase a helper;</li>
+                <li>one optimization level simplified a loop;</li>
+                <li>debug and release happened to make different incidental choices.</li>
+            </ul>
+
+            <p>
+                For the same compilation plan and source semantics, debug and release builds agree on
+                verified effect guarantees.
+            </p>
+        </section>
+
+        <section id="compilation-plan">
+            <h2>Compilation Plans and Targets</h2>
+
+            <p>
+                Effect analysis is performed for the active source graph and concrete compilation
+                plan. Target selection can change which implementation is reachable and how certain
+                target operations are classified.
+            </p>
+
+            <p>
+                This does not make guarantees arbitrary. The selected plan determines the reachable
+                program; the compiler then verifies the declared contract for that plan.
+            </p>
+
+            <p>Target knowledge may provide facts about:</p>
+
+            <ul>
+                <li>platform intrinsics;</li>
+                <li>hardware register access;</li>
+                <li>blocking versus nonblocking platform calls;</li>
+                <li>interrupt-safe device operations;</li>
+                <li>stack and ABI restrictions.</li>
+            </ul>
+
+            <p>
+                Unknown target behavior remains conservative. A strong guarantee is never established
+                by guessing that an unknown platform operation is safe.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Effect diagnostics should explain the cause, not merely report that a boolean flag
+                failed.
+            </p>
+
+            <p>A guarantee failure identifies:</p>
+
+            <ul>
+                <li>the failed declared guarantee;</li>
+                <li>the operation that introduced the forbidden effect;</li>
+                <li>the relevant call chain;</li>
+                <li>the source location;</li>
+                <li>whether the fact was proven, trusted or unknown;</li>
+                <li>the active compilation plan when relevant.</li>
+            </ul>
+
+            <pre><code>error: `PollDevice` does not satisfy @noBlock
+
+PollDevice
+  -&gt; calls ReadDevice
+  -&gt; calls OSRead
+  -&gt; operation may wait for external input
+
+effect introduced at:
+    platform/linux/device.sec:51</code></pre>
+
+            <p>
+                When several causes contribute the same effect, tooling may summarize the count and
+                provide navigation to each cause rather than hiding the additional paths.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Tooling</h2>
+
+            <p>
+                Effect information is useful while reading code, not only when a build fails. The
+                language server may expose inferred effects and declared guarantees through hover and
+                navigation.
+            </p>
+
+            <p>Useful tooling information includes:</p>
+
+            <ul>
+                <li>inferred effects;</li>
+                <li>explicit and implied guarantees;</li>
+                <li>direct versus transitive causes;</li>
+                <li>call-chain navigation;</li>
+                <li>trust provenance;</li>
+                <li>active compilation plan;</li>
+                <li>arena invalidation information;</li>
+                <li>quantitative resource facts when available.</li>
+            </ul>
+
+            <pre><code>Effects:
+    MayIO
+    MaySuspend
+
+Guarantees:
+    noBlock
+
+Provenance:
+    Sec source</code></pre>
+
+            <p>
+                Tooling displays compiler facts; it does not introduce a second effect system with
+                different language semantics.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>No Mandatory Runtime</h2>
+
+            <p>Effect analysis is compile-time and does not require runtime effect machinery.</p>
+
+            <p>Sec does not require:</p>
+
+            <ul>
+                <li>runtime effect objects;</li>
+                <li>an effect stack;</li>
+                <li>dynamic effect checks;</li>
+                <li>effect dispatch;</li>
+                <li>an exception unwinder;</li>
+                <li>a mandatory scheduler;</li>
+                <li>a mandatory allocation tracker.</li>
+            </ul>
+
+            <p>
+                Compiler metadata may be retained where needed for separate compilation, debugging,
+                diagnostics or language-server features, but ordinary effect correctness is not
+                enforced by a runtime effect engine.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Declare a verified guarantee when callers need to rely on it as part of the API.</li>
+                <li>Do not add guarantees merely as documentation; every one becomes a compiler-checked obligation.</li>
+                <li>Use <code>Result</code> and <code>try</code> for expected failure rather than relying on panic.</li>
+                <li>Remember that <code>try</code> does not remove unrelated allocation, I/O or blocking effects.</li>
+                <li>Keep <code>@noAlloc</code> code free from every dynamic allocation source, including arena allocation.</li>
+                <li>Do not treat <code>@noBlock</code> as a worst-case execution-time guarantee.</li>
+                <li>Review cleanup paths when an effect guarantee unexpectedly fails.</li>
+                <li>Give public callbacks and interfaces explicit effect contracts when callers need stable guarantees.</li>
+                <li>Keep foreign and assembly trust boundaries narrow and documented.</li>
+                <li>Use target knowledge for hardware behavior; do not encode ISR safety as assumptions in ordinary source.</li>
+                <li>Let stronger inferred implementation facts remain internal unless they are intentionally part of the API contract.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec performs compile-time effect analysis in addition to ordinary type, ownership and borrow analysis.</li>
+                <li>Sec 0.1 does not expose a general programmer-written effect language.</li>
+                <li>Every callable receives inferred effect information even without an effect attribute.</li>
+                <li>Inferred absence of an effect is not automatically a stable public API promise.</li>
+                <li><code>@noPanic</code>, <code>@noAlloc</code> and <code>@noBlock</code> are transitive compiler-verified guarantees.</li>
+                <li><code>@interruptSafe</code>, <code>@isr</code> and <code>@interrupt(...)</code> are stronger composite contracts.</li>
+                <li>The compiler distinguishes panic, allocation, blocking, suspension, spawning, I/O, volatile access, external mutation and nondeterministic input.</li>
+                <li>Expected <code>Result</code> errors are typed control flow, not effects by themselves.</li>
+                <li><code>try</code> converts supported failure into explicit error flow but does not erase unrelated effects.</li>
+                <li>Blocking and asynchronous suspension are separate facts.</li>
+                <li>Effect verification includes reachable callees, cleanup, <code>defer</code>, destruction and compiler-generated operations.</li>
+                <li>Effect compatibility is monotonic: a less-effectful implementation may satisfy a more permissive contract, not the reverse.</li>
+                <li>Interfaces, callbacks and generic specializations participate in effect compatibility.</li>
+                <li>Unknown indirect, foreign or target behavior is handled conservatively.</li>
+                <li>Foreign and assembly guarantees retain trust provenance rather than being reported as ordinary source proof.</li>
+                <li>Arena lifetime changes are ordered effects rather than ordinary unordered summary flags.</li>
+                <li>Quantitative resource facts such as stack and arena peaks remain separate from boolean may-effects.</li>
+                <li>Verified guarantees cannot depend only on optional optimization.</li>
+                <li>Effect analysis is performed for the active compilation plan.</li>
+                <li>No mandatory runtime effect system is required.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="47-lambdas-closures.html">Previous: Lambdas and Closures</a>
+            <a href="49-platforms.html">Next: Platforms and Target Profiles</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

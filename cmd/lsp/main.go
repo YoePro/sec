@@ -1320,6 +1320,13 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 	analyzer.Analyze(program)
 	tokens := sourceTokens(uri, text)
 	for name := range analyzer.Types() {
+		// Lowercase compiler-known collection and shaped constructors are
+		// contextual identifiers. Their type occurrences receive position-exact
+		// classifications below; a global spelling fallback would misclassify an
+		// ordinary value identifier such as `set`.
+		if lexer.IsContextualCollectionShapedTypeName(name) {
+			continue
+		}
 		classification[name] = "type"
 	}
 	for name := range analyzer.Functions() {
@@ -1392,6 +1399,8 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 // Ordinary identifiers with the same spelling retain their symbol class.
 //
 // Rules:
+//   - rules/foundations/lexical_structure.md — §§8–10.1 and §23 contextual classifications
+//   - rules/foundations/grammar.md — "Collection and shaped types"
 //   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
 //   - rules/foundations/lexical_structure.md — §10.1 "Contextual compound operator `not in`"
 //   - rules/foundations/operators.md — "Membership expression"
@@ -1446,19 +1455,172 @@ func contextualTokenClassifications(program *ast.Program, source []lexer.Token) 
 			}
 		}
 	}
-	for _, expression := range astExpressionsInProgram(program) {
-		infix, ok := expression.(*ast.InfixExpression)
-		if !ok {
-			continue
+	for _, ref := range astTypeReferencesInProgram(program) {
+		if ref != nil && lexer.IsContextualCollectionShapedTypeName(ref.Name) {
+			setClass(ref.Token, "type")
 		}
-		switch infix.Operator {
-		case "x", "in", "not in":
-			for _, token := range contextualInfixOperatorTokens(infix, source) {
-				setClass(token, "operator")
+	}
+	for _, expression := range astExpressionsInProgram(program) {
+		switch expression := expression.(type) {
+		case *ast.InfixExpression:
+			switch expression.Operator {
+			case "x", "in", "not in":
+				for _, token := range contextualInfixOperatorTokens(expression, source) {
+					setClass(token, "operator")
+				}
+			}
+		case *ast.SpawnExpression:
+			if expression != nil {
+				setClass(expression.KindToken, "modifier")
 			}
 		}
 	}
+	for _, marker := range astMarkerContractsInProgram(program) {
+		setClass(marker.Token, "modifier")
+	}
+	for _, field := range astStructFieldsInProgram(program) {
+		if field != nil && len(field.Tags) > 0 {
+			setClass(field.TagToken, "string declaration")
+		}
+	}
 	return classification
+}
+
+// astMarkerContractsInProgram returns contextual contract words whose role was
+// established by the parser, keeping identical identifier spellings ordinary
+// outside contract positions.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §8 contextual reserved words
+//   - rules/declarations/contracts.md — contract grammar
+func astMarkerContractsInProgram(program *ast.Program) []*ast.MarkerContract {
+	result := []*ast.MarkerContract{}
+	for _, node := range astNodesInProgram(program) {
+		if marker, ok := node.(*ast.MarkerContract); ok {
+			result = append(result, marker)
+		}
+	}
+	return result
+}
+
+// astStructFieldsInProgram returns declaration fields so raw field-tag tokens
+// can be distinguished from expression raw strings without lexical guessing.
+//
+// Rules:
+//   - rules/declarations/struct.md — field tags
+//   - rules/foundations/lexical_structure.md — §23 tooling classification
+func astStructFieldsInProgram(program *ast.Program) []*ast.StructField {
+	result := []*ast.StructField{}
+	for _, node := range astNodesInProgram(program) {
+		if field, ok := node.(*ast.StructField); ok {
+			result = append(result, field)
+		}
+	}
+	return result
+}
+
+// astNodesInProgram walks parser-owned AST pointers for position-aware tooling
+// features. It deliberately does not inspect non-AST structs such as tokens.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Semantic tokens"
+func astNodesInProgram(program *ast.Program) []any {
+	if program == nil {
+		return nil
+	}
+	result := []any{}
+	var visit func(reflect.Value)
+	visit = func(value reflect.Value) {
+		if !value.IsValid() {
+			return
+		}
+		if value.Kind() == reflect.Interface {
+			if !value.IsNil() {
+				visit(value.Elem())
+			}
+			return
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return
+			}
+			if value.CanInterface() && value.Type().Elem().PkgPath() == "sec/internal/ast" {
+				result = append(result, value.Interface())
+				visit(value.Elem())
+			}
+			return
+		}
+		switch value.Kind() {
+		case reflect.Struct:
+			if value.Type().PkgPath() != "sec/internal/ast" {
+				return
+			}
+			for index := 0; index < value.NumField(); index++ {
+				visit(value.Field(index))
+			}
+		case reflect.Slice, reflect.Array:
+			for index := 0; index < value.Len(); index++ {
+				visit(value.Index(index))
+			}
+		}
+	}
+	visit(reflect.ValueOf(program))
+	return result
+}
+
+// astTypeReferencesInProgram selects parser-owned type-reference nodes so LSP
+// features can classify contextual type names without guessing from spelling or
+// token lookahead.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Collection and shaped types"
+//   - rules/tooling/lsp.md — "Semantic tokens"
+func astTypeReferencesInProgram(program *ast.Program) []*ast.TypeReference {
+	if program == nil {
+		return nil
+	}
+	result := []*ast.TypeReference{}
+	var visit func(reflect.Value)
+	visit = func(value reflect.Value) {
+		if !value.IsValid() {
+			return
+		}
+		if value.Kind() == reflect.Interface {
+			if !value.IsNil() {
+				visit(value.Elem())
+			}
+			return
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return
+			}
+			if value.CanInterface() {
+				if ref, ok := value.Interface().(*ast.TypeReference); ok {
+					result = append(result, ref)
+				}
+			}
+			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
+				visit(value.Elem())
+			}
+			return
+		}
+		switch value.Kind() {
+		case reflect.Struct:
+			if value.Type().PkgPath() != "sec/internal/ast" {
+				return
+			}
+			for index := 0; index < value.NumField(); index++ {
+				visit(value.Field(index))
+			}
+		case reflect.Slice, reflect.Array:
+			for index := 0; index < value.Len(); index++ {
+				visit(value.Index(index))
+			}
+		}
+	}
+	visit(reflect.ValueOf(program))
+	return result
 }
 
 // semanticDeclarationKinds assigns position-exact token classes to declarations
@@ -1535,7 +1697,9 @@ func semanticTokenType(token lexer.Token, classification map[string]string) stri
 		lexer.BIT_AND_ASSIGN, lexer.BIT_OR_ASSIGN, lexer.BIT_XOR_ASSIGN, lexer.SHIFT_LEFT_ASSIGN, lexer.SHIFT_RIGHT_ASSIGN,
 		lexer.DOT, lexer.RANGE, lexer.RANGE_EXCLUSIVE, lexer.SPREAD, lexer.COLON:
 		return "operator"
-	case lexer.COMMA, lexer.SEMICOLON, lexer.QUESTION, lexer.UNDERSCORE, lexer.AT, lexer.HASH,
+	case lexer.UNDERSCORE:
+		return "keyword"
+	case lexer.COMMA, lexer.SEMICOLON, lexer.QUESTION, lexer.AT, lexer.HASH,
 		lexer.LPAREN, lexer.RPAREN, lexer.LBRACE, lexer.RBRACE, lexer.LBRACKET, lexer.RBRACKET:
 		return ""
 	default:
@@ -1599,7 +1763,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 			return typedHover(nameRange, "self", target), true
 		}
 		if isSelfMemberSelector(text, nameStart) {
-			if contents, ok := selfMemberHoverContents(target, name, analyzer.Functions(), text, path); ok {
+			if contents, ok := selfMemberHoverContents(target, name, analyzer.Functions(), program, path); ok {
 				contents += callGraphHoverSuffix(analyzer, uri, text, pos)
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}
@@ -1618,7 +1782,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	}
 
 	if functions := analyzer.Functions()[name]; len(functions) > 0 && !internalCompilerOverloads(functions) {
-		contents := functionHoverContents(functions, text, path)
+		contents := functionHoverContents(functions, program, path)
 		contents += callGraphHoverSuffix(analyzer, uri, text, pos)
 		return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 	}
@@ -2195,7 +2359,12 @@ func unitQuantityHoverSuffix(typ sema.Type) string {
 	return "\n\n" + strings.Join(lines, "\n\n")
 }
 
-func selfMemberHoverContents(target sema.Type, name string, functions map[string][]sema.Function, text string, sourcePath string) (string, bool) {
+// selfMemberHoverContents renders compiler-resolved instance members and passes
+// the shared parser tree through for method documentation lookup.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover"
+func selfMemberHoverContents(target sema.Type, name string, functions map[string][]sema.Function, program *ast.Program, sourcePath string) (string, bool) {
 	for _, field := range target.Fields {
 		if field.Name == name {
 			return structFieldHover(field), true
@@ -2217,7 +2386,7 @@ func selfMemberHoverContents(target sema.Type, name string, functions map[string
 		}
 	}
 	if overloads := functions[target.Name+"."+name]; len(overloads) > 0 {
-		return functionHoverContents(overloads, text, sourcePath), true
+		return functionHoverContents(overloads, program, sourcePath), true
 	}
 	return "", false
 }
@@ -2237,7 +2406,13 @@ func structFieldHover(field sema.StructField) string {
 	return "```sec\n" + signature + "\n```"
 }
 
-func functionHoverContents(functions []sema.Function, text string, sourcePath string) string {
+// functionHoverContents renders resolved overloads and uses parser-owned
+// documentation attachments for a single source declaration.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/tooling/lsp.md — "Hover"
+func functionHoverContents(functions []sema.Function, program *ast.Program, sourcePath string) string {
 	lines := make([]string, 0, len(functions)+2)
 	for _, function := range functions {
 		params := make([]string, 0, len(function.Parameters))
@@ -2248,7 +2423,7 @@ func functionHoverContents(functions []sema.Function, text string, sourcePath st
 	}
 	contents := "```sec\n" + strings.Join(lines, "\n") + "\n```"
 	if len(functions) == 1 && functionSourceMatches(functions[0], sourcePath) {
-		if doc := functionDocCommentAbove(text, functions[0].Token.Line); doc != "" {
+		if doc := functionDocumentation(program, functions[0].Token); doc != "" {
 			contents += "\n\n" + doc
 		}
 	}
@@ -2359,38 +2534,57 @@ func offsetPosition(text string, offset int) position {
 	return position{Line: line, Character: column}
 }
 
-func functionDocCommentAbove(text string, functionLine int) string {
-	lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"), "\n")
-	lineIndex := functionLine - 2
-	for lineIndex >= 0 && strings.TrimSpace(lines[lineIndex]) == "" {
-		lineIndex--
-	}
-	if lineIndex < 0 || !strings.HasSuffix(strings.TrimSpace(lines[lineIndex]), "*/") {
+// functionDocumentation finds the documentation group attached by the parser
+// to the exact function declaration token. Detached or ordinary comments are
+// therefore never inferred as documentation by source adjacency.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/tooling/lsp.md — "Hover"
+func functionDocumentation(program *ast.Program, functionToken lexer.Token) string {
+	if program == nil {
 		return ""
 	}
-	end := lineIndex
-	for lineIndex >= 0 && !strings.Contains(lines[lineIndex], "/**") {
-		lineIndex--
+	for _, attachment := range program.Documentation {
+		declaration, ok := attachment.Declaration.(*ast.FunctionDeclaration)
+		if !ok || declaration == nil || declaration.Name == nil || !sameSourceToken(declaration.Name.Token, functionToken) {
+			continue
+		}
+		return documentationCommentText(attachment.Comments)
 	}
-	if lineIndex < 0 {
-		return ""
-	}
-	if strings.TrimSpace(lines[lineIndex]) == "/**" && end == lineIndex {
-		return ""
-	}
-	docLines := []string{}
-	for i := lineIndex; i <= end; i++ {
-		line := strings.TrimSpace(lines[i])
-		line = strings.TrimPrefix(line, "/**")
-		line = strings.TrimSuffix(line, "*/")
-		line = strings.TrimSpace(line)
-		line = strings.TrimPrefix(line, "*")
-		line = strings.TrimSpace(line)
-		if line != "" {
-			docLines = append(docLines, line)
+	return ""
+}
+
+// documentationCommentText converts preserved documentation-comment tokens to
+// Markdown text without rescanning or reattaching source.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
+//   - rules/tooling/lsp.md — "Hover"
+func documentationCommentText(comments []lexer.Token) string {
+	paragraphs := make([]string, 0, len(comments))
+	for _, comment := range comments {
+		body := comment.Lexeme
+		if body == "/**/" {
+			body = ""
+		} else {
+			body = strings.TrimPrefix(body, "/**")
+			body = strings.TrimSuffix(body, "*/")
+		}
+		lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\r", "\n"), "\n")
+		text := make([]string, 0, len(lines))
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			line = strings.TrimSpace(strings.TrimPrefix(line, "*"))
+			if line != "" {
+				text = append(text, line)
+			}
+		}
+		if len(text) > 0 {
+			paragraphs = append(paragraphs, strings.Join(text, "\n"))
 		}
 	}
-	return strings.Join(docLines, "\n")
+	return strings.Join(paragraphs, "\n\n")
 }
 
 func parseProgramForLSP(uri string, text string) *ast.Program {

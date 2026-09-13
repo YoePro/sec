@@ -380,7 +380,9 @@ impl Header {
 
         for field in self._fields {
             if field.Name == normalized {
-                try result.Append(field.Value)
+                try result.Append(field.Value) {
+                    Err(_) => return Err(HeaderError.AllocationFailed)
+                }
             }
         }
 

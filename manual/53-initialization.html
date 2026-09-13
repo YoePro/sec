@@ -1,0 +1,1024 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Program Initialization and Shutdown - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#initialization">Program Initialization and Shutdown</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#principle">Explicit Lifecycle Principle</a>
+        <a href="#entry-point">Executable Entry Point</a>
+        <a href="#cmd">Executable Modules</a>
+        <a href="#platform-bootstrap">Platform Bootstrap</a>
+        <a href="#imports">Imports Do Not Initialize</a>
+        <a href="#explicit-init">Explicit Runtime Initialization</a>
+        <a href="#init-functions">Initialization Functions</a>
+        <a href="#constructors">Object init vs Program Initialization</a>
+        <a href="#static-state">Static and Global State</a>
+        <a href="#static-initializers">Static Initializers</a>
+        <a href="#init-order">Initialization Order</a>
+        <a href="#failure">Initialization Failure</a>
+        <a href="#ownership">Ownership of Runtime State</a>
+        <a href="#defer">defer During Program Lifetime</a>
+        <a href="#shutdown">Graceful Shutdown</a>
+        <a href="#main-return">Returning from main</a>
+        <a href="#explicit-close">Explicit Close Before Shutdown</a>
+        <a href="#processes">Tasks, Threads and Processes</a>
+        <a href="#raw-exit">Raw Exit and Non-Returning Calls</a>
+        <a href="#panic">Panic and Abnormal Termination</a>
+        <a href="#globals-shutdown">No Hidden Global Finalizers</a>
+        <a href="#hardware">Bare Metal and Hardware Targets</a>
+        <a href="#hosted">Hosted Targets</a>
+        <a href="#rtos">RTOS Targets</a>
+        <a href="#ffi">FFI and Foreign Runtime Startup</a>
+        <a href="#analysis">Effects and Static Analysis</a>
+        <a href="#diagnostics">Diagnostics and Tooling</a>
+        <a href="#example">Complete Hosted Example</a>
+        <a href="#bare-example">Bare-Metal Style Example</a>
+        <a href="#status">Current Status and Boundaries</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html" class="active">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Program Initialization and Shutdown</div>
+
+        <h1 id="initialization">Program Initialization and Shutdown</h1>
+
+        <p>
+            Sec keeps program lifecycle explicit. Importing a module does not execute code, and a
+            module does not receive a hidden initialization function merely because it contains
+            declarations. Runtime initialization happens because the program explicitly requests it.
+        </p>
+
+        <p>
+            The same principle applies at the other end of the program. Normal scope exit and a
+            normal return from the executable entry point participate in ordinary Sec cleanup.
+            Abrupt target termination, a raw non-returning platform exit or an aborting panic must
+            not be described as if they had executed cleanup that never ran.
+        </p>
+
+        <pre><code>fn main() int {
+    match StartApplication() {
+        Ok(app) => return Run(app)
+        Err(error) => return 1
+    }
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Program startup and shutdown must not depend on hidden
+            module constructors, import side effects or implicit global finalizer registries.
+            Runtime work is explicit in the program or explicitly owned by the selected platform.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Program initialization is broader than constructing one value. It includes the path
+                from the target's machine/runtime entry into the Sec executable, explicit setup of
+                application services, establishment of long-lived ownership and the corresponding
+                orderly shutdown path.
+            </p>
+
+            <p>This chapter distinguishes:</p>
+
+            <ul>
+                <li>platform bootstrap before Sec application code begins;</li>
+                <li>the executable's Sec entry point;</li>
+                <li>explicit library or subsystem initialization;</li>
+                <li>construction of individual values through <code>init</code> and <code>new</code>;</li>
+                <li>static storage that exists for the program lifetime;</li>
+                <li>normal cleanup and graceful termination;</li>
+                <li>abrupt termination paths where cleanup cannot be guaranteed.</li>
+            </ul>
+        </section>
+
+        <section id="principle">
+            <h2>Explicit Lifecycle Principle</h2>
+
+            <p>
+                Sec deliberately avoids lifecycle behavior that is triggered merely by loading,
+                importing or discovering source code.
+            </p>
+
+            <p>In particular:</p>
+
+            <ul>
+                <li>imports make symbols available;</li>
+                <li>imports do not execute user code;</li>
+                <li>there is no implicit per-module <code>init</code> function;</li>
+                <li>there is no import-order runtime initialization chain;</li>
+                <li>initialization APIs are called because source code calls them;</li>
+                <li>shutdown APIs are called because source code or ordinary ownership cleanup reaches them.</li>
+            </ul>
+
+            <p>
+                This makes startup visible in code review and keeps dependency order explicit rather
+                than hiding it in linker or loader behavior.
+            </p>
+        </section>
+
+        <section id="entry-point">
+            <h2>Executable Entry Point</h2>
+
+            <p>
+                A Sec executable has a <code>main</code> entry point in its executable module.
+                <code>main</code> is an ordinary Sec function from the language's point of view: it
+                has lexical scope, local ownership, <code>defer</code>, error handling and ordinary
+                destruction behavior.
+            </p>
+
+            <pre><code>fn main() int {
+    return 0
+}</code></pre>
+
+            <p>
+                The selected target and executable ABI determine how the platform transfers control
+                into the Sec entry point and how the returned status is represented externally.
+                Those ABI details do not create hidden Sec module initialization semantics.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> The platform may provide bootstrap code around
+                <code>main</code>, but user-visible application initialization remains explicit.
+            </div>
+        </section>
+
+        <section id="cmd">
+            <h2>Executable Modules</h2>
+
+            <p>
+                Project layout identifies executable targets separately from reusable modules.
+                A directory under <code>cmd</code> represents one executable target.
+            </p>
+
+            <pre><code>cmd/
+    server/
+        main.sec
+    worker/
+        main.sec</code></pre>
+
+            <p>
+                Each executable has its own entry point and therefore its own explicit initialization
+                sequence. There is no special generic <code>main</code> module shared by all executables.
+            </p>
+        </section>
+
+        <section id="platform-bootstrap">
+            <h2>Platform Bootstrap</h2>
+
+            <p>
+                Before Sec application code can run, the selected target may require platform work:
+                creating a stack, establishing runtime support, mapping required memory, preparing an
+                ABI environment or entering the correct execution mode.
+            </p>
+
+            <p>
+                This work belongs to the platform/runtime implementation selected by the
+                <code>CompilationPlan</code>. It is not equivalent to module initialization and it
+                must not make an imported application module execute arbitrary code.
+            </p>
+
+            <pre><code>machine / loader / firmware entry
+              |
+              v
+       platform bootstrap
+              |
+              v
+        Sec entry point
+              |
+              v
+ explicit application setup</code></pre>
+
+            <p>
+                Hosted, RTOS and BareMetal profiles may realize the bootstrap differently while the
+                source-level rule remains the same: platform preparation is separate from explicit
+                application initialization.
+            </p>
+        </section>
+
+        <section id="imports">
+            <h2>Imports Do Not Initialize</h2>
+
+            <p>
+                An import changes name availability, not runtime state.
+            </p>
+
+            <pre><code>import "database"
+import "log"
+import "net/http"</code></pre>
+
+            <p>
+                None of these imports opens a database, starts logging, binds a socket, allocates an
+                HTTP server or registers a shutdown callback merely because the import exists.
+            </p>
+
+            <p>
+                If a module needs setup, the program calls an API that performs the setup explicitly.
+            </p>
+
+            <pre><code>let database := try database.Open(config.Database)
+let server := try http.Listen(config.Address)</code></pre>
+        </section>
+
+        <section id="explicit-init">
+            <h2>Explicit Runtime Initialization</h2>
+
+            <p>
+                Runtime initialization is ordinary Sec code. It may allocate, perform I/O, access
+                hardware, return typed errors, construct owned resources and register ordinary
+                cleanup through scope ownership or <code>defer</code>.
+            </p>
+
+            <pre><code>fn StartApplication() Result[Application, StartError] {
+    let config := try LoadConfiguration()
+    let database := try Database.Open(config.Database)
+    let server := try Server.Open(config.ListenAddress)
+
+    return Ok(Application {
+        Config: config,
+        Database: database,
+        Server: server,
+    })
+}</code></pre>
+
+            <p>
+                If initialization fails part-way through, already constructed owned values follow
+                the normal cleanup rules. A separate global rollback mechanism is not needed merely
+                because the code happens to run during startup.
+            </p>
+        </section>
+
+        <section id="init-functions">
+            <h2>Initialization Functions</h2>
+
+            <p>
+                A library may expose a named setup function when that API makes sense.
+                Such a function is an ordinary function, not a magic language hook.
+            </p>
+
+            <pre><code>try sqlite.Init()</code></pre>
+
+            <p>
+                Another library may instead return an owned value:
+            </p>
+
+            <pre><code>let database := try Database.Open(settings)</code></pre>
+
+            <p>
+                The language does not require every library to use the name <code>Init</code>, and it
+                does not call such functions automatically. APIs should choose names that describe
+                what they actually establish.
+            </p>
+        </section>
+
+        <section id="constructors">
+            <h2>Object <code>init</code> vs Program Initialization</h2>
+
+            <p>
+                The lifecycle member <code>init</code> defined inside an <code>impl</code> constructs one
+                value. It is not a program-start hook.
+            </p>
+
+            <pre><code>impl Connection {
+    init(address: Address) ConnectError {
+        ...
+    }
+}</code></pre>
+
+            <p>
+                Using that initializer:
+            </p>
+
+            <pre><code>let connection := try new Connection(address)</code></pre>
+
+            <p>
+                constructs one <code>Connection</code>. The compiler does not scan all types for
+                <code>init</code> members and invoke them at process startup.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>init</code> belongs to value construction.
+                Program initialization is ordinary explicit control flow from the executable entry point.
+            </div>
+        </section>
+
+        <section id="static-state">
+            <h2>Static and Global State</h2>
+
+            <p>
+                Type-owned static members may exist independently of instances:
+            </p>
+
+            <pre><code>impl Metrics {
+    static let MaximumSeries: uint := 1024
+    static let mut DroppedSamples: uint64 := 0
+}</code></pre>
+
+            <p>
+                Static storage is not the same thing as hidden runtime initialization. A static value
+                whose representation can be established directly does not require a user-visible
+                startup callback merely to exist.
+            </p>
+
+            <p>
+                Resource-owning global state is more dangerous because it would require implicit
+                construction and process-exit destruction. Sec's initial model therefore avoids
+                relying on hidden global constructors or a hidden global destruction registry.
+            </p>
+        </section>
+
+        <section id="static-initializers">
+            <h2>Static Initializers</h2>
+
+            <p>
+                A static initializer should describe state that can be established without inventing
+                an invisible runtime initialization order.
+            </p>
+
+            <pre><code>impl Limits {
+    static let DefaultPort: uint16 := 8080
+}</code></pre>
+
+            <p>
+                When setup requires runtime work such as allocation, file access, socket creation,
+                device probing or foreign initialization, put that work in explicit startup code.
+            </p>
+
+            <pre><code>fn main() int {
+    match Runtime.Open() {
+        Ok(runtime) => return Run(runtime)
+        Err(error) => return 1
+    }
+}</code></pre>
+
+            <p>
+                This keeps failure handling and cleanup visible instead of hiding them behind static
+                declaration order.
+            </p>
+        </section>
+
+        <section id="init-order">
+            <h2>Initialization Order</h2>
+
+            <p>
+                Because imports do not execute code, Sec does not need a language-wide rule such as
+                “initialize imported modules in dependency order”. Application initialization order
+                is the order expressed by ordinary source control flow.
+            </p>
+
+            <pre><code>fn Start() Result[Application, StartError] {
+    let logging := try Logging.Open()
+    let database := try Database.Open()
+    let server := try Server.Open(database)
+
+    return Ok(Application {
+        Logging: logging,
+        Database: database,
+        Server: server,
+    })
+}</code></pre>
+
+            <p>
+                Here the order is unambiguous because it is written directly in the function.
+                Dependency order, failure order and ownership order all follow the same visible code.
+            </p>
+        </section>
+
+        <section id="failure">
+            <h2>Initialization Failure</h2>
+
+            <p>
+                Startup code uses ordinary <code>Result</code> and <code>try</code> behavior.
+                If a later initialization step fails, earlier successfully initialized owned values
+                are cleaned up according to their normal scope and destruction rules.
+            </p>
+
+            <pre><code>fn Start() Result[Application, StartError] {
+    let database := try Database.Open()
+    let cache := try Cache.Open()
+    let server := try Server.Open()
+
+    return Ok(Application {
+        Database: database,
+        Cache: cache,
+        Server: server,
+    })
+}</code></pre>
+
+            <p>
+                If <code>Cache.Open()</code> fails, <code>database</code> remains the caller's owned
+                startup temporary and is cleaned up before the error leaves the function. If
+                <code>Server.Open()</code> fails, both <code>cache</code> and <code>database</code> are
+                cleaned up in the ordinary reverse ownership order.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership of Runtime State</h2>
+
+            <p>
+                Long-lived program state should have a visible owner.
+            </p>
+
+            <pre><code>type Application struct {
+    Database: Database,
+    Server: Server,
+    Metrics: Metrics,
+}</code></pre>
+
+            <p>
+                Returning one aggregate from startup often makes shutdown simple: the entry point or
+                top-level runtime loop owns the application, and ordinary destruction releases its
+                fields when that owner ends.
+            </p>
+
+            <p>
+                This is preferable to distributing independent hidden global owners across imported
+                modules, because ownership, shutdown order and failure cleanup remain statically visible.
+            </p>
+        </section>
+
+        <section id="defer">
+            <h2><code>defer</code> During Program Lifetime</h2>
+
+            <p>
+                <code>defer</code> is ordinary function cleanup and can be useful in startup and entry
+                functions when an explicit action must occur when that scope exits.
+            </p>
+
+            <pre><code>fn RunService() Result[void, ServiceError] {
+    let service := try Service.Open()
+
+    defer {
+        service.FlushMetrics()
+    }
+
+    return service.Run()
+}</code></pre>
+
+            <p>
+                The deferred block does not become a process-global shutdown hook. It belongs to the
+                lexical function execution that registered it and runs only on cleanup paths for which
+                the language guarantees defer execution.
+            </p>
+        </section>
+
+        <section id="shutdown">
+            <h2>Graceful Shutdown</h2>
+
+            <p>
+                Graceful shutdown is the deliberate transition from running application state to a
+                normal Sec control-flow exit where owned values can be released in a defined order.
+            </p>
+
+            <p>A typical shape is:</p>
+
+            <ol>
+                <li>stop accepting new work;</li>
+                <li>request cancellation or completion of owned concurrent work;</li>
+                <li>join or otherwise resolve lifecycle-owned tasks, threads or processes;</li>
+                <li>perform explicit fallible close operations whose errors matter;</li>
+                <li>leave scopes normally so remaining infallible destruction runs;</li>
+                <li>return from <code>main</code>.</li>
+            </ol>
+
+            <p>
+                The exact application protocol is domain-specific, but the language does not hide it
+                in a global finalizer phase.
+            </p>
+        </section>
+
+        <section id="main-return">
+            <h2>Returning from <code>main</code></h2>
+
+            <p>
+                A normal return from <code>main</code> is a normal Sec function return. Before control
+                leaves the function, ordinary cleanup for live owned locals and registered
+                <code>defer</code> operations is performed according to the cleanup rules.
+            </p>
+
+            <pre><code>fn main() int {
+    match StartApplication() {
+        Ok(application) => return Run(application)
+        Err(error) => return 1
+    }
+}</code></pre>
+
+            <p>
+                The returned status is prepared before the function's remaining local cleanup is
+                completed, just like any other return value.
+            </p>
+        </section>
+
+        <section id="explicit-close">
+            <h2>Explicit Close Before Shutdown</h2>
+
+            <p>
+                Destruction itself cannot report a recoverable cleanup error to a caller after the
+                value's lifetime has ended. Resources for which closing errors matter should expose
+                an explicit ordinary close operation.
+            </p>
+
+            <pre><code>let file := try File.Open(path)
+
+// use file
+
+try file.Close()</code></pre>
+
+            <p>
+                A type may still provide infallible or best-effort automatic destruction as a safety
+                fallback, but semantically meaningful close errors must remain visible in ordinary
+                program control flow.
+            </p>
+        </section>
+
+        <section id="processes">
+            <h2>Tasks, Threads and Processes</h2>
+
+            <p>
+                Program shutdown must not silently discard unresolved ownership merely because the
+                executable is about to terminate. Concurrent and process lifecycle values follow
+                their own ownership rules.
+            </p>
+
+            <p>
+                For example, an unresolved process owner cannot simply fall out of scope when the
+                process model requires an explicit join, detach or transfer. Likewise, later task and
+                thread chapters define which execution owners must be completed, cancelled, joined or
+                otherwise resolved before their owning scope ends.
+            </p>
+
+            <p>
+                Graceful shutdown should therefore resolve execution ownership before final top-level
+                scope exit rather than relying on the operating system to discard everything.
+            </p>
+        </section>
+
+        <section id="raw-exit">
+            <h2>Raw Exit and Non-Returning Calls</h2>
+
+            <p>
+                A raw platform process-exit syscall or equivalent non-returning primitive is not a
+                normal Sec return. The compiler must not claim that cleanup after that call executes.
+            </p>
+
+            <pre><code>unsafe {
+    PlatformRawExit(1)
+}
+
+// no cleanup after the non-returning exit can be promised</code></pre>
+
+            <p>
+                Any cleanup required before such an operation must already have executed explicitly.
+                This is one reason ordinary return from <code>main</code> is the preferred graceful
+                termination path on hosted targets.
+            </p>
+        </section>
+
+        <section id="panic">
+            <h2>Panic and Abnormal Termination</h2>
+
+            <p>
+                Panic policy is selected by the target profile. Until a target explicitly provides a
+                defined unwinding model, code must not assume that panic runs every outer cleanup or
+                destructor.
+            </p>
+
+            <p>
+                Likewise, external termination such as power loss, hardware reset, operating-system
+                kill, process crash or machine shutdown cannot guarantee that ordinary Sec cleanup
+                finishes.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Deterministic destruction defines normal language-controlled
+                lifetime endings. It is not a promise that all resources are released after arbitrary
+                external or aborting termination.
+            </div>
+        </section>
+
+        <section id="globals-shutdown">
+            <h2>No Hidden Global Finalizers</h2>
+
+            <p>
+                Sec does not need a hidden process-wide list of destructors merely because static
+                declarations exist. The initial model avoids global owned values whose correctness
+                depends on process-exit finalization.
+            </p>
+
+            <p>
+                Compile-time constants and immutable static data that require no runtime destruction
+                are straightforward. Runtime resources that require cleanup should normally be owned
+                by explicit application state created during startup.
+            </p>
+
+            <pre><code>fn main() int {
+    match Application.Open() {
+        Ok(application) => return application.Run()
+        Err(error) => return 1
+    }
+}</code></pre>
+
+            <p>
+                When <code>application</code> ends, its owned fields follow ordinary destruction.
+                No separate global finalizer registry is required.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>Bare Metal and Hardware Targets</h2>
+
+            <p>
+                Bare-metal startup often requires more platform work before ordinary Sec code can
+                execute: establishing stack state, memory regions, interrupt metadata, runtime
+                services or device access. Those requirements belong to the selected platform and
+                target profile.
+            </p>
+
+            <p>
+                The language still avoids hidden imported-module initialization. Once control reaches
+                the Sec application entry point, application hardware configuration remains explicit.
+            </p>
+
+            <pre><code>fn InitializeHardware() Result[void, HardwareError] {
+    try Clock.Configure()
+    try Board.InitializePeripherals()
+    return Ok()
+}
+
+fn main() int {
+    match InitializeHardware() {
+        Ok() => {
+            RunControlLoop()
+            return 0
+        }
+        Err(error) => return 1
+    }
+}</code></pre>
+
+            <p>
+                Hardware reset, power loss or watchdog reset may bypass graceful shutdown entirely.
+                Code must not design device correctness around an assumption that process-exit cleanup
+                always runs on such targets.
+            </p>
+        </section>
+
+        <section id="hosted">
+            <h2>Hosted Targets</h2>
+
+            <p>
+                A hosted target normally begins through an operating-system or loader ABI. The Sec
+                platform layer establishes the environment required by the compiled program and then
+                transfers control to the executable entry point.
+            </p>
+
+            <p>
+                Hosted support does not change the source rule: imports remain non-executing,
+                application initialization remains explicit and normal return remains the cleanest
+                language-controlled shutdown path.
+            </p>
+        </section>
+
+        <section id="rtos">
+            <h2>RTOS Targets</h2>
+
+            <p>
+                An RTOS target may require scheduler or kernel integration before application code
+                begins. Whether the Sec entry point runs as an RTOS task, a bootstrap function or
+                another target-defined environment is a platform implementation detail described by
+                the active target profile.
+            </p>
+
+            <p>
+                The existence of an RTOS does not authorize hidden module initialization or hidden
+                shutdown callbacks. Application-owned services and execution resources remain subject
+                to explicit ownership and lifecycle rules.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI and Foreign Runtime Startup</h2>
+
+            <p>
+                A Sec executable may depend on foreign runtimes or libraries that require explicit
+                initialization or shutdown. That requirement belongs in an ordinary Sec wrapper API.
+            </p>
+
+            <pre><code>fn StartForeignRuntime() Result[ForeignRuntime, ForeignError] {
+    unsafe {
+        let status := foreign_runtime_init()
+        return DecodeRuntime(status)
+    }
+}</code></pre>
+
+            <p>
+                The wrapper defines error, ownership and cleanup semantics. The compiler must not
+                invent lifecycle behavior merely because an <code>extern</code> declaration exists.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Effects and Static Analysis</h2>
+
+            <p>
+                Startup and shutdown code are not exempt from Sec's effect and safety analyses.
+                Initialization may allocate, perform I/O, access volatile hardware, block or call
+                unsafe/foreign operations only when those operations are valid in the active context
+                and target profile.
+            </p>
+
+            <p>
+                Likewise, cleanup participates in ownership, borrow, race, deadlock and execution
+                lifecycle analysis. A function being “startup code” does not grant extra authority.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>Useful diagnostics include:</p>
+
+            <ul>
+                <li>executable target has no valid <code>main</code> entry point;</li>
+                <li>more than one entry point is visible for one executable target;</li>
+                <li>runtime initialization result is ignored;</li>
+                <li>static initialization requires unsupported hidden runtime work;</li>
+                <li>global owned state would require unsupported process-exit destruction;</li>
+                <li>unresolved task, thread or process ownership remains at program exit;</li>
+                <li>cleanup is placed after a known non-returning raw exit operation;</li>
+                <li>startup operation requires a target capability that the active profile does not provide.</li>
+            </ul>
+
+            <p>
+                Tooling should show the selected executable entry point and target profile explicitly.
+                It should not infer startup behavior from import order.
+            </p>
+        </section>
+
+        <section id="example">
+            <h2>Complete Hosted Example</h2>
+
+            <pre><code>type Application struct {
+    Database: Database,
+    Server: Server,
+}
+
+fn StartApplication() Result[Application, StartError] {
+    let config := try LoadConfiguration()
+    let database := try Database.Open(config.Database)
+    let server := try Server.Open(config.ListenAddress)
+
+    return Ok(Application {
+        Database: database,
+        Server: server,
+    })
+}
+
+fn Run(application: Application) int {
+    return application.Server.Run()
+}
+
+fn main() int {
+    match StartApplication() {
+        Ok(application) => return Run(application)
+        Err(error) => return 1
+    }
+}</code></pre>
+
+            <p>
+                Startup order is visible. Failure uses ordinary typed errors. Ownership of the
+                database and server moves into <code>Application</code>. Normal return follows normal
+                cleanup. No import executes startup code and no hidden finalizer registry is needed.
+            </p>
+        </section>
+
+        <section id="bare-example">
+            <h2>Bare-Metal Style Example</h2>
+
+            <pre><code>fn ConfigureBoard() Result[void, BoardError] {
+    try Clock.Initialize()
+    try GPIO.Initialize()
+    try Timer.Initialize()
+    return Ok()
+}
+
+fn main() int {
+    match ConfigureBoard() {
+        Ok() => {
+            while true {
+                RunControlStep()
+            }
+        }
+        Err(error) => return 1
+    }
+}
+</code></pre>
+
+            <p>
+                The platform may perform machine bootstrap before <code>main</code>, but board setup
+                requested by the application is explicit. If the program is intentionally
+                non-terminating, normal process shutdown is simply not part of its ordinary path.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Current Status and Boundaries</h2>
+
+            <p>
+                The core lifecycle rules used by this chapter are already established across Sec's
+                module, project, implementation, destruction and platform models:
+            </p>
+
+            <ul>
+                <li>imports do not execute code;</li>
+                <li>initialization is explicit;</li>
+                <li>executables have an explicit entry point;</li>
+                <li>type <code>init</code> is value construction, not module startup;</li>
+                <li>normal return participates in ordinary cleanup;</li>
+                <li>raw non-returning exit does not imply caller cleanup;</li>
+                <li>global owned destruction is not based on a hidden runtime registry.</li>
+            </ul>
+
+            <p>
+                Exact machine bootstrap sequences, loader glue, RTOS entry adaptation and external
+                process-status ABI mapping are platform/backend responsibilities. They must preserve
+                the source-level rules above but may differ between targets.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Keep application initialization visible from the executable entry point.</li>
+                <li>Do not rely on imports to establish runtime state.</li>
+                <li>Prefer returning owned application state from startup rather than filling hidden globals.</li>
+                <li>Use ordinary <code>Result</code> and <code>try</code> for startup failures.</li>
+                <li>Let normal ownership clean up partially completed initialization.</li>
+                <li>Use type <code>init</code> only for constructing one value; do not treat it as a program hook.</li>
+                <li>Keep static initialization free of hidden fallible runtime work.</li>
+                <li>Resolve owned tasks, threads and processes before top-level graceful exit.</li>
+                <li>Call explicit fallible <code>Close</code>-style APIs before destruction when close errors matter.</li>
+                <li>Prefer normal return from <code>main</code> over a raw process-exit syscall when cleanup matters.</li>
+                <li>Do not assume panic, power loss, reset or external termination runs ordinary cleanup.</li>
+                <li>Keep platform bootstrap separate from application initialization.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec program lifecycle is explicit by design.</li>
+                <li>Imports make symbols available and never execute module initialization code.</li>
+                <li>There are no implicit per-module initialization functions.</li>
+                <li>Executable targets enter through an explicit <code>main</code> function.</li>
+                <li>Platform bootstrap may prepare the machine/runtime before <code>main</code> without becoming module initialization.</li>
+                <li>Runtime library and subsystem setup is ordinary explicitly called Sec code.</li>
+                <li>Type <code>init</code> constructs one value and is unrelated to automatic program startup.</li>
+                <li>Static storage does not justify hidden runtime constructor chains.</li>
+                <li>Initialization order is the visible source execution order.</li>
+                <li>Startup failure uses ordinary <code>Result</code>, <code>try</code>, ownership and cleanup semantics.</li>
+                <li>Long-lived runtime resources should have explicit owners.</li>
+                <li><code>defer</code> is lexical cleanup, not a process-global shutdown hook.</li>
+                <li>Graceful shutdown resolves owned execution and resources before ordinary top-level exit.</li>
+                <li>Returning from <code>main</code> executes normal Sec cleanup.</li>
+                <li>Raw non-returning exit operations do not promise cleanup after the exit call.</li>
+                <li>Aborting panic, power loss, reset and external termination cannot guarantee ordinary cleanup.</li>
+                <li>Sec does not require a hidden global finalizer registry.</li>
+                <li>Hosted, RTOS and BareMetal targets may use different bootstrap mechanisms while preserving the same source-level lifecycle rules.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="52-inline-assembly.html">Previous: Inline Assembly</a>
+            <a href="54-concurrency.html">Next: Concurrency</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

@@ -26,6 +26,26 @@ func TestInterpolationDoesNotSilentlyEmitSourceText(t *testing.T) {
 	}
 }
 
+// rules/foundations/lexical_structure.md §§13–15 and rules/types/types.md
+// require decoded character scalars to retain char/rune representation through
+// the legacy LLVM path.
+func TestGenerateDecodedCharacterAndRuneLiterals(t *testing.T) {
+	program := parseAndAnalyze(t, `module main
+fn Character() char { return '\x41' }
+fn Rune() rune { return '\u{03A9}' }
+fn main() int { return 0 }
+`)
+	got, err := Generate(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"ret i8 65", "ret i32 937"} {
+		if !strings.Contains(got, expected) {
+			t.Fatalf("LLVM output missing %q:\n%s", expected, got)
+		}
+	}
+}
+
 func TestGenerateMinimalMainWithIf(t *testing.T) {
 	input := `
 module main

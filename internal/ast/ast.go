@@ -152,6 +152,32 @@ type Program struct {
 	Statements       []Statement
 	SourceProvenance map[string]SourceProvenance
 	Documentation    []DocumentationAttachment
+	Comments         []CommentAttachment
+}
+
+// CommentPlacement identifies the parser-established relationship between a
+// preserved comment group and surrounding source.
+type CommentPlacement string
+
+const (
+	CommentLeading       CommentPlacement = "leading"
+	CommentTrailing      CommentPlacement = "trailing"
+	CommentInline        CommentPlacement = "inline"
+	CommentDetached      CommentPlacement = "detached"
+	CommentDocumentation CommentPlacement = "documentation"
+)
+
+// CommentAttachment preserves ordinary and documentation comment groups with
+// a stable lexical anchor and an AST target when one starts at that anchor.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §§5.4–5.5
+//   - rules/tooling/formatter.md — "Comment attachment"
+type CommentAttachment struct {
+	Comments  []lexer.Token
+	Placement CommentPlacement
+	Anchor    lexer.Token
+	Target    Node
 }
 
 // DocumentationAttachment preserves an ordered documentation-comment group
@@ -732,8 +758,9 @@ func (cl *CharLiteral) String() string {
 }
 
 type ModuleStatement struct {
-	Token lexer.Token
-	Path  string
+	Token     lexer.Token
+	NameToken lexer.Token
+	Path      string
 }
 
 func (ms *ModuleStatement) statementNode() {}
@@ -743,9 +770,10 @@ func (ms *ModuleStatement) TokenLiteral() string {
 }
 
 type ImportStatement struct {
-	Token lexer.Token
-	Alias string
-	Path  string
+	Token      lexer.Token
+	AliasToken lexer.Token
+	Alias      string
+	Path       string
 }
 
 func (is *ImportStatement) statementNode() {}
@@ -1189,6 +1217,7 @@ type AsmOperand struct {
 type AsmOutput struct {
 	Register string
 	Name     string
+	Token    lexer.Token
 }
 
 type StructStatement struct {
@@ -1208,6 +1237,7 @@ type StructField struct {
 	Name     *Identifier
 	Type     *TypeReference
 	Contract Contract
+	TagToken lexer.Token
 	Tags     []StructTag
 }
 
@@ -1301,8 +1331,9 @@ type InterpolatedStringLiteral struct {
 }
 
 // InterpolatedStringPart preserves a text segment or a parsed expression with
-// an exclusive source end. Text collapses doubled braces but retains escape
-// spelling for later materialization; Expression is nil for text parts.
+// an exclusive source end. Text collapses doubled braces and contains decoded
+// Sec escapes; Token retains the original source spelling. Expression is nil
+// for text parts.
 // Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings", "15. Escapes".
 type InterpolatedStringPart struct {
 	Token      lexer.Token
@@ -2080,10 +2111,11 @@ type StructLiteralField struct {
 }
 
 type SpawnExpression struct {
-	Token lexer.Token
-	Kind  string
-	Value Expression
-	Body  *BlockStatement
+	Token     lexer.Token
+	KindToken lexer.Token
+	Kind      string
+	Value     Expression
+	Body      *BlockStatement
 }
 
 func (se *SpawnExpression) expressionNode() {}

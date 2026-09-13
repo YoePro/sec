@@ -72,7 +72,7 @@ fn Replace(index: uint128) int32[3] {
 }
 
 fn NestedReplace(row: uint, column: uint) int32[2][2] {
-    let mut matrix: int32[2][2] := [[1, 2], [3, 4]]
-    matrix[row][column] = 9
-    return matrix
+    let mut grid: int32[2][2] := [[1, 2], [3, 4]]
+    grid[row][column] = 9
+    return grid
 }

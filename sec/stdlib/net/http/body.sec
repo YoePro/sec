@@ -55,8 +55,36 @@ impl Body {
         })
     }
 
-    init(data: string) {
-        // TODO: Implement http.Body.init(string)
+    /**
+    * Creates an HTTP body from a UTF-8 string.
+    *
+    * The string contents are copied into an owned byte array using the string's
+    * UTF-8 representation. An empty string is normalized to the Empty state.
+    *
+    * Returns BodyError.Allocation when storage for the body bytes cannot be
+    * allocated.
+    */
+    init(data: string) BodyError {
+        if data.IsEmpty {
+            self._state = _BodyState.Empty
+            return
+        }
+
+        let mut bytes: byte[]
+        let mut index: uint := 0
+
+        while index < data.ByteLen {
+            try bytes.Append(data.ByteAt(index)) {
+                Err(error) => return Err(BodyError.Allocation(error))
+            }
+
+            index += 1
+        }
+
+        self._state = _BodyState.Bytes(_BodyBytesState {
+            Data: <-bytes,
+            Position: 0,
+        })
     }
 
     static fn Empty() Body { return new Body() }
@@ -68,7 +96,10 @@ impl Body {
 
     // TODO: Implement http.Body.FromString()
     static fn FromString(text: string) Result[Body, BodyError] {
-        return Ok(new Body())
+        let body := try new Body(text) {
+            Err(error) => return Err(error)
+        }
+        return Ok(body)
     }
 
     /**
@@ -295,6 +326,7 @@ impl Body {
             }
         }
     }
+
 }
 
 // TODO: Create and implement http._BodyState

@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Concurrency - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#concurrency">Concurrency</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#principles">Core Principles</a>
+        <a href="#concurrency-parallelism">Concurrency and Parallelism</a>
+        <a href="#execution-kinds">Execution Kinds</a>
+        <a href="#explicit-creation">Explicit Execution Creation</a>
+        <a href="#tasks">Tasks</a>
+        <a href="#threads">Threads</a>
+        <a href="#processes">Processes</a>
+        <a href="#ownership">Ownership Confinement</a>
+        <a href="#transferability">Boundary Transferability</a>
+        <a href="#shared-immutable">Shared Immutable Access</a>
+        <a href="#shared-mutable">Shared Mutable State</a>
+        <a href="#synchronization">Synchronization</a>
+        <a href="#mutexes">Mutexes</a>
+        <a href="#atomics">Atomics</a>
+        <a href="#channels">Message Passing and Channels</a>
+        <a href="#static-state">Static State</a>
+        <a href="#structured">Structured Concurrency</a>
+        <a href="#detach">Detachment</a>
+        <a href="#cancellation">Cancellation</a>
+        <a href="#blocking">Blocking and Suspension</a>
+        <a href="#completion">Await, Join and Completion</a>
+        <a href="#memory-model">Memory Visibility</a>
+        <a href="#data-races">Data Races</a>
+        <a href="#deadlocks">Deadlocks</a>
+        <a href="#resources">Resource Amplification</a>
+        <a href="#closures">Closures and Captures</a>
+        <a href="#local-state">Task-Local and Thread-Local State</a>
+        <a href="#ffi">FFI and Foreign Concurrency</a>
+        <a href="#interrupts">Interrupt Interaction</a>
+        <a href="#unsafe">Unsafe Concurrency</a>
+        <a href="#targets">Targets and Runtime Independence</a>
+        <a href="#errors">Errors and Outcomes</a>
+        <a href="#cleanup">Cleanup and Destruction</a>
+        <a href="#analysis">Compiler Analysis</a>
+        <a href="#chapters">Following Chapters</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html" class="active">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Concurrency</div>
+
+        <h1 id="concurrency">Concurrency</h1>
+
+        <p>
+            Sec treats concurrency as a language-level semantic model, not as a collection of
+            unrelated runtime library calls. Tasks, threads, processes, interrupt handlers and
+            foreign callbacks may all execute independently, but they do not become interchangeable
+            merely because a runtime could implement them with similar machine mechanisms.
+        </p>
+
+        <p>
+            The concurrency model extends Sec's existing ownership, borrowing, destruction, error
+            handling and target rules. It does not weaken them. New execution is created explicitly,
+            ownership crossing an execution boundary is validated explicitly, shared mutable state
+            requires a recognized synchronization or ownership mechanism, and unresolved lifecycle
+            responsibility is never silently abandoned.
+        </p>
+
+        <pre><code>let worker := try spawn Work()
+let outcome := await worker</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Concurrency must preserve ownership, borrowing,
+            deterministic destruction, explicit failure and target-independent source semantics.
+            Sec does not make unsafe sharing valid merely because more than one execution context
+            exists.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                This chapter defines the common model shared by all Sec concurrency facilities.
+                Later chapters define the exact APIs and syntax for tasks, spawn, await, threads,
+                cancellation, scheduling, channels, events, mutexes, atomics, processes and IPC.
+            </p>
+
+            <p>The common model answers questions such as:</p>
+
+            <ul>
+                <li>what kinds of execution contexts exist;</li>
+                <li>when new execution begins;</li>
+                <li>how ownership crosses execution boundaries;</li>
+                <li>when values may be shared instead of moved;</li>
+                <li>what synchronization means to the compiler;</li>
+                <li>how completion publishes memory effects;</li>
+                <li>how cancellation interacts with cleanup;</li>
+                <li>how tasks differ from physical threads;</li>
+                <li>how target profiles constrain concurrency facilities;</li>
+                <li>how race and deadlock analyses consume canonical concurrency facts.</li>
+            </ul>
+        </section>
+
+        <section id="principles">
+            <h2>Core Principles</h2>
+
+            <p>Sec concurrency follows several non-negotiable principles:</p>
+
+            <ul>
+                <li>execution creation is explicit;</li>
+                <li>work is never silently detached;</li>
+                <li>ownership and borrowing remain valid across concurrency boundaries;</li>
+                <li>deterministic destruction still applies;</li>
+                <li>shared mutable state is never introduced implicitly;</li>
+                <li>garbage collection is not required;</li>
+                <li>runtime ownership tracking is not required;</li>
+                <li>ordinary data races are invalid;</li>
+                <li>blocking and suspension remain distinct concepts;</li>
+                <li>a target may reject unsupported concurrency, but may not silently redefine it.</li>
+            </ul>
+
+            <p>
+                These rules are deliberately independent of whether the runtime uses native threads,
+                an event loop, a worker pool, an RTOS scheduler, fibers or statically allocated state
+                machines.
+            </p>
+        </section>
+
+        <section id="concurrency-parallelism">
+            <h2>Concurrency and Parallelism</h2>
+
+            <p>
+                Concurrency means that multiple execution entities may make progress independently.
+                Parallelism means that multiple execution entities physically execute at the same
+                time. Sec does not equate the two.
+            </p>
+
+            <p>
+                A target may run many logical tasks on one physical thread. Another target may map
+                work across several worker threads. A task therefore does not imply one dedicated
+                physical thread, while an explicit Sec thread does carry physical-thread semantics.
+            </p>
+
+            <p>
+                A scheduler may migrate a task between workers when the scheduling and transferability
+                rules permit it. Migration must not change the logical identity, cancellation state,
+                ownership or language-visible behavior of the task.
+            </p>
+        </section>
+
+        <section id="execution-kinds">
+            <h2>Execution Kinds</h2>
+
+            <p>Sec distinguishes several execution kinds:</p>
+
+            <ul>
+                <li><strong>Task</strong> — a logical Sec execution entity;</li>
+                <li><strong>Thread</strong> — an explicit physical target execution context;</li>
+                <li><strong>Process</strong> — a separate process execution domain;</li>
+                <li><strong>Interrupt context</strong> — target-defined interrupt execution;</li>
+                <li><strong>Foreign callback context</strong> — execution entering Sec through FFI.</li>
+            </ul>
+
+            <p>
+                These distinctions survive semantic analysis whenever they affect lifetime,
+                scheduling, blocking, affinity, synchronization, transferability or target support.
+                A backend must not turn a requested physical thread into an ordinary task simply
+                because that would be easier to implement.
+            </p>
+        </section>
+
+        <section id="explicit-creation">
+            <h2>Explicit Execution Creation</h2>
+
+            <p>
+                Calling a function normally does not create asynchronous execution. New task or
+                thread execution requires explicit creation syntax. Process creation is likewise an
+                explicit operation owned by the process rules.
+            </p>
+
+            <pre><code>let worker := try spawn Work()</code></pre>
+
+            <p>
+                Creation may fail. A target with no required execution capability may reject the
+                program at compile time, while a target that supports the execution kind may still
+                encounter runtime resource exhaustion where the relevant creation rule permits it.
+            </p>
+
+            <p>
+                Spawn must also preserve ordinary argument evaluation, ownership transfer, failure
+                and cleanup semantics. It is not a magic exception to normal Sec evaluation rules.
+            </p>
+        </section>
+
+        <section id="tasks">
+            <h2>Tasks</h2>
+
+            <p>
+                <code>Task[T]</code> is the compiler-known owning lifecycle handle for a logical task
+                whose function returns <code>T</code>. The handle is move-only regardless of whether
+                <code>T</code> itself is copyable.
+            </p>
+
+            <p>The canonical raw result of ordinary task creation is:</p>
+
+            <pre><code>Result[Task[T], TaskSpawnError]</code></pre>
+
+            <p>
+                Awaiting a task consumes the owning task handle and always produces
+                <code>TaskOutcome[T]</code>. The static type does not collapse to <code>T</code> merely
+                because the compiler can prove that one outcome is likely or currently reachable.
+            </p>
+
+            <pre><code>type TaskOutcome[T] union {
+    Completed(T)
+    Cancelled
+    Panicked(PanicInfo)
+    Failed(TaskError)
+}</code></pre>
+
+            <p>
+                If the task function itself returns <code>Result[V, E]</code>, that Result remains the
+                payload of <code>Completed</code>. An application error is not automatically promoted
+                into task execution failure.
+            </p>
+
+            <pre><code>Task[Result[Image, IOError]]
+
+// await type:
+TaskOutcome[Result[Image, IOError]]</code></pre>
+        </section>
+
+        <section id="threads">
+            <h2>Threads</h2>
+
+            <p>
+                <code>Thread[T]</code> represents an explicit physical target execution context.
+                Thread creation is distinct from task creation even when a particular runtime happens
+                to schedule some tasks on native threads.
+            </p>
+
+            <p>
+                Physical stack behavior, thread affinity, thread-local storage and native scheduling
+                properties belong to the thread model. A task running on a physical worker does not
+                automatically acquire that worker's thread-local identity.
+            </p>
+
+            <p>
+                A target without physical-thread capability must reject explicit thread creation
+                rather than silently converting it into task execution.
+            </p>
+        </section>
+
+        <section id="processes">
+            <h2>Processes</h2>
+
+            <p>
+                Processes form a separate execution and isolation boundary. Ordinary in-process
+                references, raw pointers and process-local handles are not automatically transferable
+                across that boundary merely because their machine representation can be copied.
+            </p>
+
+            <p>
+                Process transfer may require IPC, serialization, shared memory, handle duplication or
+                another explicit process adapter. Detailed process semantics are defined later in the
+                process and IPC chapters.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership Confinement</h2>
+
+            <p>
+                Exclusive ownership is the preferred default for mutable concurrent state. A value
+                owned by exactly one execution entity needs no synchronization merely because other
+                execution entities exist.
+            </p>
+
+            <p>
+                Moving ownership to another execution entity transfers destruction responsibility as
+                well. The source becomes unavailable when the ownership transfer commits.
+            </p>
+
+            <pre><code>let data := Data.Create()
+let worker := try spawn Consume(&lt;-data)</code></pre>
+
+            <p>
+                The compiler must not clone a move-only value to make this compile, and it must not
+                silently heap-promote an invalid borrow so that it survives the boundary.
+            </p>
+        </section>
+
+        <section id="transferability">
+            <h2>Boundary Transferability</h2>
+
+            <p>
+                Assignability is not enough to prove that a value may cross every concurrency
+                boundary. Transferability depends on the destination execution kind and the state of
+                the value at the transfer point.
+            </p>
+
+            <p>Validation may need to account for:</p>
+
+            <ul>
+                <li>ownership and partial-move state;</li>
+                <li>active borrows and lifetimes;</li>
+                <li>task migration or thread affinity;</li>
+                <li>storage and allocation domains;</li>
+                <li>destruction-context restrictions;</li>
+                <li>closure captures;</li>
+                <li>FFI handle and callback contracts;</li>
+                <li>process serialization or adapter requirements;</li>
+                <li>ISR-specific restrictions.</li>
+            </ul>
+
+            <p>
+                Transferability is therefore semantic. It must never be inferred simply from whether
+                the bits of a value can be copied.
+            </p>
+        </section>
+
+        <section id="shared-immutable">
+            <h2>Shared Immutable Access</h2>
+
+            <p>
+                Immutable sharing may be valid across concurrent execution contexts, but only when
+                lifetime, storage, publication and transferability rules all permit it.
+            </p>
+
+            <p>
+                A shared <code>ref T</code> is not automatically thread-safe merely because the
+                reference value is copyable. The referent may live in task-local storage, on a
+                movable stack, in thread-affine memory or in another location whose lifetime or
+                execution constraints forbid concurrent use.
+            </p>
+        </section>
+
+        <section id="shared-mutable">
+            <h2>Shared Mutable State</h2>
+
+            <p>
+                Shared mutable state requires an explicit concurrency-safe synchronization or
+                ownership mechanism. Ordinary overlapping mutable borrows are not transformed into a
+                concurrency primitive.
+            </p>
+
+            <p>Valid strategies may include:</p>
+
+            <ul>
+                <li><code>Mutex[T]</code> for exclusive shared-state access;</li>
+                <li>atomic types for supported atomic invariants;</li>
+                <li>message passing that transfers ownership instead of sharing it;</li>
+                <li>another specialized synchronization abstraction with defined semantics;</li>
+                <li>a platform-specific mechanism exposed through a verified Sec abstraction.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Raw pointers and <code>unsafe</code> do not turn an otherwise
+                invalid concurrent data race into valid Sec behavior.
+            </div>
+        </section>
+
+        <section id="synchronization">
+            <h2>Synchronization</h2>
+
+            <p>
+                Synchronization primitives are semantic operations. They are not recognized from
+                method names or implementation accidents. A primitive must define what it means for
+                ownership, blocking, cancellation, memory visibility and boundary transfer.
+            </p>
+
+            <p>
+                A user function named <code>lock</code> is not automatically a lock operation. A
+                foreign function is not automatically synchronization merely because its native
+                implementation happens to use a mutex internally.
+            </p>
+
+            <p><strong>Volatile access is not synchronization.</strong></p>
+        </section>
+
+        <section id="mutexes">
+            <h2>Mutexes</h2>
+
+            <p>
+                <code>Mutex[T]</code> is the primary exclusive shared-state primitive for ordinary
+                Sec code when mutual exclusion is required. The mutex owns the protected value.
+                Access is provided through an exclusive <code>MutexGuard[T]</code> capability.
+            </p>
+
+            <p>
+                The guard is move-only, and its destruction releases the acquisition according to
+                the mutex rules. A live guard is not an ordinary freely transferable owned value.
+                Its lifetime may restrict execution-boundary transfer and suspension.
+            </p>
+
+            <p>
+                Sec 0.1 mutexes are non-reentrant. Detailed lock, timeout, cancellation, fairness and
+                priority-inversion behavior is covered in chapter 63.
+            </p>
+        </section>
+
+        <section id="atomics">
+            <h2>Atomics</h2>
+
+            <p>
+                Atomic operations are explicit synchronization operations for supported atomic types.
+                They are useful when the invariant can be represented by the supported atomic object
+                and memory-order semantics.
+            </p>
+
+            <p>
+                Atomics are not an automatic substitute for a mutex protecting a multi-location
+                invariant. Atomicity, volatility and ownership exclusivity are separate concepts.
+            </p>
+
+            <p>
+                Atomic operations retain their selected memory-order semantics through semantic
+                analysis, Semantic IR and lowering. Concrete target support is resolved through the
+                selected <code>CompilationPlan</code>.
+            </p>
+        </section>
+
+        <section id="channels">
+            <h2>Message Passing and Channels</h2>
+
+            <p>
+                Message passing is a first-class concurrency strategy. A channel operation must
+                preserve the ownership semantics of the transmitted value rather than hiding copies
+                behind buffering or runtime queues.
+            </p>
+
+            <p>
+                A consuming send transfers ownership only at the operation's defined commit point.
+                Failed or cancelled operations must preserve or consume the source exactly as the
+                channel contract specifies. Buffering must not imply hidden cloning of move-only
+                values.
+            </p>
+
+            <p>
+                Receive establishes ownership of a received owned value. Borrowed-message designs
+                require their own explicit lifetime semantics and must not be inferred from ordinary
+                owned-value channels.
+            </p>
+        </section>
+
+        <section id="static-state">
+            <h2>Static State</h2>
+
+            <p>
+                Static lifetime does not imply concurrency safety. Immutable static data may be read
+                concurrently when publication and type semantics permit it, but mutable static state
+                still requires synchronization or another safe ownership mechanism.
+            </p>
+
+            <pre><code>static let mut State: ApplicationState
+
+// Long lifetime does not make concurrent mutation safe.</code></pre>
+
+            <p>A protected form may instead use a synchronization-owning type:</p>
+
+            <pre><code>static let State: Mutex[ApplicationState]</code></pre>
+        </section>
+
+        <section id="structured">
+            <h2>Structured Concurrency</h2>
+
+            <p>
+                Structured concurrency ties child-work lifetime to an owning lifecycle obligation.
+                A lexical scope must not silently abandon unresolved owning child handles.
+            </p>
+
+            <p>
+                Awaiting or joining a child discharges lifecycle responsibility according to the
+                specialized task or thread rules. Returning or moving a child handle transfers that
+                responsibility. Explicit detach is the escape hatch from the ordinary structured
+                relationship.
+            </p>
+
+            <p>
+                This model preserves deterministic cleanup without requiring garbage collection to
+                eventually discover abandoned work.
+            </p>
+        </section>
+
+        <section id="detach">
+            <h2>Detachment</h2>
+
+            <p>
+                Detachment is always explicit. It consumes or transfers the owning lifecycle
+                capability according to the relevant execution-kind rule.
+            </p>
+
+            <p>
+                Detached work cannot retain a borrow whose source scope may end first. Thread-affine
+                or storage-affine state also remains subject to transferability rules. Detachment
+                does not retroactively make a failed spawn successful; creation must first complete.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation</h2>
+
+            <p>
+                Cancellation is cooperative termination control. A request for cancellation and
+                actual cancellation completion are different events.
+            </p>
+
+            <p>
+                Cancellation follows a defined control-flow path and must preserve defer execution,
+                destruction of still-owned values and borrow validity. It does not fabricate a normal
+                return value and remains distinct from panic, typed application errors and execution
+                failure.
+            </p>
+
+            <p>
+                Detailed current-task/current-thread observation, Context propagation, deadlines,
+                shielding and cancellation checkpoints are covered in chapter 59.
+            </p>
+        </section>
+
+        <section id="blocking">
+            <h2>Blocking and Suspension</h2>
+
+            <p>
+                Sec distinguishes physical blocking from logical task suspension. A suspended task
+                may release its worker so that other tasks continue, while a blocking native call may
+                prevent the physical worker itself from making progress.
+            </p>
+
+            <p>An operation may therefore be:</p>
+
+            <ul>
+                <li>nonblocking;</li>
+                <li>task-suspending;</li>
+                <li>physically blocking;</li>
+                <li>indefinitely blocking;</li>
+                <li>cancellation-aware;</li>
+                <li>non-cancellable;</li>
+                <li>conditionally blocking according to its resolved contract.</li>
+            </ul>
+
+            <p>
+                These properties matter to scheduler selection, deadlock analysis, interrupt
+                legality, target validation and capabilities such as live mutex guards.
+            </p>
+        </section>
+
+        <section id="completion">
+            <h2>Await, Join and Completion</h2>
+
+            <p>
+                Await and join are semantic completion-synchronization operations. They are not mere
+                loops that poll a status flag.
+            </p>
+
+            <p>
+                Successful completion synchronization publishes the completed execution's required
+                memory effects to the waiting context. A status read alone does not automatically
+                provide the same guarantee.
+            </p>
+
+            <p>
+                Await and join may also differ in ownership: task await consumes the owning task
+                handle, while task join preserves the handle according to the task rules.
+            </p>
+        </section>
+
+        <section id="memory-model">
+            <h2>Memory Visibility</h2>
+
+            <p>
+                Sec's concurrency memory model defines the ordering and visibility relationships
+                between execution contexts. Ownership transfer and memory synchronization are related,
+                but they are not identical.
+            </p>
+
+            <p>
+                Synchronization constructs establish publication or happens-before relationships
+                according to their own contracts. Examples include task/thread completion, mutex
+                release/acquisition, atomic memory orders and channel operations.
+            </p>
+
+            <p>
+                The compiler must preserve required ordering across optimization and lowering. It
+                must not invent synchronization simply because one target instruction is stronger
+                than required, and it must not weaken required synchronization because one current
+                target happens to appear safe without it.
+            </p>
+        </section>
+
+        <section id="data-races">
+            <h2>Data Races</h2>
+
+            <p>
+                Ordinary unsynchronized data races are invalid Sec behavior. This applies across all
+                execution contexts that may overlap, not only tasks and threads.
+            </p>
+
+            <p>Potentially overlapping contexts may include:</p>
+
+            <ul>
+                <li>multiple tasks;</li>
+                <li>multiple threads;</li>
+                <li>repeated instances from one spawn site;</li>
+                <li>foreign callbacks;</li>
+                <li>interrupt handlers;</li>
+                <li>platform execution contexts.</li>
+            </ul>
+
+            <p>
+                Race analysis uses canonical storage identity and Place/provenance facts rather than
+                comparing only source variable names. Ownership exclusivity can prove that sharing
+                does not occur, but borrow exclusivity must not be mistaken for cross-context
+                synchronization.
+            </p>
+        </section>
+
+        <section id="deadlocks">
+            <h2>Deadlocks</h2>
+
+            <p>
+                A deadlock is a cyclic blocking or progress dependency that prevents required
+                progress. It is distinct from a data race, starvation and livelock.
+            </p>
+
+            <p>
+                Deadlock analysis is not limited to mutexes. Completion waits, resource acquisition,
+                foreign waits, callbacks, events, platform synchronization and interrupt interactions
+                may all contribute to a dependency cycle when their canonical semantics require it.
+            </p>
+
+            <p>
+                The compiler must distinguish a proven deadlock from a potential or unknown one when
+                precision is insufficient. Missing information must not be fabricated into proof.
+            </p>
+        </section>
+
+        <section id="resources">
+            <h2>Resource Amplification</h2>
+
+            <p>
+                Concurrent execution consumes real target resources. Recursive spawn, repeated detach,
+                spawn cycles and unbounded creation loops may amplify task, thread, stack, queue or
+                scheduler requirements.
+            </p>
+
+            <p>
+                Hosted targets may permit runtime spawn failure when resources are exhausted. Static
+                or embedded targets may instead require a compile-time bound or proof before accepting
+                a creation pattern. The compiler must use the selected target's resources, never the
+                resources of the machine on which the compiler itself runs.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closures and Captures</h2>
+
+            <p>
+                A closure used by newly created execution crosses an execution boundary. Its captures
+                therefore have to satisfy both closure rules and concurrency transferability.
+            </p>
+
+            <p>
+                Copyable capture does not automatically imply safe sharing of storage referenced
+                inside the value. Moving a move-only capture transfers ownership when the spawn
+                transfer commits. Reference captures require proof of lifetime, address stability,
+                aliasing and destination execution validity.
+            </p>
+
+            <p>
+                Detached closures require capture lifetimes independent of the source scope. A
+                thread-affine capture must not enter a migratable task unless scheduling rules prove
+                the task is pinned or otherwise safe.
+            </p>
+        </section>
+
+        <section id="local-state">
+            <h2>Task-Local and Thread-Local State</h2>
+
+            <p>
+                Thread-local state belongs to a physical thread. Task-local runtime state belongs to
+                the logical task. These are separate domains.
+            </p>
+
+            <p>
+                If a task migrates between workers, the task's logical state follows the task, while
+                the identity of thread-local storage does not. A reference into thread-local storage
+                therefore carries physical-thread affinity and cannot be retained across migration
+                without an appropriate proof.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI and Foreign Concurrency</h2>
+
+            <p>
+                Foreign code may block, create threads, retain pointers, invoke callbacks from unknown
+                contexts, share memory or use foreign synchronization. The compiler cannot infer safe
+                concurrency from a raw pointer, ABI name or native function name.
+            </p>
+
+            <p>
+                A safe Sec wrapper must establish the relevant ownership, retention, synchronization,
+                thread-affinity, callback-context and blocking contracts. Unknown retention remains
+                unknown; unknown callback context must not be treated as the current task or thread.
+            </p>
+        </section>
+
+        <section id="interrupts">
+            <h2>Interrupt Interaction</h2>
+
+            <p>
+                Interrupt execution participates in the concurrency model whenever it may overlap or
+                preempt ordinary execution. Shared memory between ISR and ordinary code participates
+                in race analysis, and synchronization/waits participate in deadlock reasoning when
+                the interrupt rules permit those operations.
+            </p>
+
+            <p>
+                Ordinary <code>Mutex[T]</code> must not be assumed interrupt-safe. Atomics or
+                dedicated interrupt-safe primitives are valid only where their owning rules and the
+                active target profile permit them.
+            </p>
+        </section>
+
+        <section id="unsafe">
+            <h2>Unsafe Concurrency</h2>
+
+            <p>
+                <code>unsafe</code> does not disable concurrency semantics. Ownership, deterministic
+                destruction, lifecycle obligations and target capability rules still apply.
+            </p>
+
+            <p>
+                Raw pointers can remove some compiler proof of alias safety, but they do not redefine
+                the language so that races become valid. If safe proof is lost, responsibility moves
+                to the programmer; a concurrency operation already proven invalid by the compiler does
+                not become valid merely because it is placed inside <code>unsafe</code>.
+            </p>
+        </section>
+
+        <section id="targets">
+            <h2>Targets and Runtime Independence</h2>
+
+            <p>
+                Concurrency validation and lowering use the immutable selected
+                <code>CompilationPlan</code>. Host-machine properties do not leak into target
+                semantics.
+            </p>
+
+            <p>
+                Hosted, RTOS and BareMetal are profile families, not fixed scheduler designs. Hosted
+                does not guarantee every concurrency facility. RTOS does not imply hosted-style native
+                threads. Bare metal does not imply that tasks or synchronization are impossible.
+            </p>
+
+            <p>
+                Sec also does not require one universal concurrency runtime. A conforming target may
+                use an event loop, cooperative executor, worker pool, fibers, RTOS primitives, native
+                threads or static state machines, provided source semantics remain unchanged.
+            </p>
+        </section>
+
+        <section id="errors">
+            <h2>Errors and Outcomes</h2>
+
+            <p>
+                Application errors remain separate from execution lifecycle outcomes.
+            </p>
+
+            <ul>
+                <li><code>TaskSpawnError</code> describes failure to create a task.</li>
+                <li><code>TaskOutcome[T].Completed(T)</code> describes normal task completion.</li>
+                <li><code>TaskOutcome[T].Cancelled</code> describes cancellation.</li>
+                <li><code>TaskOutcome[T].Panicked(PanicInfo)</code> describes panic.</li>
+                <li><code>TaskOutcome[T].Failed(TaskError)</code> describes failure of an already-created task execution.</li>
+            </ul>
+
+            <p>
+                If <code>T</code> is itself a <code>Result[V, E]</code>, then
+                <code>Completed(Err(error))</code> is still normal task completion. Generic Result
+                handling must not flatten or reinterpret the concurrency outcome model.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Cleanup and Destruction</h2>
+
+            <p>
+                Concurrency does not suspend deterministic destruction. When ownership moves to
+                another execution entity, destruction responsibility moves with it. Values retained
+                by the source remain the source's responsibility.
+            </p>
+
+            <p>
+                Cancellation must run required cleanup. Normal completion must perform required
+                destruction before completion is published. Scope exit must not silently abandon an
+                unresolved owning task or thread lifecycle obligation.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Compiler Analysis</h2>
+
+            <p>
+                Sec's concurrency model is designed to provide canonical facts to semantic analysis,
+                data-race analysis, deadlock analysis, Semantic IR and lowering rather than letting
+                every subsystem invent its own interpretation.
+            </p>
+
+            <p>The compiler preserves facts such as:</p>
+
+            <ul>
+                <li>execution kind and identity;</li>
+                <li>ownership state of handles and transferred values;</li>
+                <li>live borrows relevant to boundaries;</li>
+                <li>transferability and affinity restrictions;</li>
+                <li>synchronization resource identities;</li>
+                <li>blocking and suspension effects;</li>
+                <li>cancellation and completion semantics;</li>
+                <li>memory-order and publication edges;</li>
+                <li>target/profile requirements.</li>
+            </ul>
+
+            <p>
+                The LSP, compiler and <code>sec analyse</code> should consume the same canonical facts.
+                Interactive analysis may refine findings progressively, but mandatory safety rules do
+                not disappear in the editor.
+            </p>
+        </section>
+
+        <section id="chapters">
+            <h2>Following Chapters</h2>
+
+            <p>This chapter provides the shared model. The detailed concurrency surface is split into:</p>
+
+            <ul>
+                <li><a href="55-tasks.html">55 Tasks</a> — Task ownership, status, observers and lifecycle;</li>
+                <li><a href="56-spawn.html">56 Spawn</a> — explicit execution creation and transfer;</li>
+                <li><a href="57-await.html">57 Await and Task Outcomes</a> — completion and outcome handling;</li>
+                <li><a href="58-threads.html">58 Threads and Thread-Local Storage</a> — physical execution and affinity;</li>
+                <li><a href="59-cancellation.html">59 Cancellation and Context</a> — cooperative cancellation and deadlines;</li>
+                <li><a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>;</li>
+                <li><a href="61-channels-select.html">61 Channels and Select</a> — message passing and multi-wait selection;</li>
+                <li><a href="62-events.html">62 Events</a> — event-style synchronization;</li>
+                <li><a href="63-mutexes.html">63 Mutexes and Locks</a> — protected shared state;</li>
+                <li><a href="64-atomics.html">64 Atomics and Memory Order</a>;</li>
+                <li><a href="65-processes.html">65 Processes and Command</a>;</li>
+                <li><a href="66-ipc.html">66 Inter-Process Communication</a>;</li>
+                <li><a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>.</li>
+            </ul>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The revision-2 concurrency model is normative, while compiler implementation is
+                still partial. Existing frontend work already recognizes several compiler-known task,
+                thread and synchronization concepts, but not every rule described by the full model
+                has complete semantic, IR, lowering or runtime support yet.
+            </p>
+
+            <p>Current governance specifically records that:</p>
+
+            <ul>
+                <li><code>Task[T]</code>, <code>TaskOutcome[T]</code> and several lifecycle operations already have frontend coverage;</li>
+                <li>the full concurrency umbrella model is integrated but marked partial;</li>
+                <li>task spawn typing in the current frontend still contains older direct-<code>Task[T]</code> behavior that must converge on the normative fallible spawn model;</li>
+                <li>transferability analysis across task, thread, process, ISR and foreign boundaries remains planned work;</li>
+                <li>data-race and deadlock analysis have dedicated governance and are not duplicated here;</li>
+                <li>Semantic IR and lowering still need complete concurrency lifecycle and transfer operations.</li>
+            </ul>
+
+            <p>
+                The manual therefore describes the normative Sec 0.1 model. A currently incomplete
+                backend path must not be read as changing the language semantics.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer ownership transfer over shared mutable state when either design is reasonable.</li>
+                <li>Use tasks for logical concurrent work and threads only when physical-thread semantics are actually required.</li>
+                <li>Treat spawn as fallible and keep the lifecycle handle visible.</li>
+                <li>Resolve, transfer or explicitly detach every owning execution handle.</li>
+                <li>Do not assume copyable means transferable or thread-safe.</li>
+                <li>Do not keep ordinary mutable borrows alive across concurrent use.</li>
+                <li>Use recognized synchronization primitives rather than ad-hoc flag protocols.</li>
+                <li>Never treat volatile MMIO access as thread synchronization.</li>
+                <li>Keep application <code>Result</code> errors separate from task lifecycle outcomes.</li>
+                <li>Distinguish task suspension from physical thread blocking.</li>
+                <li>Be cautious with FFI callbacks and foreign retention until explicit contracts prove the concurrency behavior.</li>
+                <li>Design detached work so every retained value outlives the detached execution.</li>
+                <li>Remember that the selected target profile may provide fewer concurrency capabilities than the development machine.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Concurrency is a language-level semantic model in Sec.</li>
+                <li>Concurrency and physical parallelism are different concepts.</li>
+                <li>Tasks, threads, processes, interrupts and foreign callbacks remain distinct execution kinds.</li>
+                <li>New execution is explicit and is never silently spawned or detached.</li>
+                <li><code>Task[T]</code> is a move-only owning lifecycle handle.</li>
+                <li>Task creation is fallible and ordinary task spawn has raw type <code>Result[Task[T], TaskSpawnError]</code>.</li>
+                <li>Awaiting <code>Task[T]</code> always yields <code>TaskOutcome[T]</code>.</li>
+                <li>Application <code>Result</code> values remain inside normal task completion.</li>
+                <li>Exclusive ownership is the preferred default for mutable concurrent state.</li>
+                <li>Boundary transferability is separate from ordinary assignability and bitwise copyability.</li>
+                <li>Shared mutable state requires explicit synchronization or another concurrency-safe ownership mechanism.</li>
+                <li>Volatile access is not synchronization.</li>
+                <li>Mutex guards and other execution-bound capabilities may restrict suspension and transfer.</li>
+                <li>Channels preserve ownership commit and failure semantics.</li>
+                <li>Structured concurrency requires lifecycle obligations to be resolved rather than abandoned.</li>
+                <li>Detachment is always explicit.</li>
+                <li>Cancellation is cooperative and preserves cleanup.</li>
+                <li>Blocking a physical execution context and suspending a logical task are different effects.</li>
+                <li>Await and join establish completion synchronization rather than merely reading status.</li>
+                <li>Ordinary unsynchronized data races are invalid Sec behavior.</li>
+                <li>Deadlock analysis includes generalized wait dependencies, not only mutex ordering.</li>
+                <li>Unsafe code does not disable concurrency semantics.</li>
+                <li>The selected <code>CompilationPlan</code> controls available target capabilities.</li>
+                <li>Sec does not require one universal concurrency runtime.</li>
+                <li>Concurrency preserves deterministic destruction and ordinary ownership responsibility.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="53-initialization.html">Previous: Program Initialization and Shutdown</a>
+            <a href="55-tasks.html">Next: Tasks</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

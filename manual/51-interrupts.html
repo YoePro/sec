@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Interrupts and ISRs - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#interrupts">Interrupts and ISRs</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#three-contracts">Three Interrupt Contracts</a>
+        <a href="#isr">@isr</a>
+        <a href="#interrupt-safe">@interruptSafe</a>
+        <a href="#interrupt-binding">@interrupt(...)</a>
+        <a href="#named-identities">Named Interrupt Identities</a>
+        <a href="#raw-vectors">Raw Vector Numbers</a>
+        <a href="#platform-metadata">Platform Interrupt Metadata</a>
+        <a href="#binding-resolution">Binding Resolution</a>
+        <a href="#one-owner">One Active Binding Owner</a>
+        <a href="#not-controller-config">Binding Is Not Controller Configuration</a>
+        <a href="#lifecycle">Interrupt Lifecycle</a>
+        <a href="#entry-vs-source">Logical Source vs Physical Entry</a>
+        <a href="#priority">Priority Is Platform Semantics</a>
+        <a href="#preemption">Preemption, Nesting and Reentry</a>
+        <a href="#masking">Masking</a>
+        <a href="#safety">ISR Safety Baseline</a>
+        <a href="#effects">Reachable Effects</a>
+        <a href="#cleanup">Cleanup and Compiler-Inserted Work</a>
+        <a href="#ffi-runtime">FFI and Runtime Helpers</a>
+        <a href="#memory">Ownership, References and Borrowing</a>
+        <a href="#concurrency">ISRs Are Concurrent Execution</a>
+        <a href="#stack">ISR Stack Proof</a>
+        <a href="#generated-entry">Generated Entry Code</a>
+        <a href="#vector-table">Vector Tables and Link Roots</a>
+        <a href="#analysis">ISR Analysis</a>
+        <a href="#profiles">Resolved ISR Profiles</a>
+        <a href="#result-status">Valid, Invalid and Unproven</a>
+        <a href="#incremental">Incremental Analysis</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#example">Complete Example</a>
+        <a href="#current-status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html" class="active">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Interrupts and ISRs</div>
+
+        <h1 id="interrupts">Interrupts and ISRs</h1>
+
+        <p>
+            Sec treats an interrupt service routine as a normal Sec function with an additional,
+            compiler-verified execution contract. The source function is still subject to ordinary
+            type checking, ownership, borrowing, visibility, error, effect and control-flow rules.
+            What changes is the execution context: the function may be entered asynchronously by
+            target interrupt machinery and must therefore satisfy the restrictions of the resolved
+            interrupt profile.
+        </p>
+
+        <p>
+            Interrupt binding is target-aware. A source handler should normally bind to a
+            compiler-known interrupt identity supplied by the selected platform or Device rather
+            than hard-code a machine vector number. The active <code>CompilationPlan</code> resolves
+            that identity to the correct physical entry, controller semantics, ABI and execution
+            relationships for the selected target.
+        </p>
+
+        <pre><code>@interrupt(vector: Interrupt.Timer0)
+fn Timer0Handler() void {
+    Timer.Acknowledge()
+}</code></pre>
+
+        <div class="rule">
+            <strong>Rule:</strong> <code>@interrupt(...)</code> binds a function to resolved interrupt
+            metadata and implies <code>@isr</code>. It does not by itself enable, unmask, configure,
+            start, acknowledge or clear the underlying interrupt source.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Interrupt handling combines language semantics with target facts. The language owns
+                the meaning of attributes such as <code>@isr</code> and the requirement that the full
+                reachable call graph be safe. The platform owns facts such as interrupt identities,
+                physical vectors, controller routing, nesting relations, entry ABI and stack domains.
+            </p>
+
+            <p>
+                This separation lets the same Sec source express an interrupt handler without baking
+                one MCU's vector-table layout or one controller's priority encoding into the language.
+            </p>
+        </section>
+
+        <section id="three-contracts">
+            <h2>Three Interrupt Contracts</h2>
+
+            <p>Sec distinguishes three related attributes:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Attribute</th><th>Meaning</th><th>Binds a vector?</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>@interruptSafe</code></td><td>Function may be called from an ISR when the resolved profile proves it safe.</td><td>No</td></tr>
+                        <tr><td><code>@isr</code></td><td>Function is an interrupt-entry function and must satisfy the ISR entry contract.</td><td>No</td></tr>
+                        <tr><td><code>@interrupt(...)</code></td><td>Binds the function to target interrupt metadata and implies <code>@isr</code>.</td><td>Yes</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                These are compiler-verified contracts, not documentation-only annotations.
+            </p>
+        </section>
+
+        <section id="isr">
+            <h2><code>@isr</code></h2>
+
+            <p>
+                <code>@isr</code> marks a function as an interrupt entrypoint without binding it to a
+                particular platform vector. This is useful when a platform layer or generated wrapper
+                performs the final physical binding.
+            </p>
+
+            <pre><code>@isr
+fn DeviceInterruptEntry() void {
+    ServiceDevice()
+}</code></pre>
+
+            <p>
+                The Sec 0.1 baseline implies <code>@noPanic</code>, <code>@noAlloc</code> and
+                <code>@noBlock</code>. Additional restrictions are evaluated from the concrete ISR
+                profile for the active <code>CompilationPlan</code> rather than being encoded as one
+                universal hard-coded list.
+            </p>
+        </section>
+
+        <section id="interrupt-safe">
+            <h2><code>@interruptSafe</code></h2>
+
+            <p>
+                <code>@interruptSafe</code> is for reusable functions that may be called from ISR
+                code. It does not make the function an interrupt entrypoint and does not bind it to
+                target metadata.
+            </p>
+
+            <pre><code>@interruptSafe
+fn ClearPendingFlag(ref mut status: DeviceStatus) void {
+    status.Pending = false
+}</code></pre>
+
+            <p>The contract includes transitive requirements such as:</p>
+
+            <ul>
+                <li>no reachable panic;</li>
+                <li>no dynamic allocation;</li>
+                <li>no synchronous blocking;</li>
+                <li>no asynchronous suspension;</li>
+                <li>no forbidden spawning;</li>
+                <li>interrupt-compatible volatile and external-state behavior;</li>
+                <li>an interrupt-safe reachable call graph;</li>
+                <li>acceptable stack behavior;</li>
+                <li>no unresolved effect source that prevents proof.</li>
+            </ul>
+        </section>
+
+        <section id="interrupt-binding">
+            <h2><code>@interrupt(...)</code></h2>
+
+            <p>
+                The common direct-binding form names the vector or interrupt identity in the
+                attribute:
+            </p>
+
+            <pre><code>@interrupt(vector: Interrupt.Timer0)
+fn Timer0Handler() void {
+    Timer.Acknowledge()
+}</code></pre>
+
+            <p>
+                <code>@interrupt(...)</code> implies <code>@isr</code>. The compiler therefore performs
+                both binding validation and ISR safety validation.
+            </p>
+
+            <p>
+                The handler's machine-level entry convention comes from the resolved target metadata.
+                The compiler may generate target-specific wrappers where the physical controller or
+                ABI requires claim, dispatch, completion or other entry/exit work.
+            </p>
+        </section>
+
+        <section id="named-identities">
+            <h2>Named Interrupt Identities</h2>
+
+            <p>
+                Named identities are the preferred form. They come from compiler knowledge packs,
+                Device definitions or other canonical platform metadata.
+            </p>
+
+            <pre><code>Interrupt.Timer0
+Interrupt.UART0
+Interrupt.GPIOA
+Interrupt.DMA1</code></pre>
+
+            <p>
+                A name is not merely an alias for a number. It can resolve to a complete interrupt
+                description containing availability, controller route, entry/vector identity, ABI,
+                aliases and execution relationships.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Source code should bind to the logical named interrupt identity
+                when one exists. Numeric vector values are a fallback for custom or incompletely
+                described targets.
+            </div>
+        </section>
+
+        <section id="raw-vectors">
+            <h2>Raw Vector Numbers</h2>
+
+            <p>
+                Sec also permits a raw numeric vector form where target metadata allows it:
+            </p>
+
+            <pre><code>@interrupt(vector: 15)
+fn CustomHandler() void {
+    HandleCustomSource()
+}</code></pre>
+
+            <p>
+                A raw vector does not bypass target validation. The selected platform still decides
+                whether that vector is valid, which ABI applies and what execution properties can be
+                proven. Prefer a named identity whenever the target already knows the interrupt.
+            </p>
+        </section>
+
+        <section id="platform-metadata">
+            <h2>Platform Interrupt Metadata</h2>
+
+            <p>
+                Interrupt metadata belongs to the resolved platform model. A concrete Device may
+                refine or supply details that an architecture alone cannot know.
+            </p>
+
+            <p>Canonical metadata may describe:</p>
+
+            <ul>
+                <li>logical interrupt source identity;</li>
+                <li>controller and route identity;</li>
+                <li>physical entry or vector identity;</li>
+                <li>entry ABI and required generated wrapper;</li>
+                <li>availability on the selected Device;</li>
+                <li>aliases and canonical binding identity;</li>
+                <li>priority class or controller-specific priority information;</li>
+                <li>preemption, nesting, reentry and masking relations;</li>
+                <li>physical stack domain and stack budget constraints;</li>
+                <li>claim, dispatch and completion requirements where applicable.</li>
+            </ul>
+
+            <p>
+                Source semantics should not guess any of these facts from an architecture name or a
+                raw priority integer.
+            </p>
+        </section>
+
+        <section id="binding-resolution">
+            <h2>Binding Resolution</h2>
+
+            <p>
+                Interrupt binding is resolved against the immutable active
+                <code>CompilationPlan</code>. The same symbolic source identity can therefore resolve
+                differently for different target variants while preserving one source-level meaning.
+            </p>
+
+            <pre><code>Interrupt.Timer0
+        |
+        v
+active CompilationPlan
+        |
+        v
+canonical source + route + physical entry + ISR profile</code></pre>
+
+            <p>
+                Cross compilation always uses target metadata. The host machine running the compiler
+                has no authority over interrupt identities or entry conventions for the target binary.
+            </p>
+        </section>
+
+        <section id="one-owner">
+            <h2>One Active Binding Owner</h2>
+
+            <p>
+                One resolved interrupt binding has one active owner. Two source functions may not
+                both claim the same canonical interrupt entry in the same concrete compilation.
+            </p>
+
+            <p>
+                Duplicate detection uses canonical resolved identity, not only source spelling. Two
+                different aliases that resolve to the same physical binding are still a conflict.
+            </p>
+
+            <pre><code>@interrupt(vector: Interrupt.Timer0)
+fn First() void {}
+
+@interrupt(vector: Interrupt.Timer0Alias)
+fn Second() void {}    // invalid when both names resolve to one binding</code></pre>
+        </section>
+
+        <section id="not-controller-config">
+            <h2>Binding Is Not Controller Configuration</h2>
+
+            <p>
+                Declaring an interrupt handler establishes a program binding. It does not perform
+                controller lifecycle operations.
+            </p>
+
+            <p><code>@interrupt(...)</code> does not by itself:</p>
+
+            <ul>
+                <li>enable the peripheral source;</li>
+                <li>configure the interrupt controller;</li>
+                <li>set hardware priority registers;</li>
+                <li>unmask the source;</li>
+                <li>clear pending state;</li>
+                <li>start a timer or peripheral;</li>
+                <li>acknowledge a device condition.</li>
+            </ul>
+
+            <p>
+                Those operations belong to explicit platform, device or driver behavior. This keeps
+                binding declarative and prevents a declaration from causing hidden hardware writes.
+            </p>
+        </section>
+
+        <section id="lifecycle">
+            <h2>Interrupt Lifecycle</h2>
+
+            <p>
+                Sec keeps interrupt lifecycle concepts distinct. They must not be collapsed into one
+                vague “interrupt is active” state.
+            </p>
+
+            <p>The platform model may distinguish:</p>
+
+            <ul>
+                <li>source configuration;</li>
+                <li>routing;</li>
+                <li>controller enable/mask state;</li>
+                <li>pending state;</li>
+                <li>active state;</li>
+                <li>claim or dispatch;</li>
+                <li>source servicing or acknowledgement;</li>
+                <li>controller completion;</li>
+                <li>return from the interrupt entry context.</li>
+            </ul>
+
+            <p>
+                Different architectures and controllers realize these stages differently. The
+                compiler may generate canonical wrapper steps when the platform metadata requires
+                them, but source-level binding does not pretend that every controller works alike.
+            </p>
+        </section>
+
+        <section id="entry-vs-source">
+            <h2>Logical Source vs Physical Entry</h2>
+
+            <p>
+                A logical interrupt source and a physical entry/vector are not necessarily identical.
+                One controller entry may dispatch several sources, and one logical source may be
+                routed differently on another Device.
+            </p>
+
+            <p>
+                Sec therefore keeps at least these identities conceptually separate:
+            </p>
+
+            <pre><code>logical source
+route/controller input
+physical entry or vector
+handler binding</code></pre>
+
+            <p>
+                This distinction is essential for generated dispatchers, shared controller entries,
+                aliases and portable Device descriptions.
+            </p>
+        </section>
+
+        <section id="priority">
+            <h2>Priority Is Platform Semantics</h2>
+
+            <p>
+                Sec does not define interrupt semantics by comparing raw numeric priority values.
+                Different controllers use different encodings and may invert or otherwise transform
+                the numerical representation.
+            </p>
+
+            <p>
+                The platform resolves a canonical priority class and the execution relationships
+                that analyses actually need. The compiler asks questions such as whether one context
+                may preempt or nest another; it does not infer those answers by assuming that a larger
+                integer always means a higher priority.
+            </p>
+        </section>
+
+        <section id="preemption">
+            <h2>Preemption, Nesting and Reentry</h2>
+
+            <p>
+                The <code>ExecutionEnvironment</code> in the active plan owns resolved relations such as:
+            </p>
+
+            <pre><code>MayPreempt(A, B)
+CannotPreempt(A, B)
+MayNest(A, B)
+CannotNest(A, B)
+MayReenter(A)</code></pre>
+
+            <p>
+                ISR analysis consumes these relations directly. It does not reconstruct them from
+                controller register values or architecture folklore.
+            </p>
+
+            <p>
+                This matters for stack composition, shared-state races, synchronization and reentrant
+                runtime behavior. Two handlers that can never overlap have different proof obligations
+                from two handlers that may nest or run concurrently on different cores.
+            </p>
+        </section>
+
+        <section id="masking">
+            <h2>Masking</h2>
+
+            <p>
+                Interrupt masking may change which interrupt contexts can overlap, but masking is not
+                a universal synchronization primitive. Its effect is interpreted through the selected
+                platform model.
+            </p>
+
+            <p>
+                In particular, local interrupt masking does not automatically exclude:
+            </p>
+
+            <ul>
+                <li>another CPU core;</li>
+                <li>DMA engines;</li>
+                <li>external bus masters;</li>
+                <li>unrelated interrupt domains;</li>
+                <li>threads or tasks running elsewhere.</li>
+            </ul>
+
+            <p>
+                Static analysis must therefore use actual execution relations rather than assuming
+                “interrupts disabled” means “all concurrency disabled”.
+            </p>
+        </section>
+
+        <section id="safety">
+            <h2>ISR Safety Baseline</h2>
+
+            <p>
+                Sec 0.1 uses a conservative baseline for ISR entry. <code>@isr</code> and
+                <code>@interruptSafe</code> imply the verified no-panic, no-allocation and no-blocking
+                guarantees. The resolved ISR profile may impose additional requirements.
+            </p>
+
+            <p>
+                An ISR is not made safe merely because its own body looks short. The compiler verifies
+                the complete reachable behavior, including helper functions and generated cleanup.
+            </p>
+        </section>
+
+        <section id="effects">
+            <h2>Reachable Effects</h2>
+
+            <p>
+                ISR validation consumes transitive effect summaries. Relevant facts may include:
+            </p>
+
+            <ul>
+                <li><code>MayPanic</code>;</li>
+                <li><code>MayAllocate</code>;</li>
+                <li><code>MayBlock</code>;</li>
+                <li><code>MaySuspend</code>;</li>
+                <li>spawn or scheduler requirements;</li>
+                <li>volatile and external-state operations;</li>
+                <li>foreign calls;</li>
+                <li>runtime-helper requirements;</li>
+                <li>synchronization acquisition.</li>
+            </ul>
+
+            <p>
+                Not every external effect is forbidden. A bounded device-register acknowledgement,
+                for example, may be exactly what the interrupt handler must perform. Safety is proven
+                against the resolved profile rather than implemented as a blanket ban on hardware
+                access.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Cleanup and Compiler-Inserted Work</h2>
+
+            <p>
+                ISR validation includes work that may execute because of language semantics even when
+                it is not written as an obvious ordinary call at the handler's final source line.
+            </p>
+
+            <p>This includes applicable:</p>
+
+            <ul>
+                <li><code>defer</code> bodies;</li>
+                <li>destruction and cleanup;</li>
+                <li>error-path cleanup;</li>
+                <li>compiler-generated runtime helpers;</li>
+                <li>target-generated interrupt entry or completion wrappers.</li>
+            </ul>
+
+            <p>
+                The compiler must not prove an ISR safe from the visible body and then introduce a
+                blocking, allocating or otherwise forbidden lowering helper afterward.
+            </p>
+        </section>
+
+        <section id="ffi-runtime">
+            <h2>FFI and Runtime Helpers</h2>
+
+            <p>
+                A foreign function or runtime helper is ISR-safe only when its contract and the active
+                platform profile establish that fact. Unknown foreign behavior cannot be assumed safe.
+            </p>
+
+            <p>
+                A synchronous foreign callback entered while executing in ISR context inherits that
+                context for safety analysis. A real context handoff may establish a new execution
+                context, but the transition itself must be represented explicitly in compiler and
+                platform semantics.
+            </p>
+        </section>
+
+        <section id="memory">
+            <h2>Ownership, References and Borrowing</h2>
+
+            <p>
+                ISRs use the ordinary Sec memory model. There is no separate ISR reference type.
+                References, ownership, borrowing, moves and destruction keep their normal meanings.
+            </p>
+
+            <p>
+                What changes is the concurrency context. A reference that is valid by lifetime rules
+                may still participate in an invalid data race when interrupt preemption makes two
+                accesses overlap. ISR analysis therefore consumes the ordinary ownership/lifetime
+                proof together with concurrency analysis rather than replacing it.
+            </p>
+        </section>
+
+        <section id="concurrency">
+            <h2>ISRs Are Concurrent Execution</h2>
+
+            <p>
+                Interrupt handlers participate in Sec's concurrency model. Shared storage accessed by
+                an ISR and another execution context must satisfy the same data-race principles as
+                other overlapping execution.
+            </p>
+
+            <p>
+                The compiler uses resolved preemption, nesting and reentry relations when deciding
+                which accesses may actually overlap. Race and deadlock analyses remain their own
+                canonical owners; ISR analysis consumes those results rather than reimplementing them.
+            </p>
+        </section>
+
+        <section id="stack">
+            <h2>ISR Stack Proof</h2>
+
+            <p>
+                Interrupt safety includes stack requirements, especially when interrupts may nest.
+                Stack analysis owns stack-size reasoning. ISR analysis consumes the resulting proof
+                under the resolved interrupt profile and stack domain.
+            </p>
+
+            <p>
+                Nested stack composition depends on actual <code>MayPreempt</code> and
+                <code>MayNest</code> relations rather than simply adding every handler's maximum stack
+                use together.
+            </p>
+
+            <p>
+                A known exact requirement that exceeds the ISR stack budget is invalid. When only an
+                insufficient upper-bound proof is available, the result may remain unproven rather
+                than being reported as a false definite violation.
+            </p>
+        </section>
+
+        <section id="generated-entry">
+            <h2>Generated Entry Code</h2>
+
+            <p>
+                A platform may require compiler-generated entry code around the source handler. Such
+                code may perform canonical controller work such as claim, dispatch and completion, or
+                adapt the physical ABI to the Sec handler's source signature.
+            </p>
+
+            <p>
+                Generated code is part of the ISR contract. It must obey the same profile restrictions
+                and must be included in stack/effect reasoning where relevant.
+            </p>
+        </section>
+
+        <section id="vector-table">
+            <h2>Vector Tables and Link Roots</h2>
+
+            <p>
+                A resolved <code>@interrupt</code> binding may create linker- and startup-visible
+                requirements. The compiler may need to emit vector-table entries, dispatcher roots,
+                retained symbols or startup metadata for the selected platform.
+            </p>
+
+            <p>
+                These are generated from canonical binding metadata. Source code should not manually
+                reproduce vector-table structure when the platform model already owns it.
+            </p>
+
+            <p>
+                An interrupt binding is therefore also a reachability root: the handler must remain
+                available to the final linked program even when no ordinary Sec call refers to it.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>ISR Analysis</h2>
+
+            <p>
+                ISR analysis is a cross-analysis verifier. It combines facts from the call graph,
+                effect analysis, stack analysis, data-race analysis, deadlock analysis, ownership and
+                lifetime analysis, FFI contracts and the resolved <code>CompilationPlan</code>.
+            </p>
+
+            <p>The implementation model is intentionally two-phase:</p>
+
+            <ol>
+                <li>compute reusable transitive function requirement summaries;</li>
+                <li>evaluate each ISR root against its concrete resolved ISR profile.</li>
+            </ol>
+
+            <p>
+                This prevents every interrupt root from independently recomputing the same transitive
+                function properties and allows normal functions to be analyzed once and reused across
+                several ISR contexts.
+            </p>
+
+            <p>
+                Recursive call groups are handled through monotone fixed-point analysis over strongly
+                connected components. Unknown requirements remain localized rather than poisoning
+                unrelated functions or unrelated ISR roots.
+            </p>
+        </section>
+
+        <section id="profiles">
+            <h2>Resolved ISR Profiles</h2>
+
+            <p>
+                Each interrupt root is evaluated under a profile derived from the active target and
+                interrupt metadata. Conceptually, the profile contains facts such as:
+            </p>
+
+            <pre><code>ISRProfile
+    ExecutionClass
+    PriorityClass
+    NestingModel
+    Capabilities
+    RequiredProofs
+    StackBudget</code></pre>
+
+            <p>
+                The profile is resolved from canonical platform semantics, not reconstructed from
+                source annotations or raw hardware numbers.
+            </p>
+
+            <p>
+                A helper may therefore be safe under one profile and unusable under another without
+                changing its source code. Explicit guarantees such as <code>@interruptSafe</code>,
+                however, remain stable promises and cannot be weakened by a concrete specialization.
+            </p>
+        </section>
+
+        <section id="result-status">
+            <h2>Valid, Invalid and Unproven</h2>
+
+            <p>
+                ISR verification distinguishes proof outcomes instead of turning every incomplete
+                proof into either success or failure.
+            </p>
+
+            <ul>
+                <li><strong>Valid</strong> — required safety properties are proven for the root/profile.</li>
+                <li><strong>Invalid</strong> — a definite profile violation is proven.</li>
+                <li><strong>Unproven</strong> — required safety could not be established from available facts.</li>
+            </ul>
+
+            <p>
+                A definite violation dominates uncertainty. A handler is not considered valid merely
+                because some unrelated proof is still pending.
+            </p>
+        </section>
+
+        <section id="incremental">
+            <h2>Incremental Analysis</h2>
+
+            <p>
+                ISR results depend on more than source text. They also depend on call-graph summaries,
+                effect facts, stack proofs, race/deadlock results and the active
+                <code>CompilationPlan</code>.
+            </p>
+
+            <p>
+                The compiler and LSP therefore track proof dependencies. A change to platform
+                interrupt metadata, a helper's effect summary or a call edge invalidates only the ISR
+                roots that depend on those facts. Stale positive proofs must not remain visible after
+                a dependency changes.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Interrupt diagnostics should explain both the root and the transitive reason for a
+                failure.
+            </p>
+
+            <pre><code>error: interrupt handler Timer0Handler is not valid for Interrupt.Timer0
+
+reachable call:
+    Timer0Handler -> UpdateState -> GrowBuffer
+
+requirement:
+    ISR profile forbids dynamic allocation
+
+cause:
+    GrowBuffer may allocate</code></pre>
+
+            <p>Useful diagnostics may also identify:</p>
+
+            <ul>
+                <li>duplicate canonical interrupt binding;</li>
+                <li>unknown or unavailable named interrupt identity;</li>
+                <li>invalid raw vector for the selected target;</li>
+                <li>ABI/signature incompatibility;</li>
+                <li>stack proof exceeding the resolved budget;</li>
+                <li>unresolved foreign or indirect-call behavior;</li>
+                <li>a data race created by an actual preemption relation;</li>
+                <li>a stale or invalid platform interrupt definition.</li>
+            </ul>
+        </section>
+
+        <section id="example">
+            <h2>Complete Example</h2>
+
+            <pre><code>type TimerStatus register[32] {
+    Pending: bit
+    _: bit[31]
+}
+
+@address(Platform.Timer0Status)
+let mut timerStatus: TimerStatus
+
+@interruptSafe
+fn AcknowledgeTimer() void {
+    timerStatus.Pending = false
+}
+
+@interrupt(vector: Interrupt.Timer0)
+fn Timer0Handler() void {
+    AcknowledgeTimer()
+    TickCounter.Increment()
+}
+
+fn ConfigureTimer() Result[void, TimerError] {
+    // Configure the peripheral and interrupt controller explicitly.
+    // The @interrupt declaration above does not enable or unmask it.
+    return Ok()
+}</code></pre>
+
+            <p>
+                The binding says which handler owns <code>Interrupt.Timer0</code>. The explicit setup
+                code is still responsible for device/controller configuration. ISR analysis verifies
+                the complete reachable handler path against the resolved interrupt profile.
+            </p>
+        </section>
+
+        <section id="current-status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The interrupt and ISR design is complete through the current rulebook blocks, but the
+                implementation status remains conservatively <strong>planned</strong>. The normative
+                model is therefore established even though full parser, semantic, analysis, lowering,
+                vector-table and backend integration is not yet claimed complete.
+            </p>
+
+            <p>
+                Separate ISR-analysis design work already defines the two-phase summary/profile model,
+                Semantic IR inputs, SCC fixed-point handling, proof dependencies and incremental
+                invalidation behavior. These are compiler design commitments, not evidence that every
+                stage is already implemented end to end.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Bind to named interrupt identities rather than raw vector numbers whenever the platform provides them.</li>
+                <li>Use <code>@interruptSafe</code> for reusable helpers that are intentionally callable from ISR code.</li>
+                <li>Keep interrupt handlers short, bounded and explicit about hardware acknowledgement.</li>
+                <li>Do not expect <code>@interrupt</code> to configure or enable the underlying hardware.</li>
+                <li>Do not infer preemption semantics from raw priority integers.</li>
+                <li>Do not assume local interrupt masking excludes other cores, DMA or unrelated execution domains.</li>
+                <li>Use ordinary Sec ownership and reference rules; do not invent ISR-specific pointer conventions.</li>
+                <li>Keep unknown foreign and runtime behavior out of ISR call graphs unless a verified contract exists.</li>
+                <li>Remember that cleanup, generated wrappers and compiler helpers also participate in the ISR proof.</li>
+                <li>Let stack, race and deadlock analyses own their facts; ISR analysis should consume those proofs.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>@interruptSafe</code> verifies reusable ISR-callable code but does not create an interrupt entrypoint.</li>
+                <li><code>@isr</code> declares an interrupt entry contract without binding a physical vector.</li>
+                <li><code>@interrupt(...)</code> binds resolved target interrupt metadata and implies <code>@isr</code>.</li>
+                <li>Named interrupt identities are preferred over raw numeric vectors.</li>
+                <li>Interrupt metadata is resolved through the immutable active <code>CompilationPlan</code>.</li>
+                <li>One canonical interrupt binding has one active owner; duplicate aliases are still duplicates.</li>
+                <li>Binding does not enable, unmask, configure, start, acknowledge or clear the hardware source.</li>
+                <li>Logical source, route, physical entry, controller lifecycle and peripheral service are distinct concepts.</li>
+                <li>Priority meaning comes from platform semantics, not raw numeric comparison.</li>
+                <li>Preemption, nesting and reentry are canonical resolved execution relations.</li>
+                <li>Local interrupt masking does not imply global exclusion from multicore, DMA or unrelated execution.</li>
+                <li>The Sec 0.1 ISR baseline includes verified no-panic, no-allocation and no-blocking requirements.</li>
+                <li>The full reachable call graph, cleanup, compiler helpers, FFI and generated wrappers participate in validation.</li>
+                <li>ISRs use the ordinary Sec ownership, lifetime and borrowing model.</li>
+                <li>ISR concurrency participates in ordinary race and deadlock reasoning.</li>
+                <li>Stack analysis owns stack proofs; ISR analysis evaluates those proofs against the resolved profile.</li>
+                <li>Platforms may generate vector-table entries, dispatchers, claim/completion wrappers and linker roots.</li>
+                <li>ISR analysis is two-phase: reusable transitive summaries followed by per-root profile evaluation.</li>
+                <li>Verification distinguishes Valid, Invalid and Unproven outcomes.</li>
+                <li>The normative design is established, while current implementation status remains planned.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="50-hardware-access.html">Previous: Fixed Addresses, Volatile and Hardware Access</a>
+            <a href="52-inline-assembly.html">Next: Inline Assembly</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

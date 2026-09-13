@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "sec-lang",
   "license": "MIT",
+  "icon": "images/sec-language.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/YoePro/sec-syntax"

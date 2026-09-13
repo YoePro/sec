@@ -1,0 +1,1363 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shaped Types - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#shaped-types">Shaped Types</a>
+        <a href="#scope">Chapter Scope</a>
+        <a href="#families">Shaped Type Families</a>
+        <a href="#vector">vector[T, N]</a>
+        <a href="#matrix">matrix[T, Rows, Columns]</a>
+        <a href="#tensor-static">Static tensor</a>
+        <a href="#tensor-runtime">Runtime-Shaped tensor</a>
+        <a href="#tensor-view">tensor_view[T, Rank]</a>
+        <a href="#shape">Shape[Rank]</a>
+        <a href="#shared-properties">Shared Properties</a>
+        <a href="#strides">Strides</a>
+        <a href="#layout">Tensor Layout</a>
+        <a href="#contiguity">Contiguity</a>
+        <a href="#memory-space">Memory Space</a>
+        <a href="#ptr-sizeof">Ptr and SizeOf</a>
+        <a href="#storage-requests">Storage Requests</a>
+        <a href="#construction">Construction and Create</a>
+        <a href="#views-ownership">Views and Ownership</a>
+        <a href="#indexing-slicing">Indexing and Slicing</a>
+        <a href="#step-reverse">Step and Reversed Views</a>
+        <a href="#reshape">Reshape, ToShape and Materialize</a>
+        <a href="#axes">Axes and AxisList</a>
+        <a href="#permute-transpose">Permute and Transpose</a>
+        <a href="#broadcast">Broadcasting</a>
+        <a href="#elementwise">Elementwise Arithmetic</a>
+        <a href="#matrix-multiplication">Matrix Multiplication with x</a>
+        <a href="#vector-algebra">Vector Algebra</a>
+        <a href="#contraction">Tensor Contraction</a>
+        <a href="#iteration">Iteration</a>
+        <a href="#storage-operations">Storage-Producing Operations</a>
+        <a href="#errors">Errors and try</a>
+        <a href="#no-hidden-heap">No Hidden Heap</a>
+        <a href="#ffi">FFI and Raw Buffer Access</a>
+        <a href="#tooling">Compiler and Tooling Guarantees</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html" class="active">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Shaped Types</div>
+
+        <h1 id="shaped-types">Shaped Types</h1>
+
+        <p>
+            Sec provides first-class shaped values for numerical and multidimensional data.
+            The core families are <code>vector</code>, <code>matrix</code>, <code>tensor</code>,
+            and the borrowed <code>tensor_view</code> form.
+        </p>
+
+        <p>
+            A shaped value is more than a flat collection of elements. Its rank, shape,
+            logical element order and storage contract are part of its semantics. The compiler
+            can therefore reason about dimensions, views, layout, borrowing, algebra and
+            storage movement without reducing the program to untyped pointer arithmetic.
+        </p>
+
+        <pre><code>let position: vector[float32, 3]
+let transform: matrix[float32, 4, 4]
+let image: tensor[float32, 3, 224, 224]</code></pre>
+
+        <section id="scope">
+            <h2>Chapter Scope</h2>
+
+            <p>This chapter covers:</p>
+
+            <ul>
+                <li><code>vector[T, N]</code>;</li>
+                <li><code>matrix[T, Rows, Columns]</code>;</li>
+                <li>statically shaped and runtime-shaped <code>tensor</code> values;</li>
+                <li><code>tensor_view[T, Rank]</code>;</li>
+                <li><code>Shape</code>, <code>Strides</code>, layouts and axes;</li>
+                <li>indexing, slicing, reshaping, permutation and broadcasting;</li>
+                <li>elementwise arithmetic, vector algebra, matrix multiplication and contraction;</li>
+                <li>memory-space and storage-placement rules for shaped data.</li>
+            </ul>
+
+            <p>
+                Ordinary arrays, slices, lists, maps and sets are covered by the collection
+                chapters. Shaped types have separate semantics because their dimensions and
+                multidimensional mapping are meaningful parts of the value.
+            </p>
+        </section>
+
+        <section id="families">
+            <h2>Shaped Type Families</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Ownership</th>
+                        <th>Rank</th>
+                        <th>Extents</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>vector[T, N]</code></td>
+                        <td>Owning</td>
+                        <td>1</td>
+                        <td>Compile-time</td>
+                    </tr>
+                    <tr>
+                        <td><code>matrix[T, R, C]</code></td>
+                        <td>Owning</td>
+                        <td>2</td>
+                        <td>Compile-time</td>
+                    </tr>
+                    <tr>
+                        <td><code>tensor[T, D0, D1, ...]</code></td>
+                        <td>Owning</td>
+                        <td>Compile-time</td>
+                        <td>Compile-time</td>
+                    </tr>
+                    <tr>
+                        <td><code>tensor[T, Shape[Rank]]</code></td>
+                        <td>Owning</td>
+                        <td>Compile-time</td>
+                        <td>Runtime</td>
+                    </tr>
+                    <tr>
+                        <td><code>ref tensor_view[T, Rank]</code></td>
+                        <td>Borrowed</td>
+                        <td>Compile-time</td>
+                        <td>Runtime or derived</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="vector">
+            <h2><code>vector[T, N]</code></h2>
+
+            <p>
+                A vector is an owning rank-one shaped value with a compile-time-known extent.
+            </p>
+
+            <pre><code>let direction: vector[float32, 3]</code></pre>
+
+            <p>For <code>vector[T, N]</code>:</p>
+
+            <pre><code>Rank  = 1
+Shape = [N]
+Len   = N</code></pre>
+
+            <p>
+                A vector is not a growable collection. Its extent belongs to the shaped type.
+            </p>
+        </section>
+
+        <section id="matrix">
+            <h2><code>matrix[T, Rows, Columns]</code></h2>
+
+            <p>
+                A matrix is an owning rank-two shaped value with compile-time-known row and
+                column extents.
+            </p>
+
+            <pre><code>let transform: matrix[float32, 4, 4]</code></pre>
+
+            <p>For <code>matrix[T, Rows, Columns]</code>:</p>
+
+            <pre><code>Rank  = 2
+Shape = [Rows, Columns]
+Len   = Rows * Columns</code></pre>
+        </section>
+
+        <section id="tensor-static">
+            <h2>Statically Shaped <code>tensor</code></h2>
+
+            <p>
+                A statically shaped tensor has a compile-time-known rank and compile-time-known
+                extents.
+            </p>
+
+            <pre><code>let image: tensor[float32, 3, 224, 224]</code></pre>
+
+            <p>This type has:</p>
+
+            <pre><code>Rank  = 3
+Shape = [3, 224, 224]
+Len   = 150528</code></pre>
+
+            <p>
+                The dimension list is a compiler-known shaped-type form. It does not introduce
+                general value-generic parameter packs for ordinary user-defined generic types.
+            </p>
+        </section>
+
+        <section id="tensor-runtime">
+            <h2>Runtime-Shaped Owning <code>tensor</code></h2>
+
+            <p>
+                Sec also supports owning tensors whose rank is known at compile time while the
+                individual extents are runtime values.
+            </p>
+
+            <pre><code>let image: tensor[float32, Shape[3]]</code></pre>
+
+            <p>Here:</p>
+
+            <pre><code>Rank
+    compile-time-known as 3
+
+Shape
+    runtime Shape[3]
+
+Len
+    runtime product of Shape</code></pre>
+
+            <p>
+                This remains an owning tensor. It is not reinterpreted as a slice, dynamic array
+                or view merely because its extents are runtime values.
+            </p>
+        </section>
+
+        <section id="tensor-view">
+            <h2><code>tensor_view[T, Rank]</code></h2>
+
+            <p>
+                <code>tensor_view[T, Rank]</code> is Sec's non-owning affine-strided shaped view.
+                Safe source-level access uses a reference to the view:
+            </p>
+
+            <pre><code>ref tensor_view[T, Rank]
+ref mut tensor_view[T, Rank]</code></pre>
+
+            <p>
+                Mutability comes from <code>ref</code> or <code>ref mut</code>. There is no separate
+                mutable view type.
+            </p>
+
+            <pre><code>fn Inspect(image: ref tensor_view[float32, 3]) void {
+    // read-only access
+}
+
+fn Modify(image: ref mut tensor_view[float32, 3]) void {
+    // mutable access when the mapping is safely non-overlapping
+}</code></pre>
+
+            <p>
+                A view remains tied to the lifetime, identity, validity and memory-space contract
+                of its backing storage. A view never becomes an owner merely because it has a
+                shape and strides.
+            </p>
+        </section>
+
+        <section id="shape">
+            <h2><code>Shape[Rank]</code></h2>
+
+            <p>
+                <code>Shape[Rank]</code> is a compiler-known immutable nominal value containing one
+                non-negative extent for every axis. Rank is part of its type.
+            </p>
+
+            <pre><code>let shape: Shape[3] := Shape[3] { 3, 224, 224 }</code></pre>
+
+            <p>
+                A <code>Shape[3]</code> is not interchangeable with a list or a three-element array
+                merely because a representation could look similar.
+            </p>
+
+            <p>
+                Zero extents are valid. If any extent is zero, the shaped value has
+                <code>Len == 0</code>. Negative extents are invalid, and extent products are checked
+                for overflow when they cannot be proven safe at compile time.
+            </p>
+        </section>
+
+        <section id="shared-properties">
+            <h2>Shared Read-Only Properties</h2>
+
+            <p>Shaped values and views expose a common semantic surface:</p>
+
+            <pre><code>value.Rank
+value.Shape
+value.Len
+value.Strides
+value.Layout
+value.MemorySpace
+value.IsContiguous
+value.Ptr
+value.SizeOf</code></pre>
+
+            <p>The core result meanings are:</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Property</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>Rank</code></td><td>Number of logical axes.</td></tr>
+                    <tr><td><code>Shape</code></td><td>One extent per axis as <code>Shape[Rank]</code>.</td></tr>
+                    <tr><td><code>Len</code></td><td>Total logical scalar element count.</td></tr>
+                    <tr><td><code>Strides</code></td><td>Element stride for every affine axis.</td></tr>
+                    <tr><td><code>Layout</code></td><td>Public storage-layout classification.</td></tr>
+                    <tr><td><code>MemorySpace</code></td><td>Storage access and transfer domain.</td></tr>
+                    <tr><td><code>IsContiguous</code></td><td>Whether logical traversal is one forward dense range.</td></tr>
+                    <tr><td><code>Ptr</code></td><td>Unsafe raw pointer to the logical origin when addressable.</td></tr>
+                    <tr><td><code>SizeOf</code></td><td>Logical represented payload size in bytes.</td></tr>
+                </tbody>
+            </table>
+
+            <p>
+                <code>Len</code> is always the product of all extents. It never means only the first
+                dimension.
+            </p>
+
+            <pre><code>let v: vector[float32, 4]
+let m: matrix[float32, 3, 4]
+let t: tensor[float32, 2, 3, 4]
+
+v.Len // 4
+m.Len // 12
+t.Len // 24</code></pre>
+
+            <p>
+                When a complete fact belongs to the static type, it is also available as a
+                type-level property:
+            </p>
+
+            <pre><code>matrix[float32, 3, 4].Rank
+matrix[float32, 3, 4].Shape
+matrix[float32, 3, 4].Len
+
+tensor_view[float32, 3].Rank</code></pre>
+
+            <p>
+                A runtime-shaped tensor or view type knows its rank but does not have one complete
+                type-level runtime <code>Shape</code> or <code>Len</code> value.
+            </p>
+        </section>
+
+        <section id="strides">
+            <h2>Strides</h2>
+
+            <p>
+                <code>Strides[Rank]</code> is an immutable nominal value containing one element
+                stride per axis. Strides are measured in elements, not bytes.
+            </p>
+
+            <p>A stride may be:</p>
+
+            <ul>
+                <li>positive for forward traversal;</li>
+                <li>negative for reverse traversal;</li>
+                <li>zero for a broadcast axis.</li>
+            </ul>
+
+            <p>
+                The canonical ordinary owning layout is dense row-major. Therefore a
+                <code>matrix[T, Rows, Columns]</code> normally has element strides:
+            </p>
+
+            <pre><code>[Columns, 1]</code></pre>
+
+            <p>
+                A view may have very different strides without changing its logical element
+                order.
+            </p>
+        </section>
+
+        <section id="layout">
+            <h2>Tensor Layout</h2>
+
+            <p>
+                <code>TensorLayout[Rank]</code> describes the public shaped storage-layout category.
+                The canonical affine-strided categories are:
+            </p>
+
+            <pre><code>DenseRowMajor
+DenseColumnMajor
+Strided</code></pre>
+
+            <p>
+                Ordinary owning shaped values use dense row-major layout unless an explicit
+                storage request requires another supported layout.
+            </p>
+
+            <p>
+                Layout is read-only. Changing representation is an explicit operation such as
+                <code>Relayout</code>, not assignment to <code>.Layout</code>.
+            </p>
+        </section>
+
+        <section id="contiguity">
+            <h2>Contiguity</h2>
+
+            <p>
+                <code>IsContiguous</code> is true when logical traversal corresponds to one forward,
+                dense, non-overlapping storage range in logical traversal order.
+            </p>
+
+            <table>
+                <thead>
+                    <tr><th>Mapping</th><th>Typical value</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Canonical dense owning value</td><td><code>true</code></td></tr>
+                    <tr><td>Row of a row-major matrix</td><td><code>true</code></td></tr>
+                    <tr><td>Column of a row-major matrix</td><td><code>false</code></td></tr>
+                    <tr><td>Transpose view</td><td><code>false</code></td></tr>
+                    <tr><td>Step greater than 1</td><td><code>false</code></td></tr>
+                    <tr><td>Negative-stride reversal</td><td><code>false</code></td></tr>
+                    <tr><td>Broadcast with zero stride</td><td><code>false</code></td></tr>
+                </tbody>
+            </table>
+
+            <p>
+                This strict meaning is useful when deciding whether a shaped value can safely be
+                presented as one ordinary contiguous foreign buffer.
+            </p>
+        </section>
+
+        <section id="memory-space">
+            <h2>Memory Space</h2>
+
+            <p>
+                <code>MemorySpace</code> describes the semantic access and transfer domain of shaped
+                storage. It is separate from where storage was allocated or which object owns its
+                lifetime.
+            </p>
+
+            <p>
+                A view inherits the memory space of its backing storage. Reading
+                <code>.MemorySpace</code> does not force materialization, and memory space cannot be
+                changed by assigning to a property.
+            </p>
+
+            <p>
+                Moving data between incompatible memory spaces is always explicit.
+            </p>
+        </section>
+
+        <section id="ptr-sizeof">
+            <h2><code>Ptr</code> and <code>SizeOf</code></h2>
+
+            <p>
+                Addressable shaped values expose an unsafe read-only <code>Ptr</code> property that
+                refers to the logical origin of the current addressable representation.
+            </p>
+
+            <p>
+                For a view, <code>Ptr</code> does not mean that later logical elements are adjacent.
+                Code using the raw pointer must also respect shape, strides, layout, contiguity and
+                the relevant unsafe or foreign contract.
+            </p>
+
+            <p>
+                <code>SizeOf</code> is the logical represented payload byte count:
+            </p>
+
+            <pre><code>value.SizeOf = value.Len * element payload size</code></pre>
+
+            <p>
+                For a non-contiguous or broadcast view, this is not the descriptor size, physical
+                address span or count of unique backing bytes touched.
+            </p>
+
+            <p>
+                <code>Ptr</code> plus <code>SizeOf</code> describes one directly usable contiguous
+                payload buffer only when the relevant requirements are satisfied and
+                <code>IsContiguous</code> is true.
+            </p>
+        </section>
+
+        <section id="storage-requests">
+            <h2>Storage Requests</h2>
+
+            <p>
+                Storage placement is explicit when the program needs requirements beyond ordinary
+                canonical construction.
+            </p>
+
+            <p>A general request can constrain:</p>
+
+            <ul>
+                <li>memory space;</li>
+                <li>minimum alignment.</li>
+            </ul>
+
+            <p>A shaped request additionally constrains layout.</p>
+
+            <pre><code>StorageRequest
+    MemorySpace: Option[MemorySpace]
+    MinAlignment: Option[uint]
+
+ShapedStorageRequest[Rank]
+    Storage: StorageRequest
+    Layout: Option[TensorLayout[Rank]]</code></pre>
+
+            <p>
+                Supplied values are requirements, not optimization hints. An omitted requirement
+                means that the operation may use its canonical valid choice; it does not mean that
+                the compiler must pretend a specific request was written.
+            </p>
+
+            <p>
+                Allocation authority, such as an arena or target provider, is separate from the
+                requested storage properties.
+            </p>
+        </section>
+
+        <section id="construction">
+            <h2>Construction and Explicit <code>Create</code></h2>
+
+            <p>
+                Ordinary shaped construction uses the type's canonical storage contract when
+                storage is required:
+            </p>
+
+            <pre><code>let matrix: matrix[float32, 4, 4]</code></pre>
+
+            <p>
+                Sec does not model ordinary construction as a meaningless parameterless
+                <code>Create()</code> call.
+            </p>
+
+            <p>
+                Explicit <code>Create(...)</code> is reserved for active storage control, such as a
+                non-default storage request or explicit allocation authority:
+            </p>
+
+            <pre><code>let value := try matrix[float32, 4096, 4096].Create(request)
+
+let value := try matrix[float32, 4096, 4096].Create(
+    ref mut arena,
+    request,
+)</code></pre>
+
+            <p>
+                If storage acquisition can fail, that failure remains explicit at the
+                storage-producing boundary.
+            </p>
+        </section>
+
+        <section id="views-ownership">
+            <h2>Views and Ownership</h2>
+
+            <p>
+                <code>vector</code>, <code>matrix</code> and <code>tensor</code> are owning shaped
+                families. <code>tensor_view</code> is non-owning.
+            </p>
+
+            <p>
+                A view does not destroy backing elements. Its lifetime cannot exceed the backing
+                storage from which it was derived.
+            </p>
+
+            <p>
+                Copyability of an owning shaped value follows ordinary Sec copy and move rules.
+                The compiler never invents an implicit deep copy merely because a shaped value
+                owns backing storage.
+            </p>
+
+            <p>
+                A move transfers ownership. Every initialized owned element is destroyed exactly
+                once when its final owner ends.
+            </p>
+        </section>
+
+        <section id="indexing-slicing">
+            <h2>Indexing and Slicing</h2>
+
+            <p>
+                A multidimensional shaped index supplies exactly one selector for every source
+                axis.
+            </p>
+
+            <pre><code>value[i, j, k]
+value[i, .., k]
+value[.., .., ..]</code></pre>
+
+            <p>
+                Sec does not silently append trailing <code>..</code> selectors and does not add an
+                ellipsis syntax for shaped indexing.
+            </p>
+
+            <h3>Scalar selectors</h3>
+
+            <p>
+                A scalar selector removes one axis. When every selector is scalar, the result is
+                the selected element <code>Place[T]</code>, not a rank-zero tensor.
+            </p>
+
+            <pre><code>let element := value[i, j, k]</code></pre>
+
+            <h3>Range selectors</h3>
+
+            <p>A range selector preserves its axis:</p>
+
+            <pre><code>matrix[2, ..]
+matrix[.., 2]
+tensor[1, .., 2]
+tensor[1..<3, .., 4..<10]</code></pre>
+
+            <p>
+                If at least one axis remains, the result is a borrowed
+                <code>tensor_view[T, ResultRank]</code>. Slicing does not allocate or copy. It keeps
+                the backing identity and derives new shape, strides and contiguity facts.
+            </p>
+
+            <p>
+                Shaped slicing uses the normal Sec range forms:
+            </p>
+
+            <pre><code>start..end
+start..<end
+..
+start..
+..<end</code></pre>
+        </section>
+
+        <section id="step-reverse">
+            <h2>Step and Reversed Views</h2>
+
+            <p>Range selectors reuse Sec's ordinary <code>step</code> syntax:</p>
+
+            <pre><code>value[.. step 2]
+value[10..<90 step 2]
+value[.. step -1]</code></pre>
+
+            <p>
+                The step must be non-zero. Positive values produce forward strided views; negative
+                values produce reverse strided views. <code>step 0</code> is invalid.
+            </p>
+
+            <p>
+                A negative stride does not inherently make a view unsafe or immutable. Mutable
+                access remains possible when the mapping is non-overlapping and normal borrowing
+                rules permit it.
+            </p>
+        </section>
+
+        <section id="reshape">
+            <h2><code>Reshape</code>, <code>ToShape</code> and <code>Materialize</code></h2>
+
+            <p>
+                These operations deliberately have different ownership and storage meaning.
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Operation</th>
+                        <th>Backing</th>
+                        <th>Result</th>
+                        <th>Allocation / Copy</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>Reshape</code></td>
+                        <td>Same</td>
+                        <td>Borrowed view</td>
+                        <td>None</td>
+                    </tr>
+                    <tr>
+                        <td><code>ToShape</code></td>
+                        <td>Same</td>
+                        <td>New owner; source consumed</td>
+                        <td>None</td>
+                    </tr>
+                    <tr>
+                        <td><code>Materialize</code></td>
+                        <td>New</td>
+                        <td>New owner</td>
+                        <td>May allocate and copies/materializes</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Reshape</h3>
+
+            <pre><code>let view := try value.Reshape(newShape)</code></pre>
+
+            <p>
+                <code>Reshape</code> creates a view over the same backing storage. It requires equal
+                element count and reshape-compatible contiguous logical storage. It never hides a
+                copy to make an incompatible input work.
+            </p>
+
+            <h3>ToShape</h3>
+
+            <pre><code>let image: tensor[float32, Shape[3]]
+
+let flat := try image.ToShape(
+    Shape[1] { image.Len },
+)
+// image has been consumed</code></pre>
+
+            <p>
+                <code>ToShape</code> consumes the source owner, reuses the same backing storage and
+                changes the owning shaped metadata. It performs no element copy and no allocation.
+            </p>
+
+            <h3>Materialize</h3>
+
+            <pre><code>let owned := try view.Materialize()
+let placed := try view.Materialize(request)</code></pre>
+
+            <p>
+                <code>Materialize</code> creates new owning storage from the view's logical contents.
+                It is the operation to use when a non-contiguous, reversed, transposed or broadcast
+                view must become an independent owning representation.
+            </p>
+        </section>
+
+        <section id="axes">
+            <h2><code>Axes</code> and <code>AxisList</code></h2>
+
+            <p>
+                <code>Axes[Rank]</code> describes a complete axis permutation. It contains every
+                axis in <code>0..&lt;Rank</code> exactly once.
+            </p>
+
+            <pre><code>Axes[3] { 2, 0, 1 }</code></pre>
+
+            <p>
+                <code>AxisList[Count]</code> is an ordered list of distinct selected axes for an
+                operation that uses only part of the rank.
+            </p>
+
+            <pre><code>AxisList[2] { 1, 3 }</code></pre>
+
+            <p>
+                Axis order is semantically significant. Duplicate or out-of-range axes are invalid.
+            </p>
+        </section>
+
+        <section id="permute-transpose">
+            <h2><code>Permute</code> and <code>Transpose</code></h2>
+
+            <p><code>Permute</code> creates a non-owning view with reordered axes:</p>
+
+            <pre><code>let view := value.Permute(
+    Axes[3] { 2, 0, 1 },
+)</code></pre>
+
+            <p>
+                It keeps the same backing storage and memory space, while permuting shape and
+                strides and recomputing layout and contiguity.
+            </p>
+
+            <p>For rank two, <code>Transpose()</code> is the convenience form:</p>
+
+            <pre><code>let transposed := matrix.Transpose()</code></pre>
+
+            <p>equivalent to:</p>
+
+            <pre><code>matrix.Permute(Axes[2] { 1, 0 })</code></pre>
+
+            <p>
+                Transpose is a view operation. It does not physically reorder the backing data.
+                Use explicit materialization when a new packed representation is required:
+            </p>
+
+            <pre><code>let packed := try matrix.Transpose().Materialize()</code></pre>
+        </section>
+
+        <section id="broadcast">
+            <h2>Broadcasting</h2>
+
+            <p>
+                Scalar-to-shaped arithmetic is direct and does not require an explicit broadcast
+                view:
+            </p>
+
+            <pre><code>let scaled := image * 0.5
+let shifted := image + biasValue</code></pre>
+
+            <p>
+                Shaped-to-shaped broadcasting is explicit. Sec does not silently change dimensions
+                merely to make two shaped operands compatible.
+            </p>
+
+            <pre><code>let expanded := right.BroadcastTo(left.Shape)
+let result := left + expanded</code></pre>
+
+            <p>
+                <code>BroadcastTo</code> uses right-aligned matching. Matching extents are preserved;
+                a source extent of 1 may expand using stride 0; missing leading axes behave as
+                extent 1.
+            </p>
+
+            <pre><code>source:       [   3, 1]
+destination:  [2, 3, 4]</code></pre>
+
+            <p>
+                Broadcasting allocates nothing and copies no elements. A real zero-stride
+                expansion is overlapping and therefore produces shared view authority even when
+                the source was mutable.
+            </p>
+        </section>
+
+        <section id="elementwise">
+            <h2>Elementwise Arithmetic</h2>
+
+            <p>
+                Ordinary arithmetic operators are elementwise when both operands are shaped and the
+                element algebra supports the operator.
+            </p>
+
+            <pre><code>left + right
+left - right
+left * right
+left / right</code></pre>
+
+            <p>
+                Two shaped operands require compatible shapes. Sec does not perform implicit shaped
+                broadcasting.
+            </p>
+
+            <pre><code>let a: matrix[float32, 3, 4]
+let b: matrix[float32, 1, 4]
+
+let expanded := b.BroadcastTo(a.Shape)
+let c := a + expanded</code></pre>
+
+            <p>Scalar forms remain direct:</p>
+
+            <pre><code>matrix * scalar
+scalar * matrix
+matrix / scalar
+matrix + scalar
+scalar + matrix
+matrix - scalar</code></pre>
+
+            <p>
+                The result element type follows ordinary Sec scalar operator and unit algebra.
+            </p>
+
+            <p>
+                Shaped arithmetic first produces a logical shaped value. It does not become
+                fallible merely because a later storage boundary may need allocation. The compiler
+                may fuse or eliminate intermediate representations as long as source semantics are
+                preserved.
+            </p>
+        </section>
+
+        <section id="matrix-multiplication">
+            <h2>Matrix Multiplication with <code>x</code></h2>
+
+            <p>
+                Sec uses contextual infix <code>x</code> for canonical algebraic multiplication.
+                <code>*</code> remains elementwise or scalar multiplication.
+            </p>
+
+            <pre><code>let elementwise := left * right
+let product := left x right</code></pre>
+
+            <p>
+                The operator has multiplicative precedence and is left-associative. Outside
+                operator position, <code>x</code> remains a valid ordinary identifier.
+            </p>
+
+            <h3>Matrix by matrix</h3>
+
+            <pre><code>matrix[L, Rows, Inner] x matrix[R, Inner, Columns]</code></pre>
+
+            <p>produces a matrix shaped as:</p>
+
+            <pre><code>matrix[ProductElement[L, R], Rows, Columns]</code></pre>
+
+            <h3>Matrix by vector</h3>
+
+            <p>A plain vector is treated as a column vector for this operation:</p>
+
+            <pre><code>matrix[L, Rows, Columns] x vector[R, Columns]</code></pre>
+
+            <p>produces:</p>
+
+            <pre><code>vector[ProductElement[L, R], Rows]</code></pre>
+
+            <p>
+                <code>x</code> does not guess arbitrary tensor contraction axes. Use
+                <code>Dot</code>, <code>Outer</code> or <code>Contract</code> when those operations express
+                the intended algebra.
+            </p>
+        </section>
+
+        <section id="vector-algebra">
+            <h2>Vector Algebra</h2>
+
+            <h3><code>Dot</code></h3>
+
+            <pre><code>let result := left.Dot(right)</code></pre>
+
+            <p>
+                Compatible equal-length vectors produce a scalar by multiplying corresponding
+                elements and accumulating the products. The result is a scalar, not a rank-zero
+                tensor.
+            </p>
+
+            <h3><code>Outer</code></h3>
+
+            <pre><code>let result := left.Outer(right)</code></pre>
+
+            <p>
+                <code>vector[L, N]</code> with <code>vector[R, M]</code> produces a logical
+                <code>matrix[ProductElement[L, R], N, M]</code>.
+            </p>
+
+            <h3><code>Magnitude</code></h3>
+
+            <pre><code>let length := value.Magnitude()</code></pre>
+
+            <p>
+                Magnitude is available when the element type supplies the required multiplication,
+                addition and square-root semantics. Units participate in normal unit algebra.
+            </p>
+
+            <h3><code>Normalize</code></h3>
+
+            <pre><code>let normalized := value.Normalize()</code></pre>
+
+            <p>
+                Normalization returns <code>Option[vector[...]]</code>. A zero-magnitude vector returns
+                <code>None</code>; this is a normal domain case, not an error.
+            </p>
+
+            <h3><code>Cross</code></h3>
+
+            <pre><code>let result := left.Cross(right)</code></pre>
+
+            <p>
+                Cross product is defined for compatible extent-three vectors. Sec does not silently
+                generalize it to arbitrary dimensions.
+            </p>
+        </section>
+
+        <section id="contraction">
+            <h2>General Tensor Contraction</h2>
+
+            <p>General contraction is explicit:</p>
+
+            <pre><code>let result := left.Contract(
+    right,
+    leftAxes,
+    rightAxes,
+)</code></pre>
+
+            <p>
+                Both axis lists have the same <code>Count</code>, and axes pair by position.
+            </p>
+
+            <pre><code>let result := left.Contract(
+    right,
+    AxisList[2] { 1, 3 },
+    AxisList[2] { 0, 2 },
+)</code></pre>
+
+            <p>This pairs:</p>
+
+            <pre><code>left axis 1 with right axis 0
+left axis 3 with right axis 2</code></pre>
+
+            <p>
+                Paired extents must match exactly. Contraction never performs implicit
+                broadcasting.
+            </p>
+
+            <p>Result axes are ordered as:</p>
+
+            <pre><code>all uncontracted left axes in original order
+followed by
+all uncontracted right axes in original order</code></pre>
+
+            <p>The result rank is:</p>
+
+            <pre><code>left.Rank + right.Rank - 2 * Count</code></pre>
+
+            <p>
+                Rank zero produces a scalar. Rank one or two does not cause general
+                <code>Contract</code> to switch dynamically into the <code>vector</code> or
+                <code>matrix</code> families; specialized operations remain <code>Dot</code>,
+                <code>Outer</code> and <code>x</code>.
+            </p>
+        </section>
+
+        <section id="iteration">
+            <h2>Iteration</h2>
+
+            <p>
+                Shaped iteration follows logical index order rather than accidental physical
+                address order. The canonical traversal is lexicographic by axis, with the last
+                axis varying fastest.
+            </p>
+
+            <p>
+                A transposed, reversed or otherwise strided view still iterates according to its
+                logical shape and axis order. A broadcast view may therefore yield the same backing
+                element at several logical indexes.
+            </p>
+
+            <p>
+                Mutation during iteration remains subject to ordinary borrowing, aliasing, overlap
+                and storage-stability rules.
+            </p>
+        </section>
+
+        <section id="storage-operations">
+            <h2>Storage-Producing Operations</h2>
+
+            <p>
+                Operations that intentionally create or change physical backing remain visible in
+                source code.
+            </p>
+
+            <h3><code>Materialize</code></h3>
+
+            <p>
+                Produces new owning storage from a view. It may allocate and copy or pack logical
+                elements.
+            </p>
+
+            <h3><code>TransferTo</code></h3>
+
+            <pre><code>let deviceValue := try value.TransferTo(request)</code></pre>
+
+            <p>
+                Produces a new owner satisfying a different storage request. The source owner
+                remains valid. The implementation may copy, map, synchronize or use a target
+                transfer mechanism, but it may not silently substitute an incompatible destination
+                contract.
+            </p>
+
+            <h3><code>Relayout</code></h3>
+
+            <pre><code>let columnMajor := try value.Relayout(
+    TensorLayout[2].DenseColumnMajor,
+)</code></pre>
+
+            <p>
+                Produces a new owning representation with the requested layout. It may allocate and
+                physically reorder elements while leaving the source owner valid.
+            </p>
+
+            <p>
+                Synchronous <code>TransferTo</code> is complete when it returns successfully. A real
+                asynchronous transfer requires a separate API that represents outstanding lifetime
+                and completion obligations.
+            </p>
+        </section>
+
+        <section id="errors">
+            <h2>Errors and <code>try</code></h2>
+
+            <p>Sec applies static proof before inserting runtime checks.</p>
+
+            <table>
+                <thead>
+                    <tr><th>Knowledge</th><th>Behavior</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Provably valid</td><td>Operation is infallible for that condition; no <code>try</code>.</td></tr>
+                    <tr><td>Provably invalid</td><td>Compile-time diagnostic.</td></tr>
+                    <tr><td>Runtime-dependent</td><td>Checked operation; <code>try</code> when it returns <code>Result</code>.</td></tr>
+                </tbody>
+            </table>
+
+            <p>
+                This rule applies consistently to runtime-shaped arithmetic, runtime matrix
+                multiplication, reshape operations, broadcasting, contraction and runtime indexing
+                or slicing checks.
+            </p>
+
+            <pre><code>let a: tensor[float32, Shape[3]]
+let b: tensor[float32, Shape[3]]
+
+let c := try a + b</code></pre>
+
+            <p>
+                Here <code>try</code> is required because runtime shape compatibility must be checked,
+                not because the expression might eventually need storage.
+            </p>
+
+            <h3><code>ShapeError</code></h3>
+
+            <p>Runtime-dependent shaped validity uses the <code>ShapeError</code> family, including:</p>
+
+            <pre><code>RankMismatch
+DimensionMismatch
+ElementCountOverflow
+InvalidReshape
+InvalidBroadcast
+InvalidContraction
+InvalidAxis
+DuplicateAxis
+InvalidStep</code></pre>
+
+            <p>
+                Runtime scalar indexing uses <code>IndexError</code> where required, while runtime
+                slicing/range validity uses <code>RangeError</code>.
+            </p>
+
+            <h3><code>StorageError</code></h3>
+
+            <p>
+                Explicit storage-producing operations use <code>StorageError</code> when destination
+                requirements or physical storage work can fail. The public error family covers at
+                least allocation failure, unsupported memory space or layout, unsatisfied alignment,
+                transfer failure and size overflow.
+            </p>
+        </section>
+
+        <section id="no-hidden-heap">
+            <h2>No Hidden Heap</h2>
+
+            <p>
+                Shaped types do not assume a hidden global heap. If a storage-producing operation
+                requires allocation, it must have valid allocation authority such as an arena,
+                explicit allocator, target/device provider or another approved source.
+            </p>
+
+            <p>
+                Escape analysis does not repair an invalid view lifetime by silently allocating or
+                deep-copying the data.
+            </p>
+
+            <p>
+                Logical operations such as indexing, view formation, reshape, permutation,
+                transpose, broadcasting and ordinary algebra do not acquire allocation semantics
+                merely because a later materialization might allocate.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>FFI and Raw Buffer Access</h2>
+
+            <p>
+                A shaped value does not automatically have a foreign-stable descriptor ABI.
+                Crossing a foreign boundary therefore requires the foreign layout contract to be
+                explicit.
+            </p>
+
+            <p>
+                For APIs expecting one dense buffer, verify the relevant element ABI and
+                <code>IsContiguous</code> before treating <code>Ptr</code> and <code>SizeOf</code> as a
+                single foreign payload range.
+            </p>
+
+            <p>
+                A strided, transposed, reversed or broadcast view may need explicit
+                <code>Materialize()</code> before it can satisfy such a contract. That decision is
+                never made silently by <code>Ptr</code> access.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>Compiler and Tooling Guarantees</h2>
+
+            <p>
+                The compiler tracks the shaped facts needed to validate source semantics, including
+                element type, rank, shape, static versus runtime extents, strides, layout, memory
+                space, contiguity, ownership, borrow authority and backing dependencies.
+            </p>
+
+            <p>
+                Diagnostics should report whether failure comes from static shape incompatibility,
+                runtime checking, axis selection, indexing, storage placement or borrowing rather
+                than reducing the problem to a low-level pointer error.
+            </p>
+
+            <p>
+                Editor hover and completion should expose the same resolved shaped types and
+                properties used by compilation, including when <code>try</code> is required and
+                whether an operation returns <code>Option</code> or <code>Result</code>.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>vector</code>, <code>matrix</code> and <code>tensor</code> when rank and shape are part of the problem domain.</li>
+                <li>Prefer views for slicing, permutation, transpose and compatible reshape when ownership is not required.</li>
+                <li>Use <code>Materialize</code> only when independent owning storage is actually needed.</li>
+                <li>Use <code>ToShape</code> when an owner can be consumed and the same backing should be retained.</li>
+                <li>Keep shaped-to-shaped broadcasting explicit with <code>BroadcastTo</code>.</li>
+                <li>Remember that <code>*</code> is elementwise while <code>x</code> is canonical algebraic matrix multiplication.</li>
+                <li>Use <code>Dot</code>, <code>Outer</code> and <code>Contract</code> to make algebraic intent explicit.</li>
+                <li>Do not infer physical contiguity from shape alone; inspect <code>IsContiguous</code> when it matters.</li>
+                <li>Do not infer ownership from a view or raw pointer.</li>
+                <li>Make memory-space changes and storage production explicit.</li>
+                <li>Let compile-time shape errors remain compile-time errors rather than adding unnecessary runtime handling.</li>
+                <li>Use <code>try</code> only when validity genuinely depends on runtime information or storage work can fail.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Sec has first-class owning <code>vector</code>, <code>matrix</code> and <code>tensor</code> families.</li>
+                <li><code>tensor_view</code> is the compiler-known non-owning affine-strided view family.</li>
+                <li>Rank is compile-time-known for every core shaped type form.</li>
+                <li>Tensor extents may be fully static or runtime values carried by <code>Shape[Rank]</code>.</li>
+                <li><code>Shape</code> and <code>Strides</code> are nominal metadata values, not interchangeable ordinary collections.</li>
+                <li><code>Len</code> is the product of all extents.</li>
+                <li>Canonical ordinary owning storage is dense row-major.</li>
+                <li>Views may use positive, negative or zero strides.</li>
+                <li>Zero stride represents broadcasting; negative stride represents reverse traversal.</li>
+                <li><code>IsContiguous</code> means one forward dense non-overlapping logical payload range.</li>
+                <li><code>MemorySpace</code> describes access and transfer domain, not allocation origin.</li>
+                <li><code>Ptr</code> is unsafe and does not imply a view is contiguous.</li>
+                <li>Slicing and view transformations do not allocate or copy.</li>
+                <li>Full scalar indexing yields an element Place rather than a rank-zero tensor.</li>
+                <li><code>Reshape</code> returns a view over the same backing.</li>
+                <li><code>ToShape</code> consumes an owner while preserving backing storage.</li>
+                <li><code>Materialize</code> creates new owning storage and may allocate.</li>
+                <li><code>Permute</code> and <code>Transpose</code> are view transformations.</li>
+                <li>Shaped broadcasting is explicit through <code>BroadcastTo</code>.</li>
+                <li>Ordinary <code>+ - * /</code> are elementwise for compatible shaped operands.</li>
+                <li><code>x</code> is the contextual operator for canonical matrix multiplication.</li>
+                <li>Vector algebra provides explicit <code>Dot</code>, <code>Outer</code>, <code>Magnitude</code>, <code>Normalize</code> and <code>Cross</code> semantics.</li>
+                <li>General tensor contraction is explicit through <code>Contract</code> and ordered axis lists.</li>
+                <li>Shaped iteration follows logical axis order, not accidental physical address order.</li>
+                <li>The compiler never performs an implicit storage transfer merely to make an operation legal.</li>
+                <li>Provably invalid shaped operations are compile-time errors.</li>
+                <li>Runtime-dependent shape validity uses checked operations and <code>ShapeError</code>.</li>
+                <li>Storage-producing failures use <code>StorageError</code>.</li>
+                <li>Shaped types do not require or assume a hidden global heap.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="45-collections.html">Previous: Collections</a>
+            <a href="47-lambdas-closures.html">Next: Lambdas and Closures</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-12</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

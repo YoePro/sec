@@ -158,6 +158,7 @@ integrations:
       - parser normalization to += 1 and -= 1 assignment AST nodes while retaining the original source token
       - same-line, complete-statement enforcement and focused rejection of expression-position aliases
       - existing compound-assignment mutability, typing, contract, ownership, and overflow checks without a parallel semantic path
+    verification_notes:
       - parser-confirmed canonical formatter normalization that preserves invalid expression uses
       - LSP semantic operator tokens and TextMate operator recognition
       - no dedicated Semantic IR or lowering operation; canonical compound assignment remains the downstream representation
@@ -166,3 +167,78 @@ integrations:
         result: passed
       - command: go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
         result: passed
+
+  - id: frontend.grammar-conformance
+    area: frontend-parser-ast-sema-and-recovery
+    status: partial
+    audited: "2026-08-19"
+    document_revision: inferred 1.x / pre-v2 consolidated grammar; no explicit revision metadata
+    document_baseline:
+      review_date: "2026-08-01"
+      note: >-
+        grammar.md has later point synchronizations, so its current text mixes
+        the older reviewed implementation-status snapshot with newer normative
+        decisions. Later specialized rulebooks take precedence on conflicts.
+    repository_baseline: c515862
+    summary: >-
+      Tracks cross-cutting grammar conformance and legacy compatibility/recovery
+      forms that are still accepted by the parser but are not canonical under
+      later Sec 0.1 rulebooks. Feature-specific semantic and lowering status
+      remains owned by the corresponding governance entries.
+    rules:
+      - rules/foundations/grammar.md
+      - rules/foundations/lexical_structure.md
+      - rules/projects/modules.md
+      - rules/declarations/struct.md
+      - rules/types/contracts.md
+      - rules/collections/collections.md
+    code:
+      - internal/parser/parser.go
+      - internal/ast/ast.go
+      - internal/sema/analyzer.go
+      - internal/formatter
+    tests:
+      - internal/parser/parser_test.go
+    implemented:
+      - canonical postfix fixed-array and owning-dynamic-array type syntax
+      - rejection of dotted source module declarations according to modules.md revision 1, superseding stale grammar implementation-status text
+      - standalone 'struct Name { ... }' parsing as legacy compatibility syntax
+      - prefix '[N]Type' and '[]Type' sequence-type parsing as legacy compatibility syntax
+      - '''type Name = ExistingType'' and compact ''='' variant parsing as legacy compatibility syntax'
+      - inline field-contract parsing remains available as a legacy parser path
+      - substantial parser unit coverage exists for canonical declarations, expressions, control flow, types, recovery, and several legacy forms
+    partial:
+      - compatibility syntax is not handled through one uniform migration/recovery policy
+      - prefix sequence syntax is accepted, while canonical collections.md revision 1 defines postfix T[N] and T[] syntax
+      - standalone struct syntax is accepted, while struct.md revision 2.0 defines 'type Name struct' as the canonical declaration
+      - inline field and variable contract syntax is still accepted even though the canonical contracts rulebook restricts contracts to named types
+      - the continuing language role of compact '=' type/variant syntax is unresolved by a dedicated modern rulebook
+      - grammar.md still contains a 2026-08-01 implementation-status snapshot that is partly stale relative to later rulebooks and current governance
+    remaining:
+      - migrate the remaining grammar implementation-status material into implementation-status.yaml
+      - reconcile or remove stale grammar status statements that conflict with later rulebooks, including the old dotted-module claim
+      - reconcile stale 'require' contextual-identifier text with the later lexical_structure.md rule that reserves require globally
+      - define and enforce one policy for legacy compatibility forms: reject, emit a focused migration diagnostic, or formatter-normalize where the owning rule explicitly permits normalization
+      - remove or focused-diagnose obsolete inline field and variable contracts according to contracts.md
+      - normalize or focused-diagnose prefix sequence types rather than silently treating them as ordinary canonical source
+      - provide focused migration treatment for standalone struct declarations if they remain parser recovery syntax
+      - resolve the future of 'type Name = ExistingType' and compact '=' variants against the modern named-type, enum, and union rulebooks
+      - create the canonical grammar fixture suite required by grammar.md
+      - keep parser recovery tests distinct from accepted canonical-language tests so compatibility syntax cannot silently become canonical
+    required_fixtures:
+      - grammar_valid.sec
+      - grammar_invalid.sec
+      - grammar_declarations_valid.sec
+      - grammar_declarations_invalid.sec
+      - grammar_types_valid.sec
+      - grammar_types_invalid.sec
+      - grammar_statements_valid.sec
+      - grammar_statements_invalid.sec
+      - grammar_expressions_valid.sec
+      - grammar_expressions_invalid.sec
+      - grammar_contextual_valid.sec
+      - grammar_contextual_invalid.sec
+      - grammar_recovery.sec
+    verification_notes:
+      - grammar.md explicitly requires the fixture suite above; representative grammar_valid.sec, grammar_invalid.sec, and grammar_recovery.sec are not present under testdata/ at the audited repository baseline.
+      - parser_test.go still contains positive tests for standalone struct, compact '=' variants, and inline struct-field contracts, confirming that these legacy paths remain accepted rather than merely recognized for an error diagnostic.

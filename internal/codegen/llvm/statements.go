@@ -1085,6 +1085,12 @@ func (g *Generator) emitExpressionTypeOnly(expr ast.Expression) (string, error) 
 		return "i32", nil
 	case *ast.BooleanLiteral:
 		return "i1", nil
+	case *ast.CharLiteral:
+		value, err := emitCharacterLiteral(expr)
+		if err != nil {
+			return "", err
+		}
+		return value.typ, nil
 	case *ast.StringLiteral:
 		return "string", nil
 	case *ast.MemberExpression:

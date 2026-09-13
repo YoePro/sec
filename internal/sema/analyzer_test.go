@@ -34,6 +34,61 @@ let e: uuid := 1
 	assertSemaErrors(t, errors, expected)
 }
 
+// Interpolation expressions use ordinary semantic analysis rather than being
+// hidden inside the enclosing string token.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+//   - rules/tooling/lsp.md — "Incomplete-source handling"
+func TestInterpolatedStringExpressionsReceiveSemanticAnalysis(t *testing.T) {
+	source := `module main
+
+fn Render(value: int) string {
+	return $"value={value + 1}; missing={missing}"
+}
+`
+	program := parser.New(lexer.New(source)).ParseProgram()
+	function := program.Statements[1].(*ast.FunctionDeclaration)
+	literal := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InterpolatedStringLiteral)
+	sum := literal.Parts[1].Expression.(*ast.InfixExpression)
+	value := sum.Left.(*ast.Identifier)
+	missing := literal.Parts[3].Expression.(*ast.Identifier)
+
+	analyzer := NewAnalyzer()
+	errors := analyzer.Analyze(program)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "undefined variable missing") {
+		t.Fatalf("interpolation diagnostics = %v", errors)
+	}
+	if typ, ok := analyzer.expressionTypes[sum]; !ok || typ.Kind != IntType {
+		t.Fatalf("interpolation sum type = %+v, recorded=%v", typ, ok)
+	}
+	definitions := analyzer.DefinitionsAt(value.Token.File, value.Token.Line, value.Token.Column)
+	if len(definitions) != 1 || definitions[0].Lexeme != "value" {
+		t.Fatalf("interpolation value definitions = %+v", definitions)
+	}
+	if _, ok := analyzer.expressionTypes[missing]; !ok {
+		t.Fatal("invalid interpolation expression was not traversed")
+	}
+}
+
+func TestInterpolatedStringExpressionChecksMovedValues(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+@noCopy
+type Session struct { id: int, }
+
+fn Render() string {
+	let session := Session { id: 1 }
+	let moved :<- session
+	discard moved
+	return $"session={session}"
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "use of moved value session") {
+		t.Fatalf("interpolation ownership errors = %v", errors)
+	}
+}
+
 func TestLifecycleInitAndNewSemantics(t *testing.T) {
 	errors := analyzeSource(t, `
 module main
@@ -823,17 +878,17 @@ func TestScientificExponentLiteralInference(t *testing.T) {
 let exact := 1.25e-3
 let exactUpper := .5E+4
 let floating := 1e3g
-let decimal := 1e3m
+let exactDecimal := 1e3m
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
 	expected := map[string]string{
-		"exact":      "decimal",
-		"exactUpper": "decimal",
-		"floating":   "float",
-		"decimal":    "decimal",
+		"exact":        "decimal",
+		"exactUpper":   "decimal",
+		"floating":     "float",
+		"exactDecimal": "decimal",
 	}
 	for name, want := range expected {
 		if got := analyzer.symbols[name].Type.Name; got != want {
@@ -2710,7 +2765,7 @@ impl Speed {
  Kind: speed
  Scale: 1
 }
-fn Derive(distance: m, duration: s) decimal<m/s> { return distance / duration }
+fn Derive(distance: m, elapsed: s) decimal<m/s> { return distance / elapsed }
 `
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
@@ -3206,6 +3261,24 @@ fn AcceptRune(value: rune) bool {
 
 fn Test() bool {
 	return AcceptRune('A')
+}
+`
+
+	assertSemaErrors(t, analyzeSource(t, input), nil)
+}
+
+func TestEscapedCharacterLiteralShapesToRune(t *testing.T) {
+	input := `
+module main
+
+let omega: rune := '\u{03A9}'
+
+fn AcceptRune(value: rune) bool {
+	return value == '\u{03A9}'
+}
+
+fn Test() bool {
+	return AcceptRune('\u{03A9}')
 }
 `
 
@@ -8436,8 +8509,8 @@ func TestDiscardRejectsUnresolvedTaskHandle(t *testing.T) {
 	input := `
 module main
 
-fn Test(task: Task[int]) void {
-	discard task
+fn Test(work: Task[int]) void {
+	discard work
 }
 `
 
@@ -9745,7 +9818,7 @@ type Message struct {
 	value: int,
 }
 
-fn Use(task: Task[int]) void {
+fn Use(work: Task[int]) void {
 	let channel := Channel[Message](1)
 	let tx := channel.tx
 	let rx := channel.rx
@@ -9757,7 +9830,7 @@ fn Use(task: Task[int]) void {
 		}
 		tx.Send(outbound) => {
 		}
-		result := await task => {
+		result := await work => {
 			discard result
 		}
 		after 10 => {
@@ -9868,12 +9941,12 @@ func TestSelectRejectsDuplicateTaskBranch(t *testing.T) {
 	input := `
 module main
 
-fn Use(task: Task[int]) void {
+fn Use(work: Task[int]) void {
 	select {
-		first := await task => {
+		first := await work => {
 			discard first
 		}
-		second := await task => {
+		second := await work => {
 			discard second
 		}
 	}
@@ -9882,7 +9955,7 @@ fn Use(task: Task[int]) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"task task is used by more than one branch in the same select at 9:3, previous declaration at 6:3",
+		"task work is used by more than one branch in the same select at 9:3, previous declaration at 6:3",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -11740,8 +11813,8 @@ func TestOrderedComparisonsRequireOrderableCompatibleOperands(t *testing.T) {
 	valid := `
 module main
 
-fn Test(number: int, decimal: float64, character: char, codepoint: rune, text: string) void {
-	let numeric := number < decimal
+fn Test(number: int, fraction: float64, character: char, codepoint: rune, text: string) void {
+	let numeric := number < fraction
 	let characters := character <= 'z'
 	let codepoints := codepoint > 'a'
 	let strings := text >= "prefix"
@@ -11938,13 +12011,13 @@ fn Test(
 	rightSlice: ref int[],
 	view: SliceView,
 	choice: MaybeSlice,
-	task: Task[int],
+	work: Task[int],
 ) void {
 	let differentStructs := point == other
 	let slices := leftSlice == rightSlice
 	let structWithSlice := view == view
 	let unionWithSlice := choice != choice
-	let opaqueResource := task == task
+	let opaqueResource := work == work
 }
 `
 	errors := analyzeSourceRaw(t, invalid)

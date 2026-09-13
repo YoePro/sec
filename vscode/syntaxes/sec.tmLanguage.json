@@ -21,20 +21,38 @@
     "comments": {
       "patterns": [
         {
+          "name": "comment.block.documentation.sec",
+          "begin": "/\\*\\*",
+          "end": "\\*/",
+          "patterns": [
+            { "include": "#block-comment" }
+          ]
+        },
+        {
           "name": "comment.line.double-slash.sec",
           "begin": "//",
           "end": "$"
         },
-        {
-          "name": "comment.block.sec",
-          "begin": "/\\*",
-          "end": "\\*/"
-        }
+        { "include": "#block-comment" }
+      ]
+    },
+
+    "block-comment": {
+      "name": "comment.block.sec",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "patterns": [
+        { "include": "#block-comment" }
       ]
     },
 
     "strings": {
       "patterns": [
+        {
+          "name": "string.quoted.raw.sec",
+          "begin": "`",
+          "end": "`"
+        },
         {
           "name": "string.quoted.double.sec",
           "begin": "\"",
@@ -420,7 +438,11 @@
         },
         {
           "name": "variable.language.self.sec",
-          "match": "\\b(?:self|task)\\b"
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "keyword.other.discard.sec",
+          "match": "(?<![A-Za-z0-9_])_(?![A-Za-z0-9_])"
         },
         {
           "name": "keyword.other.implements.sec",
@@ -469,7 +491,7 @@
         },
         {
           "name": "support.type.sec",
-          "match": "\\b(?:Result|Option|Vec|Map|Set|list|map|vector|matrix|tensor|tensor_view|Shape|Strides|TensorLayout|MemorySpace|Box|Any|RawPtr)\\b|\\bset(?=\\s*\\[)"
+          "match": "\\b(?:Result|Option|Vec|Map|Set|Shape|Strides|TensorLayout|MemorySpace|Box|Any|RawPtr)\\b|\\b(?:list|map|set|vector|matrix|tensor|tensor_view)(?=\\s*\\[)"
         },
         {
           "name": "support.type.concurrency.sec",

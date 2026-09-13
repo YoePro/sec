@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tasks - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#tasks">Tasks</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#logical-unit">Logical Execution Unit</a>
+        <a href="#task-type">Task[T]</a>
+        <a href="#return-type">Complete Return Type</a>
+        <a href="#creation">Task Creation</a>
+        <a href="#spawn-error">TaskSpawnError</a>
+        <a href="#ownership">Handle Ownership</a>
+        <a href="#lifecycle">Lifecycle Responsibility</a>
+        <a href="#parent-child">Parent and Child Tasks</a>
+        <a href="#current-task">Current Task Context</a>
+        <a href="#states">Lifecycle States</a>
+        <a href="#outcome">TaskOutcome[T]</a>
+        <a href="#completed">Completed(T)</a>
+        <a href="#cancelled">Cancelled</a>
+        <a href="#panicked">Panicked(PanicInfo)</a>
+        <a href="#failed">Failed(TaskError)</a>
+        <a href="#await">Await</a>
+        <a href="#join">Join</a>
+        <a href="#surface">Identity, Status and Value</a>
+        <a href="#cancellation">Cancellation Requests</a>
+        <a href="#observers">Task Observers</a>
+        <a href="#detach">Detach</a>
+        <a href="#arguments">Arguments and Ownership Transfer</a>
+        <a href="#captures">Task Captures and Closures</a>
+        <a href="#scheduling">Scheduling and Migration</a>
+        <a href="#memory-visibility">Memory Visibility</a>
+        <a href="#resources">Task Resource Analysis</a>
+        <a href="#targets">Target and Runtime Independence</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html" class="active">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Tasks</div>
+
+        <h1 id="tasks">Tasks</h1>
+
+        <p>
+            A Sec task is a language-level concurrent execution unit. Also known as a green thread. Tasks are intended for work
+            that may execute independently, suspend, migrate between workers and complete later,
+            while still participating in Sec's ownership, cancellation, cleanup and static-analysis
+            rules.
+        </p>
+
+        <p>
+            Tasks are represented by the compiler-known generic type <code>Task[T]</code>. The type
+            parameter <code>T</code> is the complete declared return type of the task function. A task
+            returning <code>Result[Image, IOError]</code> is therefore represented as
+            <code>Task[Result[Image, IOError]]</code>; the Result is not flattened into task failure.
+        </p>
+
+        <pre><code>fn Calculate() int {
+    return 42
+}
+
+let worker := try spawn Calculate()</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A task handle represents both one logical task identity and
+            ownership of its lifecycle responsibility. <code>Task[T]</code> is move-only and must not
+            silently leave scope unresolved.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Tasks provide a portable source-level model for concurrent work without fixing one
+                universal runtime implementation. The same Sec task semantics may be implemented by
+                a cooperative executor, worker pool, fibers, native threads, an RTOS task facility,
+                an event loop, statically allocated task slots or another target-specific mechanism.
+            </p>
+
+            <p>
+                Those implementation choices must not change the language-visible types or lifecycle
+                rules. In particular:
+            </p>
+
+            <ul>
+                <li>task creation is fallible;</li>
+                <li>successful creation produces an owning <code>Task[T]</code> handle;</li>
+                <li>the task handle is move-only;</li>
+                <li>terminal execution is represented by <code>TaskOutcome[T]</code>;</li>
+                <li>cancellation, panic and task-runtime failure remain distinct;</li>
+                <li>the task function's own return value remains exactly <code>T</code>.</li>
+            </ul>
+        </section>
+
+        <section id="logical-unit">
+            <h2>Logical Execution Unit</h2>
+
+            <p>
+                A task is not defined as an operating-system thread, process, fiber, coroutine frame,
+                worker-pool job or event-loop callback. Those are possible implementation mechanisms,
+                not source-level task identity.
+            </p>
+
+            <p>
+                This distinction matters because a task may move between physical workers. Its
+                identity, cancellation state, owned values and current-task context belong to the
+                logical task and must follow it across any migration permitted by the scheduler.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Do not infer task identity or task-local state from the physical
+                thread currently executing the task.
+            </div>
+        </section>
+
+        <section id="task-type">
+            <h2>Task[T]</h2>
+
+            <p>
+                <code>Task[T]</code> is the compiler-known generic owning handle for a task whose
+                body returns <code>T</code>.
+            </p>
+
+            <pre><code>fn Calculate() int {
+    return 42
+}
+
+let worker := try spawn Calculate()
+// worker: Task[int]</code></pre>
+
+            <p>
+                The physical representation of a task handle is target- and runtime-specific. It may
+                internally contain an index, pointer, runtime handle or another representation. None
+                of those details may alter the source-level ownership or completion model.
+            </p>
+        </section>
+
+        <section id="return-type">
+            <h2>Complete Return Type</h2>
+
+            <p>
+                The task type preserves the complete return type of the callable. This is especially
+                important when the callable itself returns <code>Result</code>.
+            </p>
+
+            <pre><code>fn LoadImage() Result[Image, IOError] {
+    // ...
+}
+
+let worker := try spawn LoadImage()
+// worker: Task[Result[Image, IOError]]</code></pre>
+
+            <p>
+                The following types are not equivalent:
+            </p>
+
+            <pre><code>Task[Result[Image, IOError]]
+Result[Task[Image], IOError]</code></pre>
+
+            <p>
+                The first means that the task was created successfully and its function later returns
+                a <code>Result[Image, IOError]</code>. The second would mean that creation itself
+                returned an application <code>IOError</code>, which is not the task model.
+            </p>
+        </section>
+
+        <section id="creation">
+            <h2>Task Creation</h2>
+
+            <p>
+                Task creation is fallible. Both the explicit task form and the promoted default task
+                form have the same raw type:
+            </p>
+
+            <pre><code>spawn task Work()
+spawn Work()</code></pre>
+
+            <p>When <code>Work()</code> returns <code>T</code>, each expression has type:</p>
+
+            <pre><code>Result[Task[T], TaskSpawnError]</code></pre>
+
+            <p>
+                Normal Sec error handling is used to unwrap or handle creation failure:
+            </p>
+
+            <pre><code>let worker := try spawn Work()</code></pre>
+
+            <p>
+                A creation failure happens before a task exists. It must therefore never be reported
+                as <code>TaskOutcome[T]</code> and must not produce a fake task handle.
+            </p>
+
+            <p>
+                If the selected target has no task capability at all, compilation or target
+                validation rejects the program. Lack of target support is not represented as an
+                ordinary runtime <code>TaskSpawnError</code>.
+            </p>
+        </section>
+
+        <section id="spawn-error">
+            <h2>TaskSpawnError</h2>
+
+            <p>
+                <code>TaskSpawnError</code> describes failures that prevent a task from being created.
+                Its canonical variants are:
+            </p>
+
+            <pre><code>enum TaskSpawnError error {
+    OutOfMemory
+    ResourceLimit
+    ExecutorUnavailable
+    InvalidConfiguration
+    NativeFailure
+}</code></pre>
+
+            <ul>
+                <li><code>OutOfMemory</code> — required creation memory could not be obtained.</li>
+                <li><code>ResourceLimit</code> — a task, worker, slot or comparable runtime limit was exhausted.</li>
+                <li><code>ExecutorUnavailable</code> — the configured task executor cannot accept the task.</li>
+                <li><code>InvalidConfiguration</code> — the requested runtime configuration cannot be instantiated.</li>
+                <li><code>NativeFailure</code> — a lower-level creation failure has no more specific task-spawn variant.</li>
+            </ul>
+
+            <p>
+                Once task creation succeeds, later task-execution failure belongs to
+                <code>TaskError</code>, not <code>TaskSpawnError</code>.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Handle Ownership</h2>
+
+            <p>
+                <code>Task[T]</code> is move-only for every <code>T</code>. Even when <code>T</code>
+                itself is trivially copyable, copying the task handle would duplicate lifecycle
+                responsibility and is therefore invalid.
+            </p>
+
+            <p>
+                Moving a task handle transfers responsibility for the same task. It does not create,
+                duplicate, restart or reschedule the task.
+            </p>
+
+            <pre><code>let worker := try spawn Calculate()
+
+// Moving the handle transfers lifecycle ownership.
+// The original binding becomes unavailable.</code></pre>
+
+            <p>
+                The ordinary ownership rules determine where an explicit move marker is required for
+                reusable move-only sources. Fresh values may transfer directly where the ownership
+                rules permit fresh-value transfer.
+            </p>
+        </section>
+
+        <section id="lifecycle">
+            <h2>Lifecycle Responsibility</h2>
+
+            <p>
+                An owning task handle carries a lifecycle obligation. A local owning
+                <code>Task[T]</code> must not simply reach scope exit unresolved.
+            </p>
+
+            <p>The lifecycle obligation may be resolved by:</p>
+
+            <ul>
+                <li><code>await</code>;</li>
+                <li><code>join</code>;</li>
+                <li><code>detach</code>;</li>
+                <li>moving the owning task handle to another owner.</li>
+            </ul>
+
+            <p>
+                Moving the handle transfers the obligation. Observing status does not resolve it.
+                Requesting cancellation does not resolve it either; cancellation is only a request
+                until the task actually reaches a terminal state or another lifecycle action resolves
+                the handle.
+            </p>
+
+            <p>
+                Lifecycle checking is path-sensitive. Resolving a handle on one branch is not enough
+                when another reachable branch leaves it unresolved.
+            </p>
+        </section>
+
+        <section id="parent-child">
+            <h2>Parent and Child Tasks</h2>
+
+            <p>
+                A task created by another task may participate in a logical parent-child relationship
+                under the structured-concurrency rules. That relationship is not based on physical
+                thread identity.
+            </p>
+
+            <p>
+                A child may execute on another worker or migrate later. Structured lifetime rules,
+                child-completion requirements and propagation policies are defined by the structured
+                concurrency model rather than by worker placement.
+            </p>
+        </section>
+
+        <section id="current-task">
+            <h2>Current Task Context</h2>
+
+            <p>
+                Code executing inside a logical task has a current task context. The source-visible
+                observation surface is:
+            </p>
+
+            <pre><code>type TaskContext
+
+impl Task {
+    static fn Current() TaskContext
+}
+
+impl TaskContext {
+    CancelRequested bool
+}</code></pre>
+
+            <p>
+                <code>TaskContext</code> is immutable and non-owning. It does not contain lifecycle
+                authority and cannot consume or await the current task. Its cancellation observation
+                follows the logical task across permitted worker migration.
+            </p>
+
+            <p>
+                Code that is not executing as a task does not gain a fictitious task context merely
+                because it runs on a physical thread that also happens to execute tasks.
+            </p>
+        </section>
+
+        <section id="states">
+            <h2>Lifecycle States</h2>
+
+            <p>
+                A runtime may internally distinguish states such as queued, ready, scheduled,
+                suspended or running. Those internal scheduler states are not the portable terminal
+                outcome model.
+            </p>
+
+            <p>At the language level, an already-created task terminates in exactly one category:</p>
+
+            <ul>
+                <li>completed normally;</li>
+                <li>cancelled;</li>
+                <li>panicked;</li>
+                <li>failed at the task-execution level.</li>
+            </ul>
+
+            <p>After a task becomes terminal, it must never resume execution.</p>
+        </section>
+
+        <section id="outcome">
+            <h2>TaskOutcome[T]</h2>
+
+            <p>
+                <code>TaskOutcome[T]</code> is the canonical value describing how an already-created
+                task terminated.
+            </p>
+
+            <pre><code>type TaskOutcome[T] union {
+    Completed(T)
+    Cancelled
+    Panicked(PanicInfo)
+    Failed(TaskError)
+}</code></pre>
+
+            <p>
+                This is deliberately not <code>Result[T, TaskError]</code>. Cancellation and panic are
+                not ordinary task-runtime errors, and a normal function-level <code>Err(E)</code> is
+                still part of normal completion when <code>T</code> itself is a <code>Result</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>TaskOutcome[T]</code> must never be silently flattened to
+                <code>T</code>, even when the compiler can prove that one particular task completes
+                normally.
+            </div>
+        </section>
+
+        <section id="completed">
+            <h2>Completed(T)</h2>
+
+            <p>
+                <code>Completed(value)</code> means that the task function reached normal Sec
+                completion and produced its declared return value. The runtime does not reinterpret
+                that value.
+            </p>
+
+            <pre><code>fn LoadImage() Result[Image, IOError] {
+    // ...
+}
+
+let worker := try spawn LoadImage()
+let outcome := await worker
+
+// outcome: TaskOutcome[Result[Image, IOError]]</code></pre>
+
+            <p>
+                A normal application-level error returned by the task is therefore represented as:
+            </p>
+
+            <pre><code>Completed(Err(IOError.InvalidValue))</code></pre>
+
+            <p>It is not represented as:</p>
+
+            <pre><code>Failed(...)</code></pre>
+
+            <p>
+                When <code>T</code> is move-only, the active <code>Completed</code> payload owns that
+                value until ordinary union and ownership rules transfer it elsewhere.
+            </p>
+        </section>
+
+        <section id="cancelled">
+            <h2>Cancelled</h2>
+
+            <p>
+                <code>Cancelled</code> means that the task terminated through Sec's cooperative
+                cancellation mechanism. It carries no fabricated <code>T</code> value.
+            </p>
+
+            <p>
+                Requesting cancellation and observing <code>Cancelled</code> are different events. A
+                cancellation request does not guarantee immediate termination, and a task that never
+                observes the request may still return normally as <code>Completed(T)</code>.
+            </p>
+        </section>
+
+        <section id="panicked">
+            <h2>Panicked(PanicInfo)</h2>
+
+            <p>
+                <code>Panicked(info)</code> means that a panic escaped the task execution boundary and
+                the selected target/runtime panic policy permits that panic to be represented as a
+                recoverable task outcome.
+            </p>
+
+            <p>
+                Panic remains distinct from cancellation, from a returned application error and from
+                task-runtime execution failure. Targets with a hard-abort panic strategy follow the
+                panic and target-profile rules; task semantics do not weaken such a policy.
+            </p>
+        </section>
+
+        <section id="failed">
+            <h2>Failed(TaskError)</h2>
+
+            <p>
+                <code>Failed(error)</code> means that task creation succeeded, a real task existed,
+                and the task later failed at the execution or runtime mechanism level.
+            </p>
+
+            <p>
+                <code>TaskError</code> is intentionally separate from both
+                <code>TaskSpawnError</code> and any application error type returned inside <code>T</code>.
+                Its complete future variant inventory is not frozen by the task rulebook; code and
+                tooling must not invent variants merely to fill a gap.
+            </p>
+        </section>
+
+        <section id="await">
+            <h2>Await</h2>
+
+            <p>
+                Awaiting an owning <code>Task[T]</code> uses:
+            </p>
+
+            <pre><code>let outcome := await worker</code></pre>
+
+            <p>The static result type is always:</p>
+
+            <pre><code>TaskOutcome[T]</code></pre>
+
+            <p>
+                Await consumes the owning task handle, resolves its lifecycle obligation and transfers
+                any terminal payload ownership into the resulting <code>TaskOutcome[T]</code>. It may
+                physically suspend a logical task, park a worker, block a native thread or use another
+                target-specific mechanism, but the Sec result type does not change.
+            </p>
+
+            <pre><code>match outcome {
+    Completed(Ok(image)) => Use(image)
+    Completed(Err(error)) => HandleIO(error)
+    Cancelled => HandleCancellation()
+    Panicked(info) => HandlePanic(info)
+    Failed(error) => HandleTaskFailure(error)
+}</code></pre>
+
+            <p>
+                Chapter 57 covers general <code>await</code> syntax and awaitable expressions in more
+                detail.
+            </p>
+        </section>
+
+        <section id="join">
+            <h2>Join</h2>
+
+            <p>
+                Joining synchronizes with task completion while preserving the owning task handle for
+                terminal inspection.
+            </p>
+
+            <pre><code>join worker</code></pre>
+
+            <p>
+                After a successful join, the task is terminal. The handle remains available for
+                permitted terminal inspection, but the same lifecycle capability may not be joined
+                repeatedly as though each join created a new completion event.
+            </p>
+
+            <p>
+                Await and join therefore serve different ownership purposes: await consumes the
+                handle and returns <code>TaskOutcome[T]</code>, while join preserves a terminal handle.
+                Both establish the completion synchronization required for visibility of task-produced
+                memory effects.
+            </p>
+        </section>
+
+        <section id="surface">
+            <h2>Identity, Status and Value</h2>
+
+            <p>
+                Task identity uses a task-specific identity type such as <code>TaskID</code>. It is
+                distinct from thread and process identities.
+            </p>
+
+            <p>
+                Concurrency handles may intentionally share familiar member names such as
+                <code>id</code>, <code>name</code>, <code>status</code>, <code>value</code>,
+                <code>Observe()</code> and <code>platform</code>. Shared names do not make tasks,
+                threads and processes semantically identical.
+            </p>
+
+            <p>
+                A task's status is a snapshot. Reading it does not consume the task, transfer the
+                completion payload or by itself establish the synchronization guarantees of await or
+                join. A <code>value</code> exists only for normal completion.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation Requests</h2>
+
+            <p>
+                The owning task handle may request cooperative cancellation:
+            </p>
+
+            <pre><code>impl Task[T] {
+    fn RequestCancel() void
+}</code></pre>
+
+            <p>
+                Requesting cancellation does not consume the handle. Repeated requests are
+                idempotent unless a more specialized cancellation API explicitly defines other
+                behavior.
+            </p>
+
+            <p>
+                The task may continue until it reaches a cancellation observation point. Detailed
+                cancellation semantics, propagation, shielding and cancellation checkpoints are
+                covered in chapter 59.
+            </p>
+        </section>
+
+        <section id="observers">
+            <h2>Task Observers</h2>
+
+            <p>
+                A task may expose a non-owning observation capability through <code>Observe()</code>.
+                The observer is conceptually a <code>TaskObserver[T]</code> or compiler-equivalent
+                non-owning type; it must not become a second lifecycle owner.
+            </p>
+
+            <p>An observer may inspect permitted metadata and may participate in observation-oriented
+               operations where their owning rules allow it. It must not:</p>
+
+            <ul>
+                <li>await and consume the task result as owner;</li>
+                <li>join as the owning lifecycle capability;</li>
+                <li>detach the task;</li>
+                <li>take a move-only completion value;</li>
+                <li>perform other owner-only lifecycle operations without an explicit rule granting them.</li>
+            </ul>
+
+            <p>Destroying an observer does not affect task execution.</p>
+        </section>
+
+        <section id="detach">
+            <h2>Detach</h2>
+
+            <p>
+                Detach explicitly transfers a task out of the current structured lifecycle
+                obligation. It consumes the owning task handle.
+            </p>
+
+            <p>For a task whose result requires no explicit disposal:</p>
+
+            <pre><code>detach worker</code></pre>
+
+            <p>
+                A value-returning task requires explicit intent when its eventual result and terminal
+                outcome will no longer be observed:
+            </p>
+
+            <pre><code>detach worker discard</code></pre>
+
+            <p>
+                Detach is only possible after task creation succeeded. It does not discard a
+                <code>TaskSpawnError</code> retroactively. A detached task must also be independent of
+                borrows whose source lifetime may end before the detached task finishes.
+            </p>
+        </section>
+
+        <section id="arguments">
+            <h2>Arguments and Ownership Transfer</h2>
+
+            <p>
+                Values crossing a task boundary obey ordinary ownership plus the stricter
+                transferability rules for concurrent execution.
+            </p>
+
+            <pre><code>let resource := OpenResource()
+let worker := try spawn Use(&lt;-resource)</code></pre>
+
+            <p>
+                After committed transfer, the original move-only source is unavailable. Sec never
+                silently clones a move-only resource merely because another task needs it.
+            </p>
+
+            <p>
+                Copyable values may cross by copy where ordinary parameter rules and transferability
+                permit it. References crossing a task boundary require proof that lifetime,
+                mutability, aliasing, address stability and migration constraints remain valid.
+            </p>
+        </section>
+
+        <section id="captures">
+            <h2>Task Captures and Closures</h2>
+
+            <p>
+                A spawned lambda or closure crosses a task execution boundary. Its captures therefore
+                obey both closure-capture rules and task transferability rules.
+            </p>
+
+            <p>
+                Ownership capture of a move-only value makes the source unavailable after transfer
+                commits. Borrowed captures require the same lifetime and alias proofs as explicit
+                reference arguments. A runtime must never make an invalid borrow safe by simply
+                copying the reference into a task object that lives longer.
+            </p>
+
+            <p>
+                Detached closures require captures that remain valid independently of the source
+                scope from which the task was detached.
+            </p>
+        </section>
+
+        <section id="scheduling">
+            <h2>Scheduling and Migration</h2>
+
+            <p>
+                Successful creation makes the logical task eligible for execution according to the
+                selected scheduler and target profile. A task is not permanently tied to the first
+                worker that runs it unless the active runtime model explicitly imposes that
+                restriction.
+            </p>
+
+            <p>
+                Migration must preserve task identity, cancellation state, owned values and all
+                language-visible task state. Backend-private scheduler states must not leak into
+                portable Sec semantics merely because one runtime happens to expose them.
+            </p>
+        </section>
+
+        <section id="memory-visibility">
+            <h2>Memory Visibility</h2>
+
+            <p>
+                Task creation, execution, await, join, cancellation and terminal publication obey the
+                Sec concurrency memory model. Ownership transfer alone does not authorize a data race.
+            </p>
+
+            <p>
+                Completion synchronization through await or join must make task-produced memory
+                effects visible according to the concurrency memory model. A runtime may not publish
+                terminal completion before the memory effects guaranteed by that completion edge are
+                visible to the observer.
+            </p>
+        </section>
+
+        <section id="resources">
+            <h2>Task Resource Analysis</h2>
+
+            <p>
+                Recursive or dynamically repeated task creation is allowed only when the selected
+                target and profile can support the resulting resource behavior.
+            </p>
+
+            <p>
+                An embedded or statically provisioned target may require the compiler to prove a
+                finite upper bound for task creation. A hosted target may instead permit runtime
+                growth and report exhaustion through <code>TaskSpawnError.ResourceLimit</code>.
+            </p>
+
+            <p>
+                Compile-time rejection of an unsupported resource model and runtime task creation
+                failure are intentionally different mechanisms.
+            </p>
+        </section>
+
+        <section id="targets">
+            <h2>Target and Runtime Independence</h2>
+
+            <p>
+                Sec does not require one mandatory general-purpose task runtime. The active
+                <code>CompilationPlan</code> selects the task capability, runtime model, resource
+                policy and lowering strategy appropriate for the target.
+            </p>
+
+            <p>
+                A target without dynamic allocation may use static task slots or another compatible
+                strategy. If no implementation can satisfy the required semantics, the configuration
+                is rejected instead of silently changing the language model.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Backend implementation may change representation and scheduling
+                strategy, but never the source types <code>Task[T]</code>,
+                <code>Result[Task[T], TaskSpawnError]</code> or <code>TaskOutcome[T]</code>.
+            </div>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Task diagnostics should preserve the semantic layer that failed. Useful diagnostics distinguish:</p>
+
+            <ul>
+                <li>task creation failure from failure of an already-created task;</li>
+                <li>unresolved lifecycle ownership at scope exit;</li>
+                <li>attempted copying of the move-only task handle;</li>
+                <li>use after task-handle move;</li>
+                <li>invalid detach without explicit discard intent;</li>
+                <li>invalid cross-task references and the exact lifetime or transferability reason;</li>
+                <li>target capability absence from a runtime <code>TaskSpawnError</code>;</li>
+                <li><code>Completed(Err(E))</code> from <code>Failed(TaskError)</code>.</li>
+            </ul>
+
+            <p>
+                Tooling should never describe a task that normally returned <code>Err(E)</code> as a
+                task-runtime failure.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The revision-2 task model is normative, while compiler implementation is currently
+                <strong>partial</strong>.
+            </p>
+
+            <p>Implemented frontend work includes:</p>
+
+            <ul>
+                <li>compiler-known <code>Task[T]</code>;</li>
+                <li>move-only task-handle treatment;</li>
+                <li>lifecycle checking on currently supported control-flow paths;</li>
+                <li>detach syntax and explicit discard forms;</li>
+                <li>spawned callable and lambda task forms;</li>
+                <li>partial current-task-context analysis;</li>
+                <li>compiler-known identities for <code>TaskOutcome[T]</code>, <code>TaskSpawnError</code>, <code>TaskError</code> and <code>PanicInfo</code>;</li>
+                <li><code>await Task[T]</code> consuming the handle and typing as <code>TaskOutcome[T]</code>;</li>
+                <li>preservation of nested <code>TaskOutcome[Result[V, E]]</code>;</li>
+                <li>LSP hover using the same semantic await type as the compiler.</li>
+            </ul>
+
+            <p>
+                The largest known frontend mismatch is task creation typing: some existing spawn paths
+                still use the older direct <code>Task[T]</code> model instead of the normative raw
+                <code>Result[Task[T], TaskSpawnError]</code> type.
+            </p>
+
+            <p>Major remaining areas include:</p>
+
+            <ul>
+                <li>converging every spawn form on the revision-2 fallible creation type;</li>
+                <li>runtime production of all four terminal outcome categories;</li>
+                <li>complete join and terminal-value extraction semantics;</li>
+                <li>full non-owning observer restrictions;</li>
+                <li>fully path-sensitive lifecycle analysis;</li>
+                <li>complete transferability checks for arguments, captures, borrows, detach and migration;</li>
+                <li>explicit task operations in Semantic IR;</li>
+                <li>target-selected lowering without a mandatory universal runtime.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Handle task creation failure separately from task execution outcome.</li>
+                <li>Keep the complete task function return type inside <code>Task[T]</code>.</li>
+                <li>Do not treat <code>Completed(Err(E))</code> as a task-runtime failure.</li>
+                <li>Resolve every owning task handle through await, join, detach or ownership transfer.</li>
+                <li>Use observers when you need non-owning status observation rather than duplicating lifecycle ownership.</li>
+                <li>Make detached result discard explicit when a value-returning task is intentionally ignored.</li>
+                <li>Transfer move-only values explicitly rather than inventing hidden clones.</li>
+                <li>Avoid cross-task borrows unless lifetime and migration safety are clear.</li>
+                <li>Treat cancellation as a cooperative request, not immediate termination.</li>
+                <li>Use await or join when you require completion synchronization and memory visibility.</li>
+                <li>Do not rely on a particular thread, worker pool or event loop as portable task semantics.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>Task[T]</code> represents one logical task and its owning lifecycle capability.</li>
+                <li>A task is not inherently an OS thread, process, fiber or event-loop callback.</li>
+                <li><code>T</code> is the complete declared return type of the task callable.</li>
+                <li>Task creation is fallible and has raw type <code>Result[Task[T], TaskSpawnError]</code>.</li>
+                <li><code>TaskSpawnError</code> applies only when no task was created.</li>
+                <li><code>Task[T]</code> is always move-only.</li>
+                <li>An owning local task handle must not leave scope unresolved.</li>
+                <li>Task identity and current-task context follow the logical task across permitted migration.</li>
+                <li>An already-created task terminates as normal completion, cancellation, panic or execution failure.</li>
+                <li><code>TaskOutcome[T]</code> is <code>Completed(T)</code>, <code>Cancelled</code>, <code>Panicked(PanicInfo)</code> or <code>Failed(TaskError)</code>.</li>
+                <li>A task returning <code>Err(E)</code> normally produces <code>Completed(Err(E))</code>.</li>
+                <li><code>await Task[T]</code> always produces <code>TaskOutcome[T]</code> and consumes the owning handle.</li>
+                <li>Join preserves a terminal handle while establishing completion synchronization.</li>
+                <li>Cancellation requests are cooperative and do not by themselves resolve lifecycle ownership.</li>
+                <li>Observers are non-owning and must never become a second lifecycle owner.</li>
+                <li>Detach consumes ownership and requires explicit discard intent for ignored value-returning tasks.</li>
+                <li>Task arguments and captures remain subject to ownership and transferability analysis.</li>
+                <li>Completion synchronization must publish task-produced memory effects correctly.</li>
+                <li>Task runtime strategy is selected by the target without changing portable Sec semantics.</li>
+                <li>The revision-2 task model is normative; current compiler support remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="54-concurrency.html">Previous: Concurrency</a>
+            <a href="56-spawn.html">Next: Spawn</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-13</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

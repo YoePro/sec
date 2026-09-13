@@ -9,6 +9,12 @@ import (
 
 const llvmDecimalType = "%sec.decimal"
 
+// llvmReturnType maps built-in Sec scalar representations for the legacy LLVM
+// backend, including distinct char and rune widths.
+//
+// Rules:
+//   - rules/types/types.md — "char" and "rune"
+//   - rules/compiler/semantic_ir.md — §11 "Constants"
 func llvmReturnType(ref *ast.TypeReference) string {
 	if ref == nil {
 		return "void"
@@ -30,11 +36,13 @@ func llvmReturnType(ref *ast.TypeReference) string {
 		return "i32"
 	case "uint":
 		return "i64"
-	case "int8", "uint8", "byte":
+	case "int8", "uint8", "byte", "char":
 		return "i8"
 	case "int16", "uint16":
 		return "i16"
 	case "int32", "uint32":
+		return "i32"
+	case "rune":
 		return "i32"
 	case "int64", "uint64":
 		return "i64"

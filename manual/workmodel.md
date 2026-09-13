@@ -18,15 +18,15 @@ Jag tycker därför att vi ska sluta försöka få manualen att sluta på 45. De
 | 42 | 42-lifetimes.html | Lifetimes | Skriven | 
 | 43 | 43-destruction.html | Destruction | Skriven | 
 | 44 | 44-layout.html | Memory Layout and Representation | Partly - Krävs; några explicita layout-syntaxdetaljer är fortfarande öppna |
-| 45 | 45-collections.html | Collections | Skriv nu, med list, map, set; arrays behöver inte upprepas  | 
+| 45 | 45-collections.html | Collections | Skriven, med list, map, set; arrays behöver inte upprepas  | 
 | 46 | 46-shaped-types.html | Shaped Types | Absolut nödvändig; några designkanter återstår  | 
-| 47 | 47-lambdas-closures.html | Lambdas and Closures | Krävs; skriv när closure-regelboken/statusen är helt synkad | 
-| 48 | 48-effects.html | Effects and Verified Guarantees | Skriv nu | 
-| 49 | 49-platforms.html | Platforms and Target Profiles | Skriv nu | 
-| 50 | 50-hardware-access.html | Fixed Addresses, Volatile and Hardware Access | Skriv nu | 
-| 51 | 51-interrupts.html | Interrupts and ISRs | Skriv nu | 
-| 52 | 52-inline-assembly.html | Inline Assembly | Skriv nu | 
-| 53 | 53-initialization.html | Program Initialization and Shutdown | Skriv nu | 
+| 47 | 47-lambdas-closures.html | Lambdas and Closures | Partly - Krävs; skriv när closure-regelboken/statusen är helt synkad | 
+| 48 | 48-effects.html | Effects and Verified Guarantees | Skriven | 
+| 49 | 49-platforms.html | Platforms and Target Profiles | Skriven | 
+| 50 | 50-hardware-access.html | Fixed Addresses, Volatile and Hardware Access | Skrive behöver uppdateras. | 
+| 51 | 51-interrupts.html | Interrupts and ISRs | Skriven | 
+| 52 | 52-inline-assembly.html | Inline Assembly | Skriven | 
+| 53 | 53-initialization.html | Program Initialization and Shutdown | Skriven | 
 | 54 | 54-concurrency.html | Concurrency | Skriv nu, paraplykapitlet | 
 | 55 | 55-tasks.html | Tasks | Skriv nu | 
 | 56 | 56-spawn.html | Spawn | Skriv nu | 

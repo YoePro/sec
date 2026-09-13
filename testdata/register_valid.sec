@@ -1,4 +1,4 @@
-module register
+module register_examples
 
 // =============================================================================
 // Units used by register fields

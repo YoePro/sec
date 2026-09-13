@@ -875,6 +875,19 @@ func TestSemaDiagnosticIncludesCodeAndHelp(t *testing.T) {
 	}
 }
 
+func TestReservedDeclarationNameDiagnosticReachesLSP(t *testing.T) {
+	items := analyze("", "module main\nlet map := 1\n")
+	for _, item := range items {
+		if item.Code == diagnostics.ReservedDeclarationName {
+			if item.Severity != 1 || item.Range.Start.Line != 1 || item.Range.Start.Character != 4 {
+				t.Fatalf("reserved-name diagnostic = %+v", item)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing %s in %+v", diagnostics.ReservedDeclarationName, items)
+}
+
 func TestParserDiagnosticIncludesCode(t *testing.T) {
 	diagnostic := parserDiagnostic("no prefix parse function for \"}\" at 3:1")
 
@@ -1149,6 +1162,27 @@ func TestAnalyzePublishesInterpolationExpressionDiagnostics(t *testing.T) {
 			t.Fatalf("incorrect interpolation diagnostic: %+v", d)
 		}
 	}
+}
+
+func TestAnalyzePublishesSemanticDiagnosticsInsideInterpolation(t *testing.T) {
+	source := `module main
+
+fn Render() string {
+	return $"missing={missing}"
+}
+`
+	diagnostics := analyze("file:///tmp/interpolation-sema.sec", source)
+	start := strings.Index(sourceLine(source, 3), "missing}")
+	for _, diagnostic := range diagnostics {
+		if !strings.Contains(diagnostic.Message, "undefined variable missing") {
+			continue
+		}
+		if diagnostic.Range.Start.Line != 3 || diagnostic.Range.Start.Character != start || diagnostic.Range.End.Character != start+len("missing") {
+			t.Fatalf("interpolation semantic diagnostic range = %+v", diagnostic)
+		}
+		return
+	}
+	t.Fatalf("missing interpolation semantic diagnostic: %+v", diagnostics)
 }
 
 func TestAnalyzePublishesIdentifierNFCDiagnostics(t *testing.T) {
@@ -1635,6 +1669,74 @@ type SessionID int
 	assertSemanticToken(t, tokens, 2, 1, 6, "modifier")
 }
 
+// rules/foundations/lexical_structure.md §§8, 22, and 23 require tooling to
+// distinguish parser-established contextual roles without globally reserving
+// their identifier spellings.
+func TestSemanticTokensClassifyRemainingLexicalContexts(t *testing.T) {
+	source := `/** Packet docs */
+@future
+type Count int multipleOf 2
+
+type Wire struct {
+    value: int ` + "`wire:\"value\"`" + `,
+}
+
+fn Work() void {}
+
+fn Use() void {
+    let a := spawn task Work()
+    let b := spawn thread Work()
+    let c := spawn process Work()
+    match a {
+        _ => {}
+    }
+}
+`
+
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticTokenWithModifier(t, tokens, 0, 0, len("/** Packet docs */"), "comment", "documentation")
+	assertSemanticToken(t, tokens, 1, 1, len("future"), "decorator")
+	assertSemanticToken(t, tokens, 2, 15, len("multipleOf"), "modifier")
+	assertSemanticTokenWithModifier(t, tokens, 5, 15, len("`wire:\"value\"`"), "string", "declaration")
+	assertSemanticToken(t, tokens, 11, 19, len("task"), "modifier")
+	assertSemanticToken(t, tokens, 12, 19, len("thread"), "modifier")
+	assertSemanticToken(t, tokens, 13, 19, len("process"), "modifier")
+	assertSemanticToken(t, tokens, 15, 8, 1, "keyword")
+}
+
+func TestSemanticTokensDoNotMarkOrdinaryCommentOrRawStringAsDeclarationMetadata(t *testing.T) {
+	source := "/* ordinary */\nfn Use() void {\n    let value := `raw`\n}\n"
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticTokenWithoutModifier(t, tokens, 0, 0, len("/* ordinary */"), "comment", "documentation")
+	assertSemanticTokenWithoutModifier(t, tokens, 2, 17, len("`raw`"), "string", "declaration")
+}
+
+// Semantic tokens may not span physical lines. Nested block comments remain
+// one lexer token, so the LSP must split that token without losing the outer
+// documentation classification or later tokens.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Semantic tokens"
+//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
+//   - rules/foundations/lexical_structure.md — §§2 and 5.3–5.4
+func TestSemanticTokensCoverEveryMultilineCommentLine(t *testing.T) {
+	source := "/** 😀 docs\n * nested /* inner */\n */\nfn Ready() void {}\n"
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+
+	assertSemanticTokenWithModifier(t, tokens, 0, 0, 11, "comment", "documentation")
+	assertSemanticTokenWithModifier(t, tokens, 1, 0, 21, "comment", "documentation")
+	assertSemanticTokenWithModifier(t, tokens, 2, 0, 3, "comment", "documentation")
+	assertSemanticToken(t, tokens, 3, 0, 2, "keyword")
+}
+
+func TestSemanticTokensUseUTF16WidthsAndStarts(t *testing.T) {
+	source := "\"😀\" /* comment */\n"
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+
+	assertSemanticToken(t, tokens, 0, 0, 4, "string")
+	assertSemanticToken(t, tokens, 0, 5, len("/* comment */"), "comment")
+}
+
 func TestSemanticTokensClassifyImmutableBindingsAsReadonlyVariables(t *testing.T) {
 	source := `module main
 
@@ -1743,6 +1845,40 @@ fn Use() void {
 	assertSemanticToken(t, tokens, 15, 2, len("set"), "keyword")
 	assertSemanticTokenWithModifier(t, tokens, 20, 5, len("set"), "variable", "readonly")
 	assertSemanticTokenWithModifier(t, tokens, 21, 9, len("set"), "variable", "readonly")
+}
+
+func TestSemanticTokensClassifyContextualCollectionAndShapedTypeNamesByPosition(t *testing.T) {
+	source := `module main
+
+fn Use() void {
+    let values: list[int]
+    let lookup: map[string, int]
+    let flags: set[string]
+    let position: vector[float64, 3]
+    let transform: matrix[float32, 4, 4]
+    let image: tensor[float32, 3, 224, 224]
+    let view: tensor_view[float32, 3]
+    let set := 1
+    discard set
+}
+`
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	for _, expected := range []struct {
+		line, start int
+		name        string
+	}{
+		{3, 16, "list"},
+		{4, 16, "map"},
+		{5, 15, "set"},
+		{6, 18, "vector"},
+		{7, 19, "matrix"},
+		{8, 15, "tensor"},
+		{9, 14, "tensor_view"},
+	} {
+		assertSemanticToken(t, tokens, expected.line, expected.start, len(expected.name), "type")
+	}
+	assertSemanticTokenWithModifier(t, tokens, 10, 8, len("set"), "variable", "readonly")
+	assertSemanticTokenWithModifier(t, tokens, 11, 12, len("set"), "variable", "readonly")
 }
 
 func TestKeywordCompletionContainsCanonicalHardInventory(t *testing.T) {
@@ -2008,6 +2144,79 @@ fn Ready() bool {
 	}
 	if !strings.Contains(hover.Contents.Value, "Returns true when the system is ready.") {
 		t.Fatalf("wrong hover contents: %q", hover.Contents.Value)
+	}
+}
+
+// A nested multiline comment is one trivia token. It must not prevent the
+// recoverable program behind it from contributing symbols to hover.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.3 "Nested block comments"
+//   - rules/tooling/lsp.md — "Hover"
+func TestHoverSurvivesNestedMultilineComment(t *testing.T) {
+	source := `module main
+
+/* outer
+ * /* nested */
+ * still outer
+ */
+fn Ready() bool {
+	return true
+}
+
+fn Use() bool {
+	return Ready()
+}
+`
+
+	use := strings.LastIndex(source, "Ready") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, use))
+	if !ok || !strings.Contains(hover.Contents.Value, "fn Ready() bool") {
+		t.Fatalf("hover after nested multiline comment = %+v, %v", hover, ok)
+	}
+}
+
+// rules/foundations/lexical_structure.md §5.4 makes documentation attachment a
+// parser/tooling concern. A blank line detaches the comment from the function.
+func TestHoverDoesNotInferDetachedDocCommentFromSourceAdjacency(t *testing.T) {
+	source := `module main
+
+/** This comment is detached. */
+
+fn Ready() bool {
+	return true
+}
+`
+
+	use := strings.Index(source, "Ready") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, use))
+	if !ok {
+		t.Fatal("expected function hover")
+	}
+	if strings.Contains(hover.Contents.Value, "This comment is detached.") {
+		t.Fatalf("detached documentation leaked into hover: %q", hover.Contents.Value)
+	}
+}
+
+func TestHoverUsesAttachedASTDocumentationForMethod(t *testing.T) {
+	source := `module main
+
+type Worker struct {}
+
+impl Worker {
+	/** Performs one unit of work. */
+	fn Run() void {}
+
+	fn Test() void {
+		self.Run()
+	}
+}
+`
+
+	use := strings.LastIndex(source, "Run") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, use))
+	if !ok || !strings.Contains(hover.Contents.Value, "Performs one unit of work.") {
+		t.Fatalf("method documentation hover = %+v, %v", hover, ok)
 	}
 }
 

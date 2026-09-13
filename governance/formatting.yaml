@@ -79,6 +79,7 @@ integrations:
     area: tooling
     status: implemented
     integrated: "2026-08-27"
+    revised: "2026-09-13"
     summary: >-
       Aligns trailing line comments within local nominal-declaration groups and
       exposes the shared behavior through both LSP formatting and the initial
@@ -104,6 +105,7 @@ integrations:
     remaining:
       - extend the generic alignment engine to typed declaration groups, struct field/type/tag columns, and compatible non-nominal declaration groups
       - complete sec fmt recursive project, range, on-type, minimal-edit, and fix modes; check and stdin modes are tracked by tooling.formatter-check-explicit-files and tooling.formatter-stdin
+      - migrate the remaining trimmed-line indentation and alignment decisions to the parser-owned lossless comment/trivia attachments now returned by the shared formatter
     verification:
       - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
         result: passed

@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-12"
+    revised: "2026-09-13"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -24,6 +24,8 @@ integrations:
     code:
       - internal/lexer/escapes.go
       - internal/lexer/contract_words.go
+      - internal/lexer/contextual_type_names.go
+      - internal/lexer/reserved_names.go
       - internal/lexer/lexer.go
       - internal/diagnostics/diagnostics.go
       - ../bootstrap/internal/lexer/lexer.sec
@@ -35,6 +37,7 @@ integrations:
       - internal/codegen/llvm/expressions.go
       - internal/ast
       - internal/sema
+      - internal/sema/reserved_names.go
       - internal/formatter
       - internal/lsp
       - cmd/lsp
@@ -78,12 +81,16 @@ integrations:
       - internal/formatter/formatter_test.go
       - testdata/formatter/contextual_x.sec
       - internal/sema/analyzer_test.go
+      - internal/sema/effect_analysis_test.go
+      - internal/sema/reserved_names_test.go
       - cmd/lsp/main_test.go
       - testdata/lsp/contextual_x_semantic_tokens.sec
     implemented:
       - closed character literals require exactly one Unicode scalar after escape interpretation; L1009 lexer.character-literal-length preserves the original token span and suppresses cascades after malformed escapes
       - scalar-count diagnostics survive parser propagation and roll back with lexer snapshots; bootstrap source mirrors the check
       - escape validation in ordinary strings, character literals, and interpolation text emits L1006 for unknown codes, L1007 for malformed or incomplete escapes, and L1008 for invalid Unicode scalar values
+      - one lexer-owned Sec escape decoder materializes ordinary string and character literals, including the non-Go \u{H...} form, into parser AST values without changing raw-string behavior; unit metadata reuses the same decoder
+      - character literals default to char and context-shape to rune in Sema with the resolved type retained for downstream clients; exact decoded scalar values lower as typed Semantic IR const.int operations and through the legacy LLVM char/rune representations
       - exact escape source spans and original literal tokens survive recovery; raw strings and comments are exempt, and snapshot restore rolls back diagnostics
       - nested interpolation escape diagnostics retain original positions and deduplicate through parser results; CLI rejects lexical errors and LSP highlights escape spans
       - bootstrap lexer source mirrors escape validation and passes parser validation; runtime equivalence remains dependent on bootstrap execution support
@@ -96,6 +103,13 @@ integrations:
       - ASCII digits after identifier start
       - canonical hard-keyword lookup is synchronized across the normative lexical inventory, Go lexer, bootstrap lexer, LSP completion vocabulary, and TextMate highlighting; extends is hard while arena, sec, and contextual set remain identifiers
       - the complete six-word contextual contract inventory is centralized in the lexer with value/marker grammar roles, consumed by the parser and LSP contract completion, mirrored in bootstrap source, and tested to remain IDENT tokens rather than hard keywords
+      - the complete seven-name lowercase collection/shaped type inventory is centralized in the lexer with collection/shaped grammar roles and leading type-argument counts, consumed by the parser, mirrored in bootstrap source, and tested to remain IDENT tokens
+      - LSP semantic tokens classify lowercase collection/shaped constructors as types only at parser-owned type-reference positions, so ordinary contextual set bindings and uses retain their variable class
+      - formatter coverage preserves and normalizes all seven contextual type forms without rewriting an ordinary set identifier; TextMate highlighting requires generic-bracket lookahead for every lowercase contextual constructor instead of coloring the spellings globally
+      - parser-owned LSP classifications cover explicit spawn task/thread/process modifiers, all contextual contract words, property set, collection set, x/in/not-in operators, and raw struct-field metadata without globally reclassifying ordinary identifiers or raw expression strings
+      - LSP semantic tokens distinguish bare underscore, documentation block comments, attributes, and raw declaration metadata; compiler-known attributes retain their canonical modifier class while syntactically recoverable future attributes use the standard decorator class
+      - formatter regression coverage preserves documentation comments, contextual contracts and spawn modifiers, raw declaration metadata, and bare underscore while remaining idempotent
+      - TextMate distinguishes documentation comments, raw strings, attributes, visibility-prefixed identifiers, contextual spawn modifiers, and bare underscore; task is no longer globally colored outside spawn grammar
       - unused ARENA, SEC, and SET token categories are removed from the Go lexer; bootstrap additionally removes its stale BYTES placeholder and adds EXTENDS
       - dedicated bare underscore tokens while underscore-prefixed names remain identifiers
       - decimal integer literals
@@ -118,8 +132,9 @@ integrations:
       - bootstrap lexer source mirrors balanced interpolation scanning and remains parser-valid
       - interpolated-string AST retains ordered text and expression parts, original token spelling, and exclusive source ranges with original file and rune-based columns
       - interpolation expressions use ordinary Pratt parsing, including nested interpolation, aggregate expressions, raw strings, and comment trivia
-      - interpolation text parts collapse doubled braces while preserving escape spelling for later materialization
+      - interpolation text parts collapse doubled braces and materialize the lexer-validated ordinary Sec escape inventory, including hexadecimal and braced Unicode escapes, while their tokens retain exact source spelling and ranges for diagnostics and tooling
       - invalid interpolation expressions retain recovery metadata while later parts and enclosing statements survive; ordinary parser diagnostics reach LSP at original positions
+      - Sema traverses every valid embedded interpolation expression under ordinary scope, type, ownership, and effect rules while retaining string as the enclosing literal type; nested definition/type facts are recorded, undefined and moved-value diagnostics retain embedded source positions, bounds-panic effects reach callable contracts, and LSP publishes the semantic diagnostics
       - raw string literals are accepted by the expression parser without escape decoding
       - legacy LLVM interpolation placeholder now explicitly rejects unsupported materialization instead of silently emitting source spelling and omitting expression evaluation
       - line comments
@@ -133,6 +148,7 @@ integrations:
       - LF, CRLF, and bare-CR physical-line accounting, line-comment termination, and ordinary string/character newline rejection
       - comments treated as parser trivia before, between, and after struct-literal fields, including trailing line comments after commas
       - LSP semantic tokens for keywords, mutable variables, immutable bindings as readonly variables, types, functions, methods, comments, literals, and operators
+      - multiline semantic tokens are split into protocol-valid single-line UTF-16 segments so every non-empty line of ordinary, documentation, and nested block comments remains colored, later tokens stay synchronized, and documentation modifiers survive on every segment; the VS Code TextMate grammar recursively matches nested block comments
       - position-specific LSP member classification and hover resolution so struct fields, struct-literal field names, and same-named methods retain distinct semantic identities
       - LSP member completion resolves self to its enclosing impl target including fields, register fields, properties, events, and instance methods
       - LSP member completion retains inferred local types from function and method return values including while an if condition is incomplete
@@ -169,47 +185,21 @@ integrations:
       - exponent markers whose optional sign is not followed by an ASCII decimal digit emit one L1014 lexer.missing-exponent-digits over the maximal malformed candidate; invalid exponent separators retain the more specific L1012 classification, and parser, CLI, LSP, registry, and bootstrap paths preserve lexer ownership
       - maximal malformed non-base decimal candidates are exhaustively covered across integer, fractional, leading-period fractional, and exponent shapes; identifier-like tails stay in one ILLEGAL token, L1012/L1013/L1014 precedence remains focused, and lexer, parser, CLI, and LSP recover at the following reliable token boundary without cascades
       - documentation block comments beginning with /** attach in the parser to source-ordered AST declaration nodes at top level, in statement blocks, and across struct, register, enum, union, interface, and impl member lists; raw comment tokens and contiguous groups are preserved, blank lines detach them, and /// remains an ordinary line comment
+      - parser AST trivia retains every source comment once across speculative lexer rollback and classifies source-ordered leading, trailing, inline, detached, and documentation groups with exact lexical anchors and declaration/statement targets where attached
+      - the shared formatter returns parser-owned comment attachments recalculated against canonical output, giving formatter and source-to-source clients stable trivia facts without reconstructing attachment from trimmed lines
+      - LSP function and method hover consumes exact parser-owned documentation attachments and preserved comment tokens; it no longer rescans adjacent source or crosses a blank-line detachment boundary
+      - one lexer-owned reserved-declaration-name classifier covers hard keywords, task/thread/process, all six contract words, compiler-known lowercase type names, and bare underscore while explicitly preserving contextual set, x, not, init, arena, and sec
+      - Sema applies stable mandatory S1028 names.reserved-declaration-name diagnostics across module names, explicit import aliases, variables/constants, functions/methods, parameters, generic parameters, fields, properties, events, enum members, loop/select bindings, assembly output bindings, setter parameters, and match payload bindings; parser-owned underscore discard/register roles and trusted core module provenance are exempt
+      - compiler-known type, enum, interface, and unit redeclarations retain their focused messages while sharing S1028 ownership; the bootstrap lexer mirrors the centralized reservation inventory
     partial:
-      - escape decoding/materialization in downstream string and character handling; lexical escape validation is implemented
-      - interpolation expression semantic traversal, formatting contracts, ownership/effects, escape materialization, and runtime lowering remain incomplete; AST/parser expression parts and source ranges are implemented
-      - ordinary, trailing, and detached comment attachment for formatter and source-to-source consumers; documentation-comment AST attachment is implemented
-      - >-
-        reserved declaration-name enforcement is incomplete: compiler-known
-        lowercase type names are protected against user type, enum, interface,
-        and unit declarations, but the normative prohibition is not enforced
-        consistently for variables, constants, functions, parameters, fields,
-        properties, events, modules, imports, generic parameters, labels, and
-        aliases where those declaration forms exist; the contextual `set`
-        exception must remain valid outside its special grammar contexts
-      - >-
-        context-specific reserved words such as task, thread, and process are
-        interpreted in spawn contexts but are not yet enforced consistently as
-        forbidden user declaration names in ordinary declaration namespaces
-      - >-
-        canonical contract words are recognized by contract grammar only where
-        implemented, but their independent status as reserved declaration names
-        is not yet enforced consistently outside contract positions
+      - interpolation formatting/conversion contracts and runtime lowering remain incomplete; AST/parser expression parts, source ranges, text escape materialization, semantic traversal, ownership checks, and effect propagation are implemented
       - source-position integration across lexer, parser, diagnostics, and LSP
-      - LSP documentation hover still uses its legacy adjacent-source scan rather than consuming the implemented AST documentation attachments
-      - downstream character escape decoding and semantic type compatibility; lexical scalar count is implemented
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
-      - confusable-identifier warnings
-      - materialize interpolated text and formatted expression values from AST parts through resolved semantic contracts and maintained backends; doubled-brace decoding in AST text parts is implemented
-      - port interpolation AST parts and expression parsing to the bootstrap parser
-      - complete contextual lexical, formatter, and semantic-token classification for built-in collection and shaped type names; parser/type recognition already exists
-      - >-
-        centralize reserved-symbol validation so hard keywords, context-specific
-        reserved words, compiler-known lowercase type names, contract words, and
-        reserved modifiers receive the same declaration-name checks across every
-        applicable parser/Sema declaration namespace without globally reserving
-        contextual `set`
-      - >-
-        add focused negative tests for declarations using int, map, task, thread,
-        process, even, finite, multipleOf, notEmpty, odd, and unique, plus positive
-        tests proving that ordinary identifier uses of contextual `set` remain valid
-      - formatter and complete LSP support for all contextual classifications in rules/foundations/lexical_structure.md
+      - confusable-identifier warning policy remains normatively undecided and must not be implemented before that decision is recorded
+      - materialize formatted interpolation expression values through resolved semantic conversion contracts and maintained backends; doubled-brace and text-escape decoding in AST text parts are implemented
+      - port interpolation AST parts and expression parsing to the bootstrap parser; blocked on the bootstrap AST and ordinary expression-parser infrastructure, which do not yet exist
     verification:
       - command: go test ./...
         result: passed; scalar-count fixtures, escape diagnostics, snapshot rollback and retained-AST Sema validation
@@ -221,8 +211,12 @@ integrations:
         result: passed; valid escapes, unknown codes, malformed syntax, Unicode scalar bounds, nested positions, recovery, newline rejection, snapshot rollback and LSP spans
       - command: go test ./internal/parser ./internal/codegen/llvm ./cmd/lsp -run Interpolat -count=1
         result: passed; AST parts, nested positions, invalid-expression recovery, LSP diagnostics, and explicit unsupported LLVM materialization
+      - command: go test ./internal/sema ./cmd/lsp -run 'InterpolatedStringExpression|SemanticDiagnosticsInsideInterpolation' -count=1
+        result: passed; embedded expressions retain resolved types and definitions, undefined and moved-value diagnostics, bounds-panic contract effects, and exact LSP diagnostic ranges
       - command: go test ./internal/lexer ./internal/parser -run Interpolation -count=1
         result: passed; nested literals, comments, braces, token positions, parser retention, malformed input, and LF/CR/CRLF rejection
+      - command: go test ./internal/lexer ./internal/parser -run 'Decode(StringText|Quoted)|Interpolation(TextMaterializes|Parts)' -count=1
+        result: passed; valid interpolation text materializes the complete Sec escape inventory and doubled braces while preserving exact source tokens and ranges
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/lsp
         result: passed; NFC validity, normalized suggestions, original token positions, rollback, grammar exclusions, parser rejection, and LSP publication
       - command: go test ./internal/lexer -run TestBytesIsOrdinaryIdentifierWithoutByteStringToken -count=1
@@ -247,6 +241,8 @@ integrations:
         result: passed; missing exponent digits emit one L1014 over the maximal token, parser-owned reconstruction is removed, CLI and LSP preserve the lexer diagnostic, and bootstrap lexer source remains parser-valid
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedBlockComment|RegistryIsValid|KnownDiagnostic' -count=1
         result: passed; nested unmatched depth emits exactly one L1015, parser and Sema cascades are suppressed, CLI and LSP preserve lexer ownership, multiline LSP range mapping is exact, and bootstrap lexer source remains parser-valid
+      - command: go test ./cmd/lsp -run 'SemanticTokens(CoverEveryMultilineCommentLine|UseUTF16WidthsAndStarts)|HoverSurvivesNestedMultilineComment' -count=1
+        result: passed; semantic coloring covers all non-empty physical comment lines with UTF-16 coordinates and hover remains available after a nested multiline comment
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedOrdinaryString|RegistryIsValid|KnownDiagnostic' -count=1
         result: passed; EOF, LF, CRLF, and bare-CR boundaries emit exactly one L1016 over the retained string candidate, following-line tokenization resumes, parser and Sema cascades are suppressed, CLI/LSP preserve lexer ownership, and the LSP range excludes the physical line ending
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'UnterminatedRawString|RegistryIsValid|KnownDiagnostic' -count=1
@@ -271,3 +267,15 @@ integrations:
         result: passed; irregular and delimiter-adjacent operator spacing is canonical and ordinary x identifiers remain unchanged
       - command: go test ./cmd/lsp -run TestHoverUsesResolvedContextualOperatorFacts -count=1
         result: passed; matrix x hover exposes compiler-resolved shaped operands and result dimensions
+      - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./cmd/lsp -run 'ContextualCollection|CollectionShaped|ContextualSet' -count=1
+        result: passed; the canonical seven-name inventory remains IDENT-tokenized, parser type recognition consumes it, formatter output is idempotent, LSP uses position-exact type classes, and ordinary set bindings remain readonly variables
+      - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./internal/sema ./cmd/compiler ./cmd/lsp -run 'ReservedDeclaration|CompilerKnownTypeNamesCannotBeRedeclared|RegistryIsValid|KnownDiagnostic' -count=1
+        result: passed; all canonical identifier-like reservation families receive S1028 across declaration namespaces, compiler-known redeclaration diagnostics retain compatibility, contextual set remains legal, LSP publishes the stable code and exact range, and the registry remains valid
+      - command: go test ./cmd/lsp -run TestSemanticTokensClassifyRemainingLexicalContexts -count=1 && go test ./internal/formatter -run TestFormatPreservesLexicalContextSpellings -count=1 && python3 -m json.tool vscode/syntaxes/sec.tmLanguage.json
+        result: passed; exact contextual semantic classes, documentation/attribute/metadata distinctions, formatter preservation, and TextMate grammar validity
+      - command: go test ./cmd/lsp -run 'TestHover(UsesDocCommentAboveFunction|DoesNotInferDetachedDocCommentFromSourceAdjacency|UsesAttachedASTDocumentationForMethod)$' -count=1
+        result: passed; top-level and impl-method hover consume AST attachments while blank-line-detached documentation remains excluded
+      - command: go test ./internal/lexer ./internal/sema ./internal/ir/semantic ./internal/codegen/llvm -run 'Test(DecodeQuotedLiteralsUsesSecEscapeGrammar|EscapedCharacterLiteralShapesToRune|CharacterAndRuneLiteralsBuildExactScalarConstants|GenerateDecodedCharacterAndRuneLiterals)' -count=1
+        result: passed; Sec escape materialization, contextual rune shaping, exact Semantic IR scalar constants, and legacy LLVM char/rune emission
+      - command: go test ./internal/parser ./internal/formatter -run 'Test(ParserClassifiesAllCommentAttachments|FormatReturnsAttachmentsForCanonicalOutput)' -count=1
+        result: passed; source-ordered leading, trailing, detached, and documentation trivia survives parsing and is re-anchored to canonical formatter output

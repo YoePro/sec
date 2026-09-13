@@ -31,6 +31,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		DuplicateModuleDeclaration:          SeverityError,
 		ModuleDeclarationConflict:           SeverityError,
 		DuplicateLocalVariable:              SeverityError,
+		ReservedDeclarationName:             SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
 		IncompatibleUnitConversion:          SeverityError,
 		IncompleteEnumSwitch:                SeverityWarning,

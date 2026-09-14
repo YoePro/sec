@@ -416,6 +416,14 @@ func (p *Parser) parseMatchExpression() *ast.MatchExpression {
 	return expr
 }
 
+// parseMatchArmBlock retains every parsed or recovered arm when the closing
+// brace is missing at EOF. The diagnostic still makes the ParseResult invalid;
+// the partial slice exists for tooling and later recovery-aware consumers.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
+//   - rules/compiler/parser_recovery.md — "Other specialized unterminated constructs can still return nil"
+//   - rules/foundations/grammar.md — "Match expression"
 func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 	arms := []*ast.MatchArm{}
 	previousContext := p.recoveryContext
@@ -430,7 +438,7 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 		}
 		if p.curToken.Type == lexer.EOF {
 			p.addError("unterminated match block")
-			return nil
+			return arms
 		}
 
 		start := p.curToken
@@ -1104,6 +1112,14 @@ func (p *Parser) parseTryExpression() ast.Expression {
 	return expr
 }
 
+// parseTryHandlerBlock retains every parsed or recovered handler when the
+// closing brace is missing at EOF. It does not treat recovery as successful
+// syntax: the unterminated diagnostic continues to block code generation.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
+//   - rules/compiler/parser_recovery.md — "Other specialized unterminated constructs can still return nil"
+//   - rules/foundations/grammar.md — "TryHandler"
 func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 	handlers := []*ast.TryHandler{}
 	previousContext := p.recoveryContext
@@ -1118,7 +1134,7 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 		}
 		if p.curToken.Type == lexer.EOF {
 			p.addError("unterminated try handler block")
-			return nil
+			return handlers
 		}
 		if p.curToken.Type == lexer.COMMENT {
 			continue

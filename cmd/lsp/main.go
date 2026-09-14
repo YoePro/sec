@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -637,8 +638,9 @@ func callHierarchyItemsForSource(uri string, text string, pos position, overlays
 	if len(definitions) != 1 {
 		return []callHierarchyItem{}
 	}
+	overlay := firstSourceOverlay(overlays)
 	for _, node := range analyzer.CallGraph().NodesForDeclaration(definitions[0]) {
-		items = append(items, callHierarchyItemForNode(uri, node))
+		items = append(items, callHierarchyItemForNode(uri, text, overlay, node))
 	}
 	return items
 }
@@ -654,13 +656,14 @@ func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.Ca
 		return []callHierarchyIncomingCall{}
 	}
 	graph := analyzer.CallGraph()
+	overlay := firstSourceOverlay(overlays)
 	grouped := map[string]int{}
 	for _, site := range graph.Incoming(nodeID) {
 		caller, ok := graph.Node(site.Caller)
 		if !ok {
 			continue
 		}
-		rng := definitionTokenRange(site.Source)
+		rng := definitionTokenRange(sourceTextForToken(uri, text, overlay, site.Source), site.Source)
 		key := callHierarchyRelationshipKey(caller.ID, site.Dispatch, site.Execution)
 		if index, exists := grouped[key]; exists {
 			calls[index].FromRanges = append(calls[index].FromRanges, rng)
@@ -668,7 +671,7 @@ func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.Ca
 		}
 		grouped[key] = len(calls)
 		calls = append(calls, callHierarchyIncomingCall{
-			From:       callHierarchyItemForRelationship(uri, caller, site.Dispatch, site.Execution),
+			From:       callHierarchyItemForRelationship(uri, text, overlay, caller, site.Dispatch, site.Execution),
 			FromRanges: []lspRange{rng},
 		})
 	}
@@ -686,6 +689,7 @@ func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.Ca
 		return []callHierarchyOutgoingCall{}
 	}
 	graph := analyzer.CallGraph()
+	overlay := firstSourceOverlay(overlays)
 	grouped := map[string]int{}
 	for _, site := range graph.Outgoing(nodeID) {
 		for _, targetID := range site.Targets {
@@ -693,7 +697,7 @@ func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.Ca
 			if !ok || target.Declaration.Line <= 0 {
 				continue
 			}
-			rng := definitionTokenRange(site.Source)
+			rng := definitionTokenRange(sourceTextForToken(uri, text, overlay, site.Source), site.Source)
 			key := callHierarchyRelationshipKey(target.ID, site.Dispatch, site.Execution)
 			if index, exists := grouped[key]; exists {
 				calls[index].FromRanges = append(calls[index].FromRanges, rng)
@@ -701,7 +705,7 @@ func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.Ca
 			}
 			grouped[key] = len(calls)
 			calls = append(calls, callHierarchyOutgoingCall{
-				To:         callHierarchyItemForRelationship(uri, target, site.Dispatch, site.Execution),
+				To:         callHierarchyItemForRelationship(uri, text, overlay, target, site.Dispatch, site.Execution),
 				FromRanges: []lspRange{rng},
 			})
 		}
@@ -713,8 +717,8 @@ func callHierarchyRelationshipKey(node sema.CallableID, dispatch sema.CallDispat
 	return fmt.Sprintf("%s|%s|%s", node, dispatch, execution)
 }
 
-func callHierarchyItemForRelationship(analysisURI string, node sema.CallableNode, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) callHierarchyItem {
-	item := callHierarchyItemForNode(analysisURI, node)
+func callHierarchyItemForRelationship(analysisURI string, analysisText string, overlay sourceOverlay, node sema.CallableNode, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) callHierarchyItem {
+	item := callHierarchyItemForNode(analysisURI, analysisText, overlay, node)
 	item.Data.Dispatch = dispatch
 	item.Data.Execution = execution
 	if execution != "" && execution != sema.CallExecutionSynchronous {
@@ -740,12 +744,12 @@ func analyzeNavigationSource(uri string, text string, overlays ...sourceOverlay)
 	return analyzer
 }
 
-func callHierarchyItemForNode(analysisURI string, node sema.CallableNode) callHierarchyItem {
+func callHierarchyItemForNode(analysisURI string, analysisText string, overlay sourceOverlay, node sema.CallableNode) callHierarchyItem {
 	uri := analysisURI
 	if node.Declaration.File != "" {
 		uri = uriFromPath(node.Declaration.File)
 	}
-	rng := definitionTokenRange(node.Declaration)
+	rng := definitionTokenRange(sourceTextForToken(analysisURI, analysisText, overlay, node.Declaration), node.Declaration)
 	name := node.Name
 	if index := strings.LastIndex(name, "."); index >= 0 {
 		name = name[index+1:]
@@ -808,7 +812,7 @@ func documentHighlightsForSource(uri string, text string, pos position, overlays
 		if sameSourceToken(token, definition) || tokenIsDirectAssignmentTarget(tokens, index) {
 			kind = documentHighlightWrite
 		}
-		highlights = append(highlights, documentHighlight{Range: tokenRange(token), Kind: kind})
+		highlights = append(highlights, documentHighlight{Range: tokenRange(text, token), Kind: kind})
 	}
 	return highlights
 }
@@ -883,13 +887,14 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 		return nil
 	}
 	definitions := analyzer.DefinitionsAt(use.File, use.Line, use.Column)
+	overlay := firstSourceOverlay(overlays)
 	seen := map[string]bool{}
 	for _, definition := range definitions {
 		definitionURI := uri
 		if definition.File != "" {
 			definitionURI = uriFromPath(definition.File)
 		}
-		rng := definitionTokenRange(definition)
+		rng := definitionTokenRange(sourceTextForToken(uri, text, overlay, definition), definition)
 		key := fmt.Sprintf("%s:%d:%d", definitionURI, rng.Start.Line, rng.Start.Character)
 		if seen[key] {
 			continue
@@ -952,7 +957,7 @@ func referencesForSource(uri string, text string, pos position, includeDeclarati
 			if !includeDeclaration && sameSourceToken(token, definition) {
 				continue
 			}
-			rng := tokenRange(token)
+			rng := tokenRange(string(data), token)
 			key := fmt.Sprintf("%s:%d:%d", fileURI, rng.Start.Line, rng.Start.Character)
 			if seen[key] {
 				continue
@@ -980,19 +985,19 @@ func sourceTokenAtPosition(uri string, text string, pos position) (lexer.Token, 
 		if token.Type == lexer.EOF {
 			return lexer.Token{}, false
 		}
-		rng := tokenRange(token)
+		rng := tokenRange(text, token)
 		if comparePosition(pos, rng.Start) >= 0 && comparePosition(pos, rng.End) < 0 {
 			return token, true
 		}
 	}
 }
 
-func definitionTokenRange(token lexer.Token) lspRange {
-	rng := tokenRange(token)
+func definitionTokenRange(text string, token lexer.Token) lspRange {
+	rng := tokenRange(text, token)
 	// Imported declarations are semantically qualified in the combined AST.
 	// Their source token still starts at the unqualified declaration name.
 	if index := strings.LastIndex(token.Lexeme, "."); index >= 0 && index+1 < len(token.Lexeme) {
-		rng.End.Character = rng.Start.Character + len([]rune(token.Lexeme[index+1:]))
+		rng.End.Character = rng.Start.Character + utf16TextLength(token.Lexeme[index+1:])
 	}
 	return rng
 }
@@ -1111,20 +1116,20 @@ func documentSymbolsForSource(uri string, text string) []documentSymbol {
 	}
 	symbols := []documentSymbol{}
 	for _, stmt := range program.Statements {
-		if symbol, ok := documentSymbolForStatement(stmt); ok {
+		if symbol, ok := documentSymbolForStatement(text, stmt); ok {
 			symbols = append(symbols, symbol)
 		}
 	}
 	return symbols
 }
 
-func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
+func documentSymbolForStatement(text string, stmt ast.Statement) (documentSymbol, bool) {
 	switch stmt := stmt.(type) {
 	case *ast.ModuleStatement:
 		if stmt == nil {
 			return documentSymbol{}, false
 		}
-		return namedDocumentSymbol(stmt.Path, "module", 2, stmt.Token, stmt.Token), true
+		return namedDocumentSymbol(text, stmt.Path, "module", 2, stmt.Token, stmt.Token), true
 	case *ast.TypeDeclStatement:
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
@@ -1141,20 +1146,20 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 			kind = 10
 			detail = "enum"
 		}
-		return namedDocumentSymbol(stmt.Name.Value, detail, kind, stmt.Token, stmt.Name.Token), true
+		return namedDocumentSymbol(text, stmt.Name.Value, detail, kind, stmt.Token, stmt.Name.Token), true
 	case *ast.UnitDeclStatement:
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
 		}
-		return namedDocumentSymbol(stmt.Name.Value, "unit", 14, stmt.Token, stmt.Name.Token), true
+		return namedDocumentSymbol(text, stmt.Name.Value, "unit", 14, stmt.Token, stmt.Name.Token), true
 	case *ast.EnumDeclaration:
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
 		}
-		symbol := namedDocumentSymbol(stmt.Name.Value, "enum", 10, stmt.Token, stmt.Name.Token)
+		symbol := namedDocumentSymbol(text, stmt.Name.Value, "enum", 10, stmt.Token, stmt.Name.Token)
 		for _, value := range stmt.Values {
 			if value != nil && value.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(value.Name.Value, "enum member", 22, value.Token, value.Name.Token))
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, value.Name.Value, "enum member", 22, value.Token, value.Name.Token))
 			}
 		}
 		return symbol, true
@@ -1162,20 +1167,20 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
 		}
-		symbol := namedDocumentSymbol(stmt.Name.Value, "interface", 11, stmt.Token, stmt.Name.Token)
+		symbol := namedDocumentSymbol(text, stmt.Name.Value, "interface", 11, stmt.Token, stmt.Name.Token)
 		for _, method := range stmt.Methods {
 			if method != nil && method.Name != nil {
-				symbol.Children = append(symbol.Children, functionDocumentSymbol(method, 6))
+				symbol.Children = append(symbol.Children, functionDocumentSymbol(text, method, 6))
 			}
 		}
 		for _, property := range stmt.Properties {
 			if property != nil && property.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(property.Name.Value, typeReferenceName(property.Type), 7, property.Token, property.Name.Token))
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, property.Name.Value, typeReferenceName(property.Type), 7, property.Token, property.Name.Token))
 			}
 		}
 		for _, event := range stmt.Events {
 			if event != nil && event.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(event.Name.Value, typeReferenceName(event.Payload), 24, event.Token, event.Name.Token))
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, event.Name.Value, typeReferenceName(event.Payload), 24, event.Token, event.Name.Token))
 			}
 		}
 		return symbol, true
@@ -1183,15 +1188,15 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
 		}
-		return functionDocumentSymbol(stmt, 12), true
+		return functionDocumentSymbol(text, stmt, 12), true
 	case *ast.StructStatement:
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
 		}
-		symbol := namedDocumentSymbol(stmt.Name.Value, "struct", 23, stmt.Token, stmt.Name.Token)
+		symbol := namedDocumentSymbol(text, stmt.Name.Value, "struct", 23, stmt.Token, stmt.Name.Token)
 		for _, field := range stmt.Fields {
 			if field.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(field.Name.Value, typeReferenceName(field.Type), 8, field.Token, field.Name.Token))
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, field.Name.Value, typeReferenceName(field.Type), 8, field.Token, field.Name.Token))
 			}
 		}
 		return symbol, true
@@ -1199,15 +1204,15 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
 		}
-		return namedDocumentSymbol(stmt.Name.Value, typeReferenceName(stmt.Type), 13, stmt.Token, stmt.Name.Token), true
+		return namedDocumentSymbol(text, stmt.Name.Value, typeReferenceName(stmt.Type), 13, stmt.Token, stmt.Name.Token), true
 	case *ast.LetGroupStatement:
 		if stmt == nil || len(stmt.Lets) == 0 {
 			return documentSymbol{}, false
 		}
-		group := namedDocumentSymbol("let", "variables", 13, stmt.Token, stmt.Token)
+		group := namedDocumentSymbol(text, "let", "variables", 13, stmt.Token, stmt.Token)
 		for _, let := range stmt.Lets {
 			if let != nil && let.Name != nil {
-				group.Children = append(group.Children, namedDocumentSymbol(let.Name.Value, typeReferenceName(let.Type), 13, let.Token, let.Name.Token))
+				group.Children = append(group.Children, namedDocumentSymbol(text, let.Name.Value, typeReferenceName(let.Type), 13, let.Token, let.Name.Token))
 			}
 		}
 		return group, true
@@ -1225,9 +1230,9 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 			}
 			name += " implements " + strings.Join(interfaces, ", ")
 		}
-		symbol := namedDocumentSymbol(name, "impl", 3, stmt.Token, stmt.Target.Token)
+		symbol := namedDocumentSymbol(text, name, "impl", 3, stmt.Token, stmt.Target.Token)
 		for _, member := range stmt.Members {
-			if child, ok := documentSymbolForImplMember(member); ok {
+			if child, ok := documentSymbolForImplMember(text, member); ok {
 				symbol.Children = append(symbol.Children, child)
 			}
 		}
@@ -1237,13 +1242,13 @@ func documentSymbolForStatement(stmt ast.Statement) (documentSymbol, bool) {
 	}
 }
 
-func documentSymbolForImplMember(member ast.ImplMember) (documentSymbol, bool) {
+func documentSymbolForImplMember(text string, member ast.ImplMember) (documentSymbol, bool) {
 	switch member := member.(type) {
 	case *ast.FunctionDeclaration:
 		if member == nil || member.Name == nil {
 			return documentSymbol{}, false
 		}
-		return functionDocumentSymbol(member, 6), true
+		return functionDocumentSymbol(text, member, 6), true
 	case *ast.InitDeclaration:
 		if member == nil {
 			return documentSymbol{}, false
@@ -1252,45 +1257,45 @@ func documentSymbolForImplMember(member ast.ImplMember) (documentSymbol, bool) {
 		if member.ErrorType != nil {
 			detail += "; error " + typeReferenceName(member.ErrorType)
 		}
-		return namedDocumentSymbol("init", detail, 9, member.Token, member.Token), true
+		return namedDocumentSymbol(text, "init", detail, 9, member.Token, member.Token), true
 	case *ast.PropertyDeclaration:
 		if member == nil || member.Name == nil {
 			return documentSymbol{}, false
 		}
-		return namedDocumentSymbol(member.Name.Value, typeReferenceName(member.Type), 7, member.Token, member.Name.Token), true
+		return namedDocumentSymbol(text, member.Name.Value, typeReferenceName(member.Type), 7, member.Token, member.Name.Token), true
 	case *ast.EventDeclaration:
 		if member == nil || member.Name == nil {
 			return documentSymbol{}, false
 		}
-		return namedDocumentSymbol(member.Name.Value, "event", 24, member.Token, member.Name.Token), true
+		return namedDocumentSymbol(text, member.Name.Value, "event", 24, member.Token, member.Name.Token), true
 	case *ast.TypeDeclStatement:
-		return documentSymbolForStatement(member)
+		return documentSymbolForStatement(text, member)
 	case *ast.UnitDeclStatement:
-		return documentSymbolForStatement(member)
+		return documentSymbolForStatement(text, member)
 	case *ast.EnumDeclaration:
-		return documentSymbolForStatement(member)
+		return documentSymbolForStatement(text, member)
 	case *ast.LetStatement:
-		return documentSymbolForStatement(member)
+		return documentSymbolForStatement(text, member)
 	default:
 		return documentSymbol{}, false
 	}
 }
 
-func functionDocumentSymbol(fn *ast.FunctionDeclaration, kind int) documentSymbol {
+func functionDocumentSymbol(text string, fn *ast.FunctionDeclaration, kind int) documentSymbol {
 	detail := "fn"
 	if fn.ReturnType != nil {
 		detail += " " + typeReferenceName(fn.ReturnType)
 	}
-	return namedDocumentSymbol(fn.Name.Value, detail, kind, fn.Token, fn.Name.Token)
+	return namedDocumentSymbol(text, fn.Name.Value, detail, kind, fn.Token, fn.Name.Token)
 }
 
-func namedDocumentSymbol(name string, detail string, kind int, token lexer.Token, selectionToken lexer.Token) documentSymbol {
-	selectionRange := tokenRange(selectionToken)
+func namedDocumentSymbol(text string, name string, detail string, kind int, token lexer.Token, selectionToken lexer.Token) documentSymbol {
+	selectionRange := tokenRange(text, selectionToken)
 	return documentSymbol{
 		Name:           name,
 		Detail:         detail,
 		Kind:           kind,
-		Range:          rangeContaining(tokenRange(token), selectionRange),
+		Range:          rangeContaining(tokenRange(text, token), selectionRange),
 		SelectionRange: selectionRange,
 	}
 }
@@ -1707,13 +1712,6 @@ func semanticTokenType(token lexer.Token, classification map[string]string) stri
 	}
 }
 
-func semanticTokenLength(token lexer.Token) int {
-	if strings.Contains(token.Lexeme, "\n") {
-		return len([]rune(strings.Split(token.Lexeme, "\n")[0]))
-	}
-	return len([]rune(token.Lexeme))
-}
-
 func hoverForSource(uri string, text string, pos position, overlays ...sourceOverlay) (hoverResult, bool) {
 	program := parseProgramForLSP(uri, text)
 	if program == nil {
@@ -1729,7 +1727,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
-		if hover, ok := contextualOperatorHover(program, analyzer, sourceTokens(uri, text), token); ok {
+		if hover, ok := contextualOperatorHover(text, program, analyzer, sourceTokens(uri, text), token); ok {
 			return hover, true
 		}
 	}
@@ -1803,7 +1801,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 // Rules:
 //   - rules/tooling/lsp.md — "Hover"
 //   - rules/foundations/operators.md — "Operator tooling", "Matrix multiplication operator `x`", and "Membership expression"
-func contextualOperatorHover(program *ast.Program, analyzer *sema.Analyzer, source []lexer.Token, hovered lexer.Token) (hoverResult, bool) {
+func contextualOperatorHover(text string, program *ast.Program, analyzer *sema.Analyzer, source []lexer.Token, hovered lexer.Token) (hoverResult, bool) {
 	for _, expression := range astExpressionsInProgram(program) {
 		infix, ok := expression.(*ast.InfixExpression)
 		if !ok || infix.Operator != "x" && infix.Operator != "in" && infix.Operator != "not in" {
@@ -1824,9 +1822,9 @@ func contextualOperatorHover(program *ast.Program, analyzer *sema.Analyzer, sour
 		if !ok {
 			return hoverResult{}, false
 		}
-		rng := tokenRange(operatorTokens[0])
+		rng := tokenRange(text, operatorTokens[0])
 		for _, token := range operatorTokens[1:] {
-			rng = rangeContaining(rng, tokenRange(token))
+			rng = rangeContaining(rng, tokenRange(text, token))
 		}
 		return hoverResult{
 			Contents: markupContent{Kind: "markdown", Value: contextualOperatorHoverContents(infix.Operator, resolved)},
@@ -2517,21 +2515,39 @@ func offsetsRange(text string, start int, end int) lspRange {
 	return lspRange{Start: offsetPosition(text, start), End: offsetPosition(text, end)}
 }
 
+// offsetPosition converts a byte offset used by editor-facing source scanners
+// to an LSP UTF-16 position. LF, CRLF, and bare CR each advance one physical
+// line, matching the lexer rather than exposing host newline conventions.
+//
+// Rules:
+//   - rules/tooling/lsp.md — protocol position encoding
+//   - rules/foundations/lexical_structure.md — §1.3 "Unicode scalar values" and §2 "Line endings"
 func offsetPosition(text string, offset int) position {
-	line := 0
-	column := 0
-	for index, value := range text {
-		if index >= offset {
-			return position{Line: line, Character: column}
+	offset = min(max(offset, 0), len(text))
+	result := position{}
+	for index := 0; index < offset; {
+		current, size := utf8.DecodeRuneInString(text[index:])
+		if size <= 0 || index+size > offset {
+			break
 		}
-		if value == '\n' {
-			line++
-			column = 0
-		} else {
-			column++
+		switch current {
+		case '\r':
+			index += size
+			if index < offset && index < len(text) && text[index] == '\n' {
+				index++
+			}
+			result.Line++
+			result.Character = 0
+			continue
+		case '\n':
+			result.Line++
+			result.Character = 0
+		default:
+			result.Character += utf16RuneWidth(current)
 		}
+		index += size
 	}
-	return position{Line: line, Character: column}
+	return result
 }
 
 // functionDocumentation finds the documentation group attached by the parser
@@ -2596,13 +2612,15 @@ func parseProgramForLSP(uri string, text string) *ast.Program {
 	return p.Parse().Program
 }
 
-func tokenRange(token lexer.Token) lspRange {
-	line := max(token.Line-1, 0)
-	start := max(token.Column-1, 0)
-	return lspRange{
-		Start: position{Line: line, Character: start},
-		End:   position{Line: line, Character: start + semanticTokenLength(token)},
-	}
+// tokenRange is the shared lexer-token-to-protocol mapping for hover,
+// navigation, highlights, symbols, and diagnostics. Lexer columns count Unicode
+// scalars; LSP columns count UTF-16 code units, and a token may span lines.
+//
+// Rules:
+//   - rules/tooling/lsp.md — protocol position encoding
+//   - rules/foundations/lexical_structure.md — §1.3 "Unicode scalar values" and §2 "Line endings"
+func tokenRange(text string, token lexer.Token) lspRange {
+	return diagnosticTokenRange(token, text)
 }
 
 func rangeContaining(rng lspRange, contained lspRange) lspRange {
@@ -3482,8 +3500,7 @@ func ownershipCodeActions(uri string, text string, reported []diagnostic) []code
 // is attached to the named source, so the immediately preceding token must be
 // the ordinary declaration or assignment operator.
 func ownershipMoveSyntaxEdit(text string, reported diagnostic) (textEdit, string, bool) {
-	targetLine := reported.Range.Start.Line + 1
-	targetColumn := reported.Range.Start.Character + 1
+	targetOffset := lineCharToOffset(text, reported.Range.Start.Line, reported.Range.Start.Character)
 	l := lexer.New(text)
 	previous := lexer.Token{}
 	for {
@@ -3491,7 +3508,7 @@ func ownershipMoveSyntaxEdit(text string, reported diagnostic) (textEdit, string
 		if token.Type == lexer.EOF {
 			return textEdit{}, "", false
 		}
-		if token.Line == targetLine && token.Column == targetColumn {
+		if textPositionOffset(text, token.Line, token.Column) == targetOffset {
 			var replacement, title string
 			switch previous.Type {
 			case lexer.DECLARE:
@@ -3504,10 +3521,7 @@ func ownershipMoveSyntaxEdit(text string, reported diagnostic) (textEdit, string
 				return textEdit{}, "", false
 			}
 			return textEdit{
-				Range: lspRange{
-					Start: position{Line: previous.Line - 1, Character: previous.Column - 1},
-					End:   position{Line: previous.Line - 1, Character: previous.Column - 1 + len([]rune(previous.Lexeme))},
-				},
+				Range:   tokenRange(text, previous),
 				NewText: replacement,
 			}, title, true
 		}
@@ -3983,38 +3997,84 @@ func delimiterIndentDelta(line string) int {
 }
 
 func endPosition(text string) position {
-	normalized := strings.ReplaceAll(text, "\r\n", "\n")
-	normalized = strings.ReplaceAll(normalized, "\r", "\n")
-	lines := strings.Split(normalized, "\n")
-	if len(lines) == 0 {
-		return position{}
-	}
-	return position{Line: len(lines) - 1, Character: len([]rune(lines[len(lines)-1]))}
+	return offsetPosition(text, len(text))
 }
 
+// lineCharToOffset converts an incoming zero-based LSP UTF-16 position to a
+// byte offset. A malformed position inside a surrogate pair clamps to the
+// scalar's start; positions beyond a line clamp to its physical end.
+//
+// Rules:
+//   - rules/tooling/lsp.md — protocol position encoding
+//   - rules/foundations/lexical_structure.md — §1.3 "Unicode scalar values" and §2 "Line endings"
 func lineCharToOffset(text string, line, char int) int {
+	line = max(line, 0)
+	char = max(char, 0)
 	currentLine := 0
-	currentCol := 0
-
-	for i, r := range text {
-		if currentLine == line && currentCol == char {
-			return i
+	currentChar := 0
+	for index := 0; index < len(text); {
+		if currentLine == line && currentChar >= char {
+			return index
 		}
-		if r == '\n' {
+		current, size := utf8.DecodeRuneInString(text[index:])
+		if current == '\r' || current == '\n' {
+			if currentLine == line {
+				return index
+			}
+			index += size
+			if current == '\r' && index < len(text) && text[index] == '\n' {
+				index++
+			}
 			currentLine++
-			currentCol = 0
-		} else {
-			currentCol++
+			currentChar = 0
+			continue
 		}
+		width := utf16RuneWidth(current)
+		if currentLine == line && currentChar+width > char {
+			return index
+		}
+		currentChar += width
+		index += size
 	}
 	return len(text)
 }
 
+// textPositionOffset converts the lexer's one-based Unicode-scalar coordinate
+// to a byte offset. This is intentionally distinct from lineCharToOffset,
+// whose column input is UTF-16 supplied by an LSP client.
+//
+// Rules:
+//   - rules/tooling/lsp.md — protocol position encoding
+//   - rules/foundations/lexical_structure.md — §1.3 "Unicode scalar values" and §2 "Line endings"
 func textPositionOffset(text string, line int, column int) int {
 	if line <= 0 || column <= 0 {
 		return -1
 	}
-	return lineCharToOffset(text, line-1, column-1)
+	targetLine := line - 1
+	targetScalar := column - 1
+	currentLine := 0
+	currentScalar := 0
+	for index := 0; index < len(text); {
+		if currentLine == targetLine && currentScalar >= targetScalar {
+			return index
+		}
+		current, size := utf8.DecodeRuneInString(text[index:])
+		if current == '\r' || current == '\n' {
+			if currentLine == targetLine {
+				return index
+			}
+			index += size
+			if current == '\r' && index < len(text) && text[index] == '\n' {
+				index++
+			}
+			currentLine++
+			currentScalar = 0
+			continue
+		}
+		currentScalar++
+		index += size
+	}
+	return len(text)
 }
 
 func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
@@ -4035,29 +4095,29 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 
 	analyzer := newLSPAnalyzer(uri)
 	for _, err := range analyzer.Analyze(program) {
-		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery) {
-			diagnostics = append(diagnostics, semaDiagnostic(err, 1))
+		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery, text) {
+			diagnostics = append(diagnostics, semaDiagnostic(err, 1, text))
 		}
 	}
 	for _, warning := range analyzer.Warnings() {
 		if diagnosticBelongsToSource(warning, path) {
-			diagnostics = append(diagnostics, semaDiagnostic(warning, 2))
+			diagnostics = append(diagnostics, semaDiagnostic(warning, 2, text))
 		}
 	}
 	return diagnostics
 }
 
-func semanticDiagnosticComesFromRecovery(err sema.Error, recovery []parser.RecoveryEvent) bool {
+func semanticDiagnosticComesFromRecovery(err sema.Error, recovery []parser.RecoveryEvent, text string) bool {
 	if err.Line <= 0 || err.Column <= 0 {
 		return false
 	}
-	location := position{Line: err.Line - 1, Character: err.Column - 1}
+	location := diagnosticTokenStart(text, lexer.Token{Line: err.Line, Column: err.Column})
 	for _, event := range recovery {
 		if event.Start.Line <= 0 || event.Start.Column <= 0 || event.End.Line <= 0 || event.End.Column <= 0 {
 			continue
 		}
-		start := position{Line: event.Start.Line - 1, Character: event.Start.Column - 1}
-		end := position{Line: event.End.Line - 1, Character: event.End.Column - 1 + max(len([]rune(event.End.Lexeme)), 1)}
+		start := diagnosticTokenStart(text, event.Start)
+		end := diagnosticTokenRange(event.End, text).End
 		if comparePosition(location, start) >= 0 && comparePosition(location, end) < 0 {
 			return true
 		}
@@ -4070,6 +4130,25 @@ func firstSourceOverlay(overlays []sourceOverlay) sourceOverlay {
 		return nil
 	}
 	return overlays[0]
+}
+
+// sourceTextForToken resolves the source snapshot required to convert a token's
+// scalar column into an exact protocol range, including imported declarations.
+// Open-document overlays take precedence over disk through ReadSource.
+//
+// Rules:
+//   - rules/tooling/lsp.md — protocol position encoding and navigation
+func sourceTextForToken(currentURI string, currentText string, overlay sourceOverlay, token lexer.Token) string {
+	currentPath := normalizedSourcePath(pathFromURI(currentURI))
+	tokenPath := normalizedSourcePath(token.File)
+	if token.File == "" || tokenPath == currentPath {
+		return currentText
+	}
+	data, err := lspserver.ReadSource(token.File, overlay)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func normalizedSourcePath(path string) string {
@@ -5302,14 +5381,17 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 	}
 }
 
-func semaDiagnostic(err sema.Error, severity int) diagnostic {
-	line := max(err.Line-1, 0)
-	column := max(err.Column-1, 0)
-	endLine := line
-	endColumn := column + 1
+// semaDiagnostic converts Sema's one-based Unicode-scalar span to the LSP's
+// zero-based UTF-16 range without changing diagnostic identity or severity.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
+func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
+	start := diagnosticTokenStart(text, lexer.Token{Line: err.Line, Column: err.Column})
+	end := start
+	end.Character++
 	if err.EndLine > 0 && err.EndColumn > 0 {
-		endLine = err.EndLine - 1
-		endColumn = err.EndColumn - 1
+		end = diagnosticTokenStart(text, lexer.Token{Line: err.EndLine, Column: err.EndColumn})
 	}
 	message := err.Error()
 	if err.Help != "" {
@@ -5317,8 +5399,8 @@ func semaDiagnostic(err sema.Error, severity int) diagnostic {
 	}
 	return diagnostic{
 		Range: lspRange{
-			Start: position{Line: line, Character: column},
-			End:   position{Line: endLine, Character: endColumn},
+			Start: start,
+			End:   end,
 		},
 		Severity: lspSeverity(err.Severity, severity),
 		Code:     err.ID,
@@ -5372,9 +5454,6 @@ func structuredParserDiagnostic(value parser.Diagnostic, text string) diagnostic
 		result.Message += "\n\nhelp: " + value.Help
 	}
 	result.Code = value.ID
-	if value.ID == diagnostics.ParserSyntaxError {
-		return result
-	}
 	primary := value.Primary
 	if value.Unexpected != nil {
 		primary = *value.Unexpected
@@ -5416,11 +5495,7 @@ func diagnosticTokenRange(token lexer.Token, text string) lspRange {
 			end.Line++
 			end.Character = 0
 		default:
-			width := utf16.RuneLen(current)
-			if width < 1 {
-				width = 1
-			}
-			end.Character += width
+			end.Character += utf16RuneWidth(current)
 		}
 	}
 	return lspRange{Start: start, End: end}
@@ -5446,15 +5521,24 @@ func diagnosticTokenStart(text string, token lexer.Token) position {
 	if scalarColumn > len(runes) {
 		scalarColumn = len(runes)
 	}
-	character := 0
-	for _, current := range runes[:scalarColumn] {
-		width := utf16.RuneLen(current)
-		if width < 1 {
-			width = 1
-		}
-		character += width
-	}
+	character := utf16TextLength(string(runes[:scalarColumn]))
 	return position{Line: line, Character: character}
+}
+
+func utf16RuneWidth(value rune) int {
+	width := utf16.RuneLen(value)
+	if width < 1 {
+		return 1
+	}
+	return width
+}
+
+func utf16TextLength(text string) int {
+	length := 0
+	for _, current := range text {
+		length += utf16RuneWidth(current)
+	}
+	return length
 }
 
 func (s *server) respond(id json.RawMessage, result any) error {

@@ -230,12 +230,22 @@ func compilerKnownSequenceType(typ Type) bool {
 	return compilerKnownCollectionName(sequence.Name)
 }
 
+// compilerKnownPrintableType recognizes only type families whose canonical
+// fallback text semantics are currently specified. General byte/element
+// arrays deliberately do not inherit sequence-to-string behavior.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Required built-in ToString() surface"
+//   - rules/compiler/compiler_known_members.md — "Rune and char sequence ToString()"
 func compilerKnownPrintableType(typ Type) bool {
-	if typ.Kind == BoolType || typ.Kind == StringType || typ.Kind == CharType || typ.Kind == RuneType || isNumericType(typ) {
+	value := dereferenceType(typ)
+	if value.Kind == BoolType || value.Kind == StringType || value.Kind == CharType || value.Kind == RuneType || isNumericType(value) {
 		return true
 	}
-	sequence := dereferenceType(typ)
-	return sequence.Kind == ArrayType || sequence.Kind == SliceType || compilerKnownCollectionName(sequence.Name)
+	if value.Kind == ArrayType || value.Kind == SliceType {
+		return value.Element != nil && (value.Element.Kind == CharType || value.Element.Kind == RuneType)
+	}
+	return compilerKnownCollectionName(value.Name)
 }
 
 func compilerKnownCollectionName(name string) bool {
@@ -321,6 +331,10 @@ func compilerKnownIsEmptyID(typ Type) string {
 	return "CKM-ISEMPTY-" + strings.ToUpper(typ.Name)
 }
 
+// compilerKnownToStringID retains the selected fallback family after reference
+// auto-dereference so later compiler clients receive one stable semantic ID.
+//
+// Rules: rules/compiler/compiler_known_members.md — "ToString()".
 func compilerKnownToStringID(typ Type) string {
 	sequence := dereferenceType(typ)
 	if (sequence.Kind == ArrayType || sequence.Kind == SliceType) && sequence.Element != nil {
@@ -329,7 +343,7 @@ func compilerKnownToStringID(typ Type) string {
 		}
 		return "CKM-TOSTRING-RUNE-SEQUENCE"
 	}
-	switch typ.Kind {
+	switch sequence.Kind {
 	case StringType:
 		return "CKM-TOSTRING-STRING"
 	case BoolType:

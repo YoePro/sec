@@ -859,7 +859,7 @@ func TestSemaDiagnosticIncludesCodeAndHelp(t *testing.T) {
 		Message:  "parameter \"frame\" passes large value Frame by value",
 		Line:     4,
 		Column:   12,
-	}, 2)
+	}, 2, "\n\n\n           frame")
 
 	if diagnostic.Code != diagnostics.LargeValueParameter {
 		t.Fatalf("wrong diagnostic code. got=%q want=%s", diagnostic.Code, diagnostics.LargeValueParameter)
@@ -930,6 +930,98 @@ func TestStructuredParserDiagnosticMapsScalarColumnsAndWidthsToUTF16(t *testing.
 	}
 	if diagnostic.Range != want {
 		t.Fatalf("UTF-16 diagnostic range = %+v, want %+v", diagnostic.Range, want)
+	}
+}
+
+func TestSemaDiagnosticMapsScalarSpanToUTF16(t *testing.T) {
+	diagnostic := semaDiagnostic(sema.Error{
+		ID:        diagnostics.LargeValueParameter,
+		Message:   "unknown name",
+		Line:      1,
+		Column:    2,
+		EndLine:   1,
+		EndColumn: 6,
+	}, 1, "😀Name")
+	want := lspRange{
+		Start: position{Line: 0, Character: 2},
+		End:   position{Line: 0, Character: 6},
+	}
+	if diagnostic.Range != want {
+		t.Fatalf("Sema UTF-16 diagnostic range = %+v, want %+v", diagnostic.Range, want)
+	}
+}
+
+func TestLSPSourcePositionsRoundTripUTF16AndPhysicalLineEndings(t *testing.T) {
+	source := "A😀B\r\nC😀D\rE😀F\n"
+	tests := []struct {
+		offset int
+		want   position
+	}{
+		{strings.Index(source, "A"), position{Line: 0, Character: 0}},
+		{strings.Index(source, "B"), position{Line: 0, Character: 3}},
+		{strings.Index(source, "C"), position{Line: 1, Character: 0}},
+		{strings.Index(source, "D"), position{Line: 1, Character: 3}},
+		{strings.Index(source, "E"), position{Line: 2, Character: 0}},
+		{strings.Index(source, "F"), position{Line: 2, Character: 3}},
+		{len(source), position{Line: 3, Character: 0}},
+	}
+	for _, test := range tests {
+		if got := offsetPosition(source, test.offset); got != test.want {
+			t.Fatalf("offsetPosition(%d) = %+v, want %+v", test.offset, got, test.want)
+		}
+		if got := lineCharToOffset(source, test.want.Line, test.want.Character); got != test.offset {
+			t.Fatalf("lineCharToOffset(%+v) = %d, want %d", test.want, got, test.offset)
+		}
+	}
+	if got := lineCharToOffset(source, 0, 2); got != strings.Index(source, "😀") {
+		t.Fatalf("position inside surrogate pair = %d, want scalar start %d", got, strings.Index(source, "😀"))
+	}
+}
+
+func TestTokenRangesUseUTF16AndSpanMultilineComments(t *testing.T) {
+	unicodeSource := "😀Name"
+	identifier := lexer.Token{Type: lexer.IDENT, Lexeme: "Name", Line: 1, Column: 2}
+	if got, want := tokenRange(unicodeSource, identifier), (lspRange{
+		Start: position{Line: 0, Character: 2},
+		End:   position{Line: 0, Character: 6},
+	}); got != want {
+		t.Fatalf("Unicode token range = %+v, want %+v", got, want)
+	}
+
+	commentSource := "module main\r\n/** alpha\r\nbeta */\rfn Ready() void {}\n"
+	token, ok := sourceTokenAtPosition("", commentSource, position{Line: 2, Character: 2})
+	if !ok || token.Type != lexer.COMMENT {
+		t.Fatalf("multiline documentation comment lookup = (%+v, %t)", token, ok)
+	}
+	rng := tokenRange(commentSource, token)
+	if rng.Start != (position{Line: 1, Character: 0}) || rng.End != (position{Line: 2, Character: 7}) {
+		t.Fatalf("multiline comment range = %+v", rng)
+	}
+}
+
+func TestDocumentHighlightsUseUTF16AfterAstralScalar(t *testing.T) {
+	source := `module main
+
+fn Value() int { return 1 }
+fn Use() int { let note := "😀"; return Value() }
+`
+	use := strings.LastIndex(source, "Value")
+	highlights := documentHighlightsForSource("", source, offsetPosition(source, use))
+	if len(highlights) != 2 {
+		t.Fatalf("highlights = %+v, want declaration and use", highlights)
+	}
+	want := offsetPosition(source, use)
+	found := false
+	for _, highlight := range highlights {
+		if highlight.Range.Start == want {
+			found = true
+			if highlight.Range.End.Character != want.Character+utf16TextLength("Value") {
+				t.Fatalf("highlight range = %+v", highlight.Range)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing UTF-16 use highlight at %+v: %+v", want, highlights)
 	}
 }
 
@@ -1183,6 +1275,29 @@ fn Render() string {
 		return
 	}
 	t.Fatalf("missing interpolation semantic diagnostic: %+v", diagnostics)
+}
+
+func TestAnalyzePublishesInvalidInterpolationContractDiagnostic(t *testing.T) {
+	source := `module main
+
+type Packet struct { value: int, }
+
+fn Render(packet: Packet) string {
+	return $"packet={packet}"
+}
+`
+	items := analyze("file:///tmp/interpolation-contract.sec", source)
+	start := strings.Index(sourceLine(source, 5), "packet}")
+	for _, diagnostic := range items {
+		if diagnostic.Code != diagnostics.OperatorInvalidInterpolationValue {
+			continue
+		}
+		if diagnostic.Range.Start.Line != 5 || diagnostic.Range.Start.Character != start || diagnostic.Range.End.Character != start+len("packet") {
+			t.Fatalf("invalid interpolation diagnostic range = %+v", diagnostic)
+		}
+		return
+	}
+	t.Fatalf("missing invalid interpolation diagnostic: %+v", items)
 }
 
 func TestAnalyzePublishesIdentifierNFCDiagnostics(t *testing.T) {
@@ -1531,7 +1646,7 @@ func TestDocumentSymbolsIgnoreTypedNilStatements(t *testing.T) {
 	}
 
 	for _, stmt := range statements {
-		if symbol, ok := documentSymbolForStatement(stmt); ok {
+		if symbol, ok := documentSymbolForStatement("", stmt); ok {
 			t.Fatalf("typed nil statement produced symbol: %+v", symbol)
 		}
 	}
@@ -3104,11 +3219,13 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 
 	source = "module main\n\nfn Use(values: int[]) void {\n\tvalues.\n}\n"
 	dynamicItems := completeSource("", source, strings.Index(source, "values.")+len("values."))
-	assertCompletionLabels(t, dynamicItems, []string{"Append", "Clear", "IsEmpty", "Len", "Ptr", "RemoveAt", "SizeOf", "ToString"})
+	assertCompletionLabels(t, dynamicItems, []string{"Append", "Clear", "IsEmpty", "Len", "Ptr", "RemoveAt", "SizeOf"})
+	assertNoCompletionLabel(t, dynamicItems, "ToString")
 
 	source = "module main\n\nfn Use(view: ref mut int[]) void {\n\tview.\n}\n"
 	sliceItems := completeSource("", source, strings.Index(source, "view.")+len("view."))
-	assertCompletionLabels(t, sliceItems, []string{"Fill", "IsEmpty", "Len", "Ptr", "Reverse", "SizeOf", "ToString"})
+	assertCompletionLabels(t, sliceItems, []string{"Fill", "IsEmpty", "Len", "Ptr", "Reverse", "SizeOf"})
+	assertNoCompletionLabel(t, sliceItems, "ToString")
 
 	source = "module main\n\nfn Use(values: list[int]) void {\n\tvalues.\n}\n"
 	listItems := completeSource("", source, strings.Index(source, "values.")+len("values."))

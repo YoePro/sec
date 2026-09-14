@@ -113,12 +113,38 @@ impl string {
         return ""
     }
 
+    /**
+    * Compares two strings lexicographically by Unicode scalar value order.
+    *
+    * Sec strings use valid UTF-8 encoding. UTF-8 preserves Unicode scalar value
+    * ordering under lexicographic byte comparison, allowing Compare to operate
+    * directly on the encoded bytes without decoding each rune.
+    *
+    * Returns:
+    *   - a negative value when self sorts before other,
+    *   - zero when both strings are equal,
+    *   - a positive value when self sorts after other.
+    *
+    * This comparison is ordinal. It does not perform locale-sensitive collation,
+    * case folding, or Unicode normalization.
+    */
     fn Compare(other: string) int {
-        uint mut: index := 0
+        let mut index: uint := 0
 
-        while index < self.Len && index < other.Len {
-            let left := self.ByteAt(index)
-            let right := other.ByteAt(index)
+        while index < self.ByteLen && index < other.ByteLen {
+            let left := try self.ByteAt(index) {
+                Err(_) => {
+                    assert false, "string.Compare: ByteAt failed inside proven bounds"
+                    return 0
+                }
+            }
+
+            let right := try other.ByteAt(index) {
+                Err(_) => {
+                    assert false, "string.Compare: ByteAt failed inside proven bounds"
+                    return 0
+                }
+            }
 
             if left < right {
                 return -1
@@ -131,21 +157,40 @@ impl string {
             index += 1
         }
 
-        if self.Len < other.Len {
+        if self.ByteLen < other.ByteLen {
             return -1
         }
 
-        if self.Len > other.Len {
+        if self.ByteLen > other.ByteLen {
             return 1
         }
 
         return 0
     }
 
-    fn ByteAt(index: uint) byte {
-        unsafe {
-            return self.Ptr.Offset(int(index)).Read()
+    /** Returns the byte ar the given byte index */
+    fn ByteAt(index: uint) Result[byte, IndexError] {
+        if index >= self.ByteLen {
+            return Err(IndexError.OutOfBounds)
         }
+        unsafe {
+            return Ok(self.Ptr.Offset(int(index)).Read())
+        }
+    }
+
+    /** Returns the rune at the given rune index. */
+    fn RuneAt(index: uint) Result[rune, IndexError] {
+        let mut current: uint := 0
+
+        for value in self {
+            if current == index {
+                return Ok(value)
+            }
+
+            current += 1
+        }
+
+        return Err(IndexError.OutOfBounds)
     }
 
     fn FromByteArray(value: ref byte[]) string {
@@ -158,21 +203,53 @@ impl string {
         return ""
     }
 
-    /** Materializes the string as an owning rune sequence. */
-    fn ToRuneArray() rune[] {
-        // TODO: Implement string.ToRuneArray.
-        return []
+    /**
+    * Materializes this string as an owning array of Unicode runes.
+    *
+    * The string is decoded using Sec's normal UTF-8 string iteration semantics.
+    * One array element is produced for each rune in the string.
+    *
+    * Returns CollectionError when storage for the result cannot be allocated.
+    */
+    fn ToRuneArray() Result[rune[], CollectionError] {
+        let mut result: rune[]
+
+        for value in self {
+            try result.Append(value)
+        }
+
+        return Ok(result)
     }
 
+    /**
+    * Reports whether this string begins with prefix.
+    *
+    * Comparison is exact and case-sensitive and operates on the UTF-8 byte
+    * representation. No Unicode normalization, case folding, or locale-sensitive
+    * comparison is performed.
+    *
+    * An empty prefix does not match. If prefix contains more bytes than this
+    * string, false is returned.
+    *
+    * The operation does not allocate.
+    */
     fn StartsWith(prefix: string) bool {
-        if prefix.Len > self.Len {
+        if prefix.ByteLen == 0 || prefix.ByteLen > self.ByteLen {
             return false
         }
 
         let mut index: uint := 0
 
-        while index < prefix.Len {
-            if self.ByteAt(index) != prefix.ByteAt(index) {
+        while index < prefix.ByteLen {
+            let left := try self.ByteAt(index) {
+                Err(_) => return false
+            }
+
+            let right := try prefix.ByteAt(index) {
+                Err(_) => return false
+            }
+
+            if left != right {
                 return false
             }
 
@@ -182,16 +259,36 @@ impl string {
         return true
     }
 
+    /**
+    * Reports whether this string ends with suffix.
+    *
+    * Comparison is exact and case-sensitive and operates on the UTF-8 byte
+    * representation. No Unicode normalization, case folding, or locale-sensitive
+    * comparison is performed.
+    *
+    * An empty suffix does not match. If suffix contains more bytes than this
+    * string, false is returned.
+    *
+    * The operation does not allocate.
+    */
     fn EndsWith(suffix: string) bool {
-        if suffix.Len > self.Len {
+        if suffix.ByteLen == 0 || suffix.ByteLen > self.ByteLen {
             return false
         }
 
-        let start := self.Len - suffix.Len
+        let start := self.ByteLen - suffix.ByteLen
         let mut index: uint := 0
 
-        while index < suffix.Len {
-            if self.ByteAt(start + index) != suffix.ByteAt(index) {
+        while index < suffix.ByteLen {
+            let left := try self.ByteAt(start + index) {
+                Err(_) => return false
+            }
+
+            let right := try suffix.ByteAt(index) {
+                Err(_) => return false
+            }
+
+            if left != right {
                 return false
             }
 

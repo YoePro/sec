@@ -87,20 +87,24 @@ impl Body {
         })
     }
 
+    // TODO: Add _BodyStreamState and _BodyState.Stream(...) when the canonical
+    // IO/transport body source abstraction is defined.
+    //
+    // Stream state must define:
+    // - ownership of the underlying source/resource,
+    // - known or unknown total length,
+    // - replayability,
+    // - read semantics,
+    // - explicit Close behavior,
+    // - automatic destruction behavior.
+
+    /**
+    * Creates an empty HTTP body.
+    *
+    * The returned body has a known length of zero and is replayable until it is
+    * closed.
+    */
     static fn Empty() Body { return new Body() }
-
-    // TODO: Implement http.Body.FromBytes()
-    static fn FromBytes(->data: byte[]) Body {
-        return new Body(<-data)
-    }
-
-    // TODO: Implement http.Body.FromString()
-    static fn FromString(text: string) Result[Body, BodyError] {
-        let body := try new Body(text) {
-            Err(error) => return Err(error)
-        }
-        return Ok(body)
-    }
 
     /**
     * Reports the known total length of the HTTP body.

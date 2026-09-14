@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-13"
+    revised: "2026-09-14"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -17,6 +17,7 @@ integrations:
       - rules/foundations/operators.md
       - rules/memory/arena.md
       - rules/compiler/rules_implementations.txt
+      - rules/compiler/compiler_known_members.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
@@ -82,6 +83,8 @@ integrations:
       - testdata/formatter/contextual_x.sec
       - internal/sema/analyzer_test.go
       - internal/sema/effect_analysis_test.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/semantic_facts_test.go
       - internal/sema/reserved_names_test.go
       - cmd/lsp/main_test.go
       - testdata/lsp/contextual_x_semantic_tokens.sec
@@ -135,6 +138,8 @@ integrations:
       - interpolation text parts collapse doubled braces and materialize the lexer-validated ordinary Sec escape inventory, including hexadecimal and braced Unicode escapes, while their tokens retain exact source spelling and ranges for diagnostics and tooling
       - invalid interpolation expressions retain recovery metadata while later parts and enclosing statements survive; ordinary parser diagnostics reach LSP at original positions
       - Sema traverses every valid embedded interpolation expression under ordinary scope, type, ownership, and effect rules while retaining string as the enclosing literal type; nested definition/type facts are recorded, undefined and moved-value diagnostics retain embedded source positions, bounds-panic effects reach callable contracts, and LSP publishes the semantic diagnostics
+      - every interpolation hole is validated once against an explicit Sema formatting plan: ordinary string/char/rune values use direct text, supported built-ins and char/rune sequences retain stable compiler-known ToString identities, and an exact shared user-owned fn ToString() string replaces the fallback; other overloads, byte sequences, void, and unsupported types emit mandatory S1029 operator.invalid-interpolation-value at the embedded expression, plan queries are immutable, and user formatter effects propagate through the call graph to verified guarantees
+      - valid finite string + and interpolation trees produce one immutable maximal frontend StringConcatPlan whose constant, direct string, char, rune, compiler-formatted, and user-materialized segments preserve left-to-right exact-once source order; compatible nested plans are consumed into the outer root without crossing a binding boundary, adjacent constants coalesce, and resolved interpolation formatter identities are reused without member lookup
       - raw string literals are accepted by the expression parser without escape decoding
       - legacy LLVM interpolation placeholder now explicitly rejects unsupported materialization instead of silently emitting source spelling and omitting expression evaluation
       - line comments
@@ -191,14 +196,14 @@ integrations:
       - one lexer-owned reserved-declaration-name classifier covers hard keywords, task/thread/process, all six contract words, compiler-known lowercase type names, and bare underscore while explicitly preserving contextual set, x, not, init, arena, and sec
       - Sema applies stable mandatory S1028 names.reserved-declaration-name diagnostics across module names, explicit import aliases, variables/constants, functions/methods, parameters, generic parameters, fields, properties, events, enum members, loop/select bindings, assembly output bindings, setter parameters, and match payload bindings; parser-owned underscore discard/register roles and trusted core module provenance are exempt
       - compiler-known type, enum, interface, and unit redeclarations retain their focused messages while sharing S1028 ownership; the bootstrap lexer mirrors the centralized reservation inventory
+      - LSP source-position integration uses one scalar-to-UTF-16 token-range mapping for diagnostics, hover, navigation, references, highlights, call hierarchy, document symbols, semantic tokens, and edits; incoming protocol positions map UTF-16 back to byte offsets without corrupting lexer scalar columns, multiline tokens remain addressable on continuation lines, and LF, CRLF, and bare CR share physical-line semantics
     partial:
-      - interpolation formatting/conversion contracts and runtime lowering remain incomplete; AST/parser expression parts, source ranges, text escape materialization, semantic traversal, ownership checks, and effect propagation are implemented
-      - source-position integration across lexer, parser, diagnostics, and LSP
+      - interpolation allocation/failure policy, Semantic IR plan consumption, and maintained-backend lowering remain incomplete; AST/parser expression parts, source ranges, text escape materialization, semantic traversal, formatting-contract selection, maximal frontend concat planning, ownership checks, and effect propagation are implemented
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
       - confusable-identifier warning policy remains normatively undecided and must not be implemented before that decision is recorded
-      - materialize formatted interpolation expression values through resolved semantic conversion contracts and maintained backends; doubled-brace and text-escape decoding in AST text parts are implemented
+      - resolve concat allocation/failure policy and consume the canonical frontend StringConcatPlan in Semantic IR and maintained backends; frontend formatting-contract selection, maximal planning, doubled-brace handling, and text-escape decoding are implemented
       - port interpolation AST parts and expression parsing to the bootstrap parser; blocked on the bootstrap AST and ordinary expression-parser infrastructure, which do not yet exist
     verification:
       - command: go test ./...
@@ -213,10 +218,16 @@ integrations:
         result: passed; AST parts, nested positions, invalid-expression recovery, LSP diagnostics, and explicit unsupported LLVM materialization
       - command: go test ./internal/sema ./cmd/lsp -run 'InterpolatedStringExpression|SemanticDiagnosticsInsideInterpolation' -count=1
         result: passed; embedded expressions retain resolved types and definitions, undefined and moved-value diagnostics, bounds-panic contract effects, and exact LSP diagnostic ranges
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -run 'Interpolation|Registry' -count=1
+        result: passed; immutable formatting plans select direct, compiler-known, and exact user-owned contracts; S1029 rejects unsupported holes at exact LSP ranges; user formatter effects remain visible to @noPanic
+      - command: go test ./internal/sema -run 'StringConcatPlan|ResolvedInterpolationFormattingPlan|StringConcatenation' -count=1
+        result: passed; mixed direct and interpolated chains flatten into one immutable source-ordered plan, coalesce constants, retain exact segment kinds and formatter identities, and discard nested plan roots
       - command: go test ./internal/lexer ./internal/parser -run Interpolation -count=1
         result: passed; nested literals, comments, braces, token positions, parser retention, malformed input, and LF/CR/CRLF rejection
       - command: go test ./internal/lexer ./internal/parser -run 'Decode(StringText|Quoted)|Interpolation(TextMaterializes|Parts)' -count=1
         result: passed; valid interpolation text materializes the complete Sec escape inventory and doubled braces while preserving exact source tokens and ranges
+      - command: go test ./cmd/lsp -run 'SourcePositions|TokenRanges|UTF16' -count=1
+        result: passed; bidirectional UTF-16 mapping, LF/CRLF/CR normalization, astral-scalar token ranges, multiline comment lookup, diagnostics, semantic tokens, and highlights
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/lsp
         result: passed; NFC validity, normalized suggestions, original token positions, rollback, grammar exclusions, parser rejection, and LSP publication
       - command: go test ./internal/lexer -run TestBytesIsOrdinaryIdentifierWithoutByteStringToken -count=1

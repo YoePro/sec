@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Processes and Command - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#processes">Processes and Command</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#execution-kinds">Task, Thread and Process</a>
+        <a href="#isolation">Process Isolation</a>
+        <a href="#creation-families">Two Creation Families</a>
+        <a href="#types">Core Process Types</a>
+        <a href="#status">ProcessStatus</a>
+        <a href="#process">Process[T]</a>
+        <a href="#spawn-process">spawn process</a>
+        <a href="#transfer">Startup Transfer</a>
+        <a href="#transactional-move">Transactional Moves</a>
+        <a href="#completion">Typed Completion</a>
+        <a href="#command">Command</a>
+        <a href="#command-api">Command Public API</a>
+        <a href="#working-directory">Working Directory</a>
+        <a href="#environment">Environment</a>
+        <a href="#validate-start">Validate and Start</a>
+        <a href="#shell">No Implicit Shell</a>
+        <a href="#stdio">Standard I/O</a>
+        <a href="#pipes">Pipe Ownership</a>
+        <a href="#observer">ProcessObserver</a>
+        <a href="#join">join</a>
+        <a href="#payloads">Terminal Payloads</a>
+        <a href="#synchronization">Synchronization</a>
+        <a href="#termination">Hard Termination</a>
+        <a href="#detach">Detach</a>
+        <a href="#lifecycle">Lifecycle Ownership</a>
+        <a href="#cancellation">Cancellation</a>
+        <a href="#effects">Blocking and ISR Rules</a>
+        <a href="#target">Target Capabilities</a>
+        <a href="#ipc">Relationship to IPC</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#status-spec">Specification Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html" class="active">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Processes and Command</div>
+
+        <h1 id="processes">Processes and Command</h1>
+
+        <p>
+            Sec processes are independently scheduled execution entities in distinct process
+            isolation domains. On hosted systems this normally means an operating-system process.
+            Other targets may provide a different native mechanism, but only when it preserves the
+            isolation, transfer, lifecycle, completion and cleanup semantics defined by Sec.
+        </p>
+
+        <p>
+            Sec has two process-creation families. A Sec callable is started in a new process with
+            <code>spawn process</code>. An external executable is described and started through
+            <code>Command</code>.
+        </p>
+
+        <pre><code>let worker := try spawn process Work(message)
+
+let command := new Command("git", ["status"])
+try command.Start()</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A process is not a task or a thread with a different spelling.
+            <code>spawn process</code> requires a real process-isolation boundary. A target that cannot
+            provide that boundary must reject the operation at compile time.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Process execution solves a different problem from ordinary in-process concurrency.
+                Tasks and threads may coordinate around one process address space. Processes instead
+                introduce an isolation boundary and therefore require explicit transfer semantics for
+                startup values, completion values and ongoing communication.
+            </p>
+
+            <p>This chapter defines the user-facing model for:</p>
+
+            <ul>
+                <li><code>Process[T]</code> and typed Sec-callable subprocesses;</li>
+                <li><code>Command</code> and external executable processes;</li>
+                <li>process identity, status and target-native metadata;</li>
+                <li>startup transfer and completion transfer;</li>
+                <li>observation, <code>join</code>, detach and hard termination;</li>
+                <li>standard-I/O inheritance and anonymous process pipes;</li>
+                <li>lifecycle ownership and native process reaping;</li>
+                <li>target capability requirements.</li>
+            </ul>
+
+            <p>
+                General ongoing inter-process messaging, shared-memory APIs and general handle
+                transfer belong to <a href="66-ipc.html">Inter-Process Communication</a>.
+            </p>
+        </section>
+
+        <section id="execution-kinds">
+            <h2>Task, Thread and Process</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Execution kind</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>Task[T]</code></td><td>Logical concurrent execution managed by a Sec runtime or scheduler.</td></tr>
+                        <tr><td><code>Thread[T]</code></td><td>Physical execution sharing the owning process address space.</td></tr>
+                        <tr><td><code>Process[T]</code></td><td>Independently scheduled execution in a distinct process isolation domain.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                A backend must preserve the execution kind chosen by source code. It may not lower
+                <code>spawn process</code> to a task, a worker job, an ordinary thread or an RTOS task
+                that lacks the required isolation boundary.
+            </p>
+        </section>
+
+        <section id="isolation">
+            <h2>Process Isolation</h2>
+
+            <p>
+                Ordinary Sec objects are process-local. Parent and child do not acquire ordinary aliases
+                into one another's object graphs merely because one created the other.
+            </p>
+
+            <pre><code>parent process                     child process
+ordinary Sec object A    !=        ordinary Sec object B</code></pre>
+
+            <p>
+                Values that cross the boundary use a canonical process-transfer representation. A
+                backend may internally use copy-on-write or a fork-like mechanism, but that does not
+                change the source semantics into shared ordinary Sec storage.
+            </p>
+
+            <h3>References do not cross</h3>
+
+            <pre><code>fn Inspect(data: ref Data) void {
+    // ...
+}
+
+let worker := try spawn process Inspect(ref data)  // invalid</code></pre>
+
+            <p>
+                Neither <code>ref T</code> nor <code>ref mut T</code> becomes process-valid merely
+                because the parent keeps the referenced object alive. Address-space validity is a
+                separate requirement from lifetime validity.
+            </p>
+
+            <h3>RawPtr does not create cross-process validity</h3>
+
+            <p>
+                Copying the numeric representation of a <code>RawPtr[T]</code> to another process does
+                not make it a valid pointer to corresponding child storage. <code>unsafe</code> does not
+                waive this rule. Shared memory and native capability transfer require explicit IPC or
+                process-transfer abstractions.
+            </p>
+        </section>
+
+        <section id="creation-families">
+            <h2>Two Creation Families</h2>
+
+            <h3>Sec-callable process</h3>
+
+            <pre><code>let worker := try spawn process Work(message)</code></pre>
+
+            <p>If <code>Work</code> returns <code>T</code>, the raw spawn expression has type:</p>
+
+            <pre><code>Result[Process[T], ProcessSpawnError]</code></pre>
+
+            <p>
+                After <code>try</code>, <code>worker</code> has type <code>Process[T]</code>. Process spawn
+                is eager in Sec 0.1: a successfully returned handle represents an established process
+                execution, not a deferred launch description.
+            </p>
+
+            <h3>External executable</h3>
+
+            <pre><code>let command := new Command("git", ["status", "--short"])
+try command.Start()</code></pre>
+
+            <p>
+                <code>new Command(...)</code> creates only a launch description. The external process is
+                created by <code>Start()</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>Command</code> is not an alias for <code>Process[T]</code>.
+                The canonical family is <code>Task[T]</code>, <code>Thread[T]</code>,
+                <code>Process[T]</code>, and <code>Command</code>.
+            </div>
+        </section>
+
+        <section id="types">
+            <h2>Core Process Types</h2>
+
+            <h3>ProcessID</h3>
+
+            <pre><code>type ProcessID uint</code></pre>
+
+            <p>
+                <code>ProcessID</code> is Sec's stable process-execution identity for the current program
+                execution. It is copyable and equality-comparable. It is not necessarily the operating
+                system's PID and grants no lifecycle control capability.
+            </p>
+
+            <h3>ExitStatus</h3>
+
+            <pre><code>type ExitStatus struct {
+    Code: uint32
+}
+
+impl ExitStatus {
+    property Success: bool {
+        get {
+            return Code == 0
+        }
+    }
+}</code></pre>
+
+            <p>
+                <code>ExitStatus</code> is the normal result of an external <code>Command</code>.
+                A non-zero exit code is still normal process completion.
+            </p>
+
+            <h3>ProcessTermination</h3>
+
+            <pre><code>enum ProcessTerminationKind {
+    Requested
+    External
+    Fault
+    Unknown
+}
+
+type ProcessTermination struct {
+    Kind: ProcessTerminationKind
+}</code></pre>
+
+            <p>
+                Portable Sec does not force POSIX signals, Windows status values and target-specific
+                fault metadata into one universal integer field.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>ProcessStatus</h2>
+
+            <pre><code>enum ProcessStatus {
+    Created
+    Running
+    Completed
+    CompletionFailed
+    Panicked
+    Terminated
+}</code></pre>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>Created</code></td><td>A <code>Command</code> launch object exists, but no child process has been established.</td></tr>
+                        <tr><td><code>Running</code></td><td>Execution exists and no terminal outcome has yet been observed.</td></tr>
+                        <tr><td><code>Completed</code></td><td>Normal execution completed and the normal result has been established owner-side.</td></tr>
+                        <tr><td><code>CompletionFailed</code></td><td>Execution returned normally, but the declared result could not be transferred/materialized owner-side.</td></tr>
+                        <tr><td><code>Panicked</code></td><td>A Sec-callable subprocess ended through Sec panic and canonical panic information was established.</td></tr>
+                        <tr><td><code>Terminated</code></td><td>The process ended abnormally through termination, crash, fault or equivalent process-level event.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <code>Created</code> is visible for <code>Command</code>. A successfully returned
+                <code>Process[T]</code> from <code>spawn process</code> is never source-visible in
+                <code>Created</code> state.
+            </p>
+
+            <p>
+                If a callable returns <code>Result[T, E]</code>, returning <code>Err(error)</code> is still
+                normal completion. The process result value is that <code>Result[T, E]</code>.
+            </p>
+        </section>
+
+        <section id="process">
+            <h2>Process[T]</h2>
+
+            <pre><code>@noCopy
+type Process[T]</code></pre>
+
+            <p>
+                <code>Process[T]</code> is compiler-known, generic in the callable's normal return type,
+                and move-only regardless of whether <code>T</code> is copyable. It is not user-constructible.
+            </p>
+
+            <p>Its required public surface is:</p>
+
+            <pre><code>property ID: ProcessID
+property Name: string
+property Status: ProcessStatus
+property Value: T
+property CompletionError: ProcessCompletionError
+property Panic: PanicInfo
+property Termination: ProcessTermination
+property Platform: ProcessPlatform
+fn Observe() ProcessObserver
+fn Terminate() Result[void, ProcessTerminationError]</code></pre>
+
+            <p>
+                The process value owns lifecycle responsibility, one join capability until resolved,
+                result ownership, terminal metadata and the native reaping obligations that have not
+                yet been transferred or released.
+            </p>
+        </section>
+
+        <section id="spawn-process">
+            <h2>spawn process</h2>
+
+            <pre><code>fn Calculate() int {
+    return 42
+}
+
+let worker := try spawn process Calculate()</code></pre>
+
+            <p>The resulting type is:</p>
+
+            <pre><code>Process[int]</code></pre>
+
+            <h3>Nested Result is preserved</h3>
+
+            <pre><code>fn Load() Result[Document, IOError] {
+    // ...
+}
+
+let worker := try spawn process Load()</code></pre>
+
+            <p>The type is:</p>
+
+            <pre><code>Process[Result[Document, IOError]]</code></pre>
+
+            <p>
+                An <code>Err(IOError...)</code> returned by <code>Load</code> is not a process-creation
+                failure, completion-transfer failure, panic or abnormal termination. It is the normal
+                typed return value of the callable.
+            </p>
+
+            <h3>Callable materialization</h3>
+
+            <p>
+                A process entry may be a named function, a concrete generic specialization, an instance
+                method, or a callable/lambda whose complete legal target set and captured environment can
+                be materialized for the child process.
+            </p>
+
+            <p>
+                Ordinary borrowed captures into parent storage are invalid. Runtime-selected opaque
+                foreign function addresses are not automatically valid Sec process callables.
+            </p>
+        </section>
+
+        <section id="transfer">
+            <h2>Startup Transfer</h2>
+
+            <p>
+                Process startup is a boundary-specific transfer. Every explicit argument, receiver and
+                capture expression is evaluated in the parent before startup commit.
+            </p>
+
+            <p>
+                A value must satisfy the canonical process-transferability rules. A value may be
+                process-transferable through serialization, a dedicated transfer representation,
+                shared-memory capability, native handle duplication/inheritance or another explicit
+                adapter. Process-transferable does not mean bitwise-copyable.
+            </p>
+
+            <h3>Copyable value</h3>
+
+            <pre><code>let count: int := 10
+let worker := try spawn process Work(count)</code></pre>
+
+            <p>The parent remains able to use <code>count</code>.</p>
+
+            <h3>Consumed named value</h3>
+
+            <pre><code>let data := LoadData()
+let worker := try spawn process Work(&lt;-data)</code></pre>
+
+            <p>
+                When an existing named binding is consumed across the process boundary, the explicit
+                move marker documents that ownership may become unavailable when creation commits.
+            </p>
+
+            <h3>Fresh temporary</h3>
+
+            <pre><code>let worker := try spawn process Work(CreateData())</code></pre>
+
+            <p>A fresh temporary does not need a synthetic move marker.</p>
+        </section>
+
+        <section id="transactional-move">
+            <h2>Transactional Moves During Spawn</h2>
+
+            <p>
+                Process startup is fallible, so ownership transfer must not be irreversibly committed
+                before process creation succeeds.
+            </p>
+
+            <pre><code>match spawn process Work(&lt;-data) {
+    Ok(worker) =&gt; {
+        // data is unavailable here
+    }
+
+    Err(error) =&gt; {
+        // data is still owned here
+    }
+}</code></pre>
+
+            <p>
+                The transfer model has preparation, commit and rollback semantics. A failed spawn must
+                not discard a source value that never successfully crossed the process boundary, and it
+                must never leave a hidden orphan process running after returning <code>Err</code>.
+            </p>
+        </section>
+
+        <section id="completion">
+            <h2>Typed Completion</h2>
+
+            <p>
+                A child returning <code>T</code> and the parent obtaining <code>T</code> are separate
+                events. The normal value must cross the process boundary and become a valid owner-side
+                Sec value before the process is classified as <code>Completed</code>.
+            </p>
+
+            <pre><code>child returns T
+    ↓
+completion transfer
+    ↓
+owner-side materialization of T
+    ↓
+ProcessStatus.Completed</code></pre>
+
+            <p>
+                If the child returns normally but completion transport or materialization fails, the
+                status is <code>CompletionFailed</code> and <code>CompletionError</code> is the terminal
+                payload. The return type itself must therefore be process-transferable.
+            </p>
+
+            <p>
+                One terminal typed completion value belongs to process lifecycle. General streaming,
+                repeated messages and ongoing bidirectional communication belong to IPC.
+            </p>
+        </section>
+
+        <section id="command">
+            <h2>Command</h2>
+
+            <pre><code>@noCopy
+type Command</code></pre>
+
+            <p>
+                <code>Command</code> represents an external executable launch description. It is
+                move-only for its entire lifetime, including while still in <code>Created</code> state.
+            </p>
+
+            <pre><code>impl Command {
+    init(executable: string, arguments: string[]) {
+        // Compiler/core implementation.
+    }
+}</code></pre>
+
+            <pre><code>let command := new Command("git", ["status"])</code></pre>
+
+            <p>
+                Construction is infallible at the process API level. It does not search for the
+                executable, prove permissions, create pipes or launch a child. It creates configuration
+                state with <code>Status == ProcessStatus.Created</code>.
+            </p>
+        </section>
+
+        <section id="command-api">
+            <h2>Command Public API</h2>
+
+            <p>The required portable public surface is:</p>
+
+            <pre><code>property Executable: ref string
+property Arguments: ref string[]
+property WorkingDirectory: Option[ref string]
+property InheritsEnvironment: bool
+property StdinMode: CommandInputMode
+property StdoutMode: CommandOutputMode
+property StderrMode: CommandOutputMode
+property Status: ProcessStatus
+property ID: Option[ProcessID]
+property Name: string
+property Value: ExitStatus
+property CompletionError: ProcessCompletionError
+property Termination: ProcessTermination
+property Platform: Option[ProcessPlatform]
+
+fn SetWorkingDirectory(path: string) Result[void, CommandConfigurationError]
+fn ClearWorkingDirectory() Result[void, CommandConfigurationError]
+fn SetEnvironment(name: string, value: string) Result[void, CommandConfigurationError]
+fn RemoveEnvironment(name: string) Result[void, CommandConfigurationError]
+fn ClearEnvironment() Result[void, CommandConfigurationError]
+fn InheritEnvironment() Result[void, CommandConfigurationError]
+fn SetStdin(mode: CommandInputMode) Result[void, CommandConfigurationError]
+fn SetStdout(mode: CommandOutputMode) Result[void, CommandConfigurationError]
+fn SetStderr(mode: CommandOutputMode) Result[void, CommandConfigurationError]
+fn TakeStdinPipe() Option[PipeWriter]
+fn TakeStdoutPipe() Option[PipeReader]
+fn TakeStderrPipe() Option[PipeReader]
+fn Validate() Result[void, CommandValidationError]
+fn Start() Result[void, CommandStartError]
+fn Observe() Option[ProcessObserver]
+fn Terminate() Result[void, ProcessTerminationError]</code></pre>
+
+            <p>All properties are read-only from ordinary source code.</p>
+        </section>
+
+        <section id="working-directory">
+            <h2>Working Directory</h2>
+
+            <p>
+                By default the child inherits the parent's current working directory as observed at
+                <code>Start()</code>. Command construction does not snapshot it.
+            </p>
+
+            <pre><code>property WorkingDirectory: Option[ref string]</code></pre>
+
+            <p><code>None</code> means inherited working directory. <code>Some(path)</code> means an explicitly configured child directory.</p>
+
+            <pre><code>try command.SetWorkingDirectory(path)</code></pre>
+
+            <p>
+                The setter performs an eager current-environment check for representability,
+                existence, directory identity and permission where the target can determine them.
+                This does not reserve the directory. <code>Validate()</code> and <code>Start()</code>
+                check the relevant conditions again.
+            </p>
+
+            <p>
+                Configuration methods are valid only in <code>Created</code>. A statically provable
+                post-start configuration attempt should be diagnosed at compile time; otherwise the
+                operation returns <code>CommandConfigurationError.InvalidState</code>.
+            </p>
+        </section>
+
+        <section id="environment">
+            <h2>Environment</h2>
+
+            <p>
+                The default is to inherit the effective parent environment at <code>Start()</code>.
+                The command may then override, remove or clear entries explicitly.
+            </p>
+
+            <pre><code>try command.SetEnvironment("MODE", "batch")
+try command.RemoveEnvironment("DEBUG")
+try command.ClearEnvironment()
+try command.InheritEnvironment()</code></pre>
+
+            <p>
+                Environment configuration is part of the launch description, not mutable global
+                environment state in the parent process.
+            </p>
+        </section>
+
+        <section id="validate-start">
+            <h2>Validate and Start</h2>
+
+            <h3>Validate</h3>
+
+            <pre><code>try command.Validate()</code></pre>
+
+            <p>
+                <code>Validate()</code> is optional preflight. It may perform executable lookup,
+                filesystem checks, permission checks and target representation checks, but it does
+                not reserve process slots, pipes, memory or other creation resources.
+            </p>
+
+            <p>
+                A successful validation therefore does not guarantee that a later <code>Start()</code>
+                succeeds. External filesystem state, permissions and resource availability can change.
+            </p>
+
+            <h3>Start</h3>
+
+            <pre><code>try command.Start()</code></pre>
+
+            <p>
+                <code>Start()</code> is the authoritative creation boundary. It returns
+                <code>Result[void, CommandStartError]</code> and does not return the command again merely
+                for method chaining.
+            </p>
+
+            <p>
+                Successful start establishes the actual child process, its identity, configured standard
+                I/O and lifecycle ownership. Failed creation must roll back partially established launch
+                resources.
+            </p>
+        </section>
+
+        <section id="shell">
+            <h2>No Implicit Shell</h2>
+
+            <pre><code>let command := new Command("git status &amp;&amp; echo done", [])</code></pre>
+
+            <p>
+                This does <strong>not</strong> run a shell. It requests an executable literally identified
+                by that string. <code>Command</code> does not silently provide shell quoting, expansion,
+                globbing, redirection, pipelines or command substitution.
+            </p>
+
+            <p>
+                If a shell is intentionally required, the program must name the shell executable and
+                supply its arguments explicitly.
+            </p>
+
+            <p>
+                Bare executable names use the selected target's canonical executable search mechanism.
+                An explicit path is resolved as a path, with relative paths interpreted relative to the
+                effective child working directory at the operation that resolves them.
+            </p>
+        </section>
+
+        <section id="stdio">
+            <h2>Standard I/O</h2>
+
+            <pre><code>enum CommandInputMode {
+    Inherit
+    Closed
+    Pipe
+}
+
+enum CommandOutputMode {
+    Inherit
+    Discard
+    Pipe
+}</code></pre>
+
+            <p>The three streams are configured independently:</p>
+
+            <pre><code>try command.SetStdin(CommandInputMode.Pipe)
+try command.SetStdout(CommandOutputMode.Pipe)
+try command.SetStderr(CommandOutputMode.Inherit)</code></pre>
+
+            <p>
+                These methods modify configuration only. Native pipes are created during
+                <code>Start()</code>, and partial setup must be rolled back on start failure.
+            </p>
+
+            <pre><code>stdin Pipe:
+parent PipeWriter  -&gt; child stdin
+
+stdout Pipe:
+child stdout -&gt; parent PipeReader
+
+stderr Pipe:
+child stderr -&gt; parent PipeReader</code></pre>
+        </section>
+
+        <section id="pipes">
+            <h2>Pipe Ownership</h2>
+
+            <p>
+                Pipe endpoints are extracted through dedicated methods instead of ordinary aggregate
+                partial move:
+            </p>
+
+            <pre><code>let stdinPipe := command.TakeStdinPipe()
+let stdoutPipe := command.TakeStdoutPipe()
+let stderrPipe := command.TakeStderrPipe()</code></pre>
+
+            <p>
+                Each method returns <code>Some(endpoint)</code> only when the command successfully started
+                with the matching <code>Pipe</code> mode and the command still owns that endpoint.
+                Otherwise it returns <code>None</code>.
+            </p>
+
+            <p>
+                Extracting a pipe transfers that endpoint's ownership while leaving the outer
+                <code>Command</code> complete and usable for <code>join</code>, <code>Terminate()</code> and
+                <code>Observe()</code>.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> <code>join</code> does not implicitly drain stdout or stderr.
+                If a child can block on a full pipe, the parent must arrange appropriate pipe reading.
+            </div>
+        </section>
+
+        <section id="observer">
+            <h2>ProcessObserver</h2>
+
+            <pre><code>type ProcessObserver</code></pre>
+
+            <p><code>ProcessObserver</code> is compiler-known, non-owning and copyable.</p>
+
+            <pre><code>property ID: ProcessID
+property Name: string
+property Status: ProcessStatus
+property Platform: ProcessPlatform
+fn Wait() ProcessStatus</code></pre>
+
+            <p>
+                An observer can inspect identity, status and platform metadata and may wait for a
+                terminal status. It cannot obtain <code>Value</code>, panic information, termination
+                authority, join capability or detach capability.
+            </p>
+
+            <p>
+                <code>Process[T].Observe()</code> is infallible because the process already exists.
+                <code>Command.Observe()</code> returns <code>Option[ProcessObserver]</code> because a command
+                in <code>Created</code> has no child process yet.
+            </p>
+
+            <p>
+                <code>Wait()</code> is repeatable and non-owning. Waiting through an observer does not
+                resolve the owning handle's join/detach obligation.
+            </p>
+        </section>
+
+        <section id="join">
+            <h2>join</h2>
+
+            <p>Raw process handles are not awaitable in Sec 0.1.</p>
+
+            <pre><code>await worker    // invalid</code></pre>
+
+            <p>Process lifecycle completion uses:</p>
+
+            <pre><code>join worker
+join command</code></pre>
+
+            <p>
+                Join waits until the complete Sec terminal process outcome is known, including native
+                completion/termination observation, typed completion transfer or terminal metadata, and
+                required native reaping.
+            </p>
+
+            <p>
+                Successful join consumes the one join capability but does not consume the whole owning
+                value. The same binding remains valid for terminal inspection afterward:
+            </p>
+
+            <pre><code>join worker
+
+let id := worker.ID
+let status := worker.Status</code></pre>
+
+            <p>A second join is invalid.</p>
+
+            <h3>Status polling does not replace join</h3>
+
+            <pre><code>if worker.Status == ProcessStatus.Completed {
+    // worker.Value is still unavailable before join
+}</code></pre>
+
+            <p>
+                Status is observational. Join is the ownership/lifecycle operation that establishes
+                terminal synchronization and resolves the join-owned native lifecycle state.
+            </p>
+        </section>
+
+        <section id="payloads">
+            <h2>Terminal Payloads</h2>
+
+            <p>After successful join, payload availability follows the terminal status:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Status</th><th>Available payload</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>Completed</code></td><td><code>Value</code></td></tr>
+                        <tr><td><code>CompletionFailed</code></td><td><code>CompletionError</code></td></tr>
+                        <tr><td><code>Panicked</code></td><td><code>Panic</code> on <code>Process[T]</code></td></tr>
+                        <tr><td><code>Terminated</code></td><td><code>Termination</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <code>Command</code> does not expose portable Sec panic information because an external
+                executable is not part of the typed Sec-callable panic transport model.
+            </p>
+
+            <h3>Move-only result extraction</h3>
+
+            <p>
+                If <code>T</code> is move-only, reading <code>Process[T].Value</code> after join transfers
+                result ownership out of the internal result slot. The outer <code>Process[T]</code>
+                remains valid for terminal metadata inspection, but the result slot cannot be extracted
+                a second time.
+            </p>
+
+            <h3>External non-zero exit</h3>
+
+            <pre><code>join command
+
+// Example normal external exit code 1:
+command.Status == ProcessStatus.Completed
+command.Value.Code == 1
+command.Value.Success == false</code></pre>
+
+            <p>A non-zero normal exit code is not abnormal process termination.</p>
+        </section>
+
+        <section id="synchronization">
+            <h2>Synchronization</h2>
+
+            <p>
+                Successful process-start commit publishes fully materialized startup values to the child.
+                Child user code must not observe half-published startup state.
+            </p>
+
+            <p>
+                Successful <code>join</code> establishes lifecycle synchronization for completion transfer,
+                terminal metadata and native lifecycle resolution. It also proves that the child can perform
+                no future execution.
+            </p>
+
+            <p>
+                Join does <em>not</em> make arbitrary child addresses visible in the parent. Process-local
+                memory remains process-local. Shared-memory publication and IPC ordering are defined by the
+                corresponding IPC abstractions.
+            </p>
+
+            <p>
+                Detach and a successful termination request do not establish completion synchronization.
+                Join remains the terminal synchronization operation.
+            </p>
+        </section>
+
+        <section id="termination">
+            <h2>Hard Termination</h2>
+
+            <pre><code>try worker.Terminate()</code></pre>
+
+            <p>
+                <code>Terminate()</code> requests hard process termination. The portable operation is not
+                classified as <code>unsafe</code> merely because it is destructive: the child exists behind
+                a process isolation boundary rather than inside the parent's ordinary object graph.
+            </p>
+
+            <p>Hard termination does not guarantee child cleanup. The child may not execute:</p>
+
+            <ul>
+                <li><code>defer</code> blocks;</li>
+                <li>deterministic destruction;</li>
+                <li>buffer flushes;</li>
+                <li>application shutdown handlers;</li>
+                <li>transaction rollback;</li>
+                <li>normal return or completion transfer.</li>
+            </ul>
+
+            <p>
+                A successful termination request means the platform accepted the request; it does not
+                prove the child is already terminal and reaped. Canonical destructive shutdown is:
+            </p>
+
+            <pre><code>try worker.Terminate()
+join worker</code></pre>
+
+            <p>
+                Normal completion and hard termination may race. Exactly one terminal outcome becomes
+                authoritative.
+            </p>
+        </section>
+
+        <section id="detach">
+            <h2>Detach</h2>
+
+            <p>A <code>Process[void]</code> may be detached as:</p>
+
+            <pre><code>detach worker</code></pre>
+
+            <p>A process with a non-void normal result requires explicit discard:</p>
+
+            <pre><code>detach worker discard</code></pre>
+
+            <p>Because <code>Command</code> has normal result type <code>ExitStatus</code>:</p>
+
+            <pre><code>detach command discard</code></pre>
+
+            <p>Detach:</p>
+
+            <ul>
+                <li>consumes the owning process value;</li>
+                <li>relinquishes join capability and normal result ownership;</li>
+                <li>relinquishes owner terminal-payload ownership;</li>
+                <li>transfers required reaping/native cleanup responsibility to the runtime or target;</li>
+                <li>allows the child to continue running;</li>
+                <li>establishes no completion synchronization edge.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Detach is not termination, and a conforming detach implementation
+                must not leak unreaped native process state.
+            </div>
+        </section>
+
+        <section id="lifecycle">
+            <h2>Lifecycle Ownership</h2>
+
+            <p>
+                A successfully started <code>Command</code> or successful <code>Process[T]</code> owns
+                unresolved lifecycle responsibility until it is joined, detached, moved to another
+                owner or otherwise resolved through a canonical operation.
+            </p>
+
+            <p>
+                An unresolved owner must not silently leave scope. Sec does not fix forgotten process
+                handles by implicitly joining, terminating or detaching them during destruction.
+            </p>
+
+            <p>
+                Normal parent completion therefore requires every reachable owned child process to have
+                an explicitly resolved lifecycle path.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation</h2>
+
+            <p>
+                Cancellation of a task that owns or waits on a process does not implicitly terminate,
+                detach or discard that process.
+            </p>
+
+            <p>
+                Cancellation paths must still resolve process lifecycle ownership explicitly. Depending
+                on application policy, that may mean termination followed by join, detach, or ownership
+                transfer.
+            </p>
+
+            <p>
+                A cancellable task may stop waiting through a <code>ProcessObserver</code> according to
+                normal task wait rules without changing ownership of the child process itself.
+            </p>
+        </section>
+
+        <section id="effects">
+            <h2>Blocking and ISR Rules</h2>
+
+            <p>The following operations may wait or perform native/blocking work:</p>
+
+            <pre><code>join Process[T]
+join Command
+ProcessObserver.Wait()
+spawn process ...
+Command.Validate()
+Command.Start()
+Command.SetWorkingDirectory(...)
+Process[T].Terminate()
+Command.Terminate()</code></pre>
+
+            <p>
+                Their actual effect classification follows the concurrency blocking/effect model and
+                selected target lowering. From task context, a backend may suspend rather than occupy a
+                physical executor worker when process completion can be registered asynchronously.
+            </p>
+
+            <p>
+                These process lifecycle operations are not ISR-safe in Sec 0.1. Final call-path
+                validation is owned by the interrupt rules.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target Capabilities</h2>
+
+            <p>The active <code>CompilationPlan</code> distinguishes at least:</p>
+
+            <ul>
+                <li><code>ProcessExecution</code> — canonical <code>spawn process</code>;</li>
+                <li><code>ExternalProcessExecution</code> — external <code>Command.Start()</code>;</li>
+                <li><code>ProcessDetach</code>;</li>
+                <li><code>ProcessTermination</code>;</li>
+                <li><code>ProcessStandardIOInheritance</code>;</li>
+                <li><code>ProcessPipes</code>.</li>
+            </ul>
+
+            <p>
+                These are compiler facts, not runtime bool properties. A statically impossible process
+                operation is a compile-time diagnostic. Runtime <code>Result</code> errors describe
+                failures that remain possible on a target that actually supports the capability.
+            </p>
+
+            <p>
+                Bare-metal or schedulerless targets do not gain process support merely because they can
+                run concurrent code. Likewise, an RTOS task is not automatically a Sec process. The
+                target must provide the required isolation and lifecycle model.
+            </p>
+        </section>
+
+        <section id="ipc">
+            <h2>Relationship to IPC</h2>
+
+            <p>
+                Process creation includes startup transfer and one terminal completion value. It does
+                not turn <code>Process[T]</code> into a general message channel.
+            </p>
+
+            <p>The IPC chapter owns:</p>
+
+            <ul>
+                <li>general process messaging;</li>
+                <li>shared memory;</li>
+                <li>process-aware synchronization;</li>
+                <li>general handle and capability transfer;</li>
+                <li><code>PipeReader</code> and <code>PipeWriter</code> semantics.</li>
+            </ul>
+
+            <div class="rule">
+                <strong>Rule:</strong> Ordinary in-process <code>Channel[T]</code> is not process IPC.
+            </div>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>Useful process diagnostics should explain the violated boundary or lifecycle rule.</p>
+
+            <p>Examples include:</p>
+
+            <pre><code>process spawn consumes "data"; write &lt;-data to transfer ownership
+
+ordinary reference ref Data cannot cross a process boundary
+
+process lifecycle owner "worker" leaves scope unresolved
+help: join, detach, or transfer ownership before leaving the scope
+
+process execution is not supported by the selected target
+
+Command configuration is no longer valid after Start()</code></pre>
+
+            <p>
+                The compiler should distinguish statically unsupported target capabilities from runtime
+                creation failures instead of hiding both behind a generic native error.
+            </p>
+        </section>
+
+        <section id="status-spec">
+            <h2>Specification Status</h2>
+
+            <p>
+                The canonical process specification is <strong>Normative</strong>, document revision
+                <strong>2.0</strong>, for Sec 0.1. It defines the process type family, lifecycle,
+                external command API, startup/completion transfer and target capability model.
+            </p>
+
+            <p>
+                Compiler and runtime implementation coverage may lag the normative surface. The
+                project implementation-status ledger remains authoritative for which parts are
+                currently accepted, analyzed and lowered by the toolchain.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use a process when you require a real isolation boundary, not merely concurrency.</li>
+                <li>Use <code>spawn process</code> for a Sec callable and <code>Command</code> for an external executable.</li>
+                <li>Do not treat ordinary references or raw pointer values as cross-process shared memory.</li>
+                <li>Use explicit <code>&lt;-</code> when an existing named move-only value is consumed during process startup.</li>
+                <li>Remember that spawn ownership transfer commits only when process creation commits.</li>
+                <li>Use <code>join</code> for terminal lifecycle synchronization; status polling is not a substitute.</li>
+                <li>Do not use <code>await</code> on <code>Process[T]</code> or <code>Command</code> in Sec 0.1.</li>
+                <li>Handle <code>Completed</code>, <code>CompletionFailed</code>, <code>Panicked</code> and <code>Terminated</code> as different outcomes.</li>
+                <li>Do not classify a non-zero external exit code as abnormal termination.</li>
+                <li>Resolve every owning process lifecycle explicitly before leaving scope.</li>
+                <li>Take required pipe endpoints before detach.</li>
+                <li>Drain pipes concurrently when a child may otherwise block on pipe backpressure.</li>
+                <li>Use <code>Validate()</code> as optional preflight, not as a guarantee that <code>Start()</code> cannot fail.</li>
+                <li>Do not expect <code>Command</code> to run a shell implicitly.</li>
+                <li>Use IPC abstractions for ongoing inter-process communication.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A Sec process is independently scheduled execution in a distinct isolation domain.</li>
+                <li>Tasks, threads and processes are different execution kinds and may not be silently substituted for one another.</li>
+                <li><code>spawn process Callable(...)</code> creates a typed Sec subprocess and returns <code>Result[Process[T], ProcessSpawnError]</code>.</li>
+                <li><code>Command</code> describes and launches an external executable.</li>
+                <li><code>Process[T]</code> and <code>Command</code> are move-only lifecycle owners.</li>
+                <li>Ordinary Sec references and raw pointer numbers do not become process-valid across the isolation boundary.</li>
+                <li>Process-transferability is boundary-specific and may require explicit adapters.</li>
+                <li>Existing named values consumed during startup use explicit <code>&lt;-</code>.</li>
+                <li>Process startup moves are transactional: failure preserves source ownership until commit.</li>
+                <li>Normal callable completion carries one typed value back to the owner.</li>
+                <li>A failure to transfer/materialize that value is <code>CompletionFailed</code>, not ordinary callable failure.</li>
+                <li><code>Command</code> construction does not start a process; <code>Start()</code> does.</li>
+                <li><code>Command</code> never invokes a shell implicitly.</li>
+                <li>Standard streams are independently configured as inherit/closed-or-discard/pipe.</li>
+                <li>Pipe endpoints are extracted through <code>Take*Pipe()</code> without partially moving the command owner.</li>
+                <li><code>ProcessObserver</code> is non-owning and cannot resolve lifecycle ownership.</li>
+                <li>Raw process handles are joined with <code>join</code>, not awaited.</li>
+                <li>Join consumes join capability, establishes terminal synchronization and performs required reaping.</li>
+                <li>Status polling does not unlock terminal result payloads.</li>
+                <li>Hard termination requests process death but does not guarantee child cleanup and does not replace join.</li>
+                <li>Detach transfers reaping responsibility and permits continued independent execution where the target supports it.</li>
+                <li>Unresolved owned process lifecycles must not silently disappear at scope exit.</li>
+                <li>Task cancellation does not implicitly cancel a child process.</li>
+                <li>The active CompilationPlan determines which process capabilities exist.</li>
+                <li>General ongoing communication belongs to IPC, not <code>Process[T]</code>.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="64-atomics.html">Previous: Atomics and Memory Order</a>
+            <a href="66-ipc.html">Next: Inter-Process Communication</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-14</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

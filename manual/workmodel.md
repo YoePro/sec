@@ -27,10 +27,10 @@ Jag tycker därför att vi ska sluta försöka få manualen att sluta på 45. De
 | 51 | 51-interrupts.html | Interrupts and ISRs | Skriven | 
 | 52 | 52-inline-assembly.html | Inline Assembly | Skriven | 
 | 53 | 53-initialization.html | Program Initialization and Shutdown | Skriven | 
-| 54 | 54-concurrency.html | Concurrency | Skriv nu, paraplykapitlet | 
-| 55 | 55-tasks.html | Tasks | Skriv nu | 
-| 56 | 56-spawn.html | Spawn | Skriv nu | 
-| 57 | 57-await.html | Await and Task Outcomes | Skriv nu | 
+| 54 | 54-concurrency.html | Concurrency | Skriven, paraplykapitlet | 
+| 55 | 55-tasks.html | Tasks | Skriven | 
+| 56 | 56-spawn.html | Spawn | Skriven | 
+| 57 | 57-await.html | Await and Task Outcomes | sync-behov | 
 | 58 | 58-threads.html | Threads and Thread-Local Storage | Threads är klar; TLS har sync-behov | 
 | 59 | 59-cancellation.html | Cancellation and Context | Skriv nu | 
 | 60 | 60-scheduling.html | Scheduling, Blocking and Structured Concurrency | Vänta tills sync-required-böckerna är synkade | 
@@ -41,7 +41,7 @@ Jag tycker därför att vi ska sluta försöka få manualen att sluta på 45. De
 | 65 | 65-processes.html | Processes and Command | Skriv nu | 
 | 66 | 66-ipc.html | Inter-Process Communication | När IPC-regelboken du arbetar med är färdig | 
 | 67 | 67-concurrency-safety.html | Transferability, Data Races and Deadlocks | Skriv nu | 
-| 68 | 68-testing.html | Testing | Skriv nu | 
+| 68 | 68-testing.html | Testing | Skriven | 
 | 69 | 69-analysis.html | Static Analysis and sec analyse | Skriv nu | 
 | 70 | 70-formatting.html | Formatting | Skriv nu | 
 | 71 | 71-diagnostics.html | Diagnostics | Krävs; centrala rulebooken är fortfarande sync-required | 

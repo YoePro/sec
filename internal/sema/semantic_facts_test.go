@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -1246,5 +1247,204 @@ fn Divide(left: int, right: int, condition: bool) int {
 	errors := a.Analyze(result.Program)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "try handler must return, propagate, terminate or produce int") {
 		t.Fatalf("errors = %#v", errors)
+	}
+}
+
+// Interpolation formatting is resolved once in Sema so later concat planning
+// cannot repeat member lookup or silently select a differently shaped method.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+//   - rules/compiler/compiler_known_members.md — "ToString()"
+func TestResolvedInterpolationFormattingPlan(t *testing.T) {
+	source := `module main
+
+type Packet struct { value: int, }
+
+impl Packet {
+	fn ToString() string {
+		return self.value.ToString()
+	}
+}
+
+fn Render(text: string, count: int, packet: Packet, chars: char[2]) string {
+	return $"{text}:{count}:{packet}:{chars}"
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "interpolation-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", result.Diagnostics)
+	}
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	var literal *ast.InterpolatedStringLiteral
+	for _, statement := range result.Program.Statements {
+		function, ok := statement.(*ast.FunctionDeclaration)
+		if !ok || function.Name.Value != "Render" {
+			continue
+		}
+		literal = function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InterpolatedStringLiteral)
+	}
+	plan, ok := analyzer.ResolvedInterpolationPlanOf(literal)
+	if !ok || len(plan.Holes) != 4 {
+		t.Fatalf("interpolation plan = %#v, found=%t", plan, ok)
+	}
+	if plan.Holes[0].Kind != InterpolationFormatDirectText || plan.Holes[0].ValueType.Kind != StringType {
+		t.Fatalf("text hole = %#v", plan.Holes[0])
+	}
+	if plan.Holes[1].Kind != InterpolationFormatCompilerKnown || plan.Holes[1].CompilerKnownID != "CKM-TOSTRING-SIGNED-INTEGER" {
+		t.Fatalf("integer hole = %#v", plan.Holes[1])
+	}
+	if plan.Holes[2].Kind != InterpolationFormatUserToString || plan.Holes[2].UserFunction == nil || plan.Holes[2].UserFunction.ImplTarget != "Packet" {
+		t.Fatalf("user formatter hole = %#v", plan.Holes[2])
+	}
+	if plan.Holes[3].Kind != InterpolationFormatCompilerKnown || plan.Holes[3].CompilerKnownID != "CKM-TOSTRING-CHAR-SEQUENCE" {
+		t.Fatalf("char sequence hole = %#v", plan.Holes[3])
+	}
+
+	// Query results own their pointer-bearing data.
+	plan.Holes[2].UserFunction.Name = "changed"
+	again, _ := analyzer.ResolvedInterpolationPlanOf(literal)
+	if again.Holes[2].UserFunction.Name == "changed" {
+		t.Fatal("interpolation plan query exposed mutable analyzer storage")
+	}
+}
+
+// Mixed concatenation and interpolation become one source-ordered semantic
+// plan, while conversion choices remain the ones already resolved by Sema.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+func TestStringConcatPlanFlattensMixedChain(t *testing.T) {
+	source := `module main
+
+type Packet struct { value: int, }
+
+impl Packet {
+	fn ToString() string {
+		return self.value.ToString()
+	}
+}
+
+fn Render(text: string, count: int, character: char, packet: Packet) string {
+	return "prefix:" + text + $"-{count}-{packet}-" + character + "!"
+}
+
+fn Bound(text: string) string {
+	let prefix := "prefix:" + text
+	return prefix + "!"
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "concat-plan.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", result.Diagnostics)
+	}
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+
+	var root *ast.InfixExpression
+	var boundPrefix *ast.InfixExpression
+	var boundReturn *ast.InfixExpression
+	for _, statement := range result.Program.Statements {
+		function, ok := statement.(*ast.FunctionDeclaration)
+		if ok && function.Name.Value == "Render" {
+			root = function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InfixExpression)
+		}
+		if ok && function.Name.Value == "Bound" {
+			boundPrefix = function.Body.Statements[0].(*ast.LetStatement).Value.(*ast.InfixExpression)
+			boundReturn = function.Body.Statements[1].(*ast.ReturnStatement).Value.(*ast.InfixExpression)
+		}
+	}
+	plan, ok := analyzer.StringConcatPlanOf(root)
+	if !ok {
+		t.Fatal("missing maximal concat plan")
+	}
+	wantKinds := []StringConcatSegmentKind{
+		StringConcatConstantString,
+		StringConcatString,
+		StringConcatConstantString,
+		StringConcatBuiltinFormatted,
+		StringConcatConstantString,
+		StringConcatMaterialized,
+		StringConcatConstantString,
+		StringConcatChar,
+		StringConcatConstantString,
+	}
+	if len(plan.Segments) != len(wantKinds) {
+		t.Fatalf("segments = %#v, want %d", plan.Segments, len(wantKinds))
+	}
+	for index, want := range wantKinds {
+		if plan.Segments[index].Kind != want {
+			t.Fatalf("segment %d kind = %q, want %q", index, plan.Segments[index].Kind, want)
+		}
+	}
+	if plan.Segments[0].Text != "prefix:" || plan.Segments[2].Text != "-" || plan.Segments[8].Text != "!" {
+		t.Fatalf("constant segments lost source order: %#v", plan.Segments)
+	}
+	if plan.Segments[3].CompilerKnownID != "CKM-TOSTRING-SIGNED-INTEGER" {
+		t.Fatalf("builtin formatter = %#v", plan.Segments[3])
+	}
+	if plan.Segments[5].UserFunction == nil || plan.Segments[5].UserFunction.ImplTarget != "Packet" {
+		t.Fatalf("materialized formatter = %#v", plan.Segments[5])
+	}
+	if left, ok := root.Left.(*ast.InfixExpression); ok {
+		if nested, found := analyzer.StringConcatPlanOf(left); found {
+			t.Fatalf("nested concat retained a second plan: %#v", nested)
+		}
+	}
+
+	plan.Segments[5].UserFunction.Name = "changed"
+	again, _ := analyzer.StringConcatPlanOf(root)
+	if again.Segments[5].UserFunction.Name == "changed" {
+		t.Fatal("concat plan query exposed mutable formatter storage")
+	}
+	prefixPlan, prefixFound := analyzer.StringConcatPlanOf(boundPrefix)
+	returnPlan, returnFound := analyzer.StringConcatPlanOf(boundReturn)
+	if !prefixFound || !returnFound || len(prefixPlan.Segments) != 2 || len(returnPlan.Segments) != 2 {
+		t.Fatalf("binding boundary plans = prefix(%t, %#v), return(%t, %#v)", prefixFound, prefixPlan, returnFound, returnPlan)
+	}
+	if returnPlan.Segments[0].Kind != StringConcatString || returnPlan.Segments[0].Expression == nil {
+		t.Fatalf("bound result was incorrectly fused across declaration: %#v", returnPlan)
+	}
+}
+
+func TestInterpolationRejectsValuesWithoutFormattingContract(t *testing.T) {
+	_, errors := analyzeSourceWithAnalyzerRaw(t, `module main
+
+type Packet struct { value: int, }
+
+impl Packet {
+	fn ToString(format: string) string {
+		return format
+	}
+}
+
+fn Nothing() void {}
+
+fn Render(packet: Packet, bytes: byte[2]) string {
+	return $"{packet}:{bytes}:{Nothing()}"
+}
+`)
+	if len(errors) != 3 {
+		t.Fatalf("interpolation errors = %v, want three", errors)
+	}
+	for _, expected := range []string{"Packet", "byte[2]", "void"} {
+		found := false
+		for _, diagnostic := range errors {
+			if diagnostic.ID == diagnostics.OperatorInvalidInterpolationValue && strings.Contains(diagnostic.Message, expected+" has no canonical interpolation formatting contract") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("missing S1029 for %s in %v", expected, errors)
+		}
 	}
 }

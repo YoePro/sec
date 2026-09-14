@@ -1819,6 +1819,7 @@ Current infrastructure implemented:
   * `S1019` / `operator.non-comparable-operands`
   * `S1021` / `operator.invalid-membership`
   * `S1022` / `operator.invalid-concat-operand`
+  * `S1029` / `operator.invalid-interpolation-value`
 * retired diagnostic IDs remain registered and reserved:
   * `S1020` / `operator.string-runtime-concat` (retired; never reuse)
 * parser recovery IDs `P2001` through `P2018` are registered; initial focused

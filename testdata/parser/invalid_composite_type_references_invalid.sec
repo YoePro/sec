@@ -1,0 +1,9 @@
+module main
+
+fn CallableParameter(value: fn(ref) void) void {}
+fn CallableReturn(value: fn() ref) void {}
+fn PrefixElement(value: []ref) void {}
+fn ArrayLength(value: int[true + ]) void {}
+fn ShapedConstant(value: vector[int, @]) void {}
+
+fn Next() void {}

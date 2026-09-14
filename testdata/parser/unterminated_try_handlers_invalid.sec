@@ -1,0 +1,6 @@
+module main
+
+fn Recover(result: Result[int, IOError]) int {
+    return try result {
+        Err(IOError.InvalidValue) => 0
+        Err(error) => 1

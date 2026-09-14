@@ -503,8 +503,11 @@ The current implementation still differs in several places:
   dynamic arrays, and slices, while
   array/slice membership lowering remains incomplete;
 - runtime string `+` and direct `string +=` implement the canonical
-  `string`/`char`/`rune` operand matrix, while allocation effects,
-  interpolation formatting, concat planning, and lowering remain incomplete;
+  `string`/`char`/`rune` operand matrix; interpolation holes receive frontend
+  formatting-contract selection and focused diagnostics, and mixed finite
+  concat/interpolation chains produce one maximal frontend `StringConcatPlan`,
+  while allocation effects, Semantic IR consumption, and lowering remain
+  incomplete;
 - complete checked overflow, shift validation, and remainder lowering remain
   incomplete;
 - float `!=` lowering requires the canonical unordered-NaN behavior.

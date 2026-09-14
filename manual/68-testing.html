@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Testing - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#testing">Testing</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#first-test">A First Test</a>
+        <a href="#files">Test Files</a>
+        <a href="#declaration">Test Declarations</a>
+        <a href="#identity">Test Identity</a>
+        <a href="#white-box">White-Box Tests</a>
+        <a href="#integration">Integration Tests</a>
+        <a href="#test-body">Test Body Semantics</a>
+        <a href="#try-boundary">try at the Test Boundary</a>
+        <a href="#testing-namespace">The testing Namespace</a>
+        <a href="#pass-fail-skip">Pass, Fail and Skip</a>
+        <a href="#expect-require">Expect and Require</a>
+        <a href="#equality">Equality Expectations</a>
+        <a href="#assert">assert vs testing.Expect</a>
+        <a href="#cleanup">Cleanup</a>
+        <a href="#subtests">Subtests</a>
+        <a href="#ordering">Ordering and Parallelism</a>
+        <a href="#isolation">Isolation</a>
+        <a href="#dependencies">Test-Only Dependencies</a>
+        <a href="#compilation-plan">TestCompilationPlan</a>
+        <a href="#discovery">Discovery</a>
+        <a href="#sec-test">sec test</a>
+        <a href="#runner">Runner Behavior</a>
+        <a href="#results">Results and Exit Status</a>
+        <a href="#harness">Generated Harness</a>
+        <a href="#targets">Hosted and Embedded Targets</a>
+        <a href="#providers">Execution Providers</a>
+        <a href="#faults">Faults, Reset and Timeout</a>
+        <a href="#environment">Environment and Resources</a>
+        <a href="#lsp">LSP and Editor Integration</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#future">Not in Sec 0.1</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html" class="active">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Testing</div>
+
+        <h1 id="testing">Testing</h1>
+
+        <p>
+            Sec has a compiler-defined source testing model. Tests are ordinary Sec code placed in
+            <code>*_test.sec</code> files and declared with the top-level <code>test</code> construct.
+            The compiler discovers them, builds a dedicated test compilation, generates the harness
+            and runs the selected test set through <code>sec test</code> or an equivalent editor action.
+        </p>
+
+        <pre><code>test "Add returns the sum" {
+    testing.ExpectEqual(4, Add(2, 2))
+}</code></pre>
+
+        <pre><code>sec test</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Testing uses ordinary Sec semantics. It does not introduce a
+            separate expression language, ownership model, error system, assertion syntax or hidden
+            runtime reflection mechanism.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+            <p>
+                The testing model is intentionally small at the source level. A useful unit test should
+                normally need only a <code>*_test.sec</code> file, one or more <code>test</code>
+                declarations and the compiler-known <code>testing</code> namespace.
+            </p>
+            <p>
+                The same source model is designed to work for hosted applications, simulators, RTOS
+                targets and bare-metal firmware. Test execution may differ by target, but the meaning
+                of a test declaration does not.
+            </p>
+            <p>Sec 0.1 testing does not intrinsically require:</p>
+            <ul>
+                <li>a third-party runner;</li>
+                <li>a user-written test <code>main</code>;</li>
+                <li>runtime reflection or dynamic registration;</li>
+                <li>a heap, filesystem, operating system or threads;</li>
+                <li>a testing runtime linked into production artifacts.</li>
+            </ul>
+        </section>
+
+        <section id="first-test">
+            <h2>A First Test</h2>
+            <p>
+                A top-level test has a compile-time string name and a normal Sec block body.
+            </p>
+            <pre><code>// math_test.sec
+module math
+
+test "Add returns the sum" {
+    testing.ExpectEqual(4, Add(2, 2))
+}</code></pre>
+            <p>
+                Reaching the end of the body without a recorded failure passes the test. An explicit
+                <code>testing.Pass()</code> is normally unnecessary.
+            </p>
+        </section>
+
+        <section id="files">
+            <h2>Test Files</h2>
+            <p>The canonical test-source filename form is:</p>
+            <pre><code>*_test.sec</code></pre>
+            <p>Examples include:</p>
+            <pre><code>request_test.sec
+parser_test.sec
+regression_test.sec</code></pre>
+            <p>
+                A <code>test</code> declaration is legal only in a <code>*_test.sec</code> file.
+                Production builds exclude these files completely. Test-only declarations,
+                dependencies and generated harness code must not leak into ordinary production
+                compilation or emitted artifacts.
+            </p>
+            <pre><code>// request.sec -- invalid
+
+test "Request parses GET" {
+}</code></pre>
+            <p>Expected diagnostic:</p>
+            <pre><code>test declarations are only allowed in *_test.sec files</code></pre>
+        </section>
+
+        <section id="declaration">
+            <h2>Test Declarations</h2>
+            <p>The canonical source form is:</p>
+            <pre><code>test "Request parses GET" {
+    ...
+}</code></pre>
+            <p>A top-level test declaration:</p>
+            <ul>
+                <li>is a module-level declaration;</li>
+                <li>has a non-empty compile-time string literal name;</li>
+                <li>has no source-visible parameters;</li>
+                <li>has no source-visible return type;</li>
+                <li>is not an ordinary callable value;</li>
+                <li>cannot be invoked directly by user source.</li>
+            </ul>
+            <p>
+                Tests are not declared inside functions, impl blocks, properties, lambdas or other
+                tests. Nested test execution uses <code>testing.Run</code>.
+            </p>
+        </section>
+
+        <section id="identity">
+            <h2>Test Identity</h2>
+            <p>
+                A top-level test identity combines its test module identity with the human-readable
+                test name. The same test name may therefore exist in different modules without
+                creating one global name collision.
+            </p>
+            <p>
+                Two tests in the same test module may not have the same test name. Subtests extend
+                the parent identity hierarchically rather than being flattened into one source-level
+                string.
+            </p>
+            <pre><code>module :: top-level test :: subtest :: nested subtest</code></pre>
+            <p>
+                Stable structured identity is used by the runner, LSP, editor integrations and test
+                result reporting.
+            </p>
+        </section>
+
+        <section id="white-box">
+            <h2>White-Box Tests</h2>
+            <p>
+                A <code>*_test.sec</code> file placed beside production source participates in the
+                same module during test compilation.
+            </p>
+            <pre><code>net/http/request.sec
+net/http/request_test.sec</code></pre>
+            <p>
+                The test file declares the same module name and may use declarations visible to that
+                module under normal visibility rules. Testing does not create a friend mechanism.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> Module-internal declarations remain module-internal, while
+                source-file-private declarations remain private to their declaring source file.
+                Placing a test in the same directory does not weaken source-file privacy.
+            </div>
+            <p>
+                White-box test files may contain helper functions, fixture types, constants and other
+                ordinary declarations needed only during test compilation.
+            </p>
+        </section>
+
+        <section id="integration">
+            <h2>Integration and Black-Box Tests</h2>
+            <p>
+                Project-level integration tests live below the project-root <code>tests/</code>
+                source tree. They belong to test-only modules and access production modules through
+                normal imports and normal external visibility rules.
+            </p>
+            <pre><code>tests/
+└── http/
+    └── request_test.sec</code></pre>
+            <pre><code>import "net/http"
+
+test "public request API parses GET" {
+    let request := try http.ParseRequest("GET / HTTP/1.1")
+    testing.ExpectEqual(http.Method.GET, request.Method)
+}</code></pre>
+            <p>
+                Black-box testing means testing through the external Sec API. It does not imply a
+                separate operating-system process, container, network deployment or fresh machine.
+            </p>
+        </section>
+
+        <section id="test-body">
+            <h2>Test Body Semantics</h2>
+            <p>
+                A test body contains ordinary Sec statements and expressions. Normal control flow,
+                ownership, borrowing, <code>defer</code>, collections, concurrency, hardware access
+                and function calls remain governed by their ordinary rules.
+            </p>
+            <p>
+                A bare <code>return</code> may terminate the current test invocation normally. Returning
+                a value is invalid because a test has no source-visible return type.
+            </p>
+            <pre><code>test "optional setup" {
+    if !SetupNeeded() {
+        return
+    }
+
+    RunSetup()
+}</code></pre>
+            <p>
+                Failure state is monotonic. Once an invocation has failed, later normal completion,
+                <code>testing.Pass()</code> or a later skip request cannot erase that failure.
+            </p>
+        </section>
+
+        <section id="try-boundary">
+            <h2>try at the Test Boundary</h2>
+            <p>
+                A test invocation is a compiler-known error-propagation boundary. This makes ordinary
+                fallible Sec code convenient to test without declaring a fake Result return type on
+                the test itself.
+            </p>
+            <pre><code>test "valid request parses" {
+    let request := try ParseRequest("GET / HTTP/1.1")
+    testing.ExpectEqual(Method.GET, request.Method)
+}</code></pre>
+            <p>
+                If an unhandled <code>Err(errorValue)</code> reaches the test boundary, the current
+                invocation terminates after ordinary cleanup and becomes <code>Failed</code>. The
+                concrete error identity should be retained in the diagnostic.
+            </p>
+            <p>
+                Expected errors are tested with ordinary <code>try</code> handlers or
+                <code>match</code>. Sec 0.1 deliberately does not add a parallel
+                <code>testing.ExpectError</code> API.
+            </p>
+            <pre><code>test "invalid header returns InvalidHeader" {
+    try ParseHeader(input) {
+        Err(ParseError.InvalidHeader) => {
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected ParseError.InvalidHeader")
+}</code></pre>
+        </section>
+
+        <section id="testing-namespace">
+            <h2>The testing Namespace</h2>
+            <p>
+                During test compilation the compiler provides the compiler-known
+                <code>testing</code> namespace. No import is required, and it is not a hidden standard
+                library import.
+            </p>
+            <p>The Sec 0.1 source surface is:</p>
+            <pre><code>testing.Pass()
+
+testing.Fail(message: string)
+testing.Skip(message: string)
+testing.Log(message: string)
+
+testing.Expect(condition: bool)
+testing.Expect(condition: bool, message: string)
+
+testing.Require(condition: bool)
+testing.Require(condition: bool, message: string)
+
+testing.ExpectEqual(expected, actual)
+testing.ExpectEqual(expected, actual, message: string)
+
+testing.RequireEqual(expected, actual)
+testing.RequireEqual(expected, actual, message: string)
+
+testing.Run(name, body)
+
+testing.TestResult</code></pre>
+            <p>
+                Production code must not depend on this namespace. Its availability is part of the
+                test compilation context only.
+            </p>
+        </section>
+
+        <section id="pass-fail-skip">
+            <h2>Pass, Fail and Skip</h2>
+            <p>
+                <code>testing.Pass()</code> terminates the current invocation successfully unless the
+                invocation has already recorded a failure.
+            </p>
+            <p>
+                <code>testing.Fail(message)</code> records a failure and terminates the current
+                invocation after ordinary cleanup. The message is mandatory.
+            </p>
+            <p>
+                <code>testing.Skip(message)</code> records a skipped outcome and terminates the current
+                invocation when it has not already failed. A runtime skip is different from a test
+                that was never selected or compiled.
+            </p>
+            <pre><code>if !device.IsPresent {
+    testing.Skip("device is not present")
+}</code></pre>
+            <p>
+                <code>testing.Log(message)</code> records structured diagnostic information without
+                changing the invocation outcome or control flow. It is not defined as ordinary stdout
+                or stderr.
+            </p>
+        </section>
+
+        <section id="expect-require">
+            <h2>Expect and Require</h2>
+            <p>
+                <code>testing.Expect</code> is non-fatal. A false condition records a failure and the
+                current invocation continues.
+            </p>
+            <pre><code>testing.Expect(response.Valid)
+testing.Expect(response.Valid, "response should be valid")</code></pre>
+            <p>
+                <code>testing.Require</code> is fatal for the current invocation. A false condition
+                records a failure, performs ordinary cleanup and terminates that invocation.
+            </p>
+            <pre><code>testing.Require(response != None, "response must exist")</code></pre>
+            <p>
+                Use <code>Expect</code> when later checks remain useful and <code>Require</code> when
+                continuing would make subsequent diagnostics meaningless or unsafe.
+            </p>
+        </section>
+
+        <section id="equality">
+            <h2>Equality Expectations</h2>
+            <p>
+                Equality helpers use the argument order <code>expected, actual</code>.
+            </p>
+            <pre><code>testing.ExpectEqual(Method.GET, request.Method)
+testing.RequireEqual(3, items.Length)</code></pre>
+            <p>
+                <code>ExpectEqual</code> records failure and continues. <code>RequireEqual</code>
+                records failure and terminates the current invocation.
+            </p>
+            <p>
+                These operations use ordinary Sec equality. Testing does not add implicit
+                conversions, deep-comparison magic, approximate floating-point equality or special
+                pointer comparison rules.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> The expected and actual expressions are each evaluated exactly
+                once. Diagnostic rendering must not re-evaluate user expressions.
+            </div>
+            <p>
+                When possible, failures report structured expected and actual values, type
+                information, source location and test identity. A lack of pretty rendering does not
+                make an otherwise legal equality comparison invalid.
+            </p>
+        </section>
+
+        <section id="assert">
+            <h2>assert vs testing.Expect</h2>
+            <p>
+                The language-level <code>assert</code> keeps its ordinary runtime meaning inside test
+                code.
+            </p>
+            <pre><code>assert condition
+assert condition, "message"</code></pre>
+            <p>
+                It is not rewritten into <code>testing.Expect</code>. Use <code>assert</code> when the
+                program invariant itself is being asserted. Use <code>testing.Expect</code> or
+                <code>testing.Require</code> when reporting test outcomes to the test harness.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Cleanup</h2>
+            <p>
+                Controlled test termination participates in ordinary Sec cleanup. This includes:
+            </p>
+            <ul>
+                <li>normal completion;</li>
+                <li>bare <code>return</code>;</li>
+                <li>unexpected propagated <code>Err</code>;</li>
+                <li><code>testing.Pass</code>;</li>
+                <li><code>testing.Fail</code>;</li>
+                <li><code>testing.Require</code> and <code>RequireEqual</code> failure;</li>
+                <li><code>testing.Skip</code>.</li>
+            </ul>
+            <p>
+                Owned values are destroyed normally and registered <code>defer</code> blocks run under
+                the ordinary cleanup ordering rules. Testing does not invent a hidden teardown phase
+                that restores arbitrary files, databases, global state or hardware registers.
+            </p>
+        </section>
+
+        <section id="subtests">
+            <h2>Subtests</h2>
+            <p>
+                Subtests are nested test invocations created with <code>testing.Run(name, body)</code>.
+                The body uses Sec's ordinary callable/lambda syntax; testing does not add another
+                closure syntax.
+            </p>
+            <p>
+                Unlike top-level test names, subtest names may be runtime strings. This supports
+                table-driven tests.
+            </p>
+            <p>
+                <code>testing.Run</code> is synchronous. Before it returns, the child body has
+                finished, its outcome is known and child cleanup has completed.
+            </p>
+            <p>Its result is:</p>
+            <pre><code>testing.TestResult
+
+Passed
+Failed
+Skipped</code></pre>
+            <p>
+                A failed child marks the parent invocation failed, but the parent body may continue.
+                A skipped child does not automatically skip or fail the parent.
+            </p>
+            <p>
+                Sibling subtest names must be unique within the parent invocation. Because names may
+                be computed at runtime, duplicate detection may occur in the generated harness.
+            </p>
+        </section>
+
+        <section id="ordering">
+            <h2>Ordering and Parallelism</h2>
+            <p>
+                Independent top-level tests must not depend on source-file order or filesystem
+                enumeration order. Sec 0.1 permits an implementation to run top-level tests
+                sequentially for simplicity, but this is not a semantic ordering guarantee.
+            </p>
+            <p>
+                Future runners may schedule independent top-level tests concurrently without changing
+                source semantics. Sec 0.1 does not define <code>testing.Parallel</code>.
+            </p>
+            <p>
+                Ordinary Sec concurrency remains usable inside a test where the selected target
+                supports it. Testing does not provide a second race, ownership or synchronization
+                model.
+            </p>
+        </section>
+
+        <section id="isolation">
+            <h2>Isolation</h2>
+            <p>
+                Every invocation has its own ordinary local scope, owned locals, borrow scopes and
+                cleanup boundary. Sec testing does not, however, guarantee a new process, fresh
+                machine or reset global state for each test.
+            </p>
+            <p>Testing does not automatically reset:</p>
+            <ul>
+                <li>mutable module state;</li>
+                <li>filesystem or environment state;</li>
+                <li>network services or databases;</li>
+                <li>hardware or remote resources.</li>
+            </ul>
+            <p>
+                An execution provider may offer stronger isolation such as a new process, target
+                reset, fresh simulator or emulator. That is provider capability, not portable source
+                semantics.
+            </p>
+        </section>
+
+        <section id="dependencies">
+            <h2>Test-Only Dependencies</h2>
+            <p>
+                Production source must remain valid independently of test source. The permitted
+                dependency direction is:
+            </p>
+            <pre><code>Production -> Production
+Test       -> Production
+Test       -> Test</code></pre>
+            <p>This direction is forbidden:</p>
+            <pre><code>Production -> Test</code></pre>
+            <p>
+                Imports or dependencies used only by test source participate only in the test
+                compilation and must not become production dependencies.
+            </p>
+        </section>
+
+        <section id="compilation-plan">
+            <h2>TestCompilationPlan</h2>
+            <p>
+                <code>sec test</code> does not mean “perform a production build and then hand the
+                result to an unrelated external runner”. The compiler constructs a first-class
+                <code>TestCompilationPlan</code> whose compilation mode is <code>Test</code>.
+            </p>
+            <p>The test graph may include:</p>
+            <ul>
+                <li>selected production source;</li>
+                <li>same-module <code>*_test.sec</code> source;</li>
+                <li>test modules below <code>tests/</code>;</li>
+                <li>test-only dependencies;</li>
+                <li>compiler-known <code>testing</code> support;</li>
+                <li>generated harness code.</li>
+            </ul>
+            <p>
+                Target, variant, ABI, profile and platform resolution are the same canonical models
+                used for normal compilation. A cross-compiled test must not silently adopt the host
+                computer's semantics.
+            </p>
+        </section>
+
+        <section id="discovery">
+            <h2>Discovery</h2>
+            <p>
+                The compiler workspace is the semantic source of truth for test discovery. Top-level
+                tests are discovered from selected <code>*_test.sec</code> files as real test
+                declarations, not by naming convention on ordinary functions.
+            </p>
+            <p>Discovery does not require:</p>
+            <ul>
+                <li>runtime reflection;</li>
+                <li>constructor registration;</li>
+                <li>a global runtime registry;</li>
+                <li>linker-section scanning as source semantics.</li>
+            </ul>
+            <p>
+                The compiler may generate a static harness containing only the selected test set.
+                Dynamically named subtests are discovered when <code>testing.Run</code> executes.
+            </p>
+        </section>
+
+        <section id="sec-test">
+            <h2>sec test</h2>
+            <p>The canonical user command is:</p>
+            <pre><code>sec test</code></pre>
+            <p>
+                From the active project, the default test scope contains same-module white-box tests
+                and integration tests below the project-root <code>tests/</code> tree.
+            </p>
+            <p>
+                Tests belonging to imported dependency modules are not automatically executed merely
+                because those dependencies are built. Likewise, importing a standard-library module
+                does not cause that module's internal tests to run.
+            </p>
+            <p>
+                The CLI must support scoped selection and deterministic filtering by test identity or
+                name. The precise selector and pattern syntax belongs to tooling/CLI policy rather
+                than Sec 0.1 source semantics.
+            </p>
+            <p>
+                Where practical, filtering should happen before final linking so constrained targets
+                can build a test artifact containing only the selected test set and required support.
+            </p>
+        </section>
+
+        <section id="runner">
+            <h2>Runner Behavior</h2>
+            <p>
+                A controlled test failure does not stop the complete suite by default. The runner
+                continues scheduling other selected top-level tests while the execution environment
+                remains usable.
+            </p>
+            <p>
+                A fail-fast runner policy may stop scheduling new top-level tests after a failure,
+                but it must not rewrite source-level control flow inside an already executing
+                invocation.
+            </p>
+            <p>
+                Presentation should remain deterministic for equivalent results even if a future
+                runner executes tests concurrently.
+            </p>
+            <p>
+                Discovering or selecting zero tests is not itself a source-language test failure,
+                although the CLI must report that condition clearly.
+            </p>
+        </section>
+
+        <section id="results">
+            <h2>Results and Exit Status</h2>
+            <p>A completed test invocation has one primary outcome:</p>
+            <pre><code>Passed
+Failed
+Skipped</code></pre>
+            <p>
+                Selection and infrastructure states are separate. Conditions such as
+                <code>CompilationFailed</code>, <code>ExecutionUnavailable</code>, timeout or target
+                reset must not be disguised as <code>Skipped</code>.
+            </p>
+            <p>
+                The command succeeds when every completed selected test is Passed or Skipped and no
+                compilation or execution infrastructure failure occurred. A failed test or failed
+                test run produces a non-zero command status.
+            </p>
+            <p>
+                Internally the harness and runner use structured result data. Human-readable console
+                output is presentation, not the sole semantic representation. This permits CI,
+                editor and hardware-farm integrations without redefining testing semantics.
+            </p>
+        </section>
+
+        <section id="harness">
+            <h2>Generated Harness</h2>
+            <p>
+                The programmer does not write a test <code>main</code>. The compiler generates the
+                harness required for the selected test set.
+            </p>
+            <p>
+                A harness may use a statically generated table or equivalent compiler representation.
+                Runtime test registration is not required, and ordinary production programs do not
+                carry test registries, result collectors, formatting support or result transports.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> A minimal conforming test harness must be possible without
+                hidden heap allocation, filesystem access, threads, an operating system, garbage
+                collection or reflection.
+            </div>
+        </section>
+
+        <section id="targets">
+            <h2>Hosted and Embedded Targets</h2>
+            <p>
+                Testing is not host-only. The same source test may execute as a native host binary,
+                simulator image, emulator image, RTOS image or bare-metal firmware when the selected
+                target and execution provider support it.
+            </p>
+            <pre><code>test "UART initializes" {
+    ...
+}</code></pre>
+            <p>
+                Cross-compiled tests retain the selected target's ABI and semantic assumptions. They
+                are not silently recompiled for the host merely because <code>sec test</code> was
+                invoked on a desktop system.
+            </p>
+            <p>
+                The test artifact is separate from the production artifact, so test-only code does
+                not increase the production binary.
+            </p>
+        </section>
+
+        <section id="providers">
+            <h2>Execution Providers</h2>
+            <p>
+                Compiled test artifacts execute through an execution-provider abstraction. A provider
+                may be a native host runner, simulator, emulator, debug-probe integration, hardware
+                farm or target-specific launcher.
+            </p>
+            <p>A provider may support operations such as:</p>
+            <ul>
+                <li>deploying and starting a test artifact;</li>
+                <li>resetting the target;</li>
+                <li>collecting structured test results;</li>
+                <li>interrupting execution;</li>
+                <li>debugging;</li>
+                <li>reporting processor or target faults.</li>
+            </ul>
+            <p>
+                Build support and execution support are separate. A target may successfully compile a
+                test artifact even when no local execution provider is configured.
+            </p>
+            <p>
+                The provider owns result transport. Debug channels, semihosting, shared memory,
+                mailboxes or an explicitly allocated UART may all be valid provider choices. Testing
+                must not silently consume the same peripheral the test is trying to validate.
+            </p>
+        </section>
+
+        <section id="faults">
+            <h2>Faults, Reset and Timeout</h2>
+            <p>
+                A controlled test failure is different from an execution fault. Expectation failures,
+                <code>testing.Fail</code> and unexpected <code>Err</code> are ordinary structured test
+                failures. Processor faults, unhandled panic, process crashes, target reset or lost
+                provider connections are execution failures.
+            </p>
+            <p>
+                When possible, an execution provider should attribute a fault or reset to the active
+                test identity. It must not fabricate an ordinary assertion failure merely to fit the
+                event into a Passed/Failed/Skipped model.
+            </p>
+            <p>
+                Sec 0.1 defines no universal source-level per-test timeout. Timeout policy belongs to
+                runner, project configuration or execution provider policy, and a timeout is an
+                execution failure category rather than <code>Skipped</code>.
+            </p>
+        </section>
+
+        <section id="environment">
+            <h2>Environment and Resources</h2>
+            <p>
+                Tests may use normal platform facilities such as filesystem, network, clock,
+                environment variables or hardware devices when the active target provides them.
+                Testing itself does not guarantee that any of these exist.
+            </p>
+            <p>
+                The current working directory is not portable test semantics. Likewise, Sec 0.1 has
+                no automatic <code>testdata</code> discovery, automatic resource embedding or magic
+                testing environment variables.
+            </p>
+            <p>
+                Arguments passed to the <code>sec test</code> command configure the test runner unless
+                a separate contract explicitly says otherwise. They do not automatically become
+                program arguments visible to every test invocation.
+            </p>
+        </section>
+
+        <section id="lsp">
+            <h2>LSP and Editor Integration</h2>
+            <p>
+                The compiler workspace owns test discovery. The LSP consumes the compiler's test
+                identities and source ranges rather than maintaining a second parser that scans for
+                <code>*_test.sec</code> or <code>test "..."</code> patterns.
+            </p>
+            <p>
+                The workspace must support separate production and test compilation views so test-only
+                declarations, imports and <code>testing</code> members are understood without
+                contaminating ordinary production analysis.
+            </p>
+            <p>Where the editor supports it, tooling should expose actions such as:</p>
+            <ul>
+                <li>Run Test;</li>
+                <li>Debug Test;</li>
+                <li>Run Tests in File;</li>
+                <li>Run Tests in Module;</li>
+                <li>Run Project Tests.</li>
+            </ul>
+            <p>
+                Editor execution uses the same TestCompilationPlan and result semantics as
+                <code>sec test</code>. The editor does not define a second test runner with different
+                language behavior.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+            <p>Compile-time diagnostics include errors such as:</p>
+            <ul>
+                <li>a test declaration outside a <code>*_test.sec</code> file;</li>
+                <li>a nested test declaration;</li>
+                <li>an empty or duplicate top-level test name;</li>
+                <li>test parameters or a source-visible return type;</li>
+                <li>returning a value from a test;</li>
+                <li>production code depending on a test-only declaration;</li>
+                <li>using <code>testing</code> outside test context;</li>
+                <li>invalid Expect/Require condition types;</li>
+                <li>an illegal equality passed to equality helpers;</li>
+                <li>invalid subtest identity.</li>
+            </ul>
+            <p>
+                Runtime test failures are not compiler diagnostics. A program may compile successfully
+                and later produce structured test failure records. Tooling must preserve that
+                distinction.
+            </p>
+        </section>
+
+        <section id="future">
+            <h2>Not in Sec 0.1</h2>
+            <p>The testing rulebook deliberately leaves several areas for later design:</p>
+            <ul>
+                <li>benchmark declaration syntax and <code>sec benchmark</code> semantics;</li>
+                <li>fuzz declaration syntax, generation, shrinking and coverage guidance;</li>
+                <li>snapshot and golden-file testing DSLs;</li>
+                <li>general system/end-to-end orchestration;</li>
+                <li>universal portable test-resource embedding;</li>
+                <li>source-level per-test timeout syntax;</li>
+                <li><code>testing.Parallel</code>;</li>
+                <li>executable documentation examples.</li>
+            </ul>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+            <p>
+                The Sec 0.1 testing rulebook is normative, but the implementation ledger currently
+                marks the language-testing integration as <strong>planned</strong>.
+            </p>
+            <p>
+                The intended model is therefore specified, but the compiler has not yet integrated
+                the complete testing vertical slice. Remaining implementation work includes the
+                top-level test declaration, test-mode source selection, TestCompilationPlan,
+                compiler-known <code>testing</code> operations, test-boundary error propagation,
+                generated harnesses, subtests, <code>sec test</code>, structured results, execution
+                providers and compiler-owned LSP/editor discovery.
+            </p>
+            <div class="note">
+                <strong>Status note:</strong> This manual chapter describes the normative Sec 0.1
+                testing model. Until the implementation ledger advances from <code>planned</code>,
+                examples on this page should be read as language specification rather than a promise
+                that the current compiler accepts every form today.
+            </div>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+            <ul>
+                <li>Keep source tests in <code>*_test.sec</code> files.</li>
+                <li>Use same-module files for white-box testing and <code>tests/</code> modules for external API testing.</li>
+                <li>Use <code>testing.Expect</code> when later checks remain useful.</li>
+                <li>Use <code>testing.Require</code> when continuing would produce misleading failures.</li>
+                <li>Use ordinary <code>try</code> and <code>match</code> to test expected errors.</li>
+                <li>Use <code>defer</code> and normal ownership for cleanup rather than assuming hidden test teardown.</li>
+                <li>Do not make top-level tests depend on execution order.</li>
+                <li>Do not assume each test receives a fresh process or reset hardware state.</li>
+                <li>Keep test-only dependency direction one-way: tests may depend on production, never the reverse.</li>
+                <li>Remember that target tests execute with target semantics, not host semantics.</li>
+                <li>Use compiler-owned test discovery through <code>sec test</code> and editor integration rather than custom naming conventions.</li>
+                <li>Distinguish a failed test from a compiler failure, target fault, timeout or unavailable execution provider.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+            <ul>
+                <li>Sec source tests live in <code>*_test.sec</code> files.</li>
+                <li>Top-level tests use <code>test "name" { ... }</code>.</li>
+                <li>Production builds exclude test files and test-only dependencies.</li>
+                <li>Same-directory test files participate in the production module for white-box testing.</li>
+                <li>Project-root <code>tests/</code> contains test-only modules for black-box and integration testing.</li>
+                <li>Tests use ordinary Sec statements, ownership, errors, cleanup and concurrency rules.</li>
+                <li>A test invocation is a compiler-known <code>try</code> propagation boundary.</li>
+                <li>Unhandled <code>Err</code> at that boundary becomes a structured test failure after cleanup.</li>
+                <li>The compiler-known <code>testing</code> namespace needs no import.</li>
+                <li><code>Expect</code> is non-fatal; <code>Require</code> is fatal to the current invocation.</li>
+                <li>Equality helpers use normal Sec equality and evaluate arguments exactly once.</li>
+                <li><code>assert</code> retains ordinary runtime assertion semantics.</li>
+                <li><code>testing.Run</code> creates synchronous hierarchical subtests.</li>
+                <li>Top-level tests must not rely on a defined execution order.</li>
+                <li>Testing guarantees local scope and cleanup, not process or global-state isolation.</li>
+                <li><code>sec test</code> constructs a first-class TestCompilationPlan.</li>
+                <li>The compiler workspace owns static test discovery and generates the test harness.</li>
+                <li>Results are structured as Passed, Failed or Skipped; infrastructure failures remain separate.</li>
+                <li>The same source testing model applies to hosted, simulated, RTOS and bare-metal targets.</li>
+                <li>LSP/editor actions use the same compiler-owned discovery and execution semantics as <code>sec test</code>.</li>
+                <li>The testing specification is normative, while the current implementation ledger remains <code>planned</code>.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="67-concurrency-safety.html">Previous: Transferability, Data Races and Deadlocks</a>
+            <a href="69-analysis.html">Next: Static Analysis and sec analyse</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-14</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

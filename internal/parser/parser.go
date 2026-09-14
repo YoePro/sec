@@ -4154,6 +4154,13 @@ func (p *Parser) skipPropertyRemainder() RecoveryEvent {
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
+// parseTypeReference retains an explicitly invalid node for malformed base,
+// qualified-name, and unit-annotation forms before delegating valid suffixes.
+// A parser diagnostic must never leave a valid-looking shortened type behind.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/foundations/grammar.md — "Type-reference grammar", "Unit annotation"
 func (p *Parser) parseTypeReference() *ast.TypeReference {
 	if p.curToken.Type == lexer.REF {
 		return p.parseReferenceTypeReference()
@@ -4162,13 +4169,17 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 	if p.curToken.Type == lexer.LT {
 		token := p.curToken
 		unit, unitExpression := p.parseUnit()
-		return &ast.TypeReference{
+		ref := &ast.TypeReference{
 			Token:          token,
 			Name:           "",
 			Unit:           unit,
 			UnitExpression: unitExpression,
 			UnitOnly:       true,
 		}
+		if unitExpression == nil {
+			return p.markInvalidTypeReference(ref)
+		}
+		return ref
 	}
 
 	if p.curToken.Type == lexer.FN {
@@ -4194,7 +4205,7 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 	for p.peekToken.Type == lexer.DOT {
 		p.nextToken()
 		if !p.expectPeek(lexer.IDENT) {
-			return ref
+			return p.markInvalidTypeReference(ref)
 		}
 		ref.Name += "." + p.curToken.Lexeme
 	}
@@ -4203,12 +4214,11 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		p.nextToken()
 
 		unit, unitExpression := p.parseUnit()
-		if unit == "" {
-			return ref
-		}
-
 		ref.Unit = unit
 		ref.UnitExpression = unitExpression
+		if unitExpression == nil {
+			return p.markInvalidTypeReference(ref)
+		}
 	}
 
 	return p.parsePostfixTypeReference(ref)
@@ -4246,12 +4256,20 @@ func (p *Parser) parseReferenceTypeReference() *ast.TypeReference {
 	return inner
 }
 
+// parseFunctionTypeReference retains the complete callable shape but marks the
+// outer type invalid when any parameter or return type is an invalid retained
+// reference. Composite validity must not hide a diagnosed child failure.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/foundations/grammar.md — "Function type"
 func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
 		Token:              p.curToken,
 		Name:               "fn",
 		FunctionCapability: ast.CallableShared,
 	}
+	invalidChild := false
 
 	if !p.expectPeek(lexer.LPAREN) {
 		return p.markInvalidTypeReference(ref)
@@ -4261,7 +4279,11 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 		if !p.expectPeekTypeStart() {
 			return p.markInvalidTypeReference(ref)
 		}
-		ref.FunctionParameterTypes = append(ref.FunctionParameterTypes, p.parseTypeReference())
+		parameterType := p.parseTypeReference()
+		ref.FunctionParameterTypes = append(ref.FunctionParameterTypes, parameterType)
+		if parameterType == nil || parameterType.Invalid {
+			invalidChild = true
+		}
 
 		if p.peekToken.Type == lexer.COMMA {
 			p.nextToken()
@@ -4277,6 +4299,12 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 		return p.markInvalidTypeReference(ref)
 	}
 	ref.FunctionReturnType = p.parseTypeReference()
+	if ref.FunctionReturnType == nil || ref.FunctionReturnType.Invalid {
+		invalidChild = true
+	}
+	if invalidChild {
+		return p.markInvalidTypeReference(ref)
+	}
 
 	return ref
 }
@@ -4306,6 +4334,15 @@ type typeSequenceSuffix struct {
 	token            lexer.Token
 }
 
+// parsePostfixTypeReference parses sequence and generic bracket suffixes while
+// retaining a marked TypeReference whenever a suffix cannot be completed.
+// Later parser stages must not mistake a diagnosed partial suffix for a valid
+// nominal type.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
+//   - rules/foundations/grammar.md — "Type-reference grammar"
 func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeReference {
 	suffixes := []typeSequenceSuffix{}
 
@@ -4314,15 +4351,15 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 		token := p.curToken
 		if isCollectionShapedTypeName(ref.Name) {
 			ref = p.parseCollectionShapedTypeReferenceArgs(ref, token)
-			if ref == nil {
-				return p.invalidTypeReference(token, "")
+			if ref.Invalid {
+				return ref
 			}
 			continue
 		}
 		if ref.Name == "Event" || ref.Name == "EventStorage" {
 			ref = p.parseEventTypeReferenceArgs(ref, token)
-			if ref == nil {
-				return p.invalidTypeReference(token, "")
+			if ref.Invalid {
+				return ref
 			}
 			continue
 		}
@@ -4332,13 +4369,15 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 			p.nextToken()
 			suffixes = append(suffixes, typeSequenceSuffix{slice: true, token: token})
 		case lexer.INT:
+			diagnosticStart := len(p.diagnostics)
 			p.nextToken()
 			lengthExpr := p.parseExpression(LOWEST)
-			if lengthExpr == nil {
-				return ref
-			}
-			if !p.expectPeek(lexer.RBRACKET) {
-				return ref
+			if lengthExpr == nil || len(p.diagnostics) > diagnosticStart {
+				suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
+				if p.peekToken.Type == lexer.RBRACKET {
+					p.nextToken()
+				}
+				return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
 			}
 			var length int64
 			if literal, ok := lengthExpr.(*ast.IntegerLiteral); ok {
@@ -4348,22 +4387,54 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 			}
 			// Keep the int64 field only as a checked parser compatibility cache;
 			// Sema always consumes the exact expression.
-			suffixes = append(suffixes, typeSequenceSuffix{length: length, lengthExpression: lengthExpr, token: token})
+			suffix := typeSequenceSuffix{length: length, lengthExpression: lengthExpr, token: token}
+			if !p.expectPeek(lexer.RBRACKET) {
+				suffixes = append(suffixes, suffix)
+				return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
+			}
+			suffixes = append(suffixes, suffix)
 		case lexer.MINUS, lexer.FLOAT, lexer.TRUE, lexer.FALSE:
+			diagnosticStart := len(p.diagnostics)
 			p.nextToken()
 			lengthExpr := p.parseExpression(LOWEST)
-			if lengthExpr == nil {
-				return ref
+			suffix := typeSequenceSuffix{lengthExpression: lengthExpr, token: token}
+			if lengthExpr == nil || len(p.diagnostics) > diagnosticStart {
+				suffixes = append(suffixes, suffix)
+				if p.peekToken.Type == lexer.RBRACKET {
+					p.nextToken()
+				}
+				return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
 			}
 			if !p.expectPeek(lexer.RBRACKET) {
-				return ref
+				suffixes = append(suffixes, suffix)
+				return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
 			}
-			suffixes = append(suffixes, typeSequenceSuffix{lengthExpression: lengthExpr, token: token})
+			suffixes = append(suffixes, suffix)
 		default:
+			diagnosticStart := len(p.diagnostics)
 			ref.TypeArgs = p.parseTypeArgs()
+			if len(p.diagnostics) > diagnosticStart || p.curToken.Type != lexer.RBRACKET {
+				return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
+			}
+			for _, argument := range ref.TypeArgs {
+				if argument == nil || argument.Invalid {
+					return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
+				}
+			}
 		}
 	}
 
+	return applyTypeSequenceSuffixes(ref, suffixes)
+}
+
+// applyTypeSequenceSuffixes builds the retained sequence-type nesting after
+// the suffix scan, including a final incomplete suffix before it is marked
+// invalid by the caller.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/foundations/grammar.md — "Fixed array type", "Owning dynamic array type"
+func applyTypeSequenceSuffixes(ref *ast.TypeReference, suffixes []typeSequenceSuffix) *ast.TypeReference {
 	for i := len(suffixes) - 1; i >= 0; i-- {
 		suffix := suffixes[i]
 		ref = &ast.TypeReference{
@@ -4378,16 +4449,34 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 	return ref
 }
 
+// parseCollectionShapedTypeReferenceArgs retains the collection constructor and
+// all completed arguments, marking the enclosing reference invalid when its
+// required type/constant argument structure is malformed.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
+//   - rules/foundations/grammar.md — "Collection and shaped types"
+//   - rules/collections/collections.md — "Compiler-known collection type constructors"
 func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, token lexer.Token) *ast.TypeReference {
 	typeCount := collectionShapedTypeArgumentCount(ref.Name)
 	for i := 0; i < typeCount; i++ {
 		if !p.expectPeekTypeStart() {
-			return ref
+			if p.peekToken.Type == lexer.RBRACKET {
+				p.nextToken()
+			}
+			return p.markInvalidTypeReference(ref)
 		}
-		ref.TypeArgs = append(ref.TypeArgs, p.parseTypeReference())
+		argument := p.parseTypeReference()
+		ref.TypeArgs = append(ref.TypeArgs, argument)
+		if argument == nil || argument.Invalid {
+			return p.markInvalidTypeReference(ref)
+		}
 		if i < typeCount-1 {
 			if !p.expectPeek(lexer.COMMA) {
-				return ref
+				if p.peekToken.Type == lexer.RBRACKET {
+					p.nextToken()
+				}
+				return p.markInvalidTypeReference(ref)
 			}
 			continue
 		}
@@ -4397,10 +4486,14 @@ func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, 
 	}
 
 	for p.peekToken.Type != lexer.RBRACKET && p.peekToken.Type != lexer.EOF {
+		diagnosticStart := len(p.diagnostics)
 		p.nextToken()
 		arg := p.parseExpression(LOWEST)
-		if arg == nil {
-			return ref
+		if arg == nil || len(p.diagnostics) > diagnosticStart {
+			if p.peekToken.Type == lexer.RBRACKET {
+				p.nextToken()
+			}
+			return p.markInvalidTypeReference(ref)
 		}
 		ref.ConstArgs = append(ref.ConstArgs, arg)
 		if p.peekToken.Type == lexer.COMMA {
@@ -4411,7 +4504,7 @@ func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, 
 	}
 
 	if !p.expectPeek(lexer.RBRACKET) {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 	_ = token
 	return ref
@@ -4441,34 +4534,57 @@ func collectionShapedTypeArgumentCount(name string) int {
 	}
 }
 
+// parseEventTypeReferenceArgs retains invalid Event/EventStorage references and
+// their completed payload information instead of returning a valid-looking
+// type after a malformed payload, capacity, or closing bracket.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
+//   - rules/foundations/grammar.md — "Event types"
 func (p *Parser) parseEventTypeReferenceArgs(ref *ast.TypeReference, token lexer.Token) *ast.TypeReference {
 	if !p.expectPeekTypeStart() {
-		return ref
+		if p.peekToken.Type == lexer.RBRACKET {
+			p.nextToken()
+		}
+		return p.markInvalidTypeReference(ref)
 	}
-	ref.TypeArgs = []*ast.TypeReference{p.parseTypeReference()}
+	payload := p.parseTypeReference()
+	ref.TypeArgs = []*ast.TypeReference{payload}
+	if payload == nil || payload.Invalid {
+		return p.markInvalidTypeReference(ref)
+	}
 	if p.peekToken.Type == lexer.COMMA {
 		p.nextToken()
 		if p.peekToken.Type != lexer.INT {
 			p.nextToken()
 			p.addError("%s capacity must be an integer literal at %d:%d", ref.Name, p.curToken.Line, p.curToken.Column)
-			return ref
+			if p.peekToken.Type == lexer.RBRACKET {
+				p.nextToken()
+			}
+			return p.markInvalidTypeReference(ref)
 		}
 		p.nextToken()
 		capacity, ok := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme)
 		if !ok {
 			p.addError("invalid %s capacity %q at %d:%d", ref.Name, p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			return ref
+			return p.markInvalidTypeReference(ref)
 		}
 		ref.EventCapacity = capacity
 		ref.EventCapacitySet = true
 	}
 	if !p.expectPeek(lexer.RBRACKET) {
-		return ref
+		return p.markInvalidTypeReference(ref)
 	}
 	_ = token
 	return ref
 }
 
+// parsePrefixSequenceTypeReference preserves the compatibility sequence shape
+// and propagates an invalid retained element type to the enclosing reference.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
+//   - rules/foundations/grammar.md — "Prefix sequence compatibility types"
 func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	ref := &ast.TypeReference{
 		Token: p.curToken,
@@ -4479,7 +4595,7 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 		bigValue, ok := ast.ParseIntegerLiteralLexeme(p.curToken.Lexeme)
 		if !ok {
 			p.addError("invalid array length %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			return ref
+			return p.markInvalidTypeReference(ref)
 		}
 		ref.ArrayLengthExpression = &ast.IntegerLiteral{Token: p.curToken, BigValue: bigValue}
 		if length, representable := ast.ParseIntegerLiteralInt64(p.curToken.Lexeme); representable {
@@ -4497,6 +4613,9 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	}
 
 	ref.ElementType = p.parseTypeReference()
+	if ref.ElementType == nil || ref.ElementType.Invalid {
+		return p.markInvalidTypeReference(ref)
+	}
 
 	return ref
 }

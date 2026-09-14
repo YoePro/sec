@@ -188,17 +188,72 @@ impl Request {
         return None
     }
 
+    /**
+    * Parse validates an HTTP origin-form request target.
+    *
+    * Description:
+    *   Origin-form consists of an absolute path beginning with '/' followed by an
+    *   optional query component. Fragments, whitespace, non-ASCII characters,
+    *   and malformed percent-encoded sequences are rejected.
+    *
+    * Parameters:
+    *   - value: Raw origin-form request target.
+    *
+    * Returns:
+    *   A validated OriginTarget preserving the original wire representation.
+    *
+    * Errors:
+    *   - MessageError.InvalidTarget: value is not a valid origin-form target.
+    *
+    * Standards:
+    *   - RFC 9112 Section 3.2.1
+    */
+    static fn Parse(value: string) Result[OriginTarget, MessageError] {
+        if value.IsEmpty || !value.StartsWith("/") {
+            return Err(MessageError.InvalidTarget)
+        }
+
+        let mut index: uint := 0
+
+        while index < value.Len {
+            let current := char(value.ByteAt(index))
+
+            if !current.IsAscii || current.IsWhitespace || current == '#' {
+                return Err(MessageError.InvalidTarget)
+            }
+
+            if current == '%' {
+                if index + 2 >= value.Len {
+                    return Err(MessageError.InvalidTarget)
+                }
+
+                let high := char(value.ByteAt(index + 1))
+                let low := char(value.ByteAt(index + 2))
+
+                if !high.IsHexDigit || !low.IsHexDigit {
+                    return Err(MessageError.InvalidTarget)
+                }
+
+                index += 3
+                continue
+            }
+
+            index += 1
+        }
+
+        return Ok(OriginTarget(value))
+    }
+
     // -------------------------------------------------------------------------
     // Serialization
     // -------------------------------------------------------------------------
 
+    /**
+    * Returns the validated origin-form request target.
+    */
     fn ToString() string {
-        // TODO:
-        // Serialize the request head.
-        //
-        // Body serialization should eventually be handled through an
-        // io.Writer/streaming API rather than materializing the entire
-        // request as one string.
+        // TODO: Implement http.Request.ToString()
+        // return string(self)
         return ""
     }
 }
@@ -211,10 +266,14 @@ type BasicAuthentication struct {
     Password: string,
 }
 
+type OriginTarget string
+
+type AuthorityTarget string
+
 type RequestTarget union {
-    Origin(string),
+    Origin(OriginTarget),
     Absolute(url.URL),
-    Authority(string),
+    Authority(AuthorityTarget),
     Asterisk,
 }
 

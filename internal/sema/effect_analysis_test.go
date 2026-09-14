@@ -41,6 +41,33 @@ fn Render(values: list[int], index: uint) string {
 	}
 }
 
+func TestInterpolationRecordsUserFormatterEffects(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `module main
+
+type Ratio struct { divisor: int, }
+
+impl Ratio {
+	fn ToString() string {
+		return (100 / self.divisor).ToString()
+	}
+}
+
+@noPanic
+fn Render(value: Ratio) string {
+	return $"ratio={value}"
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function Render does not satisfy @noPanic") ||
+		!strings.Contains(errors[0].Message, string(EffectMayPanicArithmetic)) {
+		t.Fatalf("formatter effects = %v", errors)
+	}
+	renderID := callGraphNodeIDByName(t, analyzer.CallGraph(), "Render")
+	outgoing := analyzer.CallGraph().Outgoing(renderID)
+	if len(outgoing) != 1 || len(outgoing[0].Targets) != 1 {
+		t.Fatalf("interpolation formatter call sites = %#v", outgoing)
+	}
+}
+
 func TestArithmeticTryTransformsOnlyItsResolvedFailureEffect(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

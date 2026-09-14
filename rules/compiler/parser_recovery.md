@@ -459,8 +459,18 @@ failures without a prefix parser retain this node instead of returning only
 `nil`.
 
 `TypeReference` can be marked invalid and carry the same recovery metadata.
-This is wired for parenthesized, reference, function and prefix sequence type
-paths. Remaining specialized type parsers still require migration.
+This is wired for parenthesized, reference, function, prefix sequence,
+qualified-name, unit-only, unit-annotated, and postfix bracket type paths.
+Malformed qualified and unit forms preserve their parsed name/unit source
+facts while remaining explicitly invalid. The postfix family includes fixed arrays,
+collection/shaped constructors, `Event`/`EventStorage`, and ordinary generic
+arguments; completed inner arguments remain attached and a reliable closing
+bracket is consumed when available so the following declaration survives.
+Composite function and prefix-sequence references propagate retained invalid
+parameter, return, or element types to the outer reference. Malformed array
+length and collection/shaped constant expressions likewise retain the outer
+shape as invalid rather than allowing a valid-looking composite type.
+Remaining specialized type parsers still require migration.
 
 Sema maps these invalid nodes directly to its invalid/error type and does not
 invent dependent semantics.
@@ -614,6 +624,10 @@ empty blocks, nested blocks, and previously recovered invalid statements.
 Their enclosing function and control-flow nodes remain available to tooling.
 Unterminated switch bodies also retain their subject, parsed case clauses,
 default clause, and clause bodies, including an empty switch at EOF.
+Unterminated match blocks retain their subject and ordered parsed or recovered
+arms. Unterminated try-handler blocks retain the protected expression and
+ordered parsed or recovered handlers. Their enclosing expression, return or
+declaration remains available to tooling.
 The unterminated-block error still blocks ordinary code generation.
 
 ---
@@ -770,11 +784,11 @@ context within the active episode is suppressed as a same-cause cascade.
 Broader causal suppression across different token locations and full context
 coverage for every specialized parser remain pending.
 
-## Specialized unterminated constructs can still return nil
+## Other specialized unterminated constructs can still return nil
 
-Specialized parsers, including select bodies and match/try handlers,
-can still report an unterminated construct and then return `nil`. Ordinary
-statement blocks and switch bodies now retain their partial contents.
+Some remaining specialized parsers can still report an unterminated construct
+and then return `nil`. Ordinary statement blocks, switch/select bodies, match
+arm lists, and try-handler lists now retain their partial contents.
 
 This can discard otherwise useful partial block contents.
 
@@ -3296,7 +3310,7 @@ compilation.
 | missing try-handler brace recovery | Implemented for selected starts |
 | sibling-aware match-arm recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
 | sibling-aware try-handler recovery | Implemented for likely later-line patterns; same-line and grammar-derived sets pending |
-| partial unterminated block retention | Implemented for ordinary statement blocks and switch/select bodies; specialized match/try paths remain partial |
+| partial unterminated block retention | Implemented for ordinary statement blocks, switch/select bodies, match arms, and try handlers; other specialized paths remain partial |
 | delimiter stack across all helpers | Shared stack implemented and used by major skip helpers; remaining ad hoc scans pending migration |
 | recovery episode suppression | Implemented at integrated stable boundaries with same-location cascade suppression; broader causal suppression pending |
 | parser diagnostic cap | Implemented at 100 diagnostics with one terminal `P2015` |

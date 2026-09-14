@@ -6,7 +6,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-09-10"
+    revised: "2026-09-14"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -39,9 +39,11 @@ integrations:
       - unterminated ordinary statement blocks retain parsed statements and enclosing function/control-flow nodes at EOF while parser errors still block code generation
       - unterminated switch bodies retain their subject, ordered case/default clauses and clause bodies, including empty switches, while parser errors still block code generation
       - unterminated select bodies retain ordered operation, timeout and default branches, bindings and partial branch bodies at EOF while preserving parser errors
+      - unterminated match and try-handler blocks retain their subject/protected expression plus ordered completed or recovered arms/handlers at EOF; enclosing returns, functions, and declarations survive while the EOF diagnostic remains recoverable and blocks code generation
       - select branch parsing consumes and records a skipped token when a malformed header would otherwise retry the same token indefinitely
       - InvalidExpression nodes for missing Pratt prefix parsers
-      - invalid TypeReference marking with recovery metadata on selected type paths
+      - invalid TypeReference marking with recovery metadata on parenthesized, reference, function, prefix sequence, qualified-name, unit-only, unit-annotated, and postfix bracket paths; malformed qualified/unit forms retain parsed source facts, while fixed arrays, collection/shaped constructors, Event/EventStorage arguments, and ordinary generic arguments retain the enclosing invalid type plus completed arguments and preserve following declarations
+      - composite function and prefix-sequence types propagate invalid retained parameter, return, and element references to their outer type; malformed fixed-array length and collection/shaped constant expressions preserve the diagnosed outer shape, completed children, and following declarations
       - InvalidDeclaration nodes for failed declaration-shaped top-level statements
       - InvalidMember nodes and skipped ranges for disallowed impl members
       - InvalidPattern nodes for malformed match arms and try handlers
@@ -85,6 +87,15 @@ integrations:
       - testdata/parser/unterminated_nested_blocks_invalid.sec
       - testdata/parser/unterminated_recovered_block_invalid.sec
       - testdata/parser/semicolon_invalid.sec
+      - internal/parser/unterminated_match_try_recovery_test.go
+      - testdata/parser/unterminated_match_invalid.sec
+      - testdata/parser/unterminated_try_handlers_invalid.sec
+      - internal/parser/invalid_postfix_type_recovery_test.go
+      - testdata/parser/invalid_postfix_type_references_invalid.sec
+      - internal/parser/invalid_base_type_recovery_test.go
+      - testdata/parser/invalid_base_type_references_invalid.sec
+      - internal/parser/invalid_composite_type_recovery_test.go
+      - testdata/parser/invalid_composite_type_references_invalid.sec
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -110,13 +121,21 @@ integrations:
         result: passed; empty, populated, nested, and previously recovered unterminated statement blocks retain partial AST nodes and parser errors
       - command: go test ./internal/parser -run TestSemicolonDiagnosticPreservesFollowingStatements -count=1
         result: passed; three P2012 diagnostics retain exact invalid nodes and recovery events while preserving same-line sibling statements and the following function
+      - command: go test ./internal/parser -run TestUnterminatedMatchAndTryBlocksRetainPartialChildren -count=1
+        result: passed; EOF diagnostics remain recoverable while two ordered match arms or try handlers and their enclosing return/function AST survive
+      - command: go test ./internal/parser -run TestInvalidPostfixTypeReferencesAreRetained -count=1
+        result: passed; five malformed postfix bracket families retain explicit invalid TypeReference metadata and all following declarations
+      - command: go test ./internal/parser -run TestInvalidQualifiedAndUnitTypeReferencesAreRetained -count=1
+        result: passed; incomplete qualified names and invalid closed unit expressions retain invalid type nodes, source spelling, and the following declaration
+      - command: go test ./internal/parser -run TestInvalidCompositeTypeReferencesPropagateRecovery -count=1
+        result: passed; invalid callable children, prefix-sequence elements, array lengths, and shaped constants propagate to retained outer types without losing the next declaration
 
     remaining:
-      - invalid type retention on every type-reference failure path
+      - invalid type retention in remaining expression-owned generic-argument and other specialized failure paths
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks and switch/select bodies, including match/try handlers
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, and try handlers
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
   - id: frontend.increment-decrement-aliases

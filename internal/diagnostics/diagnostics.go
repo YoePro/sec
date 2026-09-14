@@ -90,6 +90,7 @@ const (
 	RedundantAssociatedStatic           = "S1026"
 	InvalidGenericParameterName         = "S1027"
 	ReservedDeclarationName             = "S1028"
+	OperatorInvalidInterpolationValue   = "S1029"
 	LargeValueParameter                 = "A2001"
 )
 
@@ -253,6 +254,9 @@ var registry = map[string]Definition{
 	},
 	OperatorInvalidConcatOperand: {
 		ID: OperatorInvalidConcatOperand, Name: "operator.invalid-concat-operand", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorInvalidInterpolationValue: {
+		ID: OperatorInvalidInterpolationValue, Name: "operator.invalid-interpolation-value", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	OperatorIntegerOverflow: {
 		ID: OperatorIntegerOverflow, Name: "operator.constant-integer-overflow", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,

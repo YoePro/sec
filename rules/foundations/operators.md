@@ -166,6 +166,9 @@ Sema currently implements:
   `string`, `char`, and `rune` operand matrix, always producing `string`;
 - rejection of hidden conversion for non-text concatenation operands through
   stable diagnostic `S1022`;
+- interpolation-hole formatting-contract validation with compiler-known and
+  exact user-owned `ToString() string` selection through stable diagnostic
+  `S1029`;
 - direct `string +=` type validation for `string`, `char`, and `rune` values;
 - ordered-comparison validation for compatible numeric operands and matching
   `char`, `rune`, and `string` operands;
@@ -218,9 +221,11 @@ The following are only partially implemented:
 - `%` is accepted broadly by Sema, but float and decimal lowering is incomplete;
 - array and slice membership is type-checked, but its exact-once,
   left-to-right short-circuit lowering is not implemented;
-- runtime concatenation is type-checked, but allocation-context resolution,
-  `try`-selected failure flow, `@noPanic` enforcement, interpolation formatting
-  contracts, maximal concat planning and lowering are not implemented;
+- runtime concatenation is type-checked, interpolation formatting contracts are
+  selected, and mixed concat/interpolation expressions produce one immutable
+  maximal frontend `StringConcatPlan`; allocation-context resolution,
+  `try`-selected failure flow, `@noPanic` enforcement, Semantic IR consumption,
+  and lowering are not implemented;
 - `string +=` accepts the direct text operand matrix, but transactional
   fallible commit semantics and in-place proof optimization are not implemented;
 - compound assignment does not yet implement every required check and
@@ -239,6 +244,7 @@ S1018  operator.signed-left-shift-overflow
 S1019  operator.non-comparable-operands
 S1021  operator.invalid-membership
 S1022  operator.invalid-concat-operand
+S1029  operator.invalid-interpolation-value
 ```
 
 `S1020 operator.string-runtime-concat` is retired and its numeric ID remains
@@ -260,9 +266,8 @@ The following are not yet implemented completely:
 - active allocation-context resolution for runtime concatenation;
 - panic-or-`AllocationError` selection from source `try` context;
 - `@noPanic` validation for runtime concatenation;
-- interpolation-hole formatting-contract validation;
-- canonical maximal `StringConcatPlan` construction and concat/interpolation
-  fusion;
+- Semantic IR and lowering consumption of the canonical frontend
+  `StringConcatPlan`;
 - transactional fallible `string +=` semantics;
 - canonical `string.Concat` integration and structural `StringBuilder`
   information;
@@ -3383,6 +3388,7 @@ S1018  operator.signed-left-shift-overflow
 S1019  operator.non-comparable-operands
 S1021  operator.invalid-membership
 S1022  operator.invalid-concat-operand
+S1029  operator.invalid-interpolation-value
 ```
 
 Retired and permanently reserved:
@@ -3408,6 +3414,13 @@ Performance findings may be advisory.
 error[S1022]: `int` cannot be concatenated directly with `string`
 string concatenation accepts string, char, and rune
 help: use `value.ToString()` or interpolation when a formatting contract exists
+```
+
+## Invalid interpolation value
+
+```text
+error[S1029]: `Packet` has no canonical interpolation formatting contract
+help: define an exact shared `fn ToString() string` method or interpolate a supported printable value
 ```
 
 ## Invalid rune comparison
@@ -4517,8 +4530,9 @@ It may not silently produce different semantics.
 9. Add struct equality.
 10. Add array and slice membership. (Frontend complete; Semantic IR and
     lowering remain.)
-11. Complete runtime concat allocation/effect analysis and
-    `StringConcatPlan`. (Direct operand frontend is complete.)
+11. Complete runtime concat allocation/effect analysis and consume the
+    frontend `StringConcatPlan` in Semantic IR and lowering. (Direct operands,
+    interpolation format selection, and maximal frontend planning are complete.)
 12. Add question-mark diagnostic.
 13. Complete Semantic IR metadata.
 14. Synchronize formatter and LSP.

@@ -1,0 +1,7 @@
+module main
+
+fn Qualified(value: pkg.) void {}
+fn UnitOnly(value: <m/>) void {}
+fn UnitAnnotated(value: Speed<m/>) void {}
+
+fn Next() void {}

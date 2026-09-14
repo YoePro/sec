@@ -16,37 +16,39 @@ import (
 )
 
 type Analyzer struct {
-	analysisDepth            AnalysisDepth
-	analysisBudget           AnalysisBudget
-	targetUintWidthBits      uint16
-	legacyDefaultAST         bool
-	types                    map[string]Type
-	units                    map[string]UnitDefinition
-	functions                map[string][]Function
-	externSymbols            map[string]Function
-	implBlocks               map[string]lexer.Token
-	implBlockModules         map[string]string
-	validImplStatements      map[*ast.ImplStatement]bool
-	currentImplTarget        string
-	currentModule            string
-	genericTypes             map[string]Type
-	genericTypeInstances     map[genericInstanceKey]Type
-	genericFuncInstances     map[genericInstanceKey]Function
-	symbols                  map[string]Symbol
-	completionSymbols        map[string]Symbol
-	predeclaredStatic        map[sourceTokenKey]bool
-	expressionTypes          map[ast.Expression]Type
-	expectedExpressionTypes  map[ast.Expression]Type
-	bindingIDs               map[sourceTokenKey]BindingID
-	bindingFacts             map[sourceTokenKey]ResolvedBinding
-	compilerKnownMemberFacts map[sourceTokenKey]CompilerKnownMember
-	resolvedCalls            map[*ast.CallExpression]ResolvedCall
-	resolvedForIterations    map[*ast.ForStatement]ResolvedForIteration
-	resolvedConstructions    map[*ast.NewExpression]ResolvedConstruction
-	resolvedOperators        map[ast.Expression]ResolvedOperator
-	resolvedTries            map[*ast.TryExpression]ResolvedTry
-	resolvedTryPlans         map[*ast.TryExpression]ResolvedTryPlan
-	resolvedMatchPlans       map[*ast.MatchExpression]ResolvedMatchPlan
+	analysisDepth              AnalysisDepth
+	analysisBudget             AnalysisBudget
+	targetUintWidthBits        uint16
+	legacyDefaultAST           bool
+	types                      map[string]Type
+	units                      map[string]UnitDefinition
+	functions                  map[string][]Function
+	externSymbols              map[string]Function
+	implBlocks                 map[string]lexer.Token
+	implBlockModules           map[string]string
+	validImplStatements        map[*ast.ImplStatement]bool
+	currentImplTarget          string
+	currentModule              string
+	genericTypes               map[string]Type
+	genericTypeInstances       map[genericInstanceKey]Type
+	genericFuncInstances       map[genericInstanceKey]Function
+	symbols                    map[string]Symbol
+	completionSymbols          map[string]Symbol
+	predeclaredStatic          map[sourceTokenKey]bool
+	expressionTypes            map[ast.Expression]Type
+	expectedExpressionTypes    map[ast.Expression]Type
+	bindingIDs                 map[sourceTokenKey]BindingID
+	bindingFacts               map[sourceTokenKey]ResolvedBinding
+	compilerKnownMemberFacts   map[sourceTokenKey]CompilerKnownMember
+	resolvedCalls              map[*ast.CallExpression]ResolvedCall
+	resolvedInterpolationPlans map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
+	stringConcatPlans          map[ast.Expression]StringConcatPlan
+	resolvedForIterations      map[*ast.ForStatement]ResolvedForIteration
+	resolvedConstructions      map[*ast.NewExpression]ResolvedConstruction
+	resolvedOperators          map[ast.Expression]ResolvedOperator
+	resolvedTries              map[*ast.TryExpression]ResolvedTry
+	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
+	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
 	// facts keyed by source syntax. Consumers will use the read-only query
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
@@ -251,6 +253,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
+	a.stringConcatPlans = map[ast.Expression]StringConcatPlan{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
@@ -12650,12 +12654,94 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 //   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
 //   - rules/tooling/lsp.md — "Incomplete-source handling"
 func (a *Analyzer) inferInterpolatedStringLiteral(expr *ast.InterpolatedStringLiteral) (Type, expressionValue) {
-	for _, part := range expr.Parts {
-		if part.Expression != nil {
-			a.inferExpression(part.Expression)
+	plan := ResolvedInterpolationPlan{}
+	valid := true
+	for sourceIndex, part := range expr.Parts {
+		if part.Expression == nil {
+			continue
+		}
+		valueType, _ := a.inferExpression(part.Expression)
+		if valueType.Kind == InvalidType {
+			valid = false
+			continue
+		}
+		hole, ok := a.resolveInterpolationFormatter(sourceIndex, valueType)
+		if !ok {
+			a.addErrorAtTokenWithMetadata(
+				expressionToken(part.Expression),
+				diagnostics.OperatorInvalidInterpolationValue,
+				"Define an exact shared fn ToString() string method or interpolate a supported printable value.",
+				"%s has no canonical interpolation formatting contract",
+				typeDisplayName(valueType),
+			)
+			valid = false
+			continue
+		}
+		plan.Holes = append(plan.Holes, hole)
+		if hole.UserFunction != nil && !a.summaryPass && a.callGraphPathReachable {
+			a.callGraph.addCall(a.currentCallable, *hole.UserFunction, part.Token, CallDispatchStaticMethod, CallExecutionSynchronous)
 		}
 	}
+	if valid {
+		a.resolvedInterpolationPlans[expr] = plan
+		a.recordInterpolationStringConcatPlan(expr, plan)
+	}
 	return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
+}
+
+// resolveInterpolationFormatter applies ordinary fallback-member precedence
+// without synthesizing a second evaluation of the hole expression.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+//   - rules/compiler/compiler_known_members.md — "Lookup order", "ToString()"
+func (a *Analyzer) resolveInterpolationFormatter(sourceIndex int, valueType Type) (ResolvedInterpolationHole, bool) {
+	hole := ResolvedInterpolationHole{SourceIndex: sourceIndex, ValueType: valueType}
+	lookupType := dereferenceType(valueType)
+	if function, ok := a.exactInterpolationToString(lookupType); ok {
+		hole.Kind = InterpolationFormatUserToString
+		hole.UserFunction = &function
+		return hole, true
+	}
+	if !lookupType.Named {
+		switch lookupType.Kind {
+		case StringType, CharType, RuneType:
+			hole.Kind = InterpolationFormatDirectText
+			return hole, true
+		}
+	}
+	member, ok := compilerKnownMember(valueType, "ToString", false)
+	if !ok || member.Kind != CompilerKnownMethod {
+		return ResolvedInterpolationHole{}, false
+	}
+	hole.Kind = InterpolationFormatCompilerKnown
+	hole.CompilerKnownID = member.ID
+	return hole, true
+}
+
+// exactInterpolationToString selects only the replaceable canonical shared
+// no-argument string-returning shape. Other overloads remain ordinary methods
+// and do not accidentally become formatting contracts.
+//
+// Rules: rules/compiler/compiler_known_members.md — "User-defined ToString()".
+func (a *Analyzer) exactInterpolationToString(typ Type) (Function, bool) {
+	if typ.Name == "" {
+		return Function{}, false
+	}
+	functions := a.accessibleFunctions(a.functions[typ.Name+".ToString"])
+	matches := make([]Function, 0, 1)
+	for _, function := range functions {
+		if function.ImplTarget != typ.Name || function.Static || function.ReceiverMutable || function.ReceiverConsuming ||
+			len(function.GenericParameters) != 0 || len(function.Parameters) != 0 ||
+			function.ReturnType.Kind != StringType || function.ReturnType.Named {
+			continue
+		}
+		matches = append(matches, function)
+	}
+	if len(matches) != 1 {
+		return Function{}, false
+	}
+	return matches[0], true
 }
 
 func (a *Analyzer) validUnicodeScalarLiteral(expr *ast.IntegerLiteral) bool {
@@ -19427,6 +19513,7 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 			a.addInvalidConcatOperandError(expr.Token, leftType, rightType)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		a.recordStringConcatPlan(expr, expr.Left, expr.Right)
 		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
 	}
 
@@ -19480,6 +19567,146 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 
 	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+}
+
+// recordStringConcatPlan flattens already validated child plans into the
+// current `+` root. Removing child entries ensures that consumers observe one
+// maximal plan rather than nested allocation-shaped plans; a binding naturally
+// remains a boundary because its later identifier use is a fresh segment.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+//   - rules/foundations/operators.md — "Direct operand matrix"
+func (a *Analyzer) recordStringConcatPlan(root *ast.InfixExpression, left ast.Expression, right ast.Expression) {
+	segments := make([]StringConcatSegment, 0, 4)
+	leftSegments, leftOK, leftNested := a.stringConcatSegments(left)
+	rightSegments, rightOK, rightNested := a.stringConcatSegments(right)
+	if !leftOK || !rightOK {
+		return
+	}
+	if leftNested {
+		delete(a.stringConcatPlans, left)
+	}
+	if rightNested {
+		delete(a.stringConcatPlans, right)
+	}
+	segments = appendStringConcatSegments(segments, leftSegments...)
+	segments = appendStringConcatSegments(segments, rightSegments...)
+	a.stringConcatPlans[root] = StringConcatPlan{Segments: segments}
+}
+
+// recordInterpolationStringConcatPlan consumes the formatter decisions for an
+// interpolated literal and preserves constant text and holes in source order.
+// Direct nested text plans may be fused; formatting conversions stay explicit
+// and execute exactly once.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+func (a *Analyzer) recordInterpolationStringConcatPlan(expr *ast.InterpolatedStringLiteral, interpolation ResolvedInterpolationPlan) {
+	holes := make(map[int]ResolvedInterpolationHole, len(interpolation.Holes))
+	for _, hole := range interpolation.Holes {
+		holes[hole.SourceIndex] = hole
+	}
+	segments := make([]StringConcatSegment, 0, len(expr.Parts))
+	for sourceIndex, part := range expr.Parts {
+		if part.Expression == nil {
+			if part.Text != "" {
+				segments = appendStringConcatSegments(segments, StringConcatSegment{Kind: StringConcatConstantString, Text: part.Text, SourceIndex: sourceIndex})
+			}
+			continue
+		}
+		hole, ok := holes[sourceIndex]
+		if !ok {
+			return
+		}
+		if hole.Kind == InterpolationFormatDirectText {
+			if nested, nestedOK := a.stringConcatPlans[part.Expression]; nestedOK {
+				segments = appendStringConcatSegments(segments, nested.Segments...)
+				delete(a.stringConcatPlans, part.Expression)
+				continue
+			}
+		}
+		segment := StringConcatSegment{
+			Expression:      part.Expression,
+			ValueType:       hole.ValueType,
+			CompilerKnownID: hole.CompilerKnownID,
+			UserFunction:    hole.UserFunction,
+			SourceIndex:     sourceIndex,
+		}
+		switch hole.Kind {
+		case InterpolationFormatDirectText:
+			segment.Kind = directStringConcatSegmentKind(hole.ValueType)
+		case InterpolationFormatCompilerKnown:
+			segment.Kind = StringConcatBuiltinFormatted
+		case InterpolationFormatUserToString:
+			segment.Kind = StringConcatMaterialized
+		default:
+			return
+		}
+		segments = appendStringConcatSegments(segments, segment)
+	}
+	a.stringConcatPlans[expr] = StringConcatPlan{Segments: segments}
+}
+
+// stringConcatSegments returns a child maximal plan when present, or one direct
+// text segment for an ordinary validated operand. The caller receives whether
+// an existing child plan may be consumed only after every sibling is valid.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+func (a *Analyzer) stringConcatSegments(expr ast.Expression) ([]StringConcatSegment, bool, bool) {
+	if plan, ok := a.stringConcatPlans[expr]; ok {
+		return plan.Segments, true, true
+	}
+	typ, ok := a.expressionTypes[expr]
+	if !ok || !isDirectTextConcatOperand(typ) {
+		return nil, false, false
+	}
+	segment := StringConcatSegment{Kind: directStringConcatSegmentKind(typ), Expression: expr, ValueType: typ}
+	if literal, ok := expr.(*ast.StringLiteral); ok {
+		segment.Kind = StringConcatConstantString
+		segment.Text = literal.Value
+		segment.Expression = nil
+	}
+	return []StringConcatSegment{segment}, true, false
+}
+
+// directStringConcatSegmentKind preserves the direct textual operand category
+// selected by Sema so lowering never needs to infer it from source spelling.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Direct operand matrix"
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+func directStringConcatSegmentKind(typ Type) StringConcatSegmentKind {
+	switch dereferenceType(typ).Kind {
+	case CharType:
+		return StringConcatChar
+	case RuneType:
+		return StringConcatRune
+	default:
+		return StringConcatString
+	}
+}
+
+// appendStringConcatSegments coalesces adjacent constant text without changing
+// the evaluation boundary or order of any runtime segment.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Compile-time concatenation"
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+func appendStringConcatSegments(target []StringConcatSegment, segments ...StringConcatSegment) []StringConcatSegment {
+	for _, segment := range segments {
+		if segment.Kind == StringConcatConstantString && segment.Text == "" {
+			continue
+		}
+		if segment.Kind == StringConcatConstantString && len(target) > 0 && target[len(target)-1].Kind == StringConcatConstantString {
+			target[len(target)-1].Text += segment.Text
+			continue
+		}
+		target = append(target, segment)
+	}
+	return target
 }
 
 func (a *Analyzer) contextualNumericLiteralType(expr ast.Expression, actual Type, target Type) (Type, bool) {

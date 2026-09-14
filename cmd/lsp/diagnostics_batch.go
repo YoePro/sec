@@ -55,13 +55,13 @@ func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverla
 		for _, doc := range docs {
 			path := pathFromURI(doc.snapshot.URI)
 			for _, err := range errors {
-				if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, doc.recovery) {
-					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnostic(err, 1))
+				if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, doc.recovery, doc.snapshot.Text) {
+					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnostic(err, 1, doc.snapshot.Text))
 				}
 			}
 			for _, warning := range analyzer.Warnings() {
 				if diagnosticBelongsToSource(warning, path) {
-					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnostic(warning, 2))
+					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnostic(warning, 2, doc.snapshot.Text))
 				}
 			}
 		}

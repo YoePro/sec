@@ -39,6 +39,64 @@ type ResolvedCall struct {
 	Kind     ResolvedCallKind
 }
 
+type InterpolationFormatKind string
+
+const (
+	InterpolationFormatDirectText    InterpolationFormatKind = "direct-text"
+	InterpolationFormatCompilerKnown InterpolationFormatKind = "compiler-known-tostring"
+	InterpolationFormatUserToString  InterpolationFormatKind = "user-tostring"
+)
+
+// ResolvedInterpolationHole records the canonical formatter selected for one
+// source-order interpolation expression. Exactly one of CompilerKnownID or
+// UserFunction is populated for conversion-backed holes.
+type ResolvedInterpolationHole struct {
+	SourceIndex     int
+	ValueType       Type
+	Kind            InterpolationFormatKind
+	CompilerKnownID string
+	UserFunction    *Function
+}
+
+// ResolvedInterpolationPlan is the complete frontend validation result for an
+// interpolated literal. Runtime concatenation planning consumes this fact
+// instead of repeating member lookup.
+type ResolvedInterpolationPlan struct {
+	Holes []ResolvedInterpolationHole
+}
+
+// StringConcatSegmentKind identifies one source-ordered operation in the
+// canonical maximal string-concatenation plan.
+type StringConcatSegmentKind string
+
+const (
+	StringConcatConstantString   StringConcatSegmentKind = "constant-string"
+	StringConcatString           StringConcatSegmentKind = "string"
+	StringConcatChar             StringConcatSegmentKind = "char"
+	StringConcatRune             StringConcatSegmentKind = "rune"
+	StringConcatBuiltinFormatted StringConcatSegmentKind = "builtin-formatted"
+	StringConcatMaterialized     StringConcatSegmentKind = "materialized-string"
+)
+
+// StringConcatSegment preserves one exact-once expression or constant text
+// segment. Conversion-backed interpolation segments carry the formatter that
+// Sema already selected; later stages must not repeat member lookup.
+type StringConcatSegment struct {
+	Kind            StringConcatSegmentKind
+	Expression      ast.Expression
+	Text            string
+	ValueType       Type
+	CompilerKnownID string
+	UserFunction    *Function
+	SourceIndex     int
+}
+
+// StringConcatPlan is the canonical maximal frontend plan for one contiguous
+// concatenation/interpolation expression. Segments are in evaluation order.
+type StringConcatPlan struct {
+	Segments []StringConcatSegment
+}
+
 type ResolvedForIterationKind string
 
 const (
@@ -702,6 +760,55 @@ func (a *Analyzer) ResolvedStructLiteralPlanOf(expr *ast.StructLiteral) (Resolve
 	}
 	plan.Entries = append([]ResolvedStructEntry(nil), plan.Entries...)
 	plan.FinalFields = append([]ResolvedStructFinalField(nil), plan.FinalFields...)
+	return plan, true
+}
+
+// ResolvedInterpolationPlanOf returns an immutable copy of the formatting
+// contracts selected for a successfully validated interpolated literal.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+//   - rules/compiler/compiler_known_members.md — "ToString()"
+func (a *Analyzer) ResolvedInterpolationPlanOf(expr *ast.InterpolatedStringLiteral) (ResolvedInterpolationPlan, bool) {
+	if a == nil || expr == nil {
+		return ResolvedInterpolationPlan{}, false
+	}
+	plan, ok := a.resolvedInterpolationPlans[expr]
+	if !ok {
+		return ResolvedInterpolationPlan{}, false
+	}
+	plan.Holes = append([]ResolvedInterpolationHole(nil), plan.Holes...)
+	for index := range plan.Holes {
+		if plan.Holes[index].UserFunction != nil {
+			function := *plan.Holes[index].UserFunction
+			plan.Holes[index].UserFunction = &function
+		}
+	}
+	return plan, true
+}
+
+// StringConcatPlanOf returns an immutable copy of the maximal concat plan
+// rooted at expr. Nested compatible concat/interpolation nodes are consumed by
+// their outer plan; bindings remain independent plan boundaries.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Maximal concatenation plan"
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+func (a *Analyzer) StringConcatPlanOf(expr ast.Expression) (StringConcatPlan, bool) {
+	if a == nil || expr == nil {
+		return StringConcatPlan{}, false
+	}
+	plan, ok := a.stringConcatPlans[expr]
+	if !ok {
+		return StringConcatPlan{}, false
+	}
+	plan.Segments = append([]StringConcatSegment(nil), plan.Segments...)
+	for index := range plan.Segments {
+		if plan.Segments[index].UserFunction != nil {
+			function := *plan.Segments[index].UserFunction
+			plan.Segments[index].UserFunction = &function
+		}
+	}
 	return plan, true
 }
 

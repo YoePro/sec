@@ -43,3 +43,9 @@ enum MathError error {
     Underflow,
     NotFinite,
 }
+
+enum StringError error {
+    InvalidUtf8,
+    InvalidCodePoint,
+    AllocationFailed,
+}

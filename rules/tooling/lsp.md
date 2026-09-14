@@ -1454,11 +1454,16 @@ data payload
 The LSP maps this structure to protocol diagnostics.
 
 Protocol positions use the client's negotiated position encoding. While the
-server does not negotiate another encoding, it maps compiler Unicode-scalar
-columns and token widths to the protocol's UTF-16 code-unit default. Astral
-Unicode scalars therefore occupy two protocol character units even though the
-lexer counts them as one source column. This conversion applies independently
-to both the start and exclusive end of a diagnostic range.
+server does not negotiate another encoding, every feature maps compiler
+Unicode-scalar columns and token widths to the protocol's UTF-16 code-unit
+default. Astral Unicode scalars therefore occupy two protocol character units
+even though the lexer counts them as one source column. The shared conversion
+applies independently to both ends of multiline diagnostic, hover, navigation,
+highlight, call-hierarchy, document-symbol, edit, and semantic-token ranges.
+Incoming hover, completion, signature, navigation, and edit positions undergo
+the inverse UTF-16-to-byte conversion. Both directions treat LF, CRLF, and bare
+CR as one physical line ending and must not reinterpret compiler scalar columns
+as protocol columns.
 
 It must not parse compiler message text to rediscover locations or IDs.
 

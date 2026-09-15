@@ -1920,15 +1920,34 @@ foreign callback-context transfer
 
 § 80(1) Channel send/receive/select and synchronization operations remain explicit where order/ownership/blocking semantics matter.
 
-§ 80(2) A consuming send commits ownership according to the channel contract.
+§ 80(2) Ordinary-channel Semantic IR preserves channel identity, endpoint
+identity, capacity/options, sender identity and generation, message/ticket
+generation, optional-capability facts, and selected target requirements.
 
-§ 80(3) Mutex/guard operations retain scoped capability semantics.
+§ 80(3) A consuming send preserves its exact result type and conditional
+ownership: ownership commits only for the outcome defined as committed by
+`rules/concurrency/channels.md`, while `Closed(T)`, `WouldBlock(T)`, and every
+non-selected branch retain or return the source value as specified there.
 
-§ 80(4) Atomic operations retain memory-order/target requirements defined by concurrency rules.
+§ 80(4) Receive, revocable send, ticket-owned revoke, expiration, discard,
+close, and statistics preserve their exact result/outcome, deadline, terminal
+disposition, counter, destruction, and generation facts.
 
-§ 80(5) Volatile access must not be lowered as synchronization.
+§ 80(5) Select readiness remains separate from commit. Readiness inspection
+must not move a message, remove a receive value, create a ticket, increment a
+counter, or change a queue/message terminal state.
 
-§ 80(6) Semantic IR and concurrency analysis share canonical memory-location identity.
+§ 80(6) Channel wait cancellation classification and send-publication /
+receive-acquire synchronization remain explicit until equivalent lowering
+contracts exist.
+
+§ 80(7) Mutex/guard operations retain scoped capability semantics.
+
+§ 80(8) Atomic operations retain memory-order/target requirements defined by concurrency rules.
+
+§ 80(9) Volatile access must not be lowered as synchronization.
+
+§ 80(10) Semantic IR and concurrency analysis share canonical memory-location identity.
 
 ---
 

@@ -1,0 +1,1492 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Inter-Process Communication - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#ipc">Inter-Process Communication</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#families">IPC Families</a>
+        <a href="#channels">Channels Are Not IPC</a>
+        <a href="#rpc">IPC Is Not RPC</a>
+        <a href="#semantic-properties">Semantic Properties</a>
+        <a href="#pipes">Pipes</a>
+        <a href="#pipe-api">Pipe API</a>
+        <a href="#pipe-semantics">Pipe Semantics</a>
+        <a href="#typed-ipc">Typed IPC</a>
+        <a href="#typed-api">Typed IPC API</a>
+        <a href="#typed-send">Send and Ownership</a>
+        <a href="#typed-receive">Receive and Completion</a>
+        <a href="#typed-mpmc">Duplication and MPMC</a>
+        <a href="#typed-select">select and Commit</a>
+        <a href="#shared-memory">Shared Memory</a>
+        <a href="#shared-memory-api">Shared Memory API</a>
+        <a href="#mappings">Mappings and unsafe Views</a>
+        <a href="#shared-sync">Process-Shared Synchronization</a>
+        <a href="#mutex">IPCMutex</a>
+        <a href="#semaphore">IPCSemaphore</a>
+        <a href="#shared-value">SharedValue[T]</a>
+        <a href="#ipc-atomic">IPCAtomic[T]</a>
+        <a href="#capabilities">Capability Transfer</a>
+        <a href="#command-binding">Command Resource Binding</a>
+        <a href="#authority">Authority and Rendezvous</a>
+        <a href="#compatibility">Typed Transfer Compatibility</a>
+        <a href="#lifecycle">Lifecycle and Peer Loss</a>
+        <a href="#cancellation">Cancellation and Commit</a>
+        <a href="#target">Target Capabilities</a>
+        <a href="#analysis">Semantic IR and Analysis</a>
+        <a href="#security">Defensive Materialization</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#status">Specification and Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html" class="active">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Inter-Process Communication</div>
+
+        <h1 id="ipc">Inter-Process Communication</h1>
+
+        <p>
+            Sec treats a process boundary as a real semantic isolation boundary. Values, references,
+            resource capabilities and shared storage therefore require explicit rules when they cross
+            between processes. IPC is not implemented by pretending that two processes share one
+            ordinary address space, and copying a pointer, descriptor number or native handle value
+            never creates portable Sec ownership in another process.
+        </p>
+
+        <p>
+            Sec 0.1 defines byte-stream pipes, typed message transport, shared-memory capabilities,
+            process-shared synchronization, safe typed shared values, process-shared atomics and
+            type-preserving capability transfer. These facilities share one ownership and lifecycle
+            model but remain semantically distinct.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> IPC preserves process isolation. Ordinary references,
+            process-local addresses and native handle numbers do not acquire cross-process meaning
+            merely because their machine representation can be copied.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Process creation is described in <a href="65-processes.html">Processes and Command</a>.
+                This chapter describes what happens after an isolation boundary exists and processes
+                need to exchange data, authority or synchronized shared state.
+            </p>
+
+            <p>The IPC model owns the semantics of:</p>
+
+            <ul>
+                <li>anonymous byte pipes;</li>
+                <li>typed process-to-process messages;</li>
+                <li>shared backing storage and process-local mappings;</li>
+                <li>process-shared mutexes and semaphores;</li>
+                <li>safe typed shared values;</li>
+                <li>process-shared lock-free atomic values;</li>
+                <li>resource and capability transfer;</li>
+                <li>peer-loss and IPC lifecycle behavior;</li>
+                <li>IPC target capabilities;</li>
+                <li>IPC-specific Semantic IR, analysis, diagnostics and lowering obligations.</li>
+            </ul>
+
+            <p>
+                Ordinary in-process channels, process lifecycle, general transferability rules,
+                ordinary atomics, network RPC and application serialization remain owned by their
+                respective language areas.
+            </p>
+        </section>
+
+        <section id="families">
+            <h2>IPC Families</h2>
+
+            <p>Sec 0.1 defines four fundamental IPC families:</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Family</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Pipe</td><td>Ordered unidirectional byte stream with no portable message boundaries.</td></tr>
+                        <tr><td>Typed IPC</td><td>Ordered transport of complete typed messages.</td></tr>
+                        <tr><td>Shared memory</td><td>One backing-storage identity mapped independently into process address spaces.</td></tr>
+                        <tr><td>Capability transfer</td><td>Transfer of authority to an existing resource while preserving its Sec type.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                Process-shared synchronization and process-shared atomics are explicit facilities
+                built on the same isolation-boundary model. A target may use different native
+                mechanisms internally, but those mechanisms must preserve the selected Sec abstraction.
+            </p>
+        </section>
+
+        <section id="channels">
+            <h2>Channels Are Not IPC</h2>
+
+            <p>
+                <code>Channel[T]</code>, <code>Sender[T]</code> and <code>Receiver[T]</code> are
+                in-process concurrency abstractions. They coordinate tasks and threads inside one
+                process address space and never automatically become IPC.
+            </p>
+
+            <p>Typed process messaging uses different source-visible types:</p>
+
+            <pre><code>IPCSender[T]
+IPCReceiver[T]</code></pre>
+
+            <p>
+                This distinction prevents a process boundary from disappearing behind an apparently
+                ordinary channel operation. A future adapter could be defined explicitly, but Sec 0.1
+                defines no implicit conversion from in-process channels to IPC.
+            </p>
+        </section>
+
+        <section id="rpc">
+            <h2>IPC Is Not RPC</h2>
+
+            <p>
+                Typed IPC transports messages. It does not automatically provide remote methods,
+                service identities, request/response correlation, request IDs, RPC deadlines,
+                application exceptions, protocol negotiation or service discovery.
+            </p>
+
+            <pre><code>IPCSender[Request]
+IPCReceiver[Request]</code></pre>
+
+            <p>
+                An RPC framework may use typed IPC as one transport, but that framework owns the
+                higher-level request/response protocol. Core IPC deliberately stops at message and
+                capability transport.
+            </p>
+        </section>
+
+        <section id="semantic-properties">
+            <h2>Semantic Properties</h2>
+
+            <p>
+                IPC relies on compiler-derived semantic properties rather than source interfaces that
+                users manually implement.
+            </p>
+
+            <h3>ProcessTransferable</h3>
+
+            <p>
+                <code>ProcessTransferable</code> answers whether a semantic value can cross a process
+                boundary through a defined transfer representation or capability adapter. IPC consumes
+                that proof but does not redefine it.
+            </p>
+
+            <h3>SharedStorable(T)</h3>
+
+            <p>
+                <code>SharedStorable(T)</code> means that the compiler can define one fixed-size,
+                self-contained canonical shared representation for <code>T</code>. Such a representation
+                may not depend on process-local references, <code>RawPtr</code> meaning, resource ownership,
+                destructor-managed ownership state or a process-local allocation graph.
+            </p>
+
+            <p>Examples that are not ordinarily <code>SharedStorable</code> include:</p>
+
+            <pre><code>string
+ref T
+ref mut T
+RawPtr[T]
+owning arrays and collections
+File
+Process[T]
+Task[T]
+PipeReader
+IPCSender[T]
+SharedMemory
+IPCMutex</code></pre>
+
+            <h3>IPCAtomicValue(T)</h3>
+
+            <p>
+                <code>IPCAtomicValue(T)</code> is the conservative scalar subset that can participate
+                in the complete lock-free process-shared atomic contract. It includes approved boolean,
+                signed-integer, unsigned-integer, compatible enum and named scalar forms. A
+                <code>RawPtr[T]</code> is explicitly excluded because a process-local address does not
+                acquire cross-process meaning through atomic storage.
+            </p>
+        </section>
+
+        <section id="pipes">
+            <h2>Pipes</h2>
+
+            <p>
+                A pipe is an ordered unidirectional byte stream:
+            </p>
+
+            <pre><code>PipeWriter -&gt; bytes -&gt; PipeReader</code></pre>
+
+            <p>
+                Pipe writes do not create portable message boundaries. Multiple writes form one byte
+                stream, and a reader cannot infer where individual write calls occurred.
+            </p>
+
+            <p>
+                Pipes are therefore appropriate for stream protocols and external-process standard I/O.
+                Use typed IPC when complete message boundaries matter.
+            </p>
+        </section>
+
+        <section id="pipe-api">
+            <h2>Pipe API</h2>
+
+            <pre><code>@noCopy
+type Pipe struct {
+    Reader: PipeReader,
+    Writer: PipeWriter,
+}
+
+@noCopy
+type PipeReader
+
+@noCopy
+type PipeWriter
+
+fn CreatePipe() Result[Pipe, IOError]
+
+impl PipeReader {
+    property IsClosed: bool {
+        get
+    }
+
+    fn Read(buffer: ref mut byte[]) Result[uint, IOError]
+    fn ReadExact(buffer: ref mut byte[]) Result[uint, IOError]
+    fn Duplicate() Result[PipeReader, IOError]
+    fn Close() Result[void, IOError]
+
+    free {
+        // Best-effort close of an open endpoint.
+    }
+}
+
+impl PipeWriter {
+    property IsClosed: bool {
+        get
+    }
+
+    fn Write(data: ref byte[]) Result[uint, IOError]
+    fn WriteAll(data: ref byte[]) Result[uint, IOError]
+    fn Duplicate() Result[PipeWriter, IOError]
+    fn Close() Result[void, IOError]
+
+    free {
+        // Best-effort close of an open endpoint.
+    }
+}</code></pre>
+
+            <p>
+                <code>Pipe</code> is an ordinary owning aggregate. Its reader and writer fields are
+                independently tracked, so ordinary partial-move rules apply:
+            </p>
+
+            <pre><code>let pipe := try CreatePipe()
+let reader :&lt;- pipe.Reader
+let writer :&lt;- pipe.Writer</code></pre>
+        </section>
+
+        <section id="pipe-semantics">
+            <h2>Pipe Semantics</h2>
+
+            <p>
+                <code>Read</code> may return a short successful read. For a non-empty buffer,
+                <code>Ok(0)</code> means end-of-stream. For an empty buffer, <code>Ok(0)</code> is immediate
+                and does not establish EOF.
+            </p>
+
+            <p>
+                EOF occurs only after every write capability for the logical pipe is gone and all
+                previously accepted buffered bytes have been consumed. Closing one duplicated writer
+                does not create EOF while another writer capability remains alive.
+            </p>
+
+            <p>
+                <code>ReadExact</code> fills the requested buffer or returns
+                <code>IOError.UnexpectedEndOfFile</code> if EOF arrives after only a prefix has been read.
+            </p>
+
+            <p>
+                <code>Write</code> may commit only a prefix. <code>WriteAll</code> keeps writing until the
+                complete sequence commits or an error occurs. It is not transactional with respect to
+                bytes already written: an error after a committed prefix does not retract that prefix.
+            </p>
+
+            <p>
+                When no read capability remains, later writes that cannot be delivered return
+                <code>IOError.BrokenPipe</code>.
+            </p>
+
+            <p>
+                Pipe buffering is implementation-defined but bounded. Sec exposes no portable capacity
+                property in 0.1, and hidden unbounded buffering is forbidden.
+            </p>
+
+            <p>
+                <code>Read</code> and <code>Write</code> are primitive selectable operations.
+                <code>ReadExact</code> and <code>WriteAll</code> are composed operations and are not primitive
+                select branches in Sec 0.1.
+            </p>
+        </section>
+
+        <section id="typed-ipc">
+            <h2>Typed IPC</h2>
+
+            <p>
+                Typed IPC transports complete semantic values across process boundaries:
+            </p>
+
+            <pre><code>IPCSender[T] -&gt; complete T messages -&gt; IPCReceiver[T]</code></pre>
+
+            <p>
+                Every successful <code>Send</code> commits exactly one complete <code>T</code>. The receiver
+                never observes message fragments, a partially materialized value or bytes from several
+                messages merged into one value.
+            </p>
+
+            <p>
+                Typed IPC is not limited to parent and child processes. Any processes that validly
+                establish or receive matching capabilities may communicate.
+            </p>
+        </section>
+
+        <section id="typed-api">
+            <h2>Typed IPC API</h2>
+
+            <pre><code>@noCopy
+type IPCPair[T] struct {
+    Sender: IPCSender[T],
+    Receiver: IPCReceiver[T],
+}
+
+@noCopy
+type IPCSender[T]
+
+@noCopy
+type IPCReceiver[T]
+
+fn CreateIPC[T]() Result[IPCPair[T], IPCError]
+
+enum IPCError error {
+    Closed
+    PeerClosed
+    TransferFailed
+    MaterializationFailed
+    OutOfMemory
+    ResourceLimit
+    ProtocolFailure
+    NativeFailure
+}
+
+impl IPCSender[T] {
+    property IsClosed: bool {
+        get
+    }
+
+    fn Send(message: T) Result[void, IPCError]
+    fn Duplicate() Result[IPCSender[T], IPCError]
+    fn Close() void
+
+    free {
+        // Cleanly releases this local sender capability if still open.
+    }
+}
+
+impl IPCReceiver[T] {
+    property IsClosed: bool {
+        get
+    }
+
+    fn Receive() Result[Option[T], IPCError]
+    fn Duplicate() Result[IPCReceiver[T], IPCError]
+    fn Close() void
+
+    free {
+        // Cleanly releases this local receiver capability if still open.
+    }
+}</code></pre>
+
+            <p>
+                <code>CreateIPC[T]()</code> requires <code>ProcessTransferable(T)</code> and target support
+                for <code>IPCTypedMessages</code> plus a complete transfer plan for <code>T</code>. A
+                statically non-transferable type is rejected at compile time.
+            </p>
+        </section>
+
+        <section id="typed-send">
+            <h2>Send and Ownership</h2>
+
+            <p>
+                Sending follows ordinary Sec ownership rules. A named existing move-only value that is
+                consumed uses the explicit move marker:
+            </p>
+
+            <pre><code>try sender.Send(&lt;-message)</code></pre>
+
+            <p>
+                A consuming send is transactional with respect to source ownership.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Result</th><th>Ownership meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>Ok()</code></td><td>The complete message transfer committed; the consumed source binding becomes unavailable.</td></tr>
+                        <tr><td><code>Err(...)</code> before commit</td><td>The complete source value remains owned locally; no partial field transfer becomes visible.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                A message containing several resource-owning fields still commits as one semantic
+                operation. Runtime preparation may have substeps, but pre-commit failure must roll back
+                every temporary destination resource.
+            </p>
+
+            <p>
+                Successful <code>Send</code> means the message has committed to the IPC transport. It does
+                not mean that the receiver has already called <code>Receive</code>, processed the request or
+                sent a reply.
+            </p>
+        </section>
+
+        <section id="typed-receive">
+            <h2>Receive and Completion</h2>
+
+            <p><code>Receive()</code> has three result classes:</p>
+
+            <pre><code>Ok(Some(message))
+    one complete T was received and is now owned locally
+
+Ok(None)
+    the sender side ended cleanly and no committed messages remain
+
+Err(error)
+    transport or materialization failed</code></pre>
+
+            <p>
+                An empty but still-open transport waits. <code>None</code> never means temporary emptiness,
+                cancellation, timeout or abnormal peer loss.
+            </p>
+
+            <p>
+                Clean receive-side completion occurs only after all sender capabilities have ended
+                cleanly and all committed messages have been resolved. Buffered messages are delivered
+                before <code>Ok(None)</code>.
+            </p>
+
+            <p>
+                Abrupt sender process death is not clean closure. If abnormal disappearance makes the
+                sender side terminal, the receiver observes a stable terminal transport error, normally
+                <code>IPCError.NativeFailure</code> unless a more specific portable error applies.
+            </p>
+        </section>
+
+        <section id="typed-mpmc">
+            <h2>Duplication and MPMC</h2>
+
+            <p>
+                Duplicating a sender or receiver creates another independently owned capability to the
+                same logical transport. It does not create a second queue.
+            </p>
+
+            <p>Typed IPC therefore supports multi-producer/multi-consumer arrangements:</p>
+
+            <ul>
+                <li>each committed message is delivered exactly once;</li>
+                <li>one receiving capability receives a message;</li>
+                <li>duplicated receivers do not broadcast;</li>
+                <li>successful commit order is preserved per sender;</li>
+                <li>cross-sender fairness or ordering is not portable-guaranteed;</li>
+                <li>which waiting receiver receives a message is not portable-guaranteed.</li>
+            </ul>
+
+            <p>
+                Typed IPC buffering is bounded and may legally be zero-capacity rendezvous. A program
+                must therefore not assume that <code>Send</code> merely appends to a queue without waiting.
+            </p>
+        </section>
+
+        <section id="typed-select">
+            <h2>select and Commit</h2>
+
+            <p>
+                <code>Send</code> and <code>Receive</code> are primitive selectable operations. Select
+                separates non-destructive readiness from commit.
+            </p>
+
+            <pre><code>select {
+    sender.Send(&lt;-message) =&gt; {
+        // Ownership commits only if the selected Send returns Ok().
+    }
+
+    after 1s =&gt; {
+        // message remains available here
+    }
+}</code></pre>
+
+            <p>
+                A non-selected send commits no message and transfers no ownership. A non-selected
+                receive dequeues nothing and materializes no value. Backends must not speculatively
+                perform all candidate operations and attempt to undo the losing branches afterward.
+            </p>
+        </section>
+
+        <section id="shared-memory">
+            <h2>Shared Memory</h2>
+
+            <p>
+                Sec separates authority to a shared backing object from each process-local mapping.
+            </p>
+
+            <pre><code>SharedMemory
+SharedReadMapping
+SharedWriteMapping</code></pre>
+
+            <p>
+                <code>SharedMemory</code> identifies one logical shared backing object. A mapping is one
+                process's view of that backing object in its own virtual address space. Different
+                processes may map the same bytes at different addresses.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A process transfers or duplicates the backing capability, not a
+                process-local mapping address.
+            </div>
+        </section>
+
+        <section id="shared-memory-api">
+            <h2>Shared Memory API</h2>
+
+            <pre><code>enum SharedMemoryError error {
+    Closed
+    InvalidSize
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    MappingFailed
+    DuplicationFailed
+    NativeFailure
+}
+
+@noCopy
+type SharedMemory
+
+fn CreateSharedMemory(size: uint) Result[SharedMemory, SharedMemoryError]
+
+impl SharedMemory {
+    property Size: uint {
+        get
+    }
+
+    property IsClosed: bool {
+        get
+    }
+
+    fn MapRead() Result[SharedReadMapping, SharedMemoryError]
+    fn MapWrite() Result[SharedWriteMapping, SharedMemoryError]
+    fn Duplicate() Result[SharedMemory, SharedMemoryError]
+    fn Close() Result[void, SharedMemoryError]
+
+    free {
+        // Best-effort release of this local backing capability.
+    }
+}
+
+@noCopy
+type SharedReadMapping
+
+impl SharedReadMapping {
+    property Size: uint {
+        get
+    }
+
+    property IsClosed: bool {
+        get
+    }
+
+    unsafe fn View() ref byte[]
+    fn Close() Result[void, SharedMemoryError]
+
+    free {
+        // Best-effort unmap if still mapped.
+    }
+}
+
+@noCopy
+type SharedWriteMapping
+
+impl SharedWriteMapping {
+    property Size: uint {
+        get
+    }
+
+    property IsClosed: bool {
+        get
+    }
+
+    unsafe fn View() ref mut byte[]
+    fn Close() Result[void, SharedMemoryError]
+
+    free {
+        // Best-effort unmap if still mapped.
+    }
+}</code></pre>
+
+            <p>
+                Shared memory creation requires <code>size &gt; 0</code>. The new logical region is
+                zero-initialized before any mapping may observe it. Native page rounding may allocate
+                more storage internally, but bytes beyond the logical <code>Size</code> are not portable
+                accessible storage through this contract.
+            </p>
+        </section>
+
+        <section id="mappings">
+            <h2>Mappings and unsafe Views</h2>
+
+            <p>
+                <code>SharedReadMapping</code> and <code>SharedWriteMapping</code> are process-local and are
+                not process-transferable. Transfer the <code>SharedMemory</code> capability and create a new
+                mapping in the destination process.
+            </p>
+
+            <p>
+                A mapping carries enough backing-lifetime authority to remain valid even if the local
+                <code>SharedMemory</code> capability that created it is later closed. The backing object
+                stays alive while any owning capability or mapping still requires it.
+            </p>
+
+            <p>
+                <code>View()</code> is <code>unsafe</code> because ordinary process-local borrow checking
+                cannot prove exclusivity against mappings in other processes. The returned reference
+                must not outlive the mapping.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> Shared memory by itself provides no mutual exclusion,
+                atomicity, acquire/release ordering or race prevention. <code>unsafe</code> does not waive
+                the data-race rules.
+            </div>
+        </section>
+
+        <section id="shared-sync">
+            <h2>Process-Shared Synchronization</h2>
+
+            <p>Sec 0.1 defines two fundamental blocking process-shared synchronization types:</p>
+
+            <pre><code>IPCMutex
+IPCSemaphore</code></pre>
+
+            <p>
+                These are distinct from ordinary in-process synchronization types. The implementation
+                may use kernel objects, shared storage or another native mechanism as long as the full
+                process-shared Sec contract is preserved.
+            </p>
+
+            <pre><code>enum IPCSyncError error {
+    Closed
+    InvalidCount
+    LimitExceeded
+    OwnerDied
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    NativeFailure
+}</code></pre>
+        </section>
+
+        <section id="mutex">
+            <h2>IPCMutex</h2>
+
+            <pre><code>@noCopy
+type IPCMutex
+
+@noCopy
+type IPCMutexGuard
+
+fn CreateIPCMutex() Result[IPCMutex, IPCSyncError]
+
+impl IPCMutex {
+    property IsClosed: bool {
+        get
+    }
+
+    fn Lock() Result[IPCMutexGuard, IPCSyncError]
+    fn TryLock() Result[Option[IPCMutexGuard], IPCSyncError]
+    fn Duplicate() Result[IPCMutex, IPCSyncError]
+    fn Close() Result[void, IPCSyncError]
+
+    free {
+        // Best-effort release of this local mutex capability.
+    }
+}
+
+impl IPCMutexGuard {
+    free {
+        // Releases the acquired logical IPC mutex.
+    }
+}</code></pre>
+
+            <p>
+                <code>IPCMutex</code> is non-recursive. A successful <code>Lock()</code> returns one guard,
+                and that guard is the unlock capability. There is no separate public <code>Unlock()</code>
+                method in Sec 0.1.
+            </p>
+
+            <p>
+                The mutex capability may cross a process boundary when the target provides the required
+                adapter. The guard is execution-local and never process-transferable.
+            </p>
+
+            <p>
+                If the owning execution or process dies while holding the guard, the logical mutex is
+                permanently poisoned and later acquisition returns <code>IPCSyncError.OwnerDied</code>.
+                Sec 0.1 does not silently pretend that the abandoned critical section is consistent.
+            </p>
+        </section>
+
+        <section id="semaphore">
+            <h2>IPCSemaphore</h2>
+
+            <pre><code>@noCopy
+type IPCSemaphore
+
+fn CreateIPCSemaphore(
+    Initial: uint,
+    Maximum: uint
+) Result[IPCSemaphore, IPCSyncError]
+
+impl IPCSemaphore {
+    property Maximum: uint {
+        get
+    }
+
+    property IsClosed: bool {
+        get
+    }
+
+    fn Acquire() Result[void, IPCSyncError]
+    fn TryAcquire() Result[bool, IPCSyncError]
+    fn Release() Result[void, IPCSyncError]
+    fn Duplicate() Result[IPCSemaphore, IPCSyncError]
+    fn Close() Result[void, IPCSyncError]
+
+    free {
+        // Best-effort release of this local semaphore capability.
+    }
+}</code></pre>
+
+            <p>Construction requires:</p>
+
+            <pre><code>Maximum &gt; 0
+Initial &lt;= Maximum</code></pre>
+
+            <p>
+                The current permit count is intentionally not a portable property. <code>Acquire</code> may
+                wait; <code>TryAcquire</code> is immediate. A permit acquired by a process is not
+                automatically restored merely because that process later dies.
+            </p>
+        </section>
+
+        <section id="shared-value">
+            <h2>SharedValue[T]</h2>
+
+            <p>
+                Raw shared memory exposes bytes and therefore requires an application-defined unsafe
+                representation and synchronization protocol. <code>SharedValue[T]</code> is the safe typed
+                alternative for values that satisfy <code>SharedStorable(T)</code>.
+            </p>
+
+            <pre><code>enum IPCSharedError error {
+    Closed
+    LayoutMismatch
+    OwnerDied
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    MappingFailed
+    DuplicationFailed
+    NativeFailure
+}
+
+@noCopy
+type SharedValue[T]
+
+@noCopy
+type SharedValueGuard[T]
+
+fn CreateSharedValue[T](
+    initial: T
+) Result[SharedValue[T], IPCSharedError]
+
+impl SharedValue[T] {
+    property IsClosed: bool {
+        get
+    }
+
+    fn Lock() Result[SharedValueGuard[T], IPCSharedError]
+    fn TryLock() Result[Option[SharedValueGuard[T]], IPCSharedError]
+    fn Duplicate() Result[SharedValue[T], IPCSharedError]
+    fn Close() Result[void, IPCSharedError]
+
+    free {
+        // Best-effort release of this local SharedValue capability.
+    }
+}
+
+impl SharedValueGuard[T] {
+    fn Read() T
+    fn Write(value: T) void
+
+    free {
+        // Publishes required release ordering and releases the guard.
+    }
+}</code></pre>
+
+            <p>
+                The safe API deliberately does not expose <code>ref T</code> or <code>ref mut T</code> into
+                process-shared storage. <code>Read()</code> materializes a process-local snapshot;
+                <code>Write(value)</code> replaces the canonical shared representation while the guard owns
+                the critical section.
+            </p>
+
+            <p>
+                A guard is execution-local and may not remain live across a potentially waiting or
+                suspending operation. If an execution dies while holding the guard, the shared value
+                becomes permanently poisoned and later locks return <code>IPCSharedError.OwnerDied</code>.
+            </p>
+        </section>
+
+        <section id="ipc-atomic">
+            <h2>IPCAtomic[T]</h2>
+
+            <p>
+                <code>IPCAtomic[T]</code> represents one process-shared atomic storage identity. It is a
+                resource capability, not an arbitrary inline field in a raw shared-memory layout.
+            </p>
+
+            <pre><code>@noCopy
+type IPCAtomic[T]
+
+enum IPCAtomicError error {
+    PermissionDenied
+    OutOfMemory
+    ResourceLimit
+    DuplicationFailed
+    NativeFailure
+}
+
+fn CreateIPCAtomic[T](
+    initial: T
+) Result[IPCAtomic[T], IPCAtomicError]
+
+impl IPCAtomic[T] {
+    fn Load() T
+    fn Load(order: MemoryOrder) T
+
+    fn Store(value: T) void
+    fn Store(value: T, order: MemoryOrder) void
+
+    fn Swap(value: T) T
+    fn Swap(value: T, order: MemoryOrder) T
+
+    fn CompareExchange(
+        expected: T,
+        desired: T
+    ) CompareExchangeResult[T]
+
+    fn CompareExchange(
+        expected: T,
+        desired: T,
+        successOrder: MemoryOrder,
+        failureOrder: MemoryOrder
+    ) CompareExchangeResult[T]
+
+    fn Duplicate() Result[IPCAtomic[T], IPCAtomicError]
+
+    free {
+        // Releases this local IPC atomic capability.
+    }
+}</code></pre>
+
+            <p>
+                The selected target must provide the complete lock-free process-shared operation set
+                for the concrete <code>T</code>. There is no hidden mutex fallback. Unsupported type,
+                width or profile combinations are compile-time errors.
+            </p>
+
+            <p>
+                IPC atomics reuse the ordinary <code>MemoryOrder</code> and
+                <code>CompareExchangeResult[T]</code> vocabulary. Omitted orders default to
+                <code>SeqCst</code>. Explicit orders must be compile-time-known so target support and
+                process-shared synchronization semantics can be validated statically.
+            </p>
+
+            <p>
+                Process death does not poison an <code>IPCAtomic[T]</code>. Each operation has one
+                linearization point and is either committed or not committed.
+            </p>
+        </section>
+
+        <section id="capabilities">
+            <h2>Capability Transfer</h2>
+
+            <p>
+                Sec does not define one untyped portable <code>IPCHandle</code>. A transferable resource
+                keeps its concrete semantic type across the process boundary:
+            </p>
+
+            <pre><code>File           -&gt; File
+PipeReader     -&gt; PipeReader
+PipeWriter     -&gt; PipeWriter
+SharedMemory   -&gt; SharedMemory
+IPCMutex       -&gt; IPCMutex
+IPCSemaphore   -&gt; IPCSemaphore
+IPCAtomic[T]   -&gt; IPCAtomic[T]
+SharedValue[T] -&gt; SharedValue[T]</code></pre>
+
+            <p>
+                The destination's native descriptor, handle, port or mapping token may differ from the
+                source representation. The semantic resource identity and authority are what matter.
+            </p>
+
+            <p>
+                Duplication creates another Sec owner of the same logical resource. Transfer moves
+                authority according to ordinary ownership rules. Neither operation may increase
+                authority or accidentally expose unrelated parent-process resources.
+            </p>
+
+            <p>
+                A typed IPC message may contain resource capabilities:
+            </p>
+
+            <pre><code>type WorkerRequest struct {
+    Input: File,
+    Output: PipeWriter,
+}
+
+try sender.Send(&lt;-request)</code></pre>
+
+            <p>
+                The complete composite value commits atomically from source semantics. Pre-commit
+                failure preserves the complete source value and rolls back all temporary destination
+                capabilities.
+            </p>
+        </section>
+
+        <section id="command-binding">
+            <h2>Command Resource Binding</h2>
+
+            <p>
+                The process chapter owns <code>Command</code> and process lifecycle. IPC owns the
+                capability-transfer semantics that let an existing <code>File</code>,
+                <code>PipeReader</code> or <code>PipeWriter</code> become child standard I/O.
+            </p>
+
+            <p>The portable Sec 0.1 direct resource set is:</p>
+
+            <pre><code>stdin:
+    File
+    PipeReader
+
+stdout:
+    File
+    PipeWriter
+
+stderr:
+    File
+    PipeWriter</code></pre>
+
+            <p>
+                Existing named move-only resources use explicit <code>&lt;-</code> when consumed by command
+                configuration. Configuration is transactional: on failure, the previous command
+                configuration and caller ownership both remain unchanged.
+            </p>
+        </section>
+
+        <section id="authority">
+            <h2>Authority and Rendezvous</h2>
+
+            <p>
+                Core IPC is capability-based. Resources are created, duplicated, transferred during
+                process startup, transferred through typed IPC or established through another explicit
+                authority path.
+            </p>
+
+            <p>Sec 0.1 deliberately defines no universal core:</p>
+
+            <pre><code>CreateNamedIPC
+OpenIPC
+IPCAddress
+IPCListener</code></pre>
+
+            <p>
+                Two independently started processes may use a platform service, local socket path,
+                service manager or another bootstrap mechanism to find each other. That rendezvous
+                layer owns naming, authentication, permissions and cleanup. Once authority is
+                established, it may expose canonical Sec IPC capabilities.
+            </p>
+
+            <p>
+                A <code>ProcessID</code>, native PID, descriptor number, native handle value or string
+                name is not itself IPC authority. Knowing an identifier does not grant arbitrary access
+                to another process's resources.
+            </p>
+        </section>
+
+        <section id="compatibility">
+            <h2>Typed Transfer Compatibility</h2>
+
+            <p>
+                Typed IPC endpoints are monomorphic. An <code>IPCSender[T]</code> and its logical
+                receiver are typed to exactly <code>T</code> for their lifetime. Sec 0.1 defines no
+                dynamic <code>any</code> typed endpoint.
+            </p>
+
+            <p>
+                Compatibility is nominal, not structural. Two different nominal types remain
+                different even if their fields happen to have the same machine layout.
+            </p>
+
+            <p>
+                Typed IPC transfer is semantic rather than a portable <code>memcpy</code> of one
+                process's storage. For example, a transferable <code>string</code> is materialized in
+                destination-owned storage; the destination does not receive the source heap pointer.
+                Capability-bearing fields use capability transfer rather than serialized native handle
+                integers.
+            </p>
+
+            <p>
+                The compiler/runtime associates an internal transfer identity with nominal type,
+                generic specialization, transfer plan, representation revision and capability-bearing
+                components. This identity is not exposed as a public source-level <code>IPCTypeID</code>.
+            </p>
+
+            <p>
+                The internal representation is not a public stable file, network or cross-language
+                wire format. Persistent or independently versioned protocols use explicit serialization.
+            </p>
+        </section>
+
+        <section id="lifecycle">
+            <h2>Lifecycle and Peer Loss</h2>
+
+            <p>
+                Process death releases capabilities owned solely by that process according to native
+                and runtime cleanup, but it does not destroy a logical IPC resource still owned
+                elsewhere.
+            </p>
+
+            <ul>
+                <li>shared memory remains alive while another capability or mapping exists;</li>
+                <li>an IPC atomic retains the latest committed value while another capability exists;</li>
+                <li>consumed semaphore permits are not restored merely because the acquiring process dies;</li>
+                <li>a mutex held at death becomes poisoned;</li>
+                <li>typed endpoint abnormal disappearance remains distinct from clean closure.</li>
+            </ul>
+
+            <p>
+                Lifecycle transitions that make a waiting result decidable wake the affected operation.
+                For example, the last pipe writer disappearing may make a read return EOF, and the last
+                IPC receiver disappearing makes a future send return <code>PeerClosed</code>.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation and Commit</h2>
+
+            <p>
+                IPC uses the general Sec cancellation model. IPC error enums do not gain extra
+                <code>Cancelled</code> variants.
+            </p>
+
+            <p>
+                A waiting IPC operation may be interrupted only before semantic commit. Before commit,
+                cancellation leaves the source-visible state unchanged:
+            </p>
+
+            <pre><code>Send       - message ownership remains local
+Receive    - no message is dequeued
+Mutex Lock - no guard is acquired
+Semaphore  - no permit is consumed</code></pre>
+
+            <p>
+                Once an operation commits, commit wins. Cancellation, timeout or competing readiness
+                cannot revoke the effect. This prevents states such as “message removed but result
+                discarded” or “mutex acquired but guard lost”.
+            </p>
+
+            <p>
+                Cancellation does not invent unrelated resource actions. It does not implicitly close
+                endpoints, terminate a process, destroy shared memory, poison an unlocked mutex or reset
+                a semaphore.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target Capabilities</h2>
+
+            <p>
+                There is no single universal <code>IPCSupported</code> flag. The active
+                <code>CompilationPlan</code> uses granular semantic capabilities:
+            </p>
+
+            <pre><code>IPCPipes
+IPCTypedMessages
+IPCSharedMemory
+IPCMutex
+IPCSemaphore
+IPCAtomicRepresentation(width)</code></pre>
+
+            <p>
+                These capabilities mean that the target/runtime can provide the complete Sec semantics
+                for that family, not merely that a similarly named native API exists.
+            </p>
+
+            <p>Route-specific adapters include at least:</p>
+
+            <pre><code>CapabilityDuplicate(T)
+ProcessStartupTransfer(T)
+IPCTypedTransfer(T)
+ProcessStandardIOResourceBinding(T, role)</code></pre>
+
+            <p>
+                Semantic transfer eligibility and concrete target route support are separate proofs. A
+                resource may be process-transferable in principle while one selected target lacks a
+                particular transfer route.
+            </p>
+
+            <p>
+                Missing statically known family, width or route support is a compile-time error. Sec
+                does not replace compile-time target validation with runtime
+                <code>if IPCSupported</code> checks.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Semantic IR and Analysis</h2>
+
+            <p>
+                IPC remains semantic until ownership, lifecycle, synchronization and target obligations
+                are resolved. It must not be erased prematurely into opaque native calls.
+            </p>
+
+            <p>Semantic IR preserves, where relevant:</p>
+
+            <ul>
+                <li>IPC operation kind;</li>
+                <li>logical IPC resource identity;</li>
+                <li>Sec capability owner identity;</li>
+                <li>resource/capability relationships;</li>
+                <li>message and transfer type identity;</li>
+                <li>memory order;</li>
+                <li>process-shared synchronization scope;</li>
+                <li>source provenance.</li>
+            </ul>
+
+            <p>
+                Owner identity, logical resource identity, shared-storage identity, synchronization
+                identity and native descriptor/handle identity are separate concepts. Duplication changes
+                the owner identity while preserving the logical resource identity.
+            </p>
+
+            <p>
+                Conditional operations preserve prepare/commit/rollback semantics. This applies to
+                process startup transfer, consuming <code>Send</code>, resource transfer, command resource
+                binding, <code>SharedValue</code> duplication, composite materialization and selected branch
+                commit.
+            </p>
+
+            <p>
+                Cross-process deadlock analysis may include tasks, threads, processes, IPC mutexes,
+                semaphore waits, typed sends/receives, pipe backpressure and process join edges. A
+                zero-capacity typed transport is a real rendezvous wait edge.
+            </p>
+
+            <p>
+                Data-race analysis includes shared-backing identity, shared-value protection identity,
+                process-shared synchronization and IPC atomic memory order. Entering <code>unsafe</code>
+                around a mapping view does not disable those analyses.
+            </p>
+        </section>
+
+        <section id="security">
+            <h2>Defensive Materialization</h2>
+
+            <p>
+                IPC peers are not inherently trusted. A peer may be buggy, compromised, built
+                separately or terminate during transfer. Typed transfer state is validated before it
+                becomes source-visible typed state.
+            </p>
+
+            <p>Validation may include:</p>
+
+            <ul>
+                <li>framing and lengths;</li>
+                <li>overflow-safe size arithmetic;</li>
+                <li>variant discriminants;</li>
+                <li>allocation bounds;</li>
+                <li>capability counts and capability types;</li>
+                <li>schema/transfer identity;</li>
+                <li>representation-specific integer bounds.</li>
+            </ul>
+
+            <p>
+                Partial materialization is destroyed on failure. Temporary native/runtime state created
+                during transfer, duplication, process bootstrap or rollback must have exactly one cleanup
+                path.
+            </p>
+
+            <p>
+                Core IPC permits bounded limits for message size, queue storage, capability counts,
+                materialization work and temporary transfer resources. Exceeding such a limit returns
+                the appropriate <code>ResourceLimit</code> error rather than forcing hidden unbounded
+                allocation.
+            </p>
+
+            <p>
+                Type safety does not provide application authentication or authorization. Whether a
+                peer is allowed to perform an application operation remains the responsibility of the
+                application protocol or rendezvous layer.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                IPC diagnostics should explain the semantic reason for rejection and the boundary being
+                crossed. Useful diagnostics identify:
+            </p>
+
+            <ul>
+                <li>the exact value, field or type that cannot cross the process boundary;</li>
+                <li>whether the failure is semantic transfer eligibility or missing target support;</li>
+                <li>the missing route adapter;</li>
+                <li>a missing explicit <code>&lt;-</code> move marker;</li>
+                <li>a live IPC guard that crosses a potentially waiting operation;</li>
+                <li>an invalid atomic memory-order combination;</li>
+                <li>why <code>SharedStorable(T)</code> or <code>IPCAtomicValue(T)</code> failed;</li>
+                <li>an actionable safer alternative when one exists.</li>
+            </ul>
+
+            <p>
+                Compiler, LSP and <code>sec analyse</code> should agree on the same canonical semantic
+                facts rather than reproducing IPC rules independently.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Specification and Implementation Status</h2>
+
+            <p>
+                The Sec 0.1 IPC rulebook is normative and complete as a language-design document.
+                Revision 1.0 was created and synchronized on 2026-09-15.
+            </p>
+
+            <p>
+                Toolchain implementation is not yet complete. The IPC governance integration remains
+                <strong>planned</strong> and currently records no implemented IPC items. The required work
+                includes compiler-known public types, parser/Sema integration, transferability proofs,
+                target planning, Semantic IR, runtime/lowering support, diagnostics and the full
+                conformance test matrix.
+            </p>
+
+            <div class="rule">
+                <strong>Manual status:</strong> The source semantics on this page describe the normative
+                Sec 0.1 IPC model. Availability in the current compiler must be checked separately from
+                the language specification.
+            </div>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use ordinary <code>Channel[T]</code> inside one process; use <code>IPCSender[T]</code>/<code>IPCReceiver[T]</code> across process boundaries.</li>
+                <li>Use pipes when you want a byte stream and typed IPC when you want semantic message boundaries.</li>
+                <li>Do not build an application protocol on assumptions about native pipe write boundaries.</li>
+                <li>Use explicit <code>&lt;-</code> for named move-only values consumed by process transfer or typed send.</li>
+                <li>Remember that failed pre-commit transfer preserves source ownership.</li>
+                <li>Treat <code>Ok(None)</code> as clean typed-stream completion, never as temporary emptiness.</li>
+                <li>Use <code>SharedValue[T]</code> for common safe shared-state cases instead of inventing a raw shared-memory layout.</li>
+                <li>When using raw shared memory, pair it with an explicit synchronization and representation protocol.</li>
+                <li>Never assume that <code>unsafe</code> removes cross-process race or lifetime requirements.</li>
+                <li>Release <code>IPCMutexGuard</code> and <code>SharedValueGuard</code> before operations that may wait or suspend.</li>
+                <li>Use <code>IPCAtomic[T]</code> only where the selected target provides the complete lock-free process-shared contract.</li>
+                <li>Do not serialize native handles, descriptors or pointers and treat them as capabilities.</li>
+                <li>Do not use <code>ProcessID</code> or a PID as authority to arbitrary IPC resources.</li>
+                <li>Design for bounded backpressure; a valid implementation may use zero-capacity rendezvous.</li>
+                <li>Keep application authentication, authorization and protocol versioning above the core IPC layer.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>A process boundary is a semantic isolation boundary.</li>
+                <li>Sec 0.1 defines pipes, typed IPC, shared memory and capability transfer as distinct IPC families.</li>
+                <li>Ordinary <code>Channel[T]</code> never automatically becomes IPC.</li>
+                <li>Typed IPC is transport, not implicit RPC.</li>
+                <li><code>ProcessTransferable</code>, <code>SharedStorable(T)</code> and <code>IPCAtomicValue(T)</code> are compiler-derived semantic facts.</li>
+                <li>Pipes are ordered byte streams with bounded implementation-defined buffering and no portable write boundaries.</li>
+                <li>Typed <code>Send</code> commits exactly one complete semantic value or leaves source ownership intact on pre-commit failure.</li>
+                <li><code>Receive()</code> distinguishes message delivery, clean end-of-stream and abnormal transport failure.</li>
+                <li>Duplicated typed receivers are MPMC consumers, not broadcast subscribers.</li>
+                <li>Select uses non-destructive readiness followed by one branch commit.</li>
+                <li><code>SharedMemory</code> represents backing authority; mappings are process-local.</li>
+                <li>Raw shared-memory views are unsafe and provide no implicit synchronization.</li>
+                <li><code>IPCMutex</code> is non-recursive and guard-released; owner death permanently poisons it.</li>
+                <li><code>IPCSemaphore</code> has explicit initial/maximum bounds and process-shared permit semantics.</li>
+                <li><code>SharedValue[T]</code> provides safe synchronized typed shared state without leaking safe shared references.</li>
+                <li><code>IPCAtomic[T]</code> requires a complete lock-free process-shared target implementation and never silently falls back to a mutex.</li>
+                <li>Capability transfer preserves concrete Sec resource types and never relies on copied native handle numbers.</li>
+                <li>Composite transfer is all-or-nothing from source semantics.</li>
+                <li>Core IPC is capability-based and defines no universal global named IPC registry in Sec 0.1.</li>
+                <li>Typed transfer compatibility is nominal and semantic, not ordinary ABI-layout identity.</li>
+                <li>Cancellation may interrupt only before semantic commit; committed effects are never revoked.</li>
+                <li>Target support is granular through <code>IPCPipes</code>, <code>IPCTypedMessages</code>, <code>IPCSharedMemory</code>, <code>IPCMutex</code>, <code>IPCSemaphore</code> and <code>IPCAtomicRepresentation(width)</code>.</li>
+                <li>IPC remains explicit in Semantic IR until ownership, synchronization, lifecycle and target obligations are safely lowered.</li>
+                <li>The IPC specification is normative; current implementation remains planned.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="65-processes.html">Previous: Processes and Command</a>
+            <a href="67-concurrency-safety.html">Next: Transferability, Data Races and Deadlocks</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-15</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

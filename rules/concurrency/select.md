@@ -328,8 +328,11 @@ A revocable send may participate in select:
 
 ```sec
 select {
-    ticket := tx.SendRevocable(message) => {
-        Store(ticket)
+    result := tx.SendRevocable(<-message) => {
+        match result {
+            Accepted(ticket) => Store(<-ticket)
+            Closed(returned) => HandleClosed(<-returned)
+        }
     }
 
     after 20ms => {
@@ -342,13 +345,21 @@ If the send branch is selected:
 
 - the send commits;
 - ownership transfers;
-- the ticket is created;
-- the branch receives the ticket.
+- the branch receives the ordinary `ChannelRevocableSendResult[T]`;
+- only `Accepted(ticket)` contains a `MessageTicket[T]`.
 
 If another branch is selected:
 
 - the message remains owned by the current task;
 - no ticket exists.
+
+Every selected channel operation yields its ordinary exact result type. In
+particular, blocking send yields `ChannelSendResult[T]`, try-send yields
+`ChannelTrySendResult[T]`, try-receive yields
+`ChannelTryReceiveResult[T]`, and revocable send yields
+`ChannelRevocableSendResult[T]`. Readiness inspection alone creates no result,
+moves no message, removes no received value, creates no ticket, increments no
+statistics, and changes no terminal state.
 
 ---
 
@@ -1346,11 +1357,11 @@ These are not required for version 0.1.
 ## Related rules
 
 ```text
-channels.txt
+channels.md
 tasks.md
-spawn.txt
-await.txt
-concurrency.txt
+spawn.md
+await.md
+concurrency.md
 mutex.md
 atomics.md
 concurrency_memory_model.md

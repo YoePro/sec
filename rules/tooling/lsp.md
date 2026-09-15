@@ -3826,3 +3826,17 @@ shows `value.SizeOf` and `TypeName.SizeOf` as authoritative read-only
 eligible exact user replacement resolves first. Tooling may identify fallback,
 authoritative, privileged-core-backed, and ordinary replacement categories, but
 must not infer compiler authority or source visibility from underscore spelling.
+
+## Channel v2 integration
+
+The LSP consumes the exact compiler-known ordinary-channel identities from
+`rules/concurrency/channels.md`. Hover exposes the canonical declarations and
+variant payloads for `Channel[T]`, its endpoints, options, statistics, tickets,
+send/receive results, revocation results, and message dispositions.
+
+Completion uses `Tx` and `Rx`, offers `Revoke()` on `MessageTicket[T]` rather
+than `Sender[T]`, distinguishes blocking and non-blocking result families, and
+does not expose the removed `Priority` capability. `Statistics()` is offered
+only when the resolved channel capability facts permit it, or is annotated with
+that capability requirement. Navigation treats compiler-known/source-visible
+channel identities as the same semantic symbols consumed by Sema.

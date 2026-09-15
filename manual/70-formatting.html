@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Formatting - Sec Language Manual</title>
+<link href="manual.css" rel="stylesheet"/>
+<link href="/apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180"/>
+<link href="/image/favicon-32x32.png" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/image/favicon-16x16.png" rel="icon" sizes="16x16" type="image/png"/>
+<link href="/site.webmanifest" rel="manifest"/>
+</head>
+<body>
+<header class="site-header">
+<div class="header-inner">
+<a class="site-logo" href="index.html">
+<img alt="Sec" src="logo.svg"/>
+<span class="site-title">Sec</span>
+</a>
+<nav class="header-nav">
+<a href="01-introduction.html">Language</a>
+<a href="stdlib.html">Stdlib</a>
+<a href="syntax-reference.html">Syntax</a>
+<a href="best-practices.html">Best Practices</a>
+<a href="https://github.com/YoePro/sec">GitHub</a>
+</nav>
+</div>
+</header>
+<div class="layout">
+<nav aria-label="Section navigation" class="sidebar">
+<h2 class="sidebar-title">Sec Manual</h2>
+<div class="sidebar-section">This page</div><a href="#summary">Summary</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#safety">Transformation Safety</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#directives">Formatter Directives</a>
+        <a href="#generated">Generated Code</a>
+        <a href="#editor">Editor Formatting</a>
+        <a href="#recoverable">Recoverable Source</a>
+        <a href="#line-width">Line Width</a>
+        <a href="#operators">Operators and Parentheses</a>
+        <a href="#errors">Error and Cleanup Syntax</a>
+        <a href="#types">Types and Literals</a>
+        <a href="#functions">Functions and Declarations</a>
+        <a href="#top-level">Top-Level Layout</a>
+        <a href="#imports">Imports</a>
+        <a href="#enums">Enums and Declaration Groups</a>
+        <a href="#structs">Struct Fields and Tags</a>
+        <a href="#alignment">Alignment</a>
+        <a href="#documentation">Documentation Comments</a>
+        <a href="#comments">Comments</a>
+        <a href="#safe-fixes">Safe Fixes</a>
+        <a href="#normalization">Syntax Normalization</a>
+        <a href="#ownership">Ownership Syntax</a>
+        <a href="#spacing">Spacing</a>
+        <a href="#braces">Braces</a>
+        <a href="#blank-lines">Blank Lines</a>
+        <a href="#indentation">Indentation</a>
+        <a href="#line-endings">Line Endings</a>
+        <a href="#invariants">Formatting Invariants</a>
+        <a href="#configuration">Configuration</a>
+        <a href="#selection">File Selection</a>
+        <a href="#commands">Command Model</a>
+        <a href="#shared">Shared Formatter</a>
+        <a href="#layers">Transformation Layers</a>
+        <a href="#philosophy">One Canonical Style</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#formatting">Formatting</a>
+        <div class="sidebar-section">Language</div>
+<a href="01-introduction.html">01 Introduction</a>
+<a href="02-basic-syntax.html">02 Basic Syntax</a>
+<a href="03-types.html">03 Types</a>
+<a href="04-named-types.html">04 Named Types</a>
+<a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+<a href="06-functions.html">06 Functions</a>
+<a href="07-if.html">07 If Statements</a>
+<a href="08-switch.html">08 Switch Statements</a>
+<a href="09-match.html">09 Match Expressions</a>
+<a href="10-enums.html">10 Enums</a>
+<a href="11-unions.html">11 Unions</a>
+<a href="12-registers.html">12 Registers</a>
+<a href="13-units.html">13 Units</a>
+<a href="14-generics.html">14 Generics</a>
+<a href="15-loops.html">15 Loops and Iteration</a>
+<a href="16-impl.html">16 Impl Blocks</a>
+<a href="17-properties.html">17 Properties</a>
+<a href="18-interfaces.html">18 Interfaces</a>
+<a href="19-arrays.html">19 Arrays</a>
+<a href="20-slices.html">20 Slices</a>
+<a href="21-indexing.html">21 Indexing</a>
+<a href="22-storage.html">22 Values, Places and Storage</a>
+<a href="23-references.html">23 References</a>
+<a href="24-ownership.html">24 Ownership</a>
+<a href="25-copy-move.html">25 Copying and Moving</a>
+<a href="26-borrowing.html">26 Borrowing</a>
+<a href="27-spread.html">27 Spread</a>
+<a href="28-modules.html">28 Modules and Imports</a>
+<a href="29-projects.html">29 Projects</a>
+<a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+<a href="31-ffi.html">31 Foreign Function Interfaces</a>
+<a href="32-visibility.html">32 Visibility and Scopes</a>
+<a href="33-result-option.html">33 Result and Option</a>
+<a href="34-error-handling.html">34 Errors and try</a>
+<a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+<a href="36-defer.html">36 Defer and Cleanup</a>
+<a href="37-attributes.html">37 Attributes</a>
+<a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+<a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+<a href="40-allocation.html">40 Memory Allocation</a>
+<a href="41-arena.html">41 Arenas</a>
+<a href="42-lifetimes.html">42 Lifetimes</a>
+<a href="43-destruction.html">43 Destruction</a>
+<a href="44-layout.html">44 Memory Layout and Representation</a>
+<a href="45-collections.html">45 Collections</a>
+<a href="46-shaped-types.html">46 Shaped Types</a>
+<a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+<a href="48-effects.html">48 Effects and Verified Guarantees</a>
+<a href="49-platforms.html">49 Platforms and Target Profiles</a>
+<a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+<a href="51-interrupts.html">51 Interrupts and ISRs</a>
+<a href="52-inline-assembly.html">52 Inline Assembly</a>
+<a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+<a href="54-concurrency.html">54 Concurrency</a>
+<a href="55-tasks.html">55 Tasks</a>
+<a href="56-spawn.html">56 Spawn</a>
+<a href="57-await.html">57 Await and Task Outcomes</a>
+<a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+<a href="59-cancellation.html">59 Cancellation and Context</a>
+<a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+<a href="61-channels-select.html">61 Channels and Select</a>
+<a href="62-events.html">62 Events</a>
+<a href="63-mutexes.html">63 Mutexes and Locks</a>
+<a href="64-atomics.html">64 Atomics and Memory Order</a>
+<a href="65-processes.html">65 Processes and Command</a>
+<a href="66-ipc.html">66 Inter-Process Communication</a>
+<a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+<a href="68-testing.html">68 Testing</a>
+<a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+<a class="active" href="70-formatting.html">70 Formatting</a>
+<a href="71-diagnostics.html">71 Diagnostics</a>
+<a href="72-lsp.html">72 Editor and Language Server</a>
+<div class="sidebar-section">Reference</div>
+<a href="stdlib.html">Standard Library</a>
+<a href="syntax-reference.html">Syntax Reference</a>
+<a href="best-practices.html">Best Practices</a>
+<div class="sidebar-section">Status</div>
+<a href="test-status.html">Implementation Status</a>
+<div class="sidebar-section">Community</div>
+<a href="bug-report.html">Report a Bug</a>
+<a href="join.html">Join</a>
+</nav>
+<main class="content">
+<div class="breadcrumb"><a href="index.html">Sec Manual</a> / Formatting</div>
+<h1 id="formatting">Formatting</h1>
+<p>
+    Sec has one canonical source style. Formatting is deliberately closer to
+    <code>gofmt</code> than to a configurable style framework: ordinary source formatting is
+    deterministic, repeatable and shared by the compiler tooling, language server and future
+    command-line formatter.
+</p>
+<p>
+    The formatter is allowed to normalize spelling and layout when the parser has already proved
+    the intended construct. It is not allowed to guess program meaning, infer ownership transfers,
+    rewrite behavior or use semantic analysis as an excuse to change valid source into a different
+    program.
+</p>
+<div class="rule">
+<strong>Core rule:</strong> formatting may change representation, but it must not change Sec
+    semantics. Safe source repair is a separate operation and requires stronger proof.
+</div>
+<section id="purpose">
+<h2>Purpose</h2>
+<p>The formatter converts Sec source into the canonical source representation. It owns:</p>
+<ul>
+<li>indentation and horizontal spacing;</li>
+<li>line breaks and blank-line normalization;</li>
+<li>brace and delimiter placement;</li>
+<li>comment placement and local alignment;</li>
+<li>struct-field, tag and declaration-table alignment;</li>
+<li>canonical spelling of parser-proven noncanonical syntax;</li>
+<li>stable formatting around recoverable syntax errors.</li>
+</ul>
+<p>The formatter is not a type checker, optimizer, refactoring engine or ownership inference engine.</p>
+</section>
+<section id="philosophy">
+<h2>One Canonical Style</h2>
+<p>
+        Sec does not make ordinary style choices project-configurable. Indentation width, brace
+        placement, operator spacing, comma placement, comment spacing, alignment and canonical
+        keyword spelling are language-tooling decisions.
+    </p>
+<pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}</code></pre>
+<p>
+        Running the formatter repeatedly must converge immediately. Equivalent source should not
+        oscillate between layouts depending on editor, operating system or invocation path.
+    </p>
+<pre><code>Format(Format(source)) == Format(source)</code></pre>
+</section>
+<section id="layers">
+<h2>Transformation Layers</h2>
+<p>Sec separates source transformation into distinct layers.</p>
+<h3>Canonical formatting</h3>
+<p>
+        Canonical formatting changes whitespace, layout, alignment and parser-proven canonical
+        spelling. It does not require successful Sema and must preserve comments, literals,
+        identifiers and ownership operators.
+    </p>
+<h3>Syntax normalization</h3>
+<p>
+        Syntax normalization converts an accepted, unambiguous alternate spelling into the canonical
+        Sec spelling. It may run during ordinary formatting only when the parser proves the construct.
+    </p>
+<h3>Safe fixing</h3>
+<p>
+        Safe fixing repairs invalid source only when the compiler has one unique, machine-applicable
+        correction. It runs before formatting and is exposed separately through fix commands and
+        editor actions.
+    </p>
+<div class="note">
+<strong>Important:</strong> code cleanup and structural refactoring are not formatting. They
+        may be useful, but they must remain separate user actions.
+    </div>
+</section>
+<section id="shared">
+<h2>Shared Formatter</h2>
+<p>
+        The CLI, LSP, generated-source pipeline and refactoring output must use the same formatter
+        implementation. Formatting rules must not be duplicated in editor extensions or command-specific code.
+    </p>
+<pre><code>internal/formatter/
+internal/fixes/</code></pre>
+<p>The shared formatter is the source of truth for:</p>
+<ul>
+<li><code>sec fmt</code>;</li>
+<li><code>sec fmt --check</code>;</li>
+<li><code>sec fmt --stdin</code>;</li>
+<li>LSP document, range and on-type formatting;</li>
+<li>format-on-save;</li>
+<li>generated Sec source;</li>
+<li>refactoring output.</li>
+</ul>
+</section>
+<section id="commands">
+<h2>Command Model</h2>
+<p>The canonical CLI surface is:</p>
+<pre><code>sec fmt &lt;path&gt;
+sec fmt --check &lt;path&gt;
+sec fmt --stdin
+sec fmt --fix &lt;path&gt;
+sec fmt --fix --check &lt;path&gt;</code></pre>
+<h3>sec fmt</h3>
+<p>
+        Formats selected source in place. It applies canonical formatting and allowed syntax
+        normalization, but no semantic fixes.
+    </p>
+<h3>sec fmt --check</h3>
+<p>
+        Does not modify files. It exits non-zero when selected source is not canonical and reports
+        the affected files.
+    </p>
+<h3>sec fmt --stdin</h3>
+<p>Reads Sec source from standard input and writes formatted source to standard output.</p>
+<h3>sec fmt --fix</h3>
+<p>
+        Applies only proven safe fixes, then formats the result. It must report the fixes it applied
+        and must not quietly perform discretionary cleanup or refactoring.
+    </p>
+</section>
+<section id="selection">
+<h2>File Selection</h2>
+<p>A formatter path may identify a source file, directory or project root.</p>
+<p>Directory and project formatting selects Sec source such as:</p>
+<pre><code>*.sec</code></pre>
+<p>Formatting should ignore build products, dependency caches, generated read-only files and project-excluded directories.</p>
+</section>
+<section id="configuration">
+<h2>Configuration</h2>
+<p>Ordinary formatting style is not configurable.</p>
+<p>Project settings may control operational behavior such as:</p>
+<ul>
+<li>which files are selected;</li>
+<li>whether generated files are included;</li>
+<li>whether safe fixes run on save;</li>
+<li>whether code cleanup runs on save.</li>
+</ul>
+<p>
+        They may not choose a different indent width, brace style, operator style or canonical keyword
+        spelling. A Sec project should look like Sec regardless of who formats it.
+    </p>
+</section>
+<section id="invariants">
+<h2>Formatting Invariants</h2>
+<p>Canonical formatted source must provide:</p>
+<ul>
+<li>deterministic output;</li>
+<li>idempotence;</li>
+<li>semantic preservation;</li>
+<li>comment preservation;</li>
+<li>literal preservation;</li>
+<li>stable line endings;</li>
+<li>exactly one final newline for non-empty source;</li>
+<li>no trailing horizontal whitespace;</li>
+<li>no emitted tabs.</li>
+</ul>
+<p>For valid source, parsing before and after formatting must produce equivalent language semantics.</p>
+</section>
+<section id="line-endings">
+<h2>Line Endings</h2>
+<p>
+        The formatter preserves a consistently established <code>LF</code> or <code>CRLF</code> style.
+        Mixed line endings normalize to the dominant style; if there is no dominant style, <code>LF</code>
+        is used. <code>sec fmt --stdin</code> uses <code>LF</code> unless a later explicit mode says otherwise.
+    </p>
+</section>
+<section id="indentation">
+<h2>Indentation</h2>
+<p>Indentation uses four spaces. Tabs are never emitted for indentation or alignment.</p>
+<pre><code>fn main() int {
+    if ready {
+        return 0
+    }
+
+    return 1
+}</code></pre>
+<p>
+        Multiline blocks, parentheses, brackets, argument lists, parameter lists, literals and
+        declaration groups increase indentation structurally. Delimiters inside strings and comments
+        do not affect indentation.
+    </p>
+</section>
+<section id="blank-lines">
+<h2>Blank Lines</h2>
+<p>Repeated empty lines collapse to one blank line.</p>
+<p>Blank lines commonly separate:</p>
+<ul>
+<li>target directives from the module declaration;</li>
+<li>module declarations from imports;</li>
+<li>import groups from declarations;</li>
+<li>top-level declarations and functions;</li>
+<li>logical sections inside function bodies when the author already separated them.</li>
+</ul>
+<p>
+        No blank line is emitted immediately inside braces, between documentation and its declaration,
+        or between <code>}</code> and a required continuation such as <code>else</code>.
+    </p>
+</section>
+<section id="braces">
+<h2>Braces</h2>
+<p>Opening braces stay on the same line as their construct.</p>
+<pre><code>if ready {
+    Run()
+} else {
+    Stop()
+}</code></pre>
+<p>
+        This applies consistently to functions, types, impl blocks, properties, control-flow blocks,
+        unsafe blocks, asm blocks, match/select constructs and literals with block syntax.
+    </p>
+</section>
+<section id="spacing">
+<h2>Spacing</h2>
+<p>Binary and assignment operators use one space on both sides:</p>
+<pre><code>a + b
+value := 10
+value = other
+value += 1
+left x right</code></pre>
+<p>Unary operators have no following space:</p>
+<pre><code>!enabled
+-value</code></pre>
+<p>Member access and calls remain compact:</p>
+<pre><code>value.field
+Vehicle.FuelType.diesel
+Add(1, 2)</code></pre>
+<p>There is no space before commas, colons or closing delimiters, and one ordinary space after commas and colons unless an alignment rule owns the group.</p>
+</section>
+<section id="ownership">
+<h2>Ownership Syntax</h2>
+<p>
+        Formatting must preserve the semantic distinction between copy/direct initialization and
+        explicit move syntax.
+    </p>
+<pre><code>let value := source
+let destination :&lt;- source
+let destination: Buffer &lt;- source
+
+destination = source
+destination &lt;- source</code></pre>
+<p>
+        Ordinary formatting never infers ownership transfer. It must not turn <code>:=</code> into
+        <code>:&lt;-</code>, or <code>=</code> into <code>&lt;-</code>, based on type information.
+    </p>
+<p>
+        Direct initialization from a newly created temporary remains direct initialization; the
+        formatter does not add a move marker merely because the resulting value is move-only.
+    </p>
+</section>
+<section id="normalization">
+<h2>Syntax Normalization</h2>
+<p>
+        Parser-proven accepted aliases may be converted into canonical spelling during ordinary formatting.
+    </p>
+<h3>Function keyword</h3>
+<pre><code>// accepted input
+func Run() void {
+}
+
+// canonical output
+fn Run() void {
+}</code></pre>
+<p>An identifier or member named <code>func</code> is not rewritten when it is not the function keyword.</p>
+<h3>Increment and decrement</h3>
+<pre><code>// accepted statement aliases
+count++
+count--
+
+// canonical output
+count += 1
+count -= 1</code></pre>
+<p>
+        These aliases are statement-only. Formatting must not turn an invalid increment expression
+        into a different valid expression.
+    </p>
+</section>
+<section id="safe-fixes">
+<h2>Safe Fixes</h2>
+<p>
+        A safe fix may repair invalid source only when the compiler proves one unambiguous correction.
+        Examples include inserting a missing colon or comma, correcting declaration assignment syntax,
+        or changing invalid copy syntax to a legal explicit move when ownership analysis proves that
+        the move has no unintended consequences.
+    </p>
+<pre><code>// invalid
+fn Parse(value string) Token {
+}
+
+// safe fix
+fn Parse(value: string) Token {
+}</code></pre>
+<p>
+        If a proposed move would invalidate a later use, change overload resolution or create a borrow
+        conflict, it is not an automatic safe fix. It becomes an explicit refactoring with consequences.
+    </p>
+</section>
+<section id="comments">
+<h2>Comments</h2>
+<p>Sec supports line comments, block comments and documentation comments.</p>
+<pre><code>// line comment
+/* block comment */
+/** documentation comment */</code></pre>
+<p>
+        Formatting preserves comment text and relative attachment. It may adjust indentation,
+        surrounding whitespace and alignment, but it does not reflow ordinary prose by default.
+    </p>
+<p>A trailing line comment has at least two spaces before <code>//</code>:</p>
+<pre><code>let retryCount := 3  // Maximum retry attempts.</code></pre>
+</section>
+<section id="documentation">
+<h2>Documentation Comments</h2>
+<p>Canonical documentation comments use block documentation syntax:</p>
+<pre><code>/**
+ * Returns true when the value is positive.
+ *
+ * @param value value to inspect
+ * @return true when value is greater than zero
+ */
+fn IsPositive(value: int) bool {
+    return value &gt; 0
+}</code></pre>
+<p>
+        No blank line separates documentation from its declaration. The formatter preserves the text
+        and tag order; the documentation rulebook owns which tags are valid.
+    </p>
+</section>
+<section id="alignment">
+<h2>Alignment</h2>
+<p>
+        Local declaration-like groups may align into readable columns. Alignment uses spaces only and
+        stops at clear group boundaries such as blank lines, standalone comments, multiline items or
+        a change in declaration shape.
+    </p>
+<p>
+        Alignment is deliberately local. One unusually long unrelated line must not create huge gaps
+        throughout a file.
+    </p>
+</section>
+<section id="structs">
+<h2>Struct Fields and Tags</h2>
+<p>Struct fields are one per line and every field ends with a comma.</p>
+<pre><code>type User struct {
+    ID:       int    `json:"id"`,      // Stable identifier.
+    Name:     string `json:"name"`,    // Display name.
+    Password: string `json:"-"`,       // Never serialize.
+}</code></pre>
+<p>
+        Within one compatible field group, field types, tags and trailing comments may align. Struct
+        tag contents and key order are preserved exactly. Ordinary formatting never invents, removes
+        or sorts tags.
+    </p>
+</section>
+<section id="enums">
+<h2>Enums and Declaration Groups</h2>
+<p>Enum members remain one per line and end with commas.</p>
+<pre><code>enum Permission uint {
+    none    = 0,
+    read    = 1 &lt;&lt; iota,
+    write   = 1 &lt;&lt; iota,
+    execute = 1 &lt;&lt; iota,
+}</code></pre>
+<p>Typed declaration groups may align names and initializer columns:</p>
+<pre><code>TokenType (
+    ILLEGAL := "ILLEGAL",
+    EOF     := "EOF",
+    IDENT   := "IDENT",
+)</code></pre>
+<p>Formatting preserves declaration and enum order. Sorting is a separate action.</p>
+</section>
+<section id="imports">
+<h2>Imports</h2>
+<p>Single imports are one per line:</p>
+<pre><code>import "fmt"
+import "io"</code></pre>
+<p>Grouped imports are indented four spaces:</p>
+<pre><code>import (
+    "fmt"
+    sys "platform/linux/amd64"
+)</code></pre>
+<p>
+        Ordinary formatting currently preserves import order. Removing unused imports, merging groups,
+        sorting or adding missing imports belongs to organize-imports/code-cleanup behavior.
+    </p>
+</section>
+<section id="top-level">
+<h2>Top-Level Layout</h2>
+<p>The formatter preserves top-level declaration order.</p>
+<pre><code>#target(os: "linux", arch: "amd64")
+
+module main
+
+import "fmt"
+
+type Percent int range 0..100
+
+fn main() int {
+    return 0
+}</code></pre>
+<p>
+        Recommendations such as one primary public type per file are code-quality guidance. Moving
+        declarations between files is a refactoring, not formatting.
+    </p>
+</section>
+<section id="functions">
+<h2>Functions and Declarations</h2>
+<p>Function parameters use canonical <code>name: Type</code> syntax and comma-space separation on one line.</p>
+<pre><code>fn Add(a: int, b: int) int {
+    return a + b
+}</code></pre>
+<p>Variable declarations retain their declared form:</p>
+<pre><code>let value := 10
+let mut value := 10
+let typed: int := 10
+let mut pending: int
+
+int mut: a, b, c</code></pre>
+<p>
+        Formatting does not merge separate declarations into a declaration table. That is a code cleanup or refactoring.
+    </p>
+</section>
+<section id="types">
+<h2>Types and Literals</h2>
+<p>
+        The formatter preserves type identity and source-level unit meaning. It normalizes only the
+        punctuation and spacing owned by the grammar.
+    </p>
+<pre><code>type Percent int range 0..100
+type Money decimal&lt;SEK&gt;
+
+type Box[T] struct {
+    value: T,
+}</code></pre>
+<p>
+        Formatting never replaces a named unit with a structural unit expression, reorders unit factors
+        for semantic canonicalization, changes the numeric carrier or invents a conversion.
+    </p>
+<p>
+        Explicit defaults, omitted struct fields and empty collection literals are preserved. The formatter
+        does not expand omitted values or insert defaults.
+    </p>
+</section>
+<section id="errors">
+<h2>Error and Cleanup Syntax</h2>
+<p>
+        Formatting preserves the semantic forms defined by error handling, properties, destruction and cleanup.
+        It must not rewrite one projection or handler form into another when they have different ownership behavior.
+    </p>
+<pre><code>return try ReadValue()
+
+discard Calculate()
+
+assert ready
+assert ready, "service must be ready"</code></pre>
+<p>
+        Explicit <code>discard</code> remains explicit. The formatter neither inserts it for ordinary ignored
+        results nor removes it from source. Likewise, formatting never adds or removes cleanup operations.
+    </p>
+</section>
+<section id="operators">
+<h2>Operators and Parentheses</h2>
+<p>
+        The formatter follows Sec's canonical precedence and associativity rules. Parentheses affecting meaning
+        are always preserved.
+    </p>
+<pre><code>(1 + 2) * 3</code></pre>
+<p>
+        Redundant outer parentheses may be removed only when meaning is unchanged, parser recovery is not involved
+        and readability is not reduced. Clarifying parentheses around mixed boolean and comparison expressions may remain.
+    </p>
+</section>
+<section id="line-width">
+<h2>Line Width</h2>
+<p>
+        Sec 0.1 has not yet locked an exact canonical soft width. The formatter therefore does not impose a hard
+        syntax limit or aggressively reflow source merely to hit a column count.
+    </p>
+<p>Until an exact soft target is chosen:</p>
+<ul>
+<li>preserve sensible existing multiline structure;</li>
+<li>break constructs only where canonical multiline forms exist;</li>
+<li>never truncate or reflow string contents;</li>
+<li>do not create unreadable comment alignment merely to preserve columns.</li>
+</ul>
+</section>
+<section id="recoverable">
+<h2>Recoverable Source</h2>
+<p>
+        Formatting is not restricted to perfectly valid source. The formatter should preserve and format unaffected
+        structure around recoverable errors such as a missing colon, missing comma or unfinished expression.
+    </p>
+<p>It must:</p>
+<ul>
+<li>never delete unknown tokens;</li>
+<li>preserve error-node text;</li>
+<li>format surrounding valid blocks;</li>
+<li>normalize syntax only when the recovered construct is unambiguous;</li>
+<li>require a fix operation before inserting missing syntax.</li>
+</ul>
+</section>
+<section id="editor">
+<h2>Editor Formatting</h2>
+<p>
+        Document formatting, range formatting, on-type formatting and format-on-save must use the same shared formatter.
+    </p>
+<p>
+        Range formatting expands a requested range to complete safe syntax boundaries such as a statement, declaration,
+        parameter list, field group or block. On-type formatting is intentionally conservative and should perform only
+        small local layout work after triggers such as a closing delimiter, comma, colon or newline.
+    </p>
+<p>
+        LSP clients should eventually receive minimal non-overlapping edits when practical, while CLI formatting may simply
+        rewrite the file.
+    </p>
+</section>
+<section id="generated">
+<h2>Generated Code</h2>
+<p>
+        Generated Sec source must also be canonical. Code generators should construct structured source and invoke the
+        shared formatter rather than embedding a second printer with its own style decisions.
+    </p>
+</section>
+<section id="directives">
+<h2>Formatter Directives</h2>
+<p>
+        Sec 0.1 does not require general formatter-disable directives. A future narrowly scoped design may be added only
+        when concrete use cases justify it.
+    </p>
+<div class="rule">
+<strong>Rule:</strong> formatter directives must not become a general escape hatch from canonical Sec style.
+    </div>
+</section>
+<section id="diagnostics">
+<h2>Diagnostics</h2>
+<p>
+        Formatting differences are not language errors. <code>sec fmt --check</code> should identify noncanonical files and
+        may point to differing ranges without pretending the program is semantically invalid.
+    </p>
+<p>Formatter/fix diagnostics use stable identities for cases such as:</p>
+<ul>
+<li>noncanonical source;</li>
+<li>an unrecoverable region;</li>
+<li>a refused unsafe fix;</li>
+<li>ambiguous normalization;</li>
+<li>a generated file that must not be rewritten.</li>
+</ul>
+</section>
+<section id="safety">
+<h2>Transformation Safety</h2>
+<p>Every source transformation belongs to an explicit safety class:</p>
+<pre><code>Formatting
+SyntaxNormalization
+SafeFix
+CodeCleanup
+StructuralRefactoring
+BehaviorChanging
+PotentiallyLossy</code></pre>
+<p>
+        Ordinary formatting accepts only <code>Formatting</code> and <code>SyntaxNormalization</code>.
+        <code>--fix</code> may additionally accept <code>SafeFix</code>. No automatic mode may perform
+        behavior-changing or potentially lossy transformations.
+    </p>
+</section>
+<section id="status">
+<h2>Current Implementation Status</h2>
+<p>
+        The repository already contains a shared initial formatter in <code>internal/formatter</code>, and the LSP uses it for
+        full-document formatting. The current implementation already handles line-ending preservation, four-space indentation,
+        trailing-whitespace removal, final newline normalization, common block indentation, selected comma spacing,
+        <code>func</code>-to-<code>fn</code> normalization, selected attribute placement and format-on-save integration.
+    </p>
+<p>Implementation remains <strong>partial</strong>. Important unfinished areas include:</p>
+<ul>
+<li>the complete <code>sec fmt</code> CLI;</li>
+<li><code>--check</code> and <code>--fix</code> integration;</li>
+<li>recursive directory/project formatting;</li>
+<li>range and on-type formatting;</li>
+<li>minimal edit generation;</li>
+<li>a fully lossless trivia-aware syntax printer;</li>
+<li>complete recoverable-syntax formatting;</li>
+<li>the full local alignment engine for fields, tags, comments and declaration tables;</li>
+<li>canonical import sorting policy;</li>
+<li>complete structured formatter diagnostics and fuzz/idempotence coverage.</li>
+</ul>
+<div class="note">
+<strong>Status note:</strong> this page documents the canonical formatter contract. The current LSP formatter already
+        implements a useful subset, but some examples describe required canonical behavior that the present formatter may not
+        yet reproduce in every syntax form.
+    </div>
+</section>
+<section id="best-practices">
+<h2>Best Practices</h2>
+<ul>
+<li>Format Sec code with the shared formatter rather than editor-specific style rules.</li>
+<li>Do not hand-tune spacing that canonical formatting will deliberately replace.</li>
+<li>Use formatter output as the canonical layout for reviews and generated code.</li>
+<li>Keep semantic fixes separate from ordinary formatting in scripts and editor settings.</li>
+<li>Do not expect formatting to infer ownership, fix types or reorganize declarations.</li>
+<li>Preserve comments as semantic documentation even when their indentation changes.</li>
+<li>Use organize-imports or refactoring actions for reordering, not ordinary formatting.</li>
+<li>Treat <code>--check</code> as a style/reproducibility gate, not as a language-validity check.</li>
+<li>Prefer canonical multiline structures over manual alignment tricks that depend on tabs.</li>
+<li>Expect formatting to remain stable across CLI, LSP and generated-source workflows.</li>
+</ul>
+</section>
+<section id="summary">
+<h2>Summary</h2>
+<ul>
+<li>Sec has one canonical source style.</li>
+<li>Ordinary formatting is deterministic, idempotent and not style-configurable.</li>
+<li>The CLI, LSP, generators and refactorings must share one formatter implementation.</li>
+<li>Canonical formatting does not require successful Sema.</li>
+<li>Syntax normalization is allowed only for parser-proven unambiguous aliases.</li>
+<li>Safe fixes are separate and require stronger compiler proof.</li>
+<li>Four spaces are used for indentation; tabs are never emitted.</li>
+<li>Braces remain on the construct line and <code>else</code> follows the closing brace.</li>
+<li>Operator, comma, colon, member and call spacing follow one canonical policy.</li>
+<li>Ownership operators are semantically significant and never inferred by formatting.</li>
+<li>Comments, documentation and literal text are preserved.</li>
+<li>Struct fields, tags, enum initializers and declaration groups may use local column alignment.</li>
+<li>Ordinary formatting preserves import and declaration order.</li>
+<li>Sec 0.1 does not yet lock a hard or exact soft line width.</li>
+<li>Recoverable source should remain format-friendly without guessing missing semantics.</li>
+<li>Generated code must pass through the same formatter.</li>
+<li>Ordinary formatting never performs code cleanup, structural refactoring or behavior-changing edits.</li>
+<li>The current formatter implementation is useful but still partial relative to the complete canonical rulebook.</li>
+</ul>
+</section>
+<div class="page-navigation">
+<a href="69-analysis.html">Previous: Static Analysis and sec analyse</a>
+<a href="71-diagnostics.html">Next: Diagnostics</a>
+</div>
+</main>
+</div>
+<footer class="site-footer">
+<div class="site-footer-inner">
+<div>
+<p>© 2026 Sec Language</p>
+<p>Document revision 1.0 · 2026-09-15</p>
+</div>
+<a href="https://sec-lang.com">sec-lang.com</a>
+</div>
+</footer>
+</body>
+</html>

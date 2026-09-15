@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Transferability, Data Races and Deadlocks - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#concurrency-safety">Transferability, Data Races and Deadlocks</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#three-questions">Three Safety Questions</a>
+        <a href="#transferability">Transferability</a>
+        <a href="#transfer-facts">Compiler Transfer Facts</a>
+        <a href="#recursive">Recursive Derivation</a>
+        <a href="#copy-move-transfer">Copy, Move and Transfer</a>
+        <a href="#references">References and Borrows</a>
+        <a href="#closures">Closures and Captures</a>
+        <a href="#guards">Guards and Execution-Bound Values</a>
+        <a href="#boundary-rules">Boundary-Specific Rules</a>
+        <a href="#shared-state">Shared Mutable State</a>
+        <a href="#race-definition">What Is a Data Race?</a>
+        <a href="#places">Storage Identity and Places</a>
+        <a href="#happens-before">Happens-Before</a>
+        <a href="#mutex-race">Mutex Protection</a>
+        <a href="#atomic-race">Atomic Access</a>
+        <a href="#volatile-unsafe">Volatile and Unsafe</a>
+        <a href="#publication">Publication</a>
+        <a href="#race-results">Race Analysis Results</a>
+        <a href="#deadlock-definition">What Is a Deadlock?</a>
+        <a href="#wait-for">Wait-For Graph</a>
+        <a href="#lock-order">Lock Ordering</a>
+        <a href="#completion-waits">Completion and Join Dependencies</a>
+        <a href="#channels-ipc">Channels and IPC</a>
+        <a href="#callbacks-ffi-isr">Callbacks, FFI and ISRs</a>
+        <a href="#deadlock-results">Deadlock Analysis Results</a>
+        <a href="#cancellation">Cancellation Is Not Proof</a>
+        <a href="#proof-states">Proof States</a>
+        <a href="#analysis-depth">Analysis Depth</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html" class="active">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Transferability, Data Races and Deadlocks</div>
+
+        <h1 id="concurrency-safety">Transferability, Data Races and Deadlocks</h1>
+
+        <p>
+            Concurrency safety in Sec is not one isolated rule. A concurrent operation is safe only
+            when the compiler can establish that values may cross the requested execution boundary,
+            that shared memory is accessed with valid synchronization, and that progress dependencies
+            do not create a forbidden waiting cycle.
+        </p>
+
+        <p>
+            These checks build on ownership, borrowing, effects, the concurrency memory model,
+            synchronization primitives, process isolation, interrupt metadata and the selected
+            <code>CompilationPlan</code>. They are compiler properties, not conventions that rely on
+            programmer discipline alone.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> A value being valid in one execution context does not
+            automatically make it transferable to another context, safe for concurrent shared use,
+            or safe from deadlock. Each property is checked separately.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Sec deliberately keeps the common concurrency hazards visible in the type and
+                analysis model. The language does not use one broad marker equivalent to “this type
+                is safe everywhere”. Instead, the compiler derives facts from the concrete value,
+                the execution boundary, the operation being performed and the effective execution
+                policy.
+            </p>
+
+            <p>This allows the compiler to answer questions such as:</p>
+
+            <ul>
+                <li>may this value be moved into a new task?</li>
+                <li>may this value cross into another thread?</li>
+                <li>does this process payload have a defined cross-process representation?</li>
+                <li>may this operation be used from an interrupt context?</li>
+                <li>may two execution contexts access this storage at the same time?</li>
+                <li>does a synchronization edge order these accesses?</li>
+                <li>can this set of waits form a deadlock cycle?</li>
+            </ul>
+        </section>
+
+        <section id="three-questions">
+            <h2>Three Safety Questions</h2>
+
+            <p>
+                It is useful to keep three questions separate:
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Question</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Transferability</td>
+                        <td>May this value or capability cross this specific execution boundary?</td>
+                    </tr>
+                    <tr>
+                        <td>Race safety</td>
+                        <td>Are overlapping memory accesses ordered or otherwise permitted by the concurrency memory model?</td>
+                    </tr>
+                    <tr>
+                        <td>Deadlock safety</td>
+                        <td>Can waits and resource dependencies prevent all involved execution contexts from making progress?</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>
+                Passing one question does not imply the others. A value may be transferable but
+                still require synchronization after transfer. A program may be race-free and still
+                deadlock. A lock-free algorithm may avoid mutex deadlocks while still being logically
+                incorrect for other reasons.
+            </p>
+        </section>
+
+        <section id="transferability">
+            <h2>Transferability</h2>
+
+            <p>
+                Transferability is a compiler-derived property. It is not one user-implemented
+                interface and it is not equivalent to copyability. The answer depends on the
+                destination boundary and on the semantics of the value being transferred.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Transferability is value-specific, boundary-specific and
+                execution-policy-specific. Sec does not collapse it into one global “sendable” bit.
+            </div>
+
+            <p>
+                The compiler derives transferability from the complete semantic value graph. A
+                struct is not task-transferable merely because its outer declaration looks simple;
+                every relevant field and nested ownership relationship must satisfy the required
+                boundary contract.
+            </p>
+        </section>
+
+        <section id="transfer-facts">
+            <h2>Compiler Transfer Facts</h2>
+
+            <p>
+                The compiler uses separate semantic facts for the major execution boundaries. These
+                are compiler facts, not source interfaces that user types manually implement.
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fact</th>
+                        <th>Question answered</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>TaskTransferable</code></td>
+                        <td>Can the value cross the relevant task execution boundary under the active task policy?</td>
+                    </tr>
+                    <tr>
+                        <td><code>ThreadTransferable</code></td>
+                        <td>Can the value cross to another thread while preserving ownership, lifetime and sharing rules?</td>
+                    </tr>
+                    <tr>
+                        <td><code>ProcessTransferable</code></td>
+                        <td>Does the value have a valid process-transfer representation or capability adapter?</td>
+                    </tr>
+                    <tr>
+                        <td><code>ISRTransferable</code></td>
+                        <td>Is the value or operation valid for the relevant interrupt direction and execution constraints?</td>
+                    </tr>
+                    <tr>
+                        <td><code>ThreadSafeShared</code></td>
+                        <td>Can the value participate in the defined form of concurrent shared access without violating its semantics?</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>
+                These facts intentionally remain distinct. A type can be task-transferable without
+                being process-transferable. A process-transferable value may require serialization or
+                capability transfer rather than preserving its in-process representation. ISR
+                transferability may depend on operation direction and interrupt policy rather than on
+                one blanket type classification.
+            </p>
+        </section>
+
+        <section id="recursive">
+            <h2>Recursive Derivation</h2>
+
+            <p>
+                Transferability is derived recursively through the value graph. The compiler considers
+                relevant fields, payloads, captures, ownership state, references, resources and nested
+                generic arguments.
+            </p>
+
+            <pre><code>type WorkItem struct {
+    Id: uint64
+    Payload: Buffer
+}
+
+// WorkItem is transferable across a boundary only when the complete
+// concrete value graph satisfies that boundary's transfer contract.</code></pre>
+
+            <p>
+                Generic types are evaluated after substitution. There is no rule saying that
+                <code>Container[T]</code> is always transferable merely because the generic container
+                declaration itself is valid.
+            </p>
+        </section>
+
+        <section id="copy-move-transfer">
+            <h2>Copy, Move and Transfer</h2>
+
+            <p>
+                Copyability, move semantics and transferability answer different questions.
+            </p>
+
+            <ul>
+                <li>A copy duplicates a value while leaving the source available.</li>
+                <li>A move transfers ownership and makes the source unavailable.</li>
+                <li>A boundary transfer additionally requires the value to be legal in the destination execution domain.</li>
+            </ul>
+
+            <p>
+                A move-only value can still be transferable if the destination boundary supports a
+                valid ownership transfer. Conversely, a trivially copyable machine value can still be
+                invalid to transfer when its semantic meaning is local to one execution domain.
+            </p>
+
+            <p>
+                Process transfer makes this especially clear. A raw process-local address may be
+                trivially copyable as bits, but that does not make it meaningful in another process.
+            </p>
+        </section>
+
+        <section id="references">
+            <h2>References and Borrows</h2>
+
+            <p>
+                A reference is non-owning and cannot outlive its owner. Crossing an execution boundary
+                therefore requires proof that the referenced storage remains valid for the complete
+                use and that the destination access is permitted by the sharing model.
+            </p>
+
+            <p>
+                Detached execution is stricter because the detached execution entity may outlive the
+                scope that created it. A scope-owned borrow cannot simply be captured and carried into
+                detached work unless the compiler can prove a lifetime and sharing contract that makes
+                the reference valid for the entire detached lifetime.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Transferability never extends a lifetime. A reference that
+                would dangle remains invalid even when the surrounding value would otherwise be
+                transferable.
+            </div>
+        </section>
+
+        <section id="closures">
+            <h2>Closures and Captures</h2>
+
+            <p>
+                A spawned closure is checked through its captures as well as its callable type. Each
+                captured value keeps its own ownership and transfer requirements.
+            </p>
+
+            <pre><code>let worker := capture(config) fn() void {
+    Run(config)
+}
+
+let task := try spawn worker</code></pre>
+
+            <p>
+                Whether this is legal depends on the concrete capture. Copyable values may be copied
+                when permitted. Move-only captures may transfer ownership. Borrowed captures require
+                lifetime and sharing proof. A closure that captures an execution-bound guard remains
+                invalid to transfer even though the callable syntax itself is valid.
+            </p>
+        </section>
+
+        <section id="guards">
+            <h2>Guards and Execution-Bound Values</h2>
+
+            <p>
+                Some values are intentionally bound to the execution entity that created them.
+                <code>MutexGuard[T]</code> is the most important example.
+            </p>
+
+            <p>
+                A live <code>MutexGuard[T]</code> is move-only and bound to the acquiring execution
+                entity. It may not cross spawn, detach or a suspension boundary such as
+                <code>await</code>, suspending join or select. References derived from the protected
+                value may not outlive the guard.
+            </p>
+
+            <pre><code>let guard := state.Lock()
+
+// invalid while guard remains live:
+let task := try spawn ProcessGuard(&lt;- guard)</code></pre>
+
+            <p>
+                This rule prevents a lock acquisition from silently migrating to another execution
+                entity or surviving across a suspension where the original lock ownership contract
+                would no longer be valid.
+            </p>
+        </section>
+
+        <section id="boundary-rules">
+            <h2>Boundary-Specific Rules</h2>
+
+            <p>
+                Different boundaries have different semantics. The compiler therefore evaluates the
+                exact operation rather than applying one universal transfer rule.
+            </p>
+
+            <ul>
+                <li><strong>Task:</strong> may share an address space with its creator, but ownership, borrow lifetime, migration and detach policy still matter.</li>
+                <li><strong>Thread:</strong> crosses a native-thread execution boundary and must satisfy thread transfer and shared-memory rules.</li>
+                <li><strong>Process:</strong> crosses an isolation boundary; direct references and process-local pointer meaning do not transfer.</li>
+                <li><strong>ISR:</strong> obeys interrupt-specific direction, bounded-execution, blocking and target constraints.</li>
+            </ul>
+
+            <p>
+                Process transfer may use an explicit transfer representation or capability adapter.
+                The source and destination states must follow the process-transfer transaction rules;
+                an unsuccessful transfer must not silently destroy the source resource.
+            </p>
+        </section>
+
+        <section id="shared-state">
+            <h2>Shared Mutable State</h2>
+
+            <p>
+                Transferability says whether a value may cross a boundary. It does not by itself make
+                concurrent mutation safe. Once several execution contexts can reach the same semantic
+                storage, the concurrency memory model applies.
+            </p>
+
+            <p>
+                Sec prefers ownership transfer and message passing when shared mutable state is not
+                required. When state is shared, use an owning synchronization abstraction such as
+                <code>Mutex[T]</code>, a suitable atomic value, a channel protocol, IPC synchronization
+                or another construct whose rulebook defines the necessary synchronization edges.
+            </p>
+        </section>
+
+        <section id="race-definition">
+            <h2>What Is a Data Race?</h2>
+
+            <p>
+                A data race requires conflicting accesses to the same semantic memory location from
+                execution contexts that may overlap, where at least one access writes and the accesses
+                are not ordered by the required synchronization model.
+            </p>
+
+            <p>The analysis therefore needs to establish:</p>
+
+            <ol>
+                <li>whether the accesses can execute concurrently;</li>
+                <li>whether they refer to the same or overlapping storage identity;</li>
+                <li>whether at least one access can modify that storage;</li>
+                <li>whether an atomic or synchronization rule orders or permits the accesses.</li>
+            </ol>
+
+            <p>
+                Ordinary sequential source order inside one function does not automatically order an
+                access performed by another concurrently running task, thread, process-shared mapping
+                or interrupt handler.
+            </p>
+        </section>
+
+        <section id="places">
+            <h2>Storage Identity and Places</h2>
+
+            <p>
+                Race analysis works on semantic storage locations and Places rather than only source
+                variable names. Two syntactically different expressions may refer to the same storage.
+                Conversely, proven-disjoint fields may represent independent locations.
+            </p>
+
+            <pre><code>state.Left
+state.Right</code></pre>
+
+            <p>
+                When the compiler proves these fields are disjoint, accesses may be analyzed
+                independently. Dynamic indexes and aliasing references remain conservative when
+                disjointness cannot be proven.
+            </p>
+
+            <p>
+                Hardware aliases, shared-memory mappings, FFI pointers and other external storage
+                identities require the corresponding platform or FFI facts. Analysis must not guess
+                that differently named storage is independent.
+            </p>
+        </section>
+
+        <section id="happens-before">
+            <h2>Happens-Before</h2>
+
+            <p>
+                Sec uses happens-before reasoning to determine when memory effects are safely ordered
+                across execution contexts. Happens-before is built from program-order edges and
+                canonical synchronization edges and is transitive.
+            </p>
+
+            <pre><code>A happens-before B
+B happens-before C
+
+therefore:
+A happens-before C</code></pre>
+
+            <p>
+                Synchronization edges can come from mutex release/acquisition, valid atomic
+                release/acquire communication, task or thread completion, committed channel transfer,
+                defined IPC synchronization and other constructs whose canonical rules explicitly
+                create such an edge.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> A source-level operation creates cross-context ordering only
+                when its owning rule defines that ordering. Function-call syntax alone is not a
+                synchronization primitive.
+            </div>
+        </section>
+
+        <section id="mutex-race">
+            <h2>Mutex Protection</h2>
+
+            <p>
+                <code>Mutex[T]</code> owns one protected value and successful acquisition produces one
+                exclusive <code>MutexGuard[T]</code>. While the guard is live, protected access is tied
+                to that acquisition. Guard destruction releases the mutex and contributes the
+                synchronization edge defined by the concurrency memory model.
+            </p>
+
+            <p>
+                Race analysis can therefore use mutex identity and the protected access path as
+                evidence that accesses are mutually exclusive. The proof depends on using the same
+                logical mutex/resource identity; two unrelated locks do not automatically protect the
+                same state.
+            </p>
+        </section>
+
+        <section id="atomic-race">
+            <h2>Atomic Access</h2>
+
+            <p>
+                <code>Atomic[T]</code> provides indivisible access to one atomic storage identity.
+                Atomic operations avoid torn non-atomic access to that identity and participate in the
+                memory-order model defined by their <code>MemoryOrder</code>.
+            </p>
+
+            <p>
+                Atomics do not make surrounding ordinary fields atomic and do not automatically make
+                a multi-field invariant safe. A data structure that requires several fields to change
+                together usually needs a mutex or another higher-level synchronization protocol.
+            </p>
+
+            <p>
+                Mixing atomic and non-atomic access to the same storage must follow the atomic rules.
+                The presence of some atomic operations elsewhere in the program is not a blanket race
+                exemption.
+            </p>
+        </section>
+
+        <section id="volatile-unsafe">
+            <h2>Volatile and Unsafe</h2>
+
+            <p>
+                Volatile hardware access and concurrency synchronization solve different problems.
+                Volatile preserves observable external accesses. It does not establish happens-before
+                between concurrent execution contexts.
+            </p>
+
+            <p>
+                Likewise, <code>unsafe</code> permits specific operations that the compiler cannot
+                verify through the normal safe surface. It does not disable the concurrency memory
+                model and does not make a proven data race valid.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>volatile</code> is not synchronization, reference validity
+                is not synchronization, and <code>unsafe</code> is not a data-race waiver.
+            </div>
+        </section>
+
+        <section id="publication">
+            <h2>Publication</h2>
+
+            <p>
+                Publication is the act of making a value or state visible to another execution
+                context. Correct publication requires both ownership/transfer validity and the memory
+                ordering required for the receiving context to observe initialized state safely.
+            </p>
+
+            <p>
+                Moving ownership through a channel or completing a task can provide both lifecycle and
+                ordering semantics because those constructs define a completion or transfer boundary.
+                Publishing a raw pointer into ordinary shared memory does not automatically provide
+                equivalent synchronization.
+            </p>
+        </section>
+
+        <section id="race-results">
+            <h2>Race Analysis Results</h2>
+
+            <p>
+                The dedicated race analysis uses result categories that preserve the distinction
+                between proof and lack of proof:
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Result</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>ProvenRace</code></td>
+                        <td>The analysis has sufficient evidence for a conflicting unordered concurrent access.</td>
+                    </tr>
+                    <tr>
+                        <td><code>ProvenRaceFree</code></td>
+                        <td>The analyzed property is proven race-free for the relevant scope and assumptions.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Unknown</code></td>
+                        <td>The available facts are insufficient to prove either outcome.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>
+                Unknown does not mean safe. It also does not mean a race has been proven. Strict
+                contexts may require positive proof, while advisory analysis may report the unknown
+                state with the missing evidence.
+            </p>
+        </section>
+
+        <section id="deadlock-definition">
+            <h2>What Is a Deadlock?</h2>
+
+            <p>
+                A deadlock exists when execution entities form a cycle of progress dependencies such
+                that each waits for another dependency in the cycle and none can make the progress
+                required to release the others.
+            </p>
+
+            <p>
+                Mutexes are the classic example, but Sec deadlock analysis is not limited to mutex
+                acquisition. Completion waits, channel operations, IPC synchronization, callbacks,
+                foreign blocking behavior and interrupt reentry can all contribute dependencies.
+            </p>
+        </section>
+
+        <section id="wait-for">
+            <h2>Wait-For Graph</h2>
+
+            <p>
+                Deadlock analysis models relevant waits and resources as a wait-for graph. Edges may
+                represent acquisition, ownership, completion or another progress dependency.
+            </p>
+
+            <pre><code>Task A --waits for--> Mutex B
+Mutex B --held by--> Task B
+Task B --waits for--> Mutex A
+Mutex A --held by--> Task A</code></pre>
+
+            <p>
+                A cycle is important evidence, but the analysis must also account for conditional
+                edges, capacities, non-blocking alternatives, timeout/cancellation behavior,
+                reentrancy rules and whether the involved paths can actually coexist.
+            </p>
+        </section>
+
+        <section id="lock-order">
+            <h2>Lock Ordering</h2>
+
+            <p>
+                Conflicting lock order is a common source of deadlock.
+            </p>
+
+            <pre><code>// path A
+let first := accountMutex.Lock()
+let second := ledgerMutex.Lock()
+
+// path B
+let first := ledgerMutex.Lock()
+let second := accountMutex.Lock()</code></pre>
+
+            <p>
+                When both paths can overlap, the opposite acquisition order can create a cycle. A
+                consistent order removes that specific cycle and also gives the analyzer stronger
+                evidence.
+            </p>
+
+            <p>
+                Sec mutexes are non-reentrant. A proven attempt by one execution entity to acquire the
+                same mutex again while already holding it is therefore invalid rather than being
+                treated as an implementation-defined recursive lock.
+            </p>
+        </section>
+
+        <section id="completion-waits">
+            <h2>Completion and Join Dependencies</h2>
+
+            <p>
+                Waiting for another execution entity to finish creates a progress dependency. A
+                deadlock can therefore involve task or thread completion even when only one explicit
+                mutex is present.
+            </p>
+
+            <pre><code>// Conceptual cycle:
+// parent holds State mutex
+// parent waits for child completion
+// child needs State mutex to complete</code></pre>
+
+            <p>
+                Guard rules prohibit carrying a live <code>MutexGuard[T]</code> across suspension
+                boundaries precisely because holding exclusive state while suspending creates severe
+                progress and reasoning hazards.
+            </p>
+        </section>
+
+        <section id="channels-ipc">
+            <h2>Channels and IPC</h2>
+
+            <p>
+                Message passing reduces shared-memory pressure but does not eliminate progress
+                dependencies. Blocking send/receive, rendezvous channels, bounded capacity, select,
+                IPC mutexes, semaphores and process completion may all participate in a wait graph.
+            </p>
+
+            <p>
+                In-process <code>Channel[T]</code> and cross-process typed IPC are different transports
+                with different transfer rules. The compiler must preserve that distinction rather than
+                treating every message operation as the same synchronization resource.
+            </p>
+
+            <p>
+                IPC analysis also preserves process-level resource and capability identity so a
+                deadlock cycle may cross process boundaries when the participating operations are
+                statically visible.
+            </p>
+        </section>
+
+        <section id="callbacks-ffi-isr">
+            <h2>Callbacks, FFI and ISRs</h2>
+
+            <p>
+                Open callbacks and foreign code make concurrency analysis harder because the compiler
+                may not know which locks are acquired, whether a call blocks or which execution
+                context invokes a callback. Sec keeps these effects explicit or conservative rather
+                than inventing safe behavior from a function name.
+            </p>
+
+            <p>
+                Interrupt handlers add asynchronous reentry. ISR analysis consumes race and deadlock
+                facts together with interrupt priority, preemption and target metadata. A resource
+                that is safe between ordinary tasks may still be invalid when an interrupt can
+                preempt the holder and attempt an incompatible operation.
+            </p>
+        </section>
+
+        <section id="deadlock-results">
+            <h2>Deadlock Analysis Results</h2>
+
+            <p>
+                Deadlock analysis distinguishes stronger and weaker evidence:
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Result</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>ProvenDeadlock</code></td>
+                        <td>A reachable wait cycle is proven under the analyzed assumptions.</td>
+                    </tr>
+                    <tr>
+                        <td><code>PotentialDeadlock</code></td>
+                        <td>The analysis found a credible cycle or ordering conflict but cannot prove all required reachability conditions.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Unknown</code></td>
+                        <td>Insufficient information prevents either a positive deadlock proof or a meaningful exclusion.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>
+                A potential deadlock is deliberately not promoted to a language error merely because
+                the analyzer cannot exclude every runtime schedule. Strict environments may impose a
+                stronger project policy, while ordinary analysis can present the evidence and source
+                paths as an advisory finding.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation Is Not Proof</h2>
+
+            <p>
+                Timeouts and cancellation may provide an alternate progress path, but the compiler
+                must not automatically treat their existence as proof that deadlock is impossible.
+                Cancellation may itself depend on another task, scheduler event or resource.
+            </p>
+
+            <p>
+                Analysis therefore models whether the cancellation path is guaranteed, optional,
+                target-dependent or itself blocked. A timeout that might occur is different from a
+                proof that one must occur before the cycle becomes permanent.
+            </p>
+        </section>
+
+        <section id="proof-states">
+            <h2>Proof States</h2>
+
+            <p>
+                The dedicated race and deadlock analyses expose domain-specific findings, while the
+                common compiler-analysis framework also uses the broader conceptual states
+                <code>Valid</code>, <code>Invalid</code> and <code>Unproven</code>.
+            </p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Common state</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>Valid</code></td>
+                        <td>The requested safety property is proven for the analyzed scope.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Invalid</code></td>
+                        <td>The compiler has proof that a mandatory rule is violated.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Unproven</code></td>
+                        <td>The compiler lacks enough evidence to prove either validity or invalidity.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>
+                Tooling must preserve this distinction. “Not proven safe” is not the same statement
+                as “proven unsafe”. Conversely, <code>Unproven</code> must never be silently displayed
+                as a green safety proof.
+            </p>
+        </section>
+
+        <section id="analysis-depth">
+            <h2>Analysis Depth</h2>
+
+            <p>
+                Concurrency safety analyses participate in the common analysis-depth model described
+                in chapter 69. Interactive analysis favors responsiveness, Standard is the normal
+                compiler analysis level, and Deep may spend more budget refining aliases, call
+                targets, wait graphs and cross-context paths.
+            </p>
+
+            <p>
+                A deeper analysis may turn an earlier unknown or potential finding into a stronger
+                proof. It must not change the language semantics themselves; it only changes how much
+                evidence the compiler can derive within the available budget.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+
+            <p>
+                Concurrency diagnostics should explain the proof, not merely announce a category.
+                A useful diagnostic identifies the relevant boundary, storage or resource identity,
+                both sides of a conflicting access, or the complete wait cycle where possible.
+            </p>
+
+            <p>Representative diagnostic shapes include:</p>
+
+            <pre><code>value session is not ThreadTransferable because field socket
+owns a thread-affine resource
+
+shared write to state.Counter may race with read in worker task
+
+first conflicting access is here
+synchronization edge is missing between these execution contexts
+
+potential deadlock: inconsistent mutex acquisition order
+  task path A: AccountState -&gt; Ledger
+  task path B: Ledger -&gt; AccountState
+
+MutexGuard[State] is bound to the current execution entity
+and cannot cross await</code></pre>
+
+            <p>
+                When analysis remains unknown, diagnostics should identify the missing evidence when
+                practical: an open callback target, foreign synchronization, unresolved alias,
+                unknown interrupt relation or target-dependent capability.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The concurrency-safety model is normative across the relevant rulebooks, but compiler
+                implementation is not complete. Several transferability restrictions are already
+                enforced through ownership, spawn, process, mutex and IPC rules. In particular,
+                execution-bound guards and process-transfer restrictions already influence semantic
+                validation.
+            </p>
+
+            <p>
+                The dedicated whole-program data-race and deadlock analyses remain planned work in the
+                current implementation ledger. Their analysis books define the intended result models,
+                summaries, happens-before reasoning, wait-for graphs, callbacks, FFI and ISR
+                integration, but the complete analysis pipelines are not yet active compiler features.
+            </p>
+
+            <p>
+                This page therefore documents the Sec 0.1 safety contract and the analysis model that
+                compiler, LSP and <code>sec analyse</code> are expected to converge on. A missing
+                current analyzer must not be interpreted as permission for a data race or invalid
+                transfer.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer ownership transfer or message passing when state does not need concurrent shared mutation.</li>
+                <li>Do not assume copyability implies transferability.</li>
+                <li>Do not assume task transferability implies thread, process or ISR transferability.</li>
+                <li>Keep borrowed captures local unless the compiler can prove their complete destination lifetime.</li>
+                <li>Never carry <code>MutexGuard[T]</code> across spawn, detach or suspension boundaries.</li>
+                <li>Use one synchronization identity consistently for the state it protects.</li>
+                <li>Use atomics only when the invariant genuinely fits the atomic storage and memory-order model.</li>
+                <li>Do not use volatile or unsafe as substitutes for synchronization.</li>
+                <li>Establish a consistent lock order when code needs several mutexes.</li>
+                <li>Avoid waiting for child completion while holding resources the child may need.</li>
+                <li>Treat callbacks, FFI and ISRs as real concurrency edges when their execution behavior is open or asynchronous.</li>
+                <li>Use named channels, mutexes and IPC resources in diagnostics and design so resource identity remains clear.</li>
+                <li>Treat <code>Unknown</code> or <code>Unproven</code> as missing proof, not as proof of safety.</li>
+                <li>Use deeper analysis when an important safety property remains unresolved under the normal analysis budget.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Concurrency safety combines transferability, memory-order/race safety and progress/deadlock safety.</li>
+                <li>Transferability is value-, boundary- and execution-policy-specific.</li>
+                <li>Sec derives separate facts such as <code>TaskTransferable</code>, <code>ThreadTransferable</code>, <code>ProcessTransferable</code>, <code>ISRTransferable</code> and <code>ThreadSafeShared</code>.</li>
+                <li>Transferability is derived recursively through the concrete value graph.</li>
+                <li>Copy, move and boundary transfer are different semantic operations.</li>
+                <li>Transfer does not extend reference lifetimes or make borrowed data automatically shareable.</li>
+                <li><code>MutexGuard[T]</code> is execution-bound and may not cross spawn or suspension boundaries.</li>
+                <li>A data race requires conflicting unordered accesses to overlapping semantic storage from concurrent contexts.</li>
+                <li>Happens-before is built from program order and canonical synchronization edges.</li>
+                <li>Mutexes and atomics provide different synchronization models and do not automatically protect unrelated state.</li>
+                <li>Volatile and unsafe do not make data races valid.</li>
+                <li>Race analysis distinguishes <code>ProvenRace</code>, <code>ProvenRaceFree</code> and <code>Unknown</code>.</li>
+                <li>Deadlock analysis reasons over a wait-for graph, not only mutex acquisition.</li>
+                <li>Task/thread completion, channels, IPC, callbacks, FFI and ISRs may participate in progress dependencies.</li>
+                <li>Deadlock analysis distinguishes <code>ProvenDeadlock</code>, <code>PotentialDeadlock</code> and <code>Unknown</code>.</li>
+                <li>Timeout or cancellation is not automatically proof that a deadlock cannot occur.</li>
+                <li>The common analysis framework preserves <code>Valid</code>, <code>Invalid</code> and <code>Unproven</code> as distinct proof states.</li>
+                <li>Dedicated full data-race and deadlock analysis remains planned implementation work even though the language safety model is defined.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="66-ipc.html">Previous: Inter-Process Communication</a>
+            <a href="68-testing.html">Next: Testing</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-15</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

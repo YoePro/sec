@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mutexes and Locks - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#mutexes">Mutexes and Locks</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#core-model">Core Model</a>
+        <a href="#types">Mutex and Guard Types</a>
+        <a href="#construction">Construction</a>
+        <a href="#static">Static Mutexes</a>
+        <a href="#api">Acquisition API</a>
+        <a href="#lock">Lock()</a>
+        <a href="#trylock">TryLock()</a>
+        <a href="#timeout">Timeout Lock</a>
+        <a href="#context-lock">Context-Aware Lock</a>
+        <a href="#commit">Acquisition Commit</a>
+        <a href="#guard-access">Guard Access</a>
+        <a href="#forwarding">Direct Member Forwarding</a>
+        <a href="#guard-mutability">Guard Mutability</a>
+        <a href="#references">Protected References</a>
+        <a href="#moves">Moving Protected Values</a>
+        <a href="#unlock">Deterministic Unlock</a>
+        <a href="#execution-binding">Execution-Entity Binding</a>
+        <a href="#suspension">Suspension Boundaries</a>
+        <a href="#reentrancy">Non-Reentrancy</a>
+        <a href="#memory-order">Memory Synchronization</a>
+        <a href="#identity">Mutex Identity and Movement</a>
+        <a href="#destruction">Destruction</a>
+        <a href="#poisoning">No Implicit Poisoning</a>
+        <a href="#fairness">Fairness and Priority</a>
+        <a href="#interrupts">Interrupt Contexts</a>
+        <a href="#ffi">Foreign Mutexes</a>
+        <a href="#context">Context Surface</a>
+        <a href="#analysis">Static Analysis</a>
+        <a href="#diagnostics">Diagnostics and Tooling</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html" class="active">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Mutexes and Locks</div>
+
+        <h1 id="mutexes">Mutexes and Locks</h1>
+
+        <p>
+            <code>Mutex[T]</code> is Sec's primary exclusive synchronization primitive for shared
+            mutable state. A mutex owns exactly one protected value of type <code>T</code> and one
+            synchronization identity. Code does not receive an ordinary reference to that value.
+            Instead, a successful acquisition returns one <code>MutexGuard[T]</code> that represents
+            the exclusive acquisition and provides controlled access to the protected value.
+        </p>
+
+        <pre><code>static let State: Mutex[ApplicationState] := Mutex(
+    ApplicationState {
+        Running: false
+        Connections: 0
+    }
+)
+
+fn AddConnection() void {
+    let mut state := State.Lock()
+    state.Connections += 1
+}</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> The mutex owns the protected value. The guard owns the live
+            acquisition. Destroying the final guard releases the mutex deterministically.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Ownership transfer is usually the simplest way to avoid shared mutable state, but some
+                programs genuinely need several execution contexts to coordinate access to one mutable
+                object. <code>Mutex[T]</code> provides that shared synchronization boundary without
+                exposing the protected value outside the lock discipline.
+            </p>
+
+            <p>The mutex model provides:</p>
+
+            <ul>
+                <li>one protected owned value;</li>
+                <li>one synchronization identity;</li>
+                <li>exclusive acquisition;</li>
+                <li>deterministic release through guard destruction;</li>
+                <li>acquire/release memory synchronization;</li>
+                <li>compiler-visible guard lifetime and execution binding;</li>
+                <li>timeout and context-aware waiting without a generic <code>LockError</code>;</li>
+                <li>static diagnostics for reentrancy, unsafe guard transfer and suspension hazards.</li>
+            </ul>
+
+            <p>
+                Mutex synchronization is part of Sec semantics. The compiler must not infer that an
+                arbitrary function is a mutex operation merely because its backend happens to call a
+                native lock primitive.
+            </p>
+        </section>
+
+        <section id="core-model">
+            <h2>Core Model</h2>
+
+            <pre><code>Mutex[T]
+    owns one protected T
+    owns one synchronization identity
+
+successful acquisition
+    produces exactly one MutexGuard[T]
+
+MutexGuard[T]
+    owns release responsibility
+    provides exclusive protected access
+    releases on deterministic destruction</code></pre>
+
+            <p>
+                Ordinary contention is normal control flow, not a Sec error. A waiting lock operation
+                may need to wait, time out or observe a cancellation condition, but the fact that
+                another execution currently owns the mutex is not itself exceptional.
+            </p>
+        </section>
+
+        <section id="types">
+            <h2>Mutex and Guard Types</h2>
+
+            <p>The source-visible compiler-known type shapes are:</p>
+
+            <pre><code>@noCopy
+type Mutex[T]
+
+@noCopy
+type MutexGuard[T]</code></pre>
+
+            <p>
+                Both types have exactly one generic parameter. <code>Mutex[T]</code> is non-copyable
+                even when <code>T</code> itself is trivially copyable, because copying a mutex would
+                duplicate synchronization identity. <code>MutexGuard[T]</code> is also non-copyable
+                because one acquisition must have exactly one release owner.
+            </p>
+
+            <p>
+                A guard may move between bindings and function calls within the same execution entity.
+                It is therefore move-only rather than immovable.
+            </p>
+
+            <pre><code>fn InspectGuard(guard: MutexGuard[ApplicationState]) void {
+    Log(guard.Connections)
+}
+
+let guard := State.Lock()
+InspectGuard(&lt;-guard)</code></pre>
+        </section>
+
+        <section id="construction">
+            <h2>Construction</h2>
+
+            <p>A mutex is constructed from exactly one initial protected value:</p>
+
+            <pre><code>let state := Mutex(
+    ApplicationState {
+        Running: false
+        Connections: 0
+    }
+)</code></pre>
+
+            <p>
+                Type inference may infer <code>Mutex[ApplicationState]</code>. Explicit typing is also
+                valid. Construction consumes or initializes the protected value according to ordinary
+                Sec constructor and move rules.
+            </p>
+
+            <p>
+                Sec does not permit an uninitialized mutex whose protected storage can later be
+                accessed. A usable mutex begins life with one valid protected <code>T</code>.
+            </p>
+        </section>
+
+        <section id="static">
+            <h2>Static Mutexes</h2>
+
+            <p>
+                A mutex is the canonical way to protect mutable static state that must be shared
+                between concurrent execution contexts.
+            </p>
+
+            <pre><code>static let State: Mutex[ApplicationState] := Mutex(
+    ApplicationState {
+        Running: false
+        Connections: 0
+    }
+)</code></pre>
+
+            <p>
+                The mutex binding normally remains immutable. Protected mutation happens through a
+                mutable guard, so <code>static let mut</code> is not required merely because the
+                protected value will change.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Static lifetime is not synchronization. A mutable static value
+                that can be accessed concurrently still needs a valid synchronization discipline.
+            </div>
+        </section>
+
+        <section id="api">
+            <h2>Acquisition API</h2>
+
+            <p>The exact Sec 0.1 public acquisition surface is:</p>
+
+            <pre><code>impl Mutex[T] {
+    fn Lock() MutexGuard[T]
+    fn TryLock() Option[MutexGuard[T]]
+    fn Lock(timeout: duration) Option[MutexGuard[T]]
+    fn Lock(context: ref Context) Result[MutexGuard[T], ContextError]
+}</code></pre>
+
+            <p>
+                Public mutex methods use Sec's CamelCase convention. <code>Lock</code> and
+                <code>TryLock</code> are canonical; older lowercase spellings are not part of the
+                public API.
+            </p>
+
+            <p>Sec 0.1 intentionally has:</p>
+
+            <ul>
+                <li>no portable <code>LockError</code>;</li>
+                <li>no <code>Lock(timeout, context)</code> overload;</li>
+                <li>no public <code>Unlock()</code> method;</li>
+                <li>no public guard <code>Value</code> or <code>Get()</code> accessor.</li>
+            </ul>
+        </section>
+
+        <section id="lock">
+            <h2>Lock()</h2>
+
+            <pre><code>let state := State.Lock()</code></pre>
+
+            <p>
+                <code>Lock()</code> waits until exclusive acquisition commits unless
+                current-execution cancellation wins first. Ordinary contention is not represented
+                as <code>Result</code> or <code>Option</code>; successful return means exactly one guard
+                has been acquired.
+            </p>
+
+            <p>
+                When the current execution entity supports cooperative cancellation, waiting in
+                <code>Lock()</code> is a cancellation point. If cancellation commits before
+                acquisition, <code>Lock()</code> does not return. Terminal cancellation cleanup begins.
+                If acquisition commits first, the guard exists and ordinary cleanup releases it before
+                terminal cancellation completes.
+            </p>
+        </section>
+
+        <section id="trylock">
+            <h2>TryLock()</h2>
+
+            <p><code>TryLock()</code> performs exactly one non-waiting acquisition attempt:</p>
+
+            <pre><code>match State.TryLock() {
+    Some(mut state) =&gt; {
+        state.Connections += 1
+    }
+
+    None =&gt; {
+        DoSomethingElse()
+    }
+}</code></pre>
+
+            <p>
+                <code>Some(guard)</code> means acquisition committed immediately. <code>None</code>
+                means the mutex was not immediately available. <code>None</code> is not an error and
+                does not mean cancellation.
+            </p>
+
+            <p>
+                Because <code>TryLock()</code> performs no wait, it is not a cancellation point merely
+                by being a mutex operation.
+            </p>
+        </section>
+
+        <section id="timeout">
+            <h2>Timeout Lock</h2>
+
+            <p>The timeout overload uses the canonical temporal <code>duration</code> type:</p>
+
+            <pre><code>fn Lock(timeout: duration) Option[MutexGuard[T]]</code></pre>
+
+            <pre><code>match State.Lock(5&lt;s&gt;) {
+    Some(mut state) =&gt; {
+        state.Running = true
+    }
+
+    None =&gt; {
+        HandleTimeout()
+    }
+}</code></pre>
+
+            <p>
+                <code>Some(guard)</code> means acquisition committed before the timeout.
+                <code>None</code> means timeout committed first. Timeout is ordinary alternate control
+                flow, not <code>ContextError</code>.
+            </p>
+
+            <p>
+                Current-execution cancellation remains independently active while waiting. If terminal
+                cancellation wins first, the operation does not return <code>None</code>. Exactly one
+                event must win: acquisition, timeout or current-execution cancellation.
+            </p>
+
+            <p>
+                Time-unit expressions such as <code>5&lt;s&gt;</code> or <code>250&lt;ms&gt;</code> are converted
+                to <code>duration</code> by the ordinary unit/temporal rules; the mutex API does not
+                maintain a private list of time-unit spellings.
+            </p>
+        </section>
+
+        <section id="context-lock">
+            <h2>Context-Aware Lock</h2>
+
+            <p>A caller may bind waiting to an explicit cancellation/deadline context:</p>
+
+            <pre><code>fn Lock(context: ref Context) Result[MutexGuard[T], ContextError]</code></pre>
+
+            <pre><code>match State.Lock(ctx) {
+    Ok(mut state) =&gt; {
+        state.Running = true
+    }
+
+    Err(ContextError.Cancelled) =&gt; {
+        HandleCancelledOperation()
+    }
+
+    Err(ContextError.DeadlineExceeded) =&gt; {
+        HandleDeadline()
+    }
+}</code></pre>
+
+            <p>
+                Context cancellation is an operation-local typed result. It does not itself terminally
+                cancel the current task or thread. Current-execution cancellation is separate terminal
+                control flow and, if it wins first, does not get rewritten into
+                <code>Err(ContextError.Cancelled)</code>.
+            </p>
+
+            <p>
+                The returned guard does not retain the supplied <code>Context</code>. An already
+                cancelled or expired context is observed before a wait outcome commits, so the runtime
+                cannot return a context error and later leak an acquisition.
+            </p>
+        </section>
+
+        <section id="commit">
+            <h2>Acquisition Commit</h2>
+
+            <p>
+                Waiting mutex operations have one atomic semantic commit boundary. Before commit, no
+                guard exists and the caller owns no acquisition. After commit, exactly one guard exists
+                and owns the acquisition.
+            </p>
+
+            <pre><code>before commit
+    no guard
+    no release responsibility
+
+acquisition commits
+    exactly one MutexGuard[T]
+    caller owns release responsibility
+
+alternate outcome commits first
+    no guard exists</code></pre>
+
+            <p>
+                Timeout and cancellation must never partially acquire the mutex. Runtime races between
+                wakeup, timeout and cancellation are implementation details that must collapse to one
+                source-visible winning outcome.
+            </p>
+        </section>
+
+        <section id="guard-access">
+            <h2>Guard Access</h2>
+
+            <p>
+                A guard is an access capability, not a copy of <code>T</code>. The complete protected
+                object stays owned by the mutex while the guard is live.
+            </p>
+
+            <p>Guards may be borrowed for helper functions:</p>
+
+            <pre><code>fn InspectState(state: ref MutexGuard[ApplicationState]) void {
+    Log(state.Connections)
+}
+
+fn UpdateState(state: ref mut MutexGuard[ApplicationState]) void {
+    state.Connections += 1
+}</code></pre>
+
+            <p>
+                Borrowing a guard does not create another acquisition or another release owner.
+            </p>
+        </section>
+
+        <section id="forwarding">
+            <h2>Direct Member Forwarding</h2>
+
+            <p>
+                Member access on <code>MutexGuard[T]</code> forwards directly to the protected
+                <code>T</code>. There is no required wrapper accessor.
+            </p>
+
+            <pre><code>let mut state := State.Lock()
+
+state.Running = true
+state.Connections += 1
+state.Refresh()</code></pre>
+
+            <p>
+                The static type of <code>state</code> remains <code>MutexGuard[ApplicationState]</code>.
+                Forwarding is compiler-known member lookup, not an implicit conversion from guard to
+                <code>T</code>.
+            </p>
+
+            <p>Lookup order is:</p>
+
+            <ol>
+                <li>guard-specific members, if Sec defines any;</li>
+                <li>ordinary accessible members of the protected <code>T</code>.</li>
+            </ol>
+
+            <p>
+                Visibility, property rules, generic inference, overload resolution and error typing
+                remain those of the original protected member.
+            </p>
+        </section>
+
+        <section id="guard-mutability">
+            <h2>Guard Mutability</h2>
+
+            <p>An immutable guard binding permits read-only protected access:</p>
+
+            <pre><code>let state := State.Lock()
+Log(state.Connections)</code></pre>
+
+            <p>Mutation requires a mutable guard binding:</p>
+
+            <pre><code>let mut state := State.Lock()
+state.Connections += 1</code></pre>
+
+            <p>
+                The acquisition itself remains exclusive in both cases. Binding mutability controls
+                how this source binding may use the protected value; it does not alter mutex identity
+                or make the mutex reentrant.
+            </p>
+        </section>
+
+        <section id="references">
+            <h2>Protected References</h2>
+
+            <p>
+                A reference obtained through guard forwarding cannot outlive the guard. A reference
+                obtained through a borrowed guard is additionally bounded by that guard borrow.
+            </p>
+
+            <pre><code>fn Invalid() ref string {
+    let state := State.Lock()
+    return ref state.Name
+}</code></pre>
+
+            <p>
+                This is invalid because the reference would survive after guard destruction releases
+                the mutex. Diagnostics should identify both the acquisition and the escaping reference.
+            </p>
+        </section>
+
+        <section id="moves">
+            <h2>Moving Protected Values</h2>
+
+            <p>
+                The complete protected <code>T</code> cannot be moved out through a guard. A consuming
+                method that would consume complete <code>T</code> is therefore invalid through forwarding.
+            </p>
+
+            <p>
+                Copying a copyable protected subvalue is permitted under ordinary Sec rules. Moving an
+                owned subvalue is permitted only when normal partial-move rules allow it and the
+                protected object is restored to a valid releasable state before guard destruction.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> Mutex protection does not weaken ownership invariants. The mutex
+                continues to own one valid protected <code>T</code> when the acquisition is released.
+            </div>
+        </section>
+
+        <section id="unlock">
+            <h2>Deterministic Unlock</h2>
+
+            <p>
+                The mutex is released when the final owning <code>MutexGuard[T]</code> is destroyed.
+                This follows ordinary deterministic cleanup paths including normal return, early return,
+                <code>break</code>, <code>continue</code>, error propagation and supported cancellation or
+                unwind cleanup.
+            </p>
+
+            <pre><code>fn Update() Result[void, UpdateError] {
+    let mut state := State.Lock()
+    state.Running = true
+
+    if state.Connections == 0 {
+        return Err(UpdateError.NoConnections)
+        // guard cleanup releases State before return completes
+    }
+
+    return Ok()
+}</code></pre>
+
+            <p>
+                No <code>defer</code> is required for ordinary mutex release, and Sec 0.1 intentionally
+                exposes no public <code>guard.Unlock()</code>. The guard's destruction is the release
+                operation.
+            </p>
+        </section>
+
+        <section id="execution-binding">
+            <h2>Execution-Entity Binding</h2>
+
+            <p>
+                A guard is bound to the execution entity that acquired it. This is a logical execution
+                identity, not merely an operating-system thread ID, because a task may migrate between
+                physical workers.
+            </p>
+
+            <p>A live guard may:</p>
+
+            <ul>
+                <li>move between bindings within the same execution entity;</li>
+                <li>move into helper functions executed by that same entity;</li>
+                <li>be borrowed by helper functions in that same entity.</li>
+            </ul>
+
+            <p>A live guard may not:</p>
+
+            <ul>
+                <li>move or borrow into another task or thread;</li>
+                <li>cross <code>spawn</code> by move, borrow or capture;</li>
+                <li>be detached;</li>
+                <li>be stored in shared concurrent storage.</li>
+            </ul>
+
+            <pre><code>let guard := State.Lock()
+let worker := try spawn UseState(&lt;-guard) // invalid</code></pre>
+        </section>
+
+        <section id="suspension">
+            <h2>Suspension Boundaries</h2>
+
+            <p>Sec 0.1 does not permit a live guard to cross:</p>
+
+            <ul>
+                <li><code>await</code>;</li>
+                <li>a suspending or blocking <code>join</code>;</li>
+                <li><code>select</code>;</li>
+                <li>another compiler-classified suspension boundary.</li>
+            </ul>
+
+            <p>
+                There is no pinned-guard mechanism in Sec 0.1 and no separate
+                <code>AsyncMutex</code> merely to bypass this restriction.
+            </p>
+
+            <pre><code>let state := State.Lock()
+let outcome := await worker // invalid while state is live</code></pre>
+
+            <p>
+                Narrow the guard scope so it is destroyed before the suspension boundary.
+            </p>
+        </section>
+
+        <section id="reentrancy">
+            <h2>Non-Reentrancy</h2>
+
+            <p>
+                <code>Mutex[T]</code> is non-reentrant. The same execution entity may not acquire the
+                same mutex again while it still owns a live guard for that mutex.
+            </p>
+
+            <pre><code>let first := State.Lock()
+let second := State.Lock() // invalid when the compiler proves same mutex identity</code></pre>
+
+            <p>
+                A statically provable repeated acquisition is a semantic error. Diagnostics should
+                identify both acquisition sites. Checked profiles may additionally provide runtime
+                self-lock detection when the identity cannot be proven statically.
+            </p>
+
+            <p>
+                The mutex type itself does not require full dynamic deadlock detection. General
+                deadlock analysis belongs to Sec's concurrency analysis layer.
+            </p>
+        </section>
+
+        <section id="memory-order">
+            <h2>Memory Synchronization</h2>
+
+            <p>
+                Successful mutex acquisition provides acquire synchronization. Guard destruction and
+                release provide release synchronization.
+            </p>
+
+            <pre><code>execution A                         execution B
+-----------                         -----------
+lock State                          lock State
+write protected data                read protected data
+release State  --------sync------&gt; acquire State</code></pre>
+
+            <p>
+                A release of one mutex synchronizes with a matching later successful acquisition of
+                the same mutex identity. Writes before release become visible after that synchronizing
+                acquisition.
+            </p>
+
+            <p>
+                Two different mutexes do not synchronize merely because they protect values of the
+                same type.
+            </p>
+        </section>
+
+        <section id="identity">
+            <h2>Mutex Identity and Movement</h2>
+
+            <p>
+                <code>Mutex[T]</code> is <code>@noCopy</code>, but an owned mutex may move when ordinary
+                ownership and synchronization-identity rules permit it. Before publication or locking,
+                moving a mutex can be valid.
+            </p>
+
+            <p>
+                Once another execution context depends on the mutex identity, movement must preserve
+                that identity. A live guard, waiter or identity-dependent reference forbids a move that
+                would invalidate the synchronization object.
+            </p>
+
+            <p>
+                A struct may own a mutex. Each struct instance owns its own mutex identity, and copying
+                the enclosing struct is invalid when that would copy the contained mutex.
+            </p>
+
+            <pre><code>type Server struct {
+    State: Mutex[ServerState]
+}</code></pre>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction</h2>
+
+            <p>
+                Destroying <code>Mutex[T]</code> destroys the protected <code>T</code> exactly once. The
+                mutex itself may not be destroyed while a live guard, waiter, valid reference or
+                published execution context can still use it.
+            </p>
+
+            <p>
+                Where ownership and lifetime information is sufficient, the compiler proves these
+                destruction requirements statically. Forced unsafe termination is outside ordinary
+                safe cleanup guarantees.
+            </p>
+        </section>
+
+        <section id="poisoning">
+            <h2>No Implicit Poisoning</h2>
+
+            <p>
+                Sec 0.1 does not use implicit mutex poisoning. Panic, task failure or cancellation
+                does not automatically make a mutex permanently unusable.
+            </p>
+
+            <p>
+                When deterministic cleanup runs, the live guard releases the acquisition. If protected
+                application state can become logically inconsistent, recovery belongs to that
+                application's typed state/error design rather than to a universal poisoned-mutex bit.
+            </p>
+        </section>
+
+        <section id="fairness">
+            <h2>Fairness and Priority</h2>
+
+            <p>
+                Sec 0.1 does not guarantee strict FIFO mutex fairness. A target/runtime may use FIFO,
+                priority-aware, scheduler-defined or platform-native waiting.
+            </p>
+
+            <p>
+                Priority inheritance, priority ceiling and scheduler-specific priority behavior are
+                target/profile properties. They may affect implementation and timing, but they must not
+                change source ownership, guard lifetime or non-reentrancy semantics.
+            </p>
+        </section>
+
+        <section id="interrupts">
+            <h2>Interrupt Contexts</h2>
+
+            <p>
+                Ordinary <code>Mutex[T]</code> is not assumed ISR-safe. Blocking <code>Lock</code>
+                overloads are invalid in execution contexts whose contract forbids blocking unless the
+                selected <code>CompilationPlan</code> proves a compatible implementation with identical
+                source semantics.
+            </p>
+
+            <p>
+                <code>TryLock()</code> may be usable in additional contexts only when the selected
+                target explicitly permits it. Local interrupt masking is not automatically equivalent
+                to a portable mutex across cores or execution domains.
+            </p>
+        </section>
+
+        <section id="ffi">
+            <h2>Foreign Mutexes</h2>
+
+            <p>
+                A native or foreign mutex is not automatically a Sec <code>Mutex[T]</code>. A safe
+                adapter must define the complete semantic contract: ownership, acquisition, release,
+                execution binding, cancellation behavior, memory ordering, destruction and context
+                validity.
+            </p>
+
+            <p>
+                Native platform error codes do not automatically become a portable
+                <code>LockError</code>. Sec 0.1 deliberately has no such generic mutex error type.
+            </p>
+        </section>
+
+        <section id="context">
+            <h2>Context Surface Used by Mutex Waiting</h2>
+
+            <p>
+                The detailed cancellation model is covered in chapter 59, but context-aware mutex
+                acquisition depends on the following compiler-known surface.
+            </p>
+
+            <pre><code>enum ContextError error {
+    Cancelled
+    DeadlineExceeded
+}
+
+@noCopy
+type Context
+
+@noCopy
+type ContextSource
+
+type Instant</code></pre>
+
+            <pre><code>impl Context {
+    static fn Background() Context
+    fn WithCancel() ContextSource
+    fn WithTimeout(timeout: duration) ContextSource
+    fn WithDeadline(deadline: Instant) ContextSource
+
+    IsCancelled bool
+    Error Option[ContextError]
+    Deadline Option[Instant]
+}
+
+impl ContextSource {
+    Context ref Context
+    fn Cancel() void
+}</code></pre>
+
+            <p>
+                <code>Context</code> has no public <code>Cancel()</code>. Cancellation authority belongs
+                to <code>ContextSource</code>. The source owns its derived child context and exposes it
+                only as <code>ref Context</code>.
+            </p>
+
+            <p>
+                Destroying a <code>ContextSource</code> ends the branch lifetime; it is not defined as
+                an implicit cancellation event.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Static Analysis</h2>
+
+            <p>Semantic analysis must track at least:</p>
+
+            <ul>
+                <li>mutex identity and concrete protected type;</li>
+                <li>guard ownership, moves and borrows;</li>
+                <li>guard lifetime and acquiring execution entity;</li>
+                <li>the selected acquisition overload;</li>
+                <li>timeout duration or context identity where applicable;</li>
+                <li>forwarded access and references derived from protected state;</li>
+                <li>release and synchronization edges;</li>
+                <li>reentrancy and suspension-boundary violations;</li>
+                <li>target capability requirements.</li>
+            </ul>
+
+            <p>
+                Data-race analysis can use the mutex identity and protected-access path as proof of
+                exclusive synchronized access. Deadlock analysis can consume lock acquisition and
+                ownership facts together with other waits and progress dependencies.
+            </p>
+
+            <p>
+                Semantic IR must preserve these facts explicitly. Lowering must not rediscover mutex
+                meaning from a method name such as <code>Lock</code> or from a native runtime call.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>Representative diagnostic shapes include:</p>
+
+            <pre><code>Mutex requires exactly one type argument
+
+mutex State is already locked by the current execution entity
+
+MutexGuard[ApplicationState] is bound to the current execution entity
+and cannot cross spawn
+
+mutex guard state remains active across await
+
+cannot return reference to mutex-protected value beyond guard lifetime
+
+cannot move the complete protected ApplicationState out of
+MutexGuard[ApplicationState]</code></pre>
+
+            <p>
+                LSP hover for <code>Mutex[T]</code> should expose its <code>@noCopy</code> classification,
+                protected type, exact acquisition overloads and non-reentrant behavior. Hover for a
+                guard should expose deterministic release, execution binding and direct forwarding.
+            </p>
+
+            <p>
+                Completion on a guard includes accessible forwarded members from <code>T</code>, but
+                must not invent <code>Unlock</code>, <code>Value</code> or <code>Get</code>.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The mutex language surface is normative, while compiler integration is currently
+                <strong>partial</strong>. The governance ledger records the following normative surface:
+            </p>
+
+            <ul>
+                <li><code>Mutex[T]</code> and <code>MutexGuard[T]</code> are compiler-known <code>@noCopy</code> generic types;</li>
+                <li>the public acquisition surface is <code>Lock()</code>, <code>TryLock()</code>, <code>Lock(duration)</code> and <code>Lock(ref Context)</code>;</li>
+                <li>guard forwarding and non-reentrancy are normative;</li>
+                <li>live guards may not cross spawn or suspension boundaries;</li>
+                <li>there is no portable <code>LockError</code> or public <code>Unlock</code>/<code>Value</code>/<code>Get</code> API.</li>
+            </ul>
+
+            <p>Remaining implementation work includes:</p>
+
+            <ul>
+                <li>synchronizing canonical CamelCase method registration and older lowercase call sites/tests;</li>
+                <li>complete <code>@noCopy</code> semantics for mutexes and guards;</li>
+                <li>exact timeout/context overload resolution;</li>
+                <li>deterministic guard destruction and release lowering;</li>
+                <li>execution-entity-bound guard escape analysis;</li>
+                <li>live-guard diagnostics across <code>await</code>, join, select and spawn;</li>
+                <li>same-execution repeated-lock detection;</li>
+                <li>complete forwarding for fields, properties, methods and lifetime-aware references;</li>
+                <li>acquire/release integration with the concurrency memory model;</li>
+                <li>target/platform lock capability through the selected <code>CompilationPlan</code>.</li>
+            </ul>
+
+            <p>
+                Mutex Semantic IR and final lowering are still listed as planned work. This manual
+                chapter describes the normative Sec 0.1 contract rather than only the subset already
+                accepted by the current frontend.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Prefer ownership transfer or message passing when shared mutable state is unnecessary.</li>
+                <li>Let <code>Mutex[T]</code> own the state it protects rather than storing an unrelated lock beside mutable data.</li>
+                <li>Keep guard lifetimes short and visibly scoped.</li>
+                <li>Destroy the guard before <code>await</code>, suspending join, select or another suspension boundary.</li>
+                <li>Use <code>TryLock()</code> when waiting is not acceptable.</li>
+                <li>Use <code>Lock(duration)</code> when timeout is ordinary alternate control flow.</li>
+                <li>Use <code>Lock(ref Context)</code> when an operation should follow an explicit cancellation/deadline branch.</li>
+                <li>Do not attempt to acquire the same mutex recursively.</li>
+                <li>Do not transfer a guard through spawn, detach or shared storage.</li>
+                <li>Use a mutable guard binding only when the protected value must actually be mutated.</li>
+                <li>Do not return references derived from protected state beyond the guard lifetime.</li>
+                <li>Do not call consuming methods that would move the complete protected value out of the mutex.</li>
+                <li>Do not add manual <code>defer</code> solely to unlock a normal guard.</li>
+                <li>Do not assume FIFO fairness, priority inheritance or ISR safety unless the selected profile says so.</li>
+                <li>Use atomics instead when the invariant genuinely fits one supported atomic value and explicit memory-order semantics.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>Mutex[T]</code> owns exactly one protected <code>T</code> and one synchronization identity.</li>
+                <li><code>MutexGuard[T]</code> represents exactly one successful exclusive acquisition.</li>
+                <li>Both mutexes and guards are <code>@noCopy</code>.</li>
+                <li>Mutex construction requires one valid initial protected value.</li>
+                <li>Static mutexes are the canonical mechanism for synchronized mutable static state.</li>
+                <li>The exact acquisition surface is <code>Lock()</code>, <code>TryLock()</code>, <code>Lock(duration)</code> and <code>Lock(ref Context)</code>.</li>
+                <li>Ordinary contention is not a Sec error and Sec 0.1 has no portable <code>LockError</code>.</li>
+                <li><code>TryLock()</code> returns <code>Option[MutexGuard[T]]</code> and never waits.</li>
+                <li>Timeout lock returns <code>None</code> when timeout wins.</li>
+                <li>Context-aware lock returns typed <code>ContextError</code> when the supplied context branch wins.</li>
+                <li>Current-execution cancellation remains separate terminal control flow.</li>
+                <li>Waiting acquisition has one atomic semantic commit boundary.</li>
+                <li>Guards forward accessible fields, properties and non-consuming methods directly to protected <code>T</code>.</li>
+                <li>There is no public <code>Unlock</code>, <code>Value</code> or <code>Get</code> guard member.</li>
+                <li>Guard destruction deterministically releases the mutex.</li>
+                <li>Guards are execution-entity-bound and may not cross spawn or suspension boundaries.</li>
+                <li><code>Mutex[T]</code> is non-reentrant.</li>
+                <li>Successful acquisition is acquire synchronization; guard release is release synchronization.</li>
+                <li>The complete protected value cannot be moved out through a guard.</li>
+                <li>Protected references cannot outlive the guard.</li>
+                <li>Sec 0.1 does not use implicit mutex poisoning or guarantee strict FIFO fairness.</li>
+                <li>Ordinary mutexes are not assumed ISR-safe.</li>
+                <li>The normative model is complete, while current compiler integration remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="62-events.html">Previous: Events</a>
+            <a href="64-atomics.html">Next: Atomics and Memory Order</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-15</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

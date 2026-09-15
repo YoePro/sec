@@ -169,12 +169,21 @@ impl string {
     }
 
     /** Returns the byte ar the given byte index */
-    fn ByteAt(index: uint) Result[byte, IndexError] {
+    fn GetByte(index: uint) Result[byte, IndexError] {
         if index >= self.ByteLen {
             return Err(IndexError.OutOfBounds)
         }
         unsafe {
             return Ok(self.Ptr.Offset(int(index)).Read())
+        }
+    }
+
+    fn ByteAt(index: uint) byte {
+        if index >= self.ByteLen {
+            panic "String index is out of bounds"
+        }
+        unsafe {
+            return self.Ptr.Offset(int(index)).Read()
         }
     }
 

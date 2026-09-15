@@ -1,4 +1,136 @@
 schema_version: 1
 area: concurrency-channels
 purpose: Channels, sends, receives, and channel lifecycle.
-integrations: []
+integrations:
+  - id: concurrency.channels-v2
+    area: in-process-channel-language-surface
+    status: partial
+    reviewed: '2026-09-15'
+    document_revision: '2.0'
+    repository_baseline: main-reviewed-2026-09-15
+    summary: >-
+      Canonical Sec 0.1 ordinary in-process Channel[T] model: exact endpoint and
+      result types, fallible allocation-only construction, bounded FIFO/rendezvous
+      storage, sender sharing/identity, blocking and non-blocking send/receive,
+      revocable messages, expiration, statistics, close/discard/drain lifecycle,
+      select/cancellation commit semantics, ISR-safe TrySend capability, analysis,
+      Semantic IR, lowering, tooling and IPC separation.
+    rules:
+      - rules/concurrency/channels.md
+      - rules/concurrency/select.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/ipc.md
+      - rules/memory/allocation.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/transferability.md
+      - rules/memory/destruction.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+      - rules/tooling/lsp.md
+      - language-rulebook-status.md
+    normative:
+      - 'Channel[T] is an @noCopy source-visible/compiler-known aggregate exposing exactly Tx: Sender[T] and Rx: Receiver[T].'
+      - 'Channel construction is fallible only through canonical AllocationError when dynamic allocation is required and not proven infallible.'
+      - 'ChannelOptions is exactly Capacity uint, MaxSenders uint, Capabilities set[ChannelCapability].'
+      - 'ChannelCapability is exactly Revocation, Expiration, ISRSafeSend, Statistics.'
+      - 'Priority is not a Sec 0.1 ChannelCapability.'
+      - 'Sender[T], Receiver[T], and MessageTicket[T] are @noCopy.'
+      - 'Blocking Send uses ChannelSendResult[T] = Sent | Closed(T).'
+      - 'TrySend uses ChannelTrySendResult[T] = Sent | WouldBlock(T) | Closed(T).'
+      - 'Receive returns Option[T], where None means send side closed and drained only.'
+      - 'TryReceive uses ChannelTryReceiveResult[T] = Received(T) | Empty | Closed.'
+      - 'SendRevocable uses ChannelRevocableSendResult[T] = Accepted(MessageTicket[T]) | Closed(T).'
+      - 'MessageTicket[T].Revoke consumes the ticket and returns ChannelRevokeResult[T] = Revoked(T) | Unavailable(MessageDisposition).'
+      - 'MessageDisposition is exactly Received, Expired, Discarded; receiver close maps queued messages to Discarded.'
+      - 'Sender[T].Share returns Option[Sender[T]], with None meaning MaxSenders is reached.'
+      - 'Statistics capability exposes saturating Sent/Received/Revoked/Expired/Discarded uint64 counters.'
+      - 'Ordinary channels remain strictly in-process and never automatically become IPC.'
+      - 'Waiting channel operations are current-execution cancellation points; Try operations are non-waiting.'
+      - 'Channel wait timeout is composed through select/after rather than SendTimed/ReceiveTimed.'
+      - 'Sec 0.1 channels define no ref Context overloads.'
+      - 'Select readiness is non-destructive and only the selected branch commits.'
+    implemented:
+      - 'compiler-known intrinsic identities currently exist for Channel[T], Sender[T], Receiver[T], and MessageTicket[T]'
+      - 'initial compiler-known supporting identities exist for several legacy channel result/configuration types'
+      - 'legacy Channel[T](capacity) recognition exists in semantic analysis'
+      - 'legacy endpoint member resolution and basic Send/TrySend/Receive/TryReceive/Close/Discard/Share recognition exist'
+      - 'initial select semantic recognition exists for channel send/receive/try/revocable operations'
+    remaining:
+      - 'replace legacy channel.tx/channel.rx with canonical Tx/Rx source member identities and preserve ordinary partial-move tracking'
+      - 'implement fallible Channel constructors using AllocationError and remove any infallible dynamic-allocation assumption'
+      - 'ensure invalid ChannelOptions and unsupported feature combinations are compile-time diagnostics rather than runtime ChannelCreateError variants'
+      - 'implement exact ChannelCapability set without Priority'
+      - 'implement ChannelStatistics and saturating counter semantics'
+      - 'change Share() from Sender[T] to Option[Sender[T]] and implement MaxSenders/generation-safe sender-slot reuse'
+      - 'split blocking Send and TrySend into ChannelSendResult[T] and ChannelTrySendResult[T]'
+      - 'implement WouldBlock(T) ownership return for full buffered and unmatched rendezvous TrySend'
+      - 'implement ChannelRevocableSendResult[T] and pre-commit Closed(T) ownership return with no ticket creation'
+      - 'move revoke authority from Sender[T].Revoke(ticket) to consuming MessageTicket[T].Revoke()'
+      - 'implement exact ChannelRevokeResult[T] and MessageDisposition Received/Expired/Discarded'
+      - 'keep ticket valid independently of originating Sender[T] lifetime'
+      - 'implement expiration capability with construction-provisioned metadata and no hidden per-send allocation'
+      - 'implement Statistics capability without adding queue-depth/waiter-count API'
+      - 'implement RX Discard/Close boundaries and exactly-once queued-message destruction'
+      - 'implement send-side close on last sender and stable receiver draining semantics'
+      - 'implement exact TryReceive Empty versus Closed semantics after tombstone/expiration skipping'
+      - 'implement bounded FIFO/rendezvous runtime storage and synchronization'
+      - 'implement non-destructive select readiness plus conditional ownership prepare/commit/rollback'
+      - 'implement current-execution cancellation commit races without introducing Context-specific channel overloads'
+      - 'preserve send-publication/receive-acquire memory-model edges'
+      - 'implement ISR-safe TrySend validation through CompilationPlan with no blocking/allocation fallback'
+      - 'implement channel Semantic IR facts without treating the legacy opcode-name list as normative'
+      - 'lower channel operations while preserving exactly-once ownership/destruction/FIFO/ticket-generation/statistics semantics'
+      - 'update LSP hover/completion/navigation to exact canonical declarations and capability-dependent members'
+    required_tests:
+      - id: channel-construction-allocation-error
+        expectation: 'Dynamic channel construction uses canonical AllocationError; no ChannelCreateError is introduced.'
+      - id: channel-endpoint-camelcase
+        expectation: 'Channel exposes Tx and Rx; legacy lowercase endpoint spellings are not canonical.'
+      - id: channel-partial-move
+        expectation: 'Tx/Rx can each be moved exactly once and repeated extraction is rejected.'
+      - id: channel-send-result
+        expectation: 'Blocking Send is exhaustively Sent or Closed(T), never WouldBlock.'
+      - id: channel-try-send-result
+        expectation: 'TrySend is exhaustively Sent, WouldBlock(T), or Closed(T), returning ownership on both non-commit outcomes.'
+      - id: channel-share-limit
+        expectation: 'Share returns Some(Sender[T]) below MaxSenders and None at the limit without consuming the original sender.'
+      - id: channel-revocable-send
+        expectation: 'SendRevocable returns Accepted(ticket) on commit and Closed(T) before commit with no ticket.'
+      - id: channel-ticket-owned-revoke
+        expectation: 'Revoke is invoked on and consumes MessageTicket[T], independent of originating sender lifetime.'
+      - id: channel-disposition
+        expectation: 'Unavailable disposition is exactly Received, Expired, or Discarded; RX close uses Discarded.'
+      - id: channel-try-receive
+        expectation: 'TryReceive distinguishes Received(T), temporary Empty, and permanent Closed.'
+      - id: channel-drain
+        expectation: 'Last sender close preserves queued messages and Receive returns None only after drain.'
+      - id: channel-statistics
+        expectation: 'Statistics counters follow exact commit/terminal events and saturate at uint64 maximum.'
+      - id: channel-select-no-effect
+        expectation: 'Non-selected channel branches transfer no ownership, consume no message, create no ticket, and increment no statistics.'
+      - id: channel-cancellation-commit
+        expectation: 'Cancellation before commit produces no channel transfer; cancellation after commit cannot undo the operation.'
+      - id: channel-no-hidden-allocation
+        expectation: 'Ordinary Send/TrySend/Receive/TryReceive/Share/Revoke/Discard/Close/Statistics do not dynamically allocate.'
+      - id: channel-ipc-boundary
+        expectation: 'Ordinary Channel/Sender/Receiver/MessageTicket are rejected across process-transfer boundaries.'
+    governance_reconciliation:
+      - 'rules/concurrency/channels.md is the sole canonical owner of ordinary in-process Channel[T], Sender[T], Receiver[T], MessageTicket[T], their result/configuration/statistics types, and channel lifecycle'
+      - 'rules/concurrency/ipc.md remains the canonical owner of IPCSender[T]/IPCReceiver[T] and all process-transfer/capability-transfer semantics'
+      - 'rules/concurrency/select.md remains the generic owner of select syntax, source-order priority, readiness and branch commit'
+      - 'rules/concurrency/cancellation.md remains the owner of current-execution cancellation and Context semantics; channels do not add ref Context overloads in Sec 0.1'
+      - 'rules/concurrency/concurrency_memory_model.md remains owner of generic happens-before/acquire/release rules'
+      - 'rules/memory/allocation.md and the canonical core allocation surface remain owner of AllocationError and allocation-context semantics'
+      - 'concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md'
+      - 'implementation status belongs in this governance fragment rather than new root implementation-status.yaml entries'
+    corrections_applied:
+      - rules/corrections/applied/channels-v2-cross-rulebook-correction-20260915.md
+    governance_sync_completed:
+      - 'rules/concurrency/channels.md is replaced by canonical normative revision 2.0 with the exact source-visible channel declarations'
+      - 'select, cancellation, memory-model, Semantic IR, and LSP rulebooks contain the required channel v2 cross-rulebook synchronization'
+      - 'language-rulebook-status.md records concurrency/channels.md revision 2.0 as Written while implementation remains partial'
+      - 'governance/concurrency_channels.yaml remains the already-registered sole owner of concurrency.channels-v2'

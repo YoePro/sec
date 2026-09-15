@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Static Analysis and sec analyse - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#analysis">Static Analysis and sec analyse</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#semantic-truth">One Semantic Source of Truth</a>
+        <a href="#snapshot">Compilation Snapshot and Target</a>
+        <a href="#proof-states">Valid, Invalid and Unproven</a>
+        <a href="#required-advisory">Required vs Advisory Analysis</a>
+        <a href="#dependencies">Analysis Dependencies</a>
+        <a href="#fixed-points">Fixed Points and Recursion</a>
+        <a href="#budgets">Analysis Budgets</a>
+        <a href="#modes">Interactive, Standard and Deep</a>
+        <a href="#sec-analyse">sec analyse</a>
+        <a href="#reports">Analysis Reports</a>
+        <a href="#call-graph">Call Graph</a>
+        <a href="#effects">Effects and Guarantees</a>
+        <a href="#escape">Escape Analysis</a>
+        <a href="#closures">Closure Analysis</a>
+        <a href="#parameters">Parameter Usage</a>
+        <a href="#stack">Stack Analysis</a>
+        <a href="#races">Data-Race Analysis</a>
+        <a href="#deadlocks">Deadlock Analysis</a>
+        <a href="#isr">ISR Analysis</a>
+        <a href="#pitfalls">Pitfall Analysis</a>
+        <a href="#core-analysis">Other Core Analyses</a>
+        <a href="#provenance">Evidence and Cause Paths</a>
+        <a href="#trusted">Trusted Facts</a>
+        <a href="#lsp">LSP Integration</a>
+        <a href="#incremental">Incremental Analysis</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html" class="active">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Static Analysis and sec analyse</div>
+
+        <h1 id="analysis">Static Analysis and sec analyse</h1>
+
+        <p>
+            Sec performs substantially more static analysis than ordinary type checking. The compiler
+            uses one coordinated analysis system to establish facts about ownership, references,
+            effects, execution, resource use, concurrency, targets and common semantic pitfalls.
+            These facts are used both to reject invalid programs and to explain programs that are
+            valid but deserve closer attention.
+        </p>
+
+        <p>
+            The command-line analysis surface is <code>sec analyse</code>. The language server uses
+            the same compiler-owned facts interactively, while normal build-producing commands run
+            every analysis required to establish the guarantees of the selected language and target
+            profile.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> Analysis does not create a second version of Sec semantics.
+            Each semantic fact has one canonical owner, and every compiler or tooling consumer must
+            use that fact rather than inventing an independent approximation.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+            <p>
+                Sec deliberately moves complexity into the compiler when the compiler can establish a
+                useful fact reliably. Static analysis supports:
+            </p>
+            <ul>
+                <li>language validity;</li>
+                <li>memory and resource safety;</li>
+                <li>target and platform validity;</li>
+                <li>verified effect guarantees;</li>
+                <li>execution and concurrency safety;</li>
+                <li>resource-bound checks;</li>
+                <li>mentor-style diagnostics;</li>
+                <li>editor tooling;</li>
+                <li>safe optimization and lowering.</li>
+            </ul>
+            <p>
+                Some of these analyses are mandatory because the language requires a proof. Others are
+                advisory and exist to help the programmer find suspicious, unnecessarily broad or
+                error-prone code before it becomes a runtime defect.
+            </p>
+        </section>
+
+        <section id="semantic-truth">
+            <h2>One Semantic Source of Truth</h2>
+            <p>
+                The compiler owns the semantic model. The command-line compiler, language server,
+                <code>sec analyse</code> and later tooling all consume the same canonical facts.
+            </p>
+            <p>
+                For example, pitfall analysis does not implement its own ownership checker, and the
+                LSP does not build a second call graph. They consume the facts produced by the analyses
+                that own those domains.
+            </p>
+            <pre><code>source + project + target
+          |
+          v
+   compiler analysis facts
+      /      |       \
+     /       |        \
+ build   sec analyse   LSP</code></pre>
+            <p>
+                This rule matters because two tools must not disagree about whether a value escaped,
+                a call can allocate, a reference remains valid or a target-specific operation is legal.
+            </p>
+        </section>
+
+        <section id="snapshot">
+            <h2>Compilation Snapshot and Target</h2>
+            <p>
+                Analysis is performed for a specific compiler snapshot. The snapshot may include the
+                source modules, project configuration, dependencies, selected target and variant,
+                compiler-known declarations, platform knowledge and the resolved
+                <code>CompilationPlan</code>.
+            </p>
+            <p>
+                Analysis results are valid only for the snapshot and plan that produced them. A target
+                change can invalidate facts involving pointer width, ABI, stack budgets, interrupt
+                relationships, hardware resources, allocation policy or other target-dependent rules.
+            </p>
+            <div class="note">
+                <strong>Important:</strong> Cross compilation uses target facts from the selected
+                <code>CompilationPlan</code>. The compiler host must not silently supply its own
+                pointer width, operating system or platform behavior to target analysis.
+            </div>
+        </section>
+
+        <section id="proof-states">
+            <h2>Valid, Invalid and Unproven</h2>
+            <p>
+                Safety and validity analyses distinguish three conceptual proof outcomes:
+            </p>
+            <table>
+                <thead>
+                    <tr><th>State</th><th>Meaning</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>Valid</code></td><td>The compiler has sufficient proof for the requested property.</td></tr>
+                    <tr><td><code>Invalid</code></td><td>The compiler has proof that the program violates the rule.</td></tr>
+                    <tr><td><code>Unproven</code></td><td>The compiler does not have enough evidence to prove either outcome.</td></tr>
+                </tbody>
+            </table>
+            <p>
+                <code>Unproven</code> is not another spelling of <code>Invalid</code>. It becomes a
+                compilation failure only when the applicable language or target profile requires a
+                positive proof.
+            </p>
+            <p>
+                A strict embedded profile may, for example, require a finite stack bound. If analysis
+                cannot establish one, the diagnostic should say that the required proof is missing.
+                It must not pretend that a stack overflow was proven.
+            </p>
+        </section>
+
+        <section id="required-advisory">
+            <h2>Required vs Advisory Analysis</h2>
+            <p>
+                Required analyses establish properties needed for a valid build. Ownership,
+                borrowing, mandatory lifetime validity and a target-required resource proof are
+                examples of facts that can directly decide whether compilation may continue.
+            </p>
+            <p>
+                Advisory analyses produce useful findings without redefining language validity.
+                Parameter-usage recommendations and pitfall findings are primarily advisory.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> An optional analysis may improve precision or advice, but
+                skipping it must never manufacture a positive proof for a mandatory safety property.
+            </div>
+        </section>
+
+        <section id="dependencies">
+            <h2>Analysis Dependencies</h2>
+            <p>
+                Analyses form a dependency graph rather than one permanently fixed pass list. A later
+                analysis may consume facts produced by several earlier domains.
+            </p>
+            <pre><code>ownership  -----> borrowing
+    \               |
+     \              v
+      +--------> lifetime/reference
+
+call graph -----> effects ------+
+      |                         |
+      +-----> stack             +-----> ISR
+      |                         |
+      +-----> races/deadlocks --+</code></pre>
+            <p>
+                Other examples include escape and closure facts feeding execution-boundary checks,
+                and Place/storage identity feeding data-race analysis. Pitfall analysis deliberately
+                sits near the end of this graph because it consumes canonical facts rather than
+                recreating them.
+            </p>
+        </section>
+
+        <section id="fixed-points">
+            <h2>Fixed Points and Recursion</h2>
+            <p>
+                Recursive functions, mutually recursive call graphs, loops, closure target flow and
+                transitive effects can require iterative analysis. Sec allows fixed-point or equivalent
+                convergent algorithms for these cases.
+            </p>
+            <p>
+                The important user-visible rule is conservative convergence: running out of refinement
+                must not turn uncertainty into proof. Recursive analysis must be deterministic and must
+                retain <code>Unproven</code> or another conservative state when a stronger fact cannot
+                safely be established.
+            </p>
+        </section>
+
+        <section id="budgets">
+            <h2>Analysis Budgets</h2>
+            <p>
+                Expensive analyses may use configurable budgets. A budget can limit path sensitivity,
+                call expansion, closure target propagation, recursive refinement, deadlock graph search
+                or other potentially expensive work.
+            </p>
+            <p>
+                Budget exhaustion changes precision, not language semantics. For a required property,
+                insufficient analysis may leave the result <code>Unproven</code>. For an advisory
+                analysis, it may simply reduce coverage or confidence.
+            </p>
+        </section>
+
+        <section id="modes">
+            <h2>Interactive, Standard and Deep</h2>
+            <p>
+                Sec tooling uses three analysis-depth configurations:
+            </p>
+            <ul>
+                <li><strong>Interactive</strong> favors fast editor feedback and bounded refinement.</li>
+                <li><strong>Standard</strong> is the normal compiler analysis depth.</li>
+                <li><strong>Deep</strong> allows more expensive refinement when additional precision is useful.</li>
+            </ul>
+            <p>
+                The current compiler defaults to <strong>Standard</strong>, while the LSP defaults to
+                <strong>Interactive</strong>. A project may configure LSP depth through
+                <code>analysis.lsp_depth</code> in <code>.sec/sec.toml</code>.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> Analysis depth must never change Sec language semantics. A
+                deeper mode may prove more, explain more or reduce false positives, but it must not
+                make an actually invalid program valid.
+            </div>
+        </section>
+
+        <section id="sec-analyse">
+            <h2>sec analyse</h2>
+            <p>
+                <code>sec analyse</code> is the command-line surface for requesting deeper compiler
+                analysis reports without turning the language manual into a compiler-debugging guide.
+            </p>
+            <pre><code>sec analyse</code></pre>
+            <p>
+                The canonical analysis model treats the default command as an all-analysis request
+                over the analyses available in the current compiler. The explicit all-analysis form
+                is:
+            </p>
+            <pre><code>sec analyse --all</code></pre>
+            <p>
+                Individual analysis selection is also part of the intended tooling surface. Exact
+                selection names are owned by the CLI implementation and may grow as analyses are
+                integrated.
+            </p>
+            <p>
+                Build-producing commands still run every analysis required by the selected language
+                and profile guarantees. <code>sec analyse</code> is not an escape hatch for turning
+                mandatory checks off; it is a reporting and deeper-analysis surface.
+            </p>
+        </section>
+
+        <section id="reports">
+            <h2>Analysis Reports</h2>
+            <p>
+                Reports may expose compiler-owned information such as:
+            </p>
+            <ul>
+                <li>call graphs and execution roots;</li>
+                <li>effect summaries and verified guarantees;</li>
+                <li>escape and closure facts;</li>
+                <li>parameter demand;</li>
+                <li>stack and Arena demand;</li>
+                <li>data-race and deadlock findings;</li>
+                <li>ISR proof results;</li>
+                <li>pitfall findings;</li>
+                <li>ownership and lifetime provenance;</li>
+                <li>iterator resolution;</li>
+                <li>target and profile applicability.</li>
+            </ul>
+            <p>
+                Reports distinguish compile errors, missing required proof, warnings and informational
+                or advisory findings. A report must not downgrade a mandatory error into a suggestion.
+            </p>
+        </section>
+
+        <section id="call-graph">
+            <h2>Call Graph</h2>
+            <p>
+                The call graph records semantic callable relationships rather than only textual
+                function-call syntax. It can include direct calls, methods, properties, closure calls,
+                callbacks, cleanup helpers, task and thread entry edges, interrupt roots, foreign
+                callbacks and compiler-generated helpers.
+            </p>
+            <p>
+                Execution edges are classified. A task spawn or ISR relationship is not automatically
+                treated as an ordinary synchronous call. This distinction is essential for effects,
+                stack usage, races and deadlocks.
+            </p>
+        </section>
+
+        <section id="effects">
+            <h2>Effects and Guarantees</h2>
+            <p>
+                Effect analysis derives facts such as <code>MayPanic</code>, <code>MayAllocate</code>,
+                <code>MayBlock</code>, <code>MaySuspend</code>, <code>MaySpawn</code>,
+                <code>MayIO</code>, <code>MayAccessVolatile</code> and external-state mutation.
+            </p>
+            <p>
+                It also verifies source-visible guarantees such as <code>@noPanic</code>,
+                <code>@noAlloc</code> and <code>@noBlock</code>. These guarantees are transitive: a
+                function cannot satisfy one merely because the prohibited operation appears in a
+                helper several calls away.
+            </p>
+            <p>
+                See <a href="48-effects.html">48 Effects and Verified Guarantees</a> for the
+                source-level effect model.
+            </p>
+        </section>
+
+        <section id="escape">
+            <h2>Escape Analysis</h2>
+            <p>
+                Escape analysis answers where a value, reference, view, closure dependency or other
+                semantic subject may outlive or be retained beyond its local context.
+            </p>
+            <p>
+                Escape does <strong>not</strong> mean “allocate this on the heap”. Sec does not repair
+                an invalid lifetime with silent heap promotion. If a value legitimately escapes, its
+                storage and lifetime mechanism must already support the destination. Invalid escapes
+                are rejected.
+            </p>
+        </section>
+
+        <section id="closures">
+            <h2>Closure Analysis</h2>
+            <p>
+                Closure analysis tracks capture identity and mode, closure environment ownership,
+                callable-value flow, possible invocation targets, environment escape and the
+                lifetime/transfer implications of captured values.
+            </p>
+            <p>
+                It is also the bridge between function values and analyses that need to know what can
+                actually be called indirectly. Unknown or open target sets remain conservative.
+            </p>
+        </section>
+
+        <section id="parameters">
+            <h2>Parameter Usage</h2>
+            <p>
+                Parameter-usage analysis records how a parameter or receiver is demanded by the
+                implementation. Dimensions may include read, write, consume, retain, escape, call,
+                address-taking, task/thread transfer and effect contribution.
+            </p>
+            <p>
+                This analysis is primarily advisory. It may suggest that a signature can be narrower
+                or that a parameter is more powerful than the implementation actually needs, but it
+                must not silently rewrite the callable signature.
+            </p>
+        </section>
+
+        <section id="stack">
+            <h2>Stack Analysis</h2>
+            <p>
+                Stack analysis is designed to reason about semantic stack demand and, when target
+                layout information is available, machine stack demand. It combines frame estimates,
+                call paths, recursion, task/thread/ISR roots, interrupt nesting and target-specific
+                budgets.
+            </p>
+            <p>
+                A result may be exact, bounded, unknown or proven unbounded. Strict targets can require
+                a positive finite bound before code is accepted for a particular execution root.
+            </p>
+        </section>
+
+        <section id="races">
+            <h2>Data-Race Analysis</h2>
+            <p>
+                Data-race analysis combines semantic memory-location identity, concurrent execution
+                contexts, ownership and borrowing, transferability, synchronization, atomics, FFI,
+                volatile/MMIO access and interrupt relationships.
+            </p>
+            <div class="rule">
+                <strong>Rule:</strong> <code>volatile</code> hardware semantics are not
+                synchronization. Reference validity is not synchronization. <code>unsafe</code> does
+                not make a data race valid.
+            </div>
+        </section>
+
+        <section id="deadlocks">
+            <h2>Deadlock Analysis</h2>
+            <p>
+                Deadlock analysis reasons about resource acquisition, held locks, waits, task/thread
+                completion dependencies, callbacks, foreign blocking behavior and ISR reentry.
+            </p>
+            <p>
+                It distinguishes a proven cycle from a possible or unproven risk. Unknown foreign
+                locking or blocking behavior remains conservative rather than being guessed from a
+                function name.
+            </p>
+        </section>
+
+        <section id="isr">
+            <h2>ISR Analysis</h2>
+            <p>
+                ISR analysis is a cross-analysis verifier. It consumes call-graph, effects, stack,
+                race, deadlock, FFI, allocation, panic, blocking and target interrupt-profile facts
+                to decide whether an ISR root satisfies the required interrupt-safety contract.
+            </p>
+            <p>
+                It does not duplicate those analyses. If stack safety is unproven, ISR analysis keeps
+                that dependency visible rather than inventing a separate stack estimate.
+            </p>
+        </section>
+
+        <section id="pitfalls">
+            <h2>Pitfall Analysis</h2>
+            <p>
+                Pitfall analysis looks for semantically suspicious patterns that are legal Sec but
+                commonly indicate human mistakes. It consumes facts from the analyses that own types,
+                bounds, control flow, Places, effects, FFI and other semantics.
+            </p>
+            <p>
+                Findings can carry evidence, confidence, suppression information and corrective
+                guidance. A pitfall remains advisory unless another canonical rule defines the same
+                situation as a language error.
+            </p>
+            <p>
+                This is where analyses such as likely off-by-one ranges, suspicious collection usage
+                or dangerous FFI assumptions can be presented without weakening the distinction
+                between “invalid program” and “valid but probably unintended”.
+            </p>
+        </section>
+
+        <section id="core-analysis">
+            <h2>Other Core Analyses</h2>
+            <p>
+                The coordinated analysis system also includes core semantic checks that are so central
+                that users may not think of them as optional analysis features. These include:
+            </p>
+            <ul>
+                <li>type and interface/conformance analysis;</li>
+                <li>ownership availability and move/copy transitions;</li>
+                <li>borrow compatibility and non-lexical live ranges;</li>
+                <li>lifetime and reference-origin validity;</li>
+                <li>definite initialization;</li>
+                <li>reachability and termination facts;</li>
+                <li>contracts and compile-time bounds;</li>
+                <li>transferability across tasks, threads, processes, ISRs and callbacks;</li>
+                <li>target, ABI, layout and hardware validity.</li>
+            </ul>
+            <p>
+                <code>sec analyse</code> may expose some of these facts, but they remain part of the
+                compiler's normal semantic responsibility even when no explicit analysis report is
+                requested.
+            </p>
+        </section>
+
+        <section id="provenance">
+            <h2>Evidence and Cause Paths</h2>
+            <p>
+                Nontrivial facts retain provenance so the compiler can explain <em>why</em> a result
+                exists. Provenance may include source locations, call edges, captures, ownership
+                transfers, storage origins, target facts, FFI contracts and dependent analysis facts.
+            </p>
+            <p>
+                A useful diagnostic should point to the earliest meaningful cause rather than only
+                the final symptom. For example, a <code>@noAlloc</code> failure should be able to show
+                the call path that reaches the allocation-producing operation.
+            </p>
+        </section>
+
+        <section id="trusted">
+            <h2>Trusted Facts</h2>
+            <p>
+                Some facts come from declarations outside ordinary Sec proof. Examples include FFI
+                contracts, platform knowledge, ABI descriptions, inline assembly contracts and
+                compiler intrinsics.
+            </p>
+            <p>
+                These facts may be trusted inputs, but trust provenance is retained. A trusted claim
+                is not presented as if the compiler independently proved the behavior from Sec source.
+                Changing the trusted dependency invalidates analyses that depend on it.
+            </p>
+        </section>
+
+        <section id="lsp">
+            <h2>LSP Integration</h2>
+            <p>
+                The language server is a client of compiler analysis, not a competing analysis engine.
+                Hover, call hierarchy, diagnostics, future code lenses and Sec-specific analysis views
+                consume compiler-owned facts from the active workspace snapshot.
+            </p>
+            <p>
+                Interactive mode can publish fast direct findings first and refine them as additional
+                analysis completes. However, an incomplete or stale result must never be presented as
+                a positive required proof.
+            </p>
+        </section>
+
+        <section id="incremental">
+            <h2>Incremental Analysis</h2>
+            <p>
+                Analysis facts are invalidated by semantic dependencies, not merely by changed text.
+                A change to a function body, target, interface conformance, FFI contract, call target,
+                hardware resource or effect summary can invalidate different subsets of the analysis
+                graph.
+            </p>
+            <p>
+                Reuse is permitted only when the compiler can establish that the cached fact still
+                belongs to a compatible snapshot and <code>CompilationPlan</code>. Parallel or cached
+                analysis must remain deterministic.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>Diagnostics</h2>
+            <p>
+                Rejecting analyses use mentor-style diagnostics. A good analysis diagnostic identifies:
+            </p>
+            <ul>
+                <li>what is invalid or unproven;</li>
+                <li>where the problem occurs;</li>
+                <li>the rule or semantic reason;</li>
+                <li>the operation or declaration that caused it;</li>
+                <li>related locations and cause paths;</li>
+                <li>why the compiler cannot establish safety;</li>
+                <li>a practical safe correction when one is known.</li>
+            </ul>
+            <p>
+                The analysis that owns the violated fact normally owns the primary diagnostic. An
+                advisory analysis should not repeat a stronger compiler error as a competing warning.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+            <p>
+                The Sec analysis rulebooks are substantially design-complete, but implementation is
+                intentionally uneven. The common compiler-analysis coordination layer is currently
+                <strong>partial</strong>.
+            </p>
+            <p>Implemented or partially integrated verticals already include:</p>
+            <ul>
+                <li>a compiler-owned call-graph slice used by Sema and LSP;</li>
+                <li>initial effect propagation and allocation cause paths;</li>
+                <li>escape facts and direct-call return-origin summaries;</li>
+                <li>closure/capture infrastructure and analysis-depth configuration;</li>
+                <li>parameter-demand analysis;</li>
+                <li>structured high-confidence pitfall analysis;</li>
+                <li>selected analysis facts exposed through LSP hover and call hierarchy.</li>
+            </ul>
+            <p>
+                The canonical stack, data-race, deadlock and ISR analyses are written but their
+                implementation ledger entries are still <strong>planned</strong>. The common
+                incremental coordination and complete <code>sec analyse</code> reporting surface also
+                remain incomplete.
+            </p>
+            <div class="note">
+                <strong>Status note:</strong> This chapter documents the normative Sec 0.1 analysis
+                model. A report or selection described here may not yet be available in the current
+                compiler even though the underlying semantics are already fixed by the rulebooks.
+            </div>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+            <ul>
+                <li>Use ordinary compiler diagnostics first; use <code>sec analyse</code> when you want deeper explanation or advisory reports.</li>
+                <li>Do not treat <code>Unproven</code> as a proven defect or as proven safety.</li>
+                <li>Run deeper analysis before shipping code with strict resource or concurrency requirements.</li>
+                <li>Use the same target and variant you intend to build when reviewing target-dependent analysis.</li>
+                <li>Prefer canonical compiler reports over handwritten duplicate scripts for ownership, effects or call relationships.</li>
+                <li>Read cause paths, not only the final diagnostic location.</li>
+                <li>Keep FFI, inline-assembly and platform contracts precise; vague trusted inputs force conservative analysis.</li>
+                <li>Use advisory parameter and pitfall findings as evidence, not as automatic source rewrites.</li>
+                <li>Remember that unsafe code remains subject to ownership, race, ISR and other independent analysis rules.</li>
+                <li>Do not weaken analysis depth to work around a real required-proof failure.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+            <ul>
+                <li>Sec uses one coordinated compiler-owned analysis system.</li>
+                <li>Each semantic fact has one canonical owner.</li>
+                <li>Compiler, LSP and <code>sec analyse</code> consume the same semantic facts.</li>
+                <li>Analysis results belong to a specific source snapshot and <code>CompilationPlan</code>.</li>
+                <li>Safety proof states distinguish <code>Valid</code>, <code>Invalid</code> and <code>Unproven</code>.</li>
+                <li>Required analysis may reject missing proof; advisory analysis may only reduce confidence or produce guidance.</li>
+                <li>Recursive and interprocedural analysis may use deterministic fixed points.</li>
+                <li>Analysis budgets reduce precision but never manufacture proof.</li>
+                <li>Interactive, Standard and Deep change analysis depth, not language semantics.</li>
+                <li><code>sec analyse</code> exposes deeper compiler-owned reports and all-analysis behavior.</li>
+                <li>The call graph models semantic call and execution relationships, not only textual calls.</li>
+                <li>Effect analysis derives transitive effects and verifies guarantees.</li>
+                <li>Escape analysis never silently promotes invalid values to heap storage.</li>
+                <li>Closure analysis owns captures, callable flow and target sets.</li>
+                <li>Parameter usage and pitfall analysis are primarily advisory.</li>
+                <li>Stack, race, deadlock and ISR analyses compose other canonical facts rather than recreating them.</li>
+                <li>Diagnostics preserve evidence and cause paths.</li>
+                <li>Trusted FFI/platform/assembly facts retain trust provenance.</li>
+                <li>Incremental and parallel analysis must preserve snapshot consistency and determinism.</li>
+                <li>The rulebooks are normative; current implementation coverage remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="68-testing.html">Previous: Testing</a>
+            <a href="70-formatting.html">Next: Formatting</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-15</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

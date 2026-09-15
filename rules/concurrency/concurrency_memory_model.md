@@ -1062,6 +1062,18 @@ fn Increment(counter: ref Atomic[uint64]) void {
 
 § 50(4) Channel memory semantics are not inferred from implementation queues; they are source-level contracts.
 
+§ 50(5) A successful ordinary-channel send commit publishes the transferred
+message state. The matching successful receive commit acquires that
+publication, including for a capacity-zero rendezvous handoff.
+
+§ 50(6) A failed, non-selected, or otherwise uncommitted send creates no
+message-transfer synchronizes-with edge.
+
+§ 50(7) Readiness inspection, ticket creation, revocation, expiration,
+discard, endpoint close, and statistics observation provide only the ordering
+explicitly defined by `rules/concurrency/channels.md`; none independently
+publishes unrelated application data.
+
 ---
 
 ## § 51. Process boundaries

@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Atomics and Memory Order - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#atomics">Atomics and Memory Order</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#atomic-type">Atomic[T]</a>
+        <a href="#eligible-types">Atomic-Compatible Types</a>
+        <a href="#excluded-types">Excluded Types</a>
+        <a href="#construction">Construction</a>
+        <a href="#memory-order">MemoryOrder</a>
+        <a href="#default-order">Default Memory Order</a>
+        <a href="#api">Common Atomic API</a>
+        <a href="#load">Load</a>
+        <a href="#store">Store</a>
+        <a href="#swap">Swap</a>
+        <a href="#compare-exchange">CompareExchange</a>
+        <a href="#fetch-operations">Fetch Operations</a>
+        <a href="#order-matrix">Operation / Order Matrix</a>
+        <a href="#relaxed">Relaxed</a>
+        <a href="#acquire-release">Acquire and Release</a>
+        <a href="#acqrel">AcqRel</a>
+        <a href="#seqcst">SeqCst</a>
+        <a href="#happens-before">Happens-Before</a>
+        <a href="#modification-order">Modification Order</a>
+        <a href="#release-sequences">Release Sequences</a>
+        <a href="#fences">Fences</a>
+        <a href="#ownership">Ownership and Shared Access</a>
+        <a href="#mixing">Atomic and Non-Atomic Access</a>
+        <a href="#multi-field">Multi-Field Invariants</a>
+        <a href="#named-types">Named Types and Enums</a>
+        <a href="#rawptr">RawPtr Atomics</a>
+        <a href="#target">Target Capability</a>
+        <a href="#interrupts">Interrupt Contexts</a>
+        <a href="#tooling">Diagnostics and Tooling</a>
+        <a href="#status">Current Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html" class="active">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Atomics and Memory Order</div>
+
+        <h1 id="atomics">Atomics and Memory Order</h1>
+
+        <p>
+            Sec atomics provide indivisible access to one small scalar value shared between
+            concurrent execution contexts. They are intended for flags, counters, state markers,
+            generation values, sequence numbers, pointer coordination, reference counts and the
+            low-level building blocks of lock-free or low-lock algorithms.
+        </p>
+
+        <p>
+            Atomics are deliberately narrow. They protect one atomic storage identity at a time and
+            do not turn unrelated memory into one transaction. When correctness depends on a larger
+            invariant, use a mutex or another synchronization abstraction designed for that invariant.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>Atomic[T]</code> makes operations on one atomic storage
+            identity indivisible. It does not make surrounding ordinary memory atomic, does not create
+            ownership, and does not make several separate atomic objects transactional as a group.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Concurrent code needs two distinct guarantees. First, access to one shared value may
+                need to be indivisible so readers never observe a torn update. Second, operations may
+                need ordering semantics so ordinary memory written in one execution context becomes
+                safely visible in another.
+            </p>
+
+            <p>
+                <code>Atomic[T]</code> provides the indivisible storage operation. <code>MemoryOrder</code>
+                states the synchronization strength required by that operation. The surrounding
+                concurrency memory model then defines publication, synchronizes-with and happens-before.
+            </p>
+
+            <p>
+                Sec keeps these concepts explicit so a target backend may choose an appropriate native
+                instruction, intrinsic or verified platform primitive without changing the source-level
+                semantics.
+            </p>
+        </section>
+
+        <section id="atomic-type">
+            <h2>Atomic[T]</h2>
+
+            <p>
+                <code>Atomic[T]</code> is a compiler-known nominal generic type family. It owns one
+                atomic storage identity containing one value of <code>T</code>.
+            </p>
+
+            <pre><code>Atomic[T]</code></pre>
+
+            <p>
+                Its physical representation, alignment and target-specific implementation are not
+                exposed as ordinary source fields. User code cannot reach an internal <code>T</code>
+                storage member directly.
+            </p>
+
+            <p>
+                Atomicity applies to the complete contained value. A target implementation must not
+                tear one atomic value into separately observable pieces.
+            </p>
+        </section>
+
+        <section id="eligible-types">
+            <h2>Atomic-Compatible Types</h2>
+
+            <p>
+                Sec 0.1 intentionally defines a conservative atomic-compatible type set. The following
+                categories are semantically eligible:
+            </p>
+
+            <ul>
+                <li><code>bool</code>;</li>
+                <li>primitive signed integer types;</li>
+                <li>primitive unsigned integer types;</li>
+                <li><code>RawPtr[T]</code>;</li>
+                <li>integer-backed enums;</li>
+                <li>named types whose underlying type is atomic-compatible and whose contracts permit the requested operation.</li>
+            </ul>
+
+            <p>
+                <code>int</code> and <code>uint</code> are eligible even though their concrete width is
+                selected by the target. The language does not hard-code a maximum machine width into
+                atomic eligibility.
+            </p>
+
+            <div class="rule">
+                <strong>Important:</strong> Language eligibility and target capability are different
+                questions. <code>Atomic[uint64]</code> may be a valid Sec type even when a particular
+                target cannot implement one requested atomic operation for that concrete type.
+            </div>
+        </section>
+
+        <section id="excluded-types">
+            <h2>Excluded Types</h2>
+
+            <p>The following categories are not atomic-compatible in Sec 0.1:</p>
+
+            <ul>
+                <li><code>float</code>, <code>float32</code> and <code>float64</code>;</li>
+                <li><code>decimal</code> and <code>decimal128</code>;</li>
+                <li><code>string</code>;</li>
+                <li>ordinary structs and unions;</li>
+                <li>arrays, slices and collections;</li>
+                <li><code>Result[T, E]</code> and <code>Option[T]</code>;</li>
+                <li><code>Task[T]</code> and <code>Thread[T]</code>;</li>
+                <li>arbitrary composite types that merely happen to match a machine atomic width.</li>
+            </ul>
+
+            <p>
+                This is a language-design boundary, not a statement that every target is physically
+                incapable of atomic operations over those representations. A backend must not silently
+                legalize an excluded <code>Atomic[T]</code> merely because the hardware has a convenient
+                instruction.
+            </p>
+        </section>
+
+        <section id="construction">
+            <h2>Construction</h2>
+
+            <p>An atomic value is initialized from one ordinary value of <code>T</code>:</p>
+
+            <pre><code>let ready: Atomic[bool] := Atomic(false)
+let count: Atomic[uint64] := Atomic(0)</code></pre>
+
+            <p>Static atomic storage is also valid:</p>
+
+            <pre><code>static let Requests: Atomic[uint64] := Atomic(0)</code></pre>
+
+            <p>
+                The binding that owns an atomic object normally remains immutable. Mutation of the
+                contained value happens through atomic methods, not by replacing a source-visible
+                storage field.
+            </p>
+
+            <pre><code>Requests.FetchAdd(1)</code></pre>
+        </section>
+
+        <section id="memory-order">
+            <h2>MemoryOrder</h2>
+
+            <p>The exact Sec 0.1 memory-order type is:</p>
+
+            <pre><code>enum MemoryOrder {
+    Relaxed
+    Acquire
+    Release
+    AcqRel
+    SeqCst
+}</code></pre>
+
+            <p>The variants mean:</p>
+
+            <ul>
+                <li><code>Relaxed</code> — atomicity and per-object coherence only;</li>
+                <li><code>Acquire</code> — acquire ordering for an operation that reads atomic state;</li>
+                <li><code>Release</code> — release ordering for an operation that publishes through a modification;</li>
+                <li><code>AcqRel</code> — combined acquire and release semantics for read-modify-write operations;</li>
+                <li><code>SeqCst</code> — the appropriate acquire/release behavior plus participation in the global sequentially consistent order.</li>
+            </ul>
+
+            <p>
+                <code>MemoryOrder</code> is a real source-visible core enum as well as a compiler-known
+                semantic type. Tooling must expose the same canonical declaration.
+            </p>
+        </section>
+
+        <section id="default-order">
+            <h2>Default Memory Order</h2>
+
+            <p>
+                Ordinary atomic methods default to <code>MemoryOrder.SeqCst</code> when the order argument
+                is omitted.
+            </p>
+
+            <pre><code>let value := Counter.Load()
+Counter.Store(10)
+Counter.FetchAdd(1)</code></pre>
+
+            <p>are equivalent in ordering strength to:</p>
+
+            <pre><code>let value := Counter.Load(MemoryOrder.SeqCst)
+Counter.Store(10, MemoryOrder.SeqCst)
+Counter.FetchAdd(1, MemoryOrder.SeqCst)</code></pre>
+
+            <p>
+                This default gives the simplest portable reasoning model. Weaker orderings are an
+                explicit optimization and should be chosen only when the synchronization argument is
+                understood.
+            </p>
+
+            <p>
+                The formatter must not insert explicit <code>MemoryOrder.SeqCst</code> arguments when the
+                source omitted them.
+            </p>
+        </section>
+
+        <section id="api">
+            <h2>Common Atomic API</h2>
+
+            <p>Every atomic-compatible <code>Atomic[T]</code> provides the common surface:</p>
+
+            <pre><code>impl Atomic[T] {
+    fn Load() T
+    fn Load(order: MemoryOrder) T
+
+    fn Store(value: T) void
+    fn Store(value: T, order: MemoryOrder) void
+
+    fn Swap(value: T) T
+    fn Swap(value: T, order: MemoryOrder) T
+
+    fn CompareExchange(
+        expected: T,
+        desired: T
+    ) CompareExchangeResult[T]
+
+    fn CompareExchange(
+        expected: T,
+        desired: T,
+        successOrder: MemoryOrder,
+        failureOrder: MemoryOrder
+    ) CompareExchangeResult[T]
+}</code></pre>
+
+            <p>
+                Public names are canonical CamelCase. Spellings such as <code>load</code>,
+                <code>compareExchange</code> or <code>fetchAdd</code> are not the Sec 0.1 public API.
+            </p>
+        </section>
+
+        <section id="load">
+            <h2>Load</h2>
+
+            <p><code>Load</code> atomically reads one complete value of <code>T</code>.</p>
+
+            <pre><code>let ready := Ready.Load(MemoryOrder.Acquire)</code></pre>
+
+            <p>Valid explicit load orders are:</p>
+
+            <ul>
+                <li><code>MemoryOrder.Relaxed</code>;</li>
+                <li><code>MemoryOrder.Acquire</code>;</li>
+                <li><code>MemoryOrder.SeqCst</code>.</li>
+            </ul>
+
+            <p>
+                <code>Release</code> and <code>AcqRel</code> are invalid for a pure load because a load
+                does not publish a modification.
+            </p>
+        </section>
+
+        <section id="store">
+            <h2>Store</h2>
+
+            <p><code>Store</code> atomically replaces the contained value and returns <code>void</code>.</p>
+
+            <pre><code>Ready.Store(true, MemoryOrder.Release)</code></pre>
+
+            <p>Valid explicit store orders are:</p>
+
+            <ul>
+                <li><code>MemoryOrder.Relaxed</code>;</li>
+                <li><code>MemoryOrder.Release</code>;</li>
+                <li><code>MemoryOrder.SeqCst</code>.</li>
+            </ul>
+
+            <p>
+                <code>Acquire</code> and <code>AcqRel</code> are invalid for a pure store because the
+                operation does not read atomic state.
+            </p>
+        </section>
+
+        <section id="swap">
+            <h2>Swap</h2>
+
+            <p>
+                <code>Swap</code> is one read-modify-write operation. It atomically reads the previous
+                value, stores the supplied value and returns the previous value.
+            </p>
+
+            <pre><code>let previous := State.Swap(newState, MemoryOrder.AcqRel)</code></pre>
+
+            <p>
+                All five Sec 0.1 memory orders are valid for <code>Swap</code> because it both reads and
+                modifies the atomic object.
+            </p>
+        </section>
+
+        <section id="compare-exchange">
+            <h2>CompareExchange</h2>
+
+            <p>
+                Sec 0.1 provides strong compare-exchange. The exact result type is:
+            </p>
+
+            <pre><code>enum CompareExchangeResult[T] {
+    Exchanged
+    NotExchanged(T)
+}</code></pre>
+
+            <p>
+                <code>Exchanged</code> means the observed value matched <code>expected</code> and
+                <code>desired</code> was stored. <code>NotExchanged(observed)</code> carries the value
+                observed by that same atomic operation when the exchange did not occur.
+            </p>
+
+            <pre><code>match State.CompareExchange(expected, desired) {
+    CompareExchangeResult[WorkerState].Exchanged => {
+        // desired is now stored
+    }
+
+    CompareExchangeResult[WorkerState].NotExchanged(observed) => {
+        // observed is the value seen by this CompareExchange
+    }
+}</code></pre>
+
+            <div class="rule">
+                <strong>Rule:</strong> Compare-exchange mismatch is normal control flow, not a Sec
+                error. The failure path must not perform a second later <code>Load</code> merely to
+                discover what value was observed.
+            </div>
+
+            <p>
+                The simple overload uses <code>SeqCst</code> for both success and failure. The explicit
+                overload accepts separate success and failure orders.
+            </p>
+
+            <p>Valid failure orders are only:</p>
+
+            <ul>
+                <li><code>Relaxed</code>;</li>
+                <li><code>Acquire</code>;</li>
+                <li><code>SeqCst</code>.</li>
+            </ul>
+
+            <p>
+                <code>Release</code> and <code>AcqRel</code> are invalid failure orders because a failed
+                compare-exchange performs no modification. Sec does <strong>not</strong> add a separate
+                rule requiring the failure order to be weaker than the success order.
+            </p>
+        </section>
+
+        <section id="fetch-operations">
+            <h2>Fetch Operations</h2>
+
+            <p>
+                Atomic signed and unsigned integer types additionally provide read-modify-write fetch
+                operations:
+            </p>
+
+            <pre><code>impl Atomic[T] {
+    fn FetchAdd(value: T) T
+    fn FetchAdd(value: T, order: MemoryOrder) T
+
+    fn FetchSub(value: T) T
+    fn FetchSub(value: T, order: MemoryOrder) T
+
+    fn FetchAnd(value: T) T
+    fn FetchAnd(value: T, order: MemoryOrder) T
+
+    fn FetchOr(value: T) T
+    fn FetchOr(value: T, order: MemoryOrder) T
+
+    fn FetchXor(value: T) T
+    fn FetchXor(value: T, order: MemoryOrder) T
+}</code></pre>
+
+            <p>
+                Each operation returns the value stored immediately before its modification. Fetch
+                arithmetic follows the ordinary arithmetic semantics of <code>T</code>. Atomic
+                arithmetic must not introduce C-style undefined signed overflow or silently switch to
+                wrapping behavior merely because the machine instruction wraps.
+            </p>
+
+            <p>
+                These fetch methods are not automatically available for <code>bool</code>, enums or
+                <code>RawPtr[T]</code> just because those types are valid atomic payloads.
+            </p>
+        </section>
+
+        <section id="order-matrix">
+            <h2>Operation / Order Matrix</h2>
+
+            <p>The compiler and LSP must enforce this exact Sec 0.1 matrix:</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Operation</th>
+                        <th>Relaxed</th>
+                        <th>Acquire</th>
+                        <th>Release</th>
+                        <th>AcqRel</th>
+                        <th>SeqCst</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>Load</code></td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>No</td>
+                        <td>No</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td><code>Store</code></td>
+                        <td>Yes</td>
+                        <td>No</td>
+                        <td>Yes</td>
+                        <td>No</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td>RMW success</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td><code>CompareExchange</code> failure</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>No</td>
+                        <td>No</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td><code>atomic.Fence</code></td>
+                        <td>No</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>
+                Invalid combinations are source-level semantic errors. A target backend cannot make
+                an invalid order valid merely because the hardware has an instruction that could be
+                emitted.
+            </p>
+        </section>
+
+        <section id="relaxed">
+            <h2>Relaxed</h2>
+
+            <p>
+                <code>MemoryOrder.Relaxed</code> guarantees atomicity and coherent modification order
+                for the atomic object itself. It does not add acquire ordering for following ordinary
+                memory and does not add release ordering for preceding ordinary memory.
+            </p>
+
+            <pre><code>Requests.FetchAdd(1, MemoryOrder.Relaxed)</code></pre>
+
+            <p>
+                This is appropriate for a counter when no other memory is being published through the
+                increment. It is not, by itself, a publication mechanism for unrelated data.
+            </p>
+        </section>
+
+        <section id="acquire-release">
+            <h2>Acquire and Release</h2>
+
+            <p>
+                Release publishes ordinary effects sequenced before a modifying atomic operation.
+                Acquire constrains operations sequenced after an atomic read and may observe the
+                publication when the read participates in the required communication relation.
+            </p>
+
+            <pre><code>// Producer
+Data.Value = 10
+Ready.Store(true, MemoryOrder.Release)
+
+// Consumer
+if Ready.Load(MemoryOrder.Acquire) {
+    Use(Data)
+}</code></pre>
+
+            <p>
+                The publication is not created merely because the words <code>Release</code> and
+                <code>Acquire</code> appear somewhere in the program. The acquire must observe the
+                qualifying released value, or a value carried through a valid release sequence.
+            </p>
+        </section>
+
+        <section id="acqrel">
+            <h2>AcqRel</h2>
+
+            <p>
+                <code>MemoryOrder.AcqRel</code> combines acquire and release semantics in one
+                read-modify-write operation.
+            </p>
+
+            <pre><code>let previous := State.Swap(next, MemoryOrder.AcqRel)</code></pre>
+
+            <p>
+                It is valid for successful RMW operations and invalid for a pure <code>Load</code>, a
+                pure <code>Store</code> and the failure path of <code>CompareExchange</code>.
+            </p>
+        </section>
+
+        <section id="seqcst">
+            <h2>SeqCst</h2>
+
+            <p>
+                <code>MemoryOrder.SeqCst</code> provides the acquire/release behavior appropriate to the
+                operation and also participates in one global order of sequentially consistent atomic
+                operations and sequentially consistent fences.
+            </p>
+
+            <p>
+                This is the default order for ordinary atomic methods because it provides the simplest
+                portable reasoning model. The compiler may lower it with a stronger target primitive
+                when necessary, but it may never silently weaken the requested ordering.
+            </p>
+        </section>
+
+        <section id="happens-before">
+            <h2>Happens-Before</h2>
+
+            <p>
+                Ownership and borrowing determine who may access a value. The concurrency memory
+                model determines when memory effects are safely visible across overlapping execution
+                contexts. A valid program must satisfy both models.
+            </p>
+
+            <p>
+                Sec defines <em>happens-before</em> from program-order edges and canonical
+                synchronizes-with edges. It is transitive.
+            </p>
+
+            <pre><code>A happens-before B
+B happens-before C
+
+therefore:
+A happens-before C</code></pre>
+
+            <p>
+                Valid release/acquire communication is one way to create a cross-context
+                synchronizes-with edge. Mutex release/acquisition, task/thread completion, channel
+                commit and other owning concurrency rules may create additional edges.
+            </p>
+
+            <p>
+                Volatile access is not synchronization. Ordinary function calls do not create
+                cross-context synchronization merely by being function calls.
+            </p>
+        </section>
+
+        <section id="modification-order">
+            <h2>Modification Order</h2>
+
+            <p>
+                Every atomic storage identity has its own total modification order. Sec does not
+                define one global modification order for all atomic objects.
+            </p>
+
+            <p>These operations add a modification:</p>
+
+            <ul>
+                <li><code>Store</code>;</li>
+                <li><code>Swap</code>;</li>
+                <li><code>FetchAdd</code> and <code>FetchSub</code>;</li>
+                <li><code>FetchAnd</code>, <code>FetchOr</code> and <code>FetchXor</code>;</li>
+                <li>successful <code>CompareExchange</code>.</li>
+            </ul>
+
+            <p>These do not add a modification:</p>
+
+            <ul>
+                <li><code>Load</code>;</li>
+                <li>failed <code>CompareExchange</code>;</li>
+                <li><code>atomic.Fence</code>.</li>
+            </ul>
+
+            <p>
+                A read-modify-write operation reads and modifies one coherent state as one indivisible
+                operation.
+            </p>
+        </section>
+
+        <section id="release-sequences">
+            <h2>Release Sequences</h2>
+
+            <p>
+                A release sequence belongs to one atomic object. It starts with a release modification
+                and may continue through a contiguous chain of later read-modify-write modifications on
+                the same atomic storage identity.
+            </p>
+
+            <pre><code>// Producer
+Data.Value = 42
+Counter.Store(1, MemoryOrder.Release)
+
+// Another execution context
+Counter.FetchAdd(1, MemoryOrder.Relaxed)
+
+// Consumer
+let observed := Counter.Load(MemoryOrder.Acquire)</code></pre>
+
+            <p>
+                The relaxed <code>FetchAdd</code> may extend the release sequence. If the acquire load
+                observes the value produced by that qualifying RMW chain, it can synchronize with the
+                release head and thereby observe the producer's prior write.
+            </p>
+
+            <p>
+                A plain later <code>Store</code> is not RMW and breaks the preceding release sequence.
+                A failed <code>CompareExchange</code> also cannot extend it because failure performs no
+                modification.
+            </p>
+        </section>
+
+        <section id="fences">
+            <h2>Fences</h2>
+
+            <p>Sec 0.1 provides the explicit fence operation:</p>
+
+            <pre><code>atomic.Fence(order: MemoryOrder) void</code></pre>
+
+            <p>The order is mandatory. Valid fence orders are:</p>
+
+            <ul>
+                <li><code>Acquire</code>;</li>
+                <li><code>Release</code>;</li>
+                <li><code>AcqRel</code>;</li>
+                <li><code>SeqCst</code>.</li>
+            </ul>
+
+            <p><code>MemoryOrder.Relaxed</code> is invalid for a fence.</p>
+
+            <p>
+                A fence does not itself load or store an <code>Atomic[T]</code>. Two fences do not
+                synchronize merely because both exist. Fence synchronization requires the qualifying
+                atomic communication defined by the concurrency memory model.
+            </p>
+
+            <pre><code>Data.Value = 42
+atomic.Fence(MemoryOrder.Release)
+Ready.Store(true, MemoryOrder.Relaxed)
+
+// another execution context
+if Ready.Load(MemoryOrder.Acquire) {
+    Use(Data)
+}</code></pre>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership and Shared Access</h2>
+
+            <p>
+                <code>Atomic[T]</code> follows ordinary Sec ownership rules and owns exactly one atomic
+                storage identity. Atomic interior mutation is a compiler-known exception to ordinary
+                mutable-borrow syntax: valid shared references may invoke atomic methods.
+            </p>
+
+            <pre><code>fn Increment(counter: ref Atomic[uint64]) void {
+    counter.FetchAdd(1)
+}</code></pre>
+
+            <p>
+                This exception applies only to the atomic object's compiler-known interior mutation.
+                It does not authorize unsynchronized mutation of nearby ordinary fields.
+            </p>
+
+            <p>
+                <code>Atomic[T]</code> must not expose an ordinary <code>ref T</code> or
+                <code>ref mut T</code> to the contained value. Concurrent access must go through the
+                atomic API or another explicitly defined operation preserving the same contract.
+            </p>
+        </section>
+
+        <section id="mixing">
+            <h2>Atomic and Non-Atomic Access</h2>
+
+            <p>
+                The same shared storage location must not be concurrently accessed through a mixture
+                of atomic and ordinary non-atomic operations.
+            </p>
+
+            <p>
+                A stronger order on the atomic side does not repair this. When the compiler can prove
+                invalid mixing statically, it must reject the program. Unsafe code may make proof more
+                difficult, but it does not turn a data race into valid Sec behavior.
+            </p>
+        </section>
+
+        <section id="multi-field">
+            <h2>Multi-Field Invariants</h2>
+
+            <p>
+                Separate atomic fields remain separate storage identities. They do not give a reader a
+                transactionally consistent snapshot across all fields.
+            </p>
+
+            <pre><code>type Statistics struct {
+    Requests: Atomic[uint64]
+    Failures: Atomic[uint64]
+}</code></pre>
+
+            <p>
+                Each field is individually atomic. The enclosing <code>Statistics</code> value is not one
+                atomic object, and ordinary non-atomic fields in the same struct do not become safe for
+                concurrent mutation.
+            </p>
+
+            <p>
+                If correctness depends on one invariant spanning several values, prefer
+                <code>Mutex[T]</code> or another higher-level synchronization mechanism.
+            </p>
+        </section>
+
+        <section id="named-types">
+            <h2>Named Types and Enums</h2>
+
+            <p>A compatible named integer type can preserve its identity through atomic operations:</p>
+
+            <pre><code>type RequestCount uint64
+
+let count: Atomic[RequestCount] := Atomic(RequestCount(0))
+let previous: RequestCount := count.Swap(RequestCount(10))</code></pre>
+
+            <p>
+                Fetch arithmetic is available only when the named type's ordinary contracts remain
+                enforceable. A ranged named type must not be atomically incremented into an invalid
+                value merely because the target has a wrapping machine instruction.
+            </p>
+
+            <p>Integer-backed enums may use the common atomic surface:</p>
+
+            <pre><code>enum WorkerState uint8 {
+    Idle
+    Running
+    Stopping
+}
+
+let state: Atomic[WorkerState] := Atomic(WorkerState.Idle)</code></pre>
+
+            <p>
+                Enums receive <code>Load</code>, <code>Store</code>, <code>Swap</code> and
+                <code>CompareExchange</code>. They do not receive integer fetch arithmetic or bitwise
+                fetch operations in Sec 0.1.
+            </p>
+        </section>
+
+        <section id="rawptr">
+            <h2>RawPtr Atomics</h2>
+
+            <p><code>RawPtr[T]</code> is atomic-compatible in Sec 0.1.</p>
+
+            <p>The guaranteed pointer surface is:</p>
+
+            <ul>
+                <li><code>Load</code>;</li>
+                <li><code>Store</code>;</li>
+                <li><code>Swap</code>;</li>
+                <li><code>CompareExchange</code>.</li>
+            </ul>
+
+            <p>
+                Atomic pointer operations do not create pointee ownership, extend pointee lifetime or
+                solve memory reclamation. Pointer arithmetic fetch operations are not part of the
+                Sec 0.1 API, and compare-exchange does not imply ABA safety.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target Capability</h2>
+
+            <p>
+                The immutable <code>CompilationPlan</code> is the authoritative source of concrete
+                target capability. Capability may depend on:
+            </p>
+
+            <ul>
+                <li>the concrete <code>T</code>;</li>
+                <li>size and alignment;</li>
+                <li>operation kind;</li>
+                <li>requested memory order;</li>
+                <li>execution context;</li>
+                <li>interrupt-safety requirements;</li>
+                <li>target architecture;</li>
+                <li>runtime and profile policy.</li>
+            </ul>
+
+            <p>
+                A conforming target may use a native instruction, compiler intrinsic or another
+                verified platform primitive. A hidden blocking global-mutex fallback is not
+                automatically permitted.
+            </p>
+
+            <p>
+                If an emulation strategy blocks, it is invalid in a context that forbids blocking. If
+                no conforming implementation exists for the selected plan, compilation must fail with
+                a focused target-capability diagnostic rather than silently degrading to non-atomic
+                access.
+            </p>
+        </section>
+
+        <section id="interrupts">
+            <h2>Interrupt Contexts</h2>
+
+            <p>
+                Atomic eligibility does not automatically imply ISR suitability. An ISR may use an
+                atomic operation only when the active <code>CompilationPlan</code> proves that the
+                concrete lowering is valid in that interrupt context.
+            </p>
+
+            <p>
+                A blocking emulation cannot satisfy an ISR-safe atomic requirement. Interrupt masking
+                may be a valid target technique only when the platform contract proves that the masking
+                establishes the required exclusion and ordering.
+            </p>
+
+            <p>
+                Local interrupt masking must not be assumed to synchronize with another CPU core, DMA
+                engine or unrelated execution domain.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>
+                Tooling must present the source-visible atomic model rather than backend intrinsics.
+                In particular:
+            </p>
+
+            <ul>
+                <li>hover for <code>MemoryOrder</code> exposes the exact five variants;</li>
+                <li>hover for <code>CompareExchangeResult[T]</code> exposes <code>Exchanged</code> and <code>NotExchanged(T)</code>;</li>
+                <li>completion on <code>Atomic[T]</code> offers only methods semantically applicable to the concrete <code>T</code>;</li>
+                <li>completion uses canonical CamelCase method names;</li>
+                <li>diagnostics distinguish an invalid Sec operation from a valid Sec operation unavailable for the selected <code>CompilationPlan</code>.</li>
+            </ul>
+
+            <p>Useful diagnostics include:</p>
+
+            <pre><code>error: MemoryOrder.Release is not valid for Atomic.Load
+help: use Relaxed, Acquire or SeqCst
+
+error: Atomic[float64] is not atomic-compatible in Sec 0.1
+
+error: this target cannot implement Atomic[uint64].CompareExchange
+       with the requested ordering in this execution context</code></pre>
+        </section>
+
+        <section id="status">
+            <h2>Current Implementation Status</h2>
+
+            <p>
+                The Sec 0.1 atomic language model is normative, but implementation is currently
+                <strong>partial</strong>.
+            </p>
+
+            <p>The canonical implementation ledger records the remaining work as including:</p>
+
+            <ul>
+                <li>source-register the exact core <code>MemoryOrder</code> enum;</li>
+                <li>source-register the generic <code>CompareExchangeResult[T]</code> enum;</li>
+                <li>expose the exact compiler-known <code>Atomic[T]</code> API through Sema and LSP;</li>
+                <li>synchronize member lookup to the canonical CamelCase names;</li>
+                <li>implement exact per-<code>T</code> method applicability;</li>
+                <li>implement the exact operation/order matrix;</li>
+                <li>preserve successful and failed <code>CompareExchange</code> paths distinctly;</li>
+                <li>implement <code>atomic.Fence</code> through parsing, Sema, IR and lowering;</li>
+                <li>separate semantic eligibility from target capability;</li>
+                <li>add target-aware diagnostics and complete tooling support.</li>
+            </ul>
+
+            <p>
+                Semantic IR atomic facts, final atomic lowering and CompilationPlan atomic-capability
+                modeling are still planned work. The manual describes the normative language surface,
+                not only the currently integrated subset.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use <code>SeqCst</code> unless you have a concrete reason to weaken ordering.</li>
+                <li>Use <code>Relaxed</code> for independent counters and flags only when no unrelated memory is being published through the operation.</li>
+                <li>Use release/acquire as a publication pair when one context publishes ordinary memory for another.</li>
+                <li>Do not use atomics as decoration around a multi-field invariant that really needs a mutex.</li>
+                <li>Do not mix atomic and ordinary concurrent access to the same storage location.</li>
+                <li>Do not assume volatile access provides synchronization.</li>
+                <li>Treat compare-exchange mismatch as ordinary control flow and use the observed value returned by the operation.</li>
+                <li>Do not assume an atomic pointer solves lifetime, ownership, ABA or memory reclamation.</li>
+                <li>Keep target capability separate from source-language type eligibility.</li>
+                <li>Re-check ISR suitability separately even when an atomic operation is valid in ordinary thread/task code.</li>
+                <li>Use fences only when the synchronization pattern genuinely requires them; a fence by itself is not communication.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>Atomic[T]</code> owns one indivisible atomic storage identity.</li>
+                <li>Sec 0.1 atomics intentionally support a conservative scalar type set.</li>
+                <li>Atomic compatibility is a language rule; concrete operation support is a CompilationPlan capability.</li>
+                <li><code>MemoryOrder</code> is exactly <code>Relaxed</code>, <code>Acquire</code>, <code>Release</code>, <code>AcqRel</code> and <code>SeqCst</code>.</li>
+                <li>Ordinary atomic operations default to <code>SeqCst</code>.</li>
+                <li><code>Load</code>, <code>Store</code>, <code>Swap</code> and <code>CompareExchange</code> form the common atomic surface.</li>
+                <li>Integer atomics additionally provide fetch arithmetic and bitwise RMW operations.</li>
+                <li><code>CompareExchangeResult[T]</code> is <code>Exchanged | NotExchanged(T)</code>; mismatch is not an error.</li>
+                <li>Failed compare-exchange is a read only and accepts only Relaxed, Acquire or SeqCst failure ordering.</li>
+                <li>Sec does not require compare-exchange failure ordering to be weaker than success ordering.</li>
+                <li>Every atomic object has its own total modification order.</li>
+                <li>RMW operations are indivisible reads plus modifications and may extend a valid release sequence.</li>
+                <li>A plain Store breaks an earlier release sequence; a failed CompareExchange does not extend one.</li>
+                <li><code>atomic.Fence</code> requires an explicit non-Relaxed order and does not synchronize by existing alone.</li>
+                <li>Atomics do not create ownership and do not make multiple fields transactional.</li>
+                <li>Mixing atomic and ordinary concurrent access to one location is invalid.</li>
+                <li>Target and ISR capability must be proven independently from source-level atomic eligibility.</li>
+                <li>The normative atomic model is complete, while current compiler/tooling integration remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="63-mutexes.html">Previous: Mutexes and Locks</a>
+            <a href="65-processes.html">Next: Processes and Command</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-15</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

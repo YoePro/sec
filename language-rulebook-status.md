@@ -58,6 +58,7 @@ The following newer rulebooks have been added to the canonical inventory:
 ```text
 collections/collections.md
 collections/shaped-types.md
+concurrency/ipc.md
 concurrency/thread_local.md
 control-flow/discard.md
 declarations/generics.md
@@ -371,8 +372,8 @@ implementation remains tracked separately.
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `concurrency/concurrency.md` | **Written** | Canonical revision 2.1 umbrella model synchronized with task v2, process v2, execution-kind boundaries, transferability, race/deadlock ownership, Semantic IR, and immutable `CompilationPlan`-driven lowering. Implementation is tracked by `concurrency.model-v2` in `governance/concurrency_model.yaml` and the specialist governance entries. |
-| `concurrency/concurrency_memory_model.md` | **Written** | Revision 2.0 defines exact MemoryOrder, per-atomic modification order, release sequences, compare-exchange paths, fences, completion publication, and analysis/lowering obligations. |
+| `concurrency/concurrency.md` | **Written** | Canonical revision 2.2 umbrella model synchronized with task v2, process v2, IPC v1, execution-kind boundaries, transferability, race/deadlock ownership, Semantic IR, and immutable `CompilationPlan`-driven lowering. Implementation is tracked by `concurrency.model-v2` in `governance/concurrency_model.yaml` and the specialist governance entries. |
+| `concurrency/concurrency_memory_model.md` | **Written** | Revision 2.0 defines exact MemoryOrder, per-atomic modification order, release sequences, compare-exchange paths, fences, completion publication, and analysis/lowering obligations; IPC visibility follows its explicit transport or shared-memory contract rather than inheriting ordinary in-process semantics. |
 | `concurrency/concurrency_runtime_model.md` | **Written** | Canonical no-required-runtime profile model, runtime capability surface, task/thread/process/context errors, and target-selected lowering boundaries. |
 | `concurrency/tasks.md` | **Written** | Canonical revision 2.0 task semantics: fallible task spawn, move-only lifecycle ownership, `TaskOutcome[T]`, cancellation, panic/execution-failure separation, observers, transferability, Semantic IR, and runtime-independent lowering. Implementation is tracked by `concurrency.tasks-v2` in `governance/concurrency_task.yaml`. |
 | `concurrency/spawn.md` | **Written** | All spawn forms are fallible; `spawn process` yields `Result[Process[T], ProcessSpawnError]` with process-specific transactional transfer. |
@@ -383,14 +384,14 @@ implementation remains tracked separately.
 | `concurrency/blocking.md` | **Written** | Includes owning process/Command join, non-owning ProcessObserver waits, IPC waiting operations and guard liveness, process effects, cancellation commit, deadlock edges, and ISR restrictions. |
 | `concurrency/cancellation.md` | **Written** | Revision 2.0 defines distinct task/thread cancellation, inferred cancellable-execution effects, exactly-one commit, and Context/ContextSource. |
 | `concurrency/structured_concurrency.md` | **Written — sync required** | |
-| `memory/transferability.md` | **Written** | Canonical revision 2.0 boundary-specific transferability and shareability across tasks, physical threads, processes, interrupts, and foreign callbacks, including closure/reference/capability dependencies and platform constraints. Implementation progress is tracked by the six `*.transferability` entries in `implementation-status.yaml`. |
+| `memory/transferability.md` | **Written** | Canonical revision 2.0 boundary-specific transferability and shareability across tasks, physical threads, processes, interrupts, and foreign callbacks, including IPC route adapters, transactional capability transfer, closure/reference/capability dependencies, and platform constraints. Implementation progress is tracked by the owning governance fragments. |
 | `analysis/data_races.md` | **Written** | Canonical data-race analysis rules; implementation status is tracked by `sema.data-race-analysis` in `implementation-status.yaml`. |
 | `analysis/deadlock_analysis.md` | **Written** | Canonical deadlock-analysis rules; implementation status is tracked by `sema.deadlock-analysis` in `implementation-status.yaml`. |
-| `concurrency/channels.md` | **Written — sync required** | Ordinary Channel[T]/Sender[T]/Receiver[T] are explicitly in-process and distinct from IPCSender[T]/IPCReceiver[T]; unrelated channel synchronization work remains. |
+| `concurrency/channels.md` | **Written** | Revision 2.0 defines exact in-process Channel/endpoint/result APIs, allocation-only fallible construction, sender sharing limits, revocable-ticket ownership, expiration/statistics, select/cancellation commit semantics, and strict IPC separation. Implementation remains partial and is tracked by `concurrency.channels-v2` in `governance/concurrency_channels.yaml`. |
 | `concurrency/events.md` | **Written — sync required** | C#-style publish/subscribe event model; distinct from readiness/completion. |
 | `concurrency/select.md` | **Written** | Includes selectable owning Process join, repeatable non-owning ProcessObserver.Wait, and non-destructive readiness/commit for primitive IPC operations. |
 | `concurrency/mutex.md` | **Written** | Revision 2.0 defines canonical Lock overloads, @noCopy guards, forwarding, Context ownership, duration/Instant, and cancellation commit semantics. |
-| `concurrency/atomics.md` | **Written** | Revision 2.0 defines canonical Atomic[T], MemoryOrder, CompareExchangeResult[T], CamelCase operations, fences, and target-capability separation. |
+| `concurrency/atomics.md` | **Written** | Revision 2.0 defines canonical Atomic[T], MemoryOrder, CompareExchangeResult[T], CamelCase operations, fences, and target-capability separation; IPCAtomic[T] reuses its order and compare-exchange contracts while IPC owns process-shared eligibility and lifecycle. |
 | `concurrency/processes.md` | **Written** | Revision 2.1 is the normative Sec 0.1 model for Process[T], Command, lifecycle/completion, standard I/O, Resource-mode direct File/Pipe binding, target capabilities, analysis, and lowering; compiler/runtime implementation remains planned and is tracked by `concurrency.processes-v2` in `governance/concurrency_process.yaml`. |
 | `concurrency/ipc.md` | **Written** | Revision 1.0 defines canonical pipes, typed IPC, shared memory/mappings, IPCMutex/IPCSemaphore, SharedValue[T], IPCAtomic[T], capability/resource transfer, Command Resource binding, target capabilities, analysis, lowering, security, and conformance obligations. Implementation remains planned and is tracked by `concurrency.ipc-v1` in `governance/concurrency_ipc.yaml`. |
 
@@ -422,7 +423,7 @@ IPC is design-complete for Sec 0.1 but its compiler/runtime/platform implementat
 | `declarations/properties.md` | **Written** | Implementation progress is tracked by `frontend.properties` in `governance/declarations.yaml`. |
 | `library/core-library.md` | **Written** | Compiler-known core declarations, privileged impl access, source-visible compiler/core identity, and required language-level core errors. |
 | `compiler/compiler_known_members.md` | **Written** | Canonical typed registry, stable member identities, fallback-versus-authoritative policy, universal `ToString() string`, property-only `SizeOf`, complete compiler-known declaration governance, core boundary, and tooling behavior. Initial Sema/LSP registry integration remains partial. |
-| `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts, including the canonical `stdlib/hw` area and reserved `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart` infrastructure, plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, and explicit resource lifecycle diagnostics. Hardware-bus governance is tracked by `stdlib.hardware-bus-infrastructure` in `governance/stdlib.yaml`; allocating complete-file APIs and directory-list APIs remain pending. |
+| `library/stdlib.md` | **Written — partially implemented** | Standard-library boundaries and target contracts, including the canonical `stdlib/hw` area and reserved `hw/spi`, `hw/i2c`, `hw/i2s`, and `hw/uart` infrastructure, plus Linux/amd64 streaming file IO, exact and complete caller-buffer reads, writes/copy, seek/flush/truncate/close, directory iteration, non-recursive path operations, path bridging, explicit resource lifecycle diagnostics, and the `File.Duplicate()` contract required for direct IPC/process resource binding. Hardware-bus governance is tracked by `stdlib.hardware-bus-infrastructure` in `governance/stdlib.yaml`; allocating complete-file APIs and directory-list APIs remain pending. |
 
 Built-in lowercase types may receive privileged implementations in core.
 
@@ -466,7 +467,7 @@ OrderedMap[K, V]
 | `compiler/compiler.md` | **Written** | Canonical revision 2.0 compiler responsibilities, Target/Variant and CompilationPlan authority, source selection, compiler-known surfaces, frontend orchestration, backend boundaries, diagnostics, and tooling contracts. Implementation progress is tracked by the `compiler-core` integration family in `implementation-status.yaml`. |
 | `compiler/compiler_analysis.md` | **Written** | Canonical revision 2.0 analysis-coordination and fact-ownership model. Implementation progress is tracked by the `analysis.compiler-analysis` family in `implementation-status.yaml`. |
 | `compiler/compiler_pipeline.md` | **Written** | Canonical revision 2.0 phase-boundary pipeline from CompilationRequest and CompilationPlan through frontend analysis, Semantic IR, Sec MLIR, target artifacts, linking, testing, and publication. Implementation progress is tracked by the `compiler-pipeline` integration family in `implementation-status.yaml`. |
-| `compiler/semantic_ir.md` | **Written** | Canonical revision 2.0 typed Semantic IR model, including ownership, allocation, effects, concurrency, collections, shaped values, panic, checks, and resolved iterator plans. Implementation progress is tracked by the `semantic-ir-v2` integration family in `implementation-status.yaml`. |
+| `compiler/semantic_ir.md` | **Written** | Canonical revision 2.0 typed Semantic IR model, including ownership, allocation, effects, concurrency, IPC resource/transfer/commit facts, collections, shaped values, panic, checks, and resolved iterator plans. Implementation progress is tracked by the owning `semantic-ir-v2` governance entries. |
 | `compiler/rules_implementations.txt` | **Living** | Legacy implementation notes being migrated into `implementation-status.yaml`. |
 | `analysis/call_graph.md` | **Written** | Canonical callable reachability and execution relationships. Implementation status is tracked by `analysis.call-graph` in `implementation-status.yaml`. |
 | `analysis/stack_analysis.md` | **Written** | Canonical semantic and machine stack-resource analysis; implementation status is tracked by `sema.stack-analysis` in `implementation-status.yaml`. |
@@ -647,6 +648,7 @@ concurrency/mutex.md
 foundations/operators.md
 memory/ownership.md
 errors/panic.md
+concurrency/ipc.md
 concurrency/processes.md
 projects/projects.txt
 projects/modules.md

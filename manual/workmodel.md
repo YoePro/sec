@@ -23,7 +23,7 @@ Jag tycker därför att vi ska sluta försöka få manualen att sluta på 45. De
 | 47 | 47-lambdas-closures.html | Lambdas and Closures | Partly - Krävs; skriv när closure-regelboken/statusen är helt synkad | 
 | 48 | 48-effects.html | Effects and Verified Guarantees | Skriven | 
 | 49 | 49-platforms.html | Platforms and Target Profiles | Skriven | 
-| 50 | 50-hardware-access.html | Fixed Addresses, Volatile and Hardware Access | Skrive behöver uppdateras. | 
+| 50 | 50-hardware-access.html | Fixed Addresses, Volatile and Hardware Access | Skriven behöver uppdateras. | 
 | 51 | 51-interrupts.html | Interrupts and ISRs | Skriven | 
 | 52 | 52-inline-assembly.html | Inline Assembly | Skriven | 
 | 53 | 53-initialization.html | Program Initialization and Shutdown | Skriven | 
@@ -36,14 +36,14 @@ Jag tycker därför att vi ska sluta försöka få manualen att sluta på 45. De
 | 60 | 60-scheduling.html | Scheduling, Blocking and Structured Concurrency | Vänta tills sync-required-böckerna är synkade | 
 | 61 | 61-channels-select.html | Channels and Select | Select klar, Channels behöver sync | 
 | 62 | 62-events.html | Events | Vänta på sync | 
-| 63 | 63-mutexes.html | Mutexes and Locks | Skriv nu | 
-| 64 | 64-atomics.html | Atomics and Memory Order | Skriv nu | 
-| 65 | 65-processes.html | Processes and Command | Skriv nu | 
-| 66 | 66-ipc.html | Inter-Process Communication | När IPC-regelboken du arbetar med är färdig | 
+| 63 | 63-mutexes.html | Mutexes and Locks | Skriven | 
+| 64 | 64-atomics.html | Atomics and Memory Order | Skriven | 
+| 65 | 65-processes.html | Processes and Command | Skriven | 
+| 66 | 66-ipc.html | Inter-Process Communication | Skriven | 
 | 67 | 67-concurrency-safety.html | Transferability, Data Races and Deadlocks | Skriv nu | 
 | 68 | 68-testing.html | Testing | Skriven | 
-| 69 | 69-analysis.html | Static Analysis and sec analyse | Skriv nu | 
-| 70 | 70-formatting.html | Formatting | Skriv nu | 
+| 69 | 69-analysis.html | Static Analysis and sec analyse | Skriven | 
+| 70 | 70-formatting.html | Formatting | Skriven | 
 | 71 | 71-diagnostics.html | Diagnostics | Krävs; centrala rulebooken är fortfarande sync-required | 
 | 72 | 72-lsp.html | Editor and Language Server | Skriv sist; LSP-rulebooken är Living | 
 |---|---|---|---|

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-09-06
+- **Last updated:** 2026-09-15
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/cancellation.md`
@@ -653,6 +653,22 @@ call to ProcessBatch requires a current cancellable task or thread execution con
 - current-execution cancellation cleanup proceeds.
 
 § 28(4) If a select branch commits first, that branch's ordinary ownership/result semantics apply before later cancellation cleanup.
+
+§ 28(5) The potentially waiting ordinary-channel operations are `Send`,
+`Send(message, lifetime)`, `SendRevocable`, and `Receive`.
+
+§ 28(6) `TrySend`, `TryReceive`, `Share`, `MessageTicket.Revoke`, `Discard`,
+`Statistics`, and endpoint `Close` are non-waiting operations.
+
+§ 28(7) Sec 0.1 channel APIs do not accept `ref Context`. A `Context` in
+lexical scope does not implicitly cancel a channel wait; operation wait
+timeouts are composed explicitly through `select` and `after`.
+
+§ 28(8) If current-execution cancellation wins before channel commit, no
+message transfer, ticket creation, receive removal, statistics increment, or
+terminal-state change occurs. If channel commit wins first, its exact result
+and ownership effects remain committed and later cancellation cannot roll them
+back.
 
 ---
 

@@ -404,21 +404,46 @@ The non-selected task handle remains unchanged.
 
 ---
 
-## Additional I/O readiness
+## IPC readiness and commit
 
-The `select` model may later support other readiness-based operations, including:
+Sec 0.1 recognizes these primitive IPC select operations:
 
-- IPC receive;
-- socket receive;
-- listener accept;
-- timer completion;
-- device-event readiness;
-- future channel types.
+```text
+PipeReader.Read
+PipeWriter.Write
+IPCSender[T].Send
+IPCReceiver[T].Receive
+IPCMutex.Lock
+IPCSemaphore.Acquire
+```
 
-An operation may participate only when semantic analysis recognizes it as
-selectable.
+Readiness is non-destructive. A non-selected branch consumes or writes no pipe
+bytes, commits or materializes no typed message, transfers no message ownership,
+acquires no IPC mutex or guard, and consumes no semaphore permit. Only the
+selected branch may commit.
 
-Ordinary function calls are not selectable merely because they may block.
+`PipeReader.ReadExact` and `PipeWriter.WriteAll` are composed operations and are
+not primitive selectable operations in Sec 0.1.
+
+```sec
+select {
+    sender.Send(<-message) => {
+        // ownership commits only if the selected Send returns Ok()
+    }
+    after 1s => {
+        // message remains available
+    }
+}
+```
+
+If the selected send returns `Err`, ownership remains available because send
+commit did not occur. Likewise, a non-selected `IPCMutex.Lock` creates no guard
+and a non-selected `IPCSemaphore.Acquire` consumes no permit. Process join and
+`ProcessObserver.Wait()` retain their existing selectable semantics.
+
+Socket, listener, timer, and device-event readiness require their own canonical
+operation definitions. Ordinary function calls are not selectable merely
+because they may block.
 
 ---
 
@@ -1330,5 +1355,5 @@ mutex.md
 atomics.md
 concurrency_memory_model.md
 processes.md
-ipc.txt
+ipc.md
 ```

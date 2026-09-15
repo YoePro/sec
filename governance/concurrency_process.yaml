@@ -5,10 +5,10 @@ integrations:
   - id: concurrency.processes-v2
     area: process-execution-and-lifecycle
     status: planned
-    reviewed: '2026-09-06'
-    document_revision: '2.0'
+    reviewed: '2026-09-15'
+    document_revision: '2.1'
     repository_baseline: 0f5027d
-    summary: 'Implements the canonical Sec 0.1 process model defined by rules/concurrency/processes.md: isolated Sec-callable subprocesses through spawn process, external executable launch through Command, complete compiler-known process/core types, transactional startup transfer, typed completion transfer, process observation, join/detach/termination, standard-I/O launch modes and pipes, target capability validation, process lifecycle analysis, Semantic IR, lowering, diagnostics, and deterministic native cleanup/reaping. The previous processes.txt file was only a placeholder and does not represent an implementation baseline.'
+    summary: 'Implements the canonical Sec 0.1 process model defined by rules/concurrency/processes.md: isolated Sec-callable subprocesses through spawn process, external executable launch through Command, complete compiler-known process/core types, transactional startup transfer, typed completion transfer, process observation, join/detach/termination, standard-I/O launch modes, pipes, and Resource-mode direct File/Pipe binding through the IPC capability model, target capability validation, process lifecycle analysis, Semantic IR, lowering, diagnostics, and deterministic native cleanup/reaping. The previous processes.txt file was only a placeholder and does not represent an implementation baseline.'
     rules:
     - rules/concurrency/processes.md
     - rules/concurrency/spawn.md
@@ -29,7 +29,7 @@ integrations:
     - rules/compiler/semantic_ir.md
     - rules/platform/target_profiles.md
     - rules/platform/platform_model.md
-    - rules/ipc.md
+    - rules/concurrency/ipc.md
     implemented: []
     remaining:
     - add compiler-known/core declarations for Process[T], ProcessID, ProcessStatus, ExitStatus, ProcessTerminationKind, ProcessTermination, ProcessCompletionError, ProcessSpawnError, ProcessTerminationError, ProcessObserver, Command, CommandConfigurationError, CommandValidationError, CommandStartError, CommandInputMode, CommandOutputMode, and ProcessPlatform
@@ -64,14 +64,16 @@ integrations:
     - implement infallible Command construction, optional Validate() preflight, and fallible Start() with complete rollback to Created on failure
     - implement Command executable resolution, arguments, working-directory configuration, environment inheritance/overrides/removals, and Start-time snapshot semantics
     - make SetWorkingDirectory() eagerly verify current existence, directory kind, and usable permissions while retaining Validate()/Start() revalidation
-    - implement CommandInputMode Inherit/Closed/Pipe and CommandOutputMode Inherit/Discard/Pipe
+    - implement CommandInputMode Inherit/Closed/Pipe/Resource and CommandOutputMode Inherit/Discard/Pipe/Resource
+    - add Command SetStdin(File), SetStdin(PipeReader), SetStdout(File), SetStdout(PipeWriter), SetStderr(File), and SetStderr(PipeWriter) with transactional conditional ownership commit
+    - add CommandConfigurationError.InvalidIOResource and preserve the previous configuration and source ownership on failure
     - implement anonymous process standard-I/O pipe creation atomically as part of successful Command.Start()
     - implement Command TakeStdinPipe(), TakeStdoutPipe(), and TakeStderrPipe() through internal optional ownership slots rather than direct aggregate partial-move state
     - keep join and lifecycle Drain from reading or buffering stdout/stderr
     - implement resolved Command and Process[T] destruction with internal infallible lifecycle Drain that releases retained native/runtime bookkeeping without implicit join, terminate, detach, or standard-I/O draining
     - reject unresolved process lifecycle owners at scope exit rather than silently invoking lifecycle-changing destruction behavior
     - allow child processes to replace/close/redirect their own standard streams after start without mutating parent-side Command launch configuration or retargeting existing pipe endpoints
-    - add target/CompilationPlan facts ProcessExecution, ExternalProcessExecution, ProcessDetach, ProcessTermination, ProcessStandardIOInheritance, and ProcessPipes
+    - add target/CompilationPlan facts ProcessExecution, ExternalProcessExecution, ProcessDetach, ProcessTermination, ProcessStandardIOPipes, and ProcessStandardIOResourceBinding(T, role)
     - reject statically unsupported process capabilities at compile time instead of converting them into runtime errors
     - ensure bare-metal, scheduler-only, and RTOS task facilities do not satisfy Sec process semantics without the required isolation, transfer, lifecycle, and cleanup model
     - provide a complete concrete ProcessPlatform implementation for every process-capable target, including a target-native read-only ID type
@@ -83,17 +85,16 @@ integrations:
     - integrate process edges into deadlock analysis and keep ordinary parent/child memory out of data-race sharing unless explicit IPC/shared-memory types introduce sharing
     - add explicit Semantic IR operations/facts for process spawn, command create/configure/validate/start, owner movement, observers, wait, join, termination request, detach, pipe extraction, completion states, lifecycle Drain, and process-transfer prepare/commit/rollback
     - lower process operations only after ownership, transferability, lifecycle, completion, and target capability facts have been verified
-    - synchronize spawn.md, select.md, blocking.md, concurrency.md, panic.md, language-rulebook-status.md, and implementation-status.yaml with the process v2 model
-    - resolve existing File/socket/native-capability standard-I/O binding against the canonical IPC capability-transfer model before declaring that extension complete
+    - synchronize spawn.md, select.md, blocking.md, concurrency.md, panic.md, language-rulebook-status.md, and the canonical governance fragments with the process v2 model
     governance_reconciliation:
     - rules/concurrency/processes.md is the sole canonical owner of Process[T], Command process lifecycle, process join/detach/termination, process completion, and process-specific target semantics
     - rules/memory/transferability.md remains the canonical owner of ProcessTransferable proof and adapter validity; processes.md consumes that proof
-    - rules/ipc.md owns PipeReader, PipeWriter, general IPC, shared memory, and general handle/capability transfer
+    - rules/concurrency/ipc.md owns PipeReader, PipeWriter, general IPC, shared memory, and general handle/capability transfer
     - rules/concurrency/spawn.md owns generic spawn syntax and common execution-kind dispatch but must delegate process-specific transfer/lifecycle semantics to processes.md
     - rules/concurrency/select.md owns generic select source-order/readiness/commit rules while processes.md owns process-join and ProcessObserver.Wait readiness semantics
     - rules/concurrency/blocking.md owns generic blocking/suspension/effect rules while processes.md classifies process operations under those rules
     - rules/errors/panic.md remains the canonical owner of PanicInfo/PanicID and panic-domain semantics; processes.md only transports/observes canonical panic information
-    - implementation-status.yaml remains mutable implementation state and must not be copied into the normative process rulebook
+    - mutable implementation status belongs in the canonical split governance ledger and must not be copied into the normative process rulebook
     required_tests:
     - spawn process returning T has raw type Result[Process[T], ProcessSpawnError]
     - spawn process preserves nested Result as Process[Result[T, E]]
@@ -138,3 +139,4 @@ integrations:
     corrections_applied:
     - rules/corrections/applied/processes-cross-rulebook-correction-20260907.md
     - rules/corrections/applied/panic-info-compiler-known-correction-20260907.md
+    - rules/corrections/applied/ipc-cross-rulebook-correction-20260915.md

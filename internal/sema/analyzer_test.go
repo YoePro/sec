@@ -6953,6 +6953,61 @@ fn Bad(value: Box[int]) Box[string] {
 	assertSemaErrors(t, errors, expected)
 }
 
+func TestGenericNamedTypeCarrierSubstitutionAndIdentity(t *testing.T) {
+	input := `
+module main
+
+type ID[T] int
+type Wrapped[T] T
+
+fn UserID() ID[string] {
+	return ID[string](10)
+}
+
+fn WrappedName() Wrapped[string] {
+	return Wrapped[string]("Ada")
+}
+
+fn WrongIdentity() ID[string] {
+	return ID[int](10)
+}
+
+type Record struct {
+	value: int,
+}
+
+fn WrappedRecord(value: Record) Wrapped[Record] {
+	return Wrapped[Record](value)
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"function WrongIdentity must return ID[string], got ID[int] at 16:9",
+	})
+
+	var wrapped Type
+	for _, instance := range analyzer.genericTypeInstances {
+		if instance.Name == "Wrapped" && len(instance.TypeArgs) == 1 && instance.TypeArgs[0].Name == "string" {
+			wrapped = instance
+			break
+		}
+	}
+	if wrapped.Name != "Wrapped" || wrapped.Kind != StringType || wrapped.Underlying != "string" || !wrapped.Named || len(wrapped.GenericParameters) != 0 {
+		t.Fatalf("wrong Wrapped[string] specialization: %+v", wrapped)
+	}
+	var wrappedRecord Type
+	for _, instance := range analyzer.genericTypeInstances {
+		if instance.Name == "Wrapped" && len(instance.TypeArgs) == 1 && instance.TypeArgs[0].Name == "Record" {
+			wrappedRecord = instance
+			break
+		}
+	}
+	if wrappedRecord.Kind != StructType || wrappedRecord.Underlying != "Record" || len(wrappedRecord.Fields) != 1 || wrappedRecord.Fields[0].Name != "value" {
+		t.Fatalf("wrong Wrapped[Record] representation: %+v", wrappedRecord)
+	}
+}
+
 func TestGenericEnumIdentityMembersAndImplScope(t *testing.T) {
 	input := `
 module main
@@ -7109,6 +7164,58 @@ fn UseString() string {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, nil)
+}
+
+func TestPartialExplicitGenericFunctionCallInfersRemainder(t *testing.T) {
+	input := `
+module main
+
+enum IOError error {
+	failed,
+}
+
+fn Select[First, Second](first: First, second: Second) Second {
+	return second
+}
+
+fn Fail[Marker, Value](marker: Marker) Result[Value, IOError] {
+	return Err(IOError.failed)
+}
+
+fn UseString() string {
+	return Select[int](10, "hello")
+}
+
+fn UseBool() bool {
+	return Select[string]("marker", true)
+}
+
+fn UseExpectedResult() void {
+	let value: Result[int, IOError] := Fail[string]("marker")
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestPartialExplicitGenericFunctionCallRequiresInferableRemainder(t *testing.T) {
+	input := `
+module main
+
+fn Phantom[First, Second](first: First) First {
+	return first
+}
+
+fn Use() int {
+	return Phantom[int](10)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"cannot infer remaining generic arguments for Phantom at 9:9",
+	})
 }
 
 func TestExplicitGenericFunctionCallErrors(t *testing.T) {

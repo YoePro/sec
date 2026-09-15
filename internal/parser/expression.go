@@ -288,22 +288,30 @@ func (p *Parser) skipUnsupportedConditionalExpression() RecoveryEvent {
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
+// parseNewExpression parses committed lifecycle construction syntax and keeps
+// the NewExpression when its target type or argument list is recoverably
+// invalid, allowing later statements to remain in the tree.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Impl declaration", NewExpression production
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention", "Nil use"
 func (p *Parser) parseNewExpression() ast.Expression {
 	expr := &ast.NewExpression{Token: p.curToken}
 	if !p.expectPeekTypeStart() {
-		return nil
+		expr.Type = p.invalidTypeReference(p.peekToken, "")
+		return expr
 	}
 	expr.Type = p.parseTypeReference()
-	if expr.Type == nil || expr.Type.Invalid {
-		return nil
+	if expr.Type == nil {
+		expr.Type = p.invalidTypeReference(p.curToken, "")
 	}
 	if !p.expectPeek(lexer.LPAREN) {
 		p.addError("new construction requires an argument list at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
+		return expr
 	}
 	arguments, ok := p.parseCallArguments()
 	if !ok {
-		return nil
+		return expr
 	}
 	expr.Arguments = arguments
 	return expr
@@ -795,10 +803,15 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 // Rules:
 //   - rules/declarations/generics.md — "Generic arguments"
 //   - rules/declarations/generics.md — "Generic enums"
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Expression {
 	bracketToken := p.curToken
 	typeArgs := p.parseTypeArgs()
-	if typeArgs == nil {
+	if p.curToken.Type != lexer.RBRACKET {
+		// A bracket expression is parsed speculatively because an ordinary
+		// expression index has the same opening syntax. Let the caller roll the
+		// attempt back unless a complete type-argument list established generic
+		// ownership.
 		return nil
 	}
 
@@ -818,6 +831,14 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 	}
 
 	if p.peekToken.Type == lexer.DOT {
+		for _, typeArg := range typeArgs {
+			if typeArg == nil || typeArg.Invalid {
+				// An invalid bracket payload followed by member access remains
+				// ambiguous with indexing or slicing. Do not claim generic
+				// ownership until Sema has a structurally valid type list.
+				return nil
+			}
+		}
 		p.nextToken()
 		member := p.parseMemberExpression(left)
 		if member == nil {

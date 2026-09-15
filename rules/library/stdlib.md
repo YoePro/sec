@@ -1194,6 +1194,9 @@ The `io` package currently includes Linux/amd64 file and directory declarations:
 - `io.File.ReadExact(buffer)` for fixed-size records and `io.Copy(source,
   destination, buffer)` for allocation-free streaming copies;
 - `io.File.Flush() Result[void, io.IOError]` through `fsync`;
+- `io.File.Duplicate() Result[io.File, io.IOError]`, which creates a second
+  independently owned capability to the same underlying open resource without
+  reopening by path, copying contents, or silently increasing authority;
 - `io.File.Seek(offset, origin) Result[uint, io.IOError]` through `lseek` and
   the `io.SeekOrigin` enum;
 - `io.File.Truncate(size)` through `ftruncate`;
@@ -1226,6 +1229,13 @@ The `io` package currently includes Linux/amd64 file and directory declarations:
 - a provisional `io.ReadFile(path) Result[string, io.IOError]` API that returns
   `IOError.Unsupported` until owned dynamic storage and string materialization
   are implemented.
+
+`File.Duplicate()` failure leaves the original `File` unchanged and releases
+temporary native resources. Shared open-resource state, including file position
+where applicable to the native duplication contract, remains shared. Direct
+child standard-I/O binding explicitly establishes only the selected child
+capability according to `rules/concurrency/ipc.md`; it does not weaken the
+general close-on-exec policy or bulk-inherit unrelated files.
 
 The `unicode` package currently provides `unicode.IsLetter(ch: rune) bool`.
 It is generated from Go's Unicode 15.0.0 `unicode.Letter` range table, uses

@@ -1,0 +1,8 @@
+module contextual_test
+
+fn test(value: string) void {
+}
+
+fn CallTest() void {
+	test("ordinary call")
+}

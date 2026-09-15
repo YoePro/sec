@@ -39,6 +39,28 @@ type ResolvedCall struct {
 	Kind     ResolvedCallKind
 }
 
+type TestingOperationKind string
+
+const (
+	TestingOperationExpect  TestingOperationKind = "expect"
+	TestingOperationRequire TestingOperationKind = "require"
+	TestingOperationLog     TestingOperationKind = "log"
+)
+
+// ResolvedTestingOperation records a compiler-known testing call validated in
+// its owning source-test context. Tooling and later compiler stages consume
+// this fact instead of treating testing as an imported module or ordinary value.
+//
+// Rules:
+//   - rules/tooling/testing.md — §11 "Compiler-known testing namespace"
+//   - rules/tooling/testing.md — §§16–17 Expect and Require
+type ResolvedTestingOperation struct {
+	Kind      TestingOperationKind
+	Test      *ast.TestDeclaration
+	Condition ast.Expression
+	Message   ast.Expression
+}
+
 type InterpolationFormatKind string
 
 const (
@@ -978,6 +1000,19 @@ func (a *Analyzer) ResolvedFunctionForDeclaration(decl *ast.FunctionDeclaration)
 		return Function{}, false
 	}
 	return a.lookupFunctionByToken(decl.Name.Value, decl.Name.Token)
+}
+
+// ResolvedTestingOperationOf returns the compiler-known test operation selected
+// for a validated call without re-resolving its source spelling.
+//
+// Rules:
+//   - rules/tooling/testing.md — §11 "Compiler-known testing namespace"
+func (a *Analyzer) ResolvedTestingOperationOf(call *ast.CallExpression) (ResolvedTestingOperation, bool) {
+	if a == nil || call == nil {
+		return ResolvedTestingOperation{}, false
+	}
+	operation, ok := a.resolvedTestingOperations[call]
+	return operation, ok
 }
 
 // ResolvedBindingOf returns the declaration identity selected by Sema for an

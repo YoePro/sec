@@ -1,0 +1,11 @@
+module missing_register_width
+
+type Broken register[] {
+    Flag: bit
+}
+
+type Present register[1] {
+    Flag: bit
+}
+
+fn Next() void {}

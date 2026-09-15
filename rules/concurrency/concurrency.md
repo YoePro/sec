@@ -2,14 +2,14 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-04
-- **Last updated:** 2026-09-07
-- **Document revision:** 2.1
+- **Last updated:** 2026-09-15
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/concurrency.md`
 - **Implementation governance:** `governance/concurrency_model.yaml`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `777beb8`
-- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.md`, `rules/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`
+- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`
 
 ---
 
@@ -270,7 +270,7 @@ External executable launch uses the distinct move-only `Command` abstraction.
 objects. Process lifecycle, completion, join, detach, termination, observation,
 reaping, standard I/O, and process-specific synchronization belong to
 `processes.md`; general messaging, shared memory, and capability transfer
-belong to `ipc.md`.
+belong to `rules/concurrency/ipc.md`.
 
 § 9(4) Cross-process transfer must not be modeled as ordinary in-process reference or pointer transfer unless an explicit shared-memory or process adapter contract defines that representation.
 
@@ -288,6 +288,20 @@ to `processes.md`.
 where supported; ordinary termination of the former owner does not itself
 terminate the child. External platform, container, service-manager, session, or
 system policy remains outside this guarantee.
+
+§ 9(10) The canonical communication/storage distinction is:
+
+```text
+Channel[T]                    in-process task/thread communication
+IPCSender[T]/IPCReceiver[T]   typed process-isolation messaging
+Pipe                          byte-stream IPC
+SharedMemory/SharedValue      explicit process-shared storage
+IPCAtomic[T]                  process-shared lock-free atomic capability
+```
+
+The complete IPC ownership, lifecycle, transfer, synchronization, target, and
+analysis model is normative in `rules/concurrency/ipc.md`; it is not an
+unfinished future extension of ordinary channels.
 
 ---
 
@@ -1302,7 +1316,7 @@ when mutex semantics are appropriate.
 § 47(13) `thread_local.md` owns thread-local storage semantics.
 
 § 47(14) `processes.md` owns process-specific syntax, lifecycle, results,
-termination, observation, reaping, and synchronization; `ipc.md` owns general
+termination, observation, reaping, and synchronization; `rules/concurrency/ipc.md` owns general
 inter-process communication, shared memory, and capability/handle transfer.
 
 § 47(15) `transferability.md` owns cross-boundary transfer proof.

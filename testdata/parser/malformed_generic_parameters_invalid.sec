@@ -1,0 +1,11 @@
+module malformed_generic_parameters
+
+fn WithSibling[T: @, U](value: U) U {
+    return value
+}
+
+fn MissingCloser[T, @(value: T) T {
+    return value
+}
+
+fn Next() void {}

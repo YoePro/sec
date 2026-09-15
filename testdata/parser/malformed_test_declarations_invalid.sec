@@ -1,0 +1,16 @@
+module malformed_tests
+
+test {
+	discard 1
+}
+
+test "parameters are forbidden"(value: int) {
+	discard value
+}
+
+test "return types are forbidden" bool {
+	return true
+}
+
+fn Later() void {
+}

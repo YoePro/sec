@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-09-06
+- **Last updated:** 2026-09-15
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/atomics.md`
@@ -1308,6 +1308,20 @@ The following are intentionally not part of the required Sec 0.1 portable surfac
 - additional boolean or byte fetch operations.
 
 This section is non-normative and does not authorize implementations to expose incompatible source APIs under the same canonical names.
+
+---
+
+## § 50A. IPC atomic authority
+
+`rules/concurrency/ipc.md` defines `IPCAtomic[T]`, the lock-free
+process-shared capability form. It reuses this rulebook's exact `MemoryOrder`,
+`CompareExchangeResult[T]`, `Swap` name, and operation/order validity matrix.
+IPC-specific value eligibility, target capability, duplication, logical
+identity, and lifecycle remain owned by the IPC rulebook.
+
+Compare-exchange success/failure order validity has one canonical definition in
+this rulebook and `concurrency_memory_model.md`; IPC must not introduce a second
+or stricter competing matrix.
 
 ---
 

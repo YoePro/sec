@@ -1,0 +1,11 @@
+module parser_tests
+
+test "empty input is rejected" {
+    testing.Expect(true)
+}
+
+test "cleanup is preserved" {
+    defer {
+        discard 1
+    }
+}

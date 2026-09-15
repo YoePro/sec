@@ -47,6 +47,15 @@ join Command
 ProcessObserver.Wait()
 Channel.Send
 Receiver.Receive
+PipeReader.Read
+PipeReader.ReadExact
+PipeWriter.Write
+PipeWriter.WriteAll
+IPCSender[T].Send
+IPCReceiver[T].Receive
+IPCMutex.Lock
+IPCSemaphore.Acquire
+SharedValue[T].Lock
 select without ready branch
 Mutex.Lock
 timer wait
@@ -162,7 +171,8 @@ boundary.
 
 ## Mutex guards across waits
 
-`MutexGuard[T]` is execution-bound and may not remain live across:
+`MutexGuard[T]`, `IPCMutexGuard`, and `SharedValueGuard[T]` are execution-bound
+and may not remain live across:
 
 - `await`;
 - `join`;
@@ -188,6 +198,11 @@ This prevents:
 ## Cancellation-aware waits
 
 A cancellation-aware wait may resume because cancellation was requested.
+
+For IPC, cancellation may stop a wait only before semantic commit. Before
+commit, queue, ownership, lock, and permit state is unchanged. After commit, the
+operation completes to its canonical result and cancellation cannot revoke the
+effect. IPC error enums therefore do not gain `Cancelled` variants.
 
 The operation must then follow its own commit rule.
 
@@ -380,6 +395,11 @@ The compiler should track:
 - joined execution entities;
 - awaited tasks;
 - channel dependencies;
+- IPC mutex identities;
+- IPC semaphore waits;
+- typed IPC send/receive dependencies;
+- pipe backpressure;
+- process join/wait dependencies;
 - deferred thread start;
 - executor worker consumption;
 - cancellation dependencies.

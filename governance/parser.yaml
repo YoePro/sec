@@ -43,6 +43,8 @@ integrations:
       - select branch parsing consumes and records a skipped token when a malformed header would otherwise retry the same token indefinitely
       - InvalidExpression nodes for missing Pratt prefix parsers
       - invalid TypeReference marking with recovery metadata on parenthesized, reference, function, prefix sequence, qualified-name, unit-only, unit-annotated, and postfix bracket paths; malformed qualified/unit forms retain parsed source facts, while fixed arrays, collection/shaped constructors, Event/EventStorage arguments, and ordinary generic arguments retain the enclosing invalid type plus completed arguments and preserve following declarations
+      - expression-owned explicit generic calls retain invalid argument positions, resume at top-level commas or closing brackets without consuming outer delimiters, preserve later valid type arguments, and keep the call plus following statements and declarations
+      - lifecycle new expressions retain their committed NewExpression, invalid target TypeReference with recovery metadata, parsed arguments, and following siblings when a recoverable target-type error occurs
       - composite function and prefix-sequence types propagate invalid retained parameter, return, and element references to their outer type; malformed fixed-array length and collection/shaped constant expressions preserve the diagnosed outer shape, completed children, and following declarations
       - InvalidDeclaration nodes for failed declaration-shaped top-level statements
       - InvalidMember nodes and skipped ranges for disallowed impl members
@@ -57,6 +59,15 @@ integrations:
       - speculative rollback reconstruction of deduplication and episode state
       - shared delimiter stack preserving mismatched outer closers
       - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
+      - malformed generic parameter entries recover at top-level commas, list closers, callable/body/implements/default/contract boundaries, retaining completed and later comma-separated parameters plus the enclosing declaration
+      - ordinary functions and shared interface/extern signature parsing retain an invalid return TypeReference when the mandatory return type is missing; ordinary bodies and later member/declaration siblings remain attached without inferring void
+      - interface property requirements retain missing or malformed declared types as invalid TypeReference nodes, recover to a reliable body brace without consuming outer/member boundaries, and preserve accessors plus later interface and top-level siblings
+      - interface event requirements retain empty or malformed payload positions as invalid TypeReference nodes, consume a reliable owned closing bracket, and preserve later interface members and top-level declarations
+      - committed interface and impl implements lists retain invalid conformance type positions, recover at top-level commas without consuming declaration bodies or contract/default tails, and preserve later valid interface references plus owning declarations
+      - enum headers with a missing or malformed explicit underlying representation retain an invalid TypeReference, recover to a reliable body brace, and preserve enum values plus following declarations
+      - malformed enum member positions retain source-ordered invalid EnumValue nodes with recovery metadata and synchronize at commas, later-line identifiers, the body close, or EOF without losing later members and declarations
+      - register declarations with an empty width retain an InvalidExpression at the width position, consume the owned closing bracket, and preserve register fields plus following declarations
+      - register bit fields with an empty width retain the field and an InvalidExpression at the width position, consume the owned closing bracket, and preserve later fields and declarations
       - skipped-range events from each migrated delimiter-aware recovery helper
       - unsupported if expressions in initializer position retain one InvalidExpression and consume their complete if, else-if, and else bodies without losing following statements or impl members
       - LSP diagnostics continue semantic declaration analysis after non-fatal parser recovery and suppress semantic diagnostics whose primary location belongs to a parser recovery range
@@ -96,6 +107,28 @@ integrations:
       - testdata/parser/invalid_base_type_references_invalid.sec
       - internal/parser/invalid_composite_type_recovery_test.go
       - testdata/parser/invalid_composite_type_references_invalid.sec
+      - internal/parser/generic_argument_recovery_test.go
+      - testdata/parser/invalid_explicit_generic_arguments_invalid.sec
+      - internal/parser/new_expression_recovery_test.go
+      - testdata/parser/invalid_new_target_type_invalid.sec
+      - internal/parser/generic_parameter_recovery_test.go
+      - testdata/parser/malformed_generic_parameters_invalid.sec
+      - internal/parser/missing_function_return_type_recovery_test.go
+      - testdata/parser/missing_function_return_types_invalid.sec
+      - internal/parser/interface_property_type_recovery_test.go
+      - testdata/parser/invalid_interface_property_types_invalid.sec
+      - internal/parser/interface_event_payload_recovery_test.go
+      - testdata/parser/invalid_interface_event_payloads_invalid.sec
+      - internal/parser/implements_list_recovery_test.go
+      - testdata/parser/invalid_implements_entries_invalid.sec
+      - internal/parser/enum_underlying_recovery_test.go
+      - testdata/parser/invalid_enum_underlying_types_invalid.sec
+      - internal/parser/enum_member_recovery_test.go
+      - testdata/parser/invalid_enum_member_invalid.sec
+      - internal/parser/register_width_recovery_test.go
+      - testdata/parser/missing_register_width_invalid.sec
+      - internal/parser/register_field_width_recovery_test.go
+      - testdata/parser/missing_register_field_width_invalid.sec
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -129,9 +162,31 @@ integrations:
         result: passed; incomplete qualified names and invalid closed unit expressions retain invalid type nodes, source spelling, and the following declaration
       - command: go test ./internal/parser -run TestInvalidCompositeTypeReferencesPropagateRecovery -count=1
         result: passed; invalid callable children, prefix-sequence elements, array lengths, and shaped constants propagate to retained outer types without losing the next declaration
+      - command: go test ./internal/parser -run TestInvalidExplicitGenericArgumentsRetainCallsAndSiblings -count=1
+        result: passed; malformed and empty explicit generic argument lists retain invalid type positions, later valid arguments, enclosing calls, and following siblings
+      - command: go test ./internal/parser -run TestInvalidNewTargetTypeRetainsConstructionAndSiblings -count=1
+        result: passed; a malformed generic construction target retains its invalid type, parsed arguments, enclosing new expression, and following siblings
+      - command: go test ./internal/parser -run TestMalformedGenericParametersPreserveLaterParametersAndDeclarations -count=1
+        result: passed; malformed entries preserve later comma-separated parameters, and a missing list closer stops before the callable boundary without losing either function body or following declarations
+      - command: go test ./internal/parser -run TestMissingFunctionReturnTypesRetainFunctionsAndSiblings -count=1
+        result: passed; missing mandatory return types retain invalid type metadata on ordinary and interface functions while preserving bodies, member siblings, and following declarations
+      - command: go test ./internal/parser -run TestInvalidInterfacePropertyTypesRetainPropertiesAndMembers -count=1
+        result: passed; missing and malformed property types retain invalid type metadata, getter requirements, later interface methods, and the following top-level declaration
+      - command: go test ./internal/parser -run TestInvalidInterfaceEventPayloadsRetainEventsAndMembers -count=1
+        result: passed; empty and malformed event payloads retain invalid type metadata while preserving both later interface methods and the following top-level declaration
+      - command: go test ./internal/parser -run TestInvalidImplementsEntriesRetainDeclarationsAndLaterInterfaces -count=1
+        result: passed; malformed conformance entries retain invalid type metadata and later valid interfaces without losing interface/impl members or the following declaration
+      - command: go test ./internal/parser -run TestInvalidEnumUnderlyingTypesRetainEnumsAndValues -count=1
+        result: passed; missing and malformed explicit underlying representations retain invalid type metadata, both enum bodies and values, and the following declaration
+      - command: go test ./internal/parser -run TestInvalidEnumMembersRetainLaterMembersAndDeclarations -count=1
+        result: passed; a malformed enum member retains invalid recovery metadata and preserves the later member, following enum, and following function
+      - command: go test ./internal/parser -run TestMissingRegisterWidthRetainsRegisterFieldsAndDeclarations -count=1
+        result: passed; an empty register width retains invalid expression metadata, the complete field body, a later valid register declaration, and the following function
+      - command: go test ./internal/parser -run TestMissingRegisterFieldWidthRetainsFieldsAndDeclarations -count=1
+        result: passed; an empty bit-field width retains invalid expression metadata, the current and later fields, a later register declaration, and the following function
 
     remaining:
-      - invalid type retention in remaining expression-owned generic-argument and other specialized failure paths
+      - invalid type retention in remaining specialized failure paths beyond explicit generic calls and lifecycle new expressions
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression

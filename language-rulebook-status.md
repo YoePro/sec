@@ -380,19 +380,19 @@ implementation remains tracked separately.
 | `concurrency/threads.md` | **Written** | Canonical physical-thread model, `Thread[T]` lifecycle, `ThreadContext`, `Thread.Current().CancelRequested`, cooperative cancellation, join/detach/termination, target capability and runtime boundaries. |
 | `concurrency/thread_local.md` | **Written — sync required** | Physical thread-local storage and task-migration restrictions. |
 | `concurrency/scheduling.md` | **Written — sync required** | |
-| `concurrency/blocking.md` | **Written** | Includes owning process/Command join, non-owning ProcessObserver waits, process effects and ISR restrictions. |
+| `concurrency/blocking.md` | **Written** | Includes owning process/Command join, non-owning ProcessObserver waits, IPC waiting operations and guard liveness, process effects, cancellation commit, deadlock edges, and ISR restrictions. |
 | `concurrency/cancellation.md` | **Written** | Revision 2.0 defines distinct task/thread cancellation, inferred cancellable-execution effects, exactly-one commit, and Context/ContextSource. |
 | `concurrency/structured_concurrency.md` | **Written — sync required** | |
 | `memory/transferability.md` | **Written** | Canonical revision 2.0 boundary-specific transferability and shareability across tasks, physical threads, processes, interrupts, and foreign callbacks, including closure/reference/capability dependencies and platform constraints. Implementation progress is tracked by the six `*.transferability` entries in `implementation-status.yaml`. |
 | `analysis/data_races.md` | **Written** | Canonical data-race analysis rules; implementation status is tracked by `sema.data-race-analysis` in `implementation-status.yaml`. |
 | `analysis/deadlock_analysis.md` | **Written** | Canonical deadlock-analysis rules; implementation status is tracked by `sema.deadlock-analysis` in `implementation-status.yaml`. |
-| `concurrency/channels.md` | **Written — sync required** | |
+| `concurrency/channels.md` | **Written — sync required** | Ordinary Channel[T]/Sender[T]/Receiver[T] are explicitly in-process and distinct from IPCSender[T]/IPCReceiver[T]; unrelated channel synchronization work remains. |
 | `concurrency/events.md` | **Written — sync required** | C#-style publish/subscribe event model; distinct from readiness/completion. |
-| `concurrency/select.md` | **Written** | Includes selectable owning Process join and repeatable non-owning ProcessObserver.Wait semantics. |
+| `concurrency/select.md` | **Written** | Includes selectable owning Process join, repeatable non-owning ProcessObserver.Wait, and non-destructive readiness/commit for primitive IPC operations. |
 | `concurrency/mutex.md` | **Written** | Revision 2.0 defines canonical Lock overloads, @noCopy guards, forwarding, Context ownership, duration/Instant, and cancellation commit semantics. |
 | `concurrency/atomics.md` | **Written** | Revision 2.0 defines canonical Atomic[T], MemoryOrder, CompareExchangeResult[T], CamelCase operations, fences, and target-capability separation. |
-| `concurrency/processes.md` | **Written** | Revision 2.0 is the normative Sec 0.1 model for Process[T], Command, lifecycle/completion, standard I/O, target capabilities, analysis, and lowering; compiler/runtime implementation remains planned and is tracked by `concurrency.processes-v2` in `governance/concurrency_process.yaml`. |
-| `ipc.md` | **Planned** | Planned owner of PipeReader/PipeWriter, general inter-process messaging, shared memory, process-aware synchronization, capability/handle transfer, and existing-resource Command standard-I/O binding. |
+| `concurrency/processes.md` | **Written** | Revision 2.1 is the normative Sec 0.1 model for Process[T], Command, lifecycle/completion, standard I/O, Resource-mode direct File/Pipe binding, target capabilities, analysis, and lowering; compiler/runtime implementation remains planned and is tracked by `concurrency.processes-v2` in `governance/concurrency_process.yaml`. |
+| `concurrency/ipc.md` | **Written** | Revision 1.0 defines canonical pipes, typed IPC, shared memory/mappings, IPCMutex/IPCSemaphore, SharedValue[T], IPCAtomic[T], capability/resource transfer, Command Resource binding, target capabilities, analysis, lowering, security, and conformance obligations. Implementation remains planned and is tracked by `concurrency.ipc-v1` in `governance/concurrency_ipc.yaml`. |
 
 Threads are considered design-complete for Sec 0.1.
 
@@ -407,7 +407,7 @@ Semantic IR
 MLIR and target lowering
 ```
 
-IPC does not block the immediate language closure.
+IPC is design-complete for Sec 0.1 but its compiler/runtime/platform implementation remains planned.
 
 ---
 
@@ -739,7 +739,6 @@ The following areas are intentionally deferred and do not block immediate Sec
 
 ```text
 spawn process implementation
-IPC
 general process supervision
 dynamic-rank tensors
 arbitrary user-defined operator overloading
@@ -876,7 +875,6 @@ inheritance
 exceptions
 garbage collection
 dynamic-rank tensors
-IPC
 general user-defined operator overloading
 ```
 

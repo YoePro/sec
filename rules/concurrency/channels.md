@@ -19,8 +19,15 @@ thread -> task
 thread -> thread
 ```
 
-Separate processes do not communicate through ordinary in-process `Channel[T]`
-unless a future IPC adapter explicitly defines that mapping.
+Ordinary `Channel[T]`, `Sender[T]`, and `Receiver[T]` are strictly in-process
+capabilities. They never cross a process isolation boundary and are never
+automatically lowered to IPC. Typed process messaging uses `IPCSender[T]` and
+`IPCReceiver[T]` as defined by `rules/concurrency/ipc.md`.
+
+A future explicit bridge, if standardized, remains a distinct adapter and does
+not make ordinary channels process-transferable. IPC lifecycle, materialization,
+schema identity, capability transfer, and clean-versus-abnormal process
+termination do not alter this rulebook's existing in-process channel model.
 
 ## Core model
 
@@ -913,7 +920,7 @@ revocation groups
 explicit backing storage
 absolute message deadlines
 channel observers
-cross-process adapters
+explicit bridge abstractions that remain distinct from ordinary channels
 ```
 
 ## Related rules
@@ -930,5 +937,5 @@ static.txt
 concurrency_memory_model.md
 allocation.md
 processes.md
-ipc.txt
+ipc.md
 ```

@@ -2,6 +2,255 @@ schema_version: 1
 area: control-flow
 purpose: Statements, loops, matching, try, defer, and flow facts.
 integrations:
+  - id: frontend.discard-v2
+    area: frontend-ownership-and-lowering
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "2.0"
+    repository_baseline: "56be75d"
+    summary: >-
+      Tracks revision-2.0 explicit and implicit discard semantics. The lexer,
+      parser, AST, semantic analysis, compiler dump, and current backend path
+      support explicit discard expressions, simple-binding invalidation,
+      mutable-binding reinitialization, reference-holder release, ordinary
+      call-result discard, recursive must-use/discardability checks, and the
+      current Task/Thread/spawn safety rules. Arbitrary Place support,
+      path-sensitive aggregate state, stable configurable advisories, explicit
+      Semantic IR provenance, and complete destruction/cleanup lowering remain.
+    rules:
+      - rules/control-flow/discard.md
+      - rules/types/types.md
+      - rules/declarations/functions.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/control-flow/defer.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/spawn.md
+      - rules/concurrency/concurrency.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    governance_reconciliation:
+      - Concurrency lifecycle discard remains explicit; task and thread rulebooks own detach/discard details, and fallible creation is handled before a lifecycle handle exists.
+    code:
+      - internal/ast/ast.go
+      - internal/lexer/lexer.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/parameter_usage.go
+      - internal/diagnostics/diagnostics.go
+      - internal/formatter/formatter.go
+      - internal/codegen/llvm/statements.go
+      - cmd/compiler/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - internal/sema/concurrency_test.go
+      - internal/sema/parameter_usage_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/semantic_ir/unsupported_nonvoid_discard.sec
+    implemented:
+      - discard is a lexer keyword with parser and AST support for discard expression
+      - discard without an operand is rejected by the parser
+      - explicit discard operands are semantically analyzed
+      - temporary function and method call results may be explicitly discarded
+      - receiver mutability is enforced inside discarded method calls
+      - discarding a local identifier makes the binding unavailable with reason discarded
+      - later reads of discarded locals are rejected with the discard source as a related location
+      - discarded mutable whole bindings may be reinitialized
+      - reinitialization clears the prior unavailable state without destroying an old value
+      - immutable discarded bindings remain non-reinitializable
+      - discarding ref and ref mut local holders ends the reference binding without destroying the referent
+      - direct unresolved Task and Thread values cannot be discarded
+      - direct spawn-result discard is rejected when successful creation would abandon a lifecycle handle
+      - ordinary non-void standalone calls are represented as implicit temporary discards
+      - direct compiler-known must-use Result, Task, and Thread call results are rejected as standalone statements
+      - current recursive must-use and discardability checks traverse type arguments, arrays, struct fields, and union payloads
+      - named try and match error bindings may be explicitly discarded
+      - standalone spawn expressions are rejected
+      - unhandled Result expressions inside defer are rejected
+      - parser, AST, and compiler dump output preserve explicitly discarded expressions
+      - normative implementation-status prose was removed from the discard rulebook and migrated here
+      - mutable reinitialization semantics were reconciled with ownership.md and copy_move.md
+      - types.md now defines must-use and discardability as distinct recursive semantic properties
+      - destruction.md now defines discard as terminal ownership with deterministic cleanup cancellation
+      - semantic_ir.md now specifies canonical DiscardValue provenance and forbids backend inference from unused SSA
+      - diagnostics.txt now specifies discard-related mandatory and advisory diagnostic identities
+      - formatter.md now preserves explicit discard without policy-driven insertion or removal
+      - repeated discard of an already unavailable discardable local or tracked field Place is a legal no-op rather than an ordinary use-after-terminal-action read
+      - repeated discard preserves compiler-owned operand type and definition facts for shared CLI and LSP consumers and never restores availability
+    remaining:
+      - implement configurable ownership.implicit-discarded-result advisories with off, info, warning, and error severities while preserving mandatory must-use errors
+      - register stable IDs, symbolic names, structured notes and help, and related locations for implicit discard, unhandled must-use, non-discardable values, use-after-discard, borrow conflicts, useless discard, and redundant void discard
+      - complete path-sensitive active-payload reasoning for wrapper and union discardability without weakening conservative defaults
+      - generalize explicit discard from simple local identifiers to supported Places, including field-sensitive partial discard and exact availability state
+      - separate canonical Availability from moved/discarded/detached reason provenance across joins
+      - complete conditional discard convergence with an explicit availability lattice and path-specific destruction responsibility
+      - lower explicit and implicit discard through the resolved deterministic destruction plan, cancel consumed cleanup responsibility, prevent double destruction, and register cleanup after legal reinitialization
+      - introduce canonical Semantic IR DiscardValue ownership operations with explicit, implicit-call-result, and compiler-temporary provenance
+      - ensure backend stages never infer semantic discard from unused SSA values
+      - add non-discardable unresolved Process handling when Process becomes a complete compiler-known lifecycle type
+      - complete recursive Result of lifecycle-handle spawn modelling for every supported spawn kind
+      - account for fallible task spawn before a Task[T] exists and the TaskOutcome[T] observation layer after successful creation when validating detach and discard
+      - implement configurable advisories for useless literal or constant discard and redundant explicit discard of void
+      - complete parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, MLIR, and backend regression coverage
+    required_tests:
+      - explicit discard of trivial local binding
+      - explicit discard of move-only local resource
+      - discarded binding becomes unavailable
+      - use after discard reports related discard location
+      - discard of an already unavailable place is a legal no-op
+      - discard of a conditionally available place converges every continuing path to unavailable
+      - mutable whole binding may be reinitialized after discard
+      - immutable binding cannot be reinitialized after discard
+      - reinitialization after discard performs no old-value destruction
+      - reinitialization after discard registers new cleanup when required
+      - ordinary non-void standalone call result is implicitly discarded
+      - implicit ordinary call result executes required destruction
+      - implicit discard advisory supports off, info, warning, and error without changing diagnostic identity
+      - void standalone call emits no implicit-discard advisory
+      - explicit discard suppresses implicit-discard advisory for that result
+      - standalone Result call is a mandatory error
+      - explicit discard of discardable Result is accepted
+      - Result with non-discardable possible payload is rejected
+      - ordinary discardable Option call may be implicitly discarded
+      - Option with non-discardable possible payload is rejected
+      - reference discard ends holder but not referent
+      - ref mut discard releases exclusive holder when no retained alias exists
+      - discard of owned value while incompatible borrow is active is rejected
+      - unresolved task and thread discard is rejected
+      - spawn result discard is rejected when successful payload is an unresolved lifecycle handle
+      - direct field discard updates partial availability where supported
+      - already discarded field is excluded from later aggregate destruction
+      - branch merge conservatively preserves conditional unavailability
+      - active defer use prevents early discard
+      - discard literal advisory
+      - discard void advisory
+      - discard underscore is rejected
+      - Semantic IR records explicit discard provenance
+      - Semantic IR records implicit call-result discard provenance
+      - backend never infers semantic discard from unused SSA
+    verification:
+      - command: go test ./internal/parser -run Discard -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Discard|MustUse' -count=1
+        result: passed
+      - command: go test ./internal/formatter -run Discard -count=1
+        result: passed with no matching focused tests; formatter coverage remains in the required matrix
+  - id: frontend.defer-v2
+    area: frontend-control-flow-ownership-and-lowering
+    status: partial
+    integrated: "2026-08-16"
+    document_revision: "2.0"
+    repository_baseline: "56be75d"
+    replaces: rules/control-flow/defer.txt
+    summary: >-
+      Tracks revision-2.0 invocation-scoped deferred cleanup. The parser and
+      Sema support block-form defer, delayed outer-binding uses, later move and
+      discard conflicts, loop-registration diagnostics, forbidden loop/switch
+      transfer, nested-defer rejection, and local handling of fallible cleanup.
+      MLIR provides a usable static defer stack with reached-registration flags
+      and reverse defer order. Unified ordering with automatic destruction,
+      exact lifetime shortening, all callable-context boundaries, dynamic loop
+      registration, Semantic IR cleanup regions, and complete backend lowering
+      remain incomplete.
+    rules:
+      - rules/control-flow/defer.md
+      - rules/memory/destruction.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/copy_move.md
+      - rules/errors/errorhandling.md
+      - rules/errors/panic.md
+      - rules/control-flow/discard.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/semantic_facts.go
+      - internal/formatter/formatter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/statements.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/destruction_test.go
+      - internal/codegen/mlir/generator_test.go
+      - testdata/defer_valid.sec
+      - testdata/defer_invalid.sec
+    implemented:
+      - block-form defer syntax and dedicated AST statement
+      - registration represented when execution reaches the defer statement
+      - invocation-scoped delayed-use analysis rather than lexical-block execution
+      - multiple statically represented deferred blocks emitted in reverse registration order by MLIR
+      - loop defer warning records that every reached execution registers cleanup for invocation exit
+      - deferred reads analyzed against ordinary values at cleanup time
+      - pending deferred uses reject conflicting later move and discard operations
+      - definite-assignment and lexical name resolution applied at the registration site
+      - break, continue, and fallthrough rejected inside deferred cleanup
+      - nested defer rejected
+      - legacy defer return shorthand rejected by the block-only parser rule
+      - return inside a deferred block rejected as invalid control transfer
+      - bodyless try propagation rejected and unhandled fallible cleanup results diagnosed
+      - return expressions established before statically supported MLIR defer cleanup paths
+      - canonical documentation now defines one common LIFO order for deferred cleanup and automatic destruction
+    remaining:
+      - isolate cleanup-time state mutations such as deferred Arena.Reset or Arena.Release from ordinary post-registration flow state
+      - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init while rejecting it in free
+      - model defer registration and automatic destruction in one source-ordered cleanup stack across ownership and destruction analysis
+      - extend only defer-referenced lifetimes while preserving earliest legal destruction for unrelated locals
+      - preserve unified cleanup ordering on every normal return, propagated error, conditional branch, loop, and fallthrough edge
+      - represent registration points, invocation ownership, dependencies, cleanup ordering, and source provenance explicitly in Semantic IR
+      - replace LLVM's immediate defer-body placeholder with real invocation-exit cleanup lowering
+      - lower per-execution defer registration inside loops and every supported nested control-flow form through MLIR
+      - ensure a deferred operation cannot alter an already-established return or propagated-error result
+      - complete local fallible-cleanup handling without imposing any defer-specific discard rule beyond canonical must-use policy
+      - define and lower defer behavior only on panic or abnormal paths where the canonical panic/unwind policy requires cleanup
+      - complete the revision-2.0 parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
+    required_tests:
+      - defer runs on ordinary return
+      - defer return shorthand rejected
+      - multiple defers run in reverse registration order
+      - defer inside false branch is not registered
+      - defer inside loop registers once per reached iteration
+      - defer is invocation-scoped rather than lexical-block-scoped
+      - defer reads mutated value at execution time
+      - create first, defer, create second cleans up second then defer then first
+      - defer extends referenced local lifetime
+      - unrelated block local still destroys at earliest legal lifetime end
+      - move conflicting with pending deferred use rejected
+      - defer in lambda belongs to lambda invocation
+      - defer in init accepted
+      - defer in property accessor accepted
+      - defer in free rejected
+      - return inside defer rejected
+      - break inside defer rejected
+      - continue inside defer rejected
+      - fallthrough inside defer rejected
+      - nested defer rejected
+      - return expression value is established before defer executes
+      - fallible operation in defer cannot propagate with try outside defer
+      - defer does not impose a mandatory discard keyword
+      - uninitialized value referenced by registered defer rejected
+    verification:
+      - command: go test ./internal/parser -run Defer -count=1
+        result: passed
+      - command: go test ./internal/sema -run Defer -count=1
+        result: passed
+      - command: go test ./internal/codegen/mlir -run Defer -count=1
+        result: passed
+      - command: go test ./internal/formatter -run Defer -count=1
+        result: passed with no matching focused tests; formatter coverage remains in the required matrix
   - id: frontend.if-statements-v2
     area: frontend-control-flow
     status: partial

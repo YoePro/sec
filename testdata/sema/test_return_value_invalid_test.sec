@@ -1,0 +1,5 @@
+module testing_identity
+
+test "returns a value" {
+	return true
+}

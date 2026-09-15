@@ -1,0 +1,11 @@
+module invalid_enum_underlying_types
+
+enum Missing: {
+    First
+}
+
+enum Malformed: @ {
+    Second
+}
+
+fn Next() void {}

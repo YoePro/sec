@@ -48,6 +48,14 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		OperatorDivisionByZero:              SeverityError,
 		OperatorRemainderByZero:             SeverityError,
 		RedundantAssociatedStatic:           SeverityInformation,
+		TestDeclarationOutsideTestFile:      SeverityError,
+		EmptyTestName:                       SeverityError,
+		DuplicateTestIdentity:               SeverityError,
+		TestReturnValue:                     SeverityError,
+		TestingOutsideTestContext:           SeverityError,
+		InvalidTestingExpectArguments:       SeverityError,
+		InvalidTestingRequireArguments:      SeverityError,
+		InvalidTestingLogArguments:          SeverityError,
 		LargeValueParameter:                 SeverityInformation,
 	}
 
@@ -100,6 +108,7 @@ func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
 		ParserUnexpectedEndOfFile,
 		ParserInvalidBlockMember,
 		ParserCompatibilitySyntax,
+		ParserInvalidTestDeclaration,
 	}
 	for _, id := range ids {
 		definition, ok := Lookup(id)

@@ -426,6 +426,12 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
+		if p.curToken.Lexeme == "test" && p.recoveryContext == RecoveryContextTopLevel {
+			return p.parseTestDeclaration()
+		}
+		if p.curToken.Lexeme == "test" && p.peekToken.Type == lexer.STRING {
+			return p.parseNestedTestDeclaration()
+		}
 		if p.curToken.Lexeme == "do" && p.peekToken.Type == lexer.LBRACE {
 			return p.parseUnsupportedDoWhileStatement()
 		}
@@ -470,6 +476,150 @@ func (p *Parser) parseStatement() ast.Statement {
 		)
 		return nil
 	}
+}
+
+// parseTestDeclaration parses and retains the canonical top-level source-test
+// form. The contextual spelling remains IDENT outside this declaration shape.
+//
+// Rules:
+//   - rules/foundations/grammar.md — TestDeclaration production
+//   - rules/tooling/testing.md — §5.1 "Canonical form"
+//   - rules/tooling/testing.md — §42.1 "Parser"
+func (p *Parser) parseTestDeclaration() *ast.TestDeclaration {
+	declaration := &ast.TestDeclaration{Token: p.curToken}
+	if p.peekToken.Type != lexer.STRING {
+		unexpected := p.peekToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserInvalidTestDeclaration,
+			unexpected,
+			[]lexer.TokenType{lexer.STRING},
+			&unexpected,
+			"test declaration requires a string literal name at %d:%d",
+			unexpected.Line,
+			unexpected.Column,
+		)
+		declaration.Invalid = true
+		if p.recoverTestBodyStart() {
+			p.nextToken()
+			declaration.Body = p.parseStatementBlock("test body")
+		}
+		return declaration
+	}
+	p.nextToken()
+	declaration.Name = &ast.StringLiteral{
+		Token: p.curToken,
+		Value: trimStringQuotes(p.curToken.Lexeme),
+	}
+
+	if p.peekToken.Type == lexer.LPAREN {
+		unexpected := p.peekToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserInvalidTestDeclaration,
+			unexpected,
+			nil,
+			&unexpected,
+			"test declarations cannot declare parameters at %d:%d",
+			unexpected.Line,
+			unexpected.Column,
+		)
+		declaration.Invalid = true
+		p.nextToken()
+		p.skipTestParameterList()
+	}
+
+	if p.peekToken.Type != lexer.LBRACE {
+		unexpected := p.peekToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserInvalidTestDeclaration,
+			unexpected,
+			[]lexer.TokenType{lexer.LBRACE},
+			&unexpected,
+			"test declarations cannot declare a source-visible return type at %d:%d",
+			unexpected.Line,
+			unexpected.Column,
+		)
+		declaration.Invalid = true
+		if !p.recoverTestBodyStart() {
+			return declaration
+		}
+	}
+	p.nextToken()
+	if p.curToken.Type != lexer.LBRACE {
+		return declaration
+	}
+	declaration.Body = p.parseStatementBlock("test body")
+	return declaration
+}
+
+// skipTestParameterList consumes the balanced source-visible parameter list
+// forbidden on a test declaration and leaves the following header/body token
+// available to the owning parser.
+//
+// Rules:
+//   - rules/tooling/testing.md — §5.5 "No parameters"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
+func (p *Parser) skipTestParameterList() {
+	delimiters := newDelimiterStack(lexer.RPAREN)
+	for !delimiters.empty() && p.peekToken.Type != lexer.EOF {
+		if !delimiters.canConsume(p.peekToken.Type) {
+			return
+		}
+		p.nextToken()
+		delimiters.consume(p.curToken.Type)
+	}
+}
+
+// recoverTestBodyStart skips an invalid test header up to its owned body while
+// refusing to consume a later top-level declaration on a following line.
+//
+// Rules:
+//   - rules/tooling/testing.md — §§5.4–5.6 test declaration shape
+//   - rules/compiler/parser_recovery.md — "Declaration-header recovery"
+func (p *Parser) recoverTestBodyStart() bool {
+	startLine := p.curToken.Line
+	delimiters := newDelimiterStack()
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() {
+			if p.peekToken.Type == lexer.LBRACE {
+				return true
+			}
+			if p.peekToken.Line > startLine && (isDeclarationStart(p.peekToken.Type) ||
+				p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "test") {
+				return false
+			}
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			return false
+		}
+		p.nextToken()
+		delimiters.consume(p.curToken.Type)
+	}
+	return false
+}
+
+// parseNestedTestDeclaration rejects a declaration-shaped test inside an
+// executable block while consuming its owned name and body for recovery.
+//
+// Rules:
+//   - rules/tooling/testing.md — §5.3 "Top-level only"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
+func (p *Parser) parseNestedTestDeclaration() ast.Statement {
+	start := p.curToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserMisplacedKeyword,
+		start,
+		nil,
+		&start,
+		"test declarations are only valid at module level at %d:%d",
+		start.Line,
+		start.Column,
+	)
+	p.nextToken()
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		p.parseStatementBlock("nested test body")
+	}
+	return &ast.InvalidStatement{Token: start, Message: "test declaration is not at module level"}
 }
 
 // parseSemicolonStatement rejects the reserved separator while retaining one
@@ -2223,6 +2373,14 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 	return stmt
 }
 
+// parseInterfaceEvent parses an interface event requirement and retains an
+// invalid payload TypeReference when the committed bracketed payload is empty
+// or malformed, preserving later interface members.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Interface declaration", InterfaceEvent production
+//   - rules/compiler/parser_recovery.md — "Interface recovery"
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention"
 func (p *Parser) parseInterfaceEvent() *ast.InterfaceEvent {
 	event := &ast.InterfaceEvent{Token: p.curToken}
 	if p.peekToken.Type != lexer.IDENT {
@@ -2236,6 +2394,8 @@ func (p *Parser) parseInterfaceEvent() *ast.InterfaceEvent {
 		return event
 	}
 	if !p.expectPeekTypeStart() {
+		event.Payload = p.invalidTypeReference(p.peekToken, "")
+		p.recoverInterfaceEventPayload()
 		return event
 	}
 	event.Payload = p.parseTypeReference()
@@ -2245,24 +2405,104 @@ func (p *Parser) parseInterfaceEvent() *ast.InterfaceEvent {
 	return event
 }
 
+// recoverInterfaceEventPayload skips an invalid single payload to its owned
+// closing bracket without consuming the interface's closing brace or a later
+// interface member at the same delimiter depth.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Interface recovery"
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
+func (p *Parser) recoverInterfaceEventPayload() {
+	if p.peekToken.Type == lexer.RBRACKET {
+		p.nextToken()
+		return
+	}
+	delimiters := newDelimiterStack()
+	startLine := p.peekToken.Line
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() {
+			if p.peekToken.Type == lexer.RBRACKET {
+				p.nextToken()
+				return
+			}
+			if p.peekToken.Type == lexer.RBRACE || (p.peekToken.Line > startLine && p.isInterfaceMemberStart(p.peekToken)) {
+				return
+			}
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			return
+		}
+		p.nextToken()
+		delimiters.consume(p.curToken.Type)
+	}
+}
+
+// parseImplementsList parses a committed conformance list, retaining invalid
+// type positions and later comma-separated interface references instead of
+// discarding the owning interface or impl declaration.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Implements clause"
+//   - rules/compiler/parser_recovery.md — "Initial invalid expression and type retention", "Nil use"
 func (p *Parser) parseImplementsList() []*ast.TypeReference {
 	interfaces := []*ast.TypeReference{}
-	if !p.expectPeekTypeStart() {
-		return nil
-	}
 
 	for {
+		if !p.expectPeekTypeStart() {
+			unexpected := p.peekToken
+			interfaces = append(interfaces, p.invalidTypeReference(unexpected, ""))
+			if !p.recoverImplementsTypeReference() {
+				return interfaces
+			}
+			continue
+		}
 		interfaces = append(interfaces, p.parseTypeReference())
 		if p.peekToken.Type != lexer.COMMA {
 			return interfaces
 		}
 		p.nextToken()
-		if !p.expectPeekTypeStart() {
-			return nil
-		}
 	}
 }
 
+// recoverImplementsTypeReference skips one malformed conformance entry to a
+// top-level comma while leaving a declaration body, contract/default tail, or
+// outer closing delimiter for the owning parser.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Implements clause"
+//   - rules/compiler/parser_recovery.md — "Declaration-header recovery"
+func (p *Parser) recoverImplementsTypeReference() bool {
+	delimiters := newDelimiterStack()
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() {
+			switch p.peekToken.Type {
+			case lexer.COMMA:
+				p.nextToken()
+				return true
+			case lexer.LBRACE, lexer.RBRACE, lexer.DEFAULT:
+				return false
+			}
+			if p.isContractStart(p.peekToken) {
+				return false
+			}
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			return false
+		}
+		p.nextToken()
+		delimiters.consume(p.curToken.Type)
+	}
+	return false
+}
+
+// parseInterfaceProperty parses an interface property requirement and retains
+// the committed property with an invalid type when its declared type is
+// missing or malformed, preserving its accessors and later interface members.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Interface declaration", InterfaceProperty production
+//   - rules/declarations/properties.md — "Interface property requirements"
+//   - rules/compiler/parser_recovery.md — "Interface recovery", "Property recovery"
 func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 	property := &ast.InterfaceProperty{Token: p.curToken}
 	if !p.expectPeek(lexer.IDENT) {
@@ -2274,12 +2514,16 @@ func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 		return nil
 	}
 	if !p.expectPeekTypeStart() {
-		return nil
+		property.Type = p.invalidTypeReference(p.peekToken, "")
+		if !p.recoverInterfacePropertyBodyStart() {
+			return property
+		}
+	} else {
+		property.Type = p.parseTypeReference()
 	}
-	property.Type = p.parseTypeReference()
 
 	if !p.expectPeek(lexer.LBRACE) {
-		return nil
+		return property
 	}
 	previousContext := p.recoveryContext
 	p.recoveryContext = RecoveryContextMember
@@ -2327,6 +2571,64 @@ func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
 		return property
 	}
 	return property
+}
+
+// recoverInterfacePropertyBodyStart skips a malformed declared-type tail up
+// to the property's body brace without consuming a later interface member or
+// the interface's own closing brace.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Interface recovery", "Property recovery"
+func (p *Parser) recoverInterfacePropertyBodyStart() bool {
+	if p.peekToken.Type == lexer.LBRACE {
+		return true
+	}
+	start, end, skipped := p.peekToken, p.peekToken, 0
+	delimiters := newDelimiterStack()
+	record := func() {
+		if skipped > 0 {
+			p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+		}
+	}
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() {
+			if p.peekToken.Type == lexer.LBRACE {
+				record()
+				return true
+			}
+			if p.peekToken.Type == lexer.RBRACE || (p.peekToken.Line > start.Line && p.isInterfaceMemberStart(p.peekToken)) {
+				record()
+				return false
+			}
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			record()
+			return false
+		}
+		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
+	}
+	record()
+	return false
+}
+
+// isInterfaceMemberStart reports tokens that can reliably begin an interface
+// member during later-line recovery, including contextual event requirements.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Interface declaration", InterfaceMember production
+//   - rules/compiler/parser_recovery.md — "Interface recovery"
+func (p *Parser) isInterfaceMemberStart(token lexer.Token) bool {
+	switch token.Type {
+	case lexer.FN, lexer.MUT, lexer.CONSUME_ARROW, lexer.STATIC, lexer.PROPERTY:
+		return true
+	case lexer.IDENT:
+		return token.Lexeme == "event"
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseInterfacePropertySetter(property *ast.InterfaceProperty, fallible bool) bool {
@@ -2382,6 +2684,14 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 	return p.parseEnumBody(enum)
 }
 
+// parseEnumUnderlying parses an enum's optional representation and retains an
+// invalid underlying TypeReference when an explicit representation is missing
+// or malformed but the enum body remains recoverable.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Declaration forms"
+//   - rules/foundations/grammar.md — "Enum declaration"
+//   - rules/compiler/parser_recovery.md — "Declaration-header recovery"
 func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 	hadColon := false
 	if p.peekToken.Type == lexer.COLON {
@@ -2390,8 +2700,17 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 	}
 	if p.peekToken.Type == lexer.LBRACE {
 		if hadColon {
-			p.addError("expected enum underlying type after ':' at %d:%d", p.curToken.Line, p.curToken.Column)
-			return false
+			unexpected := p.peekToken
+			p.addDiagnostic(
+				compilerdiagnostics.ParserInvalidTypeReference,
+				unexpected,
+				nil,
+				&unexpected,
+				"expected enum underlying type after ':' at %d:%d",
+				unexpected.Line,
+				unexpected.Column,
+			)
+			enum.UnderlyingType = p.invalidTypeReference(unexpected, "")
 		}
 		return true
 	}
@@ -2402,7 +2721,8 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 		return true
 	}
 	if !p.expectPeekTypeStart() {
-		return false
+		enum.UnderlyingType = p.invalidTypeReference(p.peekToken, "")
+		return p.recoverEnumBodyStart()
 	}
 	if p.curToken.Lexeme != "bit" {
 		enum.UnderlyingType = p.parseTypeReference()
@@ -2429,6 +2749,35 @@ func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
 	return true
 }
 
+// recoverEnumBodyStart skips a malformed underlying-type tail to a reliable
+// enum body brace without consuming a later declaration or enclosing member.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Declaration-header recovery"
+func (p *Parser) recoverEnumBodyStart() bool {
+	if p.peekToken.Type == lexer.LBRACE {
+		return true
+	}
+	delimiters := newDelimiterStack()
+	startLine := p.peekToken.Line
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() {
+			if p.peekToken.Type == lexer.LBRACE {
+				return true
+			}
+			if p.peekToken.Type == lexer.RBRACE || (p.peekToken.Line > startLine && (isDeclarationStart(p.peekToken.Type) || p.isImplMemberStart(p.peekToken.Type))) {
+				return false
+			}
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			return false
+		}
+		p.nextToken()
+		delimiters.consume(p.curToken.Type)
+	}
+	return false
+}
+
 // parseOptionalEnumErrorMarker retains the canonical post-representation
 // marker from rules/declarations/enums.md. `error` is a marker here, not an
 // integer representation type.
@@ -2441,6 +2790,12 @@ func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
 	enum.ErrorToken = p.curToken
 }
 
+// parseEnumBody parses enum members and retains malformed member positions as
+// invalid EnumValue nodes while recovering to later members or the body close.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Enum members"
+//   - rules/compiler/parser_recovery.md — "Enum recovery", "Missing value name"
 func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
@@ -2460,9 +2815,12 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 			}
 		}
 		if p.curToken.Type != lexer.IDENT {
+			diagnosticStart := len(p.diagnostics)
 			p.addError("expected enum value name, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			p.skipCurrentBlock()
-			return nil
+			recovery := p.recoverInvalidEnumValue(p.curToken)
+			enum.Values = append(enum.Values, p.invalidEnumValue(p.curToken, diagnosticStart, recovery))
+			seenValue = true
+			continue
 		}
 
 		seenValue = true
@@ -2520,6 +2878,64 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 	return enum
 }
 
+// recoverInvalidEnumValue synchronizes one malformed enum member at a comma,
+// a later-line identifier, the enum's closing brace, or EOF while respecting
+// nested delimiter ownership.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Enum recovery"
+func (p *Parser) recoverInvalidEnumValue(start lexer.Token) RecoveryEvent {
+	end, skipped := start, 1
+	delimiters := newDelimiterStack()
+	delimiters.consume(start.Type)
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.empty() {
+			if p.peekToken.Type == lexer.COMMA {
+				p.nextToken()
+				end = p.curToken
+				skipped++
+				break
+			}
+			if p.peekToken.Type == lexer.RBRACE || (p.peekToken.Type == lexer.IDENT && p.peekToken.Line > start.Line) {
+				break
+			}
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			break
+		}
+		p.nextToken()
+		end = p.curToken
+		skipped++
+		delimiters.consume(p.curToken.Type)
+	}
+	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+}
+
+// invalidEnumValue creates the source-ordered recovery node associated with
+// the diagnostic that caused enum-member synchronization.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Enum recovery", "Missing value name"
+func (p *Parser) invalidEnumValue(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.EnumValue {
+	message := "invalid enum member"
+	diagnosticID := compilerdiagnostics.ParserUnexpectedToken
+	if diagnosticStart < len(p.diagnostics) {
+		message = p.diagnostics[diagnosticStart].Message
+		diagnosticID = p.diagnostics[diagnosticStart].ID
+	}
+	return &ast.EnumValue{
+		Token:   start,
+		Invalid: true,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: diagnosticID,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
 func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	fn := &ast.FunctionDeclaration{Token: p.curToken}
 
@@ -2545,14 +2961,13 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 		return nil
 	}
 
-	if !p.expectPeekTypeStart() {
-		return nil
-	}
-	fn.ReturnType = p.parseTypeReference()
+	p.parseRequiredFunctionReturnType(fn)
 
 	p.skipPeekComments()
-	if fn.ReturnType != nil && !fn.ReturnType.Invalid && p.peekToken.Type != lexer.LBRACE {
-		p.reportUnimplementedFunction(fn)
+	if p.peekToken.Type != lexer.LBRACE {
+		if fn.ReturnType != nil && !fn.ReturnType.Invalid {
+			p.reportUnimplementedFunction(fn)
+		}
 		return fn
 	}
 	fn.Body = p.parseFunctionBlockStatement()
@@ -2632,12 +3047,72 @@ func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclara
 		return nil
 	}
 
-	if !p.expectPeekTypeStart() {
-		return nil
-	}
-	fn.ReturnType = p.parseTypeReference()
+	p.parseRequiredFunctionReturnType(fn)
 
 	return fn
+}
+
+// parseRequiredFunctionReturnType retains an invalid TypeReference when a
+// committed function signature reaches its body or next member without the
+// mandatory return type. It never infers void.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Function declaration"
+//   - rules/compiler/parser_recovery.md — "Function recovery", "Missing return type"
+func (p *Parser) parseRequiredFunctionReturnType(fn *ast.FunctionDeclaration) {
+	if p.isMissingFunctionReturnTypeBoundary() {
+		unexpected := p.peekToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserInvalidTypeReference,
+			unexpected,
+			nil,
+			&unexpected,
+			"expected next token to be type, got %q at %d:%d",
+			unexpected.Type,
+			unexpected.Line,
+			unexpected.Column,
+		)
+		fn.ReturnType = p.invalidTypeReference(unexpected, "")
+		return
+	}
+	if !p.expectPeekTypeStart() {
+		fn.ReturnType = p.invalidTypeReference(p.peekToken, "")
+		return
+	}
+	fn.ReturnType = p.parseTypeReference()
+}
+
+// isMissingFunctionReturnTypeBoundary disambiguates a later-line declaration
+// or member start from callable return-type syntax during recovery. Same-line
+// fn, mut fn, and consuming fn tokens remain available as valid type starts.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Function recovery", "Missing return type"
+func (p *Parser) isMissingFunctionReturnTypeBoundary() bool {
+	switch p.peekToken.Type {
+	case lexer.LBRACE, lexer.RBRACE, lexer.EOF:
+		return true
+	}
+	if p.peekToken.Line <= p.curToken.Line {
+		return false
+	}
+	if p.recoveryContext == RecoveryContextTopLevel {
+		return isDeclarationStart(p.peekToken.Type)
+	}
+	if p.recoveryContext != RecoveryContextMember {
+		return false
+	}
+	if p.isImplMemberStart(p.peekToken.Type) {
+		return true
+	}
+	switch p.peekToken.Type {
+	case lexer.MUT, lexer.CONSUME_ARROW:
+		return true
+	case lexer.IDENT:
+		return p.peekToken.Lexeme == "event"
+	default:
+		return false
+	}
 }
 
 func (p *Parser) isAttachedGenericListStart(name *ast.Identifier) bool {
@@ -2648,6 +3123,13 @@ func (p *Parser) isAttachedGenericListStart(name *ast.Identifier) bool {
 		p.peekToken.Column == name.Token.Column+len([]rune(name.Value))
 }
 
+// parseGenericParameters parses declaration-owned generic parameters and
+// preserves completed and later comma-separated parameters around a malformed
+// entry instead of discarding the committed declaration.
+//
+// Rules:
+//   - rules/declarations/generics.md — "Generic parameter syntax"
+//   - rules/compiler/parser_recovery.md — "Generic parameter recovery"
 func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 	params := []*ast.GenericParameter{}
 
@@ -2661,7 +3143,14 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 		if p.peekToken.Type != lexer.IDENT {
 			p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			p.skipGenericParameterList()
-			return nil
+			if p.curToken.Type == lexer.COMMA {
+				if p.peekToken.Type == lexer.RBRACKET {
+					p.nextToken()
+					return params
+				}
+				continue
+			}
+			return params
 		}
 		p.nextToken()
 		param := &ast.GenericParameter{
@@ -2671,11 +3160,31 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 
 		if p.peekToken.Type == lexer.COLON {
 			p.nextToken()
-			if !p.expectPeekTypeStart() {
-				p.addError("expected constraint type after ':' for generic parameter %s at %d:%d", param.Name.Value, p.peekToken.Line, p.peekToken.Column)
+			if !isTypeStart(p.peekToken.Type) {
+				unexpected := p.peekToken
+				p.addDiagnostic(
+					compilerdiagnostics.ParserInvalidTypeReference,
+					unexpected,
+					nil,
+					&unexpected,
+					"expected constraint type after ':' for generic parameter %s at %d:%d",
+					param.Name.Value,
+					unexpected.Line,
+					unexpected.Column,
+				)
+				param.Constraint = p.invalidTypeReference(unexpected, "")
+				params = append(params, param)
 				p.skipGenericParameterList()
-				return nil
+				if p.curToken.Type == lexer.COMMA {
+					if p.peekToken.Type == lexer.RBRACKET {
+						p.nextToken()
+						return params
+					}
+					continue
+				}
+				return params
 			}
+			p.nextToken()
 			param.Constraint = p.parseTypeReference()
 		}
 
@@ -2694,17 +3203,40 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 		default:
 			p.addError("expected ',' or ']' after generic parameter %s at %d:%d", param.Name.Value, p.peekToken.Line, p.peekToken.Column)
 			p.skipGenericParameterList()
-			return nil
+			if p.curToken.Type == lexer.COMMA {
+				if p.peekToken.Type == lexer.RBRACKET {
+					p.nextToken()
+					return params
+				}
+				continue
+			}
+			return params
 		}
 	}
 }
 
+// skipGenericParameterList advances to the next parameter separator, list
+// closer, or declaration boundary without consuming an outer construct.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Generic parameter recovery"
 func (p *Parser) skipGenericParameterList() RecoveryEvent {
 	start, end, skipped := p.curToken, p.curToken, 1
 	delimiters := newDelimiterStack(lexer.RBRACKET)
 	for p.peekToken.Type != lexer.EOF && !delimiters.empty() {
-		if delimiters.depth() == 1 && (p.peekToken.Type == lexer.LBRACE || p.peekToken.Type == lexer.LPAREN) {
-			break
+		if delimiters.depth() == 1 {
+			switch p.peekToken.Type {
+			case lexer.COMMA:
+				p.nextToken()
+				end = p.curToken
+				skipped++
+				return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+			case lexer.LBRACE, lexer.LPAREN, lexer.IMPLEMENTS, lexer.DEFAULT:
+				return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+			}
+			if p.isContractStart(p.peekToken) {
+				return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
+			}
 		}
 		if !delimiters.canConsume(p.peekToken.Type) {
 			break
@@ -3019,6 +3551,14 @@ func (p *Parser) parseStructType() *ast.StructType {
 	return structType
 }
 
+// parseRegisterType parses a nominal register representation and retains a
+// missing width as an invalid expression when the owned closing bracket makes
+// the body boundary reliable.
+//
+// Rules:
+//   - rules/declarations/registers.md — "Width"
+//   - rules/foundations/grammar.md — "Register declaration"
+//   - rules/compiler/parser_recovery.md — "Register recovery"
 func (p *Parser) parseRegisterType() *ast.RegisterType {
 	registerType := &ast.RegisterType{
 		Token:           p.curToken,
@@ -3030,13 +3570,17 @@ func (p *Parser) parseRegisterType() *ast.RegisterType {
 		return registerType
 	}
 	widthExpression, width, ok := p.parseRegisterWidthExpression("register width")
-	if !ok {
-		return registerType
-	}
-	registerType.Width = width
 	registerType.WidthExpression = widthExpression
-	if !p.expectPeek(lexer.RBRACKET) {
-		return registerType
+	if !ok {
+		if p.peekToken.Type != lexer.RBRACKET {
+			return registerType
+		}
+		p.nextToken()
+	} else {
+		registerType.Width = width
+		if !p.expectPeek(lexer.RBRACKET) {
+			return registerType
+		}
 	}
 	for p.peekToken.Type == lexer.IDENT {
 		modifierToken := p.peekToken
@@ -3100,6 +3644,14 @@ func (p *Parser) parseRegisterTypeModifier() (string, bool) {
 	return "", false
 }
 
+// parseRegisterFields parses register layout fields and retains a bit field
+// with an invalid width expression when an empty owned bracket suffix can be
+// recovered without consuming later fields.
+//
+// Rules:
+//   - rules/declarations/registers.md — "Register field types"
+//   - rules/foundations/grammar.md — "Register declaration", RegisterField production
+//   - rules/compiler/parser_recovery.md — "Register recovery"
 func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 	fields := []*ast.RegisterField{}
 	if p.peekToken.Type == lexer.RBRACE {
@@ -3145,13 +3697,18 @@ func (p *Parser) parseRegisterFields() []*ast.RegisterField {
 			if p.peekToken.Type == lexer.LBRACKET {
 				p.nextToken()
 				widthExpression, width, ok := p.parseRegisterWidthExpression("bit field width")
-				if !ok {
-					return fields
-				}
-				field.Width = width
 				field.WidthExpression = widthExpression
-				if !p.expectPeek(lexer.RBRACKET) {
-					return fields
+				if !ok {
+					field.Width = 0
+					if p.peekToken.Type != lexer.RBRACKET {
+						return fields
+					}
+					p.nextToken()
+				} else {
+					field.Width = width
+					if !p.expectPeek(lexer.RBRACKET) {
+						return fields
+					}
 				}
 			}
 			if p.peekToken.Type == lexer.LT {
@@ -3261,14 +3818,20 @@ func (p *Parser) parseRegisterWidth(kind string) (int64, bool) {
 	return width, true
 }
 
-// parseRegisterWidthExpression preserves the complete constant expression
-// accepted by rules/declarations/registers.md. Positivity and constantness are
-// semantic properties and are deliberately checked by Sema, not reconstructed
-// in the parser. The cached int64 value keeps literal AST consumers stable.
+// parseRegisterWidthExpression preserves the complete constant expression, or
+// an InvalidExpression for an empty width position. Positivity and constantness
+// are semantic properties deliberately checked by Sema. The cached int64 value
+// keeps literal AST consumers stable.
+//
+// Rules:
+//   - rules/declarations/registers.md — "Width", "Register field types"
+//   - rules/compiler/parser_recovery.md — "Register recovery"
 func (p *Parser) parseRegisterWidthExpression(kind string) (ast.Expression, int64, bool) {
 	if p.peekToken.Type == lexer.RBRACKET || p.peekToken.Type == lexer.EOF {
-		p.addError("missing %s at %d:%d", kind, p.peekToken.Line, p.peekToken.Column)
-		return nil, 0, false
+		unexpected := p.peekToken
+		message := fmt.Sprintf("missing %s at %d:%d", kind, unexpected.Line, unexpected.Column)
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, unexpected, nil, &unexpected, "%s", message)
+		return p.invalidExpression(unexpected, message, compilerdiagnostics.ParserInvalidExpression), 0, false
 	}
 	p.nextToken()
 	expression := p.parseExpression(LOWEST)
@@ -4757,12 +5320,38 @@ func (p *unitSyntaxParser) parseAtom() (*ast.UnitExpression, error) {
 	return &ast.UnitExpression{Token: token, Kind: ast.UnitExpressionName, Name: name}, nil
 }
 
+// parseTypeArgs parses a bracketed generic type-argument list, retaining an
+// invalid TypeReference for each malformed argument position and resuming at
+// the next top-level comma or closing bracket when possible.
+//
+// Rules:
+//   - rules/declarations/generics.md — "Generic arguments"
+//   - rules/foundations/grammar.md — "Generic type arguments"
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func (p *Parser) parseTypeArgs() []*ast.TypeReference {
 	typeArgs := []*ast.TypeReference{}
 
-	for p.peekToken.Type != lexer.RBRACKET && p.peekToken.Type != lexer.EOF {
-		if !p.expectPeekTypeStart() {
+	for p.peekToken.Type != lexer.EOF {
+		if p.peekToken.Type == lexer.RBRACKET {
+			if len(typeArgs) == 0 {
+				unexpected := p.peekToken
+				p.expectPeekTypeStart()
+				typeArgs = append(typeArgs, p.invalidTypeReference(unexpected, ""))
+			}
+			p.nextToken()
 			return typeArgs
+		}
+
+		if !p.expectPeekTypeStart() {
+			unexpected := p.peekToken
+			typeArgs = append(typeArgs, p.invalidTypeReference(unexpected, ""))
+			if !p.recoverGenericTypeArgument() {
+				return typeArgs
+			}
+			if p.curToken.Type == lexer.RBRACKET {
+				return typeArgs
+			}
+			continue
 		}
 
 		typeArgs = append(typeArgs, p.parseTypeReference())
@@ -4778,6 +5367,33 @@ func (p *Parser) parseTypeArgs() []*ast.TypeReference {
 	}
 
 	return typeArgs
+}
+
+// recoverGenericTypeArgument skips one malformed generic argument without
+// consuming a delimiter owned by the surrounding expression or declaration.
+// It leaves the current token on a recovered comma or closing bracket.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Generic argument recovery"
+func (p *Parser) recoverGenericTypeArgument() bool {
+	delimiters := newDelimiterStack()
+	for p.peekToken.Type != lexer.EOF {
+		next := p.peekToken.Type
+		if delimiters.empty() {
+			switch next {
+			case lexer.COMMA, lexer.RBRACKET:
+				p.nextToken()
+				return true
+			case lexer.RPAREN, lexer.LBRACE:
+				return false
+			}
+		}
+		if !delimiters.consume(next) {
+			return false
+		}
+		p.nextToken()
+	}
+	return false
 }
 
 func (p *Parser) parseContractSequence() ast.Contract {

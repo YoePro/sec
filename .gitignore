@@ -2,6 +2,11 @@
 vscode/node_modules/
 automation/
 manual/task1_manual.yaml
+manual/*.txt
+manual/*.ico
+manual/*.png
+manual/*.xml
+manual/image/*
 /build/
 
 codex.md

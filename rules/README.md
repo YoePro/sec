@@ -18,7 +18,7 @@ belongs in the applicable canonical fragment under `governance/`.
 | `collections/` | Collections and shaped values. |
 | `memory/` | Ownership, borrowing, references, storage, layout, allocation, and unsafe code. |
 | `errors/` | Error handling, panic, and runtime checks. |
-| `concurrency/` | Tasks, threads, synchronization, scheduling, and the concurrency memory/runtime models. |
+| `concurrency/` | Tasks, threads, processes, IPC, synchronization, scheduling, and the concurrency memory/runtime models. |
 | `analysis/` | Compiler analyses and their shared semantic contracts. |
 | `compiler/` | Compiler architecture, pipeline, parser recovery, canonical Semantic IR, linking, and final artifacts. |
 | `mlir/` | Sec MLIR governance, dialect, lowering, version history, amendments, and implementation packages. |

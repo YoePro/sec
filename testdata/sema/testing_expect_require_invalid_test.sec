@@ -1,0 +1,21 @@
+module testing_operations
+
+test "invalid expect condition" {
+	testing.Expect(1)
+}
+
+test "invalid expect message" {
+	testing.Expect(true, 2)
+}
+
+test "invalid require arity" {
+	testing.Require()
+}
+
+test "invalid log arity" {
+	testing.Log()
+}
+
+test "invalid log message" {
+	testing.Log(1)
+}

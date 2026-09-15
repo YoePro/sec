@@ -1,0 +1,8 @@
+module invalid_new_target_type
+
+fn Test() void {
+    let broken := new Box[@](1)
+    let preserved := 42
+}
+
+fn Next() void {}

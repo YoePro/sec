@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-09-06
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-15
+- **Document revision:** 2.1
 - **Language version:** Sec 0.1
 - **Canonical path:** `rules/concurrency/processes.md`
 - **Implementation governance:** `governance/concurrency_process.yaml`
@@ -66,7 +66,7 @@ This rulebook does not redefine the generic process-transferability rules. Those
 are owned by `rules/memory/transferability.md`.
 
 This rulebook does not define general inter-process messaging, shared-memory APIs,
-or general native-handle transfer. Those are owned by `rules/ipc.md`.
+or general native-handle transfer. Those are owned by `rules/concurrency/ipc.md`.
 
 Ordinary in-process `Channel[T]` is not process IPC.
 
@@ -704,6 +704,7 @@ enum CommandConfigurationError error {
     PermissionDenied
     InvalidEnvironmentName
     InvalidEnvironmentValue
+    InvalidIOResource
     OutOfMemory
 }
 ```
@@ -741,6 +742,14 @@ rules.
 #### `InvalidEnvironmentValue`
 
 An environment variable value cannot be represented for the selected target.
+
+#### `InvalidIOResource`
+
+The supplied `File`, `PipeReader`, or `PipeWriter` cannot satisfy the requested
+standard-stream direction or portable I/O contract. On this error the previous
+configuration remains unchanged and consuming ownership of the supplied source
+does not commit. A statically known pipe-direction mismatch is a compile-time
+overload/type error instead.
 
 #### `OutOfMemory`
 
@@ -918,6 +927,7 @@ enum CommandInputMode {
     Inherit
     Closed
     Pipe
+    Resource
 }
 ```
 
@@ -942,6 +952,13 @@ A backend may use a target-native empty-input facility to realize the semantics.
 `Start()` establishes an anonymous one-way pipe from a parent-side `PipeWriter`
 to child standard input.
 
+#### `Resource`
+
+The caller supplied an existing owned `File` or `PipeReader`. After successful
+configuration commit, `Command` owns that capability until `Start()` commits its
+child-side binding or deterministic cleanup releases it. This is not a raw
+native-handle mode.
+
 ### 5.13 `CommandOutputMode`
 
 Canonical declaration:
@@ -951,6 +968,7 @@ enum CommandOutputMode {
     Inherit
     Discard
     Pipe
+    Resource
 }
 ```
 
@@ -970,6 +988,11 @@ This is not Sec `null`/`nil` semantics.
 
 `Start()` establishes an anonymous one-way pipe from the child output stream to a
 parent-side `PipeReader`.
+
+#### `Resource`
+
+The caller supplied an existing owned `File` or `PipeWriter` for stdout or
+stderr. Ownership and startup follow the transactional Resource rules below.
 
 ### 5.14 `ProcessObserver`
 
@@ -1801,7 +1824,7 @@ rather than an ordinary reference.
 This does not turn `Process[T]` into a general IPC channel.
 
 General ongoing communication, streaming, multi-message transfer, shared memory,
-and handle passing belong to `ipc.md`.
+and handle passing belong to `rules/concurrency/ipc.md`.
 
 ---
 
@@ -1891,6 +1914,12 @@ fn InheritEnvironment() Result[void, CommandConfigurationError]
 fn SetStdin(mode: CommandInputMode) Result[void, CommandConfigurationError]
 fn SetStdout(mode: CommandOutputMode) Result[void, CommandConfigurationError]
 fn SetStderr(mode: CommandOutputMode) Result[void, CommandConfigurationError]
+fn SetStdin(file: File) Result[void, CommandConfigurationError]
+fn SetStdin(pipe: PipeReader) Result[void, CommandConfigurationError]
+fn SetStdout(file: File) Result[void, CommandConfigurationError]
+fn SetStdout(pipe: PipeWriter) Result[void, CommandConfigurationError]
+fn SetStderr(file: File) Result[void, CommandConfigurationError]
+fn SetStderr(pipe: PipeWriter) Result[void, CommandConfigurationError]
 fn TakeStdinPipe() Option[PipeWriter]
 fn TakeStdoutPipe() Option[PipeReader]
 fn TakeStderrPipe() Option[PipeReader]
@@ -1902,7 +1931,7 @@ fn Terminate() Result[void, ProcessTerminationError]
 
 All properties are read-only from ordinary source.
 
-The `PipeReader` and `PipeWriter` types are owned and fully defined by `ipc.md`.
+The `PipeReader` and `PipeWriter` types are owned and fully defined by `rules/concurrency/ipc.md`.
 
 This rulebook defines exactly how `Command` obtains and transfers ownership of
 those endpoints when pipe modes are selected.
@@ -2593,21 +2622,42 @@ reader.
 
 The caller must arrange an explicit consumer where required.
 
-### 16.14 Existing resource binding
+### 16.14 Existing Resource binding
 
-The base `Command` surface in this rulebook does not invent a process-specific
-`File`, socket, or raw-native-handle binding exception.
+Direct existing-resource standard-I/O binding uses `Resource` mode and the
+type-preserving capability-transfer rules in `rules/concurrency/ipc.md`.
+Portable Sec 0.1 supports exactly:
 
-Binding an already existing I/O capability directly into child standard I/O
-requires the canonical cross-process capability/handle-transfer semantics owned
-by `ipc.md`.
+```text
+stdin:  File or PipeReader
+stdout: File or PipeWriter
+stderr: File or PipeWriter
+```
 
-If `ipc.md` defines such a transferable endpoint/capability, `Command` integration
-must use that canonical model rather than a second process-specific ownership
-model.
+Sockets and arbitrary raw native handles are outside the portable 0.1 surface.
+An existing named move-only resource uses ordinary explicit move syntax:
 
-An implementation must not silently add ad-hoc file-descriptor or native-handle
-redirection semantics that bypass the IPC/transferability rules.
+```sec
+try command.SetStdout(<-logFile)
+```
+
+Successful configuration commits ownership to `Command`, sets the stream mode
+to `Resource`, and releases any superseded configured resource. Failure leaves
+the prior configuration unchanged and the new source owned by the caller.
+Callers retain their own access only by explicitly calling the resource's
+`Duplicate()` operation before configuration.
+
+For Resource-mode `Start()`, the implementation prepares the route-specific
+child binding without changing committed configuration, commits it atomically
+with process bootstrap, and releases any unnecessary parent-side configuration
+capability after success. Failed start returns/remains `Created`, retains the
+configured resource for retry, and rolls back every temporary child/native
+binding. A native launch-time setup failure uses
+`CommandStartError.IOSetupFailed` when no more specific start error applies.
+
+`TakeStdinPipe()`, `TakeStdoutPipe()`, and `TakeStderrPipe()` return `None` for a
+Resource-configured stream because `Command` created no parent-side anonymous
+pipe endpoint.
 
 ---
 
@@ -3344,8 +3394,8 @@ ProcessExecution
 ExternalProcessExecution
 ProcessDetach
 ProcessTermination
-ProcessStandardIOInheritance
-ProcessPipes
+ProcessStandardIOPipes
+ProcessStandardIOResourceBinding(T, role)
 ```
 
 ### 26.1 `ProcessExecution`
@@ -3396,27 +3446,26 @@ If absent statically, `Terminate()` is a compile-time error.
 `ProcessTerminationError.NotSupported` remains for dynamic per-process limitations
 on a target that otherwise supports the feature.
 
-### 26.5 `ProcessStandardIOInheritance`
+### 26.5 `ProcessStandardIOPipes`
 
-The target can establish the canonical initial parent-to-child standard stream
-inheritance required by the selected creation form.
-
-`spawn process` requires this capability for its default Sec 0.1 standard-stream
-inheritance semantics.
-
-`Command.Start()` requires it for every standard stream configured as `Inherit`.
-
-### 26.6 `ProcessPipes`
-
-The target can establish the anonymous one-way process pipes defined by this
-rulebook and `ipc.md`.
-
-Selecting a `Pipe` mode on a target that statically lacks this capability is a
-compile-time error.
+Together with `ExternalProcessExecution` and `IPCPipes`, the target can establish
+the anonymous one-way process pipes defined by this rulebook and
+`rules/concurrency/ipc.md`. Selecting a `Pipe` mode when any required fact is
+statically absent is a compile-time error.
 
 Runtime pipe setup failure on a target that supports the capability uses the
 appropriate runtime start error, including `IOSetupFailed`, `ResourceLimit`, or
 `OutOfMemory` as applicable.
+
+### 26.6 `ProcessStandardIOResourceBinding(T, role)`
+
+The target can establish a child standard-stream binding for the concrete
+resource type `T` in the `stdin`, `stdout`, or `stderr` role. Resource mode
+requires this route-specific fact together with `ExternalProcessExecution`.
+`ProcessTransferable(T)` proves semantic eligibility but does not by itself
+prove that this route is supported. Native inheritance, descriptor duplication,
+handle lists, and similar mechanisms are backend realization details rather
+than source-semantic capability names.
 
 ### 26.7 Reaping is not an optional add-on to owning process support
 
@@ -3948,6 +3997,10 @@ ProcessDetachDiscard
 ProcessTakeStdinPipe
 ProcessTakeStdoutPipe
 ProcessTakeStderrPipe
+CommandConfigureResource
+CommandResourceTransferPrepare
+CommandResourceTransferCommit
+CommandResourceTransferRollback
 ProcessComplete
 ProcessCompletionFailed
 ProcessPanic
@@ -3992,8 +4045,12 @@ A command representation must preserve at least:
 - effective working-directory configuration;
 - environment inheritance/override/removal configuration;
 - standard-I/O modes;
+- concrete Resource-mode capability type and stream role;
+- conditional resource-ownership commit and failure-path source availability;
+- route-specific `ProcessStandardIOResourceBinding(T, role)` adapter;
 - command lifecycle state;
 - start commit boundary;
+- process-bootstrap cleanup and rollback for prepared resource bindings;
 - pipe ownership slots;
 - `ExitStatus` completion type;
 - target/CompilationPlan;
@@ -4108,9 +4165,9 @@ implementation.
 This rulebook owns only the process containment/transport use of canonical panic
 information.
 
-### 39.6 `ipc.md`
+### 39.6 `rules/concurrency/ipc.md`
 
-`rules/ipc.md` owns:
+`rules/concurrency/ipc.md` owns:
 
 - `PipeReader`;
 - `PipeWriter`;

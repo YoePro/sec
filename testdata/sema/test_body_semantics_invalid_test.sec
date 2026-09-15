@@ -1,0 +1,5 @@
+module testing_identity
+
+test "ordinary body semantics" {
+	assert 1
+}

@@ -216,7 +216,9 @@ impl Request {
         let mut index: uint := 0
 
         while index < value.Len {
-            let current := char(value.ByteAt(index))
+            let current := try char(value.ByteAt(index)) {
+
+            }
 
             if !current.IsAscii || current.IsWhitespace || current == '#' {
                 return Err(MessageError.InvalidTarget)

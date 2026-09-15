@@ -16,4 +16,5 @@ rules/corrections/applied/example-correction-20260813.md
 
 The archived correction records what changed and which source authority caused
 the change. Canonical language semantics remain in the target rulebook, and
-mutable compiler progress remains in `implementation-status.yaml`.
+mutable compiler progress remains in the owning `governance/*.yaml` fragment;
+the root `implementation-status.yaml` is only a migration source.

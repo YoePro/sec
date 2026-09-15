@@ -1,4 +1,201 @@
 schema_version: 1
 area: lifetime
 purpose: Lifetime, reference validity, borrowing, copy/move, and destruction.
-integrations: []
+integrations:
+  - id: frontend.ownership-v2
+    area: frontend-ownership-control-flow-and-lowering
+    status: partial
+    integrated: "2026-08-26"
+    document_revision: "2.0"
+    repository_baseline: "b3315f6"
+    replaces: pre-v2 rules/memory/ownership.md
+    summary: >-
+      Tracks ownership revision 2.0. The existing frontend has structured Place
+      identity, explicit declaration/assignment moves, direct move provenance,
+      selected field-sensitive partial availability, borrow checks, recursive
+      copy and destruction classification, and delayed outer-call transfer
+      commit. Correction 30 clarifies that negative availability refinement must
+      preserve partial/conditional masks, explicit outer-call moves require
+      Place-sensitive pending reservations, and runtime ownership state may be
+      required by any ownership-dependent operation. The frontend does not yet
+      implement the revision-2 canonical Availability
+      dimension, explicit reusable-source moves in every owning payload,
+      new closure move capture syntax, availability tests/refinement, discard
+      convergence, conditional cleanup/replacement, or static-ownership policy.
+    rules:
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/control-flow/discard.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/declarations/functions.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/unions.md
+      - rules/declarations/lambda-functions.md
+      - rules/errors/errorhandling.md
+      - rules/analysis/closure_analysis.md
+      - rules/foundations/grammar.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+      - rules/corrections/applied/correction30-20260828.md
+      - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
+    related_integrations:
+      - frontend.copy-move
+      - sema.place-analysis
+      - frontend.match-v2
+      - frontend.discard-v2
+      - frontend.defer-v2
+    implemented:
+      - canonical Place identity for roots, fields, selected indexes and slices, references, and union payload projections
+      - direct unavailable tracking with moved, discarded, and detached source provenance
+      - lexer, parser, AST, formatter, Sema, and initial LSP support for declaration and assignment move forms
+      - named-source implicit copy rejection for compiler-known and @noCopy move-only values in direct declaration and assignment paths
+      - intrinsically transferring returns reject ordinary indexed extraction of non-copyable collection elements with canonical ownership code, source range, and corrective help shared by CLI and LSP
+      - terminal return ownership context propagates recursively through aggregate, Option, Result, union, and
+        value-producing match construction while ordinary calls retain their declared argument ownership modes
+      - reusable move-only aggregate and union/Option payload sources require explicit <- outside terminal returns;
+        fresh temporaries remain marker-free and explicit terminal markers are ownership-equivalent
+      - selected nested field moves, sibling use, whole-aggregate rejection, and mutable field reinitialization
+      - projection-sensitive ownership facts across branches, matches, switches, selects, and loops, with a conservative pre-v2 merge model
+      - borrow validation before supported moves and overlapping self-move diagnostics
+      - independent copy and trivial-destruction classifications
+      - left-to-right call argument evaluation with outer-call transfer commit delayed until every argument is ready
+    remaining:
+      - availability-reason-separation
+      - explicit-consuming-call-arguments
+      - call-transfer-commit-with-explicit-move
+      - union-legacy-move-syntax
+      - closure-capture-explicit-move
+      - ordinary-method-no-whole-self-consume
+      - method-member-consumption
+      - immutable-root-field-mutability
+      - partial-availability-v2
+      - immutable-partial-move
+      - custom-free-partial-move-ban
+      - conditional-availability
+      - ownership-is-available
+      - negative-availability-refinement-preserves-recursive-mask
+      - static-availability-elimination
+      - dynamic-ownership-state-policy
+      - runtime-ownership-state-requirement-analysis
+      - discard-convergence
+      - conditional-replacement
+      - replacement-order-and-commit
+      - pending-call-transfer-reservation
+      - nested-call-transfer-transactions
+      - conditional-scope-exit-cleanup
+      - result-projection-ownership-sync
+      - guarded-match-try-ownership-fact-reuse
+      - fixed-address-register-volatile-foreign-transfer-policy
+      - partial-destruction
+      - destruction-classification-boundary
+      - ownership-errorhandling-sync
+      - ownership-semantic-ir-v2
+      - ownership-lsp-v2
+      - ownership-mentor-diagnostics
+      - ownership-formatter-v2
+    semantic_ir_remaining:
+      - represent copy versus consume explicitly
+      - represent move source Place and destination ownership
+      - represent Availability plus recursive partial and conditional masks where lowering needs them
+      - preserve UnavailableReason and source provenance for tooling
+      - represent pending and committed call-transfer facts or an equivalent resolved ownership plan
+      - distinguish replacement from reinitialization
+      - represent conditional destruction and cleanup responsibility
+      - represent return forwarding explicitly
+      - verify ownership operations instead of inferring moves from unused SSA values
+      - retain source Place and rule provenance for diagnostics and LSP
+    lowering_remaining:
+      - lower static ownership state without unnecessary runtime flags
+      - lower genuinely dynamic conditional ownership through local SSA or drop-state when policy permits
+      - eliminate runtime ownership state when static proof is sufficient
+      - conditionally destroy exactly once for discard, replacement, and scope exit
+      - commit call transfers atomically at the callee-entry boundary
+      - retain caller ownership when failure occurs before outer-call commit
+      - preserve completed nested argument-expression effects
+      - verify Sec MLIR and LLVM ownership and cleanup behavior
+      - keep local ownership bookkeeping out of public ABI unless an ABI rule requires it
+    tooling_remaining:
+      - stable ownership diagnostic IDs
+      - mentor diagnostics with Place, earlier operation, reason, and practical correction
+      - missing call-site move quick fix only for compiler-proven consuming intent
+      - hover for availability state, unavailability provenance, and copied versus consumed arguments
+      - expose pending versus committed transfer where useful
+      - expose static versus runtime-dependent availability and target-policy rejection
+      - preserve every ownership marker without formatter insertion or removal
+    corrections_applied:
+      - functions-ownership-v2-correction
+      - interfaces-ownership-v2-correction
+      - unions-ownership-v2-correction
+      - lambda-functions-ownership-v2-correction
+      - closure-analysis-ownership-v2-correction
+      - grammar-ownership-v2-correction
+      - copy-move-ownership-v2-correction
+      - discard-ownership-v2-correction
+      - destruction-ownership-v2-correction
+      - semantic-ir-ownership-v2-correction
+      - lsp-ownership-v2-correction
+      - diagnostics-ownership-v2-correction
+      - formatter-ownership-v2-correction
+      - correction30
+    required_tests:
+      - ordinary copy of copyable reusable source preserves source availability
+      - ordinary value syntax never silently moves a reusable @noCopy/move-only source
+      - explicit move initialization :<- consumes reusable source
+      - explicit move assignment <- consumes reusable source and handles destination replacement
+      - explicit <- may consume a copyable reusable source
+      - ordinary by-value move-only call requires Call(<-source)
+      - explicit -> parameter requires Call(<-source) even when source type is copyable
+      - fresh temporary to ownership-taking parameter requires no <- marker
+      - later argument failure does not commit earlier outer-call source move
+      - Some(source), Ok(source), union payload, and aggregate payload reject implicit move-only reusable source transfer
+      - Some(<-source), Ok(<-source), union payload <-source, and aggregate field <-source transfer ownership
+      - legacy union move-word spelling is rejected in favor of :<- / <-
+      - capture(value) copies and rejects non-copyable reusable source
+      - capture(<-value) consumes source and capture(-> value) is rejected
+      - return value and return <-value both transfer owned local
+      - fresh returned value can initialize destination without move marker
+      - ordinary method cannot consume whole self
+      - method may move/discard an owned member with sufficient receiver authority
+      - immutable root does not permit ordinary field assignment
+      - mutable/exclusive self permits member mutation without per-field mut declaration
+      - partial move leaves sibling field usable and whole aggregate unusable
+      - immutable aggregate permits explicit partial move but not field reinitialization
+      - mutable aggregate field reinitialization restores whole availability when complete
+      - custom free type rejects partial move
+      - Available plus Unavailable continuing paths merge to ConditionallyAvailable
+      - terminating moved path is excluded from post-branch availability merge
+      - is available and is not available refine ownership state without Option/null/generation semantics
+      - partial aggregate whole is available is false
+      - partial aggregate is not available preserves available sibling fields and recursive masks
+      - uninitialized is not available preserves uninitialized provenance
+      - availability tests never invent moved, discarded, or detached provenance
+      - statically provable availability tests require no runtime bookkeeping
+      - static-ownership target rejects ownership code that genuinely requires runtime state
+      - earlier explicit call move reserves against later overlapping read, borrow, move, discard, and mutation
+      - pending call-transfer reservation permits proven-disjoint sibling Places
+      - later argument failure cancels only the outer reservation
+      - successful outer call commits every prepared transfer exactly once
+      - committed nested-call transfer is not rolled back by outer-call failure
+      - conditional discard, replacement, and scope-exit cleanup can require runtime state without an availability query
+      - discard Available destroys when required and converges to Unavailable
+      - discard already-Unavailable place is legal no-op
+      - discard ConditionallyAvailable converges all paths to Unavailable
+      - discard remains blocked by non-discardable obligation and incompatible active borrow
+      - assignment to Unavailable mutable place is reinitialization
+      - assignment to Available mutable place automatically ends old value before replacement
+      - hosted assignment to ConditionallyAvailable mutable place conditionally ends old value and repairs to Available
+      - static-ownership policy may require discard convergence before conditional replacement
+      - partial aggregate cleanup destroys only still-owned available sub-places
+      - moved/discarded/detached sub-place is never destroyed twice
+      - Result.Ok()/Err() consumption and OkRef/ErrRef borrowing integrate with availability
+      - try/match guarded move ownership commits only on selected guard success
+      - formatter preserves ownership markers and LSP reports canonical compiler facts
+      - mentor diagnostics show source operation, ownership consequence, and practical correction
+    traceability:
+      availability_and_refinement: rules/memory/ownership.md sections 5, 18, and 20-25
+      call_transfer: rules/memory/ownership.md sections 13-14 and 18
+      runtime_state_and_policy: rules/memory/ownership.md sections 21-25 and 31-32

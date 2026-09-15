@@ -6,14 +6,14 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-09-04"
+    revised: "2026-09-15"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
       monomorphization. Generic structs, functions, unions, enums, interfaces, impl
       scopes, inference, substitution, nominal instance caching, and basic
       constraint declaration validation have substantial frontend support;
-      multi-constraints, partial explicit prefixes, method-level generics,
+      multi-constraints, method-level generics,
       explicit conformance checks, complete specialization identity, and
       concrete-only backend lowering remain incomplete.
     rules:
@@ -46,7 +46,9 @@ integrations:
       - generic struct template instantiation with recursive concrete field substitution and preserved nominal identity
       - canonical caching of repeated concrete generic type instances by declaration identity and ordered arguments
       - generic function template registration, exact full explicit argument calls, argument-based inference, and expected-result inference
+      - generic function calls bind a positional prefix of explicit type arguments left-to-right and infer every remaining parameter from call arguments or permitted expected-result context
       - canonical caching of repeated concrete generic function instances within one analysis
+      - generic named types with concrete carriers close as canonical nominal instances, and `type Wrapped[T] T` substitutes the concrete carrier while preserving declaration identity and ordered arguments
       - generic union template registration, concrete payload substitution, and empty and single-payload construction paths
       - generic enum parameter parsing in direct and type-declaration forms, including concrete Enum[T].Member expressions
       - generic enum template registration, phantom identity parameters, ordinary member semantics, arity and unknown-constraint diagnostics, canonical concrete instance caching, and distinct nominal identities by ordered argument list
@@ -59,11 +61,10 @@ integrations:
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
       - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
     remaining:
-      - apply finite-representation recursion analysis to generic union payloads and payload fields, including concrete specialization
       - represent and validate multiple interface constraints joined by & across parser, AST, Sema, formatter, LSP, and diagnostics
-      - accept a positional prefix of explicit generic function or method arguments and infer the remainder while rejecting holes
+      - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
-      - complete generic named-type semantics for type ID[T] int and valid type Wrapped[T] T forms, including identity, conversions, contracts, and lowering
+      - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
       - complete generic interface inheritance validation and canonical cross-module specialization identity beyond the implemented concrete requirement substitution
       - require valid explicit interface conformance when satisfying every generic constraint; matching members alone are insufficient
       - retain ordered constraint sets in templates and recheck them for every explicit or inferred concrete substitution

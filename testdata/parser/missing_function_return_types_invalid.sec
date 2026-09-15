@@ -1,0 +1,11 @@
+module missing_function_return_types
+
+interface Service {
+    fn Missing()
+    fn Present() void
+}
+
+fn MissingBody() {
+}
+
+fn Next() void {}

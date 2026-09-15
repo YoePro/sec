@@ -1,0 +1,13 @@
+module invalid_interface_property_types
+
+interface Service {
+    property Missing: {
+        get
+    }
+    property Malformed: @ {
+        get
+    }
+    fn Next() void
+}
+
+fn Outside() void {}

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-09-06
+- **Last updated:** 2026-09-15
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/concurrency_memory_model.md`
@@ -1176,6 +1176,32 @@ MemoryOrder.Release is not valid for Atomic.Load
 § 55(12) A failed `CompareExchange` must not be treated as a modification.
 
 § 55(13) Two fences must not be treated as synchronizing without the required atomic communication relation.
+
+§ 55(14) A synchronization identity crosses a process isolation boundary only
+through an explicitly process-shared abstraction from
+`rules/concurrency/ipc.md`. Ordinary process-local storage does not become
+shared because two processes have a spawn relationship.
+
+§ 55(15) Normal release of logical `IPCMutex` identity M synchronizes with a
+later successful acquisition of the same M, using release/acquire publication
+for valid process-shared storage.
+
+§ 55(16) `IPCSemaphore.Release()` publishes with release semantics to its permit
+relation. A successful `Acquire()` consuming that permit acquires the
+corresponding publication.
+
+§ 55(17) `IPCAtomic[T]` reuses this rulebook's `MemoryOrder`, per-atomic
+modification order, release sequences, `SeqCst`, and Load/Store/Swap/strong
+CompareExchange semantics across every process holding a capability to the same
+logical IPC atomic identity. Lowering must not narrow that synchronization
+scope.
+
+§ 55(18) Process join proves completion, quiescence, and reaping according to
+`processes.md`; it does not publish arbitrary `SharedMemory` contents.
+
+§ 55(19) `unsafe SharedMemory.View()` does not disable the data-race rule.
+Conflicting raw shared-memory access requires an explicit synchronization
+protocol that establishes the necessary ordering or exclusion.
 
 ---
 

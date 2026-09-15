@@ -1,0 +1,16 @@
+module testing_identity
+
+test "first" {
+	let value: int := 1
+	assert value == 1
+	let operation := fn() int {
+		return 3
+	}
+	assert operation() == 3
+	return
+}
+
+test "second" {
+	let value: int := 2
+	assert value == 2
+}

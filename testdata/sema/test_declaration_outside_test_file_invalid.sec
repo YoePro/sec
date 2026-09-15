@@ -1,0 +1,4 @@
+module testing_identity
+
+test "outside test source" {
+}

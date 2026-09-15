@@ -1,0 +1,12 @@
+module invalid_enum_member
+
+enum Broken int {
+    @,
+    Present
+}
+
+enum NextEnum int {
+    Value
+}
+
+fn Next() void {}

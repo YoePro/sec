@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-09-03
+- Last updated: 2026-09-15
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -2803,6 +2803,19 @@ duplicate opcode lists:
   identity, transfer adapters, startup prepare/commit/rollback, lifecycle,
   observer/wait/join/detach/termination/reaping, terminal payload, and target
   requirements.
+- IPC operation kind, logical resource identity distinct from capability owner
+  and native handle identity, shared backing and synchronization identities,
+  monomorphic message/transfer identity, and route-specific transfer adapter;
+- prepared capability transfer or typed materialization, semantic commit,
+  rollback cleanup, and conditionally consumed sources that remain owned on
+  failure, including `IPCSender.Send`, Command Resource configuration, and
+  process startup transfer;
+- selectable IPC readiness without destructive commit, waiting effects,
+  process-shared atomic order/scope, and the source provenance required by
+  diagnostics and cross-process race/deadlock analysis.
 
 Successful compare-exchange is a modification/RMW; failure is read-only.
-Lowering consumes these verified facts and the immutable `CompilationPlan`.
+Lowering consumes these verified facts and the immutable `CompilationPlan` and
+may erase IPC semantics only after ownership, commit/rollback, cleanup, target
+adapter, readiness, lifecycle, synchronization scope, and error mapping are
+concretely preserved.

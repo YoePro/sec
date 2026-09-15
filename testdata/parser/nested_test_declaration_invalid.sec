@@ -1,0 +1,9 @@
+module parser_tests
+
+fn Outer() void {
+    test "nested" {
+        discard 1
+    }
+
+    discard 2
+}

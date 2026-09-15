@@ -1,0 +1,11 @@
+module invalid_implements_entries
+
+interface Service implements @, Present {
+    fn Run() void
+}
+
+impl Worker implements @, Present {
+    fn Run() void {}
+}
+
+fn Outside() void {}

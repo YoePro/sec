@@ -2,6 +2,281 @@ schema_version: 1
 area: declarations
 purpose: Declarations, members, modules, names, scopes, and visibility.
 integrations:
+  - id: frontend.enums
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-13"
+    revised: "2026-09-04"
+    document_revision: "2.1"
+    summary: >-
+      Tracks the canonical closed ordinary and open bit-backed enum model,
+      including integer-backed and string-backed closed enums, generic nominal
+      enum templates and concrete identities, Go-style iota
+      initializer repetition for integer-backed enums, declared-member
+      defaults, aliases, checked underlying-value conversions, match coverage,
+      register integration, and tooling. The frontend now covers string-backed
+      declarations, constant members and aliases, defaults, member lookup,
+      equality-compatible nominal typing, switch/match coverage, explicit
+      conversions, diagnostics, and LSP completion. Semantic IR, Sec MLIR, and
+      executable backend representation remain integer-enum-only.
+    rules:
+      - rules/declarations/enums.md
+      - rules/declarations/generics.md
+      - rules/compiler/generics_lowering.md
+      - rules/foundations/grammar.md
+      - rules/types/default_values.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/declarations/registers.md
+      - rules/errors/errorhandling.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/formatter/formatter.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/codegen/mlir/generator.go
+      - internal/codegen/llvm/generator.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
+      - internal/ir/semantic/package14_test.go
+      - internal/lowering/secmlir/emitter_test.go
+      - cmd/lsp/main_test.go
+      - testdata/enum_valid.sec
+      - testdata/errorhandling_match_invalid.sec
+      - testdata/zim-decoder.sec
+    normative_delta:
+      - generic enums are canonical Sec 0.1 compile-time nominal templates, including valid phantom identity parameters
+      - each ordered concrete generic argument list identifies a distinct enum type without runtime generic machinery
+      - enum Name string declares a nominal closed enum backed by canonical Sec string representation
+      - every string-backed enum member requires an explicit compile-time string initializer
+      - iota and omitted-initializer repetition remain exclusive to integer-backed enums
+      - equal underlying strings form aliases and one runtime coverage class while retaining distinct declared names
+      - the default remains the explicit default member or first declaration and is never selected from the empty string
+      - enum-to-string conversion is explicit and infallible
+      - constant string-to-enum conversion must equal a declared value class
+      - runtime string-to-enum conversion is checked and requires try unless Sema proves membership
+      - failed runtime string conversion produces EnumValueError.UndeclaredValue and never OutOfRange
+      - match exhaustiveness, equality, switch comparison, member completion, hover, and lowering operate on declared string value classes while preserving nominal identity
+    implemented:
+      - generic enum declaration parsing, template registration, concrete member resolution, generic impl scope, arity diagnostics, instance caching, and distinct concrete nominal frontend identity
+      - ordinary enum declarations with default int or explicit integer underlying representation
+      - exact-width open bit and bit[N] enum identities from width 1 through 256
+      - non-empty declarations, unique member names, aliases, and compile-time representability checks
+      - first omitted initializer as iota and later omitted initializers as repetition of the preceding expression at the current iota
+      - post-member default marker parsing in MEMBER default and MEMBER default = expression forms
+      - rejection of multiple explicit default members
+      - first-member fallback and explicit declared-member enum default resolution
+      - default initialization of mutable enum declarations without an initializer
+      - rejection of constant conversions to undeclared values of closed ordinary enums
+      - acceptance of unnamed in-range constant values of open bit-backed enums
+      - compiler-known EnumValueError with UndeclaredValue and OutOfRange members
+      - Result-valued runtime integer-to-closed-enum conversion requiring ordinary try handling
+      - Result-valued runtime out-of-width bit-enum conversion with proof-based infallible range elimination
+      - closed ordinary match exhaustiveness over unique declared numeric value classes
+      - open bit-backed match exhaustiveness over the complete bit[N] domain
+      - alias normalization for duplicate and unreachable match analysis
+      - bit-backed enum register-field width validation and nominal type retention
+      - explicit string underlying representation for nominal closed enums
+      - mandatory literal string initializers with dedicated missing, non-string, non-constant, and iota diagnostics
+      - string alias normalization through canonical underlying value-class keys without merging declaration names
+      - first-member and explicit-member defaults for string-backed enums
+      - explicit infallible enum-to-string conversion and rejection of implicit enum/string assignment
+      - declared-value validation for constant string-to-enum conversion
+      - Result-valued runtime string-to-enum conversion using EnumValueError with ordinary try handling
+      - string-backed enum equality compatibility, switch duplicate/exhaustive tracking, and match exhaustiveness over unique underlying value classes
+      - member definition facts and LSP type-qualified completion for every string-backed enum member
+      - canonical formatter preservation of string underlying syntax and explicit initializers
+      - testdata/zim-decoder.sec uses the canonical Program string enum and passes compiler Sema
+      - parser recovery retains malformed member positions as invalid source-ordered EnumValue nodes while preserving later members and declarations; Sema ignores those recovery-only nodes without advancing iota or creating dependent enum members
+    remaining:
+      - preserve concrete generic enum owner and member provenance through Semantic IR, Sec MLIR, deterministic symbol formation, ABI, FFI, and executable backend lowering
+      - revalidate concrete-dependent enum representation and generic constraints before representation-dependent lowering
+      - extend compile-time string constant evaluation beyond direct literals when the canonical constant evaluator supports composed string expressions
+      - extend proof-based runtime string membership analysis beyond direct literal construction
+      - expose string underlying type, closed domain, declared values, aliases, defaults, and checked conversion behavior through richer LSP hover and conversion diagnostics
+      - add focused definition, references, document-symbol, semantic-token, switch, default-initialization, and formatter tests for string-backed enums
+      - represent string-backed enum types, constants, value classes, conversions, equality, switch, and match plans in Semantic IR
+      - add Sec MLIR types, attributes, operations, or canonical lowering needed to preserve nominal string-enum identity and checked construction
+      - lower string-enum constants, comparisons, switches, matches, conversions, and failure flow through supported backends
+      - preserve unnamed bit-backed enum register encodings through register extraction and insertion lowering
+      - prove enum-to-integer representability over the known value or complete enum domain and use the canonical checked Result path when narrowing may fail
+      - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
+      - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
+      - add formatter coverage for the enum default marker and recovery from noncanonical initializer spelling
+      - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
+    required_tests:
+      - generic enum declaration, concrete member access, same-instantiation canonicalization, distinct-instantiation rejection, impl owner scope, arity, constraints, and concrete representation validation
+      - string-backed enum declaration and member access
+      - explicit initializer required for every string-backed member
+      - non-string and non-constant initializer rejection
+      - iota rejection in string-backed enum
+      - equal string aliases compare equal and share one match coverage class
+      - first-member and explicit-member defaults for string-backed enums
+      - explicit enum-to-string conversion
+      - accepted and rejected constant string-to-enum conversion
+      - runtime string conversion requires try and produces UndeclaredValue on failure
+      - proof-known runtime membership eliminates unnecessary failure handling where canonical analysis permits
+      - no implicit assignment or comparison between enum and plain string
+      - exhaustive match over unique declared string value classes
+      - switch cases compare string-backed enum values without losing nominal typing
+      - formatter alignment and idempotence for string-backed members
+      - LSP completion, hover, definition, symbols, semantic tokens, and conversion diagnostics
+      - Semantic IR verification and deterministic Sec MLIR emission
+      - end-to-end backend execution for constants, conversion success and failure, equality, switch, and match
+    verification:
+      - command: go test ./internal/parser -run EnumDefault -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'TestEnum(Default|Rejects|Initializer|ClosedAndOpen|ValuesAndNamespace|ValidFixture|MatchEnumNumericCoverage)|TestErrorHandlingMatchInvalidFixture' -count=1
+        result: passed
+      - command: pending revision-2.0 string-backed enum verification
+        result: superseded by the 2026-09-01 frontend verification below
+      - command: go test ./internal/sema -run 'StringBackedEnum|EnumUnderlying|MatchEnum|ErrorHandlingMatchInvalid' -count=1
+        result: passed on 2026-09-01 with declaration, aliases, defaults, conversions, diagnostics, and closed-domain match coverage
+      - command: go test ./cmd/lsp -run 'StringBackedEnum|EnumMembers' -count=1
+        result: passed on 2026-09-01 with type-qualified member completion
+      - command: go run ./cmd/compiler sema testdata/zim-decoder.sec
+        result: passed on 2026-09-01 with 0 errors and 0 warnings
+      - command: go test ./internal/parser -run TestInvalidEnumMembersRetainLaterMembersAndDeclarations -count=1
+        result: passed; a malformed member retains invalid recovery metadata, the later member, the following enum, and the following function
+      - command: go test ./internal/sema -run TestInvalidEnumRecoveryMemberDoesNotAdvanceIota -count=1
+        result: passed; recovery-only enum members create no dependent semantic errors and do not advance the iota ordinal of later valid members
+  - id: frontend.registers
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical nominal register types independently from fixed-address
+      storage, including exact bit layouts, field types, access semantics,
+      conversions, impl integration, diagnostics, and lowering.
+    rules:
+      - rules/declarations/registers.md
+      - rules/platform/hardware-register-access.md
+      - rules/declarations/enums.md
+      - rules/declarations/impl.md
+      - rules/foundations/grammar.md
+      - rules/memory/layout.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/allocation_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+      - testdata/register_valid.sec
+      - testdata/register8_valid.sec
+      - testdata/register_invalid.sec
+    implemented:
+      - nominal declarations through type Name register[N] with positive allocation-free compile-time integer expressions, including source-order-independent immutable module constants
+      - bit and bit[N] fields with positive compile-time integer-expression widths and exact total-width validation
+      - duplicate named-field rejection and inaccessible reserved underscore fields that retain layout width
+      - unit annotations and arbitrary-precision constant assignment range checks against exact raw bit-field width
+      - bit-backed enum fields with exact backing width and retained nominal field type
+      - lsb-first default and explicit lsb-first or msb-first allocation modifiers with deterministic semantic bit offsets
+      - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
+      - ordinary register values remain nonvolatile unless their storage binding supplies stronger semantics
+      - impl blocks, methods, properties, and implicit self access without changing register storage width
+      - read-write, read-only, write-only, write-one-clear, write-zero-clear, and the legacy clear-on-read modifier are parsed and retained as compiler-owned AST and semantic field facts, with read-write as the default; the canonical read-clear rename is not implemented yet
+      - direct frontend access rejects reads from write-only fields, writes to read-only fields, and compound read-modify-write operations on write-only or special-effect fields
+      - formatter preservation plus LSP hover and completion expose compiler-owned register access facts without editor-side language reconstruction
+      - finite source-order-independent nested register fields occupy the nested nominal width and preserve inner layout, nominal field types, and access semantics across every projection; recursive storage and unsafe whole-nested writes are diagnosed
+      - explicit integer-to-register conversion rejects statically out-of-range values, converts proven fitting integer domains directly, and exposes uncertain runtime narrowing as Result[Register, ArithmeticError] for try handling
+      - parser AST preserves width expressions while Sema owns evaluation, and LSP renders nested nominal fields plus checked conversion result types from the same semantic facts
+    remaining:
+      - preserve unnamed open bit-backed enum encodings through field extraction and insertion
+      - carry ordinary and W1C, W0C, and canonical read-clear field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
+      - provide semantics-preserving masks, shifts, extraction, insertion, and reserved-bit handling
+      - add complete Semantic IR, MLIR, special-access lowering, and end-to-end coverage beyond the completed parser, Sema, diagnostics, and compiler-fact-driven LSP slice
+    verification:
+      - command: go test ./internal/parser -run Register -count=1
+        result: passed
+      - command: go test ./internal/sema -run Register -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run Register -count=1
+        result: passed
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'RegisterFieldAccess|Register8Frontend|ErrorEnumMarker' -count=1
+        result: passed
+  - id: frontend.unions
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical closed nominal unions, payload construction, explicit
+      defaults, empty initialization state, matching, ownership, equality,
+      generics, recursion, semantic facts, and lowering.
+    rules:
+      - rules/declarations/unions.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/types/default_values.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/foundations/grammar.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/semantic_facts.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/semantic_facts_test.go
+      - testdata/union_valid.sec
+      - testdata/union_invalid.sec
+    implemented:
+      - named closed payload-less, single-payload, struct-like, and mixed union declarations
+      - nominal variant namespaces, duplicate and empty-union validation, payload arity checking, and broad payload type compatibility; complete representability and ownership preparation remain partial
+      - generic union declarations, expected-type and payload-driven constructor inference, and concrete payload substitution
+      - nested union declaration registration through the existing nested-type path
+      - direct immediate recursive-storage rejection for unnamed and struct-like payloads
+      - post-variant default marker parsing and AST retention with rejection of multiple marked variants
+      - union Defaultable resolution for payload-less, single-payload, and struct-like explicit default variants
+      - synthesized mutable union defaults through the canonical DefaultValueOf model
+      - contextual Option fields in struct literals accept None and None() through the field's expected union type
+      - expected-type union resolution accepts qualified payload-less constructors such as Option.None in mutable variable and member assignments
+      - mutable NonDefaultable union declarations may omit initialization and use the existing unassigned-state dataflow until a real variant is assigned
+      - omitted Defaultable struct-like construction fields receive canonical defaults while omitted NonDefaultable fields remain errors
+      - payload-less and whole-payload union match patterns with exhaustiveness, duplicate, unreachable, and guard-aware coverage
+      - whole-payload shared and mutable borrowing with branch-local lifetimes and subject mutability checks
+      - Place-based payload ownership, copy versus move classification, reinitialization, borrow conflicts, and hidden partial-move rejection for whole payloads
+      - recursive payload-derived copyability, trivial destruction, and equality-comparability classification
+      - resolved union construction and match facts with stable declaration-order variant indices
+    remaining:
+      - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
+      - parse and analyze value is Variant and value is empty with definite-assignment and active-variant refinement
+      - parse and analyze the compiler-known empty match pattern and include reachable empty state in exhaustiveness
+      - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
+      - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
+      - complete layout-aware recursive-storage validation across every finite and infinite indirection form
+      - support explicit generic constructor qualification such as Option[int].Some(10)
+      - require explicit `<-` when a reusable source is consumed into a union payload and reject legacy word-form move syntax
+      - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
+      - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
+      - add complete parser recovery, formatter, valid/invalid, dataflow, LSP, Semantic IR, MLIR, and end-to-end coverage
+    verification:
+      - command: go test ./internal/parser -run UnionDefault -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Union|Default|Match.*Payload|StructLiteralOptionFields' -count=1
+        result: passed
   - id: frontend.properties
     area: frontend-analysis
     status: partial

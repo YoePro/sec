@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-09-02
+- Last updated: 2026-09-15
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/transferability.md`
@@ -627,9 +627,15 @@ allocation restrictions
 
 § 24(2) Ordinary `RawPtr[T]` values do not become valid destination-process pointers merely by copying their numeric representation.
 
-§ 24(3) Process transfer requires an explicit IPC, serialization, shared-memory, duplicated-handle, inherited-handle, or platform-specific adapter contract.
+§ 24(3) Process transfer requires an explicit IPC, serialization, shared-memory,
+capability-transfer, or platform-specific adapter contract.
 
-§ 24(4) `ProcessTransferable` therefore includes the selected process-transfer representation/adapter.
+§ 24(4) `ProcessTransferable` proves semantic eligibility: the value or
+capability has a valid process-transfer contract. The selected target must
+separately provide a route-specific adapter for the actual boundary operation,
+including where applicable `CapabilityDuplicate(T)`,
+`ProcessStartupTransfer(T)`, `IPCTypedTransfer(T)`, or
+`ProcessStandardIOResourceBinding(T, role)`.
 
 § 24(5) A process-transferable value must define or inherit sufficient rules for:
 
@@ -643,11 +649,22 @@ shared-memory lifetime where used
 target/platform support
 ```
 
-§ 24(6) An in-process `Channel[T]` is not IPC merely because it transfers ownership between tasks or threads.
+§ 24(6) Ordinary `Channel[T]` remains in-process. Typed process messaging is the
+separate boundary operation `IPCSender[T]`/`IPCReceiver[T]` defined by
+`rules/concurrency/ipc.md`.
 
 § 24(7) A value can be thread-transferable while not being process-transferable.
 
 § 24(8) A pure serializable value can be process-transferable through an adapter even when its in-process representation contains implementation details that are not copied verbatim.
+
+§ 24(9) A resource capability may preserve logical resource identity while the
+destination receives a different native representation. Copying a numeric
+descriptor or handle is never by itself a valid process-transfer adapter.
+
+§ 24(10) Typed IPC transfer of a composite value containing multiple owned
+capabilities commits ownership as one source-semantic operation. Pre-commit
+failure preserves the complete source value and rolls back all prepared
+destination state according to `rules/concurrency/ipc.md`.
 
 ---
 

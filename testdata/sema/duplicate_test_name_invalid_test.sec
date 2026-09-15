@@ -1,0 +1,7 @@
+module testing_identity
+
+test "same name" {
+}
+
+test "same name" {
+}

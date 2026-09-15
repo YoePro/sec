@@ -62,6 +62,7 @@ const (
 	ParserInvalidBlockMember            = "P2017"
 	ParserCompatibilitySyntax           = "P2018"
 	ParserUnimplementedFunction         = "P2019"
+	ParserInvalidTestDeclaration        = "P2020"
 	MissingModuleDeclaration            = "S1001"
 	DuplicateModuleDeclaration          = "S1002"
 	ModuleDeclarationConflict           = "S1003"
@@ -91,6 +92,14 @@ const (
 	InvalidGenericParameterName         = "S1027"
 	ReservedDeclarationName             = "S1028"
 	OperatorInvalidInterpolationValue   = "S1029"
+	TestDeclarationOutsideTestFile      = "S1030"
+	EmptyTestName                       = "S1031"
+	DuplicateTestIdentity               = "S1032"
+	TestReturnValue                     = "S1033"
+	TestingOutsideTestContext           = "S1034"
+	InvalidTestingExpectArguments       = "S1035"
+	InvalidTestingRequireArguments      = "S1036"
+	InvalidTestingLogArguments          = "S1037"
 	LargeValueParameter                 = "A2001"
 )
 
@@ -149,11 +158,12 @@ var registry = map[string]Definition{
 		ParserInvalidAssignmentExpr,
 		"parser.invalid-assignment-expression",
 	),
-	ParserChainedComparison:     parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
-	ParserRecoveryLimit:         parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
-	ParserUnexpectedEndOfFile:   parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
-	ParserInvalidBlockMember:    parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
-	ParserUnimplementedFunction: parserDefinition(ParserUnimplementedFunction, "parser.unimplemented-function"),
+	ParserChainedComparison:      parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
+	ParserRecoveryLimit:          parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
+	ParserUnexpectedEndOfFile:    parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
+	ParserInvalidBlockMember:     parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
+	ParserUnimplementedFunction:  parserDefinition(ParserUnimplementedFunction, "parser.unimplemented-function"),
+	ParserInvalidTestDeclaration: parserDefinition(ParserInvalidTestDeclaration, "parser.invalid-test-declaration"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",
@@ -266,6 +276,30 @@ var registry = map[string]Definition{
 	},
 	OperatorRemainderByZero: {
 		ID: OperatorRemainderByZero, Name: "operator.constant-remainder-by-zero", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	TestDeclarationOutsideTestFile: {
+		ID: TestDeclarationOutsideTestFile, Name: "testing.declaration-outside-test-file", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	EmptyTestName: {
+		ID: EmptyTestName, Name: "testing.empty-test-name", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	DuplicateTestIdentity: {
+		ID: DuplicateTestIdentity, Name: "testing.duplicate-test-identity", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	TestReturnValue: {
+		ID: TestReturnValue, Name: "testing.return-value", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	TestingOutsideTestContext: {
+		ID: TestingOutsideTestContext, Name: "testing.outside-test-context", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InvalidTestingExpectArguments: {
+		ID: InvalidTestingExpectArguments, Name: "testing.invalid-expect-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InvalidTestingRequireArguments: {
+		ID: InvalidTestingRequireArguments, Name: "testing.invalid-require-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InvalidTestingLogArguments: {
+		ID: InvalidTestingLogArguments, Name: "testing.invalid-log-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	RedundantAssociatedStatic: {
 		ID:              RedundantAssociatedStatic,

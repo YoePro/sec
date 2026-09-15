@@ -41,6 +41,7 @@ type Analyzer struct {
 	bindingFacts               map[sourceTokenKey]ResolvedBinding
 	compilerKnownMemberFacts   map[sourceTokenKey]CompilerKnownMember
 	resolvedCalls              map[*ast.CallExpression]ResolvedCall
+	resolvedTestingOperations  map[*ast.CallExpression]ResolvedTestingOperation
 	resolvedInterpolationPlans map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
 	stringConcatPlans          map[ast.Expression]StringConcatPlan
 	resolvedForIterations      map[*ast.ForStatement]ResolvedForIteration
@@ -92,6 +93,7 @@ type Analyzer struct {
 	currentFunctionMetadata     Function
 	currentFunctionSummary      localReferenceOrigin
 	hasCurrentFunctionSummary   bool
+	currentTest                 *ast.TestDeclaration
 	summaryPass                 bool
 	inFunctionBody              bool
 	inLambda                    bool
@@ -253,6 +255,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.resolvedTestingOperations = map[*ast.CallExpression]ResolvedTestingOperation{}
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
 	a.stringConcatPlans = map[ast.Expression]StringConcatPlan{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
@@ -311,6 +314,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.currentFunctionMetadata = Function{}
 	a.currentFunctionSummary = localReferenceOrigin{}
 	a.hasCurrentFunctionSummary = false
+	a.currentTest = nil
 	a.summaryPass = false
 	a.inFunctionBody = false
 	a.inLambda = false
@@ -328,6 +332,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateReservedDeclarationNames(program)
 	a.validateModuleDeclaration(program)
 	a.validateModuleDeclarationNamespace(program)
+	a.validateTestDeclarations(program)
 	a.registerTypeDeclarations(program)
 	a.collectCompileTimeIntegerBindings(program)
 	a.registerImplTypeDeclarations(program)
@@ -349,7 +354,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
-		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.InterfaceDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration:
+		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.InterfaceDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration, *ast.TestDeclaration:
 			return
 		}
 		if !isAllowedModuleStatement(stmt) {
@@ -361,11 +366,62 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 
 	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
+	a.analyzeTestBodies(program)
 	a.validateNoPanicGuarantees(program)
 	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
 	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
 
 	return a.errors
+}
+
+// validateTestDeclarations validates the source-level portion of canonical
+// test identity without registering tests as ordinary callable functions.
+// TestCompilationPlan membership remains a later frontend integration step.
+//
+// Rules:
+//   - rules/tooling/testing.md — §4.2 "Test declaration location"
+//   - rules/tooling/testing.md — §5.4 "Name requirement"
+//   - rules/tooling/testing.md — §6 "Test identity"
+//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+func (a *Analyzer) validateTestDeclarations(program *ast.Program) {
+	seen := map[string]lexer.Token{}
+	a.withProgramModules(program, func(statement ast.Statement) {
+		declaration, ok := statement.(*ast.TestDeclaration)
+		if !ok || declaration == nil {
+			return
+		}
+		if !strings.HasSuffix(filepath.Base(declaration.Token.File), "_test.sec") {
+			a.addErrorAtTokenWithID(
+				declaration.Token,
+				diagnostics.TestDeclarationOutsideTestFile,
+				"test declarations are only allowed in *_test.sec files",
+			)
+		}
+		if declaration.Name == nil {
+			return
+		}
+		if declaration.Name.Value == "" {
+			a.addErrorAtTokenWithID(
+				declaration.Name.Token,
+				diagnostics.EmptyTestName,
+				"test name must be a non-empty string literal",
+			)
+			return
+		}
+		key := a.currentModule + "\x00" + declaration.Name.Value
+		if previous, exists := seen[key]; exists {
+			a.addErrorAtTokenWithPreviousID(
+				declaration.Name.Token,
+				previous,
+				diagnostics.DuplicateTestIdentity,
+				"duplicate test %q in module %s",
+				declaration.Name.Value,
+				moduleDisplayName(a.currentModule),
+			)
+			return
+		}
+		seen[key] = declaration.Name.Token
+	})
 }
 
 // validateNoPanicGuarantees enforces the transitive verified guarantee from
@@ -748,6 +804,7 @@ func isAllowedModuleStatement(stmt ast.Statement) bool {
 		*ast.InterfaceDeclaration,
 		*ast.ImplStatement,
 		*ast.FunctionDeclaration,
+		*ast.TestDeclaration,
 		*ast.StructStatement,
 		*ast.LetStatement,
 		*ast.LetGroupStatement,
@@ -782,6 +839,8 @@ func isNilStatement(stmt ast.Statement) bool {
 	case *ast.ImplStatement:
 		return stmt == nil
 	case *ast.FunctionDeclaration:
+		return stmt == nil
+	case *ast.TestDeclaration:
 		return stmt == nil
 	case *ast.StructStatement:
 		return stmt == nil
@@ -2061,6 +2120,10 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 			a.addErrorAtToken(stmt.Token, "return is not allowed inside defer")
 			return
 		}
+		if a.currentTest != nil {
+			a.analyzeTestReturnStatement(stmt)
+			return
+		}
 		if a.inFunctionBody {
 			a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, stmt)
 		}
@@ -2125,6 +2188,31 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 		return
 	}
+}
+
+// analyzeTestReturnStatement accepts only the bare early-success return form.
+// A value is still analyzed for ordinary dependent diagnostics, but it never
+// becomes a source-visible return type or test result value.
+//
+// Rules:
+//   - rules/tooling/testing.md — §9.3 "Bare return"
+//   - rules/tooling/testing.md — §9.4 "Return values are forbidden"
+//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+func (a *Analyzer) analyzeTestReturnStatement(statement *ast.ReturnStatement) {
+	if statement == nil || statement.Value == nil {
+		return
+	}
+	a.inferExpression(statement.Value)
+	testName := ""
+	if a.currentTest.Name != nil {
+		testName = a.currentTest.Name.Value
+	}
+	a.addErrorAtTokenWithID(
+		expressionToken(statement.Value),
+		diagnostics.TestReturnValue,
+		"test %q cannot return a value; use bare return to end the test invocation",
+		testName,
+	)
 }
 
 func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
@@ -4786,6 +4874,95 @@ func (a *Analyzer) analyzeFunctionBodies(program *ast.Program) {
 		}
 		a.analyzeFunctionBody(fn)
 	})
+}
+
+// analyzeTestBodies applies ordinary Sec statement, scope, ownership, and
+// cleanup analysis to every retained test body while preserving the test
+// declaration itself as the semantic context and keeping it non-callable.
+//
+// Rules:
+//   - rules/tooling/testing.md — §9.1 "Ordinary body semantics"
+//   - rules/tooling/testing.md — §§9.2–9.4 test completion and return
+//   - rules/tooling/testing.md — §21 "Cleanup and controlled termination"
+func (a *Analyzer) analyzeTestBodies(program *ast.Program) {
+	a.withProgramModules(program, func(statement ast.Statement) {
+		declaration, ok := statement.(*ast.TestDeclaration)
+		if !ok || declaration == nil || declaration.Body == nil {
+			return
+		}
+		a.analyzeTestBody(declaration)
+	})
+}
+
+// analyzeTestBody establishes an invocation-local Sema scope for a source
+// test. It intentionally creates neither a Function nor a source-callable name.
+//
+// Rules:
+//   - rules/tooling/testing.md — §5.7 "Not callable as an ordinary function"
+//   - rules/tooling/testing.md — §9 "Test body execution"
+func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
+	previousSymbols := a.symbols
+	previousConstInts := a.constInts
+	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
+	previousClosedResources := a.closedResources
+	previousBorrows := a.borrows
+	previousLocalRefContainers := a.localRefContainers
+	previousArenaGenerations := a.arenaGenerations
+	previousFunctionName := a.currentFunctionName
+	previousCallable := a.currentCallable
+	previousFunctionReturn := a.currentFunctionReturn
+	previousFunctionToken := a.currentFunctionToken
+	previousFunctionMetadata := a.currentFunctionMetadata
+	previousFunctionSummary := a.currentFunctionSummary
+	previousHasFunctionSummary := a.hasCurrentFunctionSummary
+	previousInFunctionBody := a.inFunctionBody
+	previousTest := a.currentTest
+	previousScopeDepth := a.scopeDepth
+
+	a.symbols = copySymbols(previousSymbols)
+	a.constInts = copyConstInts(previousConstInts)
+	a.assigned = copyAssigned(previousAssigned)
+	a.moved = map[string]lexer.Token{}
+	a.moveReasons = map[string]string{}
+	a.closedResources = map[string]lexer.Token{}
+	a.borrows = map[string][]borrowRecord{}
+	a.localRefContainers = map[string]localReferenceOrigin{}
+	a.arenaGenerations = map[string]int{}
+	a.currentFunctionName = ""
+	a.currentCallable = ""
+	a.currentFunctionReturn = Type{Name: "void", Kind: VoidType}
+	a.currentFunctionToken = declaration.Token
+	a.currentFunctionMetadata = Function{}
+	a.currentFunctionSummary = localReferenceOrigin{}
+	a.hasCurrentFunctionSummary = false
+	a.inFunctionBody = true
+	a.currentTest = declaration
+	a.scopeDepth = 0
+	defer func() {
+		a.symbols = previousSymbols
+		a.constInts = previousConstInts
+		a.assigned = previousAssigned
+		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
+		a.closedResources = previousClosedResources
+		a.borrows = previousBorrows
+		a.localRefContainers = previousLocalRefContainers
+		a.arenaGenerations = previousArenaGenerations
+		a.currentFunctionName = previousFunctionName
+		a.currentCallable = previousCallable
+		a.currentFunctionReturn = previousFunctionReturn
+		a.currentFunctionToken = previousFunctionToken
+		a.currentFunctionMetadata = previousFunctionMetadata
+		a.currentFunctionSummary = previousFunctionSummary
+		a.hasCurrentFunctionSummary = previousHasFunctionSummary
+		a.inFunctionBody = previousInFunctionBody
+		a.currentTest = previousTest
+		a.scopeDepth = previousScopeDepth
+	}()
+
+	a.analyzeBlockStatements(declaration.Body)
 }
 
 func (a *Analyzer) inferFunctionReferenceSummaries(program *ast.Program) {
@@ -9058,7 +9235,13 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 	seen := map[string]lexer.Token{}
 	var repeatedInitializer ast.Expression
 	var explicitDefaultToken lexer.Token
-	for i, value := range enum.Values {
+	semanticIndex := 0
+	for _, value := range enum.Values {
+		if value == nil || value.Invalid || value.Name == nil {
+			continue
+		}
+		i := semanticIndex
+		semanticIndex++
 		if previousToken, exists := seen[value.Name.Value]; exists {
 			a.addErrorAtTokenWithPrevious(value.Token, previousToken, "duplicate enum value %q in enum %s", value.Name.Value, name)
 			continue
@@ -11982,7 +12165,7 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ.Dimension = dimension
 		typ.UnitSemantics = semantics
 	}
-	if (typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == EnumType || typ.Kind == InterfaceType) && len(typ.GenericParameters) > 0 {
+	if len(typ.GenericParameters) > 0 && (typ.Declared || typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == EnumType || typ.Kind == InterfaceType) {
 		typ = a.instantiateGenericType(typ)
 	}
 	return typ, true
@@ -12259,16 +12442,30 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	}
 
 	out := typ
-	out.Fields = make([]StructField, 0, len(typ.Fields))
-	out.Properties = make([]Property, 0, len(typ.Properties))
-	out.UnionVariants = make([]UnionVariant, 0, len(typ.UnionVariants))
+	memberTemplate := typ
+	// A named template whose representation is its own type parameter, such as
+	// `type Wrapped[T] T`, initially has GenericType as its carrier. Substitute
+	// that carrier before preserving the declaration's nominal identity.
+	//
+	// Rules:
+	//   - rules/declarations/generics.md — §5.3 "Generic named type"
+	//   - rules/declarations/generics.md — §17 "Substitution"
+	if typ.Declared && typ.Named && typ.Kind == GenericType {
+		if representation, ok := substitution[typ.Underlying]; ok {
+			out = genericNamedTypeWithRepresentation(typ, representation)
+			memberTemplate = out
+		}
+	}
+	out.Fields = make([]StructField, 0, len(memberTemplate.Fields))
+	out.Properties = make([]Property, 0, len(memberTemplate.Properties))
+	out.UnionVariants = make([]UnionVariant, 0, len(memberTemplate.UnionVariants))
 	out.Implements = make([]Type, 0, len(typ.Implements))
-	out.InterfaceMethods = make([]Function, 0, len(typ.InterfaceMethods))
-	out.InterfaceProperties = make([]InterfaceProperty, 0, len(typ.InterfaceProperties))
-	out.InterfaceEvents = make([]InterfaceEvent, 0, len(typ.InterfaceEvents))
+	out.InterfaceMethods = make([]Function, 0, len(memberTemplate.InterfaceMethods))
+	out.InterfaceProperties = make([]InterfaceProperty, 0, len(memberTemplate.InterfaceProperties))
+	out.InterfaceEvents = make([]InterfaceEvent, 0, len(memberTemplate.InterfaceEvents))
 	out.GenericParameters = nil
 	recursive := false
-	for _, field := range typ.Fields {
+	for _, field := range memberTemplate.Fields {
 		field.Type = substituteGenericType(field.Type, substitution)
 		if genericStructFieldHasDirectRecursiveStorage(out, field.Type) {
 			if !recursive {
@@ -12279,7 +12476,7 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 		}
 		out.Fields = append(out.Fields, field)
 	}
-	for _, property := range typ.Properties {
+	for _, property := range memberTemplate.Properties {
 		property.Type = substituteGenericType(property.Type, substitution)
 		if property.Error != nil {
 			errorType := substituteGenericType(*property.Error, substitution)
@@ -12287,7 +12484,7 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 		}
 		out.Properties = append(out.Properties, property)
 	}
-	for _, variant := range typ.UnionVariants {
+	for _, variant := range memberTemplate.UnionVariants {
 		if variant.Payload != nil {
 			payload := substituteGenericType(*variant.Payload, substitution)
 			// rules/concurrency/tasks.md section 12(9): TaskOutcome[void]
@@ -12328,7 +12525,7 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	for _, implemented := range typ.Implements {
 		out.Implements = append(out.Implements, substituteGenericType(implemented, substitution))
 	}
-	for _, method := range typ.InterfaceMethods {
+	for _, method := range memberTemplate.InterfaceMethods {
 		method.ReturnType = substituteGenericType(method.ReturnType, substitution)
 		method.Parameters = append([]FunctionParameter(nil), method.Parameters...)
 		for index := range method.Parameters {
@@ -12336,15 +12533,43 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 		}
 		out.InterfaceMethods = append(out.InterfaceMethods, method)
 	}
-	for _, property := range typ.InterfaceProperties {
+	for _, property := range memberTemplate.InterfaceProperties {
 		property.Type = substituteGenericType(property.Type, substitution)
 		out.InterfaceProperties = append(out.InterfaceProperties, property)
 	}
-	for _, event := range typ.InterfaceEvents {
+	for _, event := range memberTemplate.InterfaceEvents {
 		event.Payload = substituteGenericType(event.Payload, substitution)
 		out.InterfaceEvents = append(out.InterfaceEvents, event)
 	}
 	a.genericTypeInstances[key] = out
+	return out
+}
+
+// genericNamedTypeWithRepresentation carries representation semantics from a
+// substituted type parameter without turning the named specialization into a
+// transparent alias. Ordered type arguments remain part of nominal identity.
+//
+// Rules:
+//   - rules/declarations/generics.md — §§4 and 5.3
+//   - rules/types/types.md — named types
+func genericNamedTypeWithRepresentation(template Type, representation Type) Type {
+	out := representation
+	out.Name = template.Name
+	out.Module = template.Module
+	out.Named = true
+	out.Declared = true
+	out.Underlying = representation.Name
+	out.TypeArgs = append([]Type(nil), template.TypeArgs...)
+	out.ConstArgs = append([]int64(nil), template.ConstArgs...)
+	out.GenericParameters = nil
+	out.Contracts = append([]Contract(nil), template.Contracts...)
+	out.ExplicitDefault = template.ExplicitDefault
+	out.InvalidExplicitDefault = template.InvalidExplicitDefault
+	out.ExplicitlyNonCopyable = template.ExplicitlyNonCopyable || representation.ExplicitlyNonCopyable
+	out.NoCopyPolicyOrigin = template.NoCopyPolicyOrigin
+	if out.NoCopyPolicyOrigin == "" && representation.ExplicitlyNonCopyable {
+		out.NoCopyPolicyOrigin = representation.NoCopyPolicyOrigin
+	}
 	return out
 }
 
@@ -12792,9 +13017,6 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	if typ, value, ok := a.inferCallAsUnionVariantConstructor(call, &expected); ok {
 		a.expressionTypes[expr] = typ
 		return typ, value
-	}
-	if len(call.GenericArguments) > 0 {
-		return a.inferExpression(expr)
 	}
 	if callExpressionName(call) == "" {
 		return a.inferExpression(expr)
@@ -13363,6 +13585,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	previousInLambda := a.inLambda
 	previousLambdaOuterSymbols := a.lambdaOuterSymbols
 	previousLoopDepth := a.loopDepth
+	previousTest := a.currentTest
 
 	// rules/declarations/lambda-functions.md, capture eligibility; correction11.md
 	// separates enclosing locals from ordinary module/type lookup. Non-local
@@ -13388,6 +13611,9 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	a.inLambda = true
 	a.lambdaOuterSymbols = captureCandidates
 	a.loopDepth = 0
+	// A lambda declared inside a test is its own callable boundary. Its return
+	// statements follow the declared lambda return type, not test-return rules.
+	a.currentTest = nil
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
@@ -13398,6 +13624,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.inLambda = previousInLambda
 		a.lambdaOuterSymbols = previousLambdaOuterSymbols
 		a.loopDepth = previousLoopDepth
+		a.currentTest = previousTest
 	}()
 
 	a.defineLambdaCaptures(expr, captureCandidates, previousAssigned)
@@ -15112,7 +15339,160 @@ func (a *Analyzer) inferNewExpression(expr *ast.NewExpression, handled bool) (Ty
 	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, *selected.ConstructionError}}, result
 }
 
+// inferTestingOperationCall validates the implemented compiler-known testing
+// operations. It recognizes testing contextually and never resolves it as an
+// imported module, ordinary object, or user-declared function namespace.
+//
+// Rules:
+//   - rules/tooling/testing.md — §11 "Compiler-known testing namespace"
+//   - rules/tooling/testing.md — §15 "testing.Log"
+//   - rules/tooling/testing.md — §16 "testing.Expect"
+//   - rules/tooling/testing.md — §17 "testing.Require"
+//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	member, ok := expr.Callee.(*ast.MemberExpression)
+	if !ok || member == nil || member.Property == nil {
+		return Type{}, expressionValue{}, false
+	}
+	namespace, ok := member.Object.(*ast.Identifier)
+	if !ok || namespace == nil || namespace.Value != "testing" {
+		return Type{}, expressionValue{}, false
+	}
+
+	var kind TestingOperationKind
+	var diagnosticID string
+	switch member.Property.Value {
+	case "Expect":
+		kind = TestingOperationExpect
+		diagnosticID = diagnostics.InvalidTestingExpectArguments
+	case "Require":
+		kind = TestingOperationRequire
+		diagnosticID = diagnostics.InvalidTestingRequireArguments
+	case "Log":
+		kind = TestingOperationLog
+		diagnosticID = diagnostics.InvalidTestingLogArguments
+	default:
+		return Type{}, expressionValue{}, false
+	}
+
+	display := expressionValue{Display: expr.String()}
+	if a.currentTest == nil {
+		for _, argument := range expr.Arguments {
+			a.inferExpression(argument)
+		}
+		a.addErrorAtTokenWithID(
+			namespace.Token,
+			diagnostics.TestingOutsideTestContext,
+			"compiler-known testing.%s is only available inside a test declaration",
+			member.Property.Value,
+		)
+		return Type{Kind: InvalidType}, display, true
+	}
+	if len(expr.GenericArguments) != 0 {
+		a.addErrorAtTokenWithID(
+			member.Property.Token,
+			diagnosticID,
+			"testing.%s does not accept generic arguments",
+			member.Property.Value,
+		)
+		return Type{Kind: InvalidType}, display, true
+	}
+	if kind == TestingOperationLog {
+		if len(expr.Arguments) != 1 {
+			for _, argument := range expr.Arguments {
+				a.inferExpression(argument)
+			}
+			a.addErrorAtTokenWithID(
+				member.Property.Token,
+				diagnosticID,
+				"testing.Log expects exactly one string message, got %d arguments",
+				len(expr.Arguments),
+			)
+			return Type{Kind: InvalidType}, display, true
+		}
+		message := expr.Arguments[0]
+		stringType := a.types["string"]
+		messageType, _ := a.inferExpressionWithExpected(message, stringType)
+		if messageType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, display, true
+		}
+		if !canInitialize(stringType, messageType, message) {
+			a.addErrorAtTokenWithID(
+				expressionToken(message),
+				diagnosticID,
+				"testing.Log message must be string, got %s",
+				typeDisplayName(messageType),
+			)
+			return Type{Kind: InvalidType}, display, true
+		}
+		a.resolvedTestingOperations[expr] = ResolvedTestingOperation{
+			Kind:    kind,
+			Test:    a.currentTest,
+			Message: message,
+		}
+		return Type{Name: "void", Kind: VoidType}, display, true
+	}
+	if len(expr.Arguments) < 1 || len(expr.Arguments) > 2 {
+		for _, argument := range expr.Arguments {
+			a.inferExpression(argument)
+		}
+		a.addErrorAtTokenWithID(
+			member.Property.Token,
+			diagnosticID,
+			"testing.%s expects one bool condition and an optional string message, got %d arguments",
+			member.Property.Value,
+			len(expr.Arguments),
+		)
+		return Type{Kind: InvalidType}, display, true
+	}
+
+	boolType := a.types["bool"]
+	conditionType, _ := a.inferExpressionWithExpected(expr.Arguments[0], boolType)
+	valid := true
+	if conditionType.Kind != InvalidType && !canInitialize(boolType, conditionType, expr.Arguments[0]) {
+		a.addErrorAtTokenWithID(
+			expressionToken(expr.Arguments[0]),
+			diagnosticID,
+			"testing.%s condition must be bool, got %s",
+			member.Property.Value,
+			typeDisplayName(conditionType),
+		)
+		valid = false
+	}
+
+	var message ast.Expression
+	if len(expr.Arguments) == 2 {
+		message = expr.Arguments[1]
+		stringType := a.types["string"]
+		messageType, _ := a.inferExpressionWithExpected(message, stringType)
+		if messageType.Kind != InvalidType && !canInitialize(stringType, messageType, message) {
+			a.addErrorAtTokenWithID(
+				expressionToken(message),
+				diagnosticID,
+				"testing.%s message must be string, got %s",
+				member.Property.Value,
+				typeDisplayName(messageType),
+			)
+			valid = false
+		}
+	}
+	if !valid || conditionType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, display, true
+	}
+
+	a.resolvedTestingOperations[expr] = ResolvedTestingOperation{
+		Kind:      kind,
+		Test:      a.currentTest,
+		Condition: expr.Arguments[0],
+		Message:   message,
+	}
+	return Type{Name: "void", Kind: VoidType}, display, true
+}
+
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
+	if typ, value, ok := a.inferTestingOperationCall(expr); ok {
+		return typ, value
+	}
 	if typ, value, ok := a.inferCompilerKnownFunction(expr); ok {
 		return typ, value
 	}
@@ -15243,20 +15623,22 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	hadExplicitGenericCall := len(expr.GenericArguments) > 0
 	hadGenericFunctionForExplicitCall := false
 	hadExplicitGenericArityMatch := false
+	hadExplicitGenericInferenceFailure := false
 	for _, function := range arityMatches {
 		if hadExplicitGenericCall {
 			if len(function.GenericParameters) == 0 {
 				continue
 			}
 			hadGenericFunctionForExplicitCall = true
-			instantiated, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments)
+			if len(expr.GenericArguments) <= len(function.GenericParameters) {
+				hadExplicitGenericArityMatch = true
+			}
+			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+			instantiated, inferenceFailed, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments, argTypes, Type{})
 			if !ok {
-				if len(function.GenericParameters) == len(expr.GenericArguments) {
-					hadExplicitGenericArityMatch = true
-				}
+				hadExplicitGenericInferenceFailure = hadExplicitGenericInferenceFailure || inferenceFailed
 				continue
 			}
-			hadExplicitGenericArityMatch = true
 			function = instantiated
 		} else if len(function.GenericParameters) > 0 {
 			hadGenericArityMatch = true
@@ -15357,6 +15739,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			}
 		}
 	}
+	if hadExplicitGenericInferenceFailure {
+		a.addErrorAtToken(expr.Token, "cannot infer remaining generic arguments for %s", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	if hadGenericArityMatch && !hadGenericInference {
 		a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s", name)
@@ -15373,7 +15759,8 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			if len(function.GenericParameters) == 0 {
 				continue
 			}
-			instantiated, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments)
+			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
+			instantiated, _, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments, argTypes, Type{})
 			if !ok {
 				continue
 			}
@@ -17217,7 +17604,13 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		if !functionAcceptsCallArguments(function, len(argTypes), runtimeSpreadValues) || len(function.GenericParameters) == 0 {
 			continue
 		}
-		instantiated, ok := a.inferGenericFunctionInstanceWithExpected(function, argTypes, expected)
+		var instantiated Function
+		var ok bool
+		if len(expr.GenericArguments) > 0 {
+			instantiated, _, ok = a.explicitGenericFunctionInstance(function, expr.GenericArguments, argTypes, expected)
+		} else {
+			instantiated, ok = a.inferGenericFunctionInstanceWithExpected(function, argTypes, expected)
+		}
 		if !ok {
 			continue
 		}
@@ -17255,21 +17648,50 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	return Type{}, expressionValue{}, false
 }
 
-func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*ast.TypeReference) (Function, bool) {
-	if len(function.GenericParameters) != len(refs) {
-		return Function{}, false
+// explicitGenericFunctionInstance binds the source-visible positional prefix
+// before inferring every remaining parameter from call arguments and permitted
+// expected-result context. Explicit bindings remain authoritative; ordinary
+// argument compatibility reports any later concrete mismatch.
+//
+// Rules:
+//   - rules/declarations/generics.md — §20 "Partial explicit generic arguments"
+//   - rules/declarations/generics.md — §29 "Overload resolution"
+//   - rules/declarations/generics.md — §33 "Sema requirements"
+func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*ast.TypeReference, argTypes []Type, expected Type) (Function, bool, bool) {
+	if len(refs) > len(function.GenericParameters) || !functionAcceptsArgumentCount(function, len(argTypes)) {
+		return Function{}, false, false
 	}
 
 	substitution := map[string]Type{}
+	fixed := map[string]struct{}{}
 	for i, ref := range refs {
 		typ, ok := a.resolveType(ref)
 		if !ok {
-			return Function{}, false
+			return Function{}, false, false
 		}
-		substitution[function.GenericParameters[i]] = typ
+		name := function.GenericParameters[i]
+		substitution[name] = typ
+		fixed[name] = struct{}{}
 	}
 
-	return a.instantiateGenericFunction(function, substitution), true
+	for i, argType := range argTypes {
+		parameter, parameterOK := functionParameterForArgument(function, i)
+		if !parameterOK || !inferGenericTypeSubstitutionWithFixed(parameter.Type, argType, substitution, fixed) {
+			return Function{}, true, false
+		}
+	}
+	if expected.Kind != InvalidType && expected.Kind != "" {
+		if !inferGenericTypeSubstitutionWithFixed(function.ReturnType, expected, substitution, fixed) {
+			return Function{}, true, false
+		}
+	}
+	for _, name := range function.GenericParameters {
+		if _, ok := substitution[name]; !ok {
+			return Function{}, true, false
+		}
+	}
+
+	return a.instantiateGenericFunction(function, substitution), false, true
 }
 
 func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
@@ -17443,7 +17865,17 @@ func canonicalTypeIdentity(typ Type) string {
 }
 
 func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[string]Type) bool {
+	return inferGenericTypeSubstitutionWithFixed(pattern, concrete, substitution, nil)
+}
+
+// inferGenericTypeSubstitutionWithFixed infers only parameters not fixed by an
+// explicit positional prefix. A fixed parameter is a wildcard during inference;
+// the instantiated signature performs the ordinary compatibility check later.
+func inferGenericTypeSubstitutionWithFixed(pattern Type, concrete Type, substitution map[string]Type, fixed map[string]struct{}) bool {
 	if pattern.Kind == GenericType {
+		if _, ok := fixed[pattern.Name]; ok {
+			return true
+		}
 		if existing, ok := substitution[pattern.Name]; ok {
 			return sameConcreteType(existing, concrete)
 		}
@@ -17462,14 +17894,14 @@ func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[
 			return false
 		}
 		for i := range pattern.FunctionParameterTypes {
-			if !inferGenericTypeSubstitution(pattern.FunctionParameterTypes[i], concrete.FunctionParameterTypes[i], substitution) {
+			if !inferGenericTypeSubstitutionWithFixed(pattern.FunctionParameterTypes[i], concrete.FunctionParameterTypes[i], substitution, fixed) {
 				return false
 			}
 		}
 		if pattern.FunctionReturnType == nil || concrete.FunctionReturnType == nil {
 			return pattern.FunctionReturnType == nil && concrete.FunctionReturnType == nil
 		}
-		return inferGenericTypeSubstitution(*pattern.FunctionReturnType, *concrete.FunctionReturnType, substitution)
+		return inferGenericTypeSubstitutionWithFixed(*pattern.FunctionReturnType, *concrete.FunctionReturnType, substitution, fixed)
 	}
 
 	if pattern.Element != nil || concrete.Element != nil {
@@ -17477,7 +17909,7 @@ func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[
 			(pattern.Kind == ArrayType && !sameArrayShape(pattern, concrete)) {
 			return false
 		}
-		return inferGenericTypeSubstitution(*pattern.Element, *concrete.Element, substitution)
+		return inferGenericTypeSubstitutionWithFixed(*pattern.Element, *concrete.Element, substitution, fixed)
 	}
 
 	if len(pattern.TypeArgs) > 0 || len(concrete.TypeArgs) > 0 {
@@ -17485,7 +17917,7 @@ func inferGenericTypeSubstitution(pattern Type, concrete Type, substitution map[
 			return false
 		}
 		for i := range pattern.TypeArgs {
-			if !inferGenericTypeSubstitution(pattern.TypeArgs[i], concrete.TypeArgs[i], substitution) {
+			if !inferGenericTypeSubstitutionWithFixed(pattern.TypeArgs[i], concrete.TypeArgs[i], substitution, fixed) {
 				return false
 			}
 		}

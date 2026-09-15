@@ -1,0 +1,9 @@
+module testing_operations
+
+test "expect and require" {
+	testing.Expect(true)
+	testing.Expect(true, "optional context")
+	testing.Require(true)
+	testing.Require(true, "required context")
+	testing.Log("structured context")
+}

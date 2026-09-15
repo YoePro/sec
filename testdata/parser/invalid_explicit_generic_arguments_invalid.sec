@@ -1,0 +1,9 @@
+module invalid_explicit_generic_arguments
+
+fn Test() void {
+    let recovered := Identity[@, int](10)
+    let empty := Identity[]()
+    let preserved := 42
+}
+
+fn Next() void {}

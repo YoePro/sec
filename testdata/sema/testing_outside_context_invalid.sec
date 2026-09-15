@@ -1,0 +1,5 @@
+module testing_operations
+
+fn Production() void {
+	testing.Expect(true)
+}

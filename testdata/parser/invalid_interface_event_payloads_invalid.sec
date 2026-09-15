@@ -1,0 +1,9 @@
+module invalid_interface_event_payloads
+
+interface Source {
+    event Empty[]
+    event Malformed[@]
+    fn Next() void
+}
+
+fn Outside() void {}

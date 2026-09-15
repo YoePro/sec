@@ -1,0 +1,180 @@
+schema_version: 1
+area: concurrency-ipc
+purpose: Inter-process communication, process-shared storage and synchronization, and capability-transfer semantics.
+integrations:
+  - id: concurrency.ipc-v1
+    area: inter-process-communication
+    status: planned
+    reviewed: '2026-09-15'
+    document_revision: '1.0'
+    repository_baseline: main-reviewed-2026-09-15
+    summary: >-
+      Implements the canonical Sec 0.1 IPC model defined by rules/concurrency/ipc.md:
+      anonymous byte pipes, typed IPCSender[T]/IPCReceiver[T] messaging,
+      process-shared backing storage and mappings, IPCMutex/IPCSemaphore,
+      safe SharedValue[T], lock-free process-shared IPCAtomic[T], typed
+      capability/resource transfer, Command standard-I/O resource binding,
+      target capability planning, transactional transfer/materialization,
+      select/cancellation commit semantics, cross-process analysis, defensive
+      materialization, diagnostics, lowering, and conformance tests.
+    rules:
+      - rules/concurrency/ipc.md
+      - rules/concurrency/processes.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/select.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/atomics.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/concurrency.md
+      - rules/memory/transferability.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/memory/unsafe.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_analysis.md
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+      - rules/library/stdlib.md
+      - language-rulebook-status.md
+    implemented: []
+    remaining:
+      - add compiler-known/core identities for Pipe, PipeReader, PipeWriter, IPCPair[T], IPCSender[T], IPCReceiver[T], SharedMemory, SharedReadMapping, SharedWriteMapping, IPCMutex, IPCMutexGuard, IPCSemaphore, SharedValue[T], SharedValueGuard[T], and IPCAtomic[T]
+      - add compiler-known/core error identities IPCError, SharedMemoryError, IPCSyncError, IPCSharedError, and IPCAtomicError with exactly the variants in rules/concurrency/ipc.md
+      - add exact CreatePipe(), CreateIPC[T](), CreateSharedMemory(), CreateIPCMutex(), CreateIPCSemaphore(), CreateSharedValue[T](), and CreateIPCAtomic[T]() source surfaces
+      - implement Pipe as an ordinary move-only aggregate of independently tracked PipeReader and PipeWriter fields with canonical partial-move/destruction behavior
+      - implement PipeReader Read, ReadExact, Duplicate, Close, IsClosed, best-effort free, EOF, short-read, and select semantics
+      - implement PipeWriter Write, WriteAll, Duplicate, Close, IsClosed, best-effort free, BrokenPipe, partial-progress, and select semantics
+      - ensure pipe buffering is bounded and target-specific capacity is never exposed as a portable Sec contract in version 0.1
+      - preserve logical pipe identity across endpoint duplication and process transfer
+      - ensure EOF occurs only after the last writer capability disappears and buffered bytes are consumed
+      - ensure BrokenPipe is established only after no reader capabilities remain
+      - add compiler-derived ProcessTransferable validation for CreateIPC[T] and every typed IPC transfer plan
+      - implement typed IPC message boundaries so one successful Send commits exactly one complete semantic T
+      - implement IPCSender[T].Send as transactional ownership transfer with explicit <- for consumed existing named values
+      - preserve source ownership on every Send error before semantic commit, including embedded capability-transfer failure
+      - implement IPCReceiver[T].Receive as Result[Option[T], IPCError] with clean None distinct from abnormal peer loss
+      - implement stable typed-IPC terminal state so clean None and abnormal terminal errors do not later change classification
+      - implement IPCSender[T].Duplicate and IPCReceiver[T].Duplicate with one logical queue/transport identity
+      - implement MPMC typed IPC with exactly-once delivery to one receiver and no implicit broadcast
+      - preserve successful per-sender commit ordering without promising fairness/order between concurrent distinct senders
+      - implement bounded typed-IPC backpressure including a valid zero-capacity/rendezvous realization
+      - implement typed endpoint Close() as local infallible/idempotent clean capability shutdown and free as clean local release
+      - distinguish deterministic typed endpoint destruction from abrupt process disappearance that bypasses destruction
+      - destroy undeliverable queued messages and embedded resources exactly once when all receivers disappear
+      - implement SharedMemory zero-initialized creation, logical Size, process-local MapRead/MapWrite, Duplicate, Close, IsClosed, and best-effort free
+      - implement SharedReadMapping and SharedWriteMapping as process-local non-transferable mappings with unsafe View() and independent mapping lifetime
+      - enforce that mapping views cannot outlive the mapping and mapping Close cannot invalidate a live ordinary borrow
+      - preserve one logical shared-backing identity across duplication, transfer, and different process-local virtual addresses
+      - derive SharedStorable(T) automatically without introducing a user-visible interface or annotation
+      - reject process-local references, RawPtr meaning, owned dynamic storage, resource owners, and destructor-dependent state from SharedStorable(T)
+      - implement IPCMutex as a process-transferable non-recursive synchronization capability
+      - implement IPCMutexGuard as @noCopy, execution-local, non-transferable, and destructor-releasing
+      - reject statically provable recursive IPCMutex acquisition and live IPCMutexGuard across potentially waiting/suspending boundaries
+      - implement permanent IPCMutex poisoning when the owning execution/process dies before guard release
+      - implement IPCSemaphore Initial/Maximum validation, Acquire, TryAcquire, Release, Duplicate, Close, and exact permit semantics
+      - ensure semaphore permits are not restored automatically when an acquiring process dies
+      - provide release/acquire process-shared synchronization for IPCMutex and IPCSemaphore according to concurrency_memory_model.md
+      - derive SharedValue[T] only for SharedStorable(T) and bind one logical backing identity, synchronization identity, and shared-layout identity
+      - implement SharedValueGuard[T].Read as process-local snapshot and Write as canonical shared-representation replacement without exposing safe shared refs
+      - make SharedValue duplication and process transfer transactional as one composite logical capability
+      - propagate permanent OwnerDied poisoning into SharedValue[T]
+      - derive IPCAtomicValue(T) as the IPC-safe subset of ordinary scalar atomic eligibility, explicitly excluding RawPtr[T]
+      - implement IPCAtomic[T] only where the selected target provides the complete lock-free process-shared operation set
+      - implement IPCAtomic Load, Store, Swap, strong CompareExchange, Duplicate, and deterministic local capability destruction
+      - reuse the canonical MemoryOrder and CompareExchangeResult[T] identities from rules/concurrency/atomics.md rather than introducing IPC-specific duplicates
+      - require explicit IPCAtomic memory-order arguments to be compile-time-known and apply the canonical ordinary atomic operation/order validity rules
+      - preserve process-shared synchronization scope and lock-free behavior through lowering with no hidden mutex fallback
+      - add type-preserving capability-transfer support so destination Sec values retain concrete resource types rather than becoming untyped native handles
+      - implement route-specific capability adapters CapabilityDuplicate(T), ProcessStartupTransfer(T), IPCTypedTransfer(T), and ProcessStandardIOResourceBinding(T, role)
+      - ensure resource duplication creates another owner of the same logical underlying resource rather than reopening/copying it
+      - prohibit capability-authority escalation during transfer/duplication and prohibit bulk inheritance of unrelated native resources
+      - implement all-or-nothing composite transfer and destination materialization rollback for capability-bearing typed messages
+      - add File.Duplicate() Result[File, IOError] to the canonical File surface and implementation
+      - add PipeReader.Duplicate() and PipeWriter.Duplicate() using IOError as specified by rules/concurrency/ipc.md
+      - extend CommandInputMode and CommandOutputMode with Resource
+      - extend CommandConfigurationError with InvalidIOResource
+      - add ownership-consuming Command SetStdin(File), SetStdin(PipeReader), SetStdout(File), SetStdout(PipeWriter), SetStderr(File), and SetStderr(PipeWriter) overloads
+      - preserve Command configuration transactionality so failed resource binding leaves both previous configuration and source ownership intact
+      - on successful Command.Start establish the child standard-stream capability and release any unnecessary retained parent-side configuration capability
+      - on failed Command.Start restore Created with configured resources retained for retry and all temporary child/native bindings rolled back
+      - make TakeStdinPipe/TakeStdoutPipe/TakeStderrPipe return None for Resource mode
+      - replace canonical process target terms ProcessStandardIOInheritance and ProcessPipes with ProcessStandardIOPipes and ProcessStandardIOResourceBinding(T, role)
+      - keep core IPC capability-based and provide no global named IPC registry, IPCAddress, or IPCListener in Sec 0.1
+      - keep ProcessID, native PID, native handle numbers, resource IDs, and names from conferring ambient IPC authority
+      - generate monomorphic typed-transfer identities/plans from nominal type identity, generic specialization, ProcessTransferable plan, and capability-bearing components
+      - validate independently established typed endpoints before exposing an incompatible T and reject implicit structural/schema migration
+      - make typed transfer representation independent of ordinary heap addresses, ABI padding, native handle numbers, and ordinary virtual address placement
+      - validate all incoming framing, lengths, discriminants, allocation sizes, capability counts/types, and transfer/schema identities before source-visible materialization
+      - bound queue storage, message size, capability count, materialization depth/work, and temporary transfer resources without weakening message/ownership semantics
+      - overflow-check all size/count arithmetic before allocation, indexing, or native resource reservation
+      - represent IPC logical resource identity separately from Sec owner identity and native handle/descriptor identity in Semantic IR
+      - add explicit Semantic IR operations/facts for pipe I/O, typed IPC, shared memory/mappings, process-shared synchronization, SharedValue, IPCAtomic, capability duplication/transfer, and Command resource binding
+      - model conditionally consuming operations with explicit prepare/commit/rollback semantics and preserve failure-path cleanup through try lowering
+      - preserve readiness separately from commit for selectable IPC operations and prohibit destructive readiness probes
+      - reuse the same semantic commit boundary for select, timeout, peer transitions, and cancellation
+      - classify Pipe.Read/Write/ReadExact/WriteAll, IPCSender.Send, IPCReceiver.Receive, IPCMutex.Lock, IPCSemaphore.Acquire, and SharedValue.Lock as potentially waiting
+      - classify TryLock, TryAcquire, and IPCAtomic operations as nonwaiting source operations
+      - integrate IPCMutexGuard and SharedValueGuard liveness into blocking/effect analysis
+      - integrate typed IPC, pipe backpressure, process joins, IPCMutex, and IPCSemaphore into cross-process deadlock analysis
+      - integrate shared backing identity, SharedValue protection identity, IPC synchronization, and IPCAtomic MemoryOrder into data-race/happens-before analysis
+      - ensure unsafe SharedMemory.View does not disable race analysis or make process-local addresses transferable
+      - add CompilationPlan capabilities IPCPipes, IPCTypedMessages, IPCSharedMemory, IPCMutex, IPCSemaphore, and IPCAtomicRepresentation(width)
+      - derive SharedValue and typed IPC support transitively rather than adding redundant feature booleans
+      - reject statically unsupported family/width/route combinations at compile time rather than returning runtime Unsupported/NativeFailure
+      - require full family conformance including lifecycle, duplication, rollback, select, cancellation commit, process-death cleanup, and error mapping before a target advertises IPC support
+      - keep portable IPC free of a universal IPCPlatform/IPCHandle/NativeHandle surface
+      - add mentor-style diagnostics for transfer eligibility, missing route adapters, missing explicit moves, live guards across waits, invalid atomic orders, SharedStorable failures, and IPCAtomicValue/target-width failures
+      - add LSP hover/completion for exact IPC public surfaces and explanatory compiler-known semantic properties
+      - implement the complete conformance test matrix required by rules/concurrency/ipc.md
+    governance_reconciliation:
+      - rules/concurrency/ipc.md is the sole canonical owner of Pipe/PipeReader/PipeWriter, typed IPC, shared memory/mappings, IPCMutex/IPCSemaphore, SharedValue, IPCAtomic, general IPC capability-transfer semantics, IPC target capabilities, and IPC-specific analysis/lowering obligations
+      - rules/concurrency/processes.md remains the canonical owner of Process[T], Command lifecycle, and the Command source surface; it consumes IPC-owned resource-transfer semantics for direct standard-I/O binding
+      - rules/memory/transferability.md remains the canonical owner of ProcessTransferable semantic eligibility; IPC adds route-specific target adapter requirements without duplicating that proof
+      - rules/concurrency/channels.md remains the canonical owner of ordinary in-process Channel[T] and must state that Channel[T] never automatically becomes IPC
+      - rules/concurrency/select.md remains the generic owner of select source-order/readiness/commit semantics while rules/concurrency/ipc.md classifies its selectable operations and their commit effects
+      - rules/concurrency/blocking.md remains the generic owner of wait/suspend/block policy while rules/concurrency/ipc.md classifies IPC waiting and guard effects
+      - rules/concurrency/atomics.md remains the canonical owner of Atomic[T], MemoryOrder, CompareExchangeResult[T], Swap naming, and common atomic order validation; IPCAtomic[T] reuses those identities and does not create a parallel atomic vocabulary
+      - rules/concurrency/concurrency_memory_model.md remains the canonical owner of acquire/release/SeqCst and happens-before semantics and must include process-shared IPC synchronization identities
+      - rules/library/stdlib.md and the canonical File implementation own File.Duplicate(); IPC requires that operation for capability duplication but does not redefine File
+      - the previous process D-I existing-resource standard-I/O dependency is resolved by the IPC capability-transfer and Command Resource-mode contracts
+      - implementation status belongs in governance fragments; no new IPC integration is to be appended to root implementation-status.yaml
+    required_tests:
+      - CreatePipe returns both endpoints atomically and leaves no partial endpoint on failure
+      - pipe short reads/writes, ReadExact, WriteAll, EOF, BrokenPipe, duplication, close, destruction, backpressure, and select follow rules/concurrency/ipc.md
+      - typed Send commits exactly one complete T and consuming ownership only on Ok
+      - typed Send Err preserves a consumed named source value and all embedded capabilities
+      - typed IPC delivers each committed message exactly once to one receiver even with duplicated receivers
+      - typed IPC preserves per-sender order and does not promise broadcast or cross-sender fairness
+      - clean sender shutdown drains committed messages then yields stable None
+      - abnormal sender disappearance yields stable terminal transport failure rather than clean None
+      - receiver disappearance causes future Send to return PeerClosed without ownership commit
+      - zero-capacity typed IPC is valid and participates in deadlock/select/cancellation analysis
+      - SharedMemory creation is zero-initialized and preserves one backing identity across different process-local mappings
+      - SharedReadMapping and SharedWriteMapping are not ProcessTransferable
+      - SharedMemory unsafe View references cannot outlive the mapping
+      - IPCMutex is non-recursive, cross-process, guard-released, owner-death-poisoned, and selectable
+      - IPCMutexGuard and SharedValueGuard cannot cross waiting/suspending boundaries
+      - IPCSemaphore enforces Initial/Maximum and does not restore permits after process death
+      - SharedValue[T] rejects non-SharedStorable fields, snapshots Read, commits Write, duplicates one logical value, and permanently poisons on owner death
+      - IPCAtomic[T] is lock-free, process-shared, uses canonical MemoryOrder/CompareExchangeResult[T]/Swap, and never falls back to a mutex
+      - unsupported IPC atomic widths are compile-time rejected for the selected target
+      - capability duplication preserves logical resource identity while creating a new Sec owner
+      - target/native handle values may differ after transfer without changing the concrete Sec resource type
+      - capability transfer never increases authority or exposes unrelated parent resources
+      - composite capability-bearing typed transfer rolls back every temporary destination resource on pre-commit failure
+      - Command Resource mode consumes File/Pipe capabilities transactionally, returns None from Take*Pipe, and retains configuration for retry after Start failure
+      - missing IPC family or route adapter is diagnosed at compile time when statically known
+      - select non-selected IPC branches have no observable effect
+      - cancellation before commit has no effect and cancellation after commit cannot revoke the committed operation
+      - malformed transfer framing, size arithmetic, discriminants, capability metadata, and schema identity cannot cause memory unsafety
+      - bounded resource limits produce canonical ResourceLimit rather than hidden unbounded allocation
+      - Semantic IR preserves logical resource identity, conditional commit/rollback, synchronization scope, and MemoryOrder until equivalent lowering contracts exist
+    corrections_applied:
+      - rules/corrections/applied/ipc-cross-rulebook-correction-20260915.md
+    governance_sync_completed:
+      - governance/concurrency_ipc.yaml is registered in governance/index.yaml with ownership of inter-process communication, process-shared storage/synchronization, and capability-transfer semantics
+      - governance/concurrency_process.yaml reflects Command Resource modes/API/target facts and the resolved IPC standard-I/O boundary
+      - concurrency.ipc-v1 remains unique to this fragment and is not duplicated into adjacent concurrency, memory, lowering, or analysis fragments
+      - language-rulebook-status.md records IPC revision 1.0 as Written while implementation remains planned

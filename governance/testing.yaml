@@ -1,4 +1,116 @@
 schema_version: 1
 area: testing
 purpose: Language testing infrastructure and test-tooling status.
-integrations: []
+integrations:
+  - id: tooling.language-testing
+    area: language-testing-and-tooling
+    status: partial
+    repository_baseline: "814a584"
+    summary: >-
+      Implements the canonical Sec 0.1 source testing model: *_test.sec source
+      selection, top-level test declarations, compiler-known testing operations,
+      same-module white-box tests, project tests/ integration modules,
+      TestCompilationPlan, static harness generation, subtests, structured test
+      outcomes, sec test execution, execution-provider integration, and compiler-
+      owned LSP/editor test discovery. Benchmarking and fuzzing are future design
+      areas and are not part of this integration.
+    rules:
+      - rules/tooling/testing.md
+      - rules/foundations/grammar.md
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/library/core-library.md
+      - rules/errors/errorhandling.md
+      - rules/errors/panic.md
+      - rules/control-flow/defer.md
+      - rules/memory/destruction.md
+      - rules/declarations/lambda-functions.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    implemented:
+      - contextual top-level `test "name" { ... }` recognition retains a
+        distinct ast.TestDeclaration with its source name and ordinary Sec body
+        while `test` remains an identifier outside the declaration shape
+      - declaration-shaped nested tests are diagnosed with P2011 and recovered
+        without losing later statements in the enclosing body
+      - malformed top-level test headers retain an explicitly invalid
+        ast.TestDeclaration and recover their body across missing names,
+        forbidden parameters, and forbidden return types with stable P2020;
+        ordinary function-name and call positions keep `test` as an identifier
+      - Sema enforces the *_test.sec filename, non-empty top-level test names,
+        and unique module-plus-name identities through stable S1030-S1032
+        diagnostics without registering tests as ordinary callable functions
+      - Sema analyzes ordinary test-body statements in isolated invocation-local
+        scopes, accepts bare return, and rejects return values with stable S1033
+        without creating an ordinary Function declaration or callable source name
+      - compiler-known testing.Expect and testing.Require resolve only in direct
+        test context with one bool condition and an optional string message;
+        S1034-S1036 cover context and argument errors, and resolved operations
+        retain their owning test without modeling testing as an imported module
+      - compiler-known testing.Log resolves in direct test context with exactly
+        one string message, records a non-terminal testing operation fact, and
+        reports invalid arguments through stable S1037
+      - focused parser fixtures cover retained top-level tests and nested-test
+        recovery, and focused Sema fixtures cover valid and invalid test identity;
+        `go test ./internal/ast ./internal/diagnostics ./internal/parser ./internal/sema` passes
+    remaining:
+      - require TestCompilationPlan context in addition to the implemented
+        *_test.sec filename check, complete remaining declaration diagnostics,
+        test-boundary try behavior, callable-effect facts, and formatter support
+      - add stable TestIdentity and source metadata independent of generated
+        function names or linker symbols
+      - add TestCompilationPlan as an explicit compilation mode and keep
+        production validity independent from test-only declarations
+      - select same-directory *_test.sec only in test compilation and add the
+        project-root tests/ test-only source universe
+      - implement test-only dependency direction so Test may depend on Production
+        and Test while Production may not depend on Test
+      - complete the compiler-known test-context namespace with Pass, Fail, Skip,
+        ExpectEqual, RequireEqual, Run, and TestResult, plus execution/control-
+        flow semantics for the implemented Expect and Require frontend surface
+      - implement test-boundary `try` propagation so unexpected Err terminates the
+        current invocation as a structured test failure after ordinary cleanup
+      - implement monotonic failure state and controlled cleanup for Pass, Fail,
+        Skip, Require failures, bare return, and unexpected Err
+      - implement synchronous hierarchical subtests, runtime sibling-name
+        validation, child result attribution, and child-failure propagation to
+        the parent
+      - generate a static selected-test harness without runtime reflection,
+        constructor registration, or a mandatory heap
+      - implement canonical `sec test` project discovery, scoped selection,
+        deterministic filtering, fail-fast scheduling policy, result aggregation,
+        structured results, and exit status
+      - keep dependency module tests out of a scoped test run unless those tests
+        are explicitly selected
+      - support selection before final linking so constrained target artifacts may
+        include only the selected test set and required code
+      - add hosted native TestExecutionProvider support and distinguish
+        CompilationFailed, ExecutionUnavailable, ExecutionFailed, and completed
+        test outcomes
+      - define execution-provider interfaces sufficient for later simulator,
+        emulator, debug-probe, hardware-farm, reset, fault, and timeout reporting
+        without making transport a source-language rule
+      - add compiler-workspace/LSP test discovery and test compilation views with
+        Run Test and Debug Test metadata for editor clients
+      - integrate the VS Code extension with compiler-owned test metadata and the
+        editor-native test UI without adding an independent Sec test parser
+      - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted,
+        and provider regression tests from rules/tooling/testing.md
+      - synchronize rules/projects/modules.md and rules/projects/projects.txt to
+        remove the obsolete source-visible std/... standard-library import prefix
+        and preserve direct logical imports such as `import "io"` and
+        `import "net/http"`
+      - update language-rulebook-status.md and rules/README.md for the new written
+        source-level testing rulebook while keeping compiler_testing.md as a
+        separate planned compiler-verification document
+    deferred:
+      - benchmark source syntax and sec benchmark semantics
+      - fuzz source syntax and sec fuzz semantics
+      - executable documentation examples
+      - general system/end-to-end process orchestration
+      - universal portable test-resource embedding
+      - explicit source-level per-test timeout syntax
+      - testing.Parallel and runner-controlled source-visible parallel scheduling

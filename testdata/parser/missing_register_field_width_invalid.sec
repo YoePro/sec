@@ -1,0 +1,12 @@
+module missing_register_field_width
+
+type Broken register[1] {
+    Missing: bit[],
+    Present: bit,
+}
+
+type NextRegister register[1] {
+    Flag: bit,
+}
+
+fn Next() void {}

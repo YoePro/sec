@@ -349,6 +349,10 @@ type EnumValue struct {
 	Default      bool
 	DefaultToken lexer.Token
 	Initializer  Expression
+	// Invalid marks a recovered enum-member position that has no semantic
+	// member identity but remains in source order for tooling.
+	Invalid  bool
+	Recovery *RecoveryInfo
 }
 
 func (ev *EnumValue) TokenLiteral() string {
@@ -910,6 +914,28 @@ type FunctionDeclaration struct {
 	LinkName           string
 	Static             bool
 	ReceiverCapability ReceiverCapability
+}
+
+// TestDeclaration retains the canonical source identity and body of a
+// top-level source test. Tests are distinct from ordinary callable function
+// declarations and must not acquire a source-visible function name.
+//
+// Rules:
+//   - rules/tooling/testing.md — §5 "Test declaration syntax"
+//   - rules/tooling/testing.md — §6 "Test identity"
+type TestDeclaration struct {
+	Token lexer.Token
+	Name  *StringLiteral
+	Body  *BlockStatement
+	// Invalid marks a retained test whose declaration header violates the
+	// canonical parameter-free and return-type-free source form.
+	Invalid bool
+}
+
+func (td *TestDeclaration) statementNode() {}
+
+func (td *TestDeclaration) TokenLiteral() string {
+	return td.Token.Lexeme
 }
 
 type ReceiverCapability string

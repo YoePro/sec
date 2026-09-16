@@ -1,0 +1,14 @@
+fn MissingFunction(left:, right: int) int {
+	return right
+}
+
+fn ContainsLambda() void {
+	let mapper := fn(value:, fallback: int) int {
+		return fallback
+	}
+	discard mapper
+}
+
+fn MissingFinal(value:) void {}
+
+fn Following() void {}

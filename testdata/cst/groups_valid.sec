@@ -1,0 +1,5 @@
+module main
+
+fn F() void {
+    let value := Call(items[1], "}") /* )] */
+}

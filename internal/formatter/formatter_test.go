@@ -513,3 +513,50 @@ func TestFormatAssertStatements(t *testing.T) {
 		t.Fatalf("assertion formatting is not idempotent:\n%s", again)
 	}
 }
+
+// rules/errors/panic.md § 17 defines panic as a keyword statement followed by
+// one ordinary string literal.
+func TestFormatPanicStatement(t *testing.T) {
+	input := "fn Fail() void {\npanic   \"failure\"\n}\n"
+	want := "fn Fail() void {\n    panic \"failure\"\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong panic formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("panic formatting is not idempotent:\n%s", again)
+	}
+}
+
+// rules/tooling/formatter.md "Source model" and "Line comments" require
+// source edits to distinguish real lexer comments from comment-like literal or
+// block-comment text.
+func TestTrailingCommentBoundaryUsesLexicalCST(t *testing.T) {
+	tests := []struct {
+		line    string
+		code    string
+		comment string
+	}{
+		{`value: string /* // not line */ // actual`, `value: string /* // not line */`, `// actual`},
+		{"value := `// literal` // actual", "value := `// literal`", "// actual"},
+		{`value := $"// {Read()}" // actual`, `value := $"// {Read()}"`, `// actual`},
+		{`value := "// literal"`, `value := "// literal"`, ""},
+	}
+	for _, test := range tests {
+		code, comment, found := splitTrailingLineComment(test.line)
+		if code != test.code || comment != test.comment || found != (test.comment != "") {
+			t.Errorf("split %q = (%q, %q, %v), want (%q, %q)", test.line, code, comment, found, test.code, test.comment)
+		}
+	}
+}
+
+func TestFormatAlignsCommentAfterInlineBlockComment(t *testing.T) {
+	input := "type Config struct {\nShort: string /* // fake */, // real\nLonger: int, // other\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if !strings.Contains(got, "/* // fake */,    // real") {
+		t.Fatalf("real line comment was not aligned after block comment:\n%s", got)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("block-comment alignment is not idempotent:\n%s", again)
+	}
+}

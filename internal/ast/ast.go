@@ -88,6 +88,22 @@ func (as *AssertStatement) TokenLiteral() string {
 	return as.Token.Lexeme
 }
 
+// PanicStatement represents an explicit, non-returning panic with static
+// diagnostic metadata.
+//
+// Rules:
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+type PanicStatement struct {
+	Token   lexer.Token
+	Message *StringLiteral
+}
+
+func (ps *PanicStatement) statementNode() {}
+
+func (ps *PanicStatement) TokenLiteral() string {
+	return ps.Token.Lexeme
+}
+
 type DetachStatement struct {
 	Token         lexer.Token
 	Value         Expression

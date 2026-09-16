@@ -1042,13 +1042,22 @@ panic
 assert
 ```
 
-Complete parser and semantic syntax is not implemented.
+Canonical explicit panic is a statement with one ordinary string literal:
+
+```sec
+panic "message"
+```
+
+`panic` is not an ordinary callable, so `panic("message")` is invalid. The
+parser retains a dedicated panic statement and semantic analysis treats it as
+non-returning and panic-capable. Assertion syntax is defined by `panic.md`.
 
 `require` is not globally reserved. Any grammar that assigns it a
 contract-specific role must resolve it contextually and leave ordinary
 identifier uses valid.
 
-`panic.md` and `runtime_checks.md` remain planned.
+Further panic lowering and the remaining runtime checks are tracked by their
+owning governance entries.
 
 ## General compile-time execution
 

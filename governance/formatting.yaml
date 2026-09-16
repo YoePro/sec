@@ -2,6 +2,42 @@ schema_version: 1
 area: formatting
 purpose: Source formatting, formatting fixes, and formatter behavior.
 integrations:
+  - id: tooling.cst-lexical-foundation
+    area: tooling
+    status: partial
+    integrated: "2026-09-16"
+    summary: >-
+      Introduces a lexer-backed, byte-lossless concrete-syntax foundation and
+      lexical delimiter hierarchy, and uses it for trailing line-comment
+      boundaries in the shared formatter.
+    rules:
+      - rules/tooling/formatter.md
+      - rules/foundations/lexical_structure.md
+      - rules/compiler/parser_recovery.md
+    code:
+      - internal/cst/document.go
+      - internal/cst/groups.go
+      - internal/formatter/formatter.go
+    tests:
+      - internal/cst/document_test.go
+      - internal/cst/groups_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/cst/groups_valid.sec
+      - testdata/cst/groups_invalid.sec
+    implemented:
+      - retain source-ordered lexer tokens, comments, whitespace, invalid tokens, lexical diagnostics, original byte ranges, and an initial BOM without changing original source bytes
+      - preserve exact round trips over Unicode, CRLF, nested comments, interpolated and raw strings, and invalid UTF-8 bytes
+      - use lexer-owned comment tokens for trailing-comment boundary detection during formatter alignment
+      - retain the previous conservative scanner for malformed single-line source until structural recovery is available
+      - derive nested parenthesized, bracketed, and braced delimiter groups from real lexer tokens, retaining incomplete groups and unmatched closers without synthetic recovery
+    remaining:
+      - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
+      - attach parser missing-token and skipped-token recovery nodes to the concrete syntax model
+      - migrate remaining indentation, alignment, and comment placement from trimmed source lines to structural syntax and trivia
+      - support incremental and minimal-edit syntax-tree formatting
+    verification:
+      - command: go test ./internal/cst ./internal/formatter -count=1
+        result: passed
   - id: tooling.formatter-delimiter-handoff
     area: tooling
     status: implemented

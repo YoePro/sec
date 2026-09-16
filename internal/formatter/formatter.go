@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"sec/internal/ast"
+	"sec/internal/cst"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -80,7 +81,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatAssert(formatUnitExpressions(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line)))))))))
+		line = formatPanic(formatAssert(formatUnitExpressions(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -454,7 +455,37 @@ func codeBeforeTrailingComment(line string) string {
 	return strings.TrimSpace(code)
 }
 
+// trailingLineCommentIndex uses lexer-backed CST elements to distinguish a
+// real line comment from comment-like text inside literals or same-line block
+// comments.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — § 5 "Comments"
+//   - rules/tooling/formatter.md — "Source model", "Line comments"
 func trailingLineCommentIndex(line string) int {
+	if !strings.Contains(line, "//") {
+		return -1
+	}
+	syntax := cst.Build(line, "")
+	if len(syntax.Diagnostics) == 0 {
+		for _, element := range syntax.Elements {
+			if element.Kind == cst.Comment && strings.HasPrefix(element.Text, "//") {
+				return element.Span.Start
+			}
+		}
+		return -1
+	}
+	// On malformed source, retain the existing conservative line scanner until
+	// parser recovery nodes can carry structural formatting decisions.
+	return trailingLineCommentIndexFallback(line)
+}
+
+// trailingLineCommentIndexFallback keeps malformed single-line source on the
+// prior conservative path until parser recovery is represented in the CST.
+//
+// Rules:
+//   - rules/tooling/formatter.md — "Malformed and incomplete source"
+func trailingLineCommentIndexFallback(line string) int {
 	quote := byte(0)
 	escaped := false
 	for index := 0; index+1 < len(line); index++ {
@@ -1047,6 +1078,23 @@ func formatAssert(line string) string {
 	}
 	return formatted
 }
+
+// formatPanic emits exactly one space between the statement keyword and its
+// static string-literal payload without rewriting invalid call-like spelling.
+//
+// Rules:
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+func formatPanic(line string) string {
+	if !strings.HasPrefix(line, "panic ") {
+		return line
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(line, "panic"))
+	if !strings.HasPrefix(payload, "\"") {
+		return line
+	}
+	return "panic " + payload
+}
+
 func matchingParen(s string, open int) int {
 	depth, angle := 0, 0
 	quote := rune(0)

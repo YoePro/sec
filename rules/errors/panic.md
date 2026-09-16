@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-09-07
-- Document revision: 2.1
+- Last updated: 2026-09-16
+- Document revision: 2.2
 - Sec language version: 0.1
 - Canonical path: `rules/errors/panic.md`
 - Implementation governance: `governance/errors.yaml`
@@ -36,7 +36,7 @@
 
 **§ 1(11)** Target/build rulebooks own exact panic endpoint configuration and platform integration.
 
-**§ 1(12)** This revision locks the Sec 0.1 assertion syntax defined in § 15.
+**§ 1(12)** This revision locks the Sec 0.1 assertion syntax defined in § 15 and explicit-panic syntax defined in § 17.
 
 ---
 
@@ -512,11 +512,19 @@ unreachable
 
 ## § 17 Explicit panic
 
-**§ 17(1)** The exact Sec 0.1 explicit-panic source syntax and payload shape are not locked by this revision.
+**§ 17(1)** Canonical Sec 0.1 explicit-panic syntax is:
 
-**§ 17(2)** Regardless of future syntax, explicit panic must terminate the current panic domain, never return to the failed stack, be visible in effect analysis, violate unresolved `@noPanic`, and support an allocation-free minimum representation.
+```sec
+panic "message"
+```
 
-**§ 17(3)** Illustrative syntax from older material is non-normative until a separate grammar decision locks it.
+**§ 17(2)** `panic` is a statement keyword, not an ordinary callable. Function-like `panic("message")` spelling is invalid.
+
+**§ 17(3)** The payload must be one ordinary string literal. It is static diagnostic metadata, not an arbitrary runtime expression; interpolated and dynamically computed messages are invalid in Sec 0.1.
+
+**§ 17(4)** Explicit panic terminates the current panic domain, never returns to the failed stack, is visible in effect analysis, violates unresolved `@noPanic`, and supports an allocation-free minimum representation.
+
+**§ 17(5)** The string literal does not replace the stable explicit-panic reason ID or alter the portable five-field `PanicInfo`; an implementation may retain it as optional profile diagnostic metadata according to § 13(5).
 
 ---
 
@@ -784,6 +792,6 @@ assert condition, "message"
 
 **§ 31(10)** The minimum panic path is allocation-free and does not require a general Sec runtime.
 
-**§ 31(11)** Exact explicit `panic` source syntax remains intentionally unresolved by this revision.
+**§ 31(11)** Explicit panic is written `panic "message"`; call syntax and dynamic messages are invalid in Sec 0.1.
 
 **§ 31(12)** Panic cleanup occurs only where the selected canonical panic policy guarantees it; no rule may silently invent exception unwinding.

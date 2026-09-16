@@ -1,0 +1,9 @@
+module panic_invalid
+
+fn CallLike() void {
+    panic("call spelling")
+}
+
+fn Dynamic(message: string) void {
+    panic message
+}

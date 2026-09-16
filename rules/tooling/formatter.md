@@ -90,6 +90,12 @@ The current LSP formatter already implements:
 - preservation of ordinary identifiers and calls named `func`;
 - parser-confirmed `x++` and `x--` normalization to `x += 1` and `x -= 1`,
   while invalid expression uses remain unchanged;
+- a lexer-backed, byte-lossless CST foundation retaining real tokens,
+  comments, whitespace, invalid tokens, diagnostics, source ranges, and nested
+  groups of real delimiters;
+- lexer-backed detection of trailing line comments during declaration-comment
+  alignment, without treating comment-like text in literals or same-line block
+  comments as a line comment;
 - format-on-save integration in the VS Code extension;
 - tests for switch, select, grouped imports, declaration groups, function
   signatures, bootstrap lexer source, and `func` normalization.
@@ -98,7 +104,8 @@ The current LSP formatter already implements:
 
 The current formatter is partially implemented in these areas:
 
-- comment preservation is primarily line-based rather than trivia-aware;
+- comment preservation remains primarily line-based; only trailing-comment
+  boundary detection uses the lexer-backed CST foundation so far;
 - indentation is inferred from source text rather than a lossless syntax tree;
 - malformed and incomplete source can sometimes be formatted, but recovery is
   not systematic;
@@ -123,7 +130,7 @@ The following are not yet implemented:
 - range formatting;
 - on-type formatting;
 - minimal text edits;
-- an AST- and trivia-aware printer;
+- a structural CST/AST- and trivia-aware printer;
 - stable formatting of all recoverable syntax;
 - missing-colon repair;
 - struct-field column alignment;
@@ -435,6 +442,13 @@ error nodes
 
 The AST alone is not sufficient when it does not preserve all comments and
 trivia.
+
+The current lexical CST foundation retains every source byte as lexer tokens
+or intervening trivia, including invalid bytes and an initial BOM. It also
+groups real matching `()`, `[]`, and `{}` tokens without assigning grammatical
+roles; incomplete groups and unmatched closers remain inspectable. It is not
+yet a grammar tree and does not yet contain parser-synthesized missing-token
+or recovery nodes.
 
 A temporary line-based implementation may remain during migration, but the
 canonical architecture is syntax-tree and trivia aware.
@@ -1963,6 +1977,15 @@ Commas nested in the condition or contained in the message literal are not the
 assertion-message separator and remain governed by their owning expression or
 literal rules. Formatting never converts `assert` into function-call syntax.
 
+Explicit panic uses exactly one space between the keyword and its static
+string-literal payload:
+
+```sec
+panic "message"
+```
+
+Formatting never converts this statement into function-call syntax.
+
 ---
 
 # Contextual `x`
@@ -2525,6 +2548,9 @@ source ranges
 ```
 
 Do not infer comment attachment from trimmed lines in the final implementation.
+The lexer-backed token/trivia and delimiter-group layers are the first steps;
+grammar-aware structure and parser recovery must be added before they can
+replace line-based printing.
 
 ## A.6 Add alignment engine
 

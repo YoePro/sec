@@ -1,0 +1,5 @@
+module panic_valid
+
+fn Fail() int {
+    panic "explicit failure"
+}

@@ -6,7 +6,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-09-14"
+    revised: "2026-09-16"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -60,6 +60,7 @@ integrations:
       - shared delimiter stack preserving mismatched outer closers
       - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
       - malformed generic parameter entries recover at top-level commas, list closers, callable/body/implements/default/contract boundaries, retaining completed and later comma-separated parameters plus the enclosing declaration
+      - committed function and lambda parameters with an empty type position retain an invalid TypeReference with recovery metadata, resume at comma or closing parenthesis, and preserve later parameters, bodies, enclosing expressions, statements, and declarations
       - ordinary functions and shared interface/extern signature parsing retain an invalid return TypeReference when the mandatory return type is missing; ordinary bodies and later member/declaration siblings remain attached without inferring void
       - interface property requirements retain missing or malformed declared types as invalid TypeReference nodes, recover to a reliable body brace without consuming outer/member boundaries, and preserve accessors plus later interface and top-level siblings
       - interface event requirements retain empty or malformed payload positions as invalid TypeReference nodes, consume a reliable owned closing bracket, and preserve later interface members and top-level declarations
@@ -113,6 +114,8 @@ integrations:
       - testdata/parser/invalid_new_target_type_invalid.sec
       - internal/parser/generic_parameter_recovery_test.go
       - testdata/parser/malformed_generic_parameters_invalid.sec
+      - internal/parser/missing_parameter_type_recovery_test.go
+      - testdata/parser/missing_parameter_types_invalid.sec
       - internal/parser/missing_function_return_type_recovery_test.go
       - testdata/parser/missing_function_return_types_invalid.sec
       - internal/parser/interface_property_type_recovery_test.go
@@ -168,6 +171,8 @@ integrations:
         result: passed; a malformed generic construction target retains its invalid type, parsed arguments, enclosing new expression, and following siblings
       - command: go test ./internal/parser -run TestMalformedGenericParametersPreserveLaterParametersAndDeclarations -count=1
         result: passed; malformed entries preserve later comma-separated parameters, and a missing list closer stops before the callable boundary without losing either function body or following declarations
+      - command: go test ./internal/parser -run TestMissingParameterTypesRetainParametersAndDeclarations -count=1
+        result: passed; missing function and lambda parameter types retain invalid type metadata, later parameters, bodies, enclosing declarations, and the following top-level declaration
       - command: go test ./internal/parser -run TestMissingFunctionReturnTypesRetainFunctionsAndSiblings -count=1
         result: passed; missing mandatory return types retain invalid type metadata on ordinary and interface functions while preserving bodies, member siblings, and following declarations
       - command: go test ./internal/parser -run TestInvalidInterfacePropertyTypesRetainPropertiesAndMembers -count=1

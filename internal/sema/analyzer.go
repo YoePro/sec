@@ -864,6 +864,8 @@ func isNilStatement(stmt ast.Statement) bool {
 		return stmt == nil
 	case *ast.AssertStatement:
 		return stmt == nil
+	case *ast.PanicStatement:
+		return stmt == nil
 	case *ast.DetachStatement:
 		return stmt == nil
 	case *ast.CancelStatement:
@@ -2109,6 +2111,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeDiscardStatement(stmt)
 	case *ast.AssertStatement:
 		a.analyzeAssertStatement(stmt)
+	case *ast.PanicStatement:
+		a.analyzePanicStatement(stmt)
 	case *ast.DetachStatement:
 		a.analyzeDetachStatement(stmt)
 	case *ast.CancelStatement:
@@ -2602,6 +2606,19 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 			epoch:     a.arrayIndexMutationEpoch,
 		})
 	}
+}
+
+// analyzePanicStatement records the explicit non-returning panic effect. The
+// parser has already restricted its payload to static string metadata.
+//
+// Rules:
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+//   - rules/errors/panic.md — § 21 "@noPanic"
+func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
+	if stmt == nil || stmt.Message == nil || a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicExplicit, Source: stmt.Token})
 }
 
 func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
@@ -5679,6 +5696,8 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
 	case *ast.ReturnStatement:
 		return true
+	case *ast.PanicStatement:
+		return true
 	case *ast.IfStatement:
 		if stmt.Alternative == nil {
 			return false
@@ -5868,7 +5887,7 @@ func (a *Analyzer) statementTerminatesBlock(stmt ast.Statement) bool {
 	switch stmt.(type) {
 	case *ast.BreakStatement, *ast.ContinueStatement:
 		return a.loopDepth > 0
-	case *ast.CancelStatement:
+	case *ast.CancelStatement, *ast.PanicStatement:
 		return true
 	default:
 		return a.statementDefinitelyReturns(stmt)
@@ -5926,7 +5945,7 @@ func (a *Analyzer) statementCanFallThrough(stmt ast.Statement) bool {
 
 func statementCanFallThrough(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
-	case *ast.ReturnStatement, *ast.BreakStatement, *ast.ContinueStatement, *ast.CancelStatement, *ast.FallthroughStatement:
+	case *ast.ReturnStatement, *ast.PanicStatement, *ast.BreakStatement, *ast.ContinueStatement, *ast.CancelStatement, *ast.FallthroughStatement:
 		return false
 	case *ast.IfStatement:
 		if isBoolLiteral(stmt.Condition, true) {
@@ -21855,6 +21874,11 @@ func statementToken(stmt ast.Statement) lexer.Token {
 		}
 		return stmt.Token
 	case *ast.AssertStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
+	case *ast.PanicStatement:
 		if stmt == nil {
 			return lexer.Token{}
 		}

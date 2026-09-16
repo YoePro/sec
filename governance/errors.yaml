@@ -169,8 +169,8 @@ integrations:
   - id: frontend.panic
     area: panic-assert-unreachable-frontend
     status: partial
-    document_revision: "2.1"
-    reviewed: "2026-09-07"
+    document_revision: "2.2"
+    reviewed: "2026-09-16"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -181,6 +181,9 @@ integrations:
       - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
       - semantic analysis requires the assertion condition to have exact bool type without truthiness conversion
       - focused parser and semantic tests cover accepted forms and the locked syntax/type diagnostics
+      - panic is a hard lexer keyword and the parser retains canonical panic string-literal statements in a dedicated AST node
+      - explicit panic is non-returning in frontend control-flow analysis and records a direct may-panic-explicit effect for @noPanic verification
+      - the shared formatter preserves canonical panic statement spacing idempotently
     remaining:
       - add exact compiler-known/core PanicID uint32 and PanicInfo { ID, File, Line, Column, Function } declarations with one shared Sema/LSP identity
       - implement stable panic-reason registry assignments and allocation-free canonical PanicInfo construction
@@ -190,7 +193,7 @@ integrations:
       - classify unproven assertions as MayPanic and remove panic effect after complete proof
       - implement checked unreachable as defined panic semantics rather than backend undefined behavior
       - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
-      - keep explicit panic syntax unimplemented until its separate grammar decision is locked
+      - lower explicit panic through canonical Semantic IR, PanicInfo construction, and the selected non-returning endpoint
     required_tests:
       - assert condition parses
       - assert condition, message-literal parses
@@ -201,12 +204,13 @@ integrations:
       - proven assertion refines later analysis
       - unproven assertion records MayPanic
       - reachable unreachable records MayPanic
+      - explicit panic parses, rejects function-call and dynamic-message spelling, terminates control flow, and violates @noPanic
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
     status: partial
-    document_revision: "2.0"
-    reviewed: "2026-09-01"
+    document_revision: "2.2"
+    reviewed: "2026-09-16"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -217,8 +221,9 @@ integrations:
       - deterministic transitive synchronous cause paths exist for the implemented checked-arithmetic and fixed-array-bounds verticals
       - handled or propagated arithmetic and fixed-array bounds try removes only its own resolved panic path while preserving nested operand-call panic effects
       - argument-free @noPanic on functions and methods verifies the currently modeled direct and transitive arithmetic/bounds effects with cause locations
+      - explicit panic records a direct may-panic-explicit effect and participates in existing transitive @noPanic cause paths
     remaining:
-      - integrate assertions, checked unreachable, contracts, invalid-reference generation, foreign abort, and future explicit panic into the existing canonical panic-effect model
+      - integrate assertions, checked unreachable, contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
       - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
       - version and validate separate-compilation panic summaries
       - preserve detailed panic causes and source provenance

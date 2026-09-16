@@ -342,6 +342,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.ASSERT:
 		return p.parseAssertStatement()
 
+	case lexer.PANIC:
+		return p.parsePanicStatement()
+
 	case lexer.CANCEL:
 		return &ast.CancelStatement{Token: p.curToken}
 
@@ -833,6 +836,41 @@ func (p *Parser) parseAssertStatement() ast.Statement {
 		p.addError("assert message requires ',' before the string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		p.nextToken()
 	}
+	return stmt
+}
+
+// parsePanicStatement parses the canonical Sec 0.1 statement form
+// `panic "message"`. The payload is static diagnostic metadata rather than an
+// arbitrary expression, and call-like panic(...) spelling is rejected.
+//
+// Rules:
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+func (p *Parser) parsePanicStatement() ast.Statement {
+	stmt := &ast.PanicStatement{Token: p.curToken}
+	if p.peekToken.Type == lexer.LPAREN {
+		p.addError("function-like panic(...) is not valid; write panic \"message\" at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.nextToken()
+		if p.peekToken.Type == lexer.STRING {
+			p.nextToken()
+			stmt.Message = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
+		}
+		if p.peekToken.Type == lexer.RPAREN {
+			p.nextToken()
+		}
+		return stmt
+	}
+
+	if p.peekToken.Type != lexer.STRING || p.peekToken.Line != p.curToken.Line {
+		p.addError("panic message must be a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		if p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+			p.nextToken()
+			p.parseExpression(LOWEST)
+		}
+		return stmt
+	}
+
+	p.nextToken()
+	stmt.Message = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
 	return stmt
 }
 
@@ -3359,7 +3397,31 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			variadic = true
 		}
 		if !p.expectPeekTypeStart() {
-			return nil
+			// A committed `name:` parameter still belongs to the declaration when
+			// its type is absent. Retain the parameter with syntax-only invalid type
+			// metadata and resume at the next parameter boundary.
+			//
+			// Rules:
+			//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type"
+			//   - rules/compiler/parser_recovery.md — "Invalid nodes"
+			switch p.peekToken.Type {
+			case lexer.COMMA, lexer.RPAREN:
+				parameter.Type = p.invalidTypeReference(p.peekToken, "")
+				parameter.Variadic = variadic
+				parameters = append(parameters, parameter)
+				p.nextToken()
+				p.endRecoveryEpisode()
+				if p.curToken.Type == lexer.RPAREN {
+					return parameters
+				}
+				if p.peekToken.Type == lexer.RPAREN {
+					p.nextToken()
+					return parameters
+				}
+				continue
+			default:
+				return nil
+			}
 		}
 		parameter.Type = p.parseTypeReference()
 		parameter.Variadic = variadic

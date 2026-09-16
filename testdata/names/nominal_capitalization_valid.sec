@@ -1,0 +1,27 @@
+module test
+
+type Percent int
+type Person struct {}
+type Response union {
+    Ok(int)
+}
+enum Color int {
+    Red = 1,
+}
+interface Reader {
+    fn Read() int
+}
+type _ModuleState struct {}
+type __PrivateState struct {}
+type Ångström int
+type Box[Element] struct {}
+type Owner struct {}
+impl Owner {
+    type Nested struct {}
+    enum NestedColor int {
+        Red = 1,
+    }
+}
+
+unit dBm physical
+type Dbm int<dBm>

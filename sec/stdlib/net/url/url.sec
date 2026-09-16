@@ -1,0 +1,32 @@
+module url
+
+/*
+* Sec Standard Library - net/url - Absolute URL values and resolution
+*
+* File:        stdlib/net/url/url.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Strict absolute URL parsing, validated construction, serialization,
+*   syntax normalization, and relative-reference resolution.
+*
+* Standards:
+*   - RFC 3986
+*     https://www.rfc-editor.org/rfc/rfc3986
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/
+
+fn URLEncode(raw: string) string {
+    return ""
+}
+
+fn URLDecode(raw: string) string {
+    return ""
+}
+
+type URL string

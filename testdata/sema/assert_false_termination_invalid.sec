@@ -1,0 +1,10 @@
+module main
+
+fn After() void {
+    assert false
+    return
+}
+
+fn StillFallsThrough(flag: bool) int {
+    assert flag
+}

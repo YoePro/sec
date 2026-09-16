@@ -132,17 +132,15 @@ impl string {
         let mut index: uint := 0
 
         while index < self.ByteLen && index < other.ByteLen {
-            let left := try self.ByteAt(index) {
+            let left := try self.GetByte(index) {
                 Err(_) => {
                     assert false, "string.Compare: ByteAt failed inside proven bounds"
-                    return 0
                 }
             }
 
-            let right := try other.ByteAt(index) {
+            let right := try other.GetByte(index) {
                 Err(_) => {
                     assert false, "string.Compare: ByteAt failed inside proven bounds"
-                    return 0
                 }
             }
 
@@ -178,17 +176,8 @@ impl string {
         }
     }
 
-    fn ByteAt(index: uint) byte {
-        if index >= self.ByteLen {
-            panic "String index is out of bounds"
-        }
-        unsafe {
-            return self.Ptr.Offset(int(index)).Read()
-        }
-    }
-
-    /** Returns the rune at the given rune index. */
-    fn RuneAt(index: uint) Result[rune, IndexError] {
+    /** Returns the rune at the given byte index */
+    fn GetRune(index: uint) Result[rune, IndexError] {
         let mut current: uint := 0
 
         for value in self {
@@ -200,6 +189,42 @@ impl string {
         }
 
         return Err(IndexError.OutOfBounds)
+    }
+
+    /** Returns the byte at the given index. Panics if the index is out of bounds. */
+    fn ByteAt(index: uint) byte {
+        if index >= self.ByteLen {
+            panic "String index is out of bounds"
+        }
+        unsafe {
+            return self.Ptr.Offset(int(index)).Read()
+        }
+    }
+
+    /** Returns the char at the given index. Panics if the index is out of bounds. */
+    fn CharAt(index: uint) char {
+        if index >= self.ByteLen {
+            panic "String index is out of bounds"
+        }
+
+        unsafe {
+            return char(self.Ptr.Offset(int(index)).Read())
+        }
+    }
+
+    /** Returns the rune at the given rune index. */
+    fn RuneAt(index: uint) rune {
+        let mut current: uint := 0
+
+        for value in self {
+            if current == index {
+                return value
+            }
+
+            current += 1
+        }
+
+        panic "String index is out of bounds"
     }
 
     fn FromByteArray(value: ref byte[]) string {
@@ -250,11 +275,11 @@ impl string {
         let mut index: uint := 0
 
         while index < prefix.ByteLen {
-            let left := try self.ByteAt(index) {
+            let left := try self.GetByte(index) {
                 Err(_) => return false
             }
 
-            let right := try prefix.ByteAt(index) {
+            let right := try prefix.GetByte(index) {
                 Err(_) => return false
             }
 
@@ -289,11 +314,11 @@ impl string {
         let mut index: uint := 0
 
         while index < suffix.ByteLen {
-            let left := try self.ByteAt(start + index) {
+            let left := try self.GetByte(start + index) {
                 Err(_) => return false
             }
 
-            let right := try suffix.ByteAt(index) {
+            let right := try suffix.GetByte(index) {
                 Err(_) => return false
             }
 

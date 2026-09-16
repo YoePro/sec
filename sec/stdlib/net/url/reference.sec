@@ -1,0 +1,21 @@
+module url
+
+/*
+* Sec Standard Library - net/url - URI references
+*
+* File:        stdlib/net/url/reference.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Absolute and relative RFC 3986 URI-reference values.
+*
+* Standards:
+*   - RFC 3986 sections 4 and 5
+*     https://www.rfc-editor.org/rfc/rfc3986
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/

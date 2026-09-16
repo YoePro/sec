@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -114,6 +115,114 @@ fn Visit(values: ref int[]) void {
 	evaluations := analysis.Evaluations()
 	if len(evaluations) != 3 || evaluations[0].State != PitfallStateSuppressed || evaluations[0].SuppressedCount != 1 {
 		t.Fatalf("evaluations = %+v", evaluations)
+	}
+}
+
+func TestPitfallAnalysisRecognizesOrderedEndpointExitGuards(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		condition  string
+		suppressed bool
+	}{
+		{name: "greater or equal", condition: "i >= values.Len", suppressed: true},
+		{name: "reversed less or equal", condition: "values.Len <= i", suppressed: true},
+		{name: "strict greater misses equality", condition: "i > values.Len"},
+		{name: "reversed strict less misses equality", condition: "values.Len < i"},
+		{name: "wrong collection", condition: "i >= other.Len"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := fmt.Sprintf(`module main
+fn Visit(values: ref int[], other: ref int[]) void {
+    for i in uint(0)..values.Len {
+        if %s {
+            break
+        }
+        let current := values[i]
+    }
+}
+`, test.condition)
+			analyzer, errors := analyzeSourceWithAnalyzer(t, source)
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			results := analyzer.PitfallAnalysis().Results()
+			if len(results) != 1 || results[0].Rule != PitfallInclusiveLengthIndex {
+				t.Fatalf("results = %+v, want one inclusive-length result", results)
+			}
+			if test.suppressed {
+				if results[0].State != PitfallStateSuppressed || results[0].Suppression == nil {
+					t.Fatalf("safe endpoint exit was not recognized: %+v", results[0])
+				}
+			} else if results[0].State != PitfallStateFinding {
+				t.Fatalf("ineffective endpoint guard hid finding: %+v", results[0])
+			}
+		})
+	}
+}
+
+func TestPitfallAnalysisRecognizesElseEndpointExitGuards(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		condition  string
+		exit       string
+		suppressed bool
+	}{
+		{name: "less than", condition: "i < values.Len", exit: "break", suppressed: true},
+		{name: "reversed greater than", condition: "values.Len > i", exit: "return", suppressed: true},
+		{name: "not equal", condition: "i != values.Len", exit: "break", suppressed: true},
+		{name: "less or equal misses endpoint", condition: "i <= values.Len", exit: "break"},
+		{name: "wrong collection", condition: "i < other.Len", exit: "break"},
+		{name: "conditional exit", condition: "i < values.Len", exit: "if stop { break }"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := fmt.Sprintf(`module main
+fn Visit(values: ref int[], other: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        if %s {
+        } else {
+            %s
+        }
+        let current := values[i]
+    }
+}
+`, test.condition, test.exit)
+			analyzer, errors := analyzeSourceWithAnalyzer(t, source)
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			results := analyzer.PitfallAnalysis().Results()
+			if len(results) != 1 || results[0].Rule != PitfallInclusiveLengthIndex {
+				t.Fatalf("results = %+v, want one inclusive-length result", results)
+			}
+			if test.suppressed {
+				if results[0].State != PitfallStateSuppressed {
+					t.Fatalf("safe else exit was not recognized: %+v", results[0])
+				}
+			} else if results[0].State != PitfallStateFinding {
+				t.Fatalf("ineffective else exit hid finding: %+v", results[0])
+			}
+		})
+	}
+}
+
+func TestPitfallAnalysisEndpointGuardDoesNotProtectItsOwnIndex(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+fn Visit(values: ref int[]) void {
+    for i in uint(0)..values.Len {
+        if i >= values.Len {
+            let atEnd := values[i]
+            break
+        }
+        let current := values[i]
+    }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("analysis errors: %v", errors)
+	}
+	results := analyzer.PitfallAnalysis().Results()
+	if len(results) != 2 || results[0].State != PitfallStateFinding || results[1].State != PitfallStateSuppressed {
+		t.Fatalf("guard-local index must remain a finding and later index be suppressed: %+v", results)
 	}
 }
 

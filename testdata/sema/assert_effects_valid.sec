@@ -1,0 +1,25 @@
+module main
+
+@noPanic
+fn Proven() void {
+    assert true
+}
+
+fn MayFail(ready: bool) void {
+    assert ready, "must be ready"
+}
+
+fn AlwaysFails() void {
+    assert false
+}
+
+@noPanic
+fn DeadBranch() void {
+    if false {
+        assert false
+    }
+}
+
+fn Wrap(ready: bool) void {
+    MayFail(ready)
+}

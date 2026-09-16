@@ -1,0 +1,24 @@
+module url
+
+/*
+* Sec Standard Library - net/url - Query and query parameters
+*
+* File:        stdlib/net/url/query.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Generic RFC 3986 query components and ordered UTF-8
+*   application/x-www-form-urlencoded query parameters.
+*
+* Standards:
+*   - RFC 3986 section 3.4
+*     https://www.rfc-editor.org/rfc/rfc3986#section-3.4
+*   - WHATWG URL Standard, application/x-www-form-urlencoded
+*     https://url.spec.whatwg.org/
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/

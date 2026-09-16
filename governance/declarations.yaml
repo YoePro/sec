@@ -609,7 +609,7 @@ integrations:
     area: frontend-name-resolution
     status: partial
     audited: '2026-08-19'
-    updated: '2026-09-09'
+    updated: '2026-09-16'
     repository_baseline: c515862
     summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing,
       visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module,
@@ -620,6 +620,8 @@ integrations:
     code:
     - internal/sema/analyzer.go
     - internal/sema/generic_naming.go
+    - internal/sema/nominal_naming.go
+    - internal/sema/parameter_naming.go
     - internal/diagnostics/diagnostics.go
     - internal/parser/parser.go
     - internal/lsp/server
@@ -627,9 +629,17 @@ integrations:
     tests:
     - internal/sema/analyzer_test.go
     - internal/sema/generic_naming_test.go
+    - internal/sema/generic_type_shadowing_test.go
+    - internal/sema/nominal_naming_test.go
+    - internal/sema/parameter_type_shadowing_test.go
+    - internal/diagnostics/diagnostics_test.go
     - cmd/lsp/generic_naming_test.go
     - testdata/names/generic_capitalization_valid.sec
     - testdata/names/generic_capitalization_invalid.sec
+    - testdata/names/generic_type_shadowing_valid.sec
+    - testdata/names/generic_type_shadowing_invalid.sec
+    - testdata/names/nominal_capitalization_valid.sec
+    - testdata/names/nominal_capitalization_invalid.sec
     - internal/parser/parser_test.go
     - cmd/lsp/main_test.go
     implemented:
@@ -642,8 +652,14 @@ integrations:
       is rejected
     - duplicate generic parameter names are rejected
     - generic type-parameter names require an uppercase initial after visibility prefixes, including Unicode uppercase letters
+    - generic type parameters cannot shadow source-defined types from the same module, including forward declarations and nested type parameters; S1039 points to both declarations
+    - function and method parameters cannot shadow source-defined types in the same module, including forward declarations; mandatory S1040 points to the parameter and the hidden type declaration
+    - user-defined nominal type, enum, interface, and nested nominal names require an uppercase initial after any visibility prefix; unit names remain exempt
+    - nominal naming checks inspect the final declared component of qualified internal names, allowing lowercase module prefixes without accepting lowercase type names
     - naming checks cover function, nominal, enum, interface, and nested impl type declarations with one diagnostic per source declaration
     - S1027 names.invalid-generic-type-parameter is a mandatory compiler diagnostic with a source range and naming guidance; LSP publishes the same Sema result
+    - S1038 names.invalid-nominal-type is a mandatory compiler diagnostic with a source range and naming guidance
+    - S1040 names.parameter-shadows-type is a mandatory compiler diagnostic with the previous type declaration location
     partial:
     - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters,
       members, types, generics, imports, aliases, and compiler-provided contextual bindings
@@ -654,20 +670,15 @@ integrations:
     remaining:
     - enforce the no-shadowing rule uniformly for locals, parameters, loop and pattern bindings, generic parameters,
       nested declarations, imports, aliases, visible types, visible values, and directly visible members
-    - prevent parameters and compiler-provided contextual bindings such as self and property-setter value parameters
-      from silently replacing visible declarations
-    - reject user-defined nominal type names that do not begin with an uppercase letter after any visibility prefix
-    - reject generic parameters that shadow a visible type, visible value, or directly visible member
+    - extend parameter shadowing checks beyond same-module source types to all other visible declarations, and prevent compiler-provided contextual bindings such as self and property-setter value parameters from silently replacing them
+    - reject generic parameters that shadow imported visible types, visible values, or directly visible members
     - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific
       registries and collision checks
     - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration
     - make LSP rename validation consume the same namespace, shadowing, reserved-name, capitalization, overload, and
       visibility rules as Sema
     required_tests:
-    - lowercase user-defined nominal type is rejected
-    - visibility-prefixed nominal type checks capitalization after the prefix
     - lowercase generic type parameter is rejected
-    - generic parameter shadowing a visible type is rejected
     - generic parameter shadowing a visible value is rejected
     - function parameter shadowing a visible declaration is rejected
     - local declaration shadowing a visible type is rejected
@@ -676,6 +687,22 @@ integrations:
     - overloads differing only by return type remain rejected
 
     verification:
+    - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
+      result: passed, including same-module generic type shadowing diagnostics and prior naming regressions
+    - command: go test ./internal/sema ./internal/diagnostics -run 'TestNominalTypeCapitalization|TestGenericParameterCapitalization|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
+      result: passed, including Unicode and visibility-prefixed nominal names, nested types, and unit exemption
+    - command: go test ./internal/sema -run 'Test(NominalTypeCapitalization|QualifiedNominalTypeCapitalization)' -count=1
+      result: passed, including qualified module and nested names with invalid final components still rejected
+    - command: go test ./cmd/compiler -run 'TestCompilerLoadsIOReadFileIntoAPI|TestCompilerLoadsIOWriteSeekAndDirectoryAPIs|TestCompilerLoadsUnicodeIsLetter' -count=1
+      result: passed; standard-library nominal declarations are no longer rejected because of lowercase module prefixes
+    - command: go test ./internal/sema ./internal/diagnostics -run 'TestFunctionParameterCannotShadowSameModuleType|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
+      result: passed; S1040 is registered and ordinary, forward-declared, and method parameter shadowing report both source locations
+    - command: go test ./...
+      result: passed after the qualified nominal-name and same-module parameter shadowing fixes
+    - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
+      result: passed
+    - command: go test ./...
+      result: all packages passed except cmd/compiler, which still fails on six unrelated try requires Result expression errors in sec/core/string.sec
     - command: go test ./internal/sema -run TestGenericParameterCapitalization -count=1
       result: regression test failed before the implementation because nine invalid parameter names were accepted
     - command: go test ./...

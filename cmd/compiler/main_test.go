@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,10 +9,25 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 	"sec/internal/sema"
 )
+
+func TestPrintSemaErrorIncludesStableIDAndDescription(t *testing.T) {
+	var output bytes.Buffer
+	printSemaError(&output, sema.Error{
+		ID: diagnostics.UnreachableStatement, Message: "unreachable statement",
+		Help: "A preceding statement ends this block on every path. Remove this statement or change the control flow.",
+		File: "sec/core/string.sec", Line: 138, Column: 21,
+	})
+	want := "sema error[S3001]: unreachable statement at sec/core/string.sec:138:21\n" +
+		"  help: A preceding statement ends this block on every path. Remove this statement or change the control flow.\n"
+	if output.String() != want {
+		t.Fatalf("output = %q, want %q", output.String(), want)
+	}
+}
 
 func TestDiagnosticCountLabel(t *testing.T) {
 	tests := []struct {

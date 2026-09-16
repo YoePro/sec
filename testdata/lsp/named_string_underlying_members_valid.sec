@@ -3,11 +3,18 @@ module main
 type Priority uint8
 type HeaderValue string
 
+impl HeaderValue {
+    fn IsValid() bool {
+        return self.ByteLen != 0u
+    }
+}
+
 enum StructuredFieldError error {
     AllocationFailed
 }
 
 fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
+    let bytes: uint := value.ByteLen
     let n := value.IndexOf("=")
     if n is None {
         return Err(StructuredFieldError.AllocationFailed)

@@ -1040,6 +1040,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
+			a.validateNominalTypeName(stmt.Name)
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			params := a.genericParameterNames(stmt.GenericParameters)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
@@ -1091,6 +1092,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
+			a.validateNominalTypeName(stmt.Name)
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
 			origin := ""
@@ -1106,6 +1108,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
+			a.validateNominalTypeName(stmt.Name)
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			params := a.genericParameterNames(stmt.GenericParameters)
 			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InterfaceType, Named: true, Declared: true, Underlying: "interface", GenericParameters: params}
@@ -1259,6 +1262,7 @@ func genericParameterNameValues(parameters []*ast.GenericParameter) []string {
 }
 
 func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter, visit func()) {
+	a.validateGenericParameterTypeShadowing(parameters)
 	previous := a.genericTypes
 	previousDefinitions := a.genericTypeDefinitions
 	current := map[string]Type{}
@@ -1360,6 +1364,9 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 			name, token, ok := implNestedTypeName(member)
 			if !ok {
 				continue
+			}
+			if _, isUnit := member.(*ast.UnitDeclStatement); !isUnit {
+				a.validateNominalTypeName(&ast.Identifier{Value: name, Token: token})
 			}
 			if _, exists := nested[name]; exists {
 				a.addErrorAtToken(token, "duplicate nested type %q in impl %s", name, impl.Target.Name)
@@ -2219,6 +2226,11 @@ func (a *Analyzer) analyzeTestReturnStatement(statement *ast.ReturnStatement) {
 	)
 }
 
+// analyzeBlockStatements analyzes a lexical block and reports the first
+// statement that cannot execute after a preceding terminating statement.
+//
+// Rules: rules/tooling/diagnostics.txt — "Unreachable statements" (S3001);
+// rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code".
 func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	if block == nil {
 		return
@@ -2252,7 +2264,9 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	unreachable := false
 	for _, stmt := range block.Statements {
 		if unreachable {
-			a.addErrorAtToken(statementToken(stmt), "unreachable code")
+			a.addErrorAtTokenWithMetadata(statementToken(stmt), diagnostics.UnreachableStatement,
+				"A preceding statement ends this block on every path. Remove this statement or change the control flow.",
+				"unreachable statement")
 			break
 		}
 		a.analyzeStatement(stmt)
@@ -2583,11 +2597,13 @@ func (a *Analyzer) validateExplicitDiscardType(valueType Type, token lexer.Token
 	return false
 }
 
-// analyzeAssertStatement enforces exact bool typing for assertion conditions;
-// Sec does not apply a truthiness conversion.
+// analyzeAssertStatement enforces exact bool typing and records a panic effect
+// unless the currently implemented proof establishes literal true. Condition
+// evaluation retains its independently inferred effects.
 //
 // Rules:
 //   - rules/errors/panic.md — § 15.2 "Condition typing"
+//   - rules/errors/panic.md — §§ 15.3, 15.5, 15.8 "Meaning", "Assertions are always active", "Assertions in @noPanic"
 func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 	if stmt == nil || stmt.Condition == nil {
 		return
@@ -2598,6 +2614,9 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 		return
 	}
 	if conditionType.Kind == BoolType {
+		if !isBoolLiteral(stmt.Condition, true) && !a.summaryPass && a.callGraphPathReachable {
+			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicAssertion, Source: stmt.Token})
+		}
 		// Package 14 section 36 routes assertion-derived bounds through the
 		// canonical analysis provenance; the proof kind is not source syntax.
 		a.arrayIndexRefinements = append(a.arrayIndexRefinements, arrayIndexRefinement{
@@ -4481,6 +4500,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		}
 		seenParams[param.Name.Value] = param.Name.Token
 		a.recordDefinition(param.Name.Token)
+		a.validateParameterTypeShadowing(param.Name)
 
 		paramType, ok := a.resolveType(param.Type)
 		if !ok {
@@ -5692,12 +5712,22 @@ func blockDefinitelyReturns(block *ast.BlockStatement) bool {
 	return false
 }
 
+// statementDefinitelyReturns is the shared no-fallthrough query for return
+// checking and block control flow; its historical name also includes defined
+// non-returning panic paths. A literal-false assertion always panics after
+// evaluating its condition, while an unproven assertion may continue.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.3(1)–(4) "Meaning"
+//   - rules/errors/panic.md — § 4(1)–(7) "Core panic rule"
 func statementDefinitelyReturns(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
 	case *ast.ReturnStatement:
 		return true
 	case *ast.PanicStatement:
 		return true
+	case *ast.AssertStatement:
+		return isBoolLiteral(stmt.Condition, false)
 	case *ast.IfStatement:
 		if stmt.Alternative == nil {
 			return false
@@ -8646,11 +8676,13 @@ func (a *Analyzer) resolveImplementedInterfaces(refs []*ast.TypeReference, targe
 }
 
 // analyzeNestedTypeDeclaration resolves an associated nominal declaration and
-// validates its generic type-parameter names in the owner's member namespace.
+// validates its generic type-parameter names and same-module type shadowing in
+// the owner's member namespace.
 // Rules: rules/declarations/impl.md — Associated declarations;
-// rules/foundations/names_scopes_visibility.md — §15 Generic parameters.
+// rules/foundations/names_scopes_visibility.md — §8 Shadowing, §15 Generic parameters.
 func (a *Analyzer) analyzeNestedTypeDeclaration(qualifiedName string, stmt *ast.TypeDeclStatement) {
 	a.validateGenericTypeParameterNames(stmt.GenericParameters)
+	a.validateGenericParameterTypeShadowing(stmt.GenericParameters)
 	if stmt.Union {
 		a.types[qualifiedName] = a.typeFromUnionDeclaration(qualifiedName, stmt)
 		return
@@ -10273,7 +10305,7 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if fieldType, ok := lookupStructField(target, expr.Value); ok {
 			return fieldType, true
 		}
-		if _, exists := lookupProperty(target, expr.Value); exists {
+		if _, exists := a.lookupResolvedProperty(target, expr.Value); exists {
 			property, readable := a.resolveReadableProperty(target, expr.Value, expr.Token)
 			if !readable {
 				return Type{Kind: InvalidType}, false
@@ -10350,7 +10382,7 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 			}
 			return field.Type, true
 		}
-		if _, exists := lookupProperty(objectType, expr.Property.Value); exists {
+		if _, exists := a.lookupResolvedProperty(objectType, expr.Property.Value); exists {
 			property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
 			if !readable {
 				return Type{Kind: InvalidType}, false
@@ -14970,15 +15002,22 @@ func lookupProperty(typ Type, name string) (Property, bool) {
 // Rules:
 //   - rules/declarations/properties.md — §4 "Getter semantics"
 //   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
+//   - rules/compiler/compiler_known_members.md — "Lookup order", "Named and related types"
 func (a *Analyzer) lookupResolvedProperty(typ Type, name string) (Property, bool) {
 	typ = dereferenceType(typ)
 	declared, current := a.types[typ.Name]
 	if !current {
-		return lookupProperty(typ, name)
+		if property, ok := lookupProperty(typ, name); ok {
+			return property, true
+		}
+		return a.inheritedCoreProperty(typ, name)
 	}
 	property, ok := lookupProperty(declared, name)
 	if !ok {
-		return lookupProperty(typ, name)
+		if property, ok := lookupProperty(typ, name); ok {
+			return property, true
+		}
+		return a.inheritedCoreProperty(typ, name)
 	}
 	if len(declared.GenericParameters) == 0 || len(typ.TypeArgs) == 0 {
 		return property, true
@@ -14996,6 +15035,51 @@ func (a *Analyzer) lookupResolvedProperty(typ Type, name string) (Property, bool
 		property.Error = &errorType
 	}
 	return property, true
+}
+
+// InheritedCoreProperties lists representation-compatible instance properties
+// from the trusted core string declaration for a named string receiver. Exact
+// nominal properties are resolved separately and retain lookup precedence.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Lookup order", item 4
+//   - rules/compiler/compiler_known_members.md — "Named and related types"
+//   - rules/library/core-library.md — §5 "String"
+func (a *Analyzer) InheritedCoreProperties(typ Type) []Property {
+	typ = dereferenceType(typ)
+	if typ.Kind != StringType || !typ.Named {
+		return nil
+	}
+	properties := []Property{}
+	seen := map[string]bool{}
+	for _, owner := range a.relatedUnderlyingTypes(typ) {
+		if owner.Kind != StringType {
+			continue
+		}
+		for _, property := range owner.Properties {
+			if property.Static || seen[property.Name] || !a.isTrustedCoreSourceToken(property.Token) {
+				continue
+			}
+			seen[property.Name] = true
+			properties = append(properties, property)
+		}
+	}
+	return properties
+}
+
+// inheritedCoreProperty resolves an eligible trusted-core property after
+// exact nominal lookup has failed.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Lookup order", items 1 and 4
+//   - rules/compiler/compiler_known_members.md — "Named and related types"
+func (a *Analyzer) inheritedCoreProperty(typ Type, name string) (Property, bool) {
+	for _, property := range a.InheritedCoreProperties(typ) {
+		if property.Name == name {
+			return property, true
+		}
+	}
+	return Property{}, false
 }
 
 // resolveReadableProperty implements the property read boundary from

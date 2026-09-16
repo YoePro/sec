@@ -7,10 +7,10 @@ integrations:
     status: implemented
     integrated: "2026-09-10"
     summary: >-
-      Resolves privileged-core string instance methods through a named string
-      type's underlying-type chain without converting the receiver or erasing
-      nominal identity, and exposes the identical method surface through LSP
-      completion.
+      Resolves privileged-core string instance methods and readable properties
+      through a named string type's underlying-type chain without converting
+      the receiver or erasing nominal identity, and exposes the eligible member
+      surface through LSP completion.
     rules:
       - rules/compiler/compiler_known_members.md
       - rules/library/core-library.md
@@ -24,13 +24,17 @@ integrations:
       - testdata/lsp/named_string_underlying_members_valid.sec
     implemented:
       - exact methods declared on the nominal string type retain lookup precedence
+      - exact properties declared on the nominal string type retain lookup precedence
       - trusted core methods declared on string are inherited by named string receivers
+      - trusted core instance properties declared on string are inherited by named string receivers after exact nominal lookup
+      - inherited properties retain getter validation, declaration binding, and their declared result types
       - inherited calls retain the named receiver and the core declaration's parameter and result types
       - IndexOf on a named string returns Option[uint]
-      - LSP completion derives inherited string methods from the same Sema function catalog
+      - ByteLen on a named string returns uint
+      - LSP completion derives inherited string methods and properties from Sema facts
       - non-string named types do not acquire ordinary underlying methods through this integration
     verification:
-      - command: go test ./internal/sema -run TestNamedStringInheritsPrivilegedCoreMethods -count=1
+      - command: go test ./internal/sema -run TestNamedStringInheritsPrivilegedCoreMembers -count=1
         result: passed
       - command: go test ./cmd/lsp -run TestCompletionKeepsNamedStringOptionFlowAndEnumMembers -count=1
         result: passed
@@ -38,3 +42,4 @@ integrations:
         result: passed with 0 errors and 0 warnings
     limitations:
       - Semantic IR lowering of named string parameters remains blocked by the separately governed Package 13 non-scalar parameter limitation
+      - The complete net/url module currently stops at missing function bodies in percent.sec before semantic analysis

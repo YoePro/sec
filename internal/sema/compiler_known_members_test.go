@@ -234,13 +234,19 @@ fn Test(users: list[int], entries: map[int, string], members: set[int], other: s
 }
 
 // rules/compiler/compiler_known_members.md "Named and related types" allows a
-// named string representation to use eligible privileged-core string methods
+// named string representation to use eligible privileged-core string members
 // while retaining its nominal type.
-func TestNamedStringInheritsPrivilegedCoreMethods(t *testing.T) {
+func TestNamedStringInheritsPrivilegedCoreMembers(t *testing.T) {
 	const sourceFile = "/tmp/sec-test/sec/core/string.sec"
 	input := `module main
 
 impl string {
+    property ByteLen: uint {
+        get {
+            return self.Len
+        }
+    }
+
     fn IndexOf(value: string) Option[uint] {
         return None
     }
@@ -248,17 +254,37 @@ impl string {
 
 type Priority uint8
 type HeaderValue string
+type Override string
+
+impl HeaderValue {
+    fn IsValid() bool {
+        return self.ByteLen != 0u
+    }
+}
+
+impl Override {
+    property ByteLen: bool {
+        get {
+            return true
+        }
+    }
+}
 
 enum StructuredFieldError error {
     AllocationFailed
 }
 
 fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
+    let bytes: uint := value.ByteLen
     let n: Option[uint] := value.IndexOf("=")
     if n is None {
         return Err(StructuredFieldError.AllocationFailed)
     }
     return Err(StructuredFieldError.AllocationFailed)
+}
+
+fn CheckExactProperty(value: Override) bool {
+    return value.ByteLen
 }
 `
 	l := lexer.NewWithFile(input, sourceFile)

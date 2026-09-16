@@ -1,0 +1,15 @@
+module main
+
+@noPanic
+fn Reject(ready: bool) void {
+    assert ready
+}
+
+@noPanic
+fn RejectTransitively(ready: bool) void {
+    MayFail(ready)
+}
+
+fn MayFail(ready: bool) void {
+    assert ready, "must be ready"
+}

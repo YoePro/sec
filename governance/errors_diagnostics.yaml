@@ -1,4 +1,40 @@
 schema_version: 1
 area: errors-diagnostics
 purpose: Compiler, lexer, parser, and semantic diagnostic definitions and output.
-integrations: []
+integrations:
+  - id: diagnostics.unreachable-statement-s3001
+    area: semantic-diagnostics
+    status: partial
+    integrated: '2026-09-16'
+    summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block, with a source range and actionable explanation shared by CLI and LSP.
+    rules:
+      - rules/tooling/diagnostics.txt
+      - rules/control-flow/flowcontrol_if.md
+    code:
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/diagnostics/diagnostics_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/concurrency_test.go
+      - internal/sema/assert_false_termination_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - S3001 control-flow.unreachable-statement is registered as a mandatory semantic error
+      - statements after terminating return, break, continue, and other established non-continuing paths retain the error and carry S3001, an exact source range, and actionable help
+      - CLI prints the stable code and help; LSP publishes the same Sema code and help
+    remaining:
+      - route other proven-unreachable statement paths through the same canonical S3001 diagnostic where their flow proof exists
+      - implement the general sec explain S3001 command, localization, and machine-readable emitted-diagnostic output
+    verification:
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler -run 'Test(UnreachableStatementsInsideWhileBody|SwitchCaseReportsUnreachableAfterReturn|InfiniteForWithContinueMakesFollowingReturnUnreachable|CancelOutsideCancellableContext|AssertFalseRejectsFollowingCodeButUnprovenAssertFallsThrough|PrintSemaErrorIncludesStableIDAndDescription|RegistryIsValid|KnownDiagnosticSeverities)' -count=1
+        result: passed
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -count=1
+        result: passed, including S3001 LSP code and help
+      - command: go run ./cmd/compiler sema testdata/sema/assert_false_termination_invalid.sec
+        result: printed S3001 with source position and help; exited with the expected fixture error plus four unrelated try errors in sec/core/string.sec
+      - command: go test ./...
+        result: all packages passed except cmd/compiler, which fails on four unrelated try requires Result expression errors in sec/core/string.sec

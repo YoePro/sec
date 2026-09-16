@@ -1231,7 +1231,7 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 	}
 	if len(errors) > 0 {
 		for _, err := range errors {
-			fmt.Fprintf(os.Stderr, "sema error: %s\n", err)
+			printSemaError(os.Stderr, err)
 		}
 		summary.Errors += len(errors)
 		printDiagnosticSummary(summary)
@@ -1241,6 +1241,22 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 		printDiagnosticSummary(summary)
 	}
 	return analyzer
+}
+
+// printSemaError renders the stable semantic diagnostic ID and actionable help
+// when available, while retaining the existing output for unnumbered errors.
+//
+// Rules: rules/tooling/diagnostics.txt — "Stable diagnostic identifiers" and
+// "Short messages and extended explanations".
+func printSemaError(output io.Writer, diagnostic sema.Error) {
+	if diagnostic.ID != "" {
+		fmt.Fprintf(output, "sema error[%s]: %s\n", diagnostic.ID, diagnostic)
+	} else {
+		fmt.Fprintf(output, "sema error: %s\n", diagnostic)
+	}
+	if diagnostic.Help != "" {
+		fmt.Fprintf(output, "  help: %s\n", diagnostic.Help)
+	}
 }
 
 func resolveCoreLibrary(program *ast.Program) {

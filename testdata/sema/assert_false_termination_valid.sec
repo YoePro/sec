@@ -1,0 +1,20 @@
+module main
+
+fn Abort() int {
+    assert false
+}
+
+fn AbortOrReturn(flag: bool) int {
+    if flag {
+        assert false
+    } else {
+        return 1
+    }
+}
+
+fn ContinueWhenConditionMayBeTrue(flag: bool) int {
+    if flag {
+        assert false
+    }
+    return 1
+}

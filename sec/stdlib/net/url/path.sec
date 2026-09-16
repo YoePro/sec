@@ -1,0 +1,22 @@
+module url
+
+/*
+* Sec Standard Library - net/url - Path components
+*
+* File:        stdlib/net/url/path.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Encoded URL path validation, segment handling, percent normalization,
+*   and dot-segment removal.
+*
+* Standards:
+*   - RFC 3986 sections 3.3, 5.2.4 and 6.2.2
+*     https://www.rfc-editor.org/rfc/rfc3986
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/

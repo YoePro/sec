@@ -181,6 +181,8 @@ integrations:
       - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
       - semantic analysis requires the assertion condition to have exact bool type without truthiness conversion
       - focused parser and semantic tests cover accepted forms and the locked syntax/type diagnostics
+      - reachable assertions with unproven conditions record a direct MayPanic assertion effect; literal true and statically unreachable branches contribute no assertion effect
+      - literal-false assertions are non-returning frontend control-flow paths, satisfy non-void return-path checks, and make following statements unreachable; unproven assertions may continue
       - panic is a hard lexer keyword and the parser retains canonical panic string-literal statements in a dedicated AST node
       - explicit panic is non-returning in frontend control-flow analysis and records a direct may-panic-explicit effect for @noPanic verification
       - the shared formatter preserves canonical panic statement spacing idempotently
@@ -190,7 +192,7 @@ integrations:
       - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
       - represent assertion source metadata/message and AssertionFailed reason
       - implement assertion refinement using canonical semantic facts
-      - classify unproven assertions as MayPanic and remove panic effect after complete proof
+      - extend assertion panic-freedom proof beyond literal true through canonical semantic facts without suppressing condition-evaluation effects
       - implement checked unreachable as defined panic semantics rather than backend undefined behavior
       - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
       - lower explicit panic through canonical Semantic IR, PanicInfo construction, and the selected non-returning endpoint
@@ -203,8 +205,13 @@ integrations:
       - dynamic assertion message rejected in Sec 0.1
       - proven assertion refines later analysis
       - unproven assertion records MayPanic
+      - literal-true assertion removes its own MayPanic effect without hiding effects from condition evaluation
+      - literal-false assertion terminates a block and an unproven assertion still falls through
       - reachable unreachable records MayPanic
       - explicit panic parses, rejects function-call and dynamic-message spelling, terminates control flow, and violates @noPanic
+    verification:
+      - command: go test ./internal/sema -run 'AssertFalse' -count=1
+        result: passed; literal-false assertions satisfy non-void return paths and diagnose following code as unreachable while unproven assertions still need a return
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
@@ -222,8 +229,9 @@ integrations:
       - handled or propagated arithmetic and fixed-array bounds try removes only its own resolved panic path while preserving nested operand-call panic effects
       - argument-free @noPanic on functions and methods verifies the currently modeled direct and transitive arithmetic/bounds effects with cause locations
       - explicit panic records a direct may-panic-explicit effect and participates in existing transitive @noPanic cause paths
+      - unproven assertion records a direct may-panic-assertion effect and participates in existing transitive @noPanic cause paths; literal true contributes no assertion effect
     remaining:
-      - integrate assertions, checked unreachable, contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
+      - extend assertion proof beyond literal true and integrate checked unreachable, contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
       - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
       - version and validate separate-compilation panic summaries
       - preserve detailed panic causes and source provenance
@@ -236,6 +244,9 @@ integrations:
       - recursive noPanic convergence
       - unknown indirect or foreign behavior is conservative
       - ISR root reports transitive panic path
+    verification:
+      - command: go test ./internal/sema -run 'AssertionPanicEffects|UnprovenAssertion' -count=1
+        result: passed; direct and transitive assertion effects, literal-true and dead-branch elimination, and cause-aware @noPanic diagnostics
 
   - id: semantic-ir.panic
     area: semantic-ir-panic

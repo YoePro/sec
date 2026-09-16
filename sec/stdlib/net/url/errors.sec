@@ -1,0 +1,79 @@
+module url
+
+/*
+* Sec Standard Library - net/url - Error model
+*
+* File:        stdlib/net/url/errors.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Error types used by strict URL parsing, percent decoding, port conversion,
+*   query parameter decoding, and validated URL construction.
+*
+* Standards:
+*   - RFC 3986
+*     https://www.rfc-editor.org/rfc/rfc3986
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/
+
+/*
+* Representation rationale: ParseError is a union error rather than an enum because several alternatives carry the source byte offset at which parsing failed. The payload is useful for diagnostics and LSP tooling and must not be discarded.
+* Offsets are zero-based UTF-8 byte offsets into the original input string.
+*
+* MissingScheme is returned by absolute Parse() when the input is syntactically a relative reference.
+* RelativeReference is returned only by conversion of an already parsed Reference to URL when the reference has no scheme.
+*/
+type ParseError union error {
+    EmptyInput,
+    MissingScheme,
+    RelativeReference,
+    InvalidCharacter(uint),
+    InvalidScheme(uint),
+    InvalidAuthority(uint),
+    InvalidUserInfo(uint),
+    InvalidHost(uint),
+    InvalidPort(uint),
+    InvalidPath(uint),
+    InvalidQuery(uint),
+    InvalidFragment(uint),
+    InvalidPercentEncoding(uint),
+}
+
+/* Representation rationale: construction failures are a closed set without additional payload, so an error enum is the exact representation */
+enum BuildError error {
+    MissingScheme,
+    InvalidScheme,
+    InvalidAuthority,
+    InvalidPath,
+    InvalidQuery,
+    InvalidFragment,
+    AuthorityPathMustBeAbsoluteOrEmpty,
+    PathWithoutAuthorityCannotStartWithDoubleSlash,
+}
+
+/* Representation rationale: both failures need an exact byte offset, so this is an error union. */
+type PercentError union error {
+    InvalidEscape(uint),
+    InvalidUtf8(uint),
+    Allocation(CollectionError),
+}
+
+/* Representation rationale: conversion of a generic RFC port string to uint16 can fail either at a particular
+* invalid character or because the complete numeric spelling exceeds the target range. The original spelling
+* is retained for OutOfRange diagnostics.
+*/
+type PortError union error {
+    InvalidDigit(uint),
+    OutOfRange(string),
+}
+
+/* Representation rationale: form decoding must report the byte location of the first malformed escape or malformed UTF-8 sequence. */
+type QueryParamsError union error {
+    InvalidEscape(uint),
+    InvalidUtf8(uint),
+}

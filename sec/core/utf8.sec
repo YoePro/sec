@@ -1,0 +1,121 @@
+module core
+
+type Utf8DecodedRune struct {
+    Value: rune,
+    Width: uint,
+}
+
+fn DecodeUtf8(value: ref byte[], index: uint) Result[Utf8DecodedRune, StringError] {
+    if index >= value.Len {
+        return Err(StringError.OutOfBounds)
+    }
+
+    let first := value[index]
+
+    // ASCII
+    if first <= 0x7F {
+        return Ok(Utf8DecodedRune {
+            Value: rune(uint(first)),
+            Width: 1,
+        })
+    }
+
+    // Two-byte sequence:
+    // C2..DF 80..BF
+    if first in 0xC2..0xDF {
+        if value.Len - index < 2 {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        let second := value[index + 1]
+
+        if second not in 0x80..0xBF {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        let codePoint := (uint(first & 0x1F) << 6) | uint(second & 0x3F)
+
+        return Ok(Utf8DecodedRune {
+            Value: rune(codePoint),
+            Width: 2,
+        })
+    }
+
+    // Three-byte sequence
+    if first in 0xE0..0xEF {
+        if value.Len - index < 3 {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        let second := value[index + 1]
+        let third := value[index + 2]
+
+        if third not in 0x80..0xBF {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        // E0 must start at A0 to prevent overlong encoding.
+        if first == 0xE0 {
+            if second not in 0xA0..0xBF {
+                return Err(StringError.InvalidUtf8)
+            }
+        } else if first == 0xED {
+            // ED A0..BF would encode UTF-16 surrogate values.
+            if second not in 0x80..0x9F {
+                return Err(StringError.InvalidUtf8)
+            }
+        } else if second not in 0x80..0xBF {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        let codePoint := (uint(first & 0x0F) << 12) | (uint(second & 0x3F) << 6) | uint(third & 0x3F)
+
+        return Ok(Utf8DecodedRune {
+            Value: rune(codePoint),
+            Width: 3,
+        })
+    }
+
+    // Four-byte sequence
+    if first in 0xF0..0xF4 {
+        if value.Len - index < 4 {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        let second := value[index + 1]
+        let third := value[index + 2]
+        let fourth := value[index + 3]
+
+        if third not in 0x80..0xBF ||
+        fourth not in 0x80..0xBF {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        if first == 0xF0 {
+            // Prevent overlong encoding below U+10000.
+            if second not in 0x90..0xBF {
+                return Err(StringError.InvalidUtf8)
+            }
+        } else if first == 0xF4 {
+            // Unicode ends at U+10FFFF.
+            if second not in 0x80..0x8F {
+                return Err(StringError.InvalidUtf8)
+            }
+        } else if second not in 0x80..0xBF {
+            return Err(StringError.InvalidUtf8)
+        }
+
+        let codePoint :=
+        (uint(first & 0x07) << 18) |
+        (uint(second & 0x3F) << 12) |
+        (uint(third & 0x3F) << 6) |
+        uint(fourth & 0x3F)
+
+        return Ok(Utf8DecodedRune {
+            Value: rune(codePoint),
+            Width: 4,
+        })
+    }
+
+    return Err(StringError.InvalidUtf8)
+}

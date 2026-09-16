@@ -875,6 +875,22 @@ func TestSemaDiagnosticIncludesCodeAndHelp(t *testing.T) {
 	}
 }
 
+func TestUnreachableStatementDiagnosticReachesLSP(t *testing.T) {
+	items := analyze("", "module main\nfn Value() int {\n    return 1\n    let unused := 2\n}\n")
+	for _, item := range items {
+		if item.Code != diagnostics.UnreachableStatement {
+			continue
+		}
+		if item.Severity != 1 || !strings.Contains(item.Message, "unreachable statement") ||
+			!strings.Contains(item.Message, "help: A preceding statement ends this block on every path.") ||
+			item.Range.Start.Line != 3 {
+			t.Fatalf("incomplete S3001 LSP diagnostic: %+v", item)
+		}
+		return
+	}
+	t.Fatalf("missing S3001 LSP diagnostic: %+v", items)
+}
+
 func TestReservedDeclarationNameDiagnosticReachesLSP(t *testing.T) {
 	items := analyze("", "module main\nlet map := 1\n")
 	for _, item := range items {
@@ -3261,7 +3277,7 @@ func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
 	valueOffset := strings.Index(valueSource, "value.") + len("value.")
 	valueItems := completeSource(uri, valueSource, valueOffset)
 	assertCompletionLabels(t, valueItems, []string{
-		"ByteAt", "Compare", "Contains", "Empty", "EndsWith", "FromByteArray", "FromRuneArray",
+		"ByteAt", "ByteLen", "Compare", "Contains", "Empty", "EndsWith", "FromByteArray", "FromRuneArray",
 		"IndexOf", "LastIndexOf", "Len", "Ptr", "SizeOf", "Slice", "Split", "SplitOnce",
 		"SplitToArray", "StartsWith", "ToByteArray", "ToCharArray", "ToLower", "ToRuneArray",
 		"ToString", "ToUpper", "Trim", "TrimEnd", "TrimStart",

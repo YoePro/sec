@@ -1,0 +1,27 @@
+module test
+
+type Item struct {}
+type Box[Item] struct {}
+
+type Output struct {}
+fn Identity[Output](value: Output) Output {
+    return value
+}
+
+type State struct {}
+enum Order[State] {
+    First,
+}
+
+type Value struct {}
+interface Reader[Value] {
+    fn Read() Value
+}
+
+type Forward[Later] struct {}
+type Later struct {}
+
+type Owner struct {}
+impl Owner {
+    type Nested[Owner] struct {}
+}

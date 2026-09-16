@@ -1,4 +1,94 @@
 schema_version: 1
 area: analysis
 purpose: Standalone and interprocedural program analyses.
-integrations: []
+integrations:
+  - id: sema.pitfall-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-11"
+    audited: "2026-08-11"
+    updated: "2026-09-16"
+    summary: >-
+      Adds structured high-confidence pitfall analysis that correlates canonical
+      bounds, range, control-flow, Place/provenance, collection, effect, and FFI
+      contract facts to detect common human mistakes without redefining the
+      normative semantics owned by those analyses.
+    rules:
+      - rules/analysis/pitfall_analysis.md
+      - rules/compiler/compiler_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/analysis/effect_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/collections/collections.md
+      - rules/platform/ffi.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/pitfall_analysis.go
+    tests:
+      - internal/sema/pitfall_analysis_test.go
+    implemented:
+      - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
+      - canonical defensive rule registry with required semantic facts, minimum Interactive/Standard/Deep analysis depth, and default confidence
+      - distinct Finding, NoFinding, Suppressed, NotEvaluated, and Pending states plus per-rule evaluation counts
+      - immutable deterministic Analyzer snapshot API for findings, suppressed results, evaluations, evidence, suppressions, and actions
+      - direct index-at-Len detection correlated through resolved binding identity and Sema-owned compiler-known Len facts
+      - inclusive range endpoint detection when the same resolved loop binding indexes the same collection that supplies Len
+      - suppression of the inclusive endpoint finding when a preceding semantically matched equality or ordered endpoint guard exits before the indexed access
+      - endpoint-exit proof also recognizes an else-branch break or return for matched strict-less-than or not-equal conditions, and applies only to statements after the guard
+      - ProvenInvalid and Proven classification linked to the owning bounds rule without emitting a duplicate pitfall diagnostic
+      - half-open ranges, different bound/index collection identities, and guarded inclusive endpoints covered as negative or suppression cases
+      - boolean-intent rule correlating resolved bool operand types, exact 0/1 constants, equality operators, and redundant outer bool conversions
+      - truth-table simplification for == and != with 0, 1, true, and false in either operand order
+      - one-bit register-field comparison diagnostics retain the owning bool/int type error while supplying the intended direct or negated bool replacement
+      - coalescing of outer bool conversion and inner literal comparison into one structured finding and one non-overlapping action
+      - ProvenFix actions for valid true/false simplifications and SuggestedEdit actions for invalid but unambiguous bool/0-or-1 intent
+      - negative coverage preventing boolean-intent inference from integers other than 0 and 1
+    remaining:
+      - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
+      - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
+      - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break or return in the endpoint branch
+      - implement upper-neighbor and lower-neighbor offset checks across normalized iteration domains
+      - implement ineffective <= len and > len rejection-guard correlation
+      - implement final-element access reasoning that consumes non-empty proofs
+      - implement high-confidence skipped-first-element advisory with predecessor, prior-element-handling, explicit-contract, and other suppression evidence
+      - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
+      - implement collection bound-source correlation, equal/sufficient-length suppression, and copy/paste evidence
+      - implement length-versus-capacity pitfall reasoning without conflating capacity with live element length
+      - implement structural-mutation-during-indexed-iteration reasoning with safe-pattern suppression
+      - implement wrong-guard-subject and ineffective-safety-check control-flow correlation
+      - implement tautological/impossible range-condition enrichment and canonical range-membership suggestions using `in` when semantic equivalence is proven
+      - add canonical-idiom suggestion support without inventing a new strict compilation mode
+      - add Option/Result/state-check subject-correlation support when canonical state facts are available
+      - add canonical FFI buffer/extent relationship consumption without inferring pointer/length semantics from parameter names
+      - add FFI pointer/extent provenance mismatch detection when canonical contracts prove argument relationships
+      - add FFI element-count versus byte-count mismatch detection using canonical extent units and resolved element layout
+      - support explicit Sec FFI contracts, trusted imported metadata, generated binding metadata, and compiler-known platform/library metadata through one canonical FFI fact representation
+      - coalesce pitfall findings with owning normative diagnostics so one root cause does not generate duplicate errors and warnings
+      - extend the implemented ProvenFix versus SuggestedEdit distinction to further pitfall families
+      - verify automatic fixes preserve evaluation count/order, effects, ownership/move behavior, and relevant failure semantics
+      - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
+      - integrate Interactive, Standard, and Deep pitfall budgets without changing source-language semantics
+      - expose configurable LSP diagnostics/code actions and refresh affected findings when project analysis configuration changes
+      - integrate pitfall analysis into default `sec analyse --all` behavior and support explicit pitfall-only analysis selection
+      - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
+      - add false-positive regression corpus for neighbor traversal, sentinels, separately handled endpoints, equal-length parallel collections, ring buffers, capacity-level storage manipulation, protocol ranges, and byte-buffer FFI APIs
+    verification:
+      - command: go test ./internal/sema -run 'TestPitfallAnalysis(Recognizes|EndpointGuard|Suppresses)' -count=1
+        result: passed; safe else exits suppress later indexes, ineffective guards and indexes inside a guard remain findings
+      - command: go test ./internal/sema -run TestPitfallAnalysis -count=1
+        result: passed, including ordered endpoint-exit guards and strict-inequality counterexamples
+      - command: go test ./internal/sema ./cmd/lsp -count=1
+        result: passed
+      - command: go test ./...
+        result: all packages passed except cmd/compiler, which still fails on six unrelated try requires Result expression errors in sec/core/string.sec
+      - command: go test ./internal/sema -run TestPitfall
+        result: passed
+      - command: go test ./internal/sema -run 'TestPitfall|TestEqualityRequiresCompatibleTypes'
+        result: passed

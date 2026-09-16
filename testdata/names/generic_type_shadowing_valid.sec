@@ -1,0 +1,15 @@
+module test
+
+type Item struct {}
+type Box[Element] struct {
+    value: Element,
+}
+interface Reader[Output] {
+    fn Read() Output
+}
+enum State int {
+    Ready = 1,
+}
+fn Identity[Value](value: Value) Value {
+    return value
+}

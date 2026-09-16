@@ -265,7 +265,7 @@ fn Invalid() void {
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
 		"cancel is not valid outside a task or explicit thread context at 5:5",
-		"unreachable code at 6:5",
+		"unreachable statement at 6:5",
 	})
 }
 

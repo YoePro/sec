@@ -680,9 +680,6 @@ func (b *pitfallBuilder) inspectInclusiveLengthLoop(loop *ast.ForStatement) {
 	binding := loop.Bindings[0]
 	guarded := false
 	for _, statement := range loop.Body.Statements {
-		if b.endpointBreakGuard(statement, binding.Token, collection) {
-			guarded = true
-		}
 		for _, index := range indexesInStatement(statement) {
 			indexedCollection, sameCollection := b.expressionIdentity(index.Left)
 			if !sameCollection || indexedCollection != collection || !b.expressionUsesBinding(index.Index, binding.Token) {
@@ -709,20 +706,52 @@ func (b *pitfallBuilder) inspectInclusiveLengthLoop(loop *ast.ForStatement) {
 			}
 			b.add(finding)
 		}
+		// An exit guard protects only later statements. Indexing inside the
+		// guard itself may happen before its break or return.
+		if b.endpointExitGuard(statement, binding.Token, collection) {
+			guarded = true
+		}
 	}
 }
 
-func (b *pitfallBuilder) endpointBreakGuard(statement ast.Statement, binding lexer.Token, collection string) bool {
+// endpointExitGuard recognizes a preceding conditional whose selected branch
+// exits when the loop binding reaches the inclusive collection-length endpoint.
+// The comparison must use the same resolved binding and collection as the index.
+//
+// Rules: rules/analysis/pitfall_analysis.md — "Guards participate in pitfall
+// reasoning" and "Inclusive upper bound against collection length".
+func (b *pitfallBuilder) endpointExitGuard(statement ast.Statement, binding lexer.Token, collection string) bool {
 	conditional, ok := statement.(*ast.IfStatement)
-	if !ok || !pitfallBlockDefinitelyExits(conditional.Consequence) {
+	if !ok {
 		return false
 	}
 	comparison, ok := conditional.Condition.(*ast.InfixExpression)
-	if !ok || comparison.Operator != "==" {
+	if !ok {
 		return false
 	}
-	return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection) ||
-		b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
+	if pitfallBlockDefinitelyExits(conditional.Consequence) {
+		switch comparison.Operator {
+		case "==":
+			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection) ||
+				b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
+		case ">=":
+			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection)
+		case "<=":
+			return b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
+		}
+	}
+	if pitfallBlockDefinitelyExits(conditional.Alternative) {
+		switch comparison.Operator {
+		case "!=":
+			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection) ||
+				b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
+		case "<":
+			return b.bindingAndLengthComparison(comparison.Left, comparison.Right, binding, collection)
+		case ">":
+			return b.bindingAndLengthComparison(comparison.Right, comparison.Left, binding, collection)
+		}
+	}
+	return false
 }
 
 func pitfallBlockDefinitelyExits(block *ast.BlockStatement) bool {

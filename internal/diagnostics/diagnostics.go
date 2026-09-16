@@ -100,11 +100,19 @@ const (
 	InvalidTestingExpectArguments       = "S1035"
 	InvalidTestingRequireArguments      = "S1036"
 	InvalidTestingLogArguments          = "S1037"
+	InvalidNominalTypeName              = "S1038"
+	GenericParameterShadowsType         = "S1039"
+	ParameterShadowsType                = "S1040"
+	UnreachableStatement                = "S3001"
 	LargeValueParameter                 = "A2001"
 )
 
 var registry = map[string]Definition{
 	InvalidGenericParameterName:         {ID: InvalidGenericParameterName, Name: "names.invalid-generic-type-parameter", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidNominalTypeName:              {ID: InvalidNominalTypeName, Name: "names.invalid-nominal-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	GenericParameterShadowsType:         {ID: GenericParameterShadowsType, Name: "names.generic-parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	ParameterShadowsType:                {ID: ParameterShadowsType, Name: "names.parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	UnreachableStatement:                {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerUnknownEscape:                  {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerMalformedEscape:                {ID: LexerMalformedEscape, Name: "lexer.malformed-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},

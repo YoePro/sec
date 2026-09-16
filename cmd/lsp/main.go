@@ -1041,14 +1041,14 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		}
 		if identifier, ok := targetExpr.(*ast.Identifier); ok {
 			if staticType, exists := analyzer.Types()[identifier.Value]; exists {
-				return memberCompletionItems(staticType, analyzer.Types(), analyzer.Functions(), analyzer.Symbols(), context.Prefix, true)
+				return memberCompletionItems(staticType, analyzer, context.Prefix, true)
 			}
 		}
 		exprType, ok := analyzer.TypeOf(targetExpr)
 		if !ok {
 			return []completionItem{}
 		}
-		return memberCompletionItems(exprType, analyzer.Types(), analyzer.Functions(), analyzer.Symbols(), context.Prefix, false)
+		return memberCompletionItems(exprType, analyzer, context.Prefix, false)
 	}
 
 	return globalCompletionItems(text, analyzer, context)
@@ -2895,7 +2895,8 @@ func isContractModifierContext(prefix string) bool {
 //   - rules/compiler/compiler_known_members.md — "Built-in type member lookup"
 //   - rules/compiler/compiler_known_members.md — "Named and related types"
 //   - rules/tooling/lsp.md — "Completion"
-func memberCompletionItems(exprType sema.Type, types map[string]sema.Type, functions map[string][]sema.Function, symbols map[string]sema.Symbol, prefix string, static bool) []completionItem {
+func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix string, static bool) []completionItem {
+	types, functions, symbols := analyzer.Types(), analyzer.Functions(), analyzer.Symbols()
 	items := []completionItem{}
 	seen := map[string]bool{}
 	add := func(item completionItem) {
@@ -2962,6 +2963,11 @@ func memberCompletionItems(exprType sema.Type, types map[string]sema.Type, funct
 	// static and instance member namespaces on their legal receiver forms.
 	for _, property := range exprType.Properties {
 		if property.Static == static {
+			add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+		}
+	}
+	if !static {
+		for _, property := range analyzer.InheritedCoreProperties(exprType) {
 			add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
 		}
 	}

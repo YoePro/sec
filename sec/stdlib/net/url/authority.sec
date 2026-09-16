@@ -1,0 +1,21 @@
+module url
+
+/*
+* Sec Standard Library - net/url - Authority and user information
+*
+* File:        stdlib/net/url/authority.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Authority, userinfo, and port parsing and serialization.
+*
+* Standards:
+*   - RFC 3986 section 3.2
+*     https://www.rfc-editor.org/rfc/rfc3986#section-3.2
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/

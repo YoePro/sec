@@ -53,7 +53,7 @@ enum ConstantExpressions int {
     eight = 2 << 2,
 }
 
-enum testEnum string {
+enum TestEnum string {
     R = "red",
     G = "green",
     B = "blue",

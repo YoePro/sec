@@ -1,0 +1,154 @@
+module url
+
+/*
+* Sec Standard Library - net/url - URI schemes
+*
+* File:        stdlib/net/url/scheme.sec
+* Module:      url
+* Revision:    1
+* Updated:     2026-09-15
+* Author:      Jonas Engström
+*
+* Purpose:
+*   Scheme syntax, normalization, validation, and standard convenience values.
+*
+* Standards:
+*   - RFC 3986 section 3.1
+*     https://www.rfc-editor.org/rfc/rfc3986#section-3.1
+*   - IANA URI Schemes registry
+*     https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml
+*
+* Rulebook:
+*   stdlib/net/url/std-net-url.md
+*/
+
+type Scheme string
+
+impl Scheme {
+    static let Http: Scheme := "http"
+    static let Https: Scheme := "https"
+    static let Ws: Scheme := "ws"
+    static let Wss: Scheme := "wss"
+    static let Ftp: Scheme := "ftp"
+    static let File: Scheme := "file"
+    static let Mailto: Scheme := "mailto"
+    static let Data: Scheme := "data"
+    static let Urn: Scheme := "urn"
+
+    /**
+    * Parses and canonicalizes one RFC 3986 scheme name.
+    *
+    * Parameters:
+    *   - value: Scheme spelling without the trailing colon.
+    *
+    * Returns:
+    *   A validated Scheme using canonical lowercase ASCII spelling.
+    *
+    * Errors:
+    *   - ParseError.InvalidScheme: value does not match RFC 3986 scheme syntax.
+    *
+    * Standards:
+    *   - RFC 3986 section 3.1.
+    */
+    static fn Parse(value: string) Result[Scheme, ParseError] {
+        if value.ByteLen == 0 {
+            return Err(ParseError.InvalidScheme(0))
+        }
+
+        let first := value.CharAt(0)
+
+        if !first.IsLetter {
+            return Err(ParseError.InvalidScheme(0))
+        }
+
+        let mut index: uint := 1
+
+        while index < value.ByteLen {
+            let current := value.CharAt(index)
+
+            if !current.IsLetterOrDigit && current not in ['+', '-', '.'] {
+                return Err(ParseError.InvalidScheme(index))
+            }
+
+            index += 1
+        }
+
+        return Ok(Scheme(value.ToLower()))
+    }
+
+    /**
+    * Reports whether this value matches RFC 3986 scheme syntax.
+    *
+    * Validation does not require the stored spelling to be lowercase.
+    *
+    * Standards:
+    *   - RFC 3986 section 3.1.
+    */
+    fn IsValid() bool {
+        if self.ByteLen == 0 {
+            return false
+        }
+
+        let first := char(self.ByteAt(0))
+
+        if !first.IsLetter {
+            return false
+        }
+
+        let mut index: uint := 1
+
+        while index < self.ByteLen {
+            let current := char(self.ByteAt(index))
+
+            if !current.IsLetterOrDigit &&
+            current not in ['+', '-', '.'] {
+                return false
+            }
+
+            index += 1
+        }
+
+        return true
+    }
+
+    /**
+    * Returns true when this is the canonical http or https scheme.
+    */
+    property IsHttp: bool {
+        get {
+            return self == Scheme.Http || self == Scheme.Https
+        }
+    }
+
+    /**
+    * Returns true when this is the canonical ws or wss scheme.
+    */
+    property IsWebSocket: bool {
+        get {
+            return self == Scheme.Ws || self == Scheme.Wss
+        }
+    }
+
+    /**
+    * Returns true when this scheme is normally associated with TLS by Sec
+    * networking APIs.
+    *
+    * Returns true exactly for https and wss.
+    */
+    property IsSecureTransportScheme: bool {
+        get {
+            return self == Scheme.Https || self == Scheme.Wss
+        }
+    }
+}
+
+/*
+The nine associated values above are an exact Sec convenience set for revision 0.1. They are not an exhaustive mirror of the IANA registry and must not be described as such.
+
+IsSecureTransportScheme is true exactly for:
+
+https
+wss
+
+It must not guess security properties for arbitrary schemes.
+*/

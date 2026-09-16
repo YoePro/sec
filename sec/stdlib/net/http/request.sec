@@ -189,48 +189,54 @@ impl Request {
     }
 
     /**
-    * Parse validates an HTTP origin-form request target.
+    * Parses and validates an HTTP origin-form request target.
     *
     * Description:
-    *   Origin-form consists of an absolute path beginning with '/' followed by an
-    *   optional query component. Fragments, whitespace, non-ASCII characters,
-    *   and malformed percent-encoded sequences are rejected.
+    *   Origin-form consists of an absolute path beginning with '/' followed by
+    *   an optional query component. Percent-encoded octets must contain exactly
+    *   two hexadecimal digits.
+    *
+    *   Fragment identifiers, whitespace, control characters, non-ASCII
+    *   characters, and characters outside the RFC URI path/query grammar are
+    *   rejected.
     *
     * Parameters:
     *   - value: Raw origin-form request target.
     *
     * Returns:
-    *   A validated OriginTarget preserving the original wire representation.
+    *   A validated OriginTarget preserving the original encoded representation.
     *
     * Errors:
-    *   - MessageError.InvalidTarget: value is not a valid origin-form target.
+    *   - MessageError.InvalidTarget: value is not valid HTTP origin-form.
     *
     * Standards:
     *   - RFC 9112 Section 3.2.1
+    *   - RFC 3986 Sections 3.3 and 3.4
     */
     static fn Parse(value: string) Result[OriginTarget, MessageError] {
-        if value.IsEmpty || !value.StartsWith("/") {
+        if value.ByteLen == 0 {
+            return Err(MessageError.InvalidTarget)
+        }
+
+        if char(value.ByteAt(0)) != '/' {
             return Err(MessageError.InvalidTarget)
         }
 
         let mut index: uint := 0
+        let mut query := false
 
-        while index < value.Len {
-            let current := try char(value.ByteAt(index)) {
-
-            }
-
-            if !current.IsAscii || current.IsWhitespace || current == '#' {
-                return Err(MessageError.InvalidTarget)
-            }
+        while index < value.ByteLen {
+            let current := value.CharAt(index)
 
             if current == '%' {
-                if index + 2 >= value.Len {
+                let remaining := value.ByteLen - index
+
+                if remaining < 3 {
                     return Err(MessageError.InvalidTarget)
                 }
 
-                let high := char(value.ByteAt(index + 1))
-                let low := char(value.ByteAt(index + 2))
+                let high := value.CharAt(index + 1)
+                let low := value.CharAt(index + 2)
 
                 if !high.IsHexDigit || !low.IsHexDigit {
                     return Err(MessageError.InvalidTarget)
@@ -240,10 +246,35 @@ impl Request {
                 continue
             }
 
+            if current == '?' {
+                query = true
+                index += 1
+                continue
+            }
+
+            if current == '/' {
+                index += 1
+                continue
+            }
+
+            if !_IsRequestTargetChar(current) {
+                return Err(MessageError.InvalidTarget)
+            }
+
             index += 1
         }
 
         return Ok(OriginTarget(value))
+    }
+
+    static fn _IsRequestTargetChar(value: char) bool {
+        return value.IsLetterOrDigit ||
+        value in [
+            '-', '.', '_', '~',
+            '!', '$', '&', '\'', '(', ')',
+            '*', '+', ',', ';', '=',
+            ':', '@',
+        ]
     }
 
     // -------------------------------------------------------------------------

@@ -14,7 +14,7 @@ impl dBm {
     System: logarithmic
 }
 
-type dbm int<dBm>
+type Dbm int<dBm>
 
 // =====================================================================
 // 1. ENUMS FOR HARDWARE STATES

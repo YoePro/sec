@@ -9165,7 +9165,7 @@ fn UnreachableAfterReturn(value: int) int {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"unreachable code at 8:3",
+		"unreachable statement at 8:3",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -11240,12 +11240,17 @@ fn UnreachableAfterReturn() int {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"unreachable code at 7:3",
-		"unreachable code at 14:3",
-		"unreachable code at 21:3",
+		"unreachable statement at 7:3",
+		"unreachable statement at 14:3",
+		"unreachable statement at 21:3",
 	}
 
 	assertSemaErrors(t, errors, expected)
+	for _, diagnostic := range errors {
+		if diagnostic.ID != diagnostics.UnreachableStatement || diagnostic.Severity != diagnostics.SeverityError || diagnostic.Help == "" || diagnostic.EndColumn <= diagnostic.Column {
+			t.Fatalf("incomplete S3001 diagnostic: %+v", diagnostic)
+		}
+	}
 }
 
 func TestComparisonChainingIsRejected(t *testing.T) {
@@ -11477,7 +11482,7 @@ fn Test() int {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"unreachable code at 12:2",
+		"unreachable statement at 12:2",
 	}
 
 	assertSemaErrors(t, errors, expected)

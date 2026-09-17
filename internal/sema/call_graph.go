@@ -72,12 +72,13 @@ type ArenaCallableSummary struct {
 type EffectKind string
 
 const (
-	EffectMayPanicArithmetic EffectKind = "may-panic-arithmetic"
-	EffectMayPanicBounds     EffectKind = "may-panic-bounds"
-	EffectMayPanicExplicit   EffectKind = "may-panic-explicit"
-	EffectMayPanicAssertion  EffectKind = "may-panic-assertion"
-	EffectVolatileRead       EffectKind = "volatile-read"
-	EffectVolatileWrite      EffectKind = "volatile-write"
+	EffectMayPanicArithmetic  EffectKind = "may-panic-arithmetic"
+	EffectMayPanicBounds      EffectKind = "may-panic-bounds"
+	EffectMayPanicExplicit    EffectKind = "may-panic-explicit"
+	EffectMayPanicAssertion   EffectKind = "may-panic-assertion"
+	EffectMayPanicUnreachable EffectKind = "may-panic-unreachable"
+	EffectVolatileRead        EffectKind = "volatile-read"
+	EffectVolatileWrite       EffectKind = "volatile-write"
 )
 
 type EffectSite struct {
@@ -490,7 +491,12 @@ func (g *CallGraph) ArenaSummary(id CallableID) ArenaCallableSummary {
 }
 
 // EffectSummary returns direct semantic effects and a deterministic shortest
-// synchronous cause path for transitive panic behavior.
+// synchronous cause path for transitive panic behavior, including reachable
+// checked unreachable statements.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(5)–(6) "Checked unreachable"
+//   - rules/errors/panic.md — § 21 "@noPanic"
 func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
 	if g == nil {
 		return CallableEffectSummary{}
@@ -498,7 +504,7 @@ func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
 	summary := CallableEffectSummary{DirectEffects: append([]EffectSite(nil), g.effects[id]...)}
 	summary.PanicPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
 		for _, effect := range g.effects[candidate] {
-			if effect.Kind == EffectMayPanicArithmetic || effect.Kind == EffectMayPanicBounds || effect.Kind == EffectMayPanicExplicit || effect.Kind == EffectMayPanicAssertion {
+			if effect.Kind == EffectMayPanicArithmetic || effect.Kind == EffectMayPanicBounds || effect.Kind == EffectMayPanicExplicit || effect.Kind == EffectMayPanicAssertion || effect.Kind == EffectMayPanicUnreachable {
 				return true
 			}
 		}

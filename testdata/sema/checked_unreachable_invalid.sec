@@ -1,0 +1,6 @@
+module main
+
+@noPanic
+fn Reject() void {
+    unreachable
+}

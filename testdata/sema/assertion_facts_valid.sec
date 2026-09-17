@@ -1,0 +1,12 @@
+module main
+
+fn Check(ready: bool) void {
+    assert ready, "ready required"
+    assert true
+}
+
+fn Branch(ready: bool) void {
+    if ready {
+        return
+    }
+}

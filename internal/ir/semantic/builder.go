@@ -999,6 +999,19 @@ func (fb *functionBuilder) buildStructFieldAssignment(stmt *ast.AssignmentStatem
 }
 
 func (fb *functionBuilder) buildReturn(stmt *ast.ReturnStatement) error {
+	// Direct `return try result` has two terminal paths. Sema alone decides
+	// whether the narrow forwarding rule applies; lowering never infers it from
+	// the return syntax or from compatible-looking types.
+	//
+	// Rules:
+	//   - rules/errors/errorhandling.md — §26 "return try expression"
+	//   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
+	if tryExpr, ok := stmt.Value.(*ast.TryExpression); ok {
+		if resolved, found := fb.owner.analyzer.ResolvedTryOf(tryExpr); found && resolved.Kind == sema.ResolvedTryResultReturnForwarding {
+			return fb.buildReturnTryResultForwarding(tryExpr, resolved)
+		}
+	}
+
 	op := Operation{Kind: OpReturn, Location: location(stmt.Token)}
 	if stmt.Value != nil {
 		value, err := fb.buildExpr(stmt.Value, fb.fn.ReturnType)
@@ -1008,6 +1021,33 @@ func (fb *functionBuilder) buildReturn(stmt *ast.ReturnStatement) error {
 		op.Operands = []ValueID{value.id}
 	}
 	fb.emit(op)
+	fb.current = nil
+	return nil
+}
+
+// buildReturnTryResultForwarding lowers both outcomes of the Sema-resolved
+// forwarding boundary: buildResultPropagation already emits the Err return and
+// leaves the success continuation active, which this method wraps in Ok and
+// returns. The protected Result expression is evaluated exactly once.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §26 "return try expression"
+//   - rules/errors/errorhandling.md — §37.8 "return try"
+func (fb *functionBuilder) buildReturnTryResultForwarding(expr *ast.TryExpression, resolved sema.ResolvedTry) error {
+	success, err := fb.buildResultPropagation(expr, resolved)
+	if err != nil {
+		return err
+	}
+	resultType, err := fb.owner.internType(resolved.EnclosingResultType)
+	if err != nil {
+		return err
+	}
+	op := Operation{Kind: OpResultOk, Location: location(expr.Token)}
+	if !fb.owner.isVoidType(success.typ) {
+		op.Operands = []ValueID{success.id}
+	}
+	forwarded := fb.result(op, resultType)
+	fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{forwarded.id}, Location: location(expr.Token)})
 	fb.current = nil
 	return nil
 }
@@ -1458,6 +1498,14 @@ func (fb *functionBuilder) buildArrayIndexRead(expr *ast.IndexExpression, result
 	return fb.result(op, resultType), nil
 }
 
+// semanticArrayIndexProof maps Sema's detailed proof provenance into the
+// currently maintained Semantic IR proof categories. Assertion provenance is
+// preserved as the existing general analysis category until semantic-ir.panic
+// introduces its dedicated assertion representation.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
+//   - rules/mlir/packages/sec-mlir-dialect_package14.md — §§ 32, 36 "Bounds proofs", "Proof provenance"
 func semanticArrayIndexProof(proof sema.ArrayIndexProofKind) (ArrayIndexProofKind, bool) {
 	switch proof {
 	case sema.ArrayIndexProofConstant:
@@ -1468,7 +1516,7 @@ func semanticArrayIndexProof(proof sema.ArrayIndexProofKind) (ArrayIndexProofKin
 		return ArrayIndexProofBranch, true
 	case sema.ArrayIndexProofContract:
 		return ArrayIndexProofContract, true
-	case sema.ArrayIndexProofOther:
+	case sema.ArrayIndexProofAssertion, sema.ArrayIndexProofOther:
 		return ArrayIndexProofAnalysis, true
 	default:
 		return "", false
@@ -2234,6 +2282,8 @@ func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtVal
 			return builtValue{}, fb.unsupported("Result try propagation", expr.Token)
 		}
 		return fb.buildResultPropagation(expr, resolved)
+	case sema.ResolvedTryResultReturnForwarding:
+		return builtValue{}, fb.unsupported("Result return-try forwarding outside its return boundary", expr.Token)
 	case sema.ResolvedTryHandledResult:
 		if fb.owner.maxPackage < 10 {
 			return builtValue{}, fb.unsupported("handled Result try", expr.Token)

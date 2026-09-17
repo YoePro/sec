@@ -104,6 +104,22 @@ func (ps *PanicStatement) TokenLiteral() string {
 	return ps.Token.Lexeme
 }
 
+// UnreachableStatement represents Sec's checked, non-returning unreachable
+// assertion. Reaching this statement is a defined panic, never optimizer
+// undefined behavior.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16 "Checked unreachable"
+type UnreachableStatement struct {
+	Token lexer.Token
+}
+
+func (us *UnreachableStatement) statementNode() {}
+
+func (us *UnreachableStatement) TokenLiteral() string {
+	return us.Token.Lexeme
+}
+
 type DetachStatement struct {
 	Token         lexer.Token
 	Value         Expression

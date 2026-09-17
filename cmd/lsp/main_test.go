@@ -3258,6 +3258,19 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 	assertCompletionLabels(t, arenaItems, []string{"Alloc", "New", "Ptr", "Release", "Reset", "SizeOf"})
 }
 
+// TestCompletionIncludesCanonicalPanicInfoFields verifies that LSP projects
+// the exact compiler-known Sema type rather than maintaining a second panic
+// metadata shape.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13(3)–(7) "Panic information and reason IDs"
+//   - rules/tooling/lsp.md — "Completion"
+func TestCompletionIncludesCanonicalPanicInfoFields(t *testing.T) {
+	source := "module main\n\nfn Inspect(info: PanicInfo) void {\n\tinfo.\n}\n"
+	items := completeSource("", source, strings.Index(source, "info.")+len("info."))
+	assertCompletionLabels(t, items, []string{"Column", "File", "Function", "ID", "Line"})
+}
+
 func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
 	sourcePath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "lsp", "named_string_underlying_members_valid.sec"))
 	if err != nil {

@@ -212,15 +212,64 @@ type ResolvedOperator struct {
 	FailureBehavior OperatorFailureBehavior
 }
 
+type ResolvedConditionFactKind string
+
+const (
+	ConditionFactBranchTrue       ResolvedConditionFactKind = "branch-true"
+	ConditionFactAssertionSuccess ResolvedConditionFactKind = "assertion-success"
+)
+
+// ResolvedConditionFact is the shared compiler-owned truth fact introduced by
+// either a successful assertion or entry into an if true branch. Consumers
+// use the kind for provenance while interpreting the condition identically.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
+//   - rules/control-flow/flowcontrol_if.md — § 27 "Sema and flow-analysis requirements"
+type ResolvedConditionFact struct {
+	Kind      ResolvedConditionFactKind
+	Condition ast.Expression
+	Source    lexer.Token
+}
+
+// PanicReason names a canonical, stable panic category without assigning the
+// numeric PanicID owned by the separate diagnostics/panic registry.
+type PanicReason string
+
+const (
+	PanicReasonAssertionFailed PanicReason = "AssertionFailed"
+)
+
+// ResolvedAssertion is the immutable frontend fact for one valid assertion.
+// It preserves static diagnostic metadata and proof state for tooling and
+// later compiler stages without reconstructing semantics from the AST.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13(1)–(3) "Panic information and reason IDs"
+//   - rules/errors/panic.md — §§ 15.3–15.5 "Meaning", "Messages", "Assertions are always active"
+type ResolvedAssertion struct {
+	Reason     PanicReason
+	Condition  ast.Expression
+	Message    string
+	HasMessage bool
+	File       string
+	Line       int
+	Column     int
+	Function   string
+	Proven     bool
+	Refinement ResolvedConditionFact
+}
+
 type ResolvedTryKind string
 
 const (
-	ResolvedTryResultPropagation     ResolvedTryKind = "result-propagation"
-	ResolvedTryHandledResult         ResolvedTryKind = "handled-result"
-	ResolvedTryHandledArithmetic     ResolvedTryKind = "handled-arithmetic"
-	ResolvedTryArithmeticPropagation ResolvedTryKind = "arithmetic-propagation"
-	ResolvedTryHandledBounds         ResolvedTryKind = "handled-bounds"
-	ResolvedTryBoundsPropagation     ResolvedTryKind = "bounds-propagation"
+	ResolvedTryResultPropagation      ResolvedTryKind = "result-propagation"
+	ResolvedTryResultReturnForwarding ResolvedTryKind = "result-return-forwarding"
+	ResolvedTryHandledResult          ResolvedTryKind = "handled-result"
+	ResolvedTryHandledArithmetic      ResolvedTryKind = "handled-arithmetic"
+	ResolvedTryArithmeticPropagation  ResolvedTryKind = "arithmetic-propagation"
+	ResolvedTryHandledBounds          ResolvedTryKind = "handled-bounds"
+	ResolvedTryBoundsPropagation      ResolvedTryKind = "bounds-propagation"
 )
 
 // ResolvedTry records the exact success/error contract selected by Sema.
@@ -451,11 +500,12 @@ const (
 type ArrayIndexProofKind string
 
 const (
-	ArrayIndexProofConstant ArrayIndexProofKind = "constant"
-	ArrayIndexProofRange    ArrayIndexProofKind = "range"
-	ArrayIndexProofBranch   ArrayIndexProofKind = "branch"
-	ArrayIndexProofContract ArrayIndexProofKind = "contract"
-	ArrayIndexProofOther    ArrayIndexProofKind = "analysis"
+	ArrayIndexProofConstant  ArrayIndexProofKind = "constant"
+	ArrayIndexProofRange     ArrayIndexProofKind = "range"
+	ArrayIndexProofBranch    ArrayIndexProofKind = "branch"
+	ArrayIndexProofAssertion ArrayIndexProofKind = "assertion"
+	ArrayIndexProofContract  ArrayIndexProofKind = "contract"
+	ArrayIndexProofOther     ArrayIndexProofKind = "analysis"
 )
 
 // ArrayIndexFailureMode distinguishes ordinary terminating bounds failure
@@ -1096,6 +1146,35 @@ func (a *Analyzer) ResolvedOperatorOf(expr ast.Expression) (ResolvedOperator, bo
 		resolved.RightType = &right
 	}
 	return resolved, true
+}
+
+// ResolvedAssertionOf returns the compiler-owned assertion reason, static
+// message, source provenance, and current proof state. Unknown or invalid AST
+// nodes do not acquire facts as a side effect of querying.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13(1)–(3) "Panic information and reason IDs"
+//   - rules/errors/panic.md — §§ 15.3–15.5 "Meaning", "Messages", "Assertions are always active"
+func (a *Analyzer) ResolvedAssertionOf(stmt *ast.AssertStatement) (ResolvedAssertion, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedAssertion{}, false
+	}
+	fact, ok := a.resolvedAssertions[stmt]
+	return fact, ok
+}
+
+// ResolvedConditionFactOf returns the canonical refinement provenance recorded
+// for an assertion condition or if true-branch condition without re-analysis.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
+//   - rules/control-flow/flowcontrol_if.md — § 27 "Sema and flow-analysis requirements"
+func (a *Analyzer) ResolvedConditionFactOf(condition ast.Expression) (ResolvedConditionFact, bool) {
+	if a == nil || condition == nil {
+		return ResolvedConditionFact{}, false
+	}
+	fact, ok := a.resolvedConditionFacts[condition]
+	return fact, ok
 }
 
 // ResolvedTryOf returns the completed Sema decision for a try expression.

@@ -47,7 +47,9 @@ integrations:
       - internal/sema/try_handler_reachability_test.go
       - internal/sema/try_err_discard_test.go
       - internal/sema/match_err_discard_test.go
+      - internal/sema/return_try_result_test.go
       - internal/ir/semantic/package11_test.go
+      - internal/ir/semantic/return_try_result_test.go
       - internal/formatter/formatter_test.go
       - testdata/register8_valid.sec
       - testdata/sema/property_option_direct_return.sec
@@ -90,6 +92,7 @@ integrations:
       - "try-match-wrapper-removal: Parser rejects the obsolete try { match { ... } } handler wrapper with P2012 while retaining inner handlers and subsequent declarations for tooling recovery; direct Err handler syntax and trailing comments parse cleanly."
       - "try-err-discardability: Sema checks recursive discardability of a concrete Result error payload before accepting Err(_); non-discardable task/thread obligations produce S1006 with guidance to bind and resolve the error."
       - "match-err-discardability: Result match Err(_) now performs the same concrete error-payload discardability check; non-discardable task/thread obligations produce S1006 and prevent a resolved match plan."
+      - "return-try-result-forwarding: A direct handlerless return try Result expression now validates both the protected Result error channel and its success type against the enclosing Result[T,E], records the dedicated result-return-forwarding Sema fact, and lowers by evaluating the protected carrier exactly once before returning a reconstructed Err(error) or Ok(value). The rule is confined to the direct return boundary: ordinary return value still cannot implicitly convert T to Result[T,E], incompatible success and failure channels retain focused diagnostics, and handled or non-Result try expressions are not silently widened into this rule."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
@@ -111,12 +114,11 @@ integrations:
       - "bodyless-try-assignment-v2: Implement naked try assignment as ordinary implicit failure propagation for fallible assignment. Replace the old exact-error-only and no-Option wording with revision-2 channel compatibility rules owned by the relevant protected operation."
       - "property-explicit-setter-error: Change fallible setter syntax to try set value ErrorType { ... } and require the same explicit error type in interface requirements. Do not infer a public setter error contract from its implementation."
       - "property-setter-success-model: For try set, normal completion is implicit success, bare return is early success, return Err(error) is failure, and return Ok() is invalid. Property getters remain infallible in Sec 0.1."
-      - "return-try-result-forwarding: Support return try expression in a Result[T,E]-returning context: a success value assignable to T is returned as Ok(value), and a compatible failure propagates. This is return-position forwarding only and must not become a general implicit T -> Result[T,E] conversion."
       - "if-some-binding-exception: Permit the narrow positive Option test if option is Some(value) { ... }. The binding exists only on the true path and follows ordinary copy/move rules. Keep negative binding such as is not Some(value) invalid and keep general destructuring in match."
       - "result-err-none-tests: Extend the implemented non-binding Option None test to Result projection operands once consuming Result[T,E].Err() -> Option[E] is implemented; retain is not rather than a !is operator."
       - "result-projection-ownership-diagnostics: Always diagnose use after consuming .Ok()/.Err() (and equivalent affine consumption) from compiler-owned facts. The diagnostic must identify the value, the consuming operation/location, why later use is invalid, and a practical correction."
       - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
-      - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, nested failure boundaries, and return-try forwarding. Backends must not reconstruct these semantics from syntax or unused SSA."
+      - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, and nested failure boundaries. Backends must not reconstruct these semantics from syntax or unused SSA. Direct Result return-try forwarding already has a dedicated resolved fact and canonical Semantic IR lowering."
       - "errorhandling-lsp-v2: Replace the Result-only try-hover plan with compiler-resolved Result/Option/fallible-operation facts. Show success type, handled and propagated alternate states, concrete versus widened error identity, consuming versus borrowed projections, ownership consequences, and mentor diagnostics without reimplementing Sema in the LSP."
       - "errorhandling-formatter-v2: Format direct try handlers canonically, preserve where guards and contextual handler block values, format new error declarations/setter error types/projections, and do not recreate the removed nested match wrapper or insert/remove semantic try operations."
     required_tests:
@@ -172,6 +174,8 @@ integrations:
       - "an incompatible Option carrier is rejected with expected and actual Option types"
 
     verification:
+      - command: go test ./internal/sema ./internal/ir/semantic -run 'ReturnTry|TestPackage10BuildsCanonicalResultPropagation' -count=1
+        result: passed
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorEnumMarker|ErrorEnumMarkerRoot' -count=1
         result: passed
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorUnion|ResultErrorChannel|ErrorEnum' -count=1
@@ -199,12 +203,33 @@ integrations:
     area: panic-assert-unreachable-frontend
     status: partial
     document_revision: "2.2"
-    reviewed: "2026-09-16"
+    reviewed: "2026-09-17"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
       - rules/errors/runtime_checks.md
       - rules/foundations/attributes.md
+    evidence:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/sema/panic_info_test.go
+      - internal/sema/assertion_facts_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/builder.go
+      - cmd/lsp/main_test.go
+      - internal/parser/unreachable_statement_test.go
+      - internal/sema/unreachable_effect_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/parser/checked_unreachable_valid.sec
+      - testdata/sema/checked_unreachable_valid.sec
+      - testdata/sema/checked_unreachable_invalid.sec
+      - testdata/sema/panic_info_valid.sec
+      - testdata/sema/assertion_facts_valid.sec
+      - testdata/semantic_ir/fixed_array_refinement_proofs.sec
     implemented:
       - canonical assert statement AST and parsing support both Sec 0.1 forms, including optional comma plus string-literal metadata
       - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
@@ -215,14 +240,15 @@ integrations:
       - panic is a hard lexer keyword and the parser retains canonical panic string-literal statements in a dedicated AST node
       - explicit panic is non-returning in frontend control-flow analysis and records a direct may-panic-explicit effect for @noPanic verification
       - the shared formatter preserves canonical panic statement spacing idempotently
+      - checked unreachable is recognized in its canonical payload-free statement context with a dedicated AST node while remaining an ordinary identifier outside that context, matching the canonical keyword inventory; formatter coverage is idempotent
+      - reachable checked unreachable terminates the block, satisfies non-void return-path analysis, and records a direct may-panic-unreachable effect; statically unreachable occurrences contribute no effect
+      - compiler-known nominal PanicID has the fixed uint32 representation, and compiler-known PanicInfo exposes exactly ID, File, Line, Column, and Function through one canonical Sema type also used by TaskOutcome.Panicked and LSP member completion
+      - every semantically valid assertion publishes a read-only resolved fact with the stable AssertionFailed category, condition, optional static message, exact file/line/column/function provenance, and current proof state; querying unknown syntax does not synthesize facts
+      - successful assertions and if true branches now publish the same ResolvedConditionFact shape with distinct provenance; dominating assertion facts feed fixed-array bounds proof through the shared condition-fact path and retain assertion-specific Sema proof provenance, while the current Semantic IR compatibility mapping remains the general analysis category pending its dedicated assertion representation
     remaining:
-      - add exact compiler-known/core PanicID uint32 and PanicInfo { ID, File, Line, Column, Function } declarations with one shared Sema/LSP identity
       - implement stable panic-reason registry assignments and allocation-free canonical PanicInfo construction
       - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
-      - represent assertion source metadata/message and AssertionFailed reason
-      - implement assertion refinement using canonical semantic facts
       - extend assertion panic-freedom proof beyond literal true through canonical semantic facts without suppressing condition-evaluation effects
-      - implement checked unreachable as defined panic semantics rather than backend undefined behavior
       - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
       - lower explicit panic through canonical Semantic IR, PanicInfo construction, and the selected non-returning endpoint
     required_tests:
@@ -233,20 +259,31 @@ integrations:
       - non-bool assertion rejected
       - dynamic assertion message rejected in Sec 0.1
       - proven assertion refines later analysis
+      - assertion and if refinement share one canonical condition-fact representation while retaining distinct provenance
       - unproven assertion records MayPanic
       - literal-true assertion removes its own MayPanic effect without hiding effects from condition evaluation
       - literal-false assertion terminates a block and an unproven assertion still falls through
       - reachable unreachable records MayPanic
+      - PanicID is nominal uint32 and PanicInfo exposes exactly the five canonical fields through Sema and LSP
+      - resolved assertion facts preserve AssertionFailed, static message presence/text, source provenance, enclosing function, and proof state
       - explicit panic parses, rejects function-call and dynamic-message spelling, terminates control flow, and violates @noPanic
     verification:
       - command: go test ./internal/sema -run 'AssertFalse' -count=1
         result: passed; literal-false assertions satisfy non-void return paths and diagnose following code as unreachable while unproven assertions still need a return
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ParseCheckedUnreachable|FormatCheckedUnreachable|CheckedUnreachable' -count=1
+        result: passed; checked unreachable has canonical syntax, frontend termination, reachable MayPanic, dead-path elimination, and @noPanic enforcement
+      - command: go test ./internal/sema ./cmd/lsp -run 'CompilerKnownPanicInfo|CompletionIncludesCanonicalPanicInfo' -count=1
+        result: passed; exact PanicID/PanicInfo Sema identity, field lookup, containment payload identity, and LSP member completion agree
+      - command: go test ./internal/sema -run 'ResolvedAssertionFacts|AssertionPanicEffects|AssertCondition' -count=1
+        result: passed; resolved assertion reason/message/provenance/proof facts coexist with exact bool validation and existing panic-effect behavior
+      - command: go test ./internal/sema -run 'ResolvedAssertionFacts|ResolvedFixedArrayIndexRefinementProofs|AssertionPanicEffects|FixedArrayBounds' -count=1
+        result: passed; assertions and if branches publish shared condition facts, assertion-derived bounds use explicit assertion provenance, and incomplete or invalidated facts retain runtime checks
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
     status: partial
     document_revision: "2.2"
-    reviewed: "2026-09-16"
+    reviewed: "2026-09-17"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -259,8 +296,9 @@ integrations:
       - argument-free @noPanic on functions and methods verifies the currently modeled direct and transitive arithmetic/bounds effects with cause locations
       - explicit panic records a direct may-panic-explicit effect and participates in existing transitive @noPanic cause paths
       - unproven assertion records a direct may-panic-assertion effect and participates in existing transitive @noPanic cause paths; literal true contributes no assertion effect
+      - reachable checked unreachable records a direct may-panic-unreachable effect in the shared call graph, participates in @noPanic verification with source provenance, and is suppressed on statically impossible paths
     remaining:
-      - extend assertion proof beyond literal true and integrate checked unreachable, contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
+      - extend assertion proof beyond literal true and integrate contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
       - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
       - version and validate separate-compilation panic summaries
       - preserve detailed panic causes and source provenance
@@ -270,12 +308,15 @@ integrations:
       - direct assertion MayPanic
       - transitive assertion MayPanic
       - proven assertion removes panic effect
+      - reachable checked unreachable records MayPanic and proven-dead checked unreachable does not
       - recursive noPanic convergence
       - unknown indirect or foreign behavior is conservative
       - ISR root reports transitive panic path
     verification:
       - command: go test ./internal/sema -run 'AssertionPanicEffects|UnprovenAssertion' -count=1
         result: passed; direct and transitive assertion effects, literal-true and dead-branch elimination, and cause-aware @noPanic diagnostics
+      - command: go test ./internal/sema -run 'CheckedUnreachable' -count=1
+        result: passed; reachable and proven-dead effects plus source-aware @noPanic enforcement use the canonical call graph
 
   - id: semantic-ir.panic
     area: semantic-ir-panic
@@ -359,7 +400,7 @@ integrations:
     area: panic-diagnostics-lsp-formatter
     status: partial
     document_revision: "2.0"
-    reviewed: "2026-09-01"
+    reviewed: "2026-09-17"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -368,6 +409,8 @@ integrations:
     implemented:
       - formatter preserves both assertion forms and canonicalizes one space after the optional message comma without confusing nested or quoted commas
       - formatter assertion coverage verifies canonical output and idempotence
+      - formatter preserves canonical payload-free checked unreachable with ordinary statement indentation and idempotent output
+      - LSP member completion projects the five canonical PanicInfo fields directly from the compiler-known Sema type
     remaining:
       - LSP exposes noPanic or may-panic and cause paths from canonical analysis
       - hover exposes assertion refinement and panic causes where useful

@@ -837,9 +837,11 @@ func builtinTypes() map[string]Type {
 		// TaskError deliberately has no invented variant inventory: tasks.md
 		// section 15 reserves the named error family but leaves it open.
 		"TaskError": {Name: "TaskError", Kind: StructType, ErrorAssignable: true},
-		// panic.md owns the eventual public shape; Sema only needs the stable
-		// identity carried by TaskOutcome.Panicked.
-		"PanicInfo":             {Name: "PanicInfo", Kind: StructType},
+		// PanicID and PanicInfo are exact compiler-known/core identities. Their
+		// source-visible representation is owned by panic.md § 13; runtime and
+		// lowering layers must consume this shape rather than inventing one.
+		"PanicID":               panicIDType(),
+		"PanicInfo":             {Name: "PanicInfo", Kind: StructType, Named: true},
 		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
@@ -965,6 +967,7 @@ func builtinTypes() map[string]Type {
 		typ.Intrinsic = true
 		types[name] = typ
 	}
+	installCompilerKnownPanicInfo(types)
 
 	return types
 }
@@ -975,6 +978,49 @@ func builtinEnumConsts(values []string) map[string]EnumValue {
 		consts[name] = EnumValue{Name: name, Value: big.NewInt(int64(i))}
 	}
 	return consts
+}
+
+// panicIDType constructs the exact target-independent nominal uint32 panic
+// reason identity exposed by the compiler-known core surface.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13(2) "Panic information and reason IDs"
+//   - rules/corrections/applied/panic-info-compiler-known-correction-20260907.md — § 2.1 "Exact declaration"
+func panicIDType() Type {
+	typ := unsignedType("PanicID", 1<<32-1)
+	typ.Named = true
+	typ.Underlying = "uint32"
+	typ.BitWidth = 32
+	return typ
+}
+
+// installCompilerKnownPanicInfo connects PanicInfo and containment payloads to
+// the exact canonical builtin Type values, giving Sema and LSP one field and
+// identity source instead of parallel metadata descriptions.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13(3)–(7) "Panic information and reason IDs"
+//   - rules/corrections/applied/panic-info-compiler-known-correction-20260907.md — §§ 3.1, 4 "Canonical PanicInfo", "Compiler-known identity"
+func installCompilerKnownPanicInfo(types map[string]Type) {
+	info := types["PanicInfo"]
+	info.Fields = []StructField{
+		{Name: "ID", Type: types["PanicID"]},
+		{Name: "File", Type: types["string"]},
+		{Name: "Line", Type: types["uint"]},
+		{Name: "Column", Type: types["uint"]},
+		{Name: "Function", Type: types["string"]},
+	}
+	types["PanicInfo"] = info
+
+	outcome := types["TaskOutcome"]
+	for index := range outcome.UnionVariants {
+		if outcome.UnionVariants[index].Name == "Panicked" {
+			panicInfo := info
+			outcome.UnionVariants[index].Payload = &panicInfo
+			break
+		}
+	}
+	types["TaskOutcome"] = outcome
 }
 
 func signedType(name string, min, max int64) Type {

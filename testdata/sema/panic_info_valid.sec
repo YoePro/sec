@@ -1,0 +1,9 @@
+module main
+
+fn Reason(info: PanicInfo) PanicID {
+    let file: string := info.File
+    let line: uint := info.Line
+    let column: uint := info.Column
+    let function: string := info.Function
+    return info.ID
+}

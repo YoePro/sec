@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="${1:-$HOME/.vscode-server/extensions/sec-lang.sec-syntax}"
+DEST2="${2:-$HOME/.vscode/extensions/sec-lang.sec-syntax}"
 
 echo "Building SEC language server...linux (current system)"
 go build -o "$ROOT/bin/lsp-sec" "$ROOT/cmd/lsp"
@@ -20,6 +21,9 @@ echo "Copying extension to $DEST"
 rsync -a --delete \
   --exclude ".git" \
   "$ROOT/vscode/" "$DEST/"
+
+echo "Copying language server binaries to $DEST2"
+rsync $DEST $DEST2 -rav
 
 echo "Done."
 echo "Restart VS Code Server or reload the VS Code window if the extension was already loaded."

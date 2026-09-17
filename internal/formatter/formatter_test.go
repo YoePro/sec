@@ -528,6 +528,23 @@ func TestFormatPanicStatement(t *testing.T) {
 	}
 }
 
+// TestFormatCheckedUnreachable verifies that the shared statement formatter
+// preserves the canonical payload-free spelling and indentation idempotently.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(1) "Checked unreachable"
+func TestFormatCheckedUnreachable(t *testing.T) {
+	input := "fn Stop() int {\nunreachable\n}\n"
+	want := "fn Stop() int {\n    unreachable\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong checked-unreachable formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("checked-unreachable formatting is not idempotent:\n%s", again)
+	}
+}
+
 // rules/tooling/formatter.md "Source model" and "Line comments" require
 // source edits to distinguish real lexer comments from comment-like literal or
 // block-comment text.

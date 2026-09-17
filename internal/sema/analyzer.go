@@ -47,6 +47,8 @@ type Analyzer struct {
 	resolvedForIterations      map[*ast.ForStatement]ResolvedForIteration
 	resolvedConstructions      map[*ast.NewExpression]ResolvedConstruction
 	resolvedOperators          map[ast.Expression]ResolvedOperator
+	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
+	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
 	resolvedTries              map[*ast.TryExpression]ResolvedTry
 	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
 	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
@@ -56,7 +58,7 @@ type Analyzer struct {
 	resolvedArrayLiteralPlans   map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
 	resolvedArrayIndexPlans     map[*ast.IndexExpression]ResolvedArrayIndexPlan
 	resolvedListIndexPlans      map[*ast.IndexExpression]ResolvedListIndexPlan
-	arrayIndexRefinements       []arrayIndexRefinement
+	activeConditionFacts        []activeConditionFact
 	arrayIndexMutationEpoch     uint64
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
@@ -261,13 +263,15 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
+	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
+	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
-	a.arrayIndexRefinements = nil
+	a.activeConditionFacts = nil
 	a.arrayIndexMutationEpoch = 0
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
@@ -865,6 +869,8 @@ func isNilStatement(stmt ast.Statement) bool {
 	case *ast.AssertStatement:
 		return stmt == nil
 	case *ast.PanicStatement:
+		return stmt == nil
+	case *ast.UnreachableStatement:
 		return stmt == nil
 	case *ast.DetachStatement:
 		return stmt == nil
@@ -2120,6 +2126,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeAssertStatement(stmt)
 	case *ast.PanicStatement:
 		a.analyzePanicStatement(stmt)
+	case *ast.UnreachableStatement:
+		a.analyzeUnreachableStatement(stmt)
 	case *ast.DetachStatement:
 		a.analyzeDetachStatement(stmt)
 	case *ast.CancelStatement:
@@ -2241,9 +2249,9 @@ func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 		symbolsBefore[name] = true
 	}
 	a.scopeDepth++
-	refinementCount := len(a.arrayIndexRefinements)
+	refinementCount := len(a.activeConditionFacts)
 	defer func() {
-		a.arrayIndexRefinements = a.arrayIndexRefinements[:refinementCount]
+		a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
 		newNames := make([]string, 0)
 		for name := range a.symbols {
 			if !symbolsBefore[name] {
@@ -2614,17 +2622,43 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 		return
 	}
 	if conditionType.Kind == BoolType {
-		if !isBoolLiteral(stmt.Condition, true) && !a.summaryPass && a.callGraphPathReachable {
+		proven := isBoolLiteral(stmt.Condition, true)
+		refinement := a.recordConditionFact(stmt.Condition, ConditionFactAssertionSuccess, stmt.Token)
+		message := ""
+		hasMessage := stmt.Message != nil
+		if hasMessage {
+			message = stmt.Message.Value
+		}
+		a.resolvedAssertions[stmt] = ResolvedAssertion{
+			Reason:     PanicReasonAssertionFailed,
+			Condition:  stmt.Condition,
+			Message:    message,
+			HasMessage: hasMessage,
+			File:       stmt.Token.File,
+			Line:       stmt.Token.Line,
+			Column:     stmt.Token.Column,
+			Function:   a.currentFunctionName,
+			Proven:     proven,
+			Refinement: refinement,
+		}
+		if !proven && !a.summaryPass && a.callGraphPathReachable {
 			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicAssertion, Source: stmt.Token})
 		}
-		// Package 14 section 36 routes assertion-derived bounds through the
-		// canonical analysis provenance; the proof kind is not source syntax.
-		a.arrayIndexRefinements = append(a.arrayIndexRefinements, arrayIndexRefinement{
-			condition: stmt.Condition,
-			proof:     ArrayIndexProofOther,
-			epoch:     a.arrayIndexMutationEpoch,
-		})
 	}
+}
+
+// recordConditionFact records and activates the common truth fact used by
+// successful assertions and if true branches. Mutation generation is kept
+// internal while the source-level provenance remains queryable and immutable.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.6 "Assertion refinement"
+//   - rules/control-flow/flowcontrol_if.md — § 27 "Sema and flow-analysis requirements"
+func (a *Analyzer) recordConditionFact(condition ast.Expression, kind ResolvedConditionFactKind, source lexer.Token) ResolvedConditionFact {
+	fact := ResolvedConditionFact{Kind: kind, Condition: condition, Source: source}
+	a.resolvedConditionFacts[condition] = fact
+	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{fact: fact, epoch: a.arrayIndexMutationEpoch})
+	return fact
 }
 
 // analyzePanicStatement records the explicit non-returning panic effect. The
@@ -2638,6 +2672,20 @@ func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
 		return
 	}
 	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicExplicit, Source: stmt.Token})
+}
+
+// analyzeUnreachableStatement records the defined panic effect of a reachable
+// checked unreachable statement. Branch analysis suppresses the effect when
+// the source path has already been proven impossible.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(2)–(6) "Checked unreachable"
+//   - rules/errors/panic.md — § 21(5)–(6) "Panic-effect model"
+func (a *Analyzer) analyzeUnreachableStatement(stmt *ast.UnreachableStatement) {
+	if stmt == nil || a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnreachable, Source: stmt.Token})
 }
 
 func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
@@ -2701,16 +2749,12 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	} else if isBoolLiteral(stmt.Condition, false) {
 		thenReachable = false
 	}
-	refinementCount := len(a.arrayIndexRefinements)
+	refinementCount := len(a.activeConditionFacts)
 	if stmt.Condition != nil && thenReachable {
-		a.arrayIndexRefinements = append(a.arrayIndexRefinements, arrayIndexRefinement{
-			condition: stmt.Condition,
-			proof:     ArrayIndexProofBranch,
-			epoch:     a.arrayIndexMutationEpoch,
-		})
+		a.recordConditionFact(stmt.Condition, ConditionFactBranchTrue, stmt.Token)
 	}
 	thenBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
-	a.arrayIndexRefinements = a.arrayIndexRefinements[:refinementCount]
+	a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
 	if !thenReachable {
 		thenBranch.continues = false
 	}
@@ -3240,12 +3284,11 @@ type branchAnalysis struct {
 	fallsThrough       bool
 }
 
-// arrayIndexRefinement retains one currently dominating source condition and
-// the Package 14 provenance assigned to bounds facts derived from it.
-type arrayIndexRefinement struct {
-	condition ast.Expression
-	proof     ArrayIndexProofKind
-	epoch     uint64
+// activeConditionFact adds mutation-generation validity to the public
+// condition fact while it dominates the current analysis point.
+type activeConditionFact struct {
+	fact  ResolvedConditionFact
+	epoch uint64
 }
 
 type loopIterationAnalysisState struct {
@@ -5723,11 +5766,14 @@ func blockDefinitelyReturns(block *ast.BlockStatement) bool {
 // Rules:
 //   - rules/errors/panic.md — § 15.3(1)–(4) "Meaning"
 //   - rules/errors/panic.md — § 4(1)–(7) "Core panic rule"
+//   - rules/errors/panic.md — § 16(2)–(5) "Checked unreachable"
 func statementDefinitelyReturns(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
 	case *ast.ReturnStatement:
 		return true
 	case *ast.PanicStatement:
+		return true
+	case *ast.UnreachableStatement:
 		return true
 	case *ast.AssertStatement:
 		return isBoolLiteral(stmt.Condition, false)
@@ -5916,11 +5962,17 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 	}
 }
 
+// statementTerminatesBlock identifies statements after which the current
+// block cannot continue, including defined checked panic paths.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(2)–(5) "Checked unreachable"
+//   - rules/tooling/diagnostics.txt — "Unreachable statements" (S3001)
 func (a *Analyzer) statementTerminatesBlock(stmt ast.Statement) bool {
 	switch stmt.(type) {
 	case *ast.BreakStatement, *ast.ContinueStatement:
 		return a.loopDepth > 0
-	case *ast.CancelStatement, *ast.PanicStatement:
+	case *ast.CancelStatement, *ast.PanicStatement, *ast.UnreachableStatement:
 		return true
 	default:
 		return a.statementDefinitelyReturns(stmt)
@@ -5976,9 +6028,14 @@ func (a *Analyzer) statementCanFallThrough(stmt ast.Statement) bool {
 	}
 }
 
+// statementCanFallThrough is the syntax-directed fallback for block flow and
+// treats checked unreachable as a defined non-returning panic statement.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(2)–(5) "Checked unreachable"
 func statementCanFallThrough(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
-	case *ast.ReturnStatement, *ast.PanicStatement, *ast.BreakStatement, *ast.ContinueStatement, *ast.CancelStatement, *ast.FallthroughStatement:
+	case *ast.ReturnStatement, *ast.PanicStatement, *ast.UnreachableStatement, *ast.BreakStatement, *ast.ContinueStatement, *ast.CancelStatement, *ast.FallthroughStatement:
 		return false
 	case *ast.IfStatement:
 		if isBoolLiteral(stmt.Condition, true) {
@@ -7367,6 +7424,19 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		return
 	}
 
+	// The direct `return try expression` form is a narrow Result forwarding
+	// boundary: failure propagates as Err(E), while success is reconstructed as
+	// Ok(T). Keeping this check at the return boundary prevents ordinary T
+	// expressions from acquiring an implicit T -> Result[T, E] conversion.
+	//
+	// Rules:
+	//   - rules/errors/errorhandling.md — §26 "return try expression"
+	//   - rules/memory/copy_move.md — §9 "Return boundaries"
+	if tryExpr, ok := stmt.Value.(*ast.TryExpression); ok && len(tryExpr.Handlers) == 0 {
+		a.analyzeReturnTryResultForwarding(functionName, returnType, tryExpr)
+		return
+	}
+
 	switch expr := stmt.Value.(type) {
 	case *ast.OkExpression:
 		expected := returnType.TypeArgs[0]
@@ -7464,6 +7534,47 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
 	}
+}
+
+// analyzeReturnTryResultForwarding validates the success half of direct
+// `return try expression` after ordinary bodyless-try analysis has validated
+// its failure channel. The resolved fact is consumed verbatim by Semantic IR.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §26 "return try expression"
+//   - rules/errors/errorhandling.md — §37.8 "return try"
+func (a *Analyzer) analyzeReturnTryResultForwarding(functionName string, returnType Type, expr *ast.TryExpression) {
+	successType, _ := a.inferExpression(expr)
+	if successType.Kind == InvalidType {
+		return
+	}
+
+	resolved, ok := a.resolvedTries[expr]
+	if !ok {
+		return
+	}
+	if resolved.Kind != ResolvedTryResultPropagation {
+		a.addErrorAtToken(expr.Token, "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
+		return
+	}
+	if !canInitialize(returnType.TypeArgs[1], resolved.ErrorType, expr.Expression) {
+		// inferTryExpression has already emitted the focused incompatible-
+		// propagation diagnostic. Do not bless an invalid try with a forwarding
+		// fact that lowering could consume.
+		return
+	}
+
+	expected := returnType.TypeArgs[0]
+	if !canInitialize(expected, successType, expr) {
+		a.addErrorAtToken(expr.Token, "function %s uses return try with success type %s, but %s requires Ok(%s)", functionName, typeDisplayName(successType), typeDisplayName(returnType), typeDisplayName(expected))
+		return
+	}
+
+	resolved.Kind = ResolvedTryResultReturnForwarding
+	a.resolvedTries[expr] = resolved
+	a.recordFunctionReturnOrigin(expected, expr)
+	a.markResourceTransfer(expr.Expression)
+	a.markMoveSource(expr.Expression)
 }
 
 func copySymbols(in map[string]Symbol) map[string]Symbol {
@@ -14432,18 +14543,25 @@ func (a *Analyzer) refinementProvesArrayIndex(array, index ast.Expression, index
 	lower := integerTypeMinimumIsNonNegative(indexType)
 	upper := false
 	proofKinds := map[ArrayIndexProofKind]bool{}
-	for _, refinement := range a.arrayIndexRefinements {
+	for _, refinement := range a.activeConditionFacts {
 		if refinement.epoch != a.arrayIndexMutationEpoch {
 			continue
 		}
-		conditionLower, conditionUpper := a.conditionBoundsArrayIndex(refinement.condition, array, index, length)
+		conditionLower, conditionUpper := a.conditionBoundsArrayIndex(refinement.fact.Condition, array, index, length)
+		proof := ArrayIndexProofOther
+		switch refinement.fact.Kind {
+		case ConditionFactBranchTrue:
+			proof = ArrayIndexProofBranch
+		case ConditionFactAssertionSuccess:
+			proof = ArrayIndexProofAssertion
+		}
 		if conditionLower && !lower {
 			lower = true
-			proofKinds[refinement.proof] = true
+			proofKinds[proof] = true
 		}
 		if conditionUpper && !upper {
 			upper = true
-			proofKinds[refinement.proof] = true
+			proofKinds[proof] = true
 		}
 	}
 	if !lower || !upper || len(proofKinds) == 0 {
@@ -22121,6 +22239,11 @@ func statementToken(stmt ast.Statement) lexer.Token {
 		}
 		return stmt.Token
 	case *ast.PanicStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
+	case *ast.UnreachableStatement:
 		if stmt == nil {
 			return lexer.Token{}
 		}

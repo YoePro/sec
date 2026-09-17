@@ -429,6 +429,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseExpressionOrAssignmentStatement()
 
 	case lexer.IDENT:
+		if p.isCheckedUnreachableStatement() {
+			return p.parseUnreachableStatement()
+		}
 		if p.curToken.Lexeme == "test" && p.recoveryContext == RecoveryContextTopLevel {
 			return p.parseTestDeclaration()
 		}
@@ -689,7 +692,7 @@ func (p *Parser) parseUnsupportedDoWhileStatement() ast.Statement {
 	}
 	p.nextToken()
 	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF ||
-		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminator(p.peekToken.Type)) {
+		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminatorToken(p.peekToken)) {
 		return stmt
 	}
 	p.nextToken()
@@ -798,7 +801,7 @@ func (p *Parser) parseDiscardStatement() ast.Statement {
 func (p *Parser) parseAssertStatement() ast.Statement {
 	stmt := &ast.AssertStatement{Token: p.curToken}
 	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF ||
-		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminator(p.peekToken.Type)) {
+		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminatorToken(p.peekToken)) {
 		p.addError("assert requires a condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return stmt
 	}
@@ -872,6 +875,39 @@ func (p *Parser) parsePanicStatement() ast.Statement {
 	p.nextToken()
 	stmt.Message = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
 	return stmt
+}
+
+// parseUnreachableStatement retains Sec's payload-free checked unreachable as
+// a dedicated statement. The spelling remains an identifier outside this
+// exact statement context because lexical_structure.md does not reserve it as
+// a hard keyword.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(1) "Checked unreachable"
+//   - rules/foundations/lexical_structure.md — § 7.1 "General language keywords"
+func (p *Parser) parseUnreachableStatement() ast.Statement {
+	return &ast.UnreachableStatement{Token: p.curToken}
+}
+
+// isCheckedUnreachableStatement distinguishes the canonical bare statement
+// from ordinary identifier uses such as a declaration, call, or expression.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(1) "Checked unreachable"
+//   - rules/foundations/lexical_structure.md — § 7.1 "General language keywords"
+func (p *Parser) isCheckedUnreachableStatement() bool {
+	if p.curToken.Type != lexer.IDENT || p.curToken.Lexeme != "unreachable" {
+		return false
+	}
+	if p.peekToken.Line > p.curToken.Line {
+		return true
+	}
+	switch p.peekToken.Type {
+	case lexer.COMMENT, lexer.SEMICOLON, lexer.RBRACE, lexer.EOF:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseDetachStatement() ast.Statement {
@@ -3525,7 +3561,7 @@ func (p *Parser) parseReturnStatement() ast.Statement {
 	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || isSwitchClauseStart(p.peekToken) {
 		return stmt
 	}
-	if p.peekToken.Line > p.curToken.Line && p.isReturnTerminator(p.peekToken.Type) {
+	if p.peekToken.Line > p.curToken.Line && p.isReturnTerminatorToken(p.peekToken) {
 		return stmt
 	}
 
@@ -3563,11 +3599,22 @@ func (p *Parser) isReturnTerminator(t lexer.TokenType) bool {
 		lexer.ASM,
 		lexer.DEFER,
 		lexer.DISCARD,
-		lexer.ASSERT:
+		lexer.ASSERT,
+		lexer.PANIC:
 		return true
 	default:
 		return false
 	}
+}
+
+// isReturnTerminatorToken extends hard statement starters with contextual
+// checked unreachable so a bare return on the preceding line remains bare.
+//
+// Rules:
+//   - rules/errors/panic.md — § 16(1) "Checked unreachable"
+func (p *Parser) isReturnTerminatorToken(token lexer.Token) bool {
+	return p.isReturnTerminator(token.Type) ||
+		(token.Type == lexer.IDENT && token.Lexeme == "unreachable")
 }
 
 func (p *Parser) parseStructStatement() ast.Statement {

@@ -1,0 +1,13 @@
+module main
+
+fn Stop() int {
+    unreachable
+}
+
+fn unreachable() int {
+    return 1
+}
+
+fn UseIdentifier() int {
+    return unreachable()
+}

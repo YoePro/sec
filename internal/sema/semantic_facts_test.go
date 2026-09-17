@@ -245,7 +245,7 @@ func TestResolvedFixedArrayIndexRefinementProofs(t *testing.T) {
 		proof    ArrayIndexProofKind
 	}{
 		{function: "Branch", check: ArrayIndexProvenSafe, proof: ArrayIndexProofBranch},
-		{function: "Asserted", check: ArrayIndexProvenSafe, proof: ArrayIndexProofOther},
+		{function: "Asserted", check: ArrayIndexProvenSafe, proof: ArrayIndexProofAssertion},
 		{function: "UnsignedBranch", check: ArrayIndexProvenSafe, proof: ArrayIndexProofBranch},
 		{function: "MissingLower", check: ArrayIndexRuntimeCheck},
 		{function: "ZeroLength", check: ArrayIndexRuntimeCheck},

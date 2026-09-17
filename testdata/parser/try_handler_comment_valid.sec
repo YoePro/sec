@@ -1,0 +1,9 @@
+module try_handler_comment
+
+fn UseResult() Result[int, IOError] {
+	let value := try Calculate() {
+		Err(IOError.InvalidValue) => 0
+		Err(error) => return Err(error) // propagate
+	}
+	return Ok(value)
+}

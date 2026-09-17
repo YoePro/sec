@@ -103,6 +103,11 @@ const (
 	InvalidNominalTypeName              = "S1038"
 	GenericParameterShadowsType         = "S1039"
 	ParameterShadowsType                = "S1040"
+	UnresolvedGenericExtern             = "S1041"
+	InvalidTestingExpectEqualArguments  = "S1042"
+	InvalidTestingRequireEqualArguments = "S1043"
+	InvalidTestingTerminationArguments  = "S1044"
+	UnreachableTryHandler               = "S1045"
 	UnreachableStatement                = "S3001"
 	LargeValueParameter                 = "A2001"
 )
@@ -112,6 +117,7 @@ var registry = map[string]Definition{
 	InvalidNominalTypeName:              {ID: InvalidNominalTypeName, Name: "names.invalid-nominal-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	GenericParameterShadowsType:         {ID: GenericParameterShadowsType, Name: "names.generic-parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ParameterShadowsType:                {ID: ParameterShadowsType, Name: "names.parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	UnresolvedGenericExtern:             {ID: UnresolvedGenericExtern, Name: "ffi.unresolved-generic-extern", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerUnknownEscape:                  {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},
@@ -308,6 +314,18 @@ var registry = map[string]Definition{
 	},
 	InvalidTestingLogArguments: {
 		ID: InvalidTestingLogArguments, Name: "testing.invalid-log-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InvalidTestingExpectEqualArguments: {
+		ID: InvalidTestingExpectEqualArguments, Name: "testing.invalid-expect-equal-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InvalidTestingRequireEqualArguments: {
+		ID: InvalidTestingRequireEqualArguments, Name: "testing.invalid-require-equal-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	InvalidTestingTerminationArguments: {
+		ID: InvalidTestingTerminationArguments, Name: "testing.invalid-termination-arguments", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	UnreachableTryHandler: {
+		ID: UnreachableTryHandler, Name: "error-handling.unreachable-try-handler", Family: "error-handling", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	RedundantAssociatedStatic: {
 		ID:              RedundantAssociatedStatic,

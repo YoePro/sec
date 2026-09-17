@@ -4426,6 +4426,9 @@ func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration,
 		a.addErrorAtToken(fn.Name.Token, "function %s is compiler-known and cannot be declared", name)
 		return
 	}
+	if a.rejectUnresolvedGenericExtern(fn) {
+		return
+	}
 	if len(fn.GenericParameters) > 0 {
 		a.genericParameterNames(fn.GenericParameters)
 		a.validateGenericParameterConstraints(fn.GenericParameters)
@@ -15448,9 +15451,11 @@ func (a *Analyzer) inferNewExpression(expr *ast.NewExpression, handled bool) (Ty
 //
 // Rules:
 //   - rules/tooling/testing.md — §11 "Compiler-known testing namespace"
+//   - rules/tooling/testing.md — §§12–14 "testing.Pass", "testing.Fail", "testing.Skip"
 //   - rules/tooling/testing.md — §15 "testing.Log"
 //   - rules/tooling/testing.md — §16 "testing.Expect"
 //   - rules/tooling/testing.md — §17 "testing.Require"
+//   - rules/tooling/testing.md — §18 "Equality expectations"
 //   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
 func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
@@ -15465,6 +15470,15 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 	var kind TestingOperationKind
 	var diagnosticID string
 	switch member.Property.Value {
+	case "Pass":
+		kind = TestingOperationPass
+		diagnosticID = diagnostics.InvalidTestingTerminationArguments
+	case "Fail":
+		kind = TestingOperationFail
+		diagnosticID = diagnostics.InvalidTestingTerminationArguments
+	case "Skip":
+		kind = TestingOperationSkip
+		diagnosticID = diagnostics.InvalidTestingTerminationArguments
 	case "Expect":
 		kind = TestingOperationExpect
 		diagnosticID = diagnostics.InvalidTestingExpectArguments
@@ -15474,6 +15488,12 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 	case "Log":
 		kind = TestingOperationLog
 		diagnosticID = diagnostics.InvalidTestingLogArguments
+	case "ExpectEqual":
+		kind = TestingOperationExpectEqual
+		diagnosticID = diagnostics.InvalidTestingExpectEqualArguments
+	case "RequireEqual":
+		kind = TestingOperationRequireEqual
+		diagnosticID = diagnostics.InvalidTestingRequireEqualArguments
 	default:
 		return Type{}, expressionValue{}, false
 	}
@@ -15500,7 +15520,19 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 		)
 		return Type{Kind: InvalidType}, display, true
 	}
-	if kind == TestingOperationLog {
+	if kind == TestingOperationPass {
+		if len(expr.Arguments) != 0 {
+			for _, argument := range expr.Arguments {
+				a.inferExpression(argument)
+			}
+			a.addErrorAtTokenWithID(member.Property.Token, diagnosticID,
+				"testing.Pass expects no arguments, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, display, true
+		}
+		a.resolvedTestingOperations[expr] = ResolvedTestingOperation{Kind: kind, Test: a.currentTest}
+		return Type{Name: "void", Kind: VoidType}, display, true
+	}
+	if kind == TestingOperationLog || kind == TestingOperationFail || kind == TestingOperationSkip {
 		if len(expr.Arguments) != 1 {
 			for _, argument := range expr.Arguments {
 				a.inferExpression(argument)
@@ -15508,7 +15540,8 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 			a.addErrorAtTokenWithID(
 				member.Property.Token,
 				diagnosticID,
-				"testing.Log expects exactly one string message, got %d arguments",
+				"testing.%s expects exactly one string message, got %d arguments",
+				member.Property.Value,
 				len(expr.Arguments),
 			)
 			return Type{Kind: InvalidType}, display, true
@@ -15523,7 +15556,8 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 			a.addErrorAtTokenWithID(
 				expressionToken(message),
 				diagnosticID,
-				"testing.Log message must be string, got %s",
+				"testing.%s message must be string, got %s",
+				member.Property.Value,
 				typeDisplayName(messageType),
 			)
 			return Type{Kind: InvalidType}, display, true
@@ -15532,6 +15566,44 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 			Kind:    kind,
 			Test:    a.currentTest,
 			Message: message,
+		}
+		return Type{Name: "void", Kind: VoidType}, display, true
+	}
+	if kind == TestingOperationExpectEqual || kind == TestingOperationRequireEqual {
+		if len(expr.Arguments) < 2 || len(expr.Arguments) > 3 {
+			for _, argument := range expr.Arguments {
+				a.inferExpression(argument)
+			}
+			a.addErrorAtTokenWithID(member.Property.Token, diagnosticID,
+				"testing.%s expects expected and actual values and an optional string message, got %d arguments",
+				member.Property.Value, len(expr.Arguments))
+			return Type{Kind: InvalidType}, display, true
+		}
+		expected, actual := expr.Arguments[0], expr.Arguments[1]
+		expectedType, _ := a.inferExpression(expected)
+		actualType, _ := a.inferExpression(actual)
+		valid := expectedType.Kind != InvalidType && actualType.Kind != InvalidType
+		if valid {
+			valid = a.validateTestingEquality(expected, actual, expectedType, actualType, member.Property.Token, diagnosticID)
+		}
+		var message ast.Expression
+		if len(expr.Arguments) == 3 {
+			message = expr.Arguments[2]
+			stringType := a.types["string"]
+			messageType, _ := a.inferExpressionWithExpected(message, stringType)
+			if messageType.Kind == InvalidType {
+				valid = false
+			} else if !canInitialize(stringType, messageType, message) {
+				a.addErrorAtTokenWithID(expressionToken(message), diagnosticID,
+					"testing.%s message must be string, got %s", member.Property.Value, typeDisplayName(messageType))
+				valid = false
+			}
+		}
+		if !valid {
+			return Type{Kind: InvalidType}, display, true
+		}
+		a.resolvedTestingOperations[expr] = ResolvedTestingOperation{
+			Kind: kind, Test: a.currentTest, Expected: expected, Actual: actual, Message: message,
 		}
 		return Type{Name: "void", Kind: VoidType}, display, true
 	}
@@ -15590,6 +15662,40 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 		Message:   message,
 	}
 	return Type{Name: "void", Kind: VoidType}, display, true
+}
+
+// validateTestingEquality applies the same literal shaping, unit comparison,
+// and equality-comparability rules as an ordinary == expression. Both source
+// operands have already been inferred, so neither is visited a second time.
+// Rule: rules/tooling/testing.md — §18.5–18.6 "Ordinary Sec equality".
+func (a *Analyzer) validateTestingEquality(expected, actual ast.Expression, expectedType, actualType Type, token lexer.Token, diagnosticID string) bool {
+	comparison := &ast.InfixExpression{Token: token, Left: expected, Operator: "==", Right: actual}
+	if _, ok := actual.(*ast.CharLiteral); ok && expectedType.Kind == RuneType {
+		actualType = Type{Name: "rune", Kind: RuneType}
+		a.expressionTypes[actual] = actualType
+	}
+	if _, ok := expected.(*ast.CharLiteral); ok && actualType.Kind == RuneType {
+		expectedType = Type{Name: "rune", Kind: RuneType}
+		a.expressionTypes[expected] = expectedType
+	}
+	var valid bool
+	actualType, valid = a.contextualNumericLiteralType(actual, actualType, expectedType)
+	if !valid {
+		return false
+	}
+	expectedType, valid = a.contextualNumericLiteralType(expected, expectedType, actualType)
+	if !valid {
+		return false
+	}
+	if hasUnitSemantics(expectedType) || hasUnitSemantics(actualType) {
+		return a.validateUnitComparison(comparison, expectedType, actualType)
+	}
+	if canCompareEquality(expectedType, actualType) {
+		return true
+	}
+	a.addErrorAtTokenWithID(token, diagnosticID,
+		"testing equality cannot compare %s and %s", typeDisplayName(expectedType), typeDisplayName(actualType))
+	return false
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
@@ -18680,17 +18786,27 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 	return operator.ResultType, result
 }
 
-// analyzeTryHandlers builds the resolved Result handler plan required by
-// rules/errors/errorhandling.md and rules/control-flow/flowcontrol_match.md.
-// correction20.md includes payload-discard catch-alls in exhaustiveness.
+// analyzeTryHandlers builds the resolved Result handler plan and diagnoses
+// unguarded handlers covered by an earlier catch-all, identical variant, or
+// the complete set of earlier variants of a closed enum error.
+// The current plan still requires exhaustive handlers; partial propagation
+// remains to be implemented separately.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §§17–18 "Err(_)" and "Handler order and reachability"
+//   - rules/control-flow/flowcontrol_match.md — Result error patterns
+//   - rules/tooling/diagnostics.txt — "Error-handling diagnostics"
+//   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
 func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) (ResolvedTryPlan, bool) {
 	successType := resultType.TypeArgs[0]
 	errorType := resultType.TypeArgs[1]
 	plan := ResolvedTryPlan{SuccessType: successType, ErrorType: errorType}
 	errorsBefore := len(a.errors)
 	errorCatchAllSeen := false
+	var errorCatchAllToken lexer.Token
 	okSeen := false
 	matchedVariants := map[string]lexer.Token{}
+	var lastVariantToken lexer.Token
 
 	for sourceIndex, handler := range expr.Handlers {
 		kind, bindingName, variantName, bindingType, ok := a.analyzeTryHandlerPattern(handler, successType, errorType)
@@ -18715,15 +18831,34 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		}
 
 		if errorCatchAllSeen {
-			a.addErrorAtToken(handler.Token, "unreachable try handler")
+			a.addErrorAtTokenWithPreviousID(handler.Token, errorCatchAllToken,
+				diagnostics.UnreachableTryHandler,
+				"unreachable try handler: an earlier Err catch-all already handles this error")
 			continue
 		}
 
 		if bindingName != "" {
 			errorCatchAllSeen = true
+			errorCatchAllToken = handler.Token
+		}
+		if variantName != "" {
+			if previous, exists := matchedVariants[variantName]; exists {
+				a.addErrorAtTokenWithPreviousID(handler.Token, previous,
+					diagnostics.UnreachableTryHandler,
+					"unreachable try handler: an earlier Err(%s) handler already handles this error variant", variantName)
+				continue
+			}
+		}
+		if bindingName != "" && errorType.Kind == EnumType && len(errorType.EnumValues) > 0 &&
+			len(matchedVariants) == len(errorType.EnumValues) {
+			a.addErrorAtTokenWithPreviousID(handler.Token, lastVariantToken,
+				diagnostics.UnreachableTryHandler,
+				"unreachable try handler: earlier Err handlers already cover every variant of %s", typeDisplayName(errorType))
+			continue
 		}
 		if variantName != "" {
 			matchedVariants[variantName] = handler.Token
+			lastVariantToken = handler.Token
 		}
 
 		patternKind := TryHandlerErrVariant
@@ -18779,13 +18914,24 @@ func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, successType
 	}
 }
 
-// analyzeTryErrHandlerPattern implements Result error patterns from
-// rules/control-flow/flowcontrol_match.md. correction20.md makes Err(_) an
-// exhaustive catch-all that discards the payload without introducing a binding.
+// analyzeTryErrHandlerPattern implements Result error patterns. Err(_) is an
+// exhaustive catch-all but may discard its error payload only when the payload
+// type has no unresolved lifecycle obligation.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §17 "Err(_) and explicit error acknowledgement"
+//   - rules/control-flow/discard.md — "Recursive discardability"
+//   - rules/control-flow/flowcontrol_match.md — Result error patterns
+//   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
 func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
 	switch pattern := errPattern.Value.(type) {
 	case *ast.Identifier:
 		if pattern.Value == "_" {
+			if !isDiscardableType(errorType) {
+				a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
+					"Bind the error and resolve its task or thread obligation instead of using Err(_).",
+					"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(errorType))
+			}
 			return "Err", "_", "", errorType, true
 		}
 		if enumHasValue(errorType, pattern.Value) {
@@ -19454,9 +19600,15 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 	return info, true
 }
 
-// analyzeResultPayloadPattern implements Result payload bindings from
-// rules/control-flow/flowcontrol_match.md. correction20.md permits underscore
-// to consume and discard either payload without creating a local symbol.
+// analyzeResultPayloadPattern implements Result payload bindings. Err(_) may
+// intentionally discard an error payload only when recursive discardability
+// proves that no unresolved lifecycle obligation can be lost.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — §7 "Result errors must not be hidden"
+//   - rules/errors/errorhandling.md — §17 "Err(_) and explicit error acknowledgement"
+//   - rules/control-flow/discard.md — §18 "Recursive discardability"
+//   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
 func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression, token lexer.Token, payloadType Type) (matchPatternInfo, bool) {
 	info := matchPatternInfo{Kind: kind, PayloadVariant: kind}
 	if expr == nil {
@@ -19468,6 +19620,12 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 		return matchPatternInfo{}, false
 	}
 	if binding.Value == "_" {
+		if kind == "Err" && !isDiscardableType(payloadType) {
+			a.addErrorAtTokenWithMetadata(binding.Token, diagnostics.NonDiscardableValue,
+				"Bind the error and resolve its task or thread obligation instead of using Err(_).",
+				"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(payloadType))
+			return matchPatternInfo{}, false
+		}
 		info.PayloadDiscard = true
 		return info, true
 	}

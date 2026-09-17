@@ -707,7 +707,7 @@ func (b *pitfallBuilder) inspectInclusiveLengthLoop(loop *ast.ForStatement) {
 			b.add(finding)
 		}
 		// An exit guard protects only later statements. Indexing inside the
-		// guard itself may happen before its break or return.
+		// guard itself may happen before its break, continue, or return.
 		if b.endpointExitGuard(statement, binding.Token, collection) {
 			guarded = true
 		}
@@ -719,7 +719,8 @@ func (b *pitfallBuilder) inspectInclusiveLengthLoop(loop *ast.ForStatement) {
 // The comparison must use the same resolved binding and collection as the index.
 //
 // Rules: rules/analysis/pitfall_analysis.md — "Guards participate in pitfall
-// reasoning" and "Inclusive upper bound against collection length".
+// reasoning" and "Inclusive upper bound against collection length";
+// rules/control-flow/flowcontrol_while.md — §14 "continue".
 func (b *pitfallBuilder) endpointExitGuard(statement ast.Statement, binding lexer.Token, collection string) bool {
 	conditional, ok := statement.(*ast.IfStatement)
 	if !ok {
@@ -754,13 +755,19 @@ func (b *pitfallBuilder) endpointExitGuard(statement ast.Statement, binding lexe
 	return false
 }
 
+// pitfallBlockDefinitelyExits recognizes an unconditional transfer away from
+// the current loop-body remainder, including continue to the next iteration.
+// Nested conditionals count only when both arms transfer.
+//
+// Rules: rules/analysis/pitfall_analysis.md — "Reachability", "Guards participate
+// in pitfall reasoning"; rules/control-flow/flowcontrol_while.md — §14 "continue".
 func pitfallBlockDefinitelyExits(block *ast.BlockStatement) bool {
 	if block == nil {
 		return false
 	}
 	for _, statement := range block.Statements {
 		switch statement := statement.(type) {
-		case *ast.BreakStatement, *ast.ReturnStatement:
+		case *ast.BreakStatement, *ast.ContinueStatement, *ast.ReturnStatement:
 			return true
 		case *ast.IfStatement:
 			if statement.Alternative != nil && pitfallBlockDefinitelyExits(statement.Consequence) && pitfallBlockDefinitelyExits(statement.Alternative) {

@@ -1,0 +1,5 @@
+module testing_termination
+
+fn Outside() void {
+	testing.Pass()
+}

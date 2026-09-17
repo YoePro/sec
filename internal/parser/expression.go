@@ -1141,6 +1141,7 @@ func (p *Parser) parseTryExpression() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Unterminated block diagnostics"
 //   - rules/compiler/parser_recovery.md — "Other specialized unterminated constructs can still return nil"
 //   - rules/foundations/grammar.md — "TryHandler"
+//   - rules/errors/errorhandling.md — §15.2 "No nested match wrapper syntax"
 func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 	handlers := []*ast.TryHandler{}
 	previousContext := p.recoveryContext
@@ -1161,7 +1162,7 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 			continue
 		}
 		if p.curToken.Type == lexer.MATCH {
-			return p.parseExplicitTryMatchHandlerBlock()
+			return p.recoverObsoleteTryMatchHandlerBlock()
 		}
 
 		start := p.curToken
@@ -1185,7 +1186,17 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 	}
 }
 
-func (p *Parser) parseExplicitTryMatchHandlerBlock() []*ast.TryHandler {
+// recoverObsoleteTryMatchHandlerBlock diagnoses the removed wrapper while
+// retaining its inner handlers as partial syntax for IDE consumers. The parse
+// diagnostic still makes the source invalid for compilation.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §15.2 "No nested match wrapper syntax"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
+func (p *Parser) recoverObsoleteTryMatchHandlerBlock() []*ast.TryHandler {
+	wrapper := p.curToken
+	p.addDiagnostic(compilerdiagnostics.ParserReservedSyntax, wrapper, nil, &wrapper,
+		"try handlers use direct Err(...) arms; remove the nested match { ... } wrapper")
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}

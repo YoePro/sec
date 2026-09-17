@@ -35,6 +35,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		InvalidNominalTypeName:              SeverityError,
 		GenericParameterShadowsType:         SeverityError,
 		ParameterShadowsType:                SeverityError,
+		UnresolvedGenericExtern:             SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
 		IncompatibleUnitConversion:          SeverityError,
@@ -60,6 +61,10 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		InvalidTestingExpectArguments:       SeverityError,
 		InvalidTestingRequireArguments:      SeverityError,
 		InvalidTestingLogArguments:          SeverityError,
+		InvalidTestingExpectEqualArguments:  SeverityError,
+		InvalidTestingRequireEqualArguments: SeverityError,
+		InvalidTestingTerminationArguments:  SeverityError,
+		UnreachableTryHandler:               SeverityError,
 		LargeValueParameter:                 SeverityInformation,
 	}
 

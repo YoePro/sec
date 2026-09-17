@@ -1,0 +1,12 @@
+module try_err_discard
+
+type Failure union error {
+	Pending(Task[int])
+	Invalid
+}
+
+fn Recover(result: Result[int, Failure]) int {
+	return try result {
+		Err(_) => 0
+	}
+}

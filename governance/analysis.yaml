@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-09-16"
+    updated: "2026-09-17"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, effect, and FFI
@@ -42,6 +42,7 @@ integrations:
       - inclusive range endpoint detection when the same resolved loop binding indexes the same collection that supplies Len
       - suppression of the inclusive endpoint finding when a preceding semantically matched equality or ordered endpoint guard exits before the indexed access
       - endpoint-exit proof also recognizes an else-branch break or return for matched strict-less-than or not-equal conditions, and applies only to statements after the guard
+      - matched endpoint guards using continue also suppress only later indexed accesses in the current iteration; an index inside the guard and conditional continues remain findings
       - ProvenInvalid and Proven classification linked to the owning bounds rule without emitting a duplicate pitfall diagnostic
       - half-open ranges, different bound/index collection identities, and guarded inclusive endpoints covered as negative or suppression cases
       - boolean-intent rule correlating resolved bool operand types, exact 0/1 constants, equality operators, and redundant outer bool conversions
@@ -53,7 +54,7 @@ integrations:
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
-      - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break or return in the endpoint branch
+      - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break, continue, or return in the endpoint branch
       - implement upper-neighbor and lower-neighbor offset checks across normalized iteration domains
       - implement ineffective <= len and > len rejection-guard correlation
       - implement final-element access reasoning that consumes non-empty proofs
@@ -92,3 +93,7 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'TestPitfall|TestEqualityRequiresCompatibleTypes'
         result: passed
+      - command: go test ./internal/sema -run 'TestPitfallAnalysis(RecognizesEndpointContinueGuards|ContinueGuardDoesNotProtectItsOwnIndex|EndpointGuardDoesNotProtectItsOwnIndex)' -count=1
+        result: passed; matched continue guards suppress only later indexes while ineffective and conditional guards remain findings
+      - command: go test ./...
+        result: passed after the endpoint-continue pitfall analysis update

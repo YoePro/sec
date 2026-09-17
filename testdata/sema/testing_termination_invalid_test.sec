@@ -1,0 +1,21 @@
+module testing_termination
+
+test "pass arguments" {
+	testing.Pass("unexpected")
+}
+
+test "fail arity" {
+	testing.Fail()
+}
+
+test "fail message" {
+	testing.Fail(1)
+}
+
+test "skip arity" {
+	testing.Skip()
+}
+
+test "skip message" {
+	testing.Skip(false)
+}

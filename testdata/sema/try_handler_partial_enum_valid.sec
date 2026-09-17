@@ -1,0 +1,19 @@
+module try_handler_partial_enum
+
+enum IOError error {
+	NotFound,
+	PermissionDenied,
+	TimedOut,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn Recover() int {
+	return try Read() {
+		Err(IOError.NotFound) => 0
+		Err(IOError.PermissionDenied) => 1
+		Err(_) => 2
+	}
+}

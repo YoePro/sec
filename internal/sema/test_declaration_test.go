@@ -2,6 +2,7 @@ package sema
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"sec/internal/ast"
@@ -46,6 +47,144 @@ func TestTestDeclarationIdentityValidation(t *testing.T) {
 				t.Fatalf("duplicate diagnostic has no previous declaration: %+v", errors[0])
 			}
 		})
+	}
+}
+
+// TestTestingEqualityOperations validates the frontend signatures and retained
+// expected/actual operands without assuming a test runner or lowering exists.
+// Rules: rules/tooling/testing.md — §§11.4 and 18 "Equality expectations".
+func TestTestingEqualityOperations(t *testing.T) {
+	path := "testing_equality_valid_test.sec"
+	source := `module testing_equality
+test "equality" {
+	testing.ExpectEqual(1, 1)
+	testing.ExpectEqual(true == true, true, "comparison result")
+	testing.RequireEqual("expected", "actual")
+	testing.RequireEqual(3, 3, "context")
+}`
+	result := parser.New(lexer.NewWithFile(source, path)).Parse()
+	if result.HasErrors {
+		t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+	}
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("testing equality errors = %+v", errors)
+	}
+	declaration := result.Program.Statements[1].(*ast.TestDeclaration)
+	wants := []TestingOperationKind{
+		TestingOperationExpectEqual, TestingOperationExpectEqual,
+		TestingOperationRequireEqual, TestingOperationRequireEqual,
+	}
+	for index, want := range wants {
+		call := declaration.Body.Statements[index].(*ast.ExpressionStatement).Expression.(*ast.CallExpression)
+		operation, ok := analyzer.ResolvedTestingOperationOf(call)
+		if !ok || operation.Kind != want || operation.Test != declaration ||
+			operation.Expected != call.Arguments[0] || operation.Actual != call.Arguments[1] {
+			t.Errorf("operation %d = %+v, found=%v, want %s and original operands", index, operation, ok, want)
+		}
+		if (operation.Message != nil) != (len(call.Arguments) == 3) {
+			t.Errorf("operation %d message = %#v", index, operation.Message)
+		}
+	}
+}
+
+func TestTestingEqualityOperationDiagnostics(t *testing.T) {
+	tests := []struct {
+		name, call, wantID string
+	}{
+		{"missing actual", "testing.ExpectEqual(1)", diagnostics.InvalidTestingExpectEqualArguments},
+		{"excess arguments", "testing.RequireEqual(1, 1, \"message\", 2)", diagnostics.InvalidTestingRequireEqualArguments},
+		{"incomparable operands", "testing.ExpectEqual(true, 1)", diagnostics.InvalidTestingExpectEqualArguments},
+		{"invalid message", "testing.RequireEqual(1, 1, false)", diagnostics.InvalidTestingRequireEqualArguments},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := "module testing_equality\ntest \"invalid\" {\n" + test.call + "\n}"
+			result := parser.New(lexer.NewWithFile(source, "testing_equality_invalid_test.sec")).Parse()
+			if result.HasErrors {
+				t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+			}
+			errors := NewAnalyzer().Analyze(result.Program)
+			if len(errors) != 1 || errors[0].ID != test.wantID {
+				t.Fatalf("errors = %+v, want one %s", errors, test.wantID)
+			}
+		})
+	}
+	t.Run("outside test context", func(t *testing.T) {
+		source := "module testing_equality\nfn F() void { testing.ExpectEqual(1, 1) }"
+		result := parser.New(lexer.NewWithFile(source, "testing_equality_invalid.sec")).Parse()
+		if result.HasErrors {
+			t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+		}
+		errors := NewAnalyzer().Analyze(result.Program)
+		if len(errors) != 1 || errors[0].ID != diagnostics.TestingOutsideTestContext || !strings.Contains(errors[0].Message, "ExpectEqual") {
+			t.Fatalf("outside-context errors = %+v", errors)
+		}
+	})
+}
+
+// TestTestingTerminationOperations validates the compiler-known signatures
+// and operation facts, leaving runtime termination and cleanup to later stages.
+// Rules: rules/tooling/testing.md — §§11.3–11.4 and 12–14.
+func TestTestingTerminationOperations(t *testing.T) {
+	path := "../../testdata/sema/testing_termination_valid_test.sec"
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := parser.New(lexer.NewWithFile(string(source), path)).Parse()
+	if result.HasErrors {
+		t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+	}
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(result.Program); len(errors) != 0 {
+		t.Fatalf("termination operation errors = %+v", errors)
+	}
+	wants := []TestingOperationKind{TestingOperationPass, TestingOperationFail, TestingOperationSkip}
+	for index, kind := range wants {
+		declaration := result.Program.Statements[index+1].(*ast.TestDeclaration)
+		call := declaration.Body.Statements[0].(*ast.ExpressionStatement).Expression.(*ast.CallExpression)
+		operation, ok := analyzer.ResolvedTestingOperationOf(call)
+		if !ok || operation.Kind != kind || operation.Test != declaration ||
+			(operation.Message != nil) != (kind != TestingOperationPass) {
+			t.Errorf("operation %d = %+v, found=%v, want %s with correct message", index, operation, ok, kind)
+		}
+	}
+}
+
+func TestTestingTerminationOperationDiagnostics(t *testing.T) {
+	path := "../../testdata/sema/testing_termination_invalid_test.sec"
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := parser.New(lexer.NewWithFile(string(source), path)).Parse()
+	if result.HasErrors {
+		t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+	}
+	errors := NewAnalyzer().Analyze(result.Program)
+	wants := []string{"Pass", "Fail", "Fail", "Skip", "Skip"}
+	if len(errors) != len(wants) {
+		t.Fatalf("errors = %+v, want %d diagnostics", errors, len(wants))
+	}
+	for index, operation := range wants {
+		if errors[index].ID != diagnostics.InvalidTestingTerminationArguments || !strings.Contains(errors[index].Message, operation) {
+			t.Errorf("error %d = %+v, want S1044 for %s", index, errors[index], operation)
+		}
+	}
+
+	path = "../../testdata/sema/testing_termination_outside_invalid.sec"
+	source, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result = parser.New(lexer.NewWithFile(string(source), path)).Parse()
+	if result.HasErrors {
+		t.Fatalf("outside parser diagnostics = %+v", result.Diagnostics)
+	}
+	errors = NewAnalyzer().Analyze(result.Program)
+	if len(errors) != 1 || errors[0].ID != diagnostics.TestingOutsideTestContext {
+		t.Fatalf("outside-context errors = %+v", errors)
 	}
 }
 

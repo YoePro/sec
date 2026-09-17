@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-11"
+    revised: "2026-09-17"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -35,16 +35,29 @@ integrations:
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
+      - internal/parser/expression.go
       - internal/sema/analyzer.go
       - internal/sema/types.go
+      - internal/diagnostics/diagnostics.go
       - internal/formatter/formatter.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
+      - internal/sema/try_handler_reachability_test.go
+      - internal/sema/try_err_discard_test.go
+      - internal/sema/match_err_discard_test.go
+      - internal/ir/semantic/package11_test.go
       - internal/formatter/formatter_test.go
       - testdata/register8_valid.sec
       - testdata/sema/property_option_direct_return.sec
+      - testdata/sema/try_handler_shadow_invalid.sec
+      - testdata/sema/try_handler_partial_enum_valid.sec
+      - testdata/parser/obsolete_try_match_wrapper_invalid.sec
+      - testdata/parser/try_handler_comment_valid.sec
+      - testdata/sema/try_handler_direct_valid.sec
+      - testdata/sema/try_err_discard_non_discardable_invalid.sec
+      - testdata/sema/match_err_discard_non_discardable_invalid.sec
     implemented:
       - "Result[T, E], Ok(...), Err(...), ordinary Result propagation, and local Result handlers have substantial frontend and Semantic IR support."
       - "checked arithmetic already participates in language-defined try semantics and binds try to the complete following arithmetic expression."
@@ -73,9 +86,14 @@ integrations:
       - "direct-result-return: Compatible Result[T,E] expressions may be returned directly as complete Result carriers without unwrapping or reconstruction."
       - "option-direct-return: Compatible Option[T] calls, bound values, and readable property expressions, including carriers with move-only payloads, may be returned directly as complete carriers with ordinary terminal ownership transfer. Property lookup refreshes canonical impl metadata for aggregate payload types resolved before impl registration, and a non-reference getter result does not inherit a branch-scoped receiver borrow. Plain T values are not implicitly wrapped in Some, and incompatible Option specializations remain rejected."
       - "option-none-if-tests: Non-binding if option is None and if option is not None conditions lower in the parser to the existing exhaustive typed Option-match representation, preserving compiler analysis and later LSP completion."
+      - "try-handler-shadow-diagnostics: Sema rejects duplicate Err variants, Err arms after an unguarded catch-all, and catch-alls after every variant of a closed enum error has been handled. Stable S1045 points to the earlier covering arm or the last arm completing enum coverage; a partially covered enum retains its catch-all."
+      - "try-match-wrapper-removal: Parser rejects the obsolete try { match { ... } } handler wrapper with P2012 while retaining inner handlers and subsequent declarations for tooling recovery; direct Err handler syntax and trailing comments parse cleanly."
+      - "try-err-discardability: Sema checks recursive discardability of a concrete Result error payload before accepting Err(_); non-discardable task/thread obligations produce S1006 with guidance to bind and resolve the error."
+      - "match-err-discardability: Result match Err(_) now performs the same concrete error-payload discardability check; non-discardable task/thread obligations produce S1006 and prevent a resolved match plan."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
+      - "open-error-discardability: Resolve discardability of the open error root from compiler-owned concrete payload/provenance facts; current try and match Err(_) checks cover concrete error types only."
       - "result-consuming-projections: Add consuming Result[T,E].Ok() -> Option[T] and Result[T,E].Err() -> Option[E]. The owned Result is consumed, retained move-only payload moves without hidden clone, and the non-retained active payload is destroyed exactly once."
       - "result-borrowed-projections: Add non-consuming read-only Result properties OkRef -> Option[ref T] and ErrRef -> Option[ref E]. Their borrows are tied to the Result lifetime and normal borrow rules; the Result remains available after the borrow ends."
       - "result-projection-discardability: Reject a consuming .Ok() or .Err() projection when the active side being intentionally forgotten may contain a non-discardable obligation, unless path-sensitive facts prove that state unreachable."
@@ -85,8 +103,7 @@ integrations:
       - "try-heterogeneous-binding: Allow Err(name) catch-all binding only when the protected construct already provides one compiler-resolved binding type, such as one concrete error type or an explicitly declared error channel. Do not infer error solely to make an otherwise heterogeneous local binding possible."
       - "try-partial-handlers: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
       - "try-success-handler-removal: Reject Ok(...) handlers inside Result try and Some(...) handlers inside Option try. Success is implicit; code that needs explicit success and alternate branches must use match. Remove old lowering assumptions for explicit Ok try arms."
-      - "try-match-wrapper-removal: Remove and reject the legacy try expression { match { ... } } wrapper form. Try handlers are written directly in the attached handler block."
-      - "try-handler-order-reachability: Handlers are tested top-to-bottom and first match wins. Proven unreachable later handlers are compile errors, including handlers shadowed by an earlier unguarded Err(_) or otherwise subsumed pattern."
+      - "try-handler-order-reachability: Extend the implemented duplicate-variant, catch-all, and complete-enum checks to guarded handlers and other provable pattern subsumption; retain top-to-bottom first-match semantics in resolved plans."
       - "try-handler-where-guards: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
       - "try-recovery-values: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
       - "try-handler-failure-boundary: The attached handler set covers only failures from the protected expression. Failures originating in guards or handler bodies are outside that try and must use ordinary propagation or an explicit nested try."
@@ -122,6 +139,8 @@ integrations:
       - "Result patterns against Option and Option patterns against Result receive mentor diagnostics"
       - "no implicit Option-to-Result or Result-to-Option propagation"
       - "Err(_) and Err(named) accepted in try handlers"
+      - "Err(_) rejects concrete error channels with non-discardable task/thread obligations"
+      - "Result match Err(_) rejects concrete error channels with non-discardable task/thread obligations"
       - "legacy try { match { ... } } wrapper rejected"
       - "handlers execute top-to-bottom and first matching handler wins"
       - "provably unreachable handlers, including after unguarded Err(_), are compile errors"
@@ -163,6 +182,16 @@ integrations:
         result: passed
       - command: go test ./internal/parser -run TestParseIfOptionNoneConditionAsExhaustiveMatch -count=1
         result: passed for positive and negated non-binding Option None tests
+      - command: go test ./internal/sema -run TestTryHandlerShadowDiagnostics -count=1
+        result: passed; S1045 identifies both the shadowed and covering Err arms
+      - command: go test ./internal/sema -run 'TestTryHandler(ShadowDiagnostics|PartialEnumCatchAllRemainsReachable)' -count=1
+        result: passed; closed enum coverage shadows a later catch-all, partial coverage does not
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseObsoleteTryMatchWrapperRetainsHandlers|ParseTryExpressionHandlerAllowsTrailingComment|TryHandlersUseDirectSyntax)' -count=1
+        result: passed; obsolete wrapper is rejected and direct handlers remain valid
+      - command: go test ./internal/sema -run 'TestTryErrDiscardRejectsLifecycleError|TestTryErrDiscardPatternIsAccepted' -count=1
+        result: passed; non-discardable concrete error payloads cannot be ignored through Err(_)
+      - command: go test ./internal/sema -run 'Test(MatchErrDiscardRejectsLifecycleError|MatchErrDiscardPatternIsAccepted|TryErrDiscardRejectsLifecycleError)' -count=1
+        result: passed; match and try reject non-discardable concrete Err(_) payloads
       - command: go test ./...
         result: passed
 

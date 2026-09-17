@@ -1,0 +1,13 @@
+module match_err_discard
+
+type Failure union error {
+	Pending(Task[int])
+	Invalid
+}
+
+fn Inspect(result: Result[int, Failure]) int {
+	return match result {
+		Ok(value) => value
+		Err(_) => 0
+	}
+}

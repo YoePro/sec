@@ -42,9 +42,14 @@ type ResolvedCall struct {
 type TestingOperationKind string
 
 const (
-	TestingOperationExpect  TestingOperationKind = "expect"
-	TestingOperationRequire TestingOperationKind = "require"
-	TestingOperationLog     TestingOperationKind = "log"
+	TestingOperationPass         TestingOperationKind = "pass"
+	TestingOperationFail         TestingOperationKind = "fail"
+	TestingOperationSkip         TestingOperationKind = "skip"
+	TestingOperationExpect       TestingOperationKind = "expect"
+	TestingOperationRequire      TestingOperationKind = "require"
+	TestingOperationLog          TestingOperationKind = "log"
+	TestingOperationExpectEqual  TestingOperationKind = "expect-equal"
+	TestingOperationRequireEqual TestingOperationKind = "require-equal"
 )
 
 // ResolvedTestingOperation records a compiler-known testing call validated in
@@ -53,11 +58,13 @@ const (
 //
 // Rules:
 //   - rules/tooling/testing.md — §11 "Compiler-known testing namespace"
-//   - rules/tooling/testing.md — §§16–17 Expect and Require
+//   - rules/tooling/testing.md — §§12–18 test operations and expectations
 type ResolvedTestingOperation struct {
 	Kind      TestingOperationKind
 	Test      *ast.TestDeclaration
 	Condition ast.Expression
+	Expected  ast.Expression
+	Actual    ast.Expression
 	Message   ast.Expression
 }
 

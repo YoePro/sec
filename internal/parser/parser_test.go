@@ -2864,25 +2864,29 @@ fn UseResult() Result[int, IOError] {
 	}
 }
 
-func TestParseTryExpressionHandlersWithExplicitMatchWrapper(t *testing.T) {
-	input := `
-fn UseResult() Result[int, IOError] {
-	let value := try Calculate() {
-		match {
-			Err(IOError.InvalidValue) => 0
-			Err(error) => return Err(error)
-		}
+// TestParseObsoleteTryMatchWrapperRetainsHandlers verifies that the removed
+// wrapper is rejected while its inner handlers remain available to tooling.
+// Rules: rules/errors/errorhandling.md — §15.2 "No nested match wrapper syntax";
+// rules/compiler/parser_recovery.md — "Recovery goals".
+func TestParseObsoleteTryMatchWrapperRetainsHandlers(t *testing.T) {
+	path := "../../testdata/parser/obsolete_try_match_wrapper_invalid.sec"
+	input, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return Ok(value)
-}
-`
-
-	l := lexer.New(input)
+	l := lexer.NewWithFile(string(input), path)
 	p := New(l)
 	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	diagnosticsFound := p.Diagnostics()
+	if len(diagnosticsFound) != 1 || diagnosticsFound[0].ID != diagnostics.ParserReservedSyntax ||
+		diagnosticsFound[0].Primary.Type != lexer.MATCH || !strings.Contains(diagnosticsFound[0].Message, "remove the nested match") {
+		t.Fatalf("wrapper diagnostics = %+v", diagnosticsFound)
+	}
+	if len(program.Statements) != 3 {
+		t.Fatalf("recovery lost a later declaration: %#v", program.Statements)
+	}
 
-	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
 	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
 	tryExpr, ok := letStmt.Value.(*ast.TryExpression)
 	if !ok {
@@ -2900,24 +2904,17 @@ fn UseResult() Result[int, IOError] {
 }
 
 func TestParseTryExpressionHandlerAllowsTrailingComment(t *testing.T) {
-	input := `
-fn UseResult() Result[int, IOError] {
-	let value := try Calculate() {
-		match {
-			Err(IOError.InvalidValue) => 0
-			Err(error) => return Err(error) // propagate
-		}
+	path := "../../testdata/parser/try_handler_comment_valid.sec"
+	input, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return Ok(value)
-}
-`
-
-	l := lexer.New(input)
+	l := lexer.NewWithFile(string(input), path)
 	p := New(l)
 	program := p.ParseProgram()
 	checkParserErrors(t, p)
 
-	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
 	letStmt := fn.Body.Statements[0].(*ast.LetStatement)
 	tryExpr, ok := letStmt.Value.(*ast.TryExpression)
 	if !ok {

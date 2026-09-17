@@ -6484,35 +6484,14 @@ unit s physical
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestTryHandlersCanUseExplicitMatchWrapper(t *testing.T) {
-	input := `
-module main
-
-type Speed decimal<m/s>
-
-enum IOError error {
-	InvalidValue,
-}
-
-fn ReadSpeed() Result[Speed, IOError] {
-	return Err(IOError.InvalidValue)
-}
-
-fn UseFallback() Speed {
-	let speed := try ReadSpeed() {
-		match {
-			Err(IOError.InvalidValue) => Speed(0)
-			Err(error) => Speed(1)
-		}
+// TestTryHandlersUseDirectSyntax checks the canonical error-handler form.
+// Rule: rules/errors/errorhandling.md — §15.2 "No nested match wrapper syntax".
+func TestTryHandlersUseDirectSyntax(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/sema/try_handler_direct_valid.sec")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return speed
-}
-
-unit m physical
-unit s physical
-`
-
-	errors := analyzeSource(t, input)
+	errors := analyzeSource(t, string(input))
 	assertSemaErrors(t, errors, nil)
 }
 

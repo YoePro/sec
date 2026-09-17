@@ -1,0 +1,33 @@
+module try_handler_shadow
+
+enum IOError error {
+	NotFound,
+	PermissionDenied,
+}
+
+fn Read() Result[int, IOError] {
+	return Ok(1)
+}
+
+fn DuplicateVariant() int {
+	return try Read() {
+		Err(IOError.NotFound) => 0
+		Err(IOError.NotFound) => 1
+		Err(_) => 2
+	}
+}
+
+fn AfterCatchAll() int {
+	return try Read() {
+		Err(_) => 0
+		Err(IOError.PermissionDenied) => 1
+	}
+}
+
+fn AfterCompleteEnum() int {
+	return try Read() {
+		Err(IOError.NotFound) => 0
+		Err(IOError.PermissionDenied) => 1
+		Err(_) => 2
+	}
+}

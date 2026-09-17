@@ -1,0 +1,14 @@
+module obsolete_try_wrapper
+
+fn UseResult() Result[int, IOError] {
+	let value := try Calculate() {
+		match {
+			Err(IOError.InvalidValue) => 0
+			Err(error) => return Err(error)
+		}
+	}
+	return Ok(value)
+}
+
+fn AfterWrapper() void {
+}

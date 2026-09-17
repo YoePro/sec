@@ -1,0 +1,23 @@
+module try_handler_direct
+
+type Speed decimal<m/s>
+
+enum IOError error {
+	InvalidValue,
+	Unavailable,
+}
+
+fn ReadSpeed() Result[Speed, IOError] {
+	return Err(IOError.InvalidValue)
+}
+
+fn UseFallback() Speed {
+	let speed := try ReadSpeed() {
+		Err(IOError.InvalidValue) => Speed(0)
+		Err(error) => Speed(1)
+	}
+	return speed
+}
+
+unit m physical
+unit s physical

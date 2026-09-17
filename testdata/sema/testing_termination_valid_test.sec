@@ -1,0 +1,13 @@
+module testing_termination
+
+test "pass" {
+	testing.Pass()
+}
+
+test "fail" {
+	testing.Fail("deliberate failure")
+}
+
+test "skip" {
+	testing.Skip("device unavailable")
+}

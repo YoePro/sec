@@ -205,6 +205,72 @@ fn Visit(values: ref int[], other: ref int[], stop: bool) void {
 	}
 }
 
+// Rules: rules/analysis/pitfall_analysis.md — "Guards participate in pitfall
+// reasoning", "Inclusive upper bound against collection length";
+// rules/control-flow/flowcontrol_while.md — §14 "continue".
+func TestPitfallAnalysisRecognizesEndpointContinueGuards(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		guard      string
+		suppressed bool
+	}{
+		{name: "equal endpoint", guard: "if i == values.Len { continue }", suppressed: true},
+		{name: "ordered endpoint", guard: "if i >= values.Len { continue }", suppressed: true},
+		{name: "else endpoint", guard: "if i < values.Len {} else { continue }", suppressed: true},
+		{name: "strict greater misses endpoint", guard: "if i > values.Len { continue }"},
+		{name: "conditional continue", guard: "if i == values.Len { if stop { continue } }"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := fmt.Sprintf(`module main
+fn Visit(values: ref int[], stop: bool) void {
+    for i in uint(0)..values.Len {
+        %s
+        let current := values[i]
+    }
+}
+`, test.guard)
+			analyzer, errors := analyzeSourceWithAnalyzer(t, source)
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			results := analyzer.PitfallAnalysis().Results()
+			if len(results) != 1 || results[0].Rule != PitfallInclusiveLengthIndex {
+				t.Fatalf("results = %+v, want one inclusive-length result", results)
+			}
+			want := PitfallStateFinding
+			if test.suppressed {
+				want = PitfallStateSuppressed
+			}
+			if results[0].State != want {
+				t.Fatalf("guard result = %+v, want %s", results[0], want)
+			}
+		})
+	}
+}
+
+// Rules: rules/analysis/pitfall_analysis.md — "Reachability" and "Guards
+// participate in pitfall reasoning".
+func TestPitfallAnalysisContinueGuardDoesNotProtectItsOwnIndex(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+fn Visit(values: ref int[]) void {
+    for i in uint(0)..values.Len {
+        if i == values.Len {
+            let atEnd := values[i]
+            continue
+        }
+        let current := values[i]
+    }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("analysis errors: %v", errors)
+	}
+	results := analyzer.PitfallAnalysis().Results()
+	if len(results) != 2 || results[0].State != PitfallStateFinding || results[1].State != PitfallStateSuppressed {
+		t.Fatalf("guard-local index must remain a finding and later index be suppressed: %+v", results)
+	}
+}
+
 func TestPitfallAnalysisEndpointGuardDoesNotProtectItsOwnIndex(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
 fn Visit(values: ref int[]) void {

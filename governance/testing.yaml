@@ -53,9 +53,20 @@ integrations:
       - compiler-known testing.Log resolves in direct test context with exactly
         one string message, records a non-terminal testing operation fact, and
         reports invalid arguments through stable S1037
+      - compiler-known testing.ExpectEqual and testing.RequireEqual validate two
+        equality-comparable operands and an optional string message in direct
+        test context, infer each operand once, retain the original expected/actual
+        expressions in resolved Sema facts, and report invalid calls through S1042-S1043;
+        this is frontend validation only, without execution or lowering
+      - compiler-known testing.Pass, testing.Fail, and testing.Skip now validate
+        their zero-argument or required-string-message signatures in direct test
+        context, retain resolved operation facts, and report invalid arguments
+        through stable S1044; terminal flow, cleanup, and outcome behavior are
+        not yet implemented
       - focused parser fixtures cover retained top-level tests and nested-test
-        recovery, and focused Sema fixtures cover valid and invalid test identity;
-        `go test ./internal/ast ./internal/diagnostics ./internal/parser ./internal/sema` passes
+        recovery, and focused Sema tests cover valid and invalid test identity,
+        testing signatures, and equality operation facts and diagnostics;
+        `go test ./...` passes
     remaining:
       - require TestCompilationPlan context in addition to the implemented
         *_test.sec filename check, complete remaining declaration diagnostics,
@@ -68,9 +79,9 @@ integrations:
         project-root tests/ test-only source universe
       - implement test-only dependency direction so Test may depend on Production
         and Test while Production may not depend on Test
-      - complete the compiler-known test-context namespace with Pass, Fail, Skip,
-        ExpectEqual, RequireEqual, Run, and TestResult, plus execution/control-
-        flow semantics for the implemented Expect and Require frontend surface
+      - complete the compiler-known test-context namespace with Run and
+        TestResult, plus execution/control-flow semantics for the implemented
+        Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface
       - implement test-boundary `try` propagation so unexpected Err terminates the
         current invocation as a structured test failure after ordinary cleanup
       - implement monotonic failure state and controlled cleanup for Pass, Fail,

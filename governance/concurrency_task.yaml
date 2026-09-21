@@ -52,7 +52,7 @@ integrations:
       - "await Task[T] always yields TaskOutcome[T]."
       - "TaskOutcome[T] has Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError)."
       - "A task function returning Result[V,E] completes normally as Completed(Result[V,E]); Err(E) is not task execution failure."
-      - "TaskError is the umbrella error type for execution failure of an already-created task; its complete variant set is not frozen here."
+      - "TaskError is exactly OutOfMemory, ResourceLimit, ExecutorUnavailable, and NativeFailure; InvalidConfiguration remains exclusive to TaskSpawnError."
       - "Task lifecycle ownership must be resolved through await, join, detach, or ownership transfer."
       - "Observers are non-owning and must not duplicate lifecycle responsibility."
       - "Task boundary ownership and borrowing are constrained by transferability analysis."
@@ -68,12 +68,11 @@ integrations:
       - "TaskOutcome[Result[V,E]] preserves the complete nested Result type."
       - "TaskOutcome[void] retains four variants while Completed is normalized to a payload-less variant."
       - "LSP hover consumes the shared Sema await type and exposes TaskOutcome[T] without a parallel task-typing path."
-      - "Core declares the canonical TaskOutcome[T] union and the closed TaskSpawnError error enum without requiring runtime support."
-      - "Only loader-proven core sources may refine the compiler-known TaskOutcome and TaskSpawnError identities."
+      - "Core declares canonical TaskOutcome[T], TaskSpawnError, and the exact closed TaskError enum without requiring runtime support."
+      - "Only loader-proven core sources may refine the compiler-known TaskOutcome, TaskSpawnError, and TaskError identities."
     remaining:
       - "synchronize parser and Sema typing of every task-spawn form to Result[Task[T], TaskSpawnError] instead of the current direct Task[T] paths"
       - "implement terminal outcome production for Completed, Cancelled, Panicked, and Failed"
-      - "add a core TaskError declaration after the grammar can represent its normative still-open variant inventory without inventing variants"
       - "add a core PanicInfo declaration after panic.md fixes its exact public shape or another canonical opaque declaration form is available"
       - "synchronize join semantics and terminal-value extraction with move-only payload rules"
       - "complete TaskObserver semantics and non-owning restrictions"
@@ -96,7 +95,7 @@ integrations:
       - "observers cannot await, join as owner, detach, or take a move-only completion value"
       - "value-returning detached tasks require the canonical explicit discard form when applicable"
     verification:
-      - command: go test ./internal/sema ./cmd/lsp -run 'Test(Spawn|Await|TaskOutcome|HoverUsesCompilerOwnedTaskOutcomeType|SelectValidChannelBranches|SelectRejectsDuplicateTaskBranch|CancelInsideSpawnedLambdaIsAllowed)' -count=1
+      - command: go test ./internal/sema ./cmd/lsp -run 'Test(Spawn|Await|TaskOutcome|CompilerKnownTaskErrorHasExactVariants|TrustedCoreOwnsTaskOutcomeDeclarations|HoverUsesCompilerOwnedTaskOutcomeType|CompletionUsesExactCompilerOwnedTaskErrorVariants|SelectValidChannelBranches|SelectRejectsDuplicateTaskBranch|CancelInsideSpawnedLambdaIsAllowed)' -count=1
         result: passed
       - command: go test ./...
         result: passed

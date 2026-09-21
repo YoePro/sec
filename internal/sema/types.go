@@ -839,9 +839,16 @@ func builtinTypes() map[string]Type {
 			EnumValues:      []string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "InvalidConfiguration", "NativeFailure"},
 			EnumConsts:      builtinEnumConsts([]string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "InvalidConfiguration", "NativeFailure"}),
 		},
-		// TaskError deliberately has no invented variant inventory: tasks.md
-		// section 15 reserves the named error family but leaves it open.
-		"TaskError": {Name: "TaskError", Kind: StructType, ErrorAssignable: true},
+		// rules/concurrency/tasks.md §15 and rules/concurrency/await.md §4 freeze
+		// execution failures of an already-created task to this exact inventory.
+		"TaskError": {
+			Name:            "TaskError",
+			Kind:            EnumType,
+			Underlying:      "uint",
+			ErrorAssignable: true,
+			EnumValues:      []string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "NativeFailure"},
+			EnumConsts:      builtinEnumConsts([]string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "NativeFailure"}),
+		},
 		// PanicID and PanicInfo are exact compiler-known/core identities. Their
 		// source-visible representation is owned by panic.md § 13; runtime and
 		// lowering layers must consume this shape rather than inventing one.
@@ -973,8 +980,28 @@ func builtinTypes() map[string]Type {
 		types[name] = typ
 	}
 	installCompilerKnownPanicInfo(types)
+	installCompilerKnownTaskErrorPayload(types)
 
 	return types
+}
+
+// installCompilerKnownTaskErrorPayload makes TaskOutcome.Failed refer to the
+// exact canonical TaskError enum rather than a name-only placeholder.
+//
+// Rules:
+//   - rules/concurrency/tasks.md — § 11 "TaskOutcome[T]" and § 15 "Failed(TaskError)"
+//   - rules/concurrency/await.md — § 4 "Exact TaskOutcome[T] and TaskError"
+func installCompilerKnownTaskErrorPayload(types map[string]Type) {
+	outcome := types["TaskOutcome"]
+	taskError := types["TaskError"]
+	for index := range outcome.UnionVariants {
+		if outcome.UnionVariants[index].Name == "Failed" {
+			payload := taskError
+			outcome.UnionVariants[index].Payload = &payload
+			break
+		}
+	}
+	types["TaskOutcome"] = outcome
 }
 
 func builtinEnumConsts(values []string) map[string]EnumValue {

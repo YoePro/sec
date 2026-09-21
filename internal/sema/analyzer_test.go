@@ -3,6 +3,7 @@ package sema
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -3456,6 +3457,13 @@ enum TaskSpawnError error {
 	InvalidConfiguration
 	NativeFailure
 }
+
+enum TaskError error {
+	OutOfMemory
+	ResourceLimit
+	ExecutorUnavailable
+	NativeFailure
+}
 `
 	const sourceFile = "sec/core/task.sec"
 	l := lexer.NewWithFile(input, sourceFile)
@@ -3472,7 +3480,35 @@ enum TaskSpawnError error {
 	assertSemaErrors(t, errors, []string{
 		"type name TaskOutcome is compiler-known and cannot be redeclared at sec/core/task.sec:3:6",
 		"type name TaskSpawnError is compiler-known and cannot be redeclared at sec/core/task.sec:10:6",
+		"type name TaskError is compiler-known and cannot be redeclared at sec/core/task.sec:18:6",
 	})
+}
+
+// rules/concurrency/tasks.md §15 and rules/concurrency/await.md §4 freeze the
+// compiler-known task execution error inventory shared by Sema and tooling.
+func TestCompilerKnownTaskErrorHasExactVariants(t *testing.T) {
+	taskError := NewAnalyzer().types["TaskError"]
+	want := []string{"OutOfMemory", "ResourceLimit", "ExecutorUnavailable", "NativeFailure"}
+	if taskError.Kind != EnumType || !taskError.ErrorAssignable || !reflect.DeepEqual(taskError.EnumValues, want) {
+		t.Fatalf("TaskError = %+v, want exact variants %v", taskError, want)
+	}
+	if _, exists := taskError.EnumConsts["InvalidConfiguration"]; exists {
+		t.Fatalf("TaskError must not contain TaskSpawnError.InvalidConfiguration: %+v", taskError.EnumConsts)
+	}
+
+	outcome := NewAnalyzer().types["TaskOutcome"]
+	foundFailed := false
+	for _, variant := range outcome.UnionVariants {
+		if variant.Name == "Failed" {
+			foundFailed = true
+			if variant.Payload == nil || variant.Payload.Name != "TaskError" || variant.Payload.Kind != EnumType {
+				t.Fatalf("TaskOutcome.Failed payload = %+v, want canonical TaskError enum", variant.Payload)
+			}
+		}
+	}
+	if !foundFailed {
+		t.Fatal("TaskOutcome is missing Failed(TaskError)")
+	}
 }
 
 func TestCompilerKnownStringSliceValidatesArguments(t *testing.T) {
@@ -12576,6 +12612,40 @@ interface Bad {
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "incompatible callable contract") {
 		t.Fatalf("interface overload conflict errors = %v", errors)
+	}
+}
+
+// TestGenericInterfaceInheritanceKeepsConcreteParentRequirements verifies that
+// inherited members come from the resolved parent specialization rather than
+// from its unspecialized generic declaration.
+//
+// Rules:
+//   - rules/declarations/generics.md — § 22 "Generic interfaces"
+//   - rules/declarations/interfaces.md — § 5 "Interface inheritance"
+func TestGenericInterfaceInheritanceKeepsConcreteParentRequirements(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+interface Parent[T] {
+	fn Read() T
+	property Value: T { get }
+	event Changed[T]
+}
+
+interface Child implements Parent[int] {
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	child := analyzer.types["Child"]
+	if len(child.InterfaceMethods) != 1 || child.InterfaceMethods[0].ReturnType.Kind != IntType {
+		t.Fatalf("inherited generic method was not concretized: %+v", child.InterfaceMethods)
+	}
+	if len(child.InterfaceProperties) != 1 || child.InterfaceProperties[0].Type.Kind != IntType {
+		t.Fatalf("inherited generic property was not concretized: %+v", child.InterfaceProperties)
+	}
+	if len(child.InterfaceEvents) != 1 || child.InterfaceEvents[0].Payload.Kind != IntType {
+		t.Fatalf("inherited generic event was not concretized: %+v", child.InterfaceEvents)
 	}
 }
 

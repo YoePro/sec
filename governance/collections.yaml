@@ -6,6 +6,7 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-11"
+    revised: "2026-09-21"
     summary: >-
       Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
       and MemorySpace independently from ordinary collections. The canonical
@@ -23,9 +24,12 @@ integrations:
         TensorLayout, and MemorySpace support identities without redefining compiler-owned intrinsic semantics
       - rank-one vector values participate in iterable type inference
       - contextual x parsing, multiplicative precedence, and static matrix/matrix and matrix/vector Sema with inner-dimension checks; scalar result algebra is partial
+      - the shared compiler-known member registry exposes read-only uint Rank and Len properties for statically shaped vector,
+        matrix, and tensor values and their type-level inventory; tensor_view exposes only its type-known Rank
+      - Sema, LSP completion, and hover consume those same shaped Rank/Len entries, including useful compile-time rank and total-element-count facts
     remaining:
       - recognize owning runtime-shaped tensor[T, Shape[Rank]] without conflating it with tensor_view
-      - implement Rank, Shape, Len, Strides, Layout, MemorySpace, IsContiguous, Ptr, and shaped instance SizeOf member semantics
+      - implement Shape, runtime Len where required, Strides, Layout, MemorySpace, IsContiguous, Ptr, and shaped instance SizeOf member semantics
       - implement ShapedStorageRequest composition with StorageRequest and explicit Create request validation
       - implement Reshape as borrowed zero-copy view formation with runtime ShapeError checking where required
       - implement ToShape as consuming zero-copy ownership-preserving shape reinterpretation
@@ -45,6 +49,11 @@ integrations:
       - integrate shaped Place/view overlap, borrow, lifetime, escape, and destruction semantics
       - synchronize shaped operations and invariants with the canonical rules/mlir dialect and lowering documents
       - add formatter, LSP hover/completion, diagnostic, valid/invalid, analysis, and end-to-end shaped test coverage
+    verification:
+      - command: go test ./internal/sema -run CompilerKnownStaticShapedFacts -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run ShapedRankAndLenCompletionAndHover -count=1
+        result: passed
 
   - id: frontend.collections
     area: frontend
@@ -119,7 +128,7 @@ integrations:
     implemented:
       - one canonical Sema registry supplies compiler and LSP member availability
       - Len, IsEmpty, Ptr, and property-form instance and associated SizeOf resolution
-      - global len and SizeOf(T) validation without treating the type operand as a runtime value
+      - global len validation and property-form SizeOf semantics without treating an associated type receiver as a runtime value
       - list, map, set, dynamic-array, and mutable-slice member surfaces with stable semantic IDs
       - LSP completion, hover, and semantic-token classification consume registry and resolved Sema facts
       - removed LSP-local array, rune-sequence, and RawPtr completion duplication

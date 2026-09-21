@@ -182,22 +182,22 @@ Task[T]
 
 ```sec
 type TaskOutcome[T] union {
-    Completed(T)
     // The task function completed normally.
     // The payload is exactly the task function's declared return type T.
+    Completed(T)
 
-    Cancelled
     // The task terminated through cooperative task cancellation.
     // No T payload is produced.
+    Cancelled
 
-    Panicked(PanicInfo)
     // A panic escaped the task boundary under a runtime/profile that can
     // represent task-local panic termination.
     // PanicInfo is the canonical panic-information type.
+    Panicked(PanicInfo)
 
-    Failed(TaskError)
     // An already-created task failed at the task-execution/runtime layer.
     // TaskError is distinct from an application Result error returned as T.
+    Failed(TaskError)
 }
 ```
 

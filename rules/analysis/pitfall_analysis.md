@@ -606,6 +606,38 @@ canonical facts. The architectural ownership rule remains unchanged.
 
 ---
 
+# API-usage pitfalls
+
+## Explicit `self` passed to its own method
+
+An instance-method receiver already supplies `self` implicitly. A call of the
+form:
+
+```sec
+self.Relate(self)
+```
+
+is therefore a high-confidence pitfall when semantic call resolution confirms
+that `Relate` is an instance method and one explicit argument is the direct
+`self` binding.
+
+The pitfall result is:
+
+```text
+Classification = LikelyMistake
+Confidence     = High
+OwningRule     = MethodReceiverAndArgumentSemantics
+```
+
+The compiler must explain that `self` is already the implicit receiver and
+must not infer this finding for ordinary functions, static methods, calls on a
+different receiver, unresolved calls, or expressions that merely contain
+`self` indirectly. No automatic edit is required: an explicit parameter may
+still be semantically required by the selected overload, so the programmer
+must choose the intended API shape.
+
+---
+
 # Bounds and range pitfalls
 
 ## Inclusive upper bound against collection length

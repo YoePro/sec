@@ -344,9 +344,16 @@ let second :<- first
 
 ```sec
 type TaskOutcome[T] union {
+    // The task function returned normally with its declared result T.
     Completed(T)
+
+    // Cooperative task cancellation committed terminally.
     Cancelled
+
+    // A panic escaped the task boundary under the selected recoverable policy.
     Panicked(PanicInfo)
+
+    // The already-created task failed at the execution/runtime layer.
     Failed(TaskError)
 }
 ```
@@ -486,13 +493,29 @@ Failed(...)
 
 § 15(7) `TaskError` is deliberately distinct from the task function's own error type `E` when `T` is `Result[V, E]`.
 
-§ 15(8) This rulebook does not freeze the complete variant inventory of `TaskError`.
+§ 15(8) The exact Sec 0.1 declaration is:
 
-§ 15(9) Future task-runtime failure categories may be added under `TaskError` without replacing `TaskOutcome[T]` or creating a separate top-level error type for every execution failure category.
+```sec
+enum TaskError error {
+    // Memory required to continue or resume task execution was unavailable.
+    OutOfMemory
 
-§ 15(10) Names such as `TaskError.ExecutionError` may be used by later core/runtime design when a concrete category is specified, but no such example name in explanatory material constitutes a frozen variant unless added normatively to the owning error definition.
+    // A post-creation executor/runtime resource was exhausted.
+    ResourceLimit
 
-§ 15(11) Codex, compiler implementation work, and governance synchronization must not invent `TaskError` variants merely to complete an implementation.
+    // The responsible executor/runtime became unavailable before termination.
+    ExecutorUnavailable
+
+    // Another target/runtime execution failure occurred after creation.
+    NativeFailure
+}
+```
+
+§ 15(9) `InvalidConfiguration` is a task-creation category under
+`TaskSpawnError`; it is not a `TaskError` variant.
+
+§ 15(10) Implementations and tooling must not add compatibility aliases such as
+`ExecutionError` or `RuntimeError` to this closed inventory.
 
 ---
 
@@ -547,6 +570,15 @@ match outcome {
 § 16(11) `await Task[void]` still produces `TaskOutcome[void]`.
 
 § 16(12) This rulebook does not authorize implicit discarding of an await outcome. Ordinary discard and must-use rules determine whether an unused `TaskOutcome[T]` is legal in a particular context.
+
+§ 16(13) `await.md` owns the exact consuming wait operation, including its
+semantic commit point and its completion-versus-caller-cancellation race.
+
+§ 16(14) When caller cancellation commits before await commit, await retains
+the consumed lifecycle internally, calls `RequestCancel()`, waits for a terminal
+outcome, destroys that outcome exactly once, and only then completes caller
+cancellation. It neither restores the source handle nor implicitly detaches the
+child.
 
 ---
 

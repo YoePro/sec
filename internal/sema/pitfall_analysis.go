@@ -18,6 +18,7 @@ const (
 	PitfallInclusiveLengthIndex     PitfallRuleID = "pitfall.bounds.inclusive-length-index"
 	PitfallDirectIndexAtLength      PitfallRuleID = "pitfall.bounds.direct-index-at-length"
 	PitfallBooleanLiteralComparison PitfallRuleID = "pitfall.boolean.redundant-literal-comparison"
+	PitfallExplicitSelfMethodArgument PitfallRuleID = "pitfall.api.explicit-self-method-argument"
 )
 
 type PitfallFamily string
@@ -25,6 +26,7 @@ type PitfallFamily string
 const (
 	PitfallBoundsAndRanges PitfallFamily = "bounds-and-ranges"
 	PitfallBooleanIntent   PitfallFamily = "boolean-intent"
+	PitfallAPIUsage        PitfallFamily = "api-usage"
 )
 
 type PitfallClassification string
@@ -137,6 +139,11 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		ID: PitfallBooleanLiteralComparison, Family: PitfallBooleanIntent,
 		RequiredFacts: []string{"expression-types", "constant-values", "operator-semantics"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallExplicitSelfMethodArgument, Family: PitfallAPIUsage,
+		RequiredFacts: []string{"resolved-calls", "receiver-semantics", "argument-bindings"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
 	},
 }
 
@@ -399,6 +406,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	if call, ok := expression.(*ast.CallExpression); ok {
 		callee, isIdentifier := call.Callee.(*ast.Identifier)
 		b.inspectBooleanConversion(call, firstPitfallArgument(call.Arguments), isIdentifier && callee.Value == "bool" && len(call.Arguments) == 1)
+		b.inspectExplicitSelfMethodArgument(call)
 	}
 	if comparison, ok := expression.(*ast.InfixExpression); ok && !b.handledBooleanComparisons[comparison] {
 		b.inspectBooleanLiteralComparison(comparison, comparison)
@@ -543,6 +551,52 @@ func firstPitfallArgument(arguments []ast.Expression) ast.Expression {
 		return nil
 	}
 	return arguments[0]
+}
+
+// inspectExplicitSelfMethodArgument recognizes self.Method(self), where the
+// receiver already supplies self implicitly. It is deliberately limited to a
+// Sema-resolved instance method so ordinary functions, static members, and
+// calls on another receiver retain their ordinary argument semantics.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Explicit self passed to its own method"
+//   - rules/declarations/functions.md — implicit instance receiver
+func (b *pitfallBuilder) inspectExplicitSelfMethodArgument(call *ast.CallExpression) {
+	if call == nil {
+		return
+	}
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || !isSelfIdentifier(member.Object) {
+		return
+	}
+	resolved, ok := b.analyzer.ResolvedCallTarget(call)
+	if !ok || resolved.Function.Static {
+		return
+	}
+	for _, argument := range call.Arguments {
+		if !isSelfIdentifier(argument) {
+			continue
+		}
+		b.add(PitfallFinding{
+			Rule:           PitfallExplicitSelfMethodArgument,
+			Family:         PitfallAPIUsage,
+			Classification: PitfallLikelyMistake,
+			Confidence:     PitfallConfidenceHigh,
+			Subject:        PitfallSubject{Expression: call.String(), Source: expressionToken(argument)},
+			EvidenceFor: []PitfallEvidence{
+				{Strength: PitfallEvidenceProof, Fact: "the call resolves to an instance method", Source: call.Token},
+				{Strength: PitfallEvidenceProof, Fact: "self is already supplied as the implicit method receiver", Source: expressionToken(member.Object)},
+				{Strength: PitfallEvidenceStrong, Fact: "self is also passed explicitly as an argument", Source: expressionToken(argument)},
+			},
+			OwningRule: "method-receiver-and-argument-semantics",
+		})
+		return
+	}
+}
+
+func isSelfIdentifier(expression ast.Expression) bool {
+	identifier, ok := expression.(*ast.Identifier)
+	return ok && identifier != nil && identifier.Value == "self"
 }
 
 func (b *pitfallBuilder) inspectBooleanConversion(subject ast.Expression, value ast.Expression, isBoolConversion bool) {

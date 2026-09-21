@@ -83,6 +83,13 @@ A profile may block a physical worker only when:
 - no suspension backend exists;
 - deadlock and executor-starvation rules are still enforced.
 
+If caller cancellation commits before await commit, the await dependency does
+not instantly disappear. The operation retains the consumed task lifecycle,
+requests cooperative cancellation, and may continue waiting for the child to
+become terminal before caller cancellation completes. A backend must not model
+this cleanup as implicit detach; physical blocking or suspension remains
+profile-controlled.
+
 ---
 
 ## Join

@@ -10,9 +10,16 @@ module core
 * executor, garbage collector, or universal Sec runtime.
 */
 type TaskOutcome[T] union {
+    /** The task function returned normally with its declared result T. */
     Completed(T)
+
+    /** Cooperative task cancellation committed terminally. */
     Cancelled
+
+    /** A panic escaped the task boundary under the selected recoverable policy. */
     Panicked(PanicInfo)
+
+    /** The already-created task failed at the execution/runtime layer. */
     Failed(TaskError)
 }
 
@@ -29,8 +36,17 @@ enum TaskSpawnError error {
     NativeFailure
 }
 
-// rules/concurrency/tasks.md section 15 and
-// rules/concurrency/concurrency_runtime_model.md require a named TaskError but
-// forbid inventing its still-open variant inventory. The current grammar can
-// express only closed enum/union error declarations, so TaskError remains a
-// compiler-known semantic identity until open error-family syntax is defined.
+/** Reports failure of an already-created task execution mechanism. */
+enum TaskError error {
+    /** Memory required to continue or resume task execution was unavailable. */
+    OutOfMemory
+
+    /** A post-creation executor/runtime resource was exhausted. */
+    ResourceLimit
+
+    /** The responsible executor/runtime became unavailable before termination. */
+    ExecutorUnavailable
+
+    /** Another target/runtime execution failure occurred after creation. */
+    NativeFailure
+}

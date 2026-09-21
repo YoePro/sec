@@ -684,6 +684,12 @@ back.
 
 § 29(4) A backend must not lose an owning task/thread handle in the race between completion and caller cancellation.
 
+§ 29(5) For `await`, `await.md` owns the pre-commit caller-cancellation
+cleanup: retain lifecycle ownership, invoke `RequestCancel()` on the awaited
+task, wait for terminal state, destroy the terminal outcome exactly once, and
+then complete caller cancellation. This consuming-await rule does not change
+the distinct owning-handle semantics of `join`.
+
 ---
 
 ## § 30. Exact `TaskOutcome[T]` cancellation category
@@ -694,17 +700,17 @@ back.
 
 ```sec
 type TaskOutcome[T] union {
-    Completed(T)
     // The task function returned normally.
+    Completed(T)
 
-    Cancelled
     // Cooperative task cancellation committed terminally.
+    Cancelled
 
-    Panicked(PanicInfo)
     // Panic escaped the task boundary under the selected panic policy.
+    Panicked(PanicInfo)
 
-    Failed(TaskError)
     // The already-created task failed at the execution/runtime layer.
+    Failed(TaskError)
 }
 ```
 

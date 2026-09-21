@@ -13,7 +13,7 @@ func TestPitfallRuleRegistryIsStableAndDefensive(t *testing.T) {
 	if len(rules) < 2 {
 		t.Fatalf("rules = %v, want initial bounds registry", rules)
 	}
-	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison {
+	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument {
 		t.Fatalf("unexpected rule order: %v", rules)
 	}
 	if rules[0].MinimumDepth != AnalysisInteractive || rules[0].DefaultConfidence != PitfallConfidenceProven {
@@ -22,6 +22,37 @@ func TestPitfallRuleRegistryIsStableAndDefensive(t *testing.T) {
 	rules[0].RequiredFacts[0] = "mutated"
 	if PitfallRules()[0].RequiredFacts[0] == "mutated" {
 		t.Fatal("PitfallRules returned mutable registry storage")
+	}
+}
+
+func TestPitfallAnalysisFindsExplicitSelfPassedToInstanceMethod(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+
+type Node struct {
+}
+
+impl Node {
+    fn Relate(other: Node) void {
+    }
+
+    fn Invalid() void {
+        self.Relate(self)
+    }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("analysis errors: %v", errors)
+	}
+	findings := analyzer.PitfallAnalysis().Findings()
+	if len(findings) != 1 {
+		t.Fatalf("findings = %+v, want one explicit-self finding", findings)
+	}
+	finding := findings[0]
+	if finding.Rule != PitfallExplicitSelfMethodArgument || finding.Family != PitfallAPIUsage || finding.Classification != PitfallLikelyMistake || finding.Confidence != PitfallConfidenceHigh {
+		t.Fatalf("finding = %+v", finding)
+	}
+	if finding.OwningRule != "method-receiver-and-argument-semantics" || len(finding.EvidenceFor) != 3 {
+		t.Fatalf("finding = %+v, want receiver and argument evidence", finding)
 	}
 }
 

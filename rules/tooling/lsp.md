@@ -1721,6 +1721,14 @@ and open-error hover may distinguish static type `error` from a concrete error
 identity proven by Sema. The LSP never reconstructs a parallel Result, Option,
 error, or ownership model.
 
+Hover on `await worker` consumes Sema's resolved operand specialization and
+always reports `TaskOutcome[T]` with the concrete `T`; it must not display bare
+`T` or `Result[T, TaskError]`. Hover, completion, and navigation expose the
+exact closed `TaskError` members `OutOfMemory`, `ResourceLimit`,
+`ExecutorUnavailable`, and `NativeFailure`. `PanicInfo` navigation resolves to
+the single canonical panic declaration. Await-related examples and code actions
+use `RequestCancel()` and never synthesize legacy `cancel()`.
+
 ## Default information
 
 Hover and type completion expose the shared compiler-resolved default value and

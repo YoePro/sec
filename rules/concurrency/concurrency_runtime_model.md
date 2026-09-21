@@ -616,10 +616,9 @@ enum ThreadContextError error {
 ```
 
 The core surface must additionally provide the generic `TaskOutcome[T]` shape
-above and a named Sec error type `TaskError`. No implementation may invent a
-complete `TaskError` variant list merely to make the declaration concrete; if
-the current grammar cannot represent the still-open inventory, governance must
-record that explicit dependency.
+above and the exact closed Sec error enum `TaskError` with variants
+`OutOfMemory`, `ResourceLimit`, `ExecutorUnavailable`, and `NativeFailure`.
+`InvalidConfiguration` remains a task-creation error under `TaskSpawnError`.
 
 If task or process rulebooks define additional execution failure types, they
 must also be placed in `core/errors.sec` using canonical Sec error-type syntax.

@@ -44,6 +44,10 @@ integrations:
       - Sema enforces the *_test.sec filename, non-empty top-level test names,
         and unique module-plus-name identities through stable S1030-S1032
         diagnostics without registering tests as ordinary callable functions
+      - Sema retains valid top-level tests in source order with a structured,
+        compiler-owned module-plus-path TestIdentity and source location;
+        read-only queries do not expose mutable identity-path storage or depend
+        on generated function names and linker symbols
       - Sema analyzes ordinary test-body statements in isolated invocation-local
         scopes, accepts bare return, and rejects return values with stable S1033
         without creating an ordinary Function declaration or callable source name
@@ -76,8 +80,6 @@ integrations:
       - require TestCompilationPlan context in addition to the implemented
         *_test.sec filename check, complete remaining declaration diagnostics,
         test-boundary try behavior, and callable-effect facts
-      - add stable TestIdentity and source metadata independent of generated
-        function names or linker symbols
       - add TestCompilationPlan as an explicit compilation mode and keep
         production validity independent from test-only declarations
       - select same-directory *_test.sec only in test compilation and add the
@@ -131,5 +133,7 @@ integrations:
       - explicit source-level per-test timeout syntax
       - testing.Parallel and runner-controlled source-visible parallel scheduling
     verification:
+      - command: go test ./internal/sema -run ResolvedTestMetadataRetainsStructuredIdentity -count=1
+        result: passed; structured identity, source metadata, source order, declaration lookup, and defensive copying are covered
       - command: go test ./internal/formatter -run 'TopLevelTestDeclaration' -count=1
         result: passed; canonical header/body/call formatting, exact name preservation, contextual test identifier behavior, and idempotence are covered

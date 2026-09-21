@@ -50,6 +50,50 @@ func TestTestDeclarationIdentityValidation(t *testing.T) {
 	}
 }
 
+// TestResolvedTestMetadataRetainsStructuredIdentity verifies that frontend
+// test identity and source location are explicit facts rather than generated
+// callable or linker names.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6 "Test identity"
+//   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
+func TestResolvedTestMetadataRetainsStructuredIdentity(t *testing.T) {
+	const path = "metadata_test.sec"
+	source := `module test_metadata
+test "first case" {}
+test "second case" {}
+`
+	result := parser.New(lexer.NewWithFile(source, path)).Parse()
+	if result.HasErrors {
+		t.Fatalf("parser diagnostics = %+v", result.Diagnostics)
+	}
+	analyzer := NewAnalyzer()
+	assertSemaErrors(t, analyzer.Analyze(result.Program), nil)
+
+	resolved := analyzer.ResolvedTests()
+	if len(resolved) != 2 {
+		t.Fatalf("resolved tests = %+v, want two", resolved)
+	}
+	first := resolved[0]
+	if first.Identity.Module != "test_metadata" || len(first.Identity.Path) != 1 || first.Identity.Path[0] != "first case" {
+		t.Fatalf("first identity = %+v", first.Identity)
+	}
+	if first.Name != "first case" || first.Source.File != path || first.Source.Line != 2 || first.Source.Column == 0 {
+		t.Fatalf("first metadata = %+v", first)
+	}
+	declaration := result.Program.Statements[1].(*ast.TestDeclaration)
+	byDeclaration, ok := analyzer.ResolvedTestMetadataOf(declaration)
+	if !ok || byDeclaration.Identity.Module != first.Identity.Module || byDeclaration.Name != first.Name {
+		t.Fatalf("metadata by declaration = %+v, %v", byDeclaration, ok)
+	}
+
+	resolved[0].Identity.Path[0] = "mutated"
+	again := analyzer.ResolvedTests()
+	if again[0].Identity.Path[0] != "first case" {
+		t.Fatalf("resolved test identity leaked mutable path storage: %+v", again[0].Identity)
+	}
+}
+
 // TestTestingEqualityOperations validates the frontend signatures and retained
 // expected/actual operands without assuming a test runner or lowering exists.
 // Rules: rules/tooling/testing.md — §§11.4 and 18 "Equality expectations".

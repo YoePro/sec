@@ -39,6 +39,42 @@ type ResolvedCall struct {
 	Kind     ResolvedCallKind
 }
 
+// TestIdentity is the structured semantic identity of a test invocation. A
+// top-level test has one path component; future subtests extend Path rather
+// than defining identity through concatenated display or linker names.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6 "Test identity"
+type TestIdentity struct {
+	Module string
+	Path   []string
+}
+
+// TestSourceLocation identifies the source declaration independently of any
+// generated harness entry or backend symbol.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
+type TestSourceLocation struct {
+	File   string
+	Line   int
+	Column int
+}
+
+// ResolvedTestMetadata is the compiler-owned frontend description consumed by
+// later test planning, canonical IR, and tooling integrations.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6 "Test identity"
+//   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
+//   - rules/tooling/testing.md — § 39.4 "Runnable test metadata"
+type ResolvedTestMetadata struct {
+	Identity    TestIdentity
+	Name        string
+	Source      TestSourceLocation
+	Declaration *ast.TestDeclaration
+}
+
 type TestingOperationKind string
 
 const (
@@ -1095,6 +1131,47 @@ func (a *Analyzer) ResolvedTestingOperationOf(call *ast.CallExpression) (Resolve
 	}
 	operation, ok := a.resolvedTestingOperations[call]
 	return operation, ok
+}
+
+// ResolvedTestMetadataOf returns the stable identity and source metadata for a
+// valid top-level test retained by the latest analysis.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6 "Test identity"
+//   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
+func (a *Analyzer) ResolvedTestMetadataOf(declaration *ast.TestDeclaration) (ResolvedTestMetadata, bool) {
+	if a == nil || declaration == nil {
+		return ResolvedTestMetadata{}, false
+	}
+	metadata, ok := a.resolvedTestMetadata[declaration]
+	return cloneResolvedTestMetadata(metadata), ok
+}
+
+// ResolvedTests returns valid top-level tests in source order for test-plan and
+// tooling consumers, without exposing mutable identity path storage.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6 "Test identity"
+//   - rules/tooling/testing.md — § 39.4 "Runnable test metadata"
+func (a *Analyzer) ResolvedTests() []ResolvedTestMetadata {
+	if a == nil {
+		return nil
+	}
+	resolved := make([]ResolvedTestMetadata, len(a.resolvedTests))
+	for index, metadata := range a.resolvedTests {
+		resolved[index] = cloneResolvedTestMetadata(metadata)
+	}
+	return resolved
+}
+
+// cloneResolvedTestMetadata preserves structured identity immutability at the
+// compiler-consumer boundary.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6.4 "Hierarchical identity"
+func cloneResolvedTestMetadata(metadata ResolvedTestMetadata) ResolvedTestMetadata {
+	metadata.Identity.Path = append([]string(nil), metadata.Identity.Path...)
+	return metadata
 }
 
 // ResolvedBindingOf returns the declaration identity selected by Sema for an

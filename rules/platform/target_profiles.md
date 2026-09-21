@@ -367,6 +367,11 @@ with context-sensitive restrictions where required.
 Detached execution may be enabled only when the owning shutdown/cancellation
 contract is satisfiable.
 
+For a consuming task await, caller cancellation before await commit retains the
+child lifecycle and may delay terminal caller cancellation until cooperative
+child cleanup finishes. A target profile selects the physical suspension or
+blocking mechanism but must not treat caller cancellation as implicit detach.
+
 ## 21. Provenance
 
 Resolved profile facts retain provenance from sources such as:

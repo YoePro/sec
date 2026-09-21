@@ -1,4 +1,118 @@
 schema_version: 1
 area: concurrency-await
 purpose: Await expressions and task outcome observation.
-integrations: []
+integrations:
+  - id: concurrency.await-v2
+    area: concurrency
+    feature: await-expression-semantics
+    status: partial
+    reviewed: "2026-09-21"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-16
+    summary: >-
+      Canonical Sec 0.1 await semantics: await consumes an owning Task[T] and
+      always yields TaskOutcome[T], preserves exact task error/panic distinctions,
+      defines the await commit point, and defines structured cleanup when
+      current-execution cancellation wins before await commit. The await operation
+      retains lifecycle ownership, requests cancellation of the awaited task,
+      waits for it to become terminal, destroys the terminal outcome internally,
+      and only then permits caller cancellation to complete.
+    rules:
+      - rules/concurrency/await.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/structured_concurrency.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/select.md
+      - rules/errors/panic.md
+      - rules/errors/errorhandling.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/target_profiles.md
+      - rules/tooling/lsp.md
+      - language-rulebook-status.md
+    normative:
+      - "await accepts exactly an owning available Task[T] in Sec 0.1."
+      - "await Task[T] always has static type TaskOutcome[T]."
+      - "TaskOutcome[T] is exactly Completed(T), Cancelled, Panicked(PanicInfo), Failed(TaskError)."
+      - "TaskError is exactly OutOfMemory, ResourceLimit, ExecutorUnavailable, NativeFailure."
+      - "TaskError does not contain InvalidConfiguration; creation configuration failures belong to TaskSpawnError."
+      - "Completed(Err(E)) for Task[Result[V,E]] remains normal completion."
+      - "await consumes the Task[T] handle and transfers lifecycle ownership into the await operation."
+      - "await commit occurs when the terminal TaskOutcome[T] has been acquired and is ready to transfer to the waiting continuation."
+      - "If await commit wins, TaskOutcome[T] transfers normally and later caller cancellation cannot roll it back."
+      - "If caller cancellation wins before await commit, await produces no source-visible TaskOutcome[T]."
+      - "On pre-commit caller cancellation, await retains lifecycle ownership, requests cancellation of the awaited task, waits for terminal state, destroys the terminal outcome internally, and only then lets caller cancellation complete."
+      - "Caller cancellation never implicitly detaches the awaited task and never restores the source handle."
+      - "A child that does not promptly observe cancellation may delay terminal cancellation of the waiter."
+      - "await is a current-execution cancellation point and a potentially waiting operation."
+      - "await is task-specific; Thread[T], Process, observers, and arbitrary structural awaitables are rejected."
+      - "await is forbidden inside defer and compile-time/static hidden initialization."
+      - "A live MutexGuard[T] may not cross an invalid await suspension."
+      - "Borrow validity must cover suspension and pre-commit caller-cancellation cleanup until child terminal state."
+      - "Successful await establishes task-completion synchronization."
+      - "Concrete Semantic IR opcode naming remains owned by semantic_ir.md."
+      - "Documentation comments for variants/members are written before the declaration they document."
+    implemented:
+      - "parser/frontend currently recognizes await expressions"
+      - "frontend currently treats await Task[T] as consuming the task handle"
+      - "frontend currently gives await invariant TaskOutcome[T] typing"
+      - "TaskOutcome[T], TaskError, and PanicInfo have compiler-known frontend identities"
+      - "LSP hover currently consumes shared Sema await typing rather than a parallel await type path"
+      - "TaskError is the exact compiler-known and core-declared enum OutOfMemory, ResourceLimit, ExecutorUnavailable, NativeFailure"
+      - "TaskOutcome[T] core documentation precedes the variants it documents"
+      - "LSP enum completion projects the exact compiler-owned TaskError inventory"
+      - "await v2 is synchronized across tasks, cancellation, blocking, structured concurrency, Semantic IR, target profiles, and tooling rulebooks"
+    remaining:
+      - "implement explicit await commit state in Semantic IR/runtime"
+      - "implement current-execution cancellation registration for await"
+      - "implement pre-commit caller-cancellation child RequestCancel behavior"
+      - "retain consumed task lifecycle ownership internally until child terminal state after caller cancellation"
+      - "destroy/discard child terminal TaskOutcome[T] exactly once on the caller-cancellation cleanup path"
+      - "ensure caller terminal cancellation waits for that cleanup rather than implicitly detaching the child"
+      - "represent completion-versus-caller-cancellation first-commit race atomically"
+      - "preserve child-held borrow lifetimes through caller-cancellation cleanup"
+      - "complete target/runtime wait lowering without host-language semantic leakage"
+      - "complete blocking/deadlock/starvation analysis for await cleanup dependencies"
+      - "remove reliance on the legacy hard-coded await Semantic IR opcode-name list"
+    required_tests:
+      - "await Task[int] has exact type TaskOutcome[int]"
+      - "await Task[void] has exact type TaskOutcome[void]"
+      - "await Task[Result[V,E]] preserves nested Result"
+      - "Completed(Err(E)) is not Failed(TaskError)"
+      - "TaskError variants are exactly OutOfMemory, ResourceLimit, ExecutorUnavailable, NativeFailure"
+      - "await consumes the owning task handle and repeated use is rejected"
+      - "observer, Thread[T], Process, and arbitrary values are rejected as await operands"
+      - "completion commit winning returns the exact terminal TaskOutcome[T]"
+      - "caller cancellation winning before await commit produces no source-visible TaskOutcome[T]"
+      - "pre-commit caller cancellation requests cancellation of the awaited task"
+      - "await retains lifecycle ownership until the child becomes terminal after caller cancellation"
+      - "terminal child outcome is destroyed exactly once during caller-cancellation cleanup"
+      - "caller cancellation does not implicitly detach the awaited task"
+      - "caller cancellation does not restore the consumed task handle"
+      - "child that ignores cancellation can delay caller terminal cancellation"
+      - "completion and caller cancellation race cannot produce both outcomes or lose lifecycle ownership"
+      - "live MutexGuard[T] cannot cross await"
+      - "borrow lifetime analysis covers suspension and cancellation cleanup"
+      - "await is rejected inside defer and compile-time evaluation"
+      - "successful await establishes task completion synchronization"
+      - "LSP hover always reports TaskOutcome[T]"
+    governance_reconciliation:
+      - "concurrency_await.yaml owns await-expression semantics and await-specific lifecycle/cancellation commit behavior"
+      - "concurrency_task.yaml continues to own Task[T], TaskOutcome[T], TaskError, TaskSpawnError, task lifecycle, join, detach, and observers"
+      - "concurrency_cancellation.yaml continues to own cancellation requests/current-execution cancellation while await.md owns the exact awaited-task cleanup behavior after pre-commit caller cancellation"
+      - "errors.yaml/panic rulebook continue to own PanicInfo and panic containment semantics"
+      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
+      - "implementation status belongs in split governance fragments rather than root implementation-status.yaml"
+    corrections_applied:
+      - rules/corrections/applied/await-v2-cross-rulebook-correction-20260921.md
+    verification:
+      - command: go test ./internal/sema -run 'Test(CompilerKnownTaskErrorHasExactVariants|TrustedCoreOwnsTaskOutcomeDeclarations|SpawnAwait|AwaitRequiresTask|TaskOutcomeVoid)' -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run 'Test(HoverUsesCompilerOwnedTaskOutcomeType|CompletionUsesExactCompilerOwnedTaskErrorVariants)' -count=1
+        result: passed

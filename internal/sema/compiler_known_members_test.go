@@ -18,7 +18,6 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
 	let migrationLength: uint := text.len
 	let valueSize: uint := text.SizeOf
 	let typeSize: uint := int32.SizeOf
-	let globalTypeSize: uint := SizeOf(int32)
 	let minimum: int32 := int32.Min
 	let maximum: int32 := int32.Max
 	let bits: uint := int32.Bits
@@ -203,6 +202,54 @@ fn Test(values: int[], view: ref mut int[], users: list[int], entries: map[int, 
 }
 `
 	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+}
+
+// TestCompilerKnownStaticShapedFacts verifies that statically determined Rank
+// and Len facts are properties with uint results for shaped values.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
+//   - rules/corrections/applied/compiler_known_members-shaped-correction-20260813.md — "Required read-only shaped properties"
+func TestCompilerKnownStaticShapedFacts(t *testing.T) {
+	input := `
+module main
+
+fn Inspect(v: vector[int, 4], m: matrix[int, 3, 4], t: tensor[int, 2, 3, 4], view: ref tensor_view[int, 3]) void {
+	let vectorRank: uint := v.Rank
+	let vectorLen: uint := v.Len
+	let matrixRank: uint := m.Rank
+	let matrixLen: uint := m.Len
+	let tensorRank: uint := t.Rank
+	let tensorLen: uint := t.Len
+	let viewRank: uint := view.Rank
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+
+	matrix := builtinTypes()["matrix"]
+	matrix.TypeArgs = []Type{builtinTypes()["int"]}
+	matrix.ConstArgs = []int64{3, 4}
+	for _, static := range []bool{false, true} {
+		rank, ok := compilerKnownMember(matrix, "Rank", static)
+		if !ok || rank.Kind != CompilerKnownProperty || rank.Result.Kind != UintType || !strings.Contains(rank.Documentation, "2") {
+			t.Fatalf("matrix Rank (static=%v) = %+v, %v", static, rank, ok)
+		}
+		length, ok := compilerKnownMember(matrix, "Len", static)
+		if !ok || length.Kind != CompilerKnownProperty || length.Result.Kind != UintType || !strings.Contains(length.Documentation, "12") {
+			t.Fatalf("matrix Len (static=%v) = %+v, %v", static, length, ok)
+		}
+	}
+
+	view := builtinTypes()["tensor_view"]
+	view.TypeArgs = []Type{builtinTypes()["int"]}
+	view.ConstArgs = []int64{3}
+	if _, ok := compilerKnownMember(view, "Rank", true); !ok {
+		t.Fatal("tensor_view type must expose its statically known Rank")
+	}
+	if _, ok := compilerKnownMember(view, "Len", true); ok {
+		t.Fatal("tensor_view type must not synthesize a runtime Len")
+	}
 }
 
 func TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry(t *testing.T) {
@@ -404,6 +451,7 @@ module main
 fn Test(text: string, entries: map[int, string]) void {
 	let calledValueSize := text.SizeOf()
 	let calledTypeSize := int32.SizeOf()
+	let removedGlobalSize := SizeOf(int32)
 	let contextless := fill(1)
 	unsafe {
 		let mapPointer := entries.Ptr
@@ -414,6 +462,7 @@ fn Test(text: string, entries: map[int, string]) void {
 	for _, fragment := range []string{
 		"unknown function or type text.SizeOf",
 		"unknown function or type int32.SizeOf",
+		"unknown function or type SizeOf",
 		"fill requires an explicit array or string target type",
 		"unknown member Ptr on map[int, string]",
 	} {
@@ -456,7 +505,6 @@ func TestCompilerKnownRegistryHasStableRequiredIDs(t *testing.T) {
 func TestCompilerKnownGlobalRegistryHasStableRequiredIDs(t *testing.T) {
 	want := map[string]string{
 		"len":                    "CKF-LEN",
-		"SizeOf":                 "CKF-SIZEOF-TYPE",
 		"fill":                   "CKF-FILL",
 		"__StringSliceUnchecked": "CKF-STRING-SLICE-UNCHECKED",
 	}
@@ -470,6 +518,9 @@ func TestCompilerKnownGlobalRegistryHasStableRequiredIDs(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("compiler-known global registry is missing %v", want)
+	}
+	if _, exists := compilerKnownFunction("SizeOf"); exists {
+		t.Fatal("removed global SizeOf must not remain in the compiler-known function registry")
 	}
 }
 
@@ -492,7 +543,13 @@ func TestCompilerKnownStringSliceIsInternalAndTyped(t *testing.T) {
 	}
 }
 
-func TestCompilerKnownGlobalFunctionsCannotBeRedeclared(t *testing.T) {
+// TestRemovedGlobalSizeOfMayBeDeclaredAsOrdinaryFunction verifies that only
+// the instance and associated SizeOf properties retain compiler authority.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "SizeOf"
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 12 and 22.3
+func TestRemovedGlobalSizeOfMayBeDeclaredAsOrdinaryFunction(t *testing.T) {
 	input := `
 module main
 
@@ -500,21 +557,21 @@ fn SizeOf(value: int) uint {
 	return 0u
 }
 
+fn UseUserSizeOf() uint {
+	return SizeOf(1)
+}
+
 fn fill(value: int) int {
 	return value
 }
 `
 	errors := analyzeSourceRaw(t, input)
-	for _, name := range []string{"SizeOf", "fill"} {
-		found := false
-		for _, err := range errors {
-			if strings.Contains(err.Message, "function "+name+" is compiler-known and cannot be declared") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing redeclaration error for %s; errors=%v", name, errors)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function fill is compiler-known and cannot be declared") {
+		t.Fatalf("errors = %v, want only compiler-known fill redeclaration", errors)
+	}
+	for _, err := range errors {
+		if strings.Contains(err.Message, "function SizeOf is compiler-known") {
+			t.Fatalf("removed global SizeOf remains reserved: %v", errors)
 		}
 	}
 }

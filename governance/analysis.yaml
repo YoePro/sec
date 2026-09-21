@@ -7,10 +7,10 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-09-17"
+    updated: "2026-09-21"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
-      bounds, range, control-flow, Place/provenance, collection, effect, and FFI
+      bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
       contract facts to detect common human mistakes without redefining the
       normative semantics owned by those analyses.
     rules:
@@ -51,6 +51,7 @@ integrations:
       - coalescing of outer bool conversion and inner literal comparison into one structured finding and one non-overlapping action
       - ProvenFix actions for valid true/false simplifications and SuggestedEdit actions for invalid but unambiguous bool/0-or-1 intent
       - negative coverage preventing boolean-intent inference from integers other than 0 and 1
+      - API-usage finding for self.Method(self) when Sema resolves an instance method and self is both its implicit receiver and a direct explicit argument; ordinary functions, static methods, other receivers, unresolved calls, and indirect self expressions remain excluded
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
@@ -93,6 +94,8 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'TestPitfall|TestEqualityRequiresCompatibleTypes'
         result: passed
+      - command: go test ./internal/sema -run 'TestPitfallAnalysisFindsExplicitSelfPassedToInstanceMethod|TestPitfallRuleRegistryIsStableAndDefensive' -count=1
+        result: passed; the API-usage finding records resolved instance-method, implicit-receiver, and explicit-argument evidence
       - command: go test ./internal/sema -run 'TestPitfallAnalysis(RecognizesEndpointContinueGuards|ContinueGuardDoesNotProtectItsOwnIndex|EndpointGuardDoesNotProtectItsOwnIndex)' -count=1
         result: passed; matched continue guards suppress only later indexes while ineffective and conditional guards remain findings
       - command: go test ./...

@@ -43,3 +43,40 @@ integrations:
     limitations:
       - Semantic IR lowering of named string parameters remains blocked by the separately governed Package 13 non-scalar parameter limitation
       - The complete net/url module currently stops at missing function bodies in percent.sec before semantic analysis
+
+  - id: compiler.compiler-known-surfaces
+    area: compiler-known-types-members-interfaces-platform-identities
+    status: partial
+    repository_baseline: 998d8d1
+    revised: "2026-09-21"
+    rules:
+      - rules/compiler/compiler_known_members.md
+      - rules/compiler/compiler.md
+      - rules/compiler/compile_time_evaluation.md
+      - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - value.SizeOf and TypeName.SizeOf resolve through authoritative read-only compiler-known property entries with uint results
+      - the superseded global SizeOf(TypeName) function is absent from the compiler-known function registry, Sema reservation,
+        and LSP completion; ordinary user module functions named SizeOf remain legal
+      - invalid legacy SizeOf(TypeName) calls receive ordinary unresolved-call diagnostics rather than obsolete intrinsic validation
+    remaining:
+      - classify ToString as a universal CompilerProvidedFallbackMember with exact eligible user replacement and complete per-type-family fallback semantics
+      - audit every compiler-known Sec declaration for complete canonical syntax/owning module and mark compiler-only structures explicitly
+      - keep compiler authority distinct from ordinary _/__ source visibility
+      - expose compiler-known Iterator[T] through one canonical interface registry/conformance path
+      - share compiler-known member/interface identities between compiler and LSP
+      - route compiler-known platform/resource identities from the frozen CompilationPlan
+      - prevent user-defined arbitrary compiler-known extension
+      - keep generated helpers/resource identities deterministic and traceable
+    verification:
+      - command: go test ./internal/sema -run 'CompilerKnown(FundamentalMembers|CanonicalPropertyAndCollectionRestrictions|GlobalRegistryHasStableRequiredIDs)|RemovedGlobalSizeOf' -count=1
+        result: passed
+      - command: go test ./cmd/lsp -run CompletionUsesCanonicalCompilerKnownGlobalFunctions -count=1
+        result: passed

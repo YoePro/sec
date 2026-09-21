@@ -17,3 +17,15 @@ It must account for:
 - result collection
 
 It must not replace the move-only lifecycle rules for `Task[T]` and `Thread[T]`.
+
+## Consuming await during caller cancellation
+
+Structured scopes preserve the lifecycle obligation when caller cancellation
+wins before a consuming await commits. The await operation keeps internal
+ownership of the consumed child handle, invokes `RequestCancel()`, and waits
+through terminal child cleanup; it must not detach the child or restore the
+source binding.
+
+Any child-held borrow into waiter-owned state remains live through that cleanup.
+The owning state and its destruction must therefore remain valid until the
+child reaches a terminal outcome and releases the borrow.

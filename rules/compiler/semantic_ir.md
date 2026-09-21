@@ -1869,6 +1869,24 @@ including ownership transfer of the active payload.
 § 77(9) Task-boundary argument/capture transferability and ownership facts
 remain explicit through lowering.
 
+§ 77(10) The concrete task IR operation vocabulary is owned here. An await
+operation must represent facts equivalent to `TaskAwait`, an await-commit
+boundary, caller-cancellation registration/state, and a first-commit race
+between completion and caller cancellation. Older literal opcode lists in
+other rulebooks are not normative.
+
+§ 77(11) A pre-commit caller-cancellation path retains the consumed lifecycle,
+records the child `RequestCancel`, waits/drives the child to a terminal state,
+acquires the complete outcome internally, and destroys its active payload
+exactly once before caller cancellation completes. It produces no
+source-visible `TaskOutcome[T]`, does not restore the handle, and does not
+detach.
+
+§ 77(12) Await IR preserves the concrete `Task[T]` and `TaskOutcome[T]`, outcome
+category and payload ownership, suspension/resumption continuation, live
+borrows, completion synchronization, source provenance, and resolved
+target/profile requirements through lowering.
+
 ---
 
 ## § 78 Threads

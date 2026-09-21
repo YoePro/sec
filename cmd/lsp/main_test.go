@@ -470,6 +470,25 @@ fn Run() void {
 	}
 }
 
+// rules/concurrency/await.md §16 and rules/tooling/lsp.md require tooling to
+// project the exact compiler-owned TaskError inventory.
+func TestCompletionUsesExactCompilerOwnedTaskErrorVariants(t *testing.T) {
+	source := `module main
+
+fn Handle() void {
+    TaskError.
+}
+`
+	offset := strings.Index(source, "TaskError.\n") + len("TaskError.")
+	items := completeSource("", source, offset)
+	assertCompletionLabels(t, items, []string{"ExecutorUnavailable", "NativeFailure", "OutOfMemory", "ResourceLimit"})
+	for _, item := range items {
+		if item.Label == "InvalidConfiguration" || item.Label == "ExecutionError" || item.Label == "RuntimeError" {
+			t.Fatalf("non-TaskError variant offered: %+v", item)
+		}
+	}
+}
+
 func TestHoverUsesCompilerOwnedRegisterFieldAccess(t *testing.T) {
 	source := `module main
 
@@ -2345,10 +2364,16 @@ fn Count(text: string) int {
 	assertCompletionLabels(t, items, []string{"len"})
 }
 
-func TestCompletionIncludesAllCompilerKnownGlobalFunctions(t *testing.T) {
+// TestCompletionUsesCanonicalCompilerKnownGlobalFunctions keeps the removed
+// global SizeOf form out of tooling while retaining current globals.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Completion"
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — § 24 "Tooling"
+func TestCompletionUsesCanonicalCompilerKnownGlobalFunctions(t *testing.T) {
 	source := "module main\n\nfn Use() void {\n\tSi\n\tfi\n}\n"
-	sizeItems := completeSource("", source, strings.Index(source, "Si")+len("Si"))
-	assertCompletionLabels(t, sizeItems, []string{"SizeOf"})
+	removedItems := completeSource("", source, strings.Index(source, "Si")+len("Si"))
+	assertNoCompletionLabel(t, removedItems, "SizeOf")
 	fillItems := completeSource("", source, strings.Index(source, "fi")+len("fi"))
 	assertCompletionLabels(t, fillItems, []string{"fill"})
 }
@@ -3390,6 +3415,28 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 	source = "module main\n\nfn Use() void {\n\tlet mut arena: Arena := Arena {}\n\tarena.\n}\n"
 	arenaItems := completeSource("", source, strings.Index(source, "arena.")+len("arena."))
 	assertCompletionLabels(t, arenaItems, []string{"Alloc", "New", "Ptr", "Release", "Reset", "SizeOf"})
+}
+
+// TestShapedRankAndLenCompletionAndHover verifies that tooling projects the
+// shaped facts resolved by Sema's compiler-known member registry.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
+//   - rules/collections/shaped-types.md — § 33 "LSP and tooling requirements"
+//   - rules/corrections/applied/compiler_known_members-shaped-correction-20260813.md — "LSP integration"
+func TestShapedRankAndLenCompletionAndHover(t *testing.T) {
+	source := "module main\n\nfn Inspect(value: matrix[int, 3, 4]) void {\n\tvalue.\n}\n"
+	items := completeSource("", source, strings.Index(source, "value.")+len("value."))
+	assertCompletionLabels(t, items, []string{"Len", "Rank"})
+
+	hoverSource := "module main\n\nfn Inspect(value: matrix[int, 3, 4]) uint {\n\treturn value.Len\n}\n"
+	hoverOffset := strings.LastIndex(hoverSource, "Len") + 1
+	hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "property Len: uint") ||
+		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-LEN") ||
+		!strings.Contains(hover.Contents.Value, "element count: 12") {
+		t.Fatalf("shaped Len hover = %+v, %v", hover, ok)
+	}
 }
 
 // TestCompletionIncludesCanonicalPanicInfoFields verifies that LSP projects

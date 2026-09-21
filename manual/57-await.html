@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Await and Task Outcomes - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#await">Await and Task Outcomes</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#core-rule">Core Rule</a>
+        <a href="#syntax">Syntax</a>
+        <a href="#task-outcome">TaskOutcome[T]</a>
+        <a href="#task-error">TaskError</a>
+        <a href="#spawn-error">TaskSpawnError Boundary</a>
+        <a href="#panic-info">PanicInfo</a>
+        <a href="#normal-completion">Normal Completion</a>
+        <a href="#void">Task[void]</a>
+        <a href="#matching">Exhaustive Outcome Handling</a>
+        <a href="#consumption">Handle Consumption</a>
+        <a href="#internal-ownership">Await Operation Ownership</a>
+        <a href="#commit">Await Commit Point</a>
+        <a href="#completion-wins">Completion Wins</a>
+        <a href="#caller-cancellation">Caller Cancellation Wins</a>
+        <a href="#no-detach">No Implicit Detach</a>
+        <a href="#race">Completion/Cancellation Race</a>
+        <a href="#child-cancel">Child vs Caller Cancellation</a>
+        <a href="#request-cancel">RequestCancel Before Await</a>
+        <a href="#waiting">Suspension and Blocking</a>
+        <a href="#resumption">Resumption and Migration</a>
+        <a href="#ownership">Result Ownership Transfer</a>
+        <a href="#nested-result">Nested Result</a>
+        <a href="#expressions">Await in Expressions</a>
+        <a href="#forbidden-contexts">Forbidden Contexts</a>
+        <a href="#join">Await vs Join</a>
+        <a href="#observers">Observers and Other Handles</a>
+        <a href="#guards-borrows">Guards and Borrows</a>
+        <a href="#move-only">Move-Only Values Across Await</a>
+        <a href="#context-timeout">Context, Timeout and Select</a>
+        <a href="#memory">Memory Synchronization</a>
+        <a href="#destruction">Destruction and Cleanup</a>
+        <a href="#analysis">Semantic Analysis</a>
+        <a href="#ir">Semantic IR and Lowering</a>
+        <a href="#runtime">Runtime Obligations</a>
+        <a href="#tooling">LSP and Diagnostics</a>
+        <a href="#target">Target and Profile Requirements</a>
+        <a href="#status">Specification Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html" class="active">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Await and Task Outcomes</div>
+
+        <h1 id="await">Await and Task Outcomes</h1>
+
+        <p>
+            <code>await</code> is Sec's normal consuming synchronization operation for an owning
+            <code>Task[T]</code> handle. It waits until the task reaches a terminal state, resolves
+            the lifecycle obligation owned by the handle, and produces the complete terminal outcome.
+        </p>
+
+        <pre><code>let worker := try spawn Calculate()
+let outcome := await worker</code></pre>
+
+        <div class="rule">
+            <strong>Core rule:</strong> If <code>task</code> has type <code>Task[T]</code>, then
+            <code>await task</code> always has the static type <code>TaskOutcome[T]</code>. Await
+            never collapses to <code>T</code>, never flattens an application <code>Result</code>, and
+            consumes the owning task handle exactly once.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                A task has two distinct layers that must not be conflated. First, the task function
+                itself has a declared result type <code>T</code>. Second, the execution of that task
+                may complete normally, be cancelled, panic at a recoverable task boundary, or fail at
+                the runtime/executor layer. <code>TaskOutcome[T]</code> preserves both layers.
+            </p>
+
+            <p>
+                Await also resolves lifecycle ownership. A <code>Task[T]</code> is an owning handle;
+                once it is passed into <code>await</code>, the source binding no longer owns or controls
+                that lifecycle. The await operation itself owns the lifecycle until the terminal
+                outcome has either been transferred to source code or cleaned up internally.
+            </p>
+        </section>
+
+        <section id="core-rule">
+            <h2>Core Rule</h2>
+
+            <pre><code>Task[T]  --await-->  TaskOutcome[T]</code></pre>
+
+            <ul>
+                <li><code>await</code> requires one available owning <code>Task[T]</code>.</li>
+                <li>The result type is invariantly <code>TaskOutcome[T]</code>.</li>
+                <li>The source task handle is consumed.</li>
+                <li>The same owning handle cannot be awaited twice.</li>
+                <li><code>await</code> does not create or detach a task.</li>
+                <li>Static proof of normal completion does not narrow the result type to <code>T</code>.</li>
+            </ul>
+
+            <p>
+                The invariant result type is important for source readability, exhaustive matching,
+                tooling and generic code. Code does not silently acquire a different type merely
+                because an optimizer or analysis happens to know more about one producer.
+            </p>
+        </section>
+
+        <section id="syntax">
+            <h2>Syntax</h2>
+
+            <p>The canonical form is:</p>
+
+            <pre><code>await expression</code></pre>
+
+            <p>The operand expression must evaluate to an owning <code>Task[T]</code>.</p>
+
+            <pre><code>let worker := try spawn Calculate()
+let outcome := await worker</code></pre>
+
+            <p>A freshly created task may be awaited directly:</p>
+
+            <pre><code>let outcome := await (try spawn Calculate())</code></pre>
+
+            <p>
+                Parentheses follow ordinary expression precedence. There is no special combined
+                <code>spawn await</code> syntax.
+            </p>
+        </section>
+
+        <section id="task-outcome">
+            <h2>TaskOutcome[T]</h2>
+
+            <p>
+                Await resolves the canonical compiler-known task-outcome union. Sec 0.1 has exactly
+                four source-visible terminal outcome variants:
+            </p>
+
+            <pre><code>type TaskOutcome[T] union {
+    // The task function returned normally with its declared result T.
+    Completed(T)
+
+    // Cooperative task cancellation committed terminally.
+    Cancelled
+
+    // A panic escaped the task boundary under the selected recoverable
+    // task-boundary panic policy.
+    Panicked(PanicInfo)
+
+    // The already-created task failed at the execution/runtime layer.
+    Failed(TaskError)
+}</code></pre>
+
+            <p>
+                Scheduler states such as queued, runnable, running, blocked and suspended are not
+                task outcomes. They describe execution state before terminal completion.
+            </p>
+        </section>
+
+        <section id="task-error">
+            <h2>TaskError</h2>
+
+            <p>
+                <code>TaskError</code> describes failures that occur after a task already exists and
+                that belong to the execution/runtime layer rather than to the task function's own
+                application-level result.
+            </p>
+
+            <pre><code>enum TaskError error {
+    // The already-created task execution mechanism could not obtain
+    // memory required to continue or resume execution.
+    OutOfMemory
+
+    // A runtime/executor resource required after successful task
+    // creation was exhausted.
+    ResourceLimit
+
+    // The executor/runtime responsible for an already-created task
+    // became unavailable before the task reached another terminal outcome.
+    ExecutorUnavailable
+
+    // A target/runtime execution failure occurred after creation and
+    // is not represented by another TaskError variant.
+    NativeFailure
+}</code></pre>
+
+            <p>
+                <code>TaskError</code> is not used for cooperative cancellation, panic, task creation
+                failure or an application-level <code>Err(E)</code> returned as part of <code>T</code>.
+            </p>
+        </section>
+
+        <section id="spawn-error">
+            <h2>TaskSpawnError Boundary</h2>
+
+            <p>
+                Task creation failure happens before a <code>Task[T]</code> exists and therefore belongs
+                to <code>TaskSpawnError</code>. Await can never produce <code>TaskSpawnError</code>, because
+                its operand is already an existing task.
+            </p>
+
+            <pre><code>enum TaskSpawnError error {
+    // Memory required to create the task could not be obtained.
+    OutOfMemory
+
+    // A creation-time task/worker/thread/slot resource limit was exhausted.
+    ResourceLimit
+
+    // The configured executor could not accept/create the requested task.
+    ExecutorUnavailable
+
+    // A runtime task configuration valid as source input could not be
+    // instantiated under the selected execution configuration.
+    InvalidConfiguration
+
+    // A lower-level creation failure was not represented more specifically.
+    NativeFailure
+}</code></pre>
+
+            <pre><code>let worker := try spawn Calculate() // TaskSpawnError belongs here
+let outcome := await worker         // TaskOutcome[int] belongs here</code></pre>
+        </section>
+
+        <section id="panic-info">
+            <h2>PanicInfo</h2>
+
+            <p>
+                <code>Panicked(PanicInfo)</code> uses the canonical panic metadata type. Its portable
+                Sec 0.1 source-visible shape is:
+            </p>
+
+            <pre><code>type PanicInfo struct {
+    // Stable registered panic-reason identity.
+    ID: PanicID,
+
+    // Canonical source file metadata.
+    File: string,
+
+    // Canonical source line according to source-location rules.
+    Line: uint,
+
+    // Canonical source column according to source-location rules.
+    Column: uint,
+
+    // Canonical declaring/executing function metadata.
+    Function: string,
+}</code></pre>
+
+            <p>
+                A task-local panic can become <code>Panicked</code> only when the selected panic policy
+                can contain the panic at the task boundary. A hard-termination policy is not required
+                to fabricate a recoverable outcome.
+            </p>
+        </section>
+
+        <section id="normal-completion">
+            <h2>Normal Completion</h2>
+
+            <p>
+                <code>Completed(value)</code> means that the task function returned normally. The value
+                has exactly type <code>T</code>. Await does not reinterpret the task function's result.
+            </p>
+
+            <pre><code>fn LoadImage() Result[Image, IOError] {
+    // ...
+}
+
+let worker := try spawn LoadImage()
+let outcome := await worker</code></pre>
+
+            <p>The type of <code>outcome</code> is:</p>
+
+            <pre><code>TaskOutcome[Result[Image, IOError]]</code></pre>
+
+            <p>
+                If <code>LoadImage()</code> returns <code>Err(IOError.InvalidValue)</code>, the task completed
+                normally. The outcome is therefore:
+            </p>
+
+            <pre><code>Completed(Err(IOError.InvalidValue))</code></pre>
+
+            <p>It is not <code>Failed(TaskError)</code>.</p>
+        </section>
+
+        <section id="void">
+            <h2>Task[void]</h2>
+
+            <p>
+                Awaiting <code>Task[void]</code> produces <code>TaskOutcome[void]</code>. It does not
+                collapse to plain <code>void</code>.
+            </p>
+
+            <pre><code>match await worker {
+    Completed => {
+        Continue()
+    }
+
+    Cancelled => {
+        HandleCancellation()
+    }
+
+    Panicked(info) => {
+        HandlePanic(info)
+    }
+
+    Failed(error) => {
+        HandleTaskFailure(error)
+    }
+}</code></pre>
+        </section>
+
+        <section id="matching">
+            <h2>Exhaustive Outcome Handling</h2>
+
+            <p>
+                <code>TaskOutcome[T]</code> follows ordinary exhaustive union matching. Await does not
+                introduce a producer-refined exception that allows abnormal outcomes to disappear
+                from the type.
+            </p>
+
+            <pre><code>match await worker {
+    Completed(value) => {
+        Use(value)
+    }
+
+    Cancelled => {
+        HandleCancellation()
+    }
+
+    Panicked(info) => {
+        HandlePanic(info)
+    }
+
+    Failed(error) => {
+        HandleTaskFailure(error)
+    }
+}</code></pre>
+
+            <p>
+                Whether an outcome may be explicitly discarded follows ordinary discard and must-use
+                rules. Await itself never silently erases abnormal outcomes.
+            </p>
+        </section>
+
+        <section id="consumption">
+            <h2>Handle Consumption</h2>
+
+            <p>
+                Entering await transfers lifecycle ownership from the source binding into the await
+                operation. The binding becomes unavailable immediately on every runtime path that
+                executes the await.
+            </p>
+
+            <pre><code>let worker := try spawn Calculate()
+let outcome := await worker
+
+worker.RequestCancel() // invalid: worker was consumed by await</code></pre>
+
+            <p>
+                The source binding does not become available again after successful completion, and it
+                is not restored if cancellation of the waiting execution wins before await commit.
+            </p>
+        </section>
+
+        <section id="internal-ownership">
+            <h2>Await Operation Ownership</h2>
+
+            <p>
+                While await is pending, the await operation itself owns the consumed task lifecycle
+                capability. This is semantic ownership even when a backend represents it using an
+                internal task control block, scheduler token, continuation record or another runtime
+                structure.
+            </p>
+
+            <p>
+                That ownership must survive suspension, migration, cancellation races and cleanup.
+                It ends only when one of two things happens:
+            </p>
+
+            <ol>
+                <li>the terminal outcome commits and transfers to source-level code; or</li>
+                <li>caller-cancellation cleanup resolves the child to terminal state and destroys the outcome internally.</li>
+            </ol>
+        </section>
+
+        <section id="commit">
+            <h2>Await Commit Point</h2>
+
+            <p>
+                The await commit point is the semantic boundary at which the awaited task is terminal,
+                await has acquired its terminal <code>TaskOutcome[T]</code>, and that outcome is ready
+                to transfer to the awaiting continuation.
+            </p>
+
+            <p>The following are not by themselves await commit:</p>
+
+            <ul>
+                <li>a scheduler wakeup;</li>
+                <li>observing that the task appears done;</li>
+                <li>a cancellation request;</li>
+                <li>the child merely entering a terminal transition.</li>
+            </ul>
+
+            <p>
+                Await commit is atomic at the semantic level with respect to cancellation of the
+                waiting execution.
+            </p>
+        </section>
+
+        <section id="completion-wins">
+            <h2>Completion Wins</h2>
+
+            <p>
+                If await commit happens before current-execution cancellation commits, the await
+                expression produces the acquired <code>TaskOutcome[T]</code>. Any active payload moves
+                or copies into source-level ownership according to its ordinary type semantics.
+            </p>
+
+            <p>
+                A later cancellation observation cannot roll back the completed await. If the caller
+                subsequently unwinds because of cancellation, the already-produced outcome participates
+                in ordinary deterministic cleanup.
+            </p>
+        </section>
+
+        <section id="caller-cancellation">
+            <h2>Caller Cancellation Wins</h2>
+
+            <p>
+                <code>await</code> is a cancellation point for the current execution. If caller
+                cancellation commits before await commit, source code receives no
+                <code>TaskOutcome[T]</code> from that await.
+            </p>
+
+            <p>The await operation then:</p>
+
+            <ol>
+                <li>retains the internally owned task lifecycle;</li>
+                <li>requests cooperative cancellation of the awaited task;</li>
+                <li>waits until the child reaches one terminal outcome;</li>
+                <li>destroys or discards that outcome internally according to ordinary destruction rules;</li>
+                <li>only then allows terminal cancellation of the waiting execution to finish.</li>
+            </ol>
+
+            <div class="rule">
+                <strong>Structured cleanup rule:</strong> Cancellation of the waiter does not abandon
+                the awaited child. The child lifecycle must still be resolved because await already
+                consumed the owning handle.
+            </div>
+        </section>
+
+        <section id="no-detach">
+            <h2>No Implicit Detach</h2>
+
+            <p>
+                Caller cancellation must not turn an awaited task into detached background work.
+                The runtime may not hand the child to an unstructured background manager merely to
+                make the caller cancel faster.
+            </p>
+
+            <p>
+                Likewise, the consumed handle is not restored. A cancelling execution may already be
+                unwinding, and the runtime must never manufacture a second owning lifecycle handle.
+            </p>
+
+            <p>
+                Because cancellation is cooperative, a child that does not observe its cancellation
+                request may delay terminal cancellation of the waiter. This is intentional: preserving
+                lifecycle and borrowed-state safety takes precedence over pretending that cancellation
+                is instantaneous.
+            </p>
+        </section>
+
+        <section id="race">
+            <h2>Completion/Cancellation Race</h2>
+
+            <p>
+                Await completion and caller cancellation form a first-commit race. Exactly one side
+                wins semantically.
+            </p>
+
+            <ul>
+                <li>If await commit wins, source code receives exactly one <code>TaskOutcome[T]</code>.</li>
+                <li>If caller cancellation wins, source code receives no outcome from that await.</li>
+                <li>The runtime must never produce both results.</li>
+                <li>The runtime must never produce neither while losing the owned lifecycle.</li>
+            </ul>
+
+            <p>
+                Physical wakeup order, worker migration, interrupt timing and OS scheduling do not
+                change which semantic state committed first.
+            </p>
+        </section>
+
+        <section id="child-cancel">
+            <h2>Child Cancellation vs Caller Cancellation</h2>
+
+            <p>
+                Cancellation of the awaited task and cancellation of the waiting execution are
+                distinct state machines.
+            </p>
+
+            <ul>
+                <li>If the child reaches <code>Cancelled</code> and await commits first, source code receives <code>TaskOutcome.Cancelled</code>.</li>
+                <li>If caller cancellation commits first, source code receives no child outcome.</li>
+                <li>The child's eventual terminal outcome is cleaned up internally by await.</li>
+            </ul>
+
+            <p>
+                The child's eventual terminal category may still be <code>Completed</code>,
+                <code>Cancelled</code>, <code>Panicked</code> or <code>Failed</code>. Requesting
+                cancellation does not predetermine the result.
+            </p>
+        </section>
+
+        <section id="request-cancel">
+            <h2>RequestCancel Before Await</h2>
+
+            <p>
+                The owner may explicitly request child cancellation before awaiting it:
+            </p>
+
+            <pre><code>worker.RequestCancel()
+let outcome := await worker</code></pre>
+
+            <p>
+                <code>RequestCancel()</code> does not consume the handle and does not guarantee that
+                the task has already become terminal. Await still resolves the actual terminal outcome.
+            </p>
+        </section>
+
+        <section id="waiting">
+            <h2>Suspension and Physical Blocking</h2>
+
+            <p>
+                Await is potentially waiting, but the language does not mandate one physical
+                implementation. A conforming backend may suspend a logical task, park or reschedule a
+                worker, use an RTOS wait primitive, resume from an event loop, or physically block a
+                native thread when the active target profile permits it.
+            </p>
+
+            <p>
+                In a task runtime, logical suspension is preferred where available and required by the
+                selected execution model. Busy waiting is not permitted unless the target/profile
+                explicitly defines bounded busy-wait behavior.
+            </p>
+        </section>
+
+        <section id="resumption">
+            <h2>Resumption and Migration</h2>
+
+            <p>
+                A suspended task may resume on a different permitted physical worker or thread. Its
+                logical task identity does not change.
+            </p>
+
+            <ul>
+                <li>Task-local cancellation follows the logical task.</li>
+                <li>Thread-local state follows the physical-thread rules.</li>
+                <li>Thread-local state must not be silently treated as task-local across migration.</li>
+                <li>Migration must not change the resulting <code>TaskOutcome[T]</code>.</li>
+            </ul>
+        </section>
+
+        <section id="ownership">
+            <h2>Result Ownership Transfer</h2>
+
+            <p>
+                On successful await commit, ownership of the active terminal outcome moves into the
+                source-level <code>TaskOutcome[T]</code> value.
+            </p>
+
+            <ul>
+                <li><code>Completed(T)</code> transfers a move-only <code>T</code> exactly once.</li>
+                <li>Copyable <code>T</code> follows ordinary value semantics after materialization.</li>
+                <li><code>Panicked(PanicInfo)</code> carries the canonical panic metadata value.</li>
+                <li><code>Failed(TaskError)</code> carries the exact execution error.</li>
+                <li><code>Cancelled</code> has no payload.</li>
+            </ul>
+
+            <p>
+                No separate completion payload remains extractable from the consumed task handle after
+                await.
+            </p>
+        </section>
+
+        <section id="nested-result">
+            <h2>Nested Result</h2>
+
+            <p>
+                Await never performs an implicit <code>try</code> on the value returned by the task
+                function.
+            </p>
+
+            <pre><code>Task[Result[Image, IOError]]
+        |
+      await
+        v
+TaskOutcome[Result[Image, IOError]]</code></pre>
+
+            <p>
+                A completed application error remains <code>Completed(Err(error))</code>. There is no
+                Sec 0.1 <code>try await</code> flattening construct, and future composition must preserve
+                the type layers unless explicitly standardized.
+            </p>
+        </section>
+
+        <section id="expressions">
+            <h2>Await in Expressions</h2>
+
+            <p>
+                Await is an ordinary expression whose type is <code>TaskOutcome[T]</code>. It may appear
+                wherever that result type is valid.
+            </p>
+
+            <pre><code>let outcome := await worker
+return await worker
+Handle(await worker)</code></pre>
+
+            <p>
+                Ordinary Sec evaluation order still applies. Optimizations must not reorder observable
+                side effects across an await boundary when doing so would change program behavior.
+                Await commit is a synchronization and semantic side-effect boundary.
+            </p>
+        </section>
+
+        <section id="forbidden-contexts">
+            <h2>Forbidden Contexts</h2>
+
+            <h3>Inside defer</h3>
+
+            <p>
+                Sec 0.1 does not allow a user-authored await inside <code>defer</code>. Cleanup must not
+                introduce a new suspending lifecycle wait.
+            </p>
+
+            <pre><code>defer {
+    let outcome := await worker // invalid
+}</code></pre>
+
+            <p>Suggested diagnostic:</p>
+
+            <pre><code>await is not allowed inside defer</code></pre>
+
+            <h3>During destruction</h3>
+
+            <p>
+                Sec 0.1 has no asynchronous destruction model. Destructors/finalization logic must not
+                introduce source-level await suspension. The runtime lifecycle cleanup performed after
+                cancelled await is a separate internal mechanism.
+            </p>
+
+            <h3>Compile-time and hidden static initialization</h3>
+
+            <p>
+                Await is not permitted during compile-time evaluation or hidden static initialization.
+                Runtime task startup and waiting must remain visible in executable control flow.
+            </p>
+        </section>
+
+        <section id="join">
+            <h2>Await vs Join</h2>
+
+            <p>
+                Await and join both synchronize with task completion, but their ownership behavior is
+                intentionally different.
+            </p>
+
+            <pre><code>await task
+    waits for terminal task completion
+    consumes Task[T]
+    resolves lifecycle ownership
+    returns TaskOutcome[T]
+
+join task
+    waits for terminal task completion
+    preserves the owning task handle
+    establishes terminal observation/synchronization
+    does not itself transfer TaskOutcome[T]</code></pre>
+
+            <p>
+                A handle preserved by a valid join may later be consumed by await when the task's
+                complete lifecycle/result capability remains available. The later await still returns
+                the full <code>TaskOutcome[T]</code> and consumes the handle.
+            </p>
+        </section>
+
+        <section id="observers">
+            <h2>Observers and Other Handles</h2>
+
+            <p>
+                Sec 0.1 await is task-specific and owning. It does not define a general structural
+                Awaitable protocol.
+            </p>
+
+            <ul>
+                <li>A non-owning <code>TaskObserver[T]</code> cannot be awaited as an owning task.</li>
+                <li><code>Thread[T]</code> is not awaitable.</li>
+                <li>Process handles are not awaitable.</li>
+                <li>User-defined types do not become awaitable by declaring <code>Await</code>, <code>Poll</code> or <code>Ready</code> methods.</li>
+                <li>No implicit conversion to <code>Task[T]</code> occurs.</li>
+            </ul>
+
+            <pre><code>await requires Task[T]; got Thread[T]</code></pre>
+
+            <pre><code>await requires an owning Task[T]; got TaskObserver[T]</code></pre>
+        </section>
+
+        <section id="guards-borrows">
+            <h2>Guards and Borrows Across Await</h2>
+
+            <h3>MutexGuard</h3>
+
+            <p>
+                A live <code>MutexGuard[T]</code> may not cross an await suspension boundary. The
+                compiler rejects await while a guard remains live unless it can prove that the guard
+                has ended before suspension can occur.
+            </p>
+
+            <pre><code>mutex guard state remains active across await</code></pre>
+
+            <h3>Ordinary borrows</h3>
+
+            <p>
+                Await is not an automatic end for every borrow. A borrow may remain live across await
+                only when analysis proves that all lifetime, aliasing, address-stability, migration and
+                cancellation-cleanup requirements remain valid.
+            </p>
+
+            <p>At minimum, the compiler must prove that:</p>
+
+            <ul>
+                <li>the owner remains alive;</li>
+                <li>the referenced storage remains stable;</li>
+                <li>no conflicting access can occur;</li>
+                <li>suspension and resumption do not invalidate the reference;</li>
+                <li>migration restrictions are satisfied;</li>
+                <li>caller-cancellation cleanup cannot outlive the referenced owner.</li>
+            </ul>
+
+            <p>
+                If the child itself holds a valid borrow into caller-owned state, that borrow remains
+                live until the child reaches terminal state. This is why pre-commit caller cancellation
+                must resolve the child lifecycle instead of detaching it.
+            </p>
+        </section>
+
+        <section id="move-only">
+            <h2>Move-Only Values Across Await</h2>
+
+            <p>
+                Ordinary owned move-only values may remain live across await when the continuation
+                representation can preserve their ownership and destruction requirements. The compiler
+                may spill them into task-frame storage as necessary.
+            </p>
+
+            <p>
+                Caller cancellation must still destroy every value owned by the waiting task exactly
+                once. A value already transferred into the child is not simultaneously owned by the
+                waiter.
+            </p>
+        </section>
+
+        <section id="context-timeout">
+            <h2>Context, Timeout and Select</h2>
+
+            <h3>No Context operand</h3>
+
+            <p>
+                Sec 0.1 await has no <code>Context</code> parameter and does not read a hidden ambient
+                context. Context cancellation affects await only when application/runtime logic
+                explicitly converts it into the relevant execution/task cancellation behavior.
+            </p>
+
+            <h3>No await timeout parameter</h3>
+
+            <p>
+                Await does not have a timeout argument or <code>Await(context)</code> method. Timeout is
+                composed through <code>select</code>/<code>after</code> where the select rules support the
+                task branch.
+            </p>
+
+            <h3>Select</h3>
+
+            <p>
+                A select branch that commits task-outcome ownership uses the same result type and
+                ownership semantics as direct await: <code>TaskOutcome[T]</code>. Non-selected branches
+                must not consume the owning task handle.
+            </p>
+        </section>
+
+        <section id="memory">
+            <h2>Memory Synchronization</h2>
+
+            <p>
+                Successful await commit establishes task-completion synchronization. Memory effects
+                published by the completed task according to the concurrency memory model become
+                visible to the awaiting continuation through the canonical completion happens-before
+                edge.
+            </p>
+
+            <p>
+                Merely observing a task status flag is not equivalent to await synchronization. A
+                cancellation request is likewise not a general synchronization operation for unrelated
+                application memory.
+            </p>
+
+            <p>
+                If caller cancellation wins, the internal cleanup wait must still establish enough
+                synchronization to destroy the child's terminal outcome and owned resources safely.
+            </p>
+        </section>
+
+        <section id="destruction">
+            <h2>Destruction and Cleanup</h2>
+
+            <h3>After successful await</h3>
+
+            <p>
+                Once await commits, the terminal outcome is owned by source-level code. Runtime task
+                resources owned solely by the consumed handle may be reclaimed when no observer or
+                runtime dependency still needs them. The runtime must not destroy a move-only
+                <code>Completed(T)</code> payload that has already transferred to the caller.
+            </p>
+
+            <h3>After caller-cancelled await</h3>
+
+            <p>
+                When caller cancellation wins before await commit, no source-level outcome is produced.
+                After the child becomes terminal, its outcome is owned by the internal cleanup path and
+                destroyed exactly once. A <code>Completed(T)</code> produced despite the cancellation
+                request must be destroyed normally rather than leaked.
+            </p>
+        </section>
+
+        <section id="analysis">
+            <h2>Semantic Analysis</h2>
+
+            <p>The compiler validates at least:</p>
+
+            <ul>
+                <li>the operand is exactly one available owning <code>Task[T]</code>;</li>
+                <li>the task handle has not already been consumed;</li>
+                <li>the result type is exactly <code>TaskOutcome[T]</code>;</li>
+                <li>all task outcome payload types resolve correctly;</li>
+                <li>move-only result ownership is represented exactly once;</li>
+                <li>caller-cancellation cleanup preserves lifecycle ownership;</li>
+                <li>no invalid mutex guard crosses suspension;</li>
+                <li>borrows remain valid across suspension and cancellation cleanup;</li>
+                <li>await is not inside <code>defer</code> or compile-time/static initialization;</li>
+                <li>the selected target/profile supports task waiting;</li>
+                <li>every control-flow edge resolves lifecycle ownership correctly.</li>
+            </ul>
+
+            <p>
+                Sema must not infer bare <code>T</code> as the await result and must not flatten
+                <code>Task[Result[V, E]]</code>.
+            </p>
+
+            <p>
+                Flow-sensitive ownership analysis marks the source binding consumed on every path that
+                executes await. Borrow analysis treats await as a potential suspension point and models
+                caller-cancellation cleanup as potentially extending child-held borrows until child
+                terminal cleanup completes.
+            </p>
+
+            <p>
+                Await also contributes a wait dependency to blocking/deadlock analysis. Cancellation of
+                the waiter does not allow the analysis to assume that this dependency disappears
+                immediately, because child lifecycle cleanup may continue waiting for terminal state.
+            </p>
+        </section>
+
+        <section id="ir">
+            <h2>Semantic IR and Lowering</h2>
+
+            <p>
+                Await remains an explicit semantic operation in Semantic IR. It must not be erased
+                early into a normal function call or a raw synchronization primitive.
+            </p>
+
+            <p>IR must preserve facts including:</p>
+
+            <ul>
+                <li>concrete <code>Task[T]</code> and <code>TaskOutcome[T]</code> identities;</li>
+                <li>consumed lifecycle ownership;</li>
+                <li>task/control identity;</li>
+                <li>the await commit boundary;</li>
+                <li>terminal outcome and active payload ownership;</li>
+                <li>caller-cancellation registration and the first-commit race;</li>
+                <li>child cancellation request on pre-commit caller cancellation;</li>
+                <li>internal lifecycle retention and outcome-destruction path;</li>
+                <li>suspension/resumption continuation;</li>
+                <li>live borrows and guard restrictions;</li>
+                <li>the task-completion synchronization edge;</li>
+                <li>source provenance and target/profile requirements.</li>
+            </ul>
+
+            <p>
+                Lowering may choose different runtime mechanisms per target, but it must preserve
+                invariant <code>TaskOutcome[T]</code>, exactly-once handle consumption, exactly-once
+                terminal outcome transfer or internal destruction, the completion/cancellation race,
+                no implicit detach, and all borrow/memory-synchronization guarantees.
+            </p>
+        </section>
+
+        <section id="runtime">
+            <h2>Runtime Obligations</h2>
+
+            <p>
+                A conforming runtime must be able to register completion waiting and cancellation
+                wakeup without losing task lifecycle ownership. Completion and caller cancellation must
+                resolve atomically at the semantic level.
+            </p>
+
+            <p>If caller cancellation wins before await commit, the runtime must:</p>
+
+            <ol>
+                <li>request cooperative cancellation of the child;</li>
+                <li>continue owning and waiting for the child lifecycle;</li>
+                <li>acquire the eventual terminal outcome;</li>
+                <li>destroy that outcome internally;</li>
+                <li>only then complete terminal cancellation of the waiter.</li>
+            </ol>
+
+            <p>
+                An already-terminal task may use an optimized fast path, but the ownership and commit
+                semantics are identical.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>LSP and Diagnostics</h2>
+
+            <p>
+                LSP hover on an await expression must show <code>TaskOutcome[T]</code> with the concrete
+                substituted <code>T</code>. It must never show bare <code>T</code> merely because normal
+                completion has been proven.
+            </p>
+
+            <p>
+                Navigation and completion should expose all four canonical outcome variants. Tooling
+                must not invent variants such as <code>Success</code>, <code>Error</code> or
+                <code>Timeout</code>.
+            </p>
+
+            <p>Typical diagnostics include:</p>
+
+            <pre><code>await requires Task[T]; got Thread[T]
+await requires Task[T]; got Process
+await requires an owning Task[T]; got TaskObserver[T]
+use of consumed task worker
+await is not allowed inside defer
+mutex guard state remains active across await
+borrow may become invalid while awaited task is still running
+await is not available during compile-time evaluation</code></pre>
+
+            <p>
+                Diagnostics should point to both the consumed handle and the prior consumption site,
+                and borrow diagnostics should identify the owner, borrow creation and await/cancellation
+                cleanup lifetime.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target and Profile Requirements</h2>
+
+            <p>
+                The immutable <code>CompilationPlan</code> determines how task waiting can be realized
+                on the selected target. Relevant capabilities may include task runtime availability,
+                suspension/resumption, worker parking or blocking policy, cancellation wakeups,
+                task-boundary panic containment, task runtime failure reporting, synchronization
+                primitives and no-allocation or bounded-runtime restrictions.
+            </p>
+
+            <p>
+                A target that cannot support tasks must reject task use through target validation. It
+                must not invent an await-specific runtime error or a target-specific variant of
+                <code>TaskOutcome[T]</code>.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Specification Status</h2>
+
+            <p>
+                The canonical await rulebook is normative for Sec 0.1 and is revision 2.0. It defines
+                the complete source semantics described on this page, including the exact outcome
+                surface, task-handle consumption, await-commit semantics and caller-cancellation
+                cleanup behavior.
+            </p>
+
+            <p>
+                Mutable implementation status is intentionally maintained separately in
+                <code>governance/concurrency_await.yaml</code>. This manual page does not infer or
+                duplicate that mutable ledger from the normative rulebook alone.
+            </p>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Always treat <code>await Task[T]</code> as producing <code>TaskOutcome[T]</code>, never bare <code>T</code>.</li>
+                <li>Handle application errors inside <code>Completed(...)</code> instead of confusing them with <code>TaskError</code>.</li>
+                <li>Remember that await consumes the owning task handle.</li>
+                <li>Use <code>RequestCancel()</code> when you want to request child cancellation before lifecycle resolution.</li>
+                <li>Do not expect waiter cancellation to detach the child or restore the consumed handle.</li>
+                <li>Release <code>MutexGuard</code> values before an await boundary.</li>
+                <li>Keep borrows across await only when their complete suspension and cancellation lifetimes are provably valid.</li>
+                <li>Use join when you need completion synchronization while preserving the owning task handle.</li>
+                <li>Use select/after for timeout composition instead of inventing an await timeout parameter.</li>
+                <li>Rely on await for completion synchronization rather than polling a task status flag.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>await Task[T]</code> always has static type <code>TaskOutcome[T]</code>.</li>
+                <li><code>TaskOutcome[T]</code> has exactly <code>Completed(T)</code>, <code>Cancelled</code>, <code>Panicked(PanicInfo)</code> and <code>Failed(TaskError)</code>.</li>
+                <li><code>TaskError</code> describes execution/runtime failure after successful creation; <code>TaskSpawnError</code> belongs to creation.</li>
+                <li>An application-level <code>Err(E)</code> returned by the task is still normal completion: <code>Completed(Err(E))</code>.</li>
+                <li><code>Task[void]</code> awaits to <code>TaskOutcome[void]</code>, not plain <code>void</code>.</li>
+                <li>Await consumes the owning task handle exactly once.</li>
+                <li>The await operation internally owns the lifecycle while waiting.</li>
+                <li>Await commit and caller cancellation form a first-commit race.</li>
+                <li>If caller cancellation wins, the child is cancellation-requested and fully resolved before waiter cancellation completes.</li>
+                <li>Caller cancellation never implicitly detaches the child and never restores the consumed handle.</li>
+                <li>Await may suspend and resume on another worker while preserving logical task identity.</li>
+                <li>Await never implicitly flattens nested <code>Result</code>.</li>
+                <li>Await is invalid inside <code>defer</code>, asynchronous destruction and compile-time evaluation.</li>
+                <li>Join preserves the owning handle; await consumes it and transfers the full terminal outcome.</li>
+                <li>Observers, threads, processes and arbitrary user values are not awaitable in Sec 0.1.</li>
+                <li>Live mutex guards may not cross await suspension.</li>
+                <li>Ordinary borrows may cross await only when lifetime, alias, migration and cancellation-cleanup requirements are proven.</li>
+                <li>Successful await commit establishes task-completion synchronization.</li>
+                <li>Semantic IR must preserve lifecycle ownership, commit state and cancellation-race semantics explicitly.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="56-spawn.html">Previous: Spawn</a>
+            <a href="58-threads.html">Next: Threads and Thread-Local Storage</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-21</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

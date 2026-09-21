@@ -40,6 +40,8 @@ type Analyzer struct {
 	bindingIDs                 map[sourceTokenKey]BindingID
 	bindingFacts               map[sourceTokenKey]ResolvedBinding
 	compilerKnownMemberFacts   map[sourceTokenKey]CompilerKnownMember
+	resolvedTestMetadata       map[*ast.TestDeclaration]ResolvedTestMetadata
+	resolvedTests              []ResolvedTestMetadata
 	resolvedCalls              map[*ast.CallExpression]ResolvedCall
 	resolvedTestingOperations  map[*ast.CallExpression]ResolvedTestingOperation
 	resolvedInterpolationPlans map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
@@ -258,6 +260,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
+	a.resolvedTestMetadata = map[*ast.TestDeclaration]ResolvedTestMetadata{}
+	a.resolvedTests = nil
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
 	a.resolvedTestingOperations = map[*ast.CallExpression]ResolvedTestingOperation{}
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
@@ -398,12 +402,14 @@ func (a *Analyzer) validateTestDeclarations(program *ast.Program) {
 		if !ok || declaration == nil {
 			return
 		}
+		valid := !declaration.Invalid
 		if !strings.HasSuffix(filepath.Base(declaration.Token.File), "_test.sec") {
 			a.addErrorAtTokenWithID(
 				declaration.Token,
 				diagnostics.TestDeclarationOutsideTestFile,
 				"test declarations are only allowed in *_test.sec files",
 			)
+			valid = false
 		}
 		if declaration.Name == nil {
 			return
@@ -429,7 +435,38 @@ func (a *Analyzer) validateTestDeclarations(program *ast.Program) {
 			return
 		}
 		seen[key] = declaration.Name.Token
+		if valid {
+			a.recordResolvedTestMetadata(declaration)
+		}
 	})
+}
+
+// recordResolvedTestMetadata retains the stable, structured identity and source
+// location of a valid top-level test without inventing a generated callable or
+// linker-symbol identity.
+//
+// Rules:
+//   - rules/tooling/testing.md — § 6 "Test identity"
+//   - rules/tooling/testing.md — § 33.1 "Explicit semantic identity"
+func (a *Analyzer) recordResolvedTestMetadata(declaration *ast.TestDeclaration) {
+	if declaration == nil || declaration.Name == nil {
+		return
+	}
+	metadata := ResolvedTestMetadata{
+		Identity: TestIdentity{
+			Module: a.currentModule,
+			Path:   []string{declaration.Name.Value},
+		},
+		Name: declaration.Name.Value,
+		Source: TestSourceLocation{
+			File:   declaration.Name.Token.File,
+			Line:   declaration.Name.Token.Line,
+			Column: declaration.Name.Token.Column,
+		},
+		Declaration: declaration,
+	}
+	a.resolvedTestMetadata[declaration] = metadata
+	a.resolvedTests = append(a.resolvedTests, metadata)
 }
 
 // validateNoPanicGuarantees enforces the transitive verified guarantee from
@@ -1194,7 +1231,8 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 	// ordinary project code still cannot shadow any of these names.
 	//
 	// Rules: rules/library/core-library.md; rules/concurrency/tasks.md sections
-	// 4-5 and 11-16; Package 14 sections 50-54 for IndexError.
+	// 4-5 and 11-16; rules/concurrency/await.md section 4; Package 14 sections
+	// 50-54 for IndexError.
 	if isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token) {
 		return false
 	}
@@ -1205,7 +1243,7 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 
 func isCoreBuiltinDeclaration(name string) bool {
 	switch name {
-	case "IndexError", "TaskOutcome", "TaskSpawnError":
+	case "IndexError", "TaskOutcome", "TaskSpawnError", "TaskError":
 		return true
 	default:
 		return false
@@ -8721,6 +8759,15 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 	}
 }
 
+// mergeInheritedInterfaceRequirements composes inherited requirements from the
+// already resolved parent identity. For Parent[int], this must use the concrete
+// specialization rather than looking the unspecialized Parent template up by
+// name and thereby restoring its generic parameter types.
+//
+// Rules:
+//   - rules/declarations/generics.md — § 22 "Generic interfaces"
+//   - rules/declarations/interfaces.md — § 5 "Interface inheritance"
+//   - rules/declarations/interfaces.md — § 6 "Conformance requirements"
 func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 	if iface == nil {
 		return
@@ -8740,8 +8787,8 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 	}
 
 	for _, parent := range iface.Implements {
-		parentType, ok := a.types[parent.Name]
-		if !ok || parentType.Kind != InterfaceType {
+		parentType := parent
+		if parentType.Kind != InterfaceType {
 			continue
 		}
 		for _, method := range parentType.InterfaceMethods {
@@ -13568,10 +13615,10 @@ func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.markMoveSource(expr.Value)
-	// rules/concurrency/tasks.md section 16 and
-	// rules/concurrency/concurrency.md section 7: await consumes Task[T] but
+	// rules/concurrency/await.md §§2, 5, and 17: await consumes Task[T] but
 	// never erases cancellation, panic, or task-execution failure. The complete
-	// task return T remains nested in TaskOutcome[T].
+	// task return T remains nested in TaskOutcome[T]. Runtime commit/cancellation
+	// cleanup remains a later Semantic IR and lowering responsibility.
 	return a.intrinsicGenericType("TaskOutcome", valueType.TypeArgs[0]), expressionValue{Display: expr.String()}
 }
 
@@ -16442,9 +16489,6 @@ func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, e
 	if knownFunction.Internal {
 		return a.inferCompilerInternalFunction(expr, knownFunction)
 	}
-	if name == "SizeOf" {
-		return a.inferCompilerKnownGlobalSizeOf(expr)
-	}
 	if name == "fill" {
 		expected, hasExpected := a.expectedExpressionTypes[expr]
 		return a.inferCompilerKnownFill(expr, expected, hasExpected)
@@ -16497,32 +16541,6 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 		return Type{Kind: InvalidType}, result, true
 	}
 	return known.Result, result, true
-}
-
-func (a *Analyzer) inferCompilerKnownGlobalSizeOf(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	if len(expr.GenericArguments) > 0 {
-		a.addErrorAtToken(expr.Token, "SizeOf accepts a type argument in parentheses, not generic arguments")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Token, "SizeOf expects 1 type argument, got %d", len(expr.Arguments))
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	path, ok := typePathFromExpression(expr.Arguments[0])
-	if !ok {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SizeOf requires a type, not a value expression")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	name := a.resolveTypeName(path)
-	typ, exists := a.types[name]
-	if !exists && a.genericTypes != nil {
-		typ, exists = a.genericTypes[name]
-	}
-	if !exists || !compilerKnownSizedType(typ) {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "SizeOf requires a complete sized type, got %s", path)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	return a.types["uint"], expressionValue{Display: expr.String()}, true
 }
 
 func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Type, hasExpected bool) (Type, expressionValue, bool) {
@@ -18165,7 +18183,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	if name == "fill" {
 		return a.inferCompilerKnownFill(expr, expected, true)
 	}
-	if name == "len" || name == "SizeOf" {
+	if name == "len" {
 		return a.inferCompilerKnownFunction(expr)
 	}
 	functions, ok := a.functions[name]

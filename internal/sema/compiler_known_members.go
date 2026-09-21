@@ -1,6 +1,10 @@
 package sema
 
-import "strings"
+import (
+	"math/big"
+	"strconv"
+	"strings"
+)
 
 type CompilerKnownMemberKind string
 
@@ -33,11 +37,14 @@ type CompilerKnownFunction struct {
 // CompilerKnownFunctions is the canonical catalog used to reserve and expose
 // compiler-owned global functions. Their detailed contextual validation stays
 // in Sema, while LSP observes the same registered Function values.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Global `len`", "Contextual `fill`", and "Internal core string-slice helper"
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 12 and 22.3 remove global SizeOf(TypeName)
 func CompilerKnownFunctions() []CompilerKnownFunction {
 	types := builtinTypes()
 	return []CompilerKnownFunction{
 		{ID: "CKF-LEN", Name: "len", Result: types["int"]},
-		{ID: "CKF-SIZEOF-TYPE", Name: "SizeOf", Result: types["uint"]},
 		{ID: "CKF-FILL", Name: "fill", Result: Type{Kind: InvalidType}},
 		{
 			ID:   "CKF-STRING-SLICE-UNCHECKED",
@@ -74,6 +81,8 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	uintType := builtinTypes()["uint"]
 	boolType := builtinTypes()["bool"]
 	stringType := builtinTypes()["string"]
+
+	members = append(members, compilerKnownShapedFactMembers(typ)...)
 
 	if compilerKnownPointerReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true})
@@ -199,7 +208,7 @@ func compilerKnownCancellationMembers(typ Type) []CompilerKnownMember {
 }
 
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
-	members := []CompilerKnownMember{}
+	members := compilerKnownShapedFactMembers(typ)
 	if compilerKnownSizedType(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinTypes()["uint"]})
 	}
@@ -232,6 +241,100 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		)
 	}
 	return members
+}
+
+// compilerKnownShapedFactMembers exposes the read-only Rank and Len facts that
+// are completely determined by a shaped receiver's static type. Keeping these
+// entries in the canonical registry makes Sema and LSP consume one identity.
+//
+// Runtime-shaped tensor Len and tensor_view Len are deliberately absent until
+// their runtime shape semantics exist; tensor_view Rank remains type-known.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
+//   - rules/collections/shaped-types.md — § 5.1 "Type-level access"
+//   - rules/corrections/applied/compiler_known_members-shaped-correction-20260813.md — "Required read-only shaped properties" and "Type-level properties"
+func compilerKnownShapedFactMembers(typ Type) []CompilerKnownMember {
+	typ = dereferenceType(typ)
+	rank, length, shaped := compilerKnownStaticShapedFacts(typ)
+	if !shaped {
+		return nil
+	}
+
+	uintType := builtinTypes()["uint"]
+	members := []CompilerKnownMember{{
+		ID:            "CKM-SHAPED-RANK",
+		Name:          "Rank",
+		Kind:          CompilerKnownProperty,
+		Result:        uintType,
+		Signature:     "property Rank: uint",
+		Documentation: "Compile-time-known shaped rank: " + rank + ".",
+	}}
+	if length != "" {
+		members = append(members, CompilerKnownMember{
+			ID:            "CKM-SHAPED-LEN",
+			Name:          "Len",
+			Kind:          CompilerKnownProperty,
+			Result:        uintType,
+			Signature:     "property Len: uint",
+			Documentation: "Compile-time-known total logical scalar element count: " + length + ".",
+		})
+	}
+	return members
+}
+
+// compilerKnownStaticShapedFacts derives only facts fully encoded by the
+// canonical shaped type arguments. The empty length marks a rank-only family.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
+func compilerKnownStaticShapedFacts(typ Type) (rank string, length string, ok bool) {
+	if len(typ.TypeArgs) != 1 {
+		return "", "", false
+	}
+	switch typ.Name {
+	case "vector":
+		if len(typ.ConstArgs) != 1 {
+			return "", "", false
+		}
+		return "1", shapedStaticElementCount(typ), true
+	case "matrix":
+		if len(typ.ConstArgs) != 2 {
+			return "", "", false
+		}
+		return "2", shapedStaticElementCount(typ), true
+	case "tensor":
+		if len(typ.ConstArgs) == 0 {
+			return "", "", false
+		}
+		return strconv.FormatInt(int64(len(typ.ConstArgs)), 10), shapedStaticElementCount(typ), true
+	case "tensor_view":
+		if len(typ.ConstArgs) != 1 || typ.ConstArgs[0] < 0 {
+			return "", "", false
+		}
+		return strconv.FormatInt(typ.ConstArgs[0], 10), "", true
+	default:
+		return "", "", false
+	}
+}
+
+// shapedStaticElementCount returns the exact Len encoded by a statically
+// shaped owning type, retaining arbitrary precision for registry callers.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 3.1–3.3 "Shaped type families"
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
+func shapedStaticElementCount(typ Type) string {
+	if typ.StaticElementCount != nil {
+		return typ.StaticElementCount.String()
+	}
+	product := big.NewInt(1)
+	for _, extent := range typ.ConstArgs {
+		product.Mul(product, big.NewInt(extent))
+	}
+	return product.String()
 }
 
 func compilerKnownMember(typ Type, name string, static bool) (CompilerKnownMember, bool) {

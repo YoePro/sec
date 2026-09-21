@@ -1,4 +1,127 @@
 schema_version: 1
 area: attributes
 purpose: Attributes, target selection, and compiler-visible metadata.
-integrations: []
+integrations:
+  - id: frontend.attributes-v2
+    area: frontend-selection-target-binding-effects-and-tooling
+    status: partial
+    audited: '2026-08-19'
+    revised: '2026-09-21'
+    document_revision: 2-era
+    repository_baseline: c515862
+    summary: 'Tracks the canonical Sec 0.1 compiler-known attribute system. Individual verticals exist for #target
+      compatibility, @address, @noCopy, and @link_name, but the general attribute parser, attachment-set model, declaration
+      selection, verified-effect attributes, interrupt attributes, generic diagnostics, formatter integration, and
+      LSP support are not yet unified. This entry centralizes implementation status that is still embedded in rules/foundations/attributes.md
+      while preserving the more detailed owning governance entries for fixed-address bindings, FFI, copy/move, target/platform
+      resolution, and ISR analysis.'
+    rules:
+    - rules/foundations/attributes.md
+    - rules/foundations/grammar.md
+    - rules/platform/fixed-address-bindings.md
+    - rules/platform/ffi.md
+    - rules/analysis/isr_analysis.md
+    - rules/analysis/effect_analysis.md
+    - rules/tooling/formatter.md
+    - rules/tooling/lsp.md
+    code:
+    - internal/ast/ast.go
+    - internal/diagnostics/diagnostics.go
+    - internal/parser/parser.go
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/formatter
+    - internal/lsp
+    - cmd/lsp
+    tests:
+    - internal/diagnostics/diagnostics_test.go
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/formatter/formatter_test.go
+    - cmd/lsp/main_test.go
+    implemented:
+    - 'file-level ''#target(os: ..., arch: ...)'' compatibility directive parsing with required os and arch string-literal
+      arguments and duplicate-argument rejection'
+    - '''@address(expression)'' parser special case for one following let declaration, including grouped-declaration
+      rejection and AST retention of the address expression'
+    - current fixed-address Sema subset for explicitly typed register bindings, including initializer rejection, integer-literal
+      address requirement, AddressStability.Fixed, and volatile semantic markers
+    - Attribute AST representation used by the current '@noCopy' vertical
+    - '''@noCopy'' parsing on supported nominal type and enum declarations with argument rejection, duplicate rejection,
+      wrong-target rejection, semantic non-copyability classification, generic-instance preservation, formatter placement,
+      and LSP semantic-token classification'
+    - '''@link_name("symbol")'' parsing on extern declarations with non-empty string-literal validation, AST and Sema
+      retention, duplicate foreign-symbol validation, and backend linked-symbol selection'
+    - lexer support for '@' as the common attribute introducer
+    - unknown top-level and declaration-member attributes use mandatory stable attribute.unknown diagnostics, consume only
+      their own optional argument list, and preserve the following declaration for independent parsing; local runtime @call
+      expressions remain distinct
+    - complete compiler-known attribute sets followed only by comments and EOF are rejected with mandatory stable S1048
+      attribute.unattached; parser recovery retains one invalid source node and LSP preserves the diagnostic identity and
+      focused attribute-name range
+    partial:
+    - attribute handling is split across special-case parser paths rather than one grammar-driven attribute parser
+      and attachment-set representation
+    - fixed-address behavior is implemented only for the currently specified addressed-register subset and still lacks
+      complete target validation and lowering
+    - '''@noCopy'' has a substantial vertical implementation but is not yet integrated into a general mixed attribute-set
+      engine'
+    - call-graph and effect-analysis foundations exist, but source-level verified effect attributes are not generally
+      parseable or enforceable as one attribute system
+    - target/platform concepts exist, but canonical '@target' selection is not generally implemented
+    remaining:
+    - implement one general parser for the closed compiler-known attribute set with positional and named arguments,
+      trailing commas, source locations, and recovery
+    - implement consecutive mixed attribute attachment sets with comments and whitespace preserving attachment to the
+      following declaration
+    - enforce allowed attachment targets, duplicate rules, conflict rules, argument shape, and compile-time argument
+      requirements uniformly
+    - implement canonical '@target' file and statement forms with os, arch, cpu, device, and board selectors
+    - implement target-variant overlap detection, no-active-variant handling, and public-shape compatibility checks
+    - implement '@when' and typed 'config.<name>' compile-time parameter access with the restricted Sec 0.1 boolean
+      expression language
+    - complete '@address' compile-time-address evaluation and mandatory canonical full-extent region resolution, target
+      pointer-width and address-domain/space validation, alignment, permissions, physical representation, access widths,
+      overlap checking, target knowledge constants, volatile lowering, and end-to-end tests; unsafe must not waive this validation
+    - >-
+      implement @interrupt(vector: ...) together with @isr and @interruptSafe parsing, implication,
+      target-profile validation, call-graph restrictions, vector uniqueness, and lowering
+    - implement '@noAlloc', '@noPanic', and '@noBlock' source attributes with transitive verified-effect analysis
+      and foreign-contract provenance
+    - implement the attribute implication graph while distinguishing explicit attributes from effective implied guarantees
+    - implement canonical generic attribute diagnostics and stable diagnostic IDs beyond the implemented attribute.unknown family
+    - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
+    - implement LSP completion, hover, effective-guarantee display, excluded-source display, target/config/vector/address
+      argument completion, diagnostics, and code actions
+    - migrate the remaining implementation-status material out of rules/foundations/attributes.md into this governance
+      ledger
+    cross_references:
+    - frontend.fixed-address-bindings
+    - frontend.ffi-v2
+    - frontend.copy-move
+    - sema.isr-analysis
+    - compiler.platform-model
+    required_tests:
+    - unknown compiler attribute rejected
+    - unattached attribute at EOF rejected
+    - duplicate attribute rejected with both locations
+    - mixed consecutive attributes attach to exactly one declaration
+    - comments and blank lines do not break attribute attachment
+    - attribute on an unsupported declaration target rejected
+    - canonical '@target' file selection
+    - canonical '@target' statement selection
+    - target selector overlap and public-shape mismatch diagnostics
+    - '''@when'' true and false declaration selection'
+    - '''@address'' target validation and volatile lowering'
+    - '''@interrupt'' implies ''@isr'''
+    - '''@isr'' and ''@interruptSafe'' effect violations'
+    - direct and transitive '@noAlloc', '@noPanic', and '@noBlock' violations
+    - unknown foreign effects violate verified guarantees unless an explicit trusted foreign contract supplies the
+      required fact
+    - formatter preserves explicit redundant attributes and source order
+    - LSP offers only compiler-known attributes valid at the current attachment location
+    verification:
+    - command: go test ./internal/diagnostics ./internal/parser -run UnknownAttribute -count=1
+      result: passed on 2026-09-21 with stable diagnostic registration, declaration recovery, and local runtime-call separation
+    - command: go test ./internal/diagnostics ./internal/parser ./cmd/lsp -run 'UnattachedAttribute' -count=1
+      result: passed on 2026-09-21 with known single and mixed attribute sets, trailing comments, unknown-attribute precedence, parser recovery, and LSP range coverage

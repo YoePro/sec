@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-17"
+    revised: "2026-09-21"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -40,6 +40,7 @@ integrations:
       - internal/sema/types.go
       - internal/diagnostics/diagnostics.go
       - internal/formatter/formatter.go
+      - internal/ir/semantic/builder.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -48,9 +49,16 @@ integrations:
       - internal/sema/try_err_discard_test.go
       - internal/sema/match_err_discard_test.go
       - internal/sema/return_try_result_test.go
+      - internal/sema/option_if_binding_test.go
       - internal/ir/semantic/package11_test.go
+      - internal/ir/semantic/package10_test.go
+      - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/return_try_result_test.go
+      - internal/ir/semantic/option_if_binding_test.go
       - internal/formatter/formatter_test.go
+      - internal/parser/option_if_binding_test.go
+      - internal/diagnostics/diagnostics_test.go
+      - cmd/lsp/main_test.go
       - testdata/register8_valid.sec
       - testdata/sema/property_option_direct_return.sec
       - testdata/sema/try_handler_shadow_invalid.sec
@@ -93,6 +101,8 @@ integrations:
       - "try-err-discardability: Sema checks recursive discardability of a concrete Result error payload before accepting Err(_); non-discardable task/thread obligations produce S1006 with guidance to bind and resolve the error."
       - "match-err-discardability: Result match Err(_) now performs the same concrete error-payload discardability check; non-discardable task/thread obligations produce S1006 and prevent a resolved match plan."
       - "return-try-result-forwarding: A direct handlerless return try Result expression now validates both the protected Result error channel and its success type against the enclosing Result[T,E], records the dedicated result-return-forwarding Sema fact, and lowers by evaluating the protected carrier exactly once before returning a reconstructed Err(error) or Ok(value). The rule is confined to the direct return boundary: ordinary return value still cannot implicitly convert T to Result[T,E], incompatible success and failure channels retain focused diagnostics, and handled or non-Result try expressions are not silently widened into this rule."
+      - "if-some-binding-exception: Parser preserves the sole positive if option is Some(binding) payload form without introducing general if patterns, rejects is not Some(binding) with focused guidance, and retains existing non-binding None tests. Sema requires an Option subject, gives the immutable payload binding true-branch-only scope, records its exact type/variant/copy-or-move action, and merges ownership through ordinary continuing paths. Semantic IR consumes that fact, evaluates the Option subject exactly once, and lowers the maintained copy-trivial payload subset; ownership-sensitive union projection remains at the existing explicit Semantic IR package gate. Formatter coverage preserves the canonical spelling idempotently."
+      - "try-success-handler-removal: Sema rejects explicit Ok(...) arms in Result and fallible-assignment try handlers and Some(...) arms in Option try with mandatory S1049 and mentor guidance to remove the arm or use match. ResolvedTryPlan is failure-only, and Semantic IR always routes implicit success directly to the merge with no source success-handler dispatch."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
@@ -105,7 +115,6 @@ integrations:
       - "try-failure-set: Represent multiple possible failures of one protected expression as compiler-internal failure facts without creating an anonymous source error union or automatic domain-error wrapper. Err(_) may handle a heterogeneous failure set."
       - "try-heterogeneous-binding: Allow Err(name) catch-all binding only when the protected construct already provides one compiler-resolved binding type, such as one concrete error type or an explicitly declared error channel. Do not infer error solely to make an otherwise heterogeneous local binding possible."
       - "try-partial-handlers: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
-      - "try-success-handler-removal: Reject Ok(...) handlers inside Result try and Some(...) handlers inside Option try. Success is implicit; code that needs explicit success and alternate branches must use match. Remove old lowering assumptions for explicit Ok try arms."
       - "try-handler-order-reachability: Extend the implemented duplicate-variant, catch-all, and complete-enum checks to guarded handlers and other provable pattern subsumption; retain top-to-bottom first-match semantics in resolved plans."
       - "try-handler-where-guards: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
       - "try-recovery-values: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
@@ -114,7 +123,6 @@ integrations:
       - "bodyless-try-assignment-v2: Implement naked try assignment as ordinary implicit failure propagation for fallible assignment. Replace the old exact-error-only and no-Option wording with revision-2 channel compatibility rules owned by the relevant protected operation."
       - "property-explicit-setter-error: Change fallible setter syntax to try set value ErrorType { ... } and require the same explicit error type in interface requirements. Do not infer a public setter error contract from its implementation."
       - "property-setter-success-model: For try set, normal completion is implicit success, bare return is early success, return Err(error) is failure, and return Ok() is invalid. Property getters remain infallible in Sec 0.1."
-      - "if-some-binding-exception: Permit the narrow positive Option test if option is Some(value) { ... }. The binding exists only on the true path and follows ordinary copy/move rules. Keep negative binding such as is not Some(value) invalid and keep general destructuring in match."
       - "result-err-none-tests: Extend the implemented non-binding Option None test to Result projection operands once consuming Result[T,E].Err() -> Option[E] is implemented; retain is not rather than a !is operator."
       - "result-projection-ownership-diagnostics: Always diagnose use after consuming .Ok()/.Err() (and equivalent affine consumption) from compiler-owned facts. The diagnostic must identify the value, the consuming operation/location, why later use is invalid, and a practical correction."
       - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
@@ -174,6 +182,8 @@ integrations:
       - "an incompatible Option carrier is rejected with expected and actual Option types"
 
     verification:
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic -run 'OptionIfBinding|ParseIfOptionNone' -count=1
+        result: passed; positive binding parsing, negative rejection, Option-only typing, true-branch scope, copy/move ownership facts, formatting, and single-evaluation copy-trivial Semantic IR are covered
       - command: go test ./internal/sema ./internal/ir/semantic -run 'ReturnTry|TestPackage10BuildsCanonicalResultPropagation' -count=1
         result: passed
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run 'ErrorEnumMarker|ErrorEnumMarkerRoot' -count=1
@@ -198,6 +208,8 @@ integrations:
         result: passed; match and try reject non-discardable concrete Err(_) payloads
       - command: go test ./...
         result: passed
+      - command: go test ./internal/diagnostics ./internal/sema ./internal/ir/semantic ./cmd/lsp -run 'ForbiddenTrySuccessHandler|RejectsExplicit(Ok|Some)|ImplicitSuccess' -count=1
+        result: passed on 2026-09-21 with stable S1049, Result/assignment Ok rejection, Option Some rejection, LSP mentor output, failure-only resolved plans, and implicit-success Semantic IR
 
   - id: frontend.panic
     area: panic-assert-unreachable-frontend

@@ -31,6 +31,61 @@ func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
 	}
 }
 
+// TestFormatOptionIfBinding preserves the sole canonical if payload-binding
+// spelling and remains idempotent.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests"
+//   - rules/corrections/applied/formatter-errorhandling-correction-20260824.md — Option binding example
+func TestFormatOptionIfBinding(t *testing.T) {
+	input := "fn Read(option: Option[int]) int {\nif option is Some( value ) {\nreturn value\n}\nreturn 0\n}\n"
+	want := "fn Read(option: Option[int]) int {\n    if option is Some(value) {\n        return value\n    }\n    return 0\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong Option if binding formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("Option if binding formatting is not idempotent:\n%s", again)
+	}
+}
+
+// TestFormatOwnershipAvailabilityTests preserves contextual ownership queries
+// without rewriting them as Option/null state tests.
+//
+// Rules:
+//   - rules/memory/ownership.md — §21 "is available and is not available"
+//   - rules/tooling/formatter.md — semantic spelling preservation
+func TestFormatOwnershipAvailabilityTests(t *testing.T) {
+	input := "fn Check(value: int) void {\nif value is available{\n}\nif value is not available{\n}\n}\n"
+	want := "fn Check(value: int) void {\n    if value is available {\n    }\n    if value is not available {\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong availability formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("availability formatting is not idempotent:\n%s", again)
+	}
+}
+
+// TestFormatTopLevelTestDeclaration covers the testing rulebook's canonical
+// header, ordinary body formatting, exact name preservation, and the fact that
+// test remains an ordinary identifier outside declaration shape.
+//
+// Rules:
+//   - rules/tooling/testing.md — §5 "Test declaration syntax"
+//   - rules/tooling/testing.md — §41 "Formatter requirements"
+func TestFormatTopLevelTestDeclaration(t *testing.T) {
+	input := "test   \"keeps  spacing \\\"and escapes\\\"\"{\ntesting.Expect( true , \"message\" )\n}\n\nfn test(test: string) void {\nreturn\n}\n"
+	want := "test \"keeps  spacing \\\"and escapes\\\"\" {\n    testing.Expect(true, \"message\")\n}\n\nfn test(test: string) void {\n    return\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong test declaration formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("test declaration formatting is not idempotent:\n%s", again)
+	}
+}
+
 // rules/foundations/grammar.md "Collection and shaped types" and
 // rules/tooling/formatter.md "Contextual set" require type-context formatting
 // without rewriting the same spelling when it is an ordinary identifier.
@@ -251,8 +306,8 @@ func TestFormatPreservesRegisterLayoutModifiers(t *testing.T) {
 }
 
 func TestFormatPreservesRegisterFieldAccessModifiers(t *testing.T) {
-	input := "type Device register[3] {\nReady: bit read-only,\nCommand: bit write-only,\nPending: bit write-one-clear,\n}\n"
-	want := "type Device register[3] {\n    Ready: bit read-only,\n    Command: bit write-only,\n    Pending: bit write-one-clear,\n}\n"
+	input := "type Device register[4] {\nReady: bit read-only,\nCommand: bit write-only,\nPending: bit write-one-clear,\nEvent: bit read-clear,\n}\n"
+	want := "type Device register[4] {\n    Ready: bit read-only,\n    Command: bit write-only,\n    Pending: bit write-one-clear,\n    Event: bit read-clear,\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong register field modifier formatting:\n%s\nwant:\n%s", got, want)
 	}
@@ -411,6 +466,68 @@ func TestFormatDoesNotTreatComparisonAsUnitExpression(t *testing.T) {
 	got := Format(Source{Text: input}, Options{}).Text
 	if !strings.Contains(got, "return a < b / c > d") {
 		t.Fatalf("comparison was rewritten as a unit expression: %q", got)
+	}
+}
+
+// TestFormatCanonicalizesUnitMetadataNames verifies that migration spellings
+// become PascalCase only in a parsed unit impl and that formatting is stable.
+//
+// Rules:
+//   - rules/types/units.md — "Unit metadata", canonical PascalCase names
+//   - rules/types/units.md — "Formatter requirements"
+func TestFormatCanonicalizesUnitMetadataNames(t *testing.T) {
+	input := `unit Meter decimal physical
+
+impl Meter {
+long_name: "Meter"
+SYMBOL: "m"
+base_unit: true
+STATUS: active
+dimension: [length^1]
+KIND: length
+scale: 1
+SYSTEM: SI
+transform: linear
+OFFSET: 0
+origin: zero
+log_base: 10
+log_factor: 10
+REFERENCE: 1
+}
+
+impl Ordinary {
+long_name: "ordinary"
+}
+`
+	want := `unit Meter decimal physical
+
+impl Meter {
+    LongName: "Meter"
+    Symbol: "m"
+    BaseUnit: true
+    Status: active
+    Dimension: [length^1]
+    Kind: length
+    Scale: 1
+    System: SI
+    Transform: linear
+    Offset: 0
+    Origin: zero
+    LogBase: 10
+    LogFactor: 10
+    Reference: 1
+}
+
+impl Ordinary {
+    long_name: "ordinary"
+}
+`
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong unit metadata formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("unit metadata formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, again)
 	}
 }
 

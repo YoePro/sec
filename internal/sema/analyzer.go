@@ -52,6 +52,8 @@ type Analyzer struct {
 	resolvedTries              map[*ast.TryExpression]ResolvedTry
 	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
 	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
+	resolvedOptionIfBindings   map[*ast.IfStatement]ResolvedOptionIfBinding
+	resolvedAvailabilityTests  map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
 	// facts keyed by source syntax. Consumers will use the read-only query
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
@@ -268,6 +270,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
+	a.resolvedOptionIfBindings = map[*ast.IfStatement]ResolvedOptionIfBinding{}
+	a.resolvedAvailabilityTests = map[*ast.AvailabilityExpression]ResolvedAvailabilityTest{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
@@ -2728,10 +2732,20 @@ func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
 }
 
 func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
-	if stmt.Condition != nil {
+	var optionBinding matchPatternInfo
+	optionBindingValid := false
+	var availabilityTest *ResolvedAvailabilityTest
+	if stmt.OptionBinding != nil {
+		optionBinding, optionBindingValid = a.resolveOptionIfBinding(stmt)
+	} else if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
 			a.addErrorAtToken(expressionToken(stmt.Condition), "if condition must be bool, got %s", typeDisplayName(conditionType))
+		}
+		if availabilityExpr, ok := stmt.Condition.(*ast.AvailabilityExpression); ok {
+			if fact, resolved := a.resolvedAvailabilityTests[availabilityExpr]; resolved {
+				availabilityTest = &fact
+			}
 		}
 	}
 
@@ -2748,18 +2762,33 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		elseReachable = false
 	} else if isBoolLiteral(stmt.Condition, false) {
 		thenReachable = false
+	} else if availabilityTest != nil && availabilityTest.StaticallyKnown {
+		thenReachable = availabilityTest.Value
+		elseReachable = !availabilityTest.Value
 	}
 	refinementCount := len(a.activeConditionFacts)
-	if stmt.Condition != nil && thenReachable {
+	if stmt.OptionBinding == nil && stmt.Condition != nil && thenReachable {
 		a.recordConditionFact(stmt.Condition, ConditionFactBranchTrue, stmt.Token)
 	}
-	thenBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
+	var thenBranch branchAnalysis
+	if optionBindingValid {
+		thenBranch = a.analyzeOptionBindingBranchWithCallGraphReachability(stmt, optionBinding, thenReachable)
+	} else if availabilityTest != nil {
+		thenBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Consequence, *availabilityTest, !availabilityTest.Negated, thenReachable)
+	} else {
+		thenBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
+	}
 	a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
 	if !thenReachable {
 		thenBranch.continues = false
 	}
 	if stmt.Alternative != nil {
-		elseBranch := a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
+		var elseBranch branchAnalysis
+		if availabilityTest != nil {
+			elseBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Alternative, *availabilityTest, availabilityTest.Negated, elseReachable)
+		} else {
+			elseBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
+		}
 		if !elseReachable {
 			elseBranch.continues = false
 		}
@@ -2782,12 +2811,191 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		arenaGenerations:   beforeArenaGenerations,
 		continues:          elseReachable,
 	}
+	if availabilityTest != nil {
+		fallthroughBranch = a.refinedAvailabilityFallthrough(fallthroughBranch, *availabilityTest, availabilityTest.Negated)
+		fallthroughBranch.continues = elseReachable
+	}
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
 	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, fallthroughBranch)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, thenBranch, fallthroughBranch)
+}
+
+// inferAvailabilityExpression resolves an ownership-state query without
+// reading the tested Place. This permits querying an unavailable or
+// uninitialized Place while keeping availability distinct from Option, null,
+// borrow authority, and device state.
+//
+// Rules:
+//   - rules/memory/ownership.md — §5 availability states and §21 availability tests
+//   - rules/memory/copy_move.md — §24 "Availability tests and copy/move"
+//   - rules/corrections/applied/correction30-20260828.md — §§1–3
+func (a *Analyzer) inferAvailabilityExpression(expr *ast.AvailabilityExpression) (Type, expressionValue) {
+	place, ok := a.resolvePlace(expr.Place)
+	if !ok || !place.Addressable {
+		a.addErrorAtToken(expr.Token, "is available requires an addressable ownership Place")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	a.bindAvailabilityPlaceRoot(expr.Place)
+	known, available := a.currentPlaceAvailability(place)
+	value := available
+	if expr.Negated {
+		value = !value
+	}
+	a.resolvedAvailabilityTests[expr] = ResolvedAvailabilityTest{
+		Place: place, Negated: expr.Negated, StaticallyKnown: known, Value: value,
+	}
+	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
+}
+
+func (a *Analyzer) bindAvailabilityPlaceRoot(expr ast.Expression) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if symbol, ok := a.symbols[expr.Value]; ok {
+			a.bindDefinition(expr.Token, symbol.Token)
+		}
+	case *ast.MemberExpression:
+		a.bindAvailabilityPlaceRoot(expr.Object)
+	case *ast.IndexExpression:
+		a.bindAvailabilityPlaceRoot(expr.Left)
+	case *ast.SliceExpression:
+		a.bindAvailabilityPlaceRoot(expr.Left)
+	}
+}
+
+func (a *Analyzer) currentPlaceAvailability(place Place) (known bool, available bool) {
+	if assigned, tracked := a.assigned[place.Root]; tracked && !assigned {
+		return true, false
+	}
+	_, movedKey, _, unavailable := a.unavailablePlace(place)
+	if !unavailable {
+		return true, true
+	}
+	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+		return false, false
+	}
+	return true, false
+}
+
+// analyzeAvailabilityBranchWithCallGraphReachability applies only the branch
+// refinement proven by the ownership query and restores the incoming analysis
+// state after capturing the branch result.
+//
+// Rules:
+//   - rules/memory/ownership.md — §§20–21 control-flow merge and refinement
+//   - rules/corrections/applied/correction30-20260828.md — §3
+func (a *Analyzer) analyzeAvailabilityBranchWithCallGraphReachability(block *ast.BlockStatement, fact ResolvedAvailabilityTest, refineAvailable bool, reachable bool) branchAnalysis {
+	previousMoved, previousReasons := a.moved, a.moveReasons
+	previousAssigned := a.assigned
+	a.moved, a.moveReasons = copyMoved(previousMoved), copyMoveReasons(previousReasons)
+	a.assigned = copyAssigned(previousAssigned)
+	a.applyAvailabilityRefinement(fact.Place, refineAvailable)
+	branch := a.analyzeBranchBlockWithCallGraphReachability(block, reachable)
+	a.moved, a.moveReasons, a.assigned = previousMoved, previousReasons, previousAssigned
+	return branch
+}
+
+func (a *Analyzer) refinedAvailabilityFallthrough(branch branchAnalysis, fact ResolvedAvailabilityTest, refineAvailable bool) branchAnalysis {
+	previousMoved, previousReasons := a.moved, a.moveReasons
+	previousAssigned := a.assigned
+	a.moved, a.moveReasons = copyMoved(branch.moved), copyMoveReasons(branch.moveReasons)
+	a.assigned = copyAssigned(branch.assigned)
+	a.applyAvailabilityRefinement(fact.Place, refineAvailable)
+	branch.moved, branch.moveReasons, branch.assigned = copyMoved(a.moved), copyMoveReasons(a.moveReasons), copyAssigned(a.assigned)
+	a.moved, a.moveReasons, a.assigned = previousMoved, previousReasons, previousAssigned
+	return branch
+}
+
+func (a *Analyzer) applyAvailabilityRefinement(place Place, available bool) {
+	if available {
+		key := place.String()
+		for movedKey, reason := range a.moveReasons {
+			if !isConditionalAvailabilityReason(reason) {
+				continue
+			}
+			if movedKey == key || strings.HasPrefix(key, movedKey+".") || strings.HasPrefix(key, movedKey+"[") || strings.HasPrefix(movedKey, key+".") || strings.HasPrefix(movedKey, key+"[") {
+				delete(a.moved, movedKey)
+				delete(a.moveReasons, movedKey)
+			}
+		}
+		if place.String() == place.Root {
+			a.assigned[place.Root] = true
+		}
+		return
+	}
+	for movedKey, reason := range a.moveReasons {
+		if isConditionalAvailabilityReason(reason) && (movedKey == place.String() || strings.HasPrefix(movedKey, place.String()+".") || strings.HasPrefix(movedKey, place.String()+"[")) {
+			a.moveReasons[movedKey] = underlyingAvailabilityReason(reason)
+		}
+	}
+}
+
+// resolveOptionIfBinding validates the sole payload-binding form admitted in
+// an if header and records the exact payload type, variant, and ownership
+// action for branch analysis, lowering, and tooling.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests", §13 "No pattern binding in if", §17 "Branch scopes"
+//   - rules/control-flow/flowcontrol_match.md — §12 "Payload binding scope" and ordinary payload ownership rules
+//   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Positive Some binding"
+func (a *Analyzer) resolveOptionIfBinding(stmt *ast.IfStatement) (matchPatternInfo, bool) {
+	binding := stmt.OptionBinding
+	if binding == nil || binding.Subject == nil || binding.Binding == nil {
+		return matchPatternInfo{}, false
+	}
+	subjectType, _ := a.inferExpression(binding.Subject)
+	if subjectType.Kind == InvalidType {
+		return matchPatternInfo{BindingName: binding.Binding.Value, BindingType: Type{Kind: InvalidType}, PayloadToken: binding.Binding.Token}, true
+	}
+	if subjectType.Kind != UnionType || subjectType.Name != "Option" || len(subjectType.TypeArgs) != 1 {
+		a.addErrorAtToken(binding.Token, "if is Some(binding) requires Option subject, got %s; use match for other payload variants", typeDisplayName(subjectType))
+		return matchPatternInfo{BindingName: binding.Binding.Value, BindingType: Type{Kind: InvalidType}, PayloadToken: binding.Binding.Token}, true
+	}
+	variant, ok := lookupUnionVariant(subjectType, "Some")
+	if !ok || variant.Payload == nil {
+		a.addErrorAtToken(binding.Token, "compiler-known Option Some variant has no payload")
+		return matchPatternInfo{BindingName: binding.Binding.Value, BindingType: Type{Kind: InvalidType}, PayloadToken: binding.Binding.Token}, true
+	}
+
+	info := matchPatternInfo{
+		BindingName:    binding.Binding.Value,
+		BindingType:    *variant.Payload,
+		Kind:           "variant",
+		Variant:        "Some",
+		VariantIndex:   unionVariantIndex(subjectType, "Some"),
+		PayloadVariant: "Some",
+		PayloadToken:   binding.Binding.Token,
+	}
+	if subjectPlace, placeOK := a.resolvePlace(binding.Subject); placeOK {
+		info.PayloadPlace = unionPayloadPlace(subjectPlace, "Some", info.BindingType, info.PayloadToken)
+	}
+	info.PayloadMoves = requiresOwnershipTransfer(info.BindingType)
+	a.resolvedOptionIfBindings[stmt] = ResolvedOptionIfBinding{
+		SubjectType:   subjectType,
+		PayloadType:   info.BindingType,
+		BindingName:   info.BindingName,
+		VariantIndex:  info.VariantIndex,
+		BindingAction: resolvedMatchBindingAction(info),
+	}
+	return info, true
+}
+
+// analyzeOptionBindingBranchWithCallGraphReachability reuses the canonical
+// union-payload branch machinery so the binding is true-branch-local and its
+// copy/move state participates in the ordinary continuing-path merge.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §17 "Branch scopes"
+//   - rules/control-flow/flowcontrol_match.md — §12 "Payload binding scope"
+func (a *Analyzer) analyzeOptionBindingBranchWithCallGraphReachability(stmt *ast.IfStatement, info matchPatternInfo, reachable bool) branchAnalysis {
+	previous := a.callGraphPathReachable
+	a.callGraphPathReachable = previous && reachable
+	defer func() { a.callGraphPathReachable = previous }()
+	arm := &ast.MatchArm{Token: stmt.OptionBinding.Binding.Token, BlockBody: stmt.Consequence}
+	_, branch := a.analyzeMatchArmBody(arm, info)
+	return branch
 }
 
 func (a *Analyzer) analyzeBranchBlockWithCallGraphReachability(block *ast.BlockStatement, reachable bool) branchAnalysis {
@@ -3396,13 +3604,17 @@ func mergeContinuingAssigned(before map[string]bool, branches ...branchAnalysis)
 func mergeContinuingMoveState(beforeMoved map[string]lexer.Token, beforeReasons map[string]string, branches ...branchAnalysis) (map[string]lexer.Token, map[string]string) {
 	mergedMoved := map[string]lexer.Token{}
 	mergedReasons := map[string]string{}
+	presentOnPaths := map[string]int{}
 	foundContinuing := false
+	continuingPaths := 0
 	for _, branch := range branches {
 		if !branch.continues {
 			continue
 		}
 		foundContinuing = true
+		continuingPaths++
 		for place, token := range branch.moved {
+			presentOnPaths[place]++
 			if _, exists := mergedMoved[place]; exists {
 				continue
 			}
@@ -3415,7 +3627,26 @@ func mergeContinuingMoveState(beforeMoved map[string]lexer.Token, beforeReasons 
 	if !foundContinuing {
 		return copyMoved(beforeMoved), copyMoveReasons(beforeReasons)
 	}
+	for place := range mergedMoved {
+		if presentOnPaths[place] < continuingPaths && !isConditionalAvailabilityReason(mergedReasons[place]) {
+			mergedReasons[place] = conditionalAvailabilityReason(mergedReasons[place])
+		}
+	}
 	return mergedMoved, mergedReasons
+}
+
+const conditionalAvailabilityReasonPrefix = "conditional:"
+
+func conditionalAvailabilityReason(reason string) string {
+	return conditionalAvailabilityReasonPrefix + reason
+}
+
+func isConditionalAvailabilityReason(reason string) bool {
+	return strings.HasPrefix(reason, conditionalAvailabilityReasonPrefix)
+}
+
+func underlyingAvailabilityReason(reason string) string {
+	return strings.TrimPrefix(reason, conditionalAvailabilityReasonPrefix)
 }
 
 func mergeContinuingClosedResources(before map[string]lexer.Token, branches ...branchAnalysis) map[string]lexer.Token {
@@ -9075,8 +9306,12 @@ func (a *Analyzer) resolveRegisterWidth(expression ast.Expression, literal int64
 	return value.Int64(), true
 }
 
-// registerFieldAccessFromAST transfers the normalized field-access contract
-// from rules/declarations/registers.md into the canonical semantic type fact.
+// registerFieldAccessFromAST transfers the normalized field-access contract,
+// including canonical read-clear destructive reads, into the semantic type.
+//
+// Rules:
+//   - rules/declarations/registers.md — § 11.3 "Specialized write semantics"
+//   - rules/declarations/registers.md — § 11.4 "Specialized read semantics"
 func registerFieldAccessFromAST(access ast.RegisterFieldAccess) RegisterFieldAccess {
 	switch access {
 	case ast.RegisterReadOnly:
@@ -9085,10 +9320,20 @@ func registerFieldAccessFromAST(access ast.RegisterFieldAccess) RegisterFieldAcc
 		return RegisterWriteOnly
 	case ast.RegisterWriteOneClear:
 		return RegisterWriteOneClear
+	case ast.RegisterWriteOneSet:
+		return RegisterWriteOneSet
+	case ast.RegisterWriteOneToggle:
+		return RegisterWriteOneToggle
 	case ast.RegisterWriteZeroClear:
 		return RegisterWriteZeroClear
-	case ast.RegisterClearOnRead:
-		return RegisterClearOnRead
+	case ast.RegisterWriteZeroSet:
+		return RegisterWriteZeroSet
+	case ast.RegisterWriteZeroToggle:
+		return RegisterWriteZeroToggle
+	case ast.RegisterReadClear:
+		return RegisterReadClear
+	case ast.RegisterReadSet:
+		return RegisterReadSet
 	default:
 		return RegisterReadWrite
 	}
@@ -9815,6 +10060,22 @@ func (a *Analyzer) registerInitDeclaration(targetName string, target Type, initi
 	a.functions[key] = functions
 }
 
+// reportImmutableRequiresInitializer emits the shared semantic diagnostic for
+// an immutable binding whose explicit initializer is absent.
+//
+// Rules:
+//   - rules/types/default_values.md — "Immutable declarations without initializer"
+//   - rules/types/default_values.md — "Diagnostics", variables.immutable-requires-initializer
+func (a *Analyzer) reportImmutableRequiresInitializer(name *ast.Identifier) {
+	a.addErrorAtTokenWithMetadata(
+		name.Token,
+		diagnostics.ImmutableRequiresInitializer,
+		"initialize the immutable binding explicitly",
+		"immutable binding %q requires an initializer",
+		name.Value,
+	)
+}
+
 // analyzeImplAssociatedLet registers explicitly static impl storage only.
 // A bare let is instance-bound and must never enter this symbol category.
 //
@@ -9840,7 +10101,7 @@ func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStat
 		return
 	}
 	if stmt.Value == nil && !stmt.Mutable {
-		a.addErrorAtToken(stmt.Name.Token, "immutable variable %s requires initializer", stmt.Name.Value)
+		a.reportImmutableRequiresInitializer(stmt.Name)
 		return
 	}
 	if stmt.Value != nil && stmt.Type != nil {
@@ -10698,7 +10959,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 
 	if ok && stmt.Value == nil && !stmt.Mutable && stmt.Address == nil {
-		a.addErrorAtToken(stmt.Name.Token, "immutable variable %s requires initializer", stmt.Name.Value)
+		a.reportImmutableRequiresInitializer(stmt.Name)
 		return
 	}
 
@@ -12015,7 +12276,9 @@ func (a *Analyzer) validateRegisterFieldWrite(field RegisterField, operator stri
 			a.addErrorAtToken(token, "write-only register field %s cannot be used with %s because compound assignment reads the field", field.Name, operator)
 			return false
 		}
-	case RegisterWriteOneClear, RegisterWriteZeroClear, RegisterClearOnRead:
+	case RegisterWriteOneClear, RegisterWriteOneSet, RegisterWriteOneToggle,
+		RegisterWriteZeroClear, RegisterWriteZeroSet, RegisterWriteZeroToggle,
+		RegisterReadClear, RegisterReadSet:
 		if operator != "=" {
 			a.addErrorAtToken(token, "register field %s with %s semantics cannot use compound assignment", field.Name, field.Access)
 			return false
@@ -12964,6 +13227,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return symbol.Type, expressionValue{Display: expr.String()}
 	case *ast.PrefixExpression:
 		return a.inferPrefixExpression(expr)
+	case *ast.AvailabilityExpression:
+		return a.inferAvailabilityExpression(expr)
 	case *ast.InfixExpression:
 		return a.inferInfixExpression(expr)
 	case *ast.ConversionExpression:
@@ -16380,7 +16645,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			}
 		}
 		return member.Result, expressionValue{Display: expr.String()}, true
-	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort":
+	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort", "RequestCancel":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -18758,6 +19023,11 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 			return a.inferBoundsTryExpression(expr, index, plan)
 		}
 	}
+	if valueType.Kind == UnionType && valueType.Name == "Option" && len(valueType.TypeArgs) == 1 && len(expr.Handlers) > 0 {
+		if a.rejectForbiddenOptionTrySuccessHandlers(expr) {
+			return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+		}
+	}
 
 	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
 		a.addErrorAtToken(expr.Token, "try requires Result expression")
@@ -18904,14 +19174,15 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 	return operator.ResultType, result
 }
 
-// analyzeTryHandlers builds the resolved Result handler plan and diagnoses
-// unguarded handlers covered by an earlier catch-all, identical variant, or
-// the complete set of earlier variants of a closed enum error.
+// analyzeTryHandlers builds the failure-only resolved Result handler plan,
+// rejects explicit success arms, and diagnoses unguarded handlers covered by
+// an earlier catch-all, identical variant, or the complete set of earlier
+// variants of a closed enum error.
 // The current plan still requires exhaustive handlers; partial propagation
 // remains to be implemented separately.
 //
 // Rules:
-//   - rules/errors/errorhandling.md — §§17–18 "Err(_)" and "Handler order and reachability"
+//   - rules/errors/errorhandling.md — §§15.1, 17–18 "Success handlers", "Err(_)", and reachability
 //   - rules/control-flow/flowcontrol_match.md — Result error patterns
 //   - rules/tooling/diagnostics.txt — "Error-handling diagnostics"
 //   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
@@ -18922,29 +19193,12 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 	errorsBefore := len(a.errors)
 	errorCatchAllSeen := false
 	var errorCatchAllToken lexer.Token
-	okSeen := false
 	matchedVariants := map[string]lexer.Token{}
 	var lastVariantToken lexer.Token
 
 	for sourceIndex, handler := range expr.Handlers {
-		kind, bindingName, variantName, bindingType, ok := a.analyzeTryHandlerPattern(handler, successType, errorType)
+		_, bindingName, variantName, bindingType, ok := a.analyzeTryHandlerPattern(handler, errorType)
 		if !ok {
-			continue
-		}
-
-		if kind == "Ok" {
-			if okSeen {
-				a.addErrorAtToken(handler.Token, "unreachable try handler")
-				continue
-			}
-			okSeen = true
-			plan.HasExplicitOk = true
-			patternKind := TryHandlerOkBinding
-			if bindingName == "" {
-				patternKind = TryHandlerOkDiscard
-			}
-			flow := a.analyzeTryHandlerBody(handler, successType, bindingType, bindingName)
-			plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, BindingName: bindingName, BindingType: bindingType, Flow: flow, ResultType: successType, SourceIndex: sourceIndex})
 			continue
 		}
 
@@ -19013,23 +19267,83 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 	return plan, false
 }
 
-func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, successType Type, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
+// analyzeTryHandlerPattern resolves the failure-pattern family allowed by a
+// Result try and gives explicit Ok arms their focused migration diagnostic.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §15.1 "Success handlers are forbidden"
+//   - rules/errors/errorhandling.md — §17 "Err(_) and explicit error acknowledgement"
+//   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Try handlers"
+func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
 	switch pattern := handler.Pattern.(type) {
 	case *ast.InvalidPattern:
 		return "", "", "", Type{}, false
 	case *ast.OkExpression:
-		name, patternOK := tryHandlerBindingName(pattern.Value)
-		if !patternOK {
-			a.addErrorAtToken(expressionToken(pattern.Value), "try handler Ok pattern must be identifier")
-			return "", "", "", Type{}, false
-		}
-		return "Ok", name, "", successType, true
+		a.reportForbiddenTrySuccessHandler(pattern.Token, "Ok", "Err")
+		return "", "", "", Type{}, false
 	case *ast.ErrExpression:
 		return a.analyzeTryErrHandlerPattern(pattern, errorType)
 	default:
-		a.addErrorAtToken(expressionToken(handler.Pattern), "try handler pattern must be Ok(...) or Err(...)")
+		a.addErrorAtToken(expressionToken(handler.Pattern), "Result try handlers must use Err(...); success is implicit, so use match to handle both Ok and Err explicitly")
 		return "", "", "", Type{}, false
 	}
+}
+
+// rejectForbiddenOptionTrySuccessHandlers reports explicit Some arms before
+// the broader Option-try vertical is available. Success is implicit in every
+// try handler list, so this rule is independently enforceable now.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §15.1 "Success handlers are forbidden"
+//   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Try handlers"
+//   - rules/tooling/diagnostics.txt — "Errorhandling revision-2 diagnostic requirements"
+func (a *Analyzer) rejectForbiddenOptionTrySuccessHandlers(expr *ast.TryExpression) bool {
+	rejected := false
+	for _, handler := range expr.Handlers {
+		if name, token, ok := tryHandlerCallPatternName(handler.Pattern); ok && name == "Some" {
+			a.reportForbiddenTrySuccessHandler(token, "Some", "None")
+			rejected = true
+		}
+	}
+	return rejected
+}
+
+// reportForbiddenTrySuccessHandler emits the shared mentor diagnostic for an
+// explicit success arm in try; match is the construct for spelling both states.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §15.1 "Success handlers are forbidden"
+//   - rules/errors/errorhandling.md — §30 "Diagnostics must act as a mentor"
+func (a *Analyzer) reportForbiddenTrySuccessHandler(token lexer.Token, success string, alternate string) {
+	a.addErrorAtTokenWithMetadata(
+		token,
+		diagnostics.ForbiddenTrySuccessHandler,
+		fmt.Sprintf("remove the %s arm, or use match to handle both %s and %s explicitly", success, success, alternate),
+		"%s(...) is a success handler and is not allowed in try because success is implicit",
+		success,
+	)
+}
+
+// tryHandlerCallPatternName identifies constructor-shaped handler patterns
+// that remain ordinary call expressions until contextual semantic resolution.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §15.1 "Success handlers are forbidden"
+//   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Try handlers"
+func tryHandlerCallPatternName(pattern ast.Expression) (string, lexer.Token, bool) {
+	call, ok := pattern.(*ast.CallExpression)
+	if !ok {
+		return "", lexer.Token{}, false
+	}
+	switch callee := call.Callee.(type) {
+	case *ast.Identifier:
+		return callee.Value, callee.Token, true
+	case *ast.MemberExpression:
+		if callee.Property != nil {
+			return callee.Property.Value, callee.Property.Token, true
+		}
+	}
+	return "", lexer.Token{}, false
 }
 
 // analyzeTryErrHandlerPattern implements Result error patterns. Err(_) is an
@@ -19078,17 +19392,6 @@ func enumHasValue(typ Type, name string) bool {
 	}
 	_, ok := typ.EnumConsts[name]
 	return ok
-}
-
-func tryHandlerBindingName(expr ast.Expression) (string, bool) {
-	ident, ok := expr.(*ast.Identifier)
-	if !ok {
-		return "", false
-	}
-	if ident.Value == "_" {
-		return "", true
-	}
-	return ident.Value, true
 }
 
 func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
@@ -19199,9 +19502,6 @@ func tryHandlerBindingIdentifier(handler *ast.TryHandler) *ast.Identifier {
 		return nil
 	}
 	switch pattern := handler.Pattern.(type) {
-	case *ast.OkExpression:
-		identifier, _ := pattern.Value.(*ast.Identifier)
-		return identifier
 	case *ast.ErrExpression:
 		identifier, _ := pattern.Value.(*ast.Identifier)
 		return identifier
@@ -22366,6 +22666,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.PrefixExpression:
 		return expr.Token
 	case *ast.InfixExpression:
+		return expr.Token
+	case *ast.AvailabilityExpression:
 		return expr.Token
 	case *ast.ConversionExpression:
 		return expr.Token

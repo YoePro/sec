@@ -1123,7 +1123,6 @@ fn Divide(left: int64, right: int64) int64 {
     Err(ArithmeticError.DivisionByZero) => 0
     Err(ArithmeticError.Overflow) => 1
     Err(ArithmeticError.InvalidShift) => 2
-    Ok(success) => success
   }
   return value
 }
@@ -1147,7 +1146,7 @@ fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
 
 	divideTry := result.Program.Statements[1].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.LetStatement).Value.(*ast.TryExpression)
 	plan, ok := a.ResolvedTryPlanOf(divideTry)
-	if !ok || !plan.Exhaustive || !plan.HasExplicitOk || len(plan.Handlers) != 4 {
+	if !ok || !plan.Exhaustive || len(plan.Handlers) != 3 {
 		t.Fatalf("divide plan = %#v, %t", plan, ok)
 	}
 	wants := []struct {
@@ -1157,7 +1156,6 @@ fn Add(left: int128, right: int128) Result[int128, ArithmeticError] {
 		{TryHandlerErrVariant, "DivisionByZero"},
 		{TryHandlerErrVariant, "Overflow"},
 		{TryHandlerErrVariant, "InvalidShift"},
-		{TryHandlerOkBinding, ""},
 	}
 	for index, want := range wants {
 		got := plan.Handlers[index]

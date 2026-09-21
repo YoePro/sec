@@ -129,3 +129,43 @@ func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownAttributeDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(UnknownAttribute)
+	if !ok {
+		t.Fatal("missing unknown attribute diagnostic")
+	}
+	if definition.Name != "attribute.unknown" || definition.Family != "attribute" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("unknown attribute diagnostic = %+v", definition)
+	}
+}
+
+func TestImmutableRequiresInitializerDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(ImmutableRequiresInitializer)
+	if !ok {
+		t.Fatal("missing immutable initializer diagnostic")
+	}
+	if definition.Name != "variables.immutable-requires-initializer" || definition.Family != "variables" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("immutable initializer diagnostic = %+v", definition)
+	}
+}
+
+func TestUnattachedAttributeDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(UnattachedAttribute)
+	if !ok {
+		t.Fatal("missing unattached attribute diagnostic")
+	}
+	if definition.Name != "attribute.unattached" || definition.Family != "attribute" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("unattached attribute diagnostic = %+v", definition)
+	}
+}
+
+func TestForbiddenTrySuccessHandlerDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(ForbiddenTrySuccessHandler)
+	if !ok {
+		t.Fatal("missing forbidden try success handler diagnostic")
+	}
+	if definition.Name != "error-handling.forbidden-try-success-handler" || definition.Family != "error-handling" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("forbidden try success handler diagnostic = %+v", definition)
+	}
+}

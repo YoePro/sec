@@ -6,6 +6,7 @@ integrations:
     area: cooperative-execution-cancellation
     rulebook: rules/concurrency/cancellation.md
     status: partial
+    revised: "2026-09-21"
     normative:
     - Task[T] and Thread[T] owning handles expose fn RequestCancel() void.
     - RequestCancel is idempotent, non-consuming, and has no effect after terminal completion.
@@ -17,8 +18,11 @@ integrations:
     - cancel is invalid outside cancellable execution and inside defer.
     - cancellation points preserve exactly-one operation/cancellation commit.
     - current-execution cancellation is terminal control flow rather than a generic runtime error.
+    implemented:
+    - Task[T] and Thread[T] expose the shared compiler-known fn RequestCancel() void member through Sema and LSP.
+    - RequestCancel calls enforce the exact zero-argument signature, return void, and do not consume or resolve the owning handle lifecycle obligation.
+    - LSP completion and hover project the canonical member identity, exact signature, and cooperative idempotent non-consuming semantics from Sema's registry.
     remaining:
-    - Implement exact RequestCancel member registration on Task[T] and Thread[T].
     - Implement Task.Current and TaskContext cancellation observation.
     - Synchronize Thread.Current/ThreadContext to CancelRequested CamelCase.
     - Implement runtime request/observation state and wakeup integration.
@@ -42,6 +46,9 @@ integrations:
       expectation: operation commit and current-execution cancellation cannot both win or lose ownership state.
     corrections_applied:
     - rules/corrections/applied/cancellation-v2-cross-rulebook-correction-20260907.md
+    verification:
+    - command: go test ./internal/sema ./cmd/lsp -run 'RequestCancel|CancellationRequest' -count=1
+      result: passed with Task and Thread registration, exact call arity, non-consuming lifecycle use, completion, and semantic hover coverage
   - id: frontend.cancellation-effect-v1
     area: inferred-cancellable-execution-effect
     status: planned

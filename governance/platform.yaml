@@ -34,9 +34,10 @@ integrations:
       - "@address already implies hardware-facing volatile access and canonical region validation"
       - volatile.md already separates compiler ordering from hardware ordering and delegates stronger register/device transaction semantics
       - Sec ownership/destruction already forbids hidden runtime ownership tracking and implicit hardware access at register-view destruction
+      - canonical read-clear source spelling is represented through parser, AST, Sema diagnostics, and formatter; legacy clear-on-read is rejected with a focused migration diagnostic
+      - canonical read-set source spelling is represented through parser, AST, Sema compound-read diagnostics, and compiler-fact-driven LSP hover
+      - the complete write-one/write-zero clear/set/toggle modifier family is represented through parser, AST, Sema direct-write and compound-read diagnostics, and compiler-fact-driven LSP hover
     remaining:
-      - rename canonical destructive-read source spelling from clear-on-read to read-clear across parser/sema/formatter/tests/status
-      - add read-set and the complete write-one/write-zero clear/set/toggle modifier family
       - add shadow and noshadow field modifiers plus register-level default inheritance
       - implement shadow observed-state and pending-logical-write analysis without a global runtime manager
       - add compiler-known hardware register Read() returning a detached coherent snapshot

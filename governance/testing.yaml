@@ -6,6 +6,7 @@ integrations:
     area: language-testing-and-tooling
     status: partial
     repository_baseline: "814a584"
+    revised: "2026-09-21"
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
       selection, top-level test declarations, compiler-known testing operations,
@@ -67,10 +68,14 @@ integrations:
         recovery, and focused Sema tests cover valid and invalid test identity,
         testing signatures, and equality operation facts and diagnostics;
         `go test ./...` passes
+      - formatter canonicalizes top-level test StringLiteral block headers, uses
+        ordinary block and testing-call formatting, preserves the exact test-name
+        string token including spacing and escapes, remains idempotent, and does
+        not rewrite ordinary identifiers or functions named test
     remaining:
       - require TestCompilationPlan context in addition to the implemented
         *_test.sec filename check, complete remaining declaration diagnostics,
-        test-boundary try behavior, callable-effect facts, and formatter support
+        test-boundary try behavior, and callable-effect facts
       - add stable TestIdentity and source metadata independent of generated
         function names or linker symbols
       - add TestCompilationPlan as an explicit compilation mode and keep
@@ -125,3 +130,6 @@ integrations:
       - universal portable test-resource embedding
       - explicit source-level per-test timeout syntax
       - testing.Parallel and runner-controlled source-visible parallel scheduling
+    verification:
+      - command: go test ./internal/formatter -run 'TopLevelTestDeclaration' -count=1
+        result: passed; canonical header/body/call formatting, exact name preservation, contextual test identifier behavior, and idempotence are covered

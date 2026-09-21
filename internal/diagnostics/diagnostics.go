@@ -108,6 +108,10 @@ const (
 	InvalidTestingRequireEqualArguments = "S1043"
 	InvalidTestingTerminationArguments  = "S1044"
 	UnreachableTryHandler               = "S1045"
+	UnknownAttribute                    = "S1046"
+	ImmutableRequiresInitializer        = "S1047"
+	UnattachedAttribute                 = "S1048"
+	ForbiddenTrySuccessHandler          = "S1049"
 	UnreachableStatement                = "S3001"
 	LargeValueParameter                 = "A2001"
 )
@@ -118,6 +122,10 @@ var registry = map[string]Definition{
 	GenericParameterShadowsType:         {ID: GenericParameterShadowsType, Name: "names.generic-parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ParameterShadowsType:                {ID: ParameterShadowsType, Name: "names.parameter-shadows-type", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	UnresolvedGenericExtern:             {ID: UnresolvedGenericExtern, Name: "ffi.unresolved-generic-extern", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	UnknownAttribute:                    {ID: UnknownAttribute, Name: "attribute.unknown", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	ImmutableRequiresInitializer:        {ID: ImmutableRequiresInitializer, Name: "variables.immutable-requires-initializer", Family: "variables", DefaultSeverity: SeverityError, Mandatory: true},
+	UnattachedAttribute:                 {ID: UnattachedAttribute, Name: "attribute.unattached", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	ForbiddenTrySuccessHandler:          {ID: ForbiddenTrySuccessHandler, Name: "error-handling.forbidden-try-success-handler", Family: "error-handling", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerUnknownEscape:                  {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},

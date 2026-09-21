@@ -154,6 +154,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-13"
+    revised: "2026-09-21"
     summary: >-
       Tracks canonical nominal register types independently from fixed-address
       storage, including exact bit layouts, field types, access semantics,
@@ -191,7 +192,7 @@ integrations:
       - independent little-endian and big-endian byte-order modifiers retained as semantic type facts
       - ordinary register values remain nonvolatile unless their storage binding supplies stronger semantics
       - impl blocks, methods, properties, and implicit self access without changing register storage width
-      - read-write, read-only, write-only, write-one-clear, write-zero-clear, and the legacy clear-on-read modifier are parsed and retained as compiler-owned AST and semantic field facts, with read-write as the default; the canonical read-clear rename is not implemented yet
+      - the complete canonical frontend modifier set is parsed and retained as compiler-owned AST and semantic field facts: read-write, read-only, write-only, write-one-clear/set/toggle, write-zero-clear/set/toggle, read-clear, and read-set; read-write remains the default and legacy clear-on-read is rejected with a focused migration diagnostic
       - direct frontend access rejects reads from write-only fields, writes to read-only fields, and compound read-modify-write operations on write-only or special-effect fields
       - formatter preservation plus LSP hover and completion expose compiler-owned register access facts without editor-side language reconstruction
       - finite source-order-independent nested register fields occupy the nested nominal width and preserve inner layout, nominal field types, and access semantics across every projection; recursive storage and unsafe whole-nested writes are diagnosed
@@ -199,7 +200,7 @@ integrations:
       - parser AST preserves width expressions while Sema owns evaluation, and LSP renders nested nominal fields plus checked conversion result types from the same semantic facts
     remaining:
       - preserve unnamed open bit-backed enum encodings through field extraction and insertion
-      - carry ordinary and W1C, W0C, and canonical read-clear field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
+      - carry ordinary, the complete write-one/write-zero clear/set/toggle family, canonical read-clear, and canonical read-set field operations through Semantic IR and semantics-preserving lowering without unsafe read-modify-write, duplication, reordering, or speculation
       - provide semantics-preserving masks, shifts, extraction, insertion, and reserved-bit handling
       - add complete Semantic IR, MLIR, special-access lowering, and end-to-end coverage beyond the completed parser, Sema, diagnostics, and compiler-fact-driven LSP slice
     verification:
@@ -211,6 +212,12 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'RegisterFieldAccess|Register8Frontend|ErrorEnumMarker' -count=1
         result: passed
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'Register(FieldAccess|RejectsLegacyClearOnRead)' -count=1
+        result: passed on 2026-09-21 with canonical read-clear AST/Sema facts, diagnostics, formatter preservation, and legacy-spelling rejection
+      - command: go test ./internal/parser ./internal/sema ./cmd/lsp -run 'RegisterFieldAccess|ReadSetAccess' -count=1
+        result: passed on 2026-09-21 with canonical read-set AST/Sema facts, compound-read rejection, and compiler-fact-driven LSP hover
+      - command: go test ./internal/parser ./internal/sema ./cmd/lsp -run 'RegisterFieldAccess|SpecialWriteAccess' -count=1
+        result: passed on 2026-09-21 with complete write-one/write-zero clear/set/toggle parsing, semantic facts, compound-read rejection, and LSP hover
   - id: frontend.unions
     area: frontend-analysis-and-lowering
     status: partial

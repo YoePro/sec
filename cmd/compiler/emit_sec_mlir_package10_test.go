@@ -20,7 +20,6 @@ func TestPackage10SourceEmitsAndVerifiesResultHandlers(t *testing.T) {
 fn Source(value: int) Result[int, ArithmeticError] { return Ok(value) }
 fn Handle(value: int) int {
   return try Source(value) {
-    Ok(found) => found
     Err(ArithmeticError.DivisionByZero) => 0
     Err(error) => 1
   }

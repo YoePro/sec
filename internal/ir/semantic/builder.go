@@ -1053,6 +1053,9 @@ func (fb *functionBuilder) buildReturnTryResultForwarding(expr *ast.TryExpressio
 }
 
 func (fb *functionBuilder) buildIf(stmt *ast.IfStatement) error {
+	if stmt.OptionBinding != nil {
+		return fb.buildOptionBindingIf(stmt)
+	}
 	condition, err := fb.buildExpr(stmt.Condition, 0)
 	if err != nil {
 		return err
@@ -1075,6 +1078,97 @@ func (fb *functionBuilder) buildIf(stmt *ast.IfStatement) error {
 		return err
 	}
 	thenEnd := fb.current
+	if stmt.Alternative != nil {
+		fb.current = elseBlock
+		if err := fb.buildStatements(stmt.Alternative.Statements); err != nil {
+			return err
+		}
+	}
+	elseEnd := fb.current
+	if merge == nil && (thenEnd != nil || elseEnd != nil) {
+		merge = fb.newBlock()
+	}
+	if thenEnd != nil {
+		fb.current = thenEnd
+		fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID}}, Location: location(stmt.Token)})
+	}
+	if elseEnd != nil && elseEnd != merge {
+		fb.current = elseEnd
+		fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID}}, Location: location(stmt.Token)})
+	}
+	fb.current = merge
+	return nil
+}
+
+// buildOptionBindingIf lowers the Sema-resolved copy-trivial subset of the
+// narrow `if option is Some(binding)` rule. The Option subject is evaluated
+// once, tested once, and projected only in the proven Some successor.
+// Ownership-sensitive projections remain behind the existing Semantic IR
+// union-payload transfer gate rather than being reconstructed from syntax.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §17 "Branch scopes"
+//   - rules/control-flow/flowcontrol_match.md — ordinary payload ownership rules
+//   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
+func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
+	if fb.owner.maxPackage < 12 {
+		return fb.unsupported("Option presence binding", stmt.Token)
+	}
+	plan, ok := fb.owner.analyzer.ResolvedOptionIfBindingOf(stmt)
+	if !ok {
+		return fb.unsupported("unresolved Option presence binding", stmt.Token)
+	}
+	if plan.BindingAction != sema.MatchBindingCopyTrivial {
+		return fb.unsupported("ownership-sensitive Option presence binding "+string(plan.BindingAction), stmt.OptionBinding.Token)
+	}
+	subject, err := fb.buildExpr(stmt.OptionBinding.Subject, 0)
+	if err != nil {
+		return err
+	}
+	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+	if err != nil {
+		return err
+	}
+	condition := fb.result(Operation{
+		Kind: OpUnionIsVariant, Operands: []ValueID{subject.id},
+		UnionVariant: UnionVariantIndex(plan.VariantIndex), Location: location(stmt.OptionBinding.Token),
+	}, boolType)
+	thenBlock := fb.newBlock()
+	var elseBlock, merge *Block
+	if stmt.Alternative != nil {
+		elseBlock = fb.newBlock()
+	} else {
+		merge = fb.newBlock()
+		elseBlock = merge
+	}
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: thenBlock.ID}, {Block: elseBlock.ID}}, Location: location(stmt.Token)})
+
+	fb.current = thenBlock
+	payloadType, err := fb.owner.internType(plan.PayloadType)
+	if err != nil {
+		return err
+	}
+	payload := fb.result(Operation{
+		Kind: OpUnionUnwrapPayload, Operands: []ValueID{subject.id},
+		UnionVariant: UnionVariantIndex(plan.VariantIndex), PayloadActions: []UnionPayloadAction{UnionPayloadCopyTrivial},
+		Location: location(stmt.OptionBinding.Binding.Token),
+	}, payloadType)
+	bindingFact, ok := fb.owner.analyzer.ResolvedBindingOf(stmt.OptionBinding.Binding)
+	if !ok {
+		return fmt.Errorf("Option presence binding %s has no resolved identity", plan.BindingName)
+	}
+	previous, existed := fb.bindings[bindingFact.ID]
+	fb.bindings[bindingFact.ID] = binding{value: payload.id, typ: payload.typ}
+	if err := fb.buildStatements(stmt.Consequence.Statements); err != nil {
+		return err
+	}
+	thenEnd := fb.current
+	if existed {
+		fb.bindings[bindingFact.ID] = previous
+	} else {
+		delete(fb.bindings, bindingFact.ID)
+	}
+
 	if stmt.Alternative != nil {
 		fb.current = elseBlock
 		if err := fb.buildStatements(stmt.Alternative.Statements); err != nil {
@@ -1200,6 +1294,13 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		return fb.result(Operation{Kind: OpConstInt, Integer: value, Location: loc}, typeID), nil
 	case *ast.BooleanLiteral:
 		v := e.Value
+		return fb.result(Operation{Kind: OpConstBool, Bool: &v, Location: loc}, typeID), nil
+	case *ast.AvailabilityExpression:
+		fact, ok := fb.owner.analyzer.ResolvedAvailabilityTestOf(e)
+		if !ok || !fact.StaticallyKnown {
+			return builtValue{}, fb.unsupported("dynamic ownership availability test", e.Token)
+		}
+		v := fact.Value
 		return fb.result(Operation{Kind: OpConstBool, Bool: &v, Location: loc}, typeID), nil
 	case *ast.CharLiteral:
 		value, ok := singleScalarValue(e.Value)
@@ -2420,28 +2521,19 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 		merged = builtValue{typ: successType}
 	}
 
-	var okHandler *sema.ResolvedTryHandler
-	errHandlers := make([]sema.ResolvedTryHandler, 0, len(plan.Handlers))
-	for index := range plan.Handlers {
-		handler := &plan.Handlers[index]
-		switch handler.PatternKind {
-		case sema.TryHandlerOkBinding, sema.TryHandlerOkDiscard:
-			okHandler = handler
-		default:
-			errHandlers = append(errHandlers, *handler)
-		}
-	}
-
 	fb.current = successBlock
-	if okHandler == nil {
-		fb.branchToTryMerge(merge, successValue, Operation{TryHandlerKind: TryHandlerOK, TryHandlerIndex: -1, Location: location(expr.Token)})
-	} else if err := fb.buildTryHandler(expr, *okHandler, successValue, merge, plan.Exhaustive); err != nil {
-		return builtValue{}, err
-	}
+	// A try handler list contains only alternate/error states. The successful
+	// Result path always reaches the merge directly and never dispatches through
+	// a source handler.
+	//
+	// Rules:
+	//   - rules/errors/errorhandling.md — §15 "Local try handlers"
+	//   - rules/errors/errorhandling.md — §15.1 "Success handlers are forbidden"
+	fb.branchToTryMerge(merge, successValue, Operation{TryHandlerKind: TryHandlerOK, TryHandlerIndex: -1, Location: location(expr.Token)})
 
 	fb.current = errorBlock
-	for index, handler := range errHandlers {
-		last := index == len(errHandlers)-1
+	for index, handler := range plan.Handlers {
+		last := index == len(plan.Handlers)-1
 		if handler.PatternKind == sema.TryHandlerErrCatchAll || (last && plan.Exhaustive) {
 			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive); err != nil {
 				return builtValue{}, err
@@ -2560,10 +2652,14 @@ func mergeParameterType(merge *Block, fallback TypeID) TypeID {
 	return fallback
 }
 
+// semanticTryHandlerKind maps the failure-only Sema handler plan to Semantic
+// IR provenance; the implicit success edge is emitted separately.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §§15–16 "Local try handlers" and partial handlers
+//   - rules/compiler/semantic_ir.md — resolved try control flow
 func semanticTryHandlerKind(kind sema.ResolvedTryHandlerPatternKind) TryHandlerKind {
 	switch kind {
-	case sema.TryHandlerOkBinding, sema.TryHandlerOkDiscard:
-		return TryHandlerOK
 	case sema.TryHandlerErrCatchAll:
 		return TryHandlerErrCatchAll
 	default:
@@ -2571,14 +2667,17 @@ func semanticTryHandlerKind(kind sema.ResolvedTryHandlerPatternKind) TryHandlerK
 	}
 }
 
+// tryHandlerPatternIdentifier returns the source binding for a resolved Err
+// handler. Success patterns are forbidden before Semantic IR construction.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §§15.1 and 17
+//   - rules/compiler/semantic_ir.md — source binding identity
 func tryHandlerPatternIdentifier(handler *ast.TryHandler) *ast.Identifier {
 	if handler == nil {
 		return nil
 	}
 	switch pattern := handler.Pattern.(type) {
-	case *ast.OkExpression:
-		identifier, _ := pattern.Value.(*ast.Identifier)
-		return identifier
 	case *ast.ErrExpression:
 		identifier, _ := pattern.Value.(*ast.Identifier)
 		return identifier
@@ -3065,6 +3164,8 @@ func expressionToken(e ast.Expression) lexer.Token {
 	case *ast.PrefixExpression:
 		return x.Token
 	case *ast.InfixExpression:
+		return x.Token
+	case *ast.AvailabilityExpression:
 		return x.Token
 	}
 	return lexer.Token{}

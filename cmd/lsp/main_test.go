@@ -490,6 +490,69 @@ fn Read(device: ref Device) bool {
 	}
 }
 
+// TestHoverUsesCompilerOwnedReadSetAccess verifies that tooling projects the
+// canonical specialized read fact supplied by Sema.
+//
+// Rules:
+//   - rules/declarations/registers.md — § 11.4 "Specialized read semantics"
+//   - rules/platform/hardware-register-access.md — § 4.3 "Read-set"
+func TestHoverUsesCompilerOwnedReadSetAccess(t *testing.T) {
+	source := `module main
+
+type Device register[1] {
+    Flag: bit read-set,
+}
+
+fn Read(device: ref Device) bool {
+    return device.Flag
+}
+`
+	offset := strings.LastIndex(source, "Flag")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok || !strings.Contains(result.Contents.Value, "register field Flag: bool") ||
+		!strings.Contains(result.Contents.Value, "Access: `read-set`") {
+		t.Fatalf("register read-set hover = %+v, %v", result, ok)
+	}
+}
+
+// TestHoverUsesCompilerOwnedSpecialWriteAccess verifies that every specialized
+// set/toggle write mode reaches tooling through Sema's register-field facts.
+//
+// Rules:
+//   - rules/declarations/registers.md — § 11.3 "Specialized write semantics"
+func TestHoverUsesCompilerOwnedSpecialWriteAccess(t *testing.T) {
+	source := `module main
+
+type Device register[4] {
+    Enable: bit write-one-set,
+    Invert: bit write-one-toggle,
+    Disable: bit write-zero-set,
+    Restore: bit write-zero-toggle,
+}
+
+fn Write(device: ref mut Device) void {
+    device.Enable = true
+    device.Invert = true
+    device.Disable = false
+    device.Restore = false
+}
+`
+	want := map[string]string{
+		"Enable":  "write-one-set",
+		"Invert":  "write-one-toggle",
+		"Disable": "write-zero-set",
+		"Restore": "write-zero-toggle",
+	}
+	for field, access := range want {
+		offset := strings.LastIndex(source, field)
+		result, ok := hoverForSource("", source, offsetPosition(source, offset))
+		if !ok || !strings.Contains(result.Contents.Value, "register field "+field+": bool") ||
+			!strings.Contains(result.Contents.Value, "Access: `"+access+"`") {
+			t.Fatalf("register %s hover = %+v, %v", access, result, ok)
+		}
+	}
+}
+
 func TestNestedRegisterHoverAndCheckedConversionUseSemaFacts(t *testing.T) {
 	source := `module main
 
@@ -902,6 +965,52 @@ func TestReservedDeclarationNameDiagnosticReachesLSP(t *testing.T) {
 		}
 	}
 	t.Fatalf("missing %s in %+v", diagnostics.ReservedDeclarationName, items)
+}
+
+func TestImmutableRequiresInitializerDiagnosticReachesLSP(t *testing.T) {
+	items := analyze("", "module main\nfn Test() void {\n    let count: int\n}\n")
+	for _, item := range items {
+		if item.Code != diagnostics.ImmutableRequiresInitializer {
+			continue
+		}
+		if item.Severity != 1 || item.Range.Start.Line != 2 || item.Range.Start.Character != 8 ||
+			!strings.Contains(item.Message, `immutable binding "count" requires an initializer`) ||
+			!strings.Contains(item.Message, "help: initialize the immutable binding explicitly") {
+			t.Fatalf("immutable initializer LSP diagnostic = %+v", item)
+		}
+		return
+	}
+	t.Fatalf("missing %s in %+v", diagnostics.ImmutableRequiresInitializer, items)
+}
+
+func TestUnattachedAttributeDiagnosticReachesLSP(t *testing.T) {
+	items := analyze("", "module main\n@noPanic\n")
+	if len(items) != 1 {
+		t.Fatalf("unattached attribute diagnostics = %+v", items)
+	}
+	item := items[0]
+	if item.Code != diagnostics.UnattachedAttribute || item.Severity != 1 ||
+		item.Range.Start.Line != 1 || item.Range.Start.Character != 1 || item.Range.End.Character != 8 ||
+		!strings.Contains(item.Message, "attribute @noPanic is not attached to a statement") {
+		t.Fatalf("unattached attribute LSP diagnostic = %+v", item)
+	}
+}
+
+func TestForbiddenTrySuccessHandlerDiagnosticReachesLSP(t *testing.T) {
+	source := "module main\nfn Source() Result[int, ArithmeticError] { return Ok(1) }\nfn Use() int {\n    return try Source() {\n        Ok(value) => value\n        Err(error) => 0\n    }\n}\n"
+	items := analyze("", source)
+	for _, item := range items {
+		if item.Code != diagnostics.ForbiddenTrySuccessHandler {
+			continue
+		}
+		if item.Severity != 1 || item.Range.Start.Line != 4 || item.Range.Start.Character != 8 ||
+			!strings.Contains(item.Message, "Ok(...) is a success handler") ||
+			!strings.Contains(item.Message, "help: remove the Ok arm, or use match to handle both Ok and Err explicitly") {
+			t.Fatalf("forbidden try success handler LSP diagnostic = %+v", item)
+		}
+		return
+	}
+	t.Fatalf("missing %s in %+v", diagnostics.ForbiddenTrySuccessHandler, items)
 }
 
 func TestParserDiagnosticIncludesCode(t *testing.T) {
@@ -3221,6 +3330,31 @@ fn Use(ptr: RawPtr[byte]) byte {
 		!strings.Contains(hover.Contents.Value, "CKM-RAWPTR-VOLATILE-READ") ||
 		!strings.Contains(hover.Contents.Value, "Effects: `volatile-read`") {
 		t.Fatalf("volatile compiler-known hover = %+v, %v", hover, ok)
+	}
+}
+
+// TestCancellationRequestCompletionAndHover verifies that LSP projects the
+// compiler-known cancellation members owned by Sema instead of duplicating
+// their signatures or semantics.
+//
+// Rules:
+//   - rules/concurrency/cancellation.md — § 5 "Symmetric task/thread cancellation surface"
+//   - rules/concurrency/cancellation.md — § 59(2) "LSP hover and completion"
+func TestCancellationRequestCompletionAndHover(t *testing.T) {
+	for _, typeName := range []string{"Task", "Thread"} {
+		source := fmt.Sprintf("module main\n\nfn Use(handle: %s[int]) void {\n\thandle.\n}\n", typeName)
+		items := completeSource("", source, strings.Index(source, "handle.")+len("handle."))
+		assertCompletionLabels(t, items, []string{"RequestCancel"})
+
+		hoverSource := fmt.Sprintf("module main\n\nfn Use(handle: %s[int]) void {\n\thandle.RequestCancel()\n}\n", typeName)
+		hoverOffset := strings.Index(hoverSource, "RequestCancel") + 2
+		hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
+		if !ok || !strings.Contains(hover.Contents.Value, "fn RequestCancel() void") ||
+			!strings.Contains(hover.Contents.Value, "CKM-"+strings.ToUpper(typeName)+"-REQUEST-CANCEL") ||
+			!strings.Contains(hover.Contents.Value, "idempotent") ||
+			!strings.Contains(hover.Contents.Value, "without consuming") {
+			t.Fatalf("%s RequestCancel hover = %+v, %v", typeName, hover, ok)
+		}
 	}
 }
 

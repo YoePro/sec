@@ -1071,16 +1071,30 @@ func (rs *ReturnStatement) TokenLiteral() string {
 }
 
 type IfStatement struct {
-	Token       lexer.Token
-	Condition   Expression
-	Consequence *BlockStatement
-	Alternative *BlockStatement
+	Token         lexer.Token
+	Condition     Expression
+	OptionBinding *OptionIfBinding
+	Consequence   *BlockStatement
+	Alternative   *BlockStatement
 }
 
 func (is *IfStatement) statementNode() {}
 
 func (is *IfStatement) TokenLiteral() string {
 	return is.Token.Lexeme
+}
+
+// OptionIfBinding preserves the sole payload-binding form admitted in an if
+// header. Subject is evaluated once and Binding exists only in the positive
+// true branch; this node must not be generalized into arbitrary if patterns.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §13 "No pattern binding in if"
+//   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Positive Some binding"
+type OptionIfBinding struct {
+	Token   lexer.Token
+	Subject Expression
+	Binding *Identifier
 }
 
 type SwitchStatement struct {
@@ -1355,12 +1369,17 @@ type RegisterField struct {
 type RegisterFieldAccess string
 
 const (
-	RegisterReadWrite      RegisterFieldAccess = "read-write"
-	RegisterReadOnly       RegisterFieldAccess = "read-only"
-	RegisterWriteOnly      RegisterFieldAccess = "write-only"
-	RegisterWriteOneClear  RegisterFieldAccess = "write-one-clear"
-	RegisterWriteZeroClear RegisterFieldAccess = "write-zero-clear"
-	RegisterClearOnRead    RegisterFieldAccess = "clear-on-read"
+	RegisterReadWrite       RegisterFieldAccess = "read-write"
+	RegisterReadOnly        RegisterFieldAccess = "read-only"
+	RegisterWriteOnly       RegisterFieldAccess = "write-only"
+	RegisterWriteOneClear   RegisterFieldAccess = "write-one-clear"
+	RegisterWriteOneSet     RegisterFieldAccess = "write-one-set"
+	RegisterWriteOneToggle  RegisterFieldAccess = "write-one-toggle"
+	RegisterWriteZeroClear  RegisterFieldAccess = "write-zero-clear"
+	RegisterWriteZeroSet    RegisterFieldAccess = "write-zero-set"
+	RegisterWriteZeroToggle RegisterFieldAccess = "write-zero-toggle"
+	RegisterReadClear       RegisterFieldAccess = "read-clear"
+	RegisterReadSet         RegisterFieldAccess = "read-set"
 )
 
 func (rf *RegisterField) TokenLiteral() string {
@@ -1455,6 +1474,34 @@ func (ie *InfixExpression) String() string {
 	}
 
 	return "(" + left + " " + ie.Operator + " " + right + ")"
+}
+
+// AvailabilityExpression is the compiler-known ownership-state query
+// `place is [not] available`. The contextual words remain ordinary identifiers
+// outside this exact if-condition form.
+//
+// Rules:
+//   - rules/memory/ownership.md — §21 "is available and is not available"
+//   - rules/corrections/applied/correction30-20260828.md — §§1–3 availability refinement
+type AvailabilityExpression struct {
+	Token   lexer.Token
+	Place   Expression
+	Negated bool
+}
+
+func (ae *AvailabilityExpression) expressionNode() {}
+
+func (ae *AvailabilityExpression) TokenLiteral() string { return ae.Token.Lexeme }
+
+func (ae *AvailabilityExpression) String() string {
+	if ae == nil || ae.Place == nil {
+		return ""
+	}
+	operator := " is available"
+	if ae.Negated {
+		operator = " is not available"
+	}
+	return ae.Place.String() + operator
 }
 
 type RangeExpression struct {

@@ -404,13 +404,18 @@ type Packet register[(2 + 2) * 4] {
 
 func TestParseRegisterFieldAccessModifiers(t *testing.T) {
 	input := `
-type Device register[6] msb-first little-endian {
+type Device register[11] msb-first little-endian {
 	Control: bit read-write,
 	Ready: bit read-only,
 	Command: bit write-only,
 	Pending: bit write-one-clear,
+	Enable: bit write-one-set,
+	Invert: bit write-one-toggle,
 	Fault: bit write-zero-clear,
-	Event: bit clear-on-read,
+	Disable: bit write-zero-set,
+	Restore: bit write-zero-toggle,
+	Event: bit read-clear,
+	Flag: bit read-set,
 }
 `
 
@@ -424,13 +429,36 @@ type Device register[6] msb-first little-endian {
 		ast.RegisterReadOnly,
 		ast.RegisterWriteOnly,
 		ast.RegisterWriteOneClear,
+		ast.RegisterWriteOneSet,
+		ast.RegisterWriteOneToggle,
 		ast.RegisterWriteZeroClear,
-		ast.RegisterClearOnRead,
+		ast.RegisterWriteZeroSet,
+		ast.RegisterWriteZeroToggle,
+		ast.RegisterReadClear,
+		ast.RegisterReadSet,
 	}
 	for index, access := range want {
 		if got := register.Fields[index].Access; got != access {
 			t.Fatalf("field %s access = %q, want %q", register.Fields[index].Name.Value, got, access)
 		}
+	}
+}
+
+// TestParseRegisterRejectsLegacyClearOnRead enforces the canonical destructive
+// read spelling while giving old source a focused migration diagnostic.
+//
+// Rules:
+//   - rules/declarations/registers.md — § 11.4 "Specialized read semantics"
+//   - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md — § 1.1 "Canonical destructive-read spelling"
+func TestParseRegisterRejectsLegacyClearOnRead(t *testing.T) {
+	p := New(lexer.New(`
+type Device register[1] {
+	Event: bit clear-on-read,
+}
+`))
+	p.ParseProgram()
+	if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], `modifier "clear-on-read" is obsolete; use "read-clear"`) {
+		t.Fatalf("legacy clear-on-read errors = %v", p.Errors())
 	}
 }
 
@@ -826,6 +854,97 @@ func TestParseNoCopyAttributeErrors(t *testing.T) {
 			p.ParseProgram()
 			if len(p.Errors()) != 1 || p.Errors()[0] != tt.want {
 				t.Fatalf("parser errors = %v, want %q", p.Errors(), tt.want)
+			}
+		})
+	}
+}
+
+// TestUnknownAttributeUsesCanonicalDiagnostic verifies that an unregistered
+// declaration attribute is not reinterpreted as a runtime @call and that the
+// attached declaration remains available after recovery.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Closed attribute set"
+//   - rules/foundations/attributes.md — "Diagnostics", attribute.unknown
+func TestUnknownAttributeUsesCanonicalDiagnostic(t *testing.T) {
+	p := New(lexer.New(`
+@audit(category: "finance")
+fn PostInvoice() void {}
+`))
+	program := p.ParseProgram()
+	foundDiagnostics := p.Diagnostics()
+	if len(foundDiagnostics) != 1 || foundDiagnostics[0].ID != diagnostics.UnknownAttribute || foundDiagnostics[0].Message != "unknown attribute @audit at 2:1" {
+		t.Fatalf("unknown attribute diagnostics = %+v", foundDiagnostics)
+	}
+	if len(program.Statements) != 2 {
+		t.Fatalf("statement count = %d, want invalid attribute plus recovered function", len(program.Statements))
+	}
+	invalid, ok := program.Statements[0].(*ast.InvalidStatement)
+	if !ok || invalid.Recovery == nil || invalid.Recovery.DiagnosticID != diagnostics.UnknownAttribute {
+		t.Fatalf("unknown attribute statement = %#v", program.Statements[0])
+	}
+	if fn, ok := program.Statements[1].(*ast.FunctionDeclaration); !ok || fn.Name.Value != "PostInvoice" {
+		t.Fatalf("recovered declaration = %#v", program.Statements[1])
+	}
+}
+
+func TestUnknownAttributeDiagnosticDoesNotCaptureLocalRuntimeCall(t *testing.T) {
+	p := New(lexer.New(`
+fn Work() void {
+	@runtime.Trace()
+}
+`))
+	p.ParseProgram()
+	checkParserErrors(t, p)
+}
+
+func TestUnknownAttributeDiagnosticDoesNotMislabelKnownPendingAttribute(t *testing.T) {
+	p := New(lexer.New(`
+@interrupt(Uart0)
+fn Handle() void {}
+`))
+	p.ParseProgram()
+	for _, diagnostic := range p.Diagnostics() {
+		if diagnostic.ID == diagnostics.UnknownAttribute {
+			t.Fatalf("known pending attribute was labeled unknown: %+v", diagnostic)
+		}
+	}
+}
+
+// TestUnattachedAttributeSetAtEOFUsesCanonicalDiagnostic verifies that a
+// complete compiler-known attribute set cannot disappear at end of file and
+// that unknown attributes retain their more specific diagnostic ownership.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Comments and whitespace"
+//   - rules/foundations/attributes.md — "Diagnostics", attribute.unattached
+func TestUnattachedAttributeSetAtEOFUsesCanonicalDiagnostic(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantID    string
+		wantError string
+	}{
+		{name: "single", input: "@noPanic\n", wantID: diagnostics.UnattachedAttribute, wantError: "attribute @noPanic is not attached to a statement at 1:2"},
+		{name: "arguments and comment", input: "@target(os: \"linux\")\n// pending target\n", wantID: diagnostics.UnattachedAttribute, wantError: "attribute @target is not attached to a statement at 1:2"},
+		{name: "mixed set", input: "@noAlloc\n@noBlock\n", wantID: diagnostics.UnattachedAttribute, wantError: "attribute @noAlloc is not attached to a statement at 1:2"},
+		{name: "unknown remains unknown", input: "@audit\n", wantID: diagnostics.UnknownAttribute, wantError: "unknown attribute @audit at 1:1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New(lexer.New(tt.input))
+			program := p.ParseProgram()
+			foundDiagnostics := p.Diagnostics()
+			if len(foundDiagnostics) != 1 || foundDiagnostics[0].ID != tt.wantID || foundDiagnostics[0].Message != tt.wantError {
+				t.Fatalf("diagnostics = %+v, want %s %q", foundDiagnostics, tt.wantID, tt.wantError)
+			}
+			if len(program.Statements) != 1 {
+				t.Fatalf("statement count = %d, want one retained invalid attribute node", len(program.Statements))
+			}
+			invalid, ok := program.Statements[0].(*ast.InvalidStatement)
+			if !ok || invalid.Recovery == nil || invalid.Recovery.DiagnosticID != tt.wantID {
+				t.Fatalf("invalid attribute statement = %#v", program.Statements[0])
 			}
 		})
 	}
@@ -1479,13 +1598,14 @@ func TestRejectImmutableTypedDeclarationWithoutInitializer(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
+		id    string
 	}{
-		{input: `int: a, b, c`, want: `immutable typed declaration requires initializer for "a" at 1:6`},
+		{input: `int: a, b, c`, want: `immutable binding "a" requires an initializer at 1:6`, id: diagnostics.ImmutableRequiresInitializer},
 		{input: `TokenType (
 ILLEGAL
-)`, want: `immutable typed declaration requires initializer for "ILLEGAL" at 2:1`},
-		{input: `int mut a, b, c`, want: `typed mutable declaration requires ':' after mut; write int mut: a at 1:9`},
-		{input: `let mut a`, want: `let declaration requires initializer for "a" at 1:9`},
+)`, want: `immutable binding "ILLEGAL" requires an initializer at 2:1`, id: diagnostics.ImmutableRequiresInitializer},
+		{input: `int mut a, b, c`, want: `typed mutable declaration requires ':' after mut; write int mut: a at 1:9`, id: diagnostics.ParserSyntaxError},
+		{input: `let mut a`, want: `let declaration requires initializer for "a" at 1:9`, id: diagnostics.ParserSyntaxError},
 	}
 
 	for _, tt := range tests {
@@ -1498,6 +1618,10 @@ ILLEGAL
 		}
 		if p.Errors()[0] != tt.want {
 			t.Fatalf("wrong parser error for %q. got=%q want=%q", tt.input, p.Errors()[0], tt.want)
+		}
+		foundDiagnostics := p.Diagnostics()
+		if len(foundDiagnostics) != 1 || foundDiagnostics[0].ID != tt.id {
+			t.Fatalf("parser diagnostics for %q = %+v, want ID %s", tt.input, foundDiagnostics, tt.id)
 		}
 	}
 }

@@ -7,6 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-26"
     document_revision: "2.0"
+    revised: "2026-09-21"
     repository_baseline: "b3315f6"
     replaces: pre-v2 rules/memory/ownership.md
     summary: >-
@@ -20,7 +21,7 @@ integrations:
       required by any ownership-dependent operation. The frontend does not yet
       implement the revision-2 canonical Availability
       dimension, explicit reusable-source moves in every owning payload,
-      new closure move capture syntax, availability tests/refinement, discard
+      new closure move capture syntax, complete dynamic availability refinement, discard
       convergence, conditional cleanup/replacement, or static-ownership policy.
     rules:
       - rules/memory/ownership.md
@@ -63,6 +64,10 @@ integrations:
       - borrow validation before supported moves and overlapping self-move diagnostics
       - independent copy and trivial-destruction classifications
       - left-to-right call argument evaluation with outer-call transfer commit delayed until every argument is ready
+      - contextual ownership availability syntax now spans lexer, dedicated AST, parser, formatter, Sema, and static Semantic IR folding for place is available and place is not available; available/is/not remain ordinary identifiers outside the exact if-condition form
+      - Sema records the exact tested Place and query polarity, resolves wholly available, unavailable, partially available, and uninitialized states statically where current Place facts suffice, and does not read the queried Place or reinterpret the test as Option/null/borrow/device state
+      - continuing-path move-state joins retain an internal conditional marker; binary Available|Unavailable leaf tests refine the positive and negative branches, including a terminating negative branch whose fallthrough proves availability
+      - negative whole-aggregate tests preserve existing recursive partial masks and still-owned sibling fields rather than collapsing them to a fabricated Unavailable reason
     remaining:
       - availability-reason-separation
       - explicit-consuming-call-arguments
@@ -76,7 +81,7 @@ integrations:
       - immutable-partial-move
       - custom-free-partial-move-ban
       - conditional-availability
-      - ownership-is-available
+      - ownership-is-available-dynamic-state-and-complete-recursive-refinement
       - negative-availability-refinement-preserves-recursive-mask
       - static-availability-elimination
       - dynamic-ownership-state-policy
@@ -199,3 +204,6 @@ integrations:
       availability_and_refinement: rules/memory/ownership.md sections 5, 18, and 20-25
       call_transfer: rules/memory/ownership.md sections 13-14 and 18
       runtime_state_and_policy: rules/memory/ownership.md sections 21-25 and 31-32
+    verification:
+      - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic -run 'Availability' -count=1
+        result: passed; contextual tokens, dedicated AST, both spellings, static owned/moved and partial facts, conditional branch refinement, sibling-mask preservation, formatting, and static Semantic IR folding are covered

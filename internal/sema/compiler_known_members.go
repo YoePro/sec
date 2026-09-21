@@ -11,13 +11,15 @@ const (
 )
 
 type CompilerKnownMember struct {
-	ID          string
-	Name        string
-	LegacyNames []string
-	Kind        CompilerKnownMemberKind
-	Result      Type
-	Unsafe      bool
-	Effects     []EffectKind
+	ID            string
+	Name          string
+	LegacyNames   []string
+	Kind          CompilerKnownMemberKind
+	Result        Type
+	Signature     string
+	Documentation string
+	Unsafe        bool
+	Effects       []EffectKind
 }
 
 type CompilerKnownFunction struct {
@@ -169,7 +171,31 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			CompilerKnownMember{ID: "CKM-ARENA-RELEASE", Name: "Release", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
 		)
 	}
+	members = append(members, compilerKnownCancellationMembers(sequence)...)
 	return members
+}
+
+// compilerKnownCancellationMembers exposes the symmetric cooperative
+// cancellation request on owning task and thread handles. Requesting
+// cancellation neither consumes the handle nor resolves its lifecycle duty.
+//
+// Rules:
+//   - rules/concurrency/cancellation.md — § 5 "Symmetric task/thread cancellation surface"
+//   - rules/concurrency/cancellation.md — § 6(2)–(5) "Relevant Task[T] cancellation surface"
+//   - rules/concurrency/cancellation.md — § 7(2)–(4) "Relevant Thread[T] cancellation surface"
+func compilerKnownCancellationMembers(typ Type) []CompilerKnownMember {
+	if (typ.Name != "Task" && typ.Name != "Thread") || len(typ.TypeArgs) != 1 {
+		return nil
+	}
+	identity := strings.ToUpper(typ.Name)
+	return []CompilerKnownMember{{
+		ID:            "CKM-" + identity + "-REQUEST-CANCEL",
+		Name:          "RequestCancel",
+		Kind:          CompilerKnownMethod,
+		Result:        builtinTypes()["void"],
+		Signature:     "fn RequestCancel() void",
+		Documentation: "Requests cooperative cancellation without consuming the owning handle. The request is idempotent and has no effect after terminal completion.",
+	}}
 }
 
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {

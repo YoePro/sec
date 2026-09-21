@@ -2151,7 +2151,15 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 		}
 		effects = "\n\nEffects: `" + strings.Join(names, "`, `") + "`."
 	}
-	contents := fmt.Sprintf("```sec\n%s %s: %s\n```\n\nCompiler-known `%s`.%s", kind, member.Name, result, member.ID, effects)
+	declaration := fmt.Sprintf("%s %s: %s", kind, member.Name, result)
+	if member.Signature != "" {
+		declaration = member.Signature
+	}
+	documentation := ""
+	if member.Documentation != "" {
+		documentation = "\n\n" + member.Documentation
+	}
+	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s", declaration, member.ID, effects, documentation)
 	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 

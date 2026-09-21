@@ -620,7 +620,7 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot use partially moved value %s; place %s is unavailable", place.String(), movedKey)
 		return true
 	}
-	reason := a.moveReasons[movedKey]
+	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
 	switch reason {
 	case "discarded":
 		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was discarded here and is no longer available", place.String())

@@ -328,12 +328,17 @@ type RegisterField struct {
 type RegisterFieldAccess string
 
 const (
-	RegisterReadWrite      RegisterFieldAccess = "read-write"
-	RegisterReadOnly       RegisterFieldAccess = "read-only"
-	RegisterWriteOnly      RegisterFieldAccess = "write-only"
-	RegisterWriteOneClear  RegisterFieldAccess = "write-one-clear"
-	RegisterWriteZeroClear RegisterFieldAccess = "write-zero-clear"
-	RegisterClearOnRead    RegisterFieldAccess = "clear-on-read"
+	RegisterReadWrite       RegisterFieldAccess = "read-write"
+	RegisterReadOnly        RegisterFieldAccess = "read-only"
+	RegisterWriteOnly       RegisterFieldAccess = "write-only"
+	RegisterWriteOneClear   RegisterFieldAccess = "write-one-clear"
+	RegisterWriteOneSet     RegisterFieldAccess = "write-one-set"
+	RegisterWriteOneToggle  RegisterFieldAccess = "write-one-toggle"
+	RegisterWriteZeroClear  RegisterFieldAccess = "write-zero-clear"
+	RegisterWriteZeroSet    RegisterFieldAccess = "write-zero-set"
+	RegisterWriteZeroToggle RegisterFieldAccess = "write-zero-toggle"
+	RegisterReadClear       RegisterFieldAccess = "read-clear"
+	RegisterReadSet         RegisterFieldAccess = "read-set"
 )
 
 type StructTag struct {

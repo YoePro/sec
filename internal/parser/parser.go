@@ -414,6 +414,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseSemicolonStatement()
 
 	case lexer.AT:
+		if p.recoveryContext == RecoveryContextTopLevel && p.knownAttributeSetEndsAtEOF() {
+			return p.parseUnattachedAttributeSet()
+		}
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "address" {
 			return p.parseAddressedLetStatement()
 		}
@@ -425,6 +428,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		}
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "noPanic" {
 			return p.parseNoPanicDeclaration()
+		}
+		if (p.recoveryContext == RecoveryContextTopLevel || p.recoveryContext == RecoveryContextMember) &&
+			p.peekToken.Type == lexer.IDENT && !compilerKnownAttributeName(p.peekToken.Lexeme) {
+			return p.parseUnknownAttribute()
 		}
 		return p.parseExpressionOrAssignmentStatement()
 
@@ -481,6 +488,151 @@ func (p *Parser) parseStatement() ast.Statement {
 			unexpected.Column,
 		)
 		return nil
+	}
+}
+
+// knownAttributeSetEndsAtEOF recognizes a syntactically complete sequence of
+// compiler-known attributes followed only by comments and end of file. It uses
+// lexer snapshotting so ordinary attribute dispatch remains unchanged when a
+// declaration follows.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Attribute attachment"
+//   - rules/foundations/attributes.md — "Comments and whitespace"
+func (p *Parser) knownAttributeSetEndsAtEOF() bool {
+	if p.peekToken.Type != lexer.IDENT || !compilerKnownAttributeName(p.peekToken.Lexeme) {
+		return false
+	}
+
+	state := p.l.Snapshot()
+	defer p.l.Restore(state)
+	next := p.l.NextToken()
+	for {
+		if next.Type == lexer.LPAREN {
+			delimiters := newDelimiterStack(lexer.RPAREN)
+			for !delimiters.empty() {
+				next = p.l.NextToken()
+				if next.Type == lexer.EOF || !delimiters.canConsume(next.Type) {
+					return false
+				}
+				delimiters.consume(next.Type)
+			}
+			next = p.l.NextToken()
+		}
+		for next.Type == lexer.COMMENT {
+			next = p.l.NextToken()
+		}
+		if next.Type == lexer.EOF {
+			return true
+		}
+		if next.Type != lexer.AT {
+			return false
+		}
+		name := p.l.NextToken()
+		if name.Type != lexer.IDENT || !compilerKnownAttributeName(name.Lexeme) {
+			return false
+		}
+		next = p.l.NextToken()
+	}
+}
+
+// parseUnattachedAttributeSet retains an invalid source node and emits the
+// compiler-owned diagnostic when a complete known attribute set reaches EOF
+// without the top-level declaration it must modify.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Comments and whitespace"
+//   - rules/foundations/attributes.md — "Diagnostics", attribute.unattached
+func (p *Parser) parseUnattachedAttributeSet() ast.Statement {
+	start := p.curToken
+	name := p.peekToken
+	skipped := 1
+	for p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		skipped++
+	}
+	message := fmt.Sprintf("attribute @%s is not attached to a statement", name.Lexeme)
+	p.addDiagnostic(
+		compilerdiagnostics.UnattachedAttribute,
+		name,
+		nil,
+		nil,
+		"%s at %d:%d",
+		message,
+		name.Line,
+		name.Column,
+	)
+	recovery := p.recordSkippedRecovery(start, p.curToken, skipped, RecoveryExact)
+	return &ast.InvalidStatement{
+		Token:   start,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.UnattachedAttribute,
+			Message:      message,
+			Start:        recovery.Start,
+			End:          recovery.End,
+			Skipped:      recovery.Skipped,
+		},
+	}
+}
+
+// compilerKnownAttributeName distinguishes the closed Sec 0.1 attribute set
+// from truly unknown names. Some names still have incomplete dedicated parser
+// verticals, but they must not be mislabeled as unknown attributes.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Initial compiler-known attribute set"
+//   - rules/foundations/attributes.md — "Closed attribute set"
+func compilerKnownAttributeName(name string) bool {
+	switch name {
+	case "target", "when", "address", "interrupt", "isr", "interruptSafe",
+		"noCopy", "noAlloc", "noPanic", "noBlock", "link_name":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseUnknownAttribute rejects unregistered attributes through the canonical
+// attribute diagnostic path while consuming only that attribute's optional
+// argument list. This preserves the following declaration for independent
+// parsing and keeps local runtime @call expressions unchanged.
+//
+// Rules:
+//   - rules/foundations/attributes.md — "Closed attribute set"
+//   - rules/foundations/attributes.md — "Attribute attachment"
+//   - rules/foundations/attributes.md — "Diagnostics", attribute.unknown
+func (p *Parser) parseUnknownAttribute() ast.Statement {
+	attributeToken := p.curToken
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	nameToken := p.curToken
+	message := fmt.Sprintf("unknown attribute @%s", nameToken.Lexeme)
+	p.addDiagnostic(
+		compilerdiagnostics.UnknownAttribute,
+		attributeToken,
+		nil,
+		&nameToken,
+		"%s at %d:%d",
+		message,
+		attributeToken.Line,
+		attributeToken.Column,
+	)
+	end := nameToken
+	if p.peekToken.Type == lexer.LPAREN {
+		recovery := p.consumeAttributeArguments()
+		end = recovery.End
+	}
+	return &ast.InvalidStatement{
+		Token:   attributeToken,
+		Message: message,
+		Recovery: &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.UnknownAttribute,
+			Message:      message,
+			Start:        attributeToken,
+			End:          end,
+		},
 	}
 }
 
@@ -980,7 +1132,7 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		return nil
 	}
 	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
-		stmt.Condition = p.parseOptionAbsenceIfCondition(stmt.Condition)
+		stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition)
 	}
 
 	if p.peekToken.Type != lexer.LBRACE {
@@ -1024,14 +1176,16 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	return stmt
 }
 
-// parseOptionAbsenceIfCondition lowers the canonical `is [not] None` condition
-// to an exhaustive Option match so every later compiler stage consumes the
-// existing typed match representation rather than a spelling-only operator.
+// parseContextualIfStateCondition distinguishes ownership availability from
+// the narrow Option state forms without reserving is/not/available globally.
+// Other payload patterns remain match-only syntax.
 //
 // Rules:
-//   - rules/errors/errorhandling.md — §28 "if tests for Option"
-//   - rules/control-flow/flowcontrol_if.md — conditional evaluation
-func (p *Parser) parseOptionAbsenceIfCondition(subject ast.Expression) ast.Expression {
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §13 "No pattern binding in if"
+//   - rules/memory/ownership.md — §21 "is available and is not available"
+//   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Option payload binding in if"
+//   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Negative binding is invalid"
+func (p *Parser) parseContextualIfStateCondition(subject ast.Expression) (ast.Expression, *ast.OptionIfBinding) {
 	p.nextToken()
 	isToken := p.curToken
 	negated := false
@@ -1039,14 +1193,59 @@ func (p *Parser) parseOptionAbsenceIfCondition(subject ast.Expression) ast.Expre
 		p.nextToken()
 		negated = true
 	}
-	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "None" {
+	if p.peekToken.Type != lexer.IDENT {
+		p.addError("Option if test expects None or Some(binding) after is at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return subject, nil
+	}
+	if p.peekToken.Lexeme == "available" {
+		p.nextToken()
+		return &ast.AvailabilityExpression{Token: isToken, Place: subject, Negated: negated}, nil
+	}
+
+	switch p.peekToken.Lexeme {
+	case "None":
+		return p.finishOptionAbsenceIfCondition(subject, isToken, negated), nil
+	case "Some":
+		p.nextToken()
+		someToken := p.curToken
+		if p.peekToken.Type != lexer.LPAREN {
+			p.addError("Option Some test requires '(binding)' at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return subject, nil
+		}
+		p.nextToken()
+		if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme == "_" {
+			p.addError("Option Some test must bind an identifier at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return subject, nil
+		}
+		p.nextToken()
+		binding := &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+		if p.peekToken.Type != lexer.RPAREN {
+			p.addError("Option Some binding expects ')' at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return subject, nil
+		}
+		p.nextToken()
+		if negated {
+			p.addError("negative Option binding is invalid; use match at %d:%d", someToken.Line, someToken.Column)
+			return subject, nil
+		}
+		return subject, &ast.OptionIfBinding{Token: someToken, Subject: subject, Binding: binding}
+	default:
 		operator := "is"
 		if negated {
 			operator = "is not"
 		}
-		p.addError("Option if test expects None after %s at %d:%d", operator, p.peekToken.Line, p.peekToken.Column)
-		return subject
+		p.addError("Option if test expects None or Some(binding) after %s at %d:%d", operator, p.peekToken.Line, p.peekToken.Column)
+		return subject, nil
 	}
+}
+
+// finishOptionAbsenceIfCondition constructs the existing bool-valued Option
+// match after the contextual `is` token has already been consumed.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §28 "if tests for Option"
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests"
+func (p *Parser) finishOptionAbsenceIfCondition(subject ast.Expression, isToken lexer.Token, negated bool) ast.Expression {
 	p.nextToken()
 	noneToken := p.curToken
 	trueToken := isToken
@@ -1842,6 +2041,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.PrefixExpression:
 		return expr.Token
 	case *ast.InfixExpression:
+		return expr.Token
+	case *ast.AvailabilityExpression:
 		return expr.Token
 	case *ast.ConversionExpression:
 		return expr.Token
@@ -3871,8 +4072,14 @@ func isRegisterFieldAccessPrefix(token lexer.Token) bool {
 }
 
 // parseRegisterFieldAccessModifier parses the closed hyphenated modifier set
-// owned by rules/declarations/registers.md. The AST stores one normalized fact
-// so Sema, tooling, and lowering do not reconstruct it from tokens.
+// and rejects the superseded clear-on-read spelling with a focused migration
+// diagnostic. The AST stores one normalized fact so later phases do not
+// reconstruct it from tokens.
+//
+// Rules:
+//   - rules/declarations/registers.md — § 11.3 "Specialized write semantics"
+//   - rules/declarations/registers.md — § 11.4 "Specialized read semantics"
+//   - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md — § 1.1 "Canonical destructive-read spelling"
 func (p *Parser) parseRegisterFieldAccessModifier() ast.RegisterFieldAccess {
 	p.nextToken()
 	prefix := p.curToken
@@ -3887,13 +4094,22 @@ func (p *Parser) parseRegisterFieldAccessModifier() ast.RegisterFieldAccess {
 		}
 		modifier += "-" + p.curToken.Lexeme
 	}
+	if modifier == "clear-on-read" {
+		p.addError("register field access modifier %q is obsolete; use %q at %d:%d", modifier, "read-clear", prefix.Line, prefix.Column)
+		return ast.RegisterFieldAccess("")
+	}
 	switch ast.RegisterFieldAccess(modifier) {
 	case ast.RegisterReadWrite,
 		ast.RegisterReadOnly,
 		ast.RegisterWriteOnly,
 		ast.RegisterWriteOneClear,
+		ast.RegisterWriteOneSet,
+		ast.RegisterWriteOneToggle,
 		ast.RegisterWriteZeroClear,
-		ast.RegisterClearOnRead:
+		ast.RegisterWriteZeroSet,
+		ast.RegisterWriteZeroToggle,
+		ast.RegisterReadClear,
+		ast.RegisterReadSet:
 		return ast.RegisterFieldAccess(modifier)
 	default:
 		p.addError("unknown register field access modifier %q at %d:%d", modifier, prefix.Line, prefix.Column)
@@ -6807,7 +7023,7 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 	}
 
 	if !mutable && first.Value == nil {
-		p.addError("immutable typed declaration requires initializer for %q at %d:%d", first.Name.Value, first.Name.Token.Line, first.Name.Token.Column)
+		p.reportImmutableRequiresInitializer(first.Name)
 		p.skipDeclarationRest()
 		return nil
 	}
@@ -6824,7 +7040,7 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 			return nil
 		}
 		if !mutable && next.Value == nil {
-			p.addError("immutable typed declaration requires initializer for %q at %d:%d", next.Name.Value, next.Name.Token.Line, next.Name.Token.Column)
+			p.reportImmutableRequiresInitializer(next.Name)
 			p.skipDeclarationRest()
 			return nil
 		}
@@ -6854,7 +7070,7 @@ func (p *Parser) parseTypedVariableGroupDeclaration(token lexer.Token, typ *ast.
 			return nil
 		}
 		if let.Value == nil {
-			p.addError("immutable typed declaration requires initializer for %q at %d:%d", let.Name.Value, let.Name.Token.Line, let.Name.Token.Column)
+			p.reportImmutableRequiresInitializer(let.Name)
 			p.skipDeclarationRest()
 			return nil
 		}
@@ -6894,6 +7110,25 @@ func (p *Parser) parseTypedVariableGroupDeclaration(token lexer.Token, typ *ast.
 		return lets[0]
 	}
 	return &ast.LetGroupStatement{Token: token, Lets: lets}
+}
+
+// reportImmutableRequiresInitializer emits the compiler-owned diagnostic for
+// immutable declarations that omit their required explicit initializer.
+//
+// Rules:
+//   - rules/types/default_values.md — "Immutable declarations without initializer"
+//   - rules/types/default_values.md — "Diagnostics", variables.immutable-requires-initializer
+func (p *Parser) reportImmutableRequiresInitializer(name *ast.Identifier) {
+	p.addDiagnostic(
+		compilerdiagnostics.ImmutableRequiresInitializer,
+		name.Token,
+		nil,
+		nil,
+		"immutable binding %q requires an initializer at %d:%d",
+		name.Value,
+		name.Token.Line,
+		name.Token.Column,
+	)
 }
 
 func parserTypeReferenceName(ref *ast.TypeReference) string {

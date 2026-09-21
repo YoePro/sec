@@ -342,7 +342,6 @@ func TestPackage10BuildsOrderedLocalResultHandlers(t *testing.T) {
 fn Source(value: int) Result[int, ArithmeticError] { return Ok(value) }
 fn Handle(value: int) int {
   return try Source(value) {
-    Ok(found) => found
     Err(ArithmeticError.DivisionByZero) => 0
     Err(error) => 1
   }
@@ -372,7 +371,7 @@ fn Forward(value: int) Result[int, ArithmeticError] {
 			}
 		}
 	}
-	if counts[OpResultIsErr] != 1 || counts[OpCoreErrorIsVariant] != 1 || variant.Variant != "DivisionByZero" || variant.TryHandlerIndex != 1 {
+	if counts[OpResultIsErr] != 1 || counts[OpCoreErrorIsVariant] != 1 || variant.Variant != "DivisionByZero" || variant.TryHandlerIndex != 0 {
 		t.Fatalf("ordered handlers were not preserved: %#v\n%s", counts, Format(module))
 	}
 	mergeFound := false
@@ -392,7 +391,6 @@ func TestPackage10BuildsLocalArithmeticHandlersWithoutTemporaryResult(t *testing
 	module, err := analyzedModule(t, `module main
 fn Divide(left: int, right: int) int {
   return try left / right {
-    Ok(value) => value
     Err(ArithmeticError.DivisionByZero) => 0
     Err(error) => 1
   }
@@ -435,7 +433,6 @@ func TestPackage7ReportsUnsupportedOperatorBoundaries(t *testing.T) {
 enum Failure error { failed, }
 fn Use() int {
     return try Calculate() {
-        Ok(value) => value
         Err(error) => 0
     } + 1
 }

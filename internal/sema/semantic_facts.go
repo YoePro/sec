@@ -232,6 +232,34 @@ type ResolvedConditionFact struct {
 	Source    lexer.Token
 }
 
+// ResolvedOptionIfBinding is the compiler-owned decision for the narrow
+// `if option is Some(binding)` exception. Consumers must not infer a general
+// pattern-binding facility from the source spelling.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §13 "No pattern binding in if"
+//   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Positive Some binding"
+type ResolvedOptionIfBinding struct {
+	SubjectType   Type
+	PayloadType   Type
+	BindingName   string
+	VariantIndex  uint32
+	BindingAction ResolvedMatchBindingAction
+}
+
+// ResolvedAvailabilityTest records the exact ownership Place and whether Sema
+// can fold its query without runtime ownership state.
+//
+// Rules:
+//   - rules/memory/ownership.md — §21 "is available and is not available"
+//   - rules/corrections/applied/correction30-20260828.md — §§1–3
+type ResolvedAvailabilityTest struct {
+	Place           Place
+	Negated         bool
+	StaticallyKnown bool
+	Value           bool
+}
+
 // PanicReason names a canonical, stable panic category without assigning the
 // numeric PanicID owned by the separate diagnostics/panic registry.
 type PanicReason string
@@ -284,8 +312,6 @@ type ResolvedTry struct {
 type ResolvedTryHandlerPatternKind string
 
 const (
-	TryHandlerOkBinding   ResolvedTryHandlerPatternKind = "ok-binding"
-	TryHandlerOkDiscard   ResolvedTryHandlerPatternKind = "ok-discard"
 	TryHandlerErrVariant  ResolvedTryHandlerPatternKind = "err-variant"
 	TryHandlerErrCatchAll ResolvedTryHandlerPatternKind = "err-catch-all"
 )
@@ -304,8 +330,8 @@ type ResolvedTryHandler struct {
 	Variant     string
 	BindingName string
 	BindingType Type
-	// PayloadDiscard implements explicit Ok(_)/Err(_) handling from
-	// rules/errors/errorhandling.md and correction20.md.
+	// PayloadDiscard implements explicit Err(_) handling from
+	// rules/errors/errorhandling.md §17 and correction20.md.
 	PayloadDiscard bool
 	Flow           ResolvedTryHandlerFlow
 	ResultType     Type
@@ -313,11 +339,10 @@ type ResolvedTryHandler struct {
 }
 
 type ResolvedTryPlan struct {
-	SuccessType   Type
-	ErrorType     Type
-	HasExplicitOk bool
-	Exhaustive    bool
-	Handlers      []ResolvedTryHandler
+	SuccessType Type
+	ErrorType   Type
+	Exhaustive  bool
+	Handlers    []ResolvedTryHandler
 }
 
 type ResolvedMatchSubjectKind string
@@ -1101,6 +1126,34 @@ func (a *Analyzer) ResolvedBindingAt(file string, line int, column int) (Resolve
 	fact := a.bindingFacts[key]
 	fact.ID = id
 	return fact, true
+}
+
+// ResolvedOptionIfBindingOf returns the immutable Sema plan for one valid
+// positive Option presence-binding if statement.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests"
+func (a *Analyzer) ResolvedOptionIfBindingOf(stmt *ast.IfStatement) (ResolvedOptionIfBinding, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedOptionIfBinding{}, false
+	}
+	fact, ok := a.resolvedOptionIfBindings[stmt]
+	return fact, ok
+}
+
+// ResolvedAvailabilityTestOf returns Sema's immutable ownership-state query
+// decision without reconstructing Place identity from source syntax.
+//
+// Rules:
+//   - rules/memory/ownership.md — §§20–21 control-flow availability and tests
+func (a *Analyzer) ResolvedAvailabilityTestOf(expr *ast.AvailabilityExpression) (ResolvedAvailabilityTest, bool) {
+	if a == nil || expr == nil {
+		return ResolvedAvailabilityTest{}, false
+	}
+	fact, ok := a.resolvedAvailabilityTests[expr]
+	fact.Place.Projections = clonePlaceProjections(fact.Place.Projections)
+	fact.Place.AlternativeOrigins = clonePlaces(fact.Place.AlternativeOrigins)
+	return fact, ok
 }
 
 func (a *Analyzer) ResolvedCallTarget(call *ast.CallExpression) (ResolvedCall, bool) {

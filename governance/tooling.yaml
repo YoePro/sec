@@ -1,4 +1,66 @@
 schema_version: 1
 area: tooling
 purpose: Shared tooling infrastructure and cross-tooling coordination.
-integrations: []
+integrations:
+  - id: tooling.semantic-ir-v2
+    area: semantic-ir-debugging-lsp-diagnostics
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+      - textual Semantic IR printer exists
+      - existing compiler/LSP paths consume several shared compiler-known and semantic facts
+    remaining:
+      - expose Iterator[T] resolution and concrete Next target
+      - expose ownership/availability/Place provenance
+      - expose Arena domain/epoch/allocation context
+      - expose effect and panic/check cause chains
+      - expose task/thread transfer provenance
+      - expose collection/shaped semantic metadata
+      - ensure LSP never implements a parallel iterator/interface model
+      - add stable machine-readable serialization/version validation where required
+    required_tests:
+      - compiler and LSP show same Iterator conformance/Next target
+      - IR printer deterministic
+      - ownership/Arena/effect provenance visible
+      - stale cached Semantic IR rejected
+      - source locations survive lowering
+
+  - id: tooling.compiler-analysis
+    area: analysis-diagnostics-lsp-reports
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+      - standardize cause/provenance chains across analyzers
+      - surface Invalid versus Unproven distinctly
+      - support configurable progressive analysis budgets in LSP
+      - ensure sec analyse reports canonical compiler facts rather than independent calculations
+      - show Iterator[T] conformance/Next target from the shared analysis engine
+      - preserve mentor-style primary diagnostic ownership and pitfall suppression
+
+  - id: tooling.compiler-core
+    area: compiler-cli-lsp-target-info-and-diagnostics
+    status: partial
+    repository_baseline: 998d8d1
+    implemented:
+      - developer lex/token/parse/ast/sema/diagnostics/emit/build commands exist in partial form
+      - LSP shares several target-aware bootstrap/frontend services
+      - diagnostics registry exposes machine-readable data in the current implementation
+    remaining:
+      - remove mutable command/flag capability lists from normative compiler governance
+      - provide one shared compiler workspace/CompilationPlan model to CLI and LSP
+      - add resolved-plan/target-info inspection from immutable canonical facts
+      - distinguish configuration/source/target/compiler-capability/toolchain/link/ICE diagnostics
+      - support @target/@when/config completion/hover/diagnostics from canonical compiler services
+      - invalidate plan-dependent LSP facts on project/registry/config changes
+
+  - id: tooling.compiler-pipeline
+    area: cli-lsp-inspection-test-pipeline
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+      - define/document inspection boundaries so emit-mlir cannot ambiguously mean multiple MLIR levels without labeling
+      - share CompilationPlan/workspace/source/module/test facts between CLI and LSP
+      - expose implementation-capability diagnostics separately from source/target errors
+      - make sec check independent of backend tools wherever backend verification is not a semantic prerequisite
+      - keep stable TestIdentity and test selection compiler-owned through LSP/editor integrations
+      - preserve deterministic source/provenance metadata across emitted artifacts

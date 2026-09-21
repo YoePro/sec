@@ -767,9 +767,12 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"immutable variable a requires initializer at 5:6",
+		`immutable binding "a" requires an initializer at 5:6`,
 	}
 	assertSemaErrors(t, errors, expected)
+	if errors[0].ID != diagnostics.ImmutableRequiresInitializer || errors[0].Help != "initialize the immutable binding explicitly" {
+		t.Fatalf("immutable initializer diagnostic = %+v", errors[0])
+	}
 }
 
 func TestLetInitializerTypeMismatches(t *testing.T) {
@@ -2135,26 +2138,37 @@ func TestRegisterFieldAccessFactsAndDirectValidation(t *testing.T) {
 	input := `
 module main
 
-type Device register[6] {
+type Device register[11] {
 	Control: bit read-write,
 	Ready: bit read-only,
 	Command: bit write-only,
 	Pending: bit write-one-clear,
+	Enable: bit write-one-set,
+	Invert: bit write-one-toggle,
 	Fault: bit write-zero-clear,
-	Event: bit clear-on-read,
+	Disable: bit write-zero-set,
+	Restore: bit write-zero-toggle,
+	Event: bit read-clear,
+	Flag: bit read-set,
 }
 
 fn Valid(device: ref mut Device) void {
 	let control := device.Control
 	let ready := device.Ready
 	let event := device.Event
+	let flag := device.Flag
 	device.Control = false
 	device.Command = true
 	device.Pending = true
+	device.Enable = true
+	device.Invert = true
 	device.Fault = false
+	device.Disable = false
+	device.Restore = false
 	discard control
 	discard ready
 	discard event
+	discard flag
 }
 
 fn Invalid(device: ref mut Device) void {
@@ -2162,7 +2176,12 @@ fn Invalid(device: ref mut Device) void {
 	device.Ready = false
 	device.Command += true
 	device.Pending += true
+	device.Enable += true
+	device.Invert += true
+	device.Disable += true
+	device.Restore += true
 	device.Event += true
+	device.Flag += true
 	discard command
 }
 `
@@ -2173,8 +2192,13 @@ fn Invalid(device: ref mut Device) void {
 		RegisterReadOnly,
 		RegisterWriteOnly,
 		RegisterWriteOneClear,
+		RegisterWriteOneSet,
+		RegisterWriteOneToggle,
 		RegisterWriteZeroClear,
-		RegisterClearOnRead,
+		RegisterWriteZeroSet,
+		RegisterWriteZeroToggle,
+		RegisterReadClear,
+		RegisterReadSet,
 	}
 	for index, access := range wantAccess {
 		if got := analyzer.types["Device"].RegisterFields[index].Access; got != access {
@@ -2190,7 +2214,12 @@ fn Invalid(device: ref mut Device) void {
 		"register field Ready is read-only and cannot be written",
 		"write-only register field Command cannot be used with += because compound assignment reads the field",
 		"register field Pending with write-one-clear semantics cannot use compound assignment",
-		"register field Event with clear-on-read semantics cannot use compound assignment",
+		"register field Enable with write-one-set semantics cannot use compound assignment",
+		"register field Invert with write-one-toggle semantics cannot use compound assignment",
+		"register field Disable with write-zero-set semantics cannot use compound assignment",
+		"register field Restore with write-zero-toggle semantics cannot use compound assignment",
+		"register field Event with read-clear semantics cannot use compound assignment",
+		"register field Flag with read-set semantics cannot use compound assignment",
 	}
 	for _, want := range wantMessages {
 		found := false
@@ -5215,7 +5244,7 @@ unit s physical
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestTryAssignmentAllowsExplicitOkHandler(t *testing.T) {
+func TestTryAssignmentRejectsExplicitOkHandler(t *testing.T) {
 	input := `
 type Speed decimal<m/s>
 
@@ -5254,10 +5283,14 @@ unit s physical
 `
 
 	errors := analyzeSource(t, input)
-	assertSemaErrors(t, errors, nil)
+	if len(errors) != 1 || errors[0].ID != diagnostics.ForbiddenTrySuccessHandler ||
+		!strings.Contains(errors[0].Message, "Ok(...) is a success handler") ||
+		!strings.Contains(errors[0].Help, "use match to handle both Ok and Err explicitly") {
+		t.Fatalf("explicit Ok assignment handler diagnostics = %+v", errors)
+	}
 }
 
-func TestTryExpressionAllowsExplicitOkHandler(t *testing.T) {
+func TestTryExpressionRejectsExplicitOkHandler(t *testing.T) {
 	input := `
 enum IOError error {
 	InvalidValue,
@@ -5278,7 +5311,29 @@ fn Test() int {
 `
 
 	errors := analyzeSource(t, input)
-	assertSemaErrors(t, errors, nil)
+	if len(errors) != 1 || errors[0].ID != diagnostics.ForbiddenTrySuccessHandler ||
+		!strings.Contains(errors[0].Message, "Ok(...) is a success handler") ||
+		!strings.Contains(errors[0].Help, "use match to handle both Ok and Err explicitly") {
+		t.Fatalf("explicit Ok expression handler diagnostics = %+v", errors)
+	}
+}
+
+func TestOptionTryRejectsExplicitSomeHandlerBeforeOptionTryLowering(t *testing.T) {
+	input := `
+fn Test(value: Option[int]) int {
+	return try value {
+		Some(number) => number
+		None => 0
+	}
+}
+`
+
+	errors := analyzeSource(t, input)
+	if len(errors) != 1 || errors[0].ID != diagnostics.ForbiddenTrySuccessHandler ||
+		!strings.Contains(errors[0].Message, "Some(...) is a success handler") ||
+		!strings.Contains(errors[0].Help, "use match to handle both Some and None explicitly") {
+		t.Fatalf("explicit Some handler diagnostics = %+v", errors)
+	}
 }
 
 func TestPropertyAccessBeforeImplDeclaration(t *testing.T) {

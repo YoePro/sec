@@ -7,6 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-18"
     audited: "2026-08-27"
+    revised: "2026-09-21"
     document_revision: "2.0"
     repository_baseline: "20b3606"
     replaces: rules/types/units.txt
@@ -67,6 +68,7 @@ integrations:
       - explicit conversion functions validate normalized dimensions and act as explicit linear cross-identity or cross-Kind boundaries
       - LSP hover presents compiler-owned identity, source expression, Kind, categories, transform, point role, origin, and exact scale facts
       - formatter compacts structural unit operators while preserving named factors, grouping, and source factor order
+      - formatter canonicalizes accepted legacy case and underscore variants of unit metadata names to PascalCase only inside parsed unit impl blocks, leaves ordinary impl members untouched, and is idempotent
       - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
     remaining:
       - migrate safety-relevant standard-library Kind metadata, especially frequency versus rotational frequency and energy versus torque
@@ -74,7 +76,6 @@ integrations:
       - complete value-aware fixed conversion planning for bounded integer and binary-floating carriers, including overflow proofs and explicit rounding policy integration
       - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
       - add LSP derivation views and safe unit-conversion code actions
-      - canonicalize legacy unit metadata names to PascalCase in formatter output using parsed unit-impl context
       - complete Semantic IR, MLIR, runtime, standard-library, and end-to-end unit coverage
       - keep unit-polymorphic generic parameters reserved for a future language revision
     required_tests:
@@ -103,11 +104,14 @@ integrations:
         result: passed
       - command: go test ./cmd/lsp -run UnitQuantityFacts -count=1
         result: passed
+      - command: go test ./internal/formatter -run FormatCanonicalizesUnitMetadataNames -count=1
+        result: passed on 2026-09-21 with parsed unit-impl scoping, complete metadata-name canonicalization, ordinary-impl preservation, and idempotence
   - id: frontend.default-values
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-18"
+    revised: "2026-09-21"
     summary: >-
       Tracks the compiler-owned, allocation-free default resolver required by
       default_values.md and its synchronized type, contract, aggregate, and
@@ -123,6 +127,8 @@ integrations:
       - rules/collections/collections.md
       - rules/collections/shaped-types.md
       - rules/foundations/grammar.md
+      - rules/tooling/diagnostics.txt
+      - rules/tooling/lsp.md
       - rules/tooling/formatter.md
     code:
       - internal/ast/ast.go
@@ -132,6 +138,7 @@ integrations:
       - internal/sema/analyzer.go
       - internal/diagnostics/diagnostics.go
       - internal/codegen/mlir/generator.go
+      - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/defaults_test.go
@@ -150,7 +157,7 @@ integrations:
       - fixed-array defaultability including zero-length arrays and recursive element construction
       - mutable T[] declarations may omit their initializer and synthesize an allocation-free empty owning array independently of element defaultability
       - mutable typed declaration synthesis marked by AST SynthesizedDefault and S1009 rejection for non-defaultable types
-      - immutable declarations without initializers remain rejected
+      - immutable declarations without initializers are rejected consistently by parser and Sema with mandatory S1047 variables.immutable-requires-initializer, and LSP preserves its identity, severity, focused name range, and help text
       - S1010 rejection of omitted non-defaultable struct fields
       - safe references and slices remain non-defaultable and no origin-free safe slice is synthesized
       - unions, Result, Option, functions, interfaces, and intrinsic resource types remain non-defaultable unless an owning rule defines a semantic default
@@ -167,7 +174,7 @@ integrations:
       - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
       - implement exact binary-float range-derived defaults and exact successors for exclusive decimal upper bounds
       - extend explicit-default constant evaluation to the complete permitted compile-time constant subset while rejecting allocation, I/O, volatile, FFI, and fallible runtime operations
-      - add stable diagnostic IDs for types.default-violates-contract, types.default-not-representable, types.ambiguous-implicit-default, types.no-default-value, types.empty-in-contract, types.duplicate-in-contract-value, types.default-cycle, struct.invalid-defaulted-field, variables.immutable-requires-initializer, and backend.default-left-undefined
+      - add stable diagnostic IDs for types.default-violates-contract, types.default-not-representable, types.ambiguous-implicit-default, types.no-default-value, types.empty-in-contract, types.duplicate-in-contract-value, types.default-cycle, struct.invalid-defaulted-field, and backend.default-left-undefined
       - add related-location metadata for membership failures, range ambiguity and representability failures, explicit defaults, omitted fields, and missing initializers
       - verify formatter preservation and LSP presentation for every explicit and derived default form
       - add LSP code actions that explicitly expand omitted defaults or declare an explicit type default without changing ordinary formatting

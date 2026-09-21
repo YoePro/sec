@@ -112,6 +112,71 @@ fn Test(pointer: RawPtr[int], opaque: RawPtr[void]) void {
 	}
 }
 
+// TestCompilerKnownRequestCancel verifies the symmetric, non-consuming
+// cancellation request surface on owning task and thread handles.
+//
+// Rules:
+//   - rules/concurrency/cancellation.md — § 5 "Symmetric task/thread cancellation surface"
+//   - rules/concurrency/cancellation.md — § 6(2)–(5) "Relevant Task[T] cancellation surface"
+//   - rules/concurrency/cancellation.md — § 7(2)–(4) "Relevant Thread[T] cancellation surface"
+func TestCompilerKnownRequestCancel(t *testing.T) {
+	input := `
+module main
+
+fn Request(taskHandle: Task[int], threadHandle: Thread[int]) void {
+	taskHandle.RequestCancel()
+	threadHandle.RequestCancel()
+	detach taskHandle discard
+	detach threadHandle discard
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+
+	for _, typeName := range []string{"Task", "Thread"} {
+		typ := Type{Name: typeName, Kind: StructType, TypeArgs: []Type{builtinTypes()["int"]}}
+		member, ok := compilerKnownMember(typ, "RequestCancel", false)
+		if !ok {
+			t.Fatalf("%s[int].RequestCancel is not registered", typeName)
+		}
+		if member.Kind != CompilerKnownMethod || member.Result.Kind != VoidType || member.Signature != "fn RequestCancel() void" {
+			t.Fatalf("%s[int].RequestCancel = %+v", typeName, member)
+		}
+	}
+}
+
+// TestCompilerKnownRequestCancelRejectsArguments keeps RequestCancel's exact
+// zero-argument source signature synchronized for both handle families.
+//
+// Rules:
+//   - rules/concurrency/cancellation.md — § 6(2) "Relevant Task[T] cancellation surface"
+//   - rules/concurrency/cancellation.md — § 7(2) "Relevant Thread[T] cancellation surface"
+func TestCompilerKnownRequestCancelRejectsArguments(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(taskHandle: ref Task[int], threadHandle: ref Thread[int]) void {
+	taskHandle.RequestCancel(true)
+	threadHandle.RequestCancel(false)
+}
+`
+	errors := analyzeSourceRaw(t, input)
+	for _, fragment := range []string{
+		"Task[int].RequestCancel expects 0 arguments, got 1",
+		"Thread[int].RequestCancel expects 0 arguments, got 1",
+	} {
+		found := false
+		for _, err := range errors {
+			if strings.Contains(err.Message, fragment) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing error containing %q; errors=%v", fragment, errors)
+		}
+	}
+}
+
 func TestCompilerKnownCollectionPropertiesAndMethods(t *testing.T) {
 	input := `
 module main

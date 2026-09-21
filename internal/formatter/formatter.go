@@ -81,7 +81,7 @@ func format(text string, options Options) string {
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 		}
-		line = formatPanic(formatAssert(formatUnitExpressions(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))))))
+		line = formatTestDeclaration(formatAvailabilityTest(formatPanic(formatAssert(formatUnitExpressions(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))))))))
 		level := indent - closing(line)
 		if level < 0 {
 			level = 0
@@ -128,6 +128,7 @@ func format(text string, options Options) string {
 	result := strings.Join(out, "\n")
 	result = formatPostfixMutationAliases(result)
 	result = formatContextualMatrixOperators(result)
+	result = formatUnitMetadataNames(result)
 	if hadFinal || result != "" {
 		result += "\n"
 	}
@@ -135,6 +136,136 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
+}
+
+// formatUnitMetadataNames canonicalizes accepted legacy case and underscore
+// variants only for metadata declarations inside an impl whose target is a
+// parsed unit declaration. Ordinary impl members with the same spelling are
+// left unchanged.
+//
+// Rules:
+//   - rules/types/units.md — "Unit metadata", canonical PascalCase names
+//   - rules/types/units.md — "Formatter requirements"
+func formatUnitMetadataNames(text string) string {
+	program := parser.New(lexer.New(text)).ParseProgram()
+	unitNames := map[string]bool{}
+	for _, statement := range program.Statements {
+		if declaration, ok := statement.(*ast.UnitDeclStatement); ok && declaration.Name != nil {
+			unitNames[declaration.Name.Value] = true
+		}
+	}
+
+	replacements := map[int][]lexer.Token{}
+	for _, statement := range program.Statements {
+		implementation, ok := statement.(*ast.ImplStatement)
+		if !ok || implementation.Target == nil || !unitNames[implementation.Target.Name] {
+			continue
+		}
+		for _, member := range implementation.Members {
+			metadata, ok := member.(*ast.UnitMetadataDeclaration)
+			if !ok {
+				continue
+			}
+			canonical, known := canonicalUnitMetadataName(metadata.Name)
+			if !known || canonical == metadata.Token.Lexeme || metadata.Token.Line <= 0 || metadata.Token.Column <= 0 {
+				continue
+			}
+			token := metadata.Token
+			token.Lexeme = canonical
+			replacements[token.Line-1] = append(replacements[token.Line-1], token)
+		}
+	}
+	if len(replacements) == 0 {
+		return text
+	}
+
+	lines := strings.Split(text, "\n")
+	for lineIndex, tokens := range replacements {
+		if lineIndex < 0 || lineIndex >= len(lines) {
+			continue
+		}
+		sort.Slice(tokens, func(i, j int) bool { return tokens[i].Column > tokens[j].Column })
+		line := []rune(lines[lineIndex])
+		for _, token := range tokens {
+			start := token.Column - 1
+			original := []rune(unitMetadataTokenAt(line, start))
+			if start < 0 || len(original) == 0 || start+len(original) > len(line) {
+				continue
+			}
+			line = append(append(append([]rune{}, line[:start]...), []rune(token.Lexeme)...), line[start+len(original):]...)
+		}
+		lines[lineIndex] = string(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// canonicalUnitMetadataName maps every accepted migration spelling to the
+// closed canonical metadata inventory.
+//
+// Rules:
+//   - rules/types/units.md — "Unit metadata"
+func canonicalUnitMetadataName(name string) (string, bool) {
+	normalized := strings.ReplaceAll(strings.ToLower(name), "_", "")
+	names := map[string]string{
+		"longname": "LongName", "symbol": "Symbol", "baseunit": "BaseUnit",
+		"status": "Status", "dimension": "Dimension", "kind": "Kind",
+		"scale": "Scale", "system": "System", "transform": "Transform",
+		"offset": "Offset", "origin": "Origin", "logbase": "LogBase",
+		"logfactor": "LogFactor", "reference": "Reference",
+	}
+	canonical, ok := names[normalized]
+	return canonical, ok
+}
+
+// unitMetadataTokenAt returns the identifier spelling beginning at a parser
+// token's rune column so the formatter can replace only that token.
+func unitMetadataTokenAt(line []rune, start int) string {
+	if start < 0 || start >= len(line) {
+		return ""
+	}
+	end := start
+	for end < len(line) && (line[end] == '_' || unicode.IsLetter(line[end]) || unicode.IsDigit(line[end])) {
+		end++
+	}
+	return string(line[start:end])
+}
+
+// formatTestDeclaration canonicalizes only the parser-defined declaration
+// header `test StringLiteral {`. It preserves the exact string token and does
+// not reinterpret ordinary identifiers or calls named test.
+//
+// Rules:
+//   - rules/tooling/testing.md — §5.1 "Canonical form"
+//   - rules/tooling/testing.md — §41 "Formatter requirements"
+func formatTestDeclaration(line string) string {
+	l := lexer.New(line)
+	keyword := l.NextToken()
+	name := l.NextToken()
+	open := l.NextToken()
+	if keyword.Type != lexer.IDENT || keyword.Lexeme != "test" || name.Type != lexer.STRING || open.Type != lexer.LBRACE {
+		return line
+	}
+	runes := []rune(line)
+	end := open.Column - 1 + len([]rune(open.Lexeme))
+	if end < 0 || end > len(runes) {
+		return line
+	}
+	return "test " + name.Lexeme + " {" + string(runes[end:])
+}
+
+// formatAvailabilityTest normalizes the block boundary after the contextual
+// ownership-state spellings while leaving ordinary identifiers named
+// available, is, or not untouched.
+//
+// Rules:
+//   - rules/memory/ownership.md — §21 "is available and is not available"
+//   - rules/tooling/formatter.md — semantic spelling preservation
+func formatAvailabilityTest(line string) string {
+	if !strings.HasPrefix(strings.TrimSpace(line), "if ") {
+		return line
+	}
+	line = strings.ReplaceAll(line, " is not available{", " is not available {")
+	return strings.ReplaceAll(line, " is available{", " is available {")
 }
 
 // formatPostfixMutationAliases rewrites only parser-confirmed statement aliases

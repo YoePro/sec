@@ -31,48 +31,7 @@
         <h2 class="sidebar-title">Sec Manual</h2>
         <div class="sidebar-section">Language</div>
         <a href="01-introduction.html">Introduction</a>
-        <a href="02-basic-syntax.html">Basic Syntax</a>
-        <a href="03-types.html">Types</a>
-        <a href="04-named-types-contracts.html">Named Types &amp; Contracts </a>
-        <a href="05-structs-properties-and-impl.html">Structs, Properties &amp; Impl</a>
-        <a href="06-functions.html">Functions</a>
-        <a href="07-if.html">If Statements</a>
-        <a href="08-switch.html">Switch Statements</a>
-        <a href="09-match.html">Match Expressions</a>
-        <a href="10-enums.html">Enums</a>
-        <a href="11-unions.html">Unions</a>
-        <a href="12-registers.html">Registers</a>
-        <a href="13-units.html">Units</a>
-        <a href="14-generics.html">Generics</a>
-        <a href="15-loops.html">Loops</a>
-        <a href="16-impl.html">Impl Blocks</a>
-        <a href="17-properties.html">Properties</a>
-        <a href="18-interfaces.html">Interfaces</a>
-        <a href="19-arrays.html">Arrays</a>
-        <a href="20-slices.html">Slices</a>
-        <a href="21-indexing.html">Indexing</a>
-        <a href="22-storage.html">Values, Places and Storage</a>
-        <a href="23-references.html">References</a>
-        <a href="24-ownership.html">Ownership</a>
-        <a href="25-copy-move.html">Copying and Moving</a>
-        <a href="26-borrowing.html">Borrowing</a>
-        <a href="27-spread.html">Spread</a>
-        <a href="30-unsafe.html">Unsafe</a>
-        <a href="31-ffi.html">Foreign Function Interfaces</a>
-        <a href="32-visibility.html">Visibility</a>
-        <a href="33-result-and-option.html">Result and Option</a>
-        <a href="34-try.html">Error Propagation</a>
-        <a href="35-defer.html">Deferred Cleanup</a>
-        <a href="36-attributes.html">Attributes</a>
-        <a href="37-build-directives.html">Build Directives</a>
-        <a href="38-ffi.html">Foreign Function Interfaces</a>
-        <a href="39-tasks.html">Tasks</a>
-        <a href="40-spawn.html">Spawning Work</a>
-        <a href="41-await.html">Awaiting Tasks</a>
-        <a href="42-channels.html">Channels and Coordination</a>
-        <a href="43-testing.html">Tests and Benchmarks</a>
-        <a href="44-formatting.html">Formatting</a>
-        <a href="45-diagnostics.html">Understanding Compiler Diagnostics</a>
+
         <div class="sidebar-section">Reference</div>
         <a href="stdlib.html">Standard Library</a>
         <a href="syntax-reference.html">Syntax Reference</a>
@@ -86,23 +45,41 @@
     <main class="content">
         <div class="breadcrumb"><a href="index.html">Sec</a> / Join</div>
         <h1>Join the Sec Community</h1>
-        <p>Sec is early in development and there are many ways to contribute — no compiler experience required.</p>
-        <h2>Ways to contribute</h2>
+
+        <p>Sec is a new programming language being built in the open. Building a language takes much more than writing a compiler, and everyone who wants to help is welcome.</p>
+
+        <p>You do not need to be a compiler engineer or programming-language expert. If you enjoy programming, testing software, designing APIs, writing documentation, building websites, working with hardware, reviewing technical ideas, or simply trying new languages, there are useful ways to take part.</p>
+
+        <h2>Find your way to contribute</h2>
         <ul>
-            <li><strong>Try the language.</strong> Write small programs, hit the edges, and <a href="bug-report.html">report what breaks</a>.</li>
-            <li><strong>Improve the docs.</strong> Fix typos, add examples, or write new sections in the manual.</li>
-            <li><strong>Write tests.</strong> The implementation status table tracks what's tested — pick a gap and fill it.</li>
-            <li><strong>Work on the compiler.</strong> Pick up a <a href="https://github.com/YoePro/sec/issues">good-first-issue</a> on GitHub.</li>
-            <li><strong>Design the stdlib.</strong> Propose modules and APIs for the standard library.</li>
+            <li><strong>Try Sec.</strong> Write programs, explore the language, and tell us where something is confusing, awkward, missing, or broken.</li>
+            <li><strong>Discuss and challenge the design.</strong> Programming-language experience is valuable, but so are concrete examples from everyday programming. Well-reasoned criticism is welcome.</li>
+            <li><strong>Write code.</strong> Work on the compiler, standard library, tools, tests, examples, platform support, or programs written in Sec.</li>
+            <li><strong>Test and review.</strong> Reproduce bugs, reduce failing examples, check diagnostics, review APIs, or compare the implementation with the specification.</li>
+            <li><strong>Improve documentation and the website.</strong> Technical writing, HTML, CSS, accessibility, navigation, UX, and visual design are all part of making Sec usable.</li>
+            <li><strong>Bring domain knowledge.</strong> Experience with networking, operating systems, embedded systems, hardware, Unicode, security, file formats, mathematics, or other specialist areas can help shape the standard library and platform support.</li>
         </ul>
+
+        <p>For a more detailed list of areas where help is currently useful, see <a href="help_wanted.html">Help Wanted</a>.</p>
+
+        <h2>Where to meet us</h2>
+
+        <p><strong>GitHub</strong> is the best place for work that should remain easy to find later: bug reports, design discussions, implementation work, and pull requests.</p>
+
+        <p><strong>Discord</strong> is available for more informal discussion, questions, ideas, and getting to know other people interested in Sec.</p>
+
+        <!-- TODO: Discord invite URL: -->
+        <div class="rule"><strong>Discord:</strong> Invite link coming soon.</div>
+
         <h2>Getting started</h2>
         <ol>
-            <li>Clone the <a href="https://github.com/YoePro/sec">repository</a>.</li>
-            <li>Read the <a href="01-introduction.html">introduction</a> to understand the language goals.</li>
-            <li>Check the <a href="test-status.html">implementation status</a> to see what's done and what's missing.</li>
-            <li>Open a discussion or issue on GitHub if you have questions.</li>
+            <li>Read the <a href="01-introduction.html">introduction</a> to understand what Sec is trying to achieve.</li>
+            <li>Browse the manual or the <a href="help_wanted.html">Help Wanted</a> page and choose something that interests you.</li>
+            <li>Try Sec, review an area you know well, or visit the <a href="https://github.com/YoePro/sec">repository</a> if you want to work directly on the project.</li>
+            <li>Join the discussion on Discord or open a discussion or issue on GitHub when you have a question, idea, problem, or proposal.</li>
         </ol>
-        <div class="rule"><strong>Remember:</strong> We're at version 0.1 — things will change, and that's expected. Your feedback now shapes the language.</div>
+
+        <div class="rule"><strong>Remember:</strong> Sec is still at version 0.1. The language and implementation will change, and feedback now can influence both. Small contributions are welcome — and so are difficult questions.</div>
         <div class="page-navigation"><a href="index.html">Back to home</a></div>
     </main>
 </div>

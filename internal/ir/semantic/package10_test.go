@@ -41,11 +41,10 @@ fn Handle(value: int) int {
 	}
 }
 
-func TestPackage10BuildsOkDiscardAndExhaustiveVariantOnlyHandlers(t *testing.T) {
+func TestPackage10BuildsImplicitSuccessAndExhaustiveVariantOnlyHandlers(t *testing.T) {
 	module, err := analyzedModule(t, `module main
 fn Divide(left: int, right: int) int {
   return try left / right {
-    Ok(_) => 7
     Err(ArithmeticError.Overflow) => 1
     Err(ArithmeticError.DivisionByZero) => 2
     Err(ArithmeticError.InvalidShift) => 3
@@ -62,15 +61,15 @@ fn Divide(left: int, right: int) int {
 	if countOperations(function, OpCoreErrorIsVariant) != 2 {
 		t.Fatalf("exhaustive final variant should be the unmatched route: %s", Format(module))
 	}
-	foundDiscardHandler := false
+	foundImplicitSuccess := false
 	for _, block := range function.Blocks {
 		for _, operation := range block.Operations {
-			if operation.Kind == OpBranch && operation.TryHandlerKind == TryHandlerOK && operation.TryHandlerIndex == 0 {
-				foundDiscardHandler = true
+			if operation.Kind == OpBranch && operation.TryHandlerKind == TryHandlerOK && operation.TryHandlerIndex == -1 {
+				foundImplicitSuccess = true
 			}
 		}
 	}
-	if !foundDiscardHandler {
-		t.Fatalf("explicit Ok(_) handler provenance is missing: %s", Format(module))
+	if !foundImplicitSuccess {
+		t.Fatalf("implicit try success path is missing: %s", Format(module))
 	}
 }

@@ -694,6 +694,35 @@ type ResolvedStructMemberPlan struct {
 	Action     ResolvedStructFieldAction
 }
 
+// ResolvedPropertyAccessKind preserves the language-visible property operation
+// selected by Sema. Later stages must not infer this distinction from field-like
+// source spelling.
+//
+// Rules:
+//   - rules/declarations/properties.md — §§4–7 and §15
+//   - rules/corrections/applied/semantic-ir-properties-correction-20260813.md
+type ResolvedPropertyAccessKind string
+
+const (
+	PropertyRead           ResolvedPropertyAccessKind = "read"
+	PropertyWrite          ResolvedPropertyAccessKind = "write"
+	PropertyFallibleWrite  ResolvedPropertyAccessKind = "fallible-write"
+	PropertyCompoundUpdate ResolvedPropertyAccessKind = "compound-update"
+)
+
+// ResolvedPropertyAccess is the immutable frontend plan for one successfully
+// validated property use. Fallible remains explicit for compound updates,
+// whose Kind describes their required getter-plus-setter execution shape.
+type ResolvedPropertyAccess struct {
+	Kind         ResolvedPropertyAccessKind
+	OwnerType    Type
+	PropertyType Type
+	Name         string
+	Static       bool
+	Fallible     bool
+	Operator     string
+}
+
 // ResolvedStructFieldMetadata exposes the open, ordered field metadata required
 // by rules/declarations/struct.md section 4 and the P13 Semantic IR amendment,
 // rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md sections 1-2.
@@ -1084,6 +1113,20 @@ func (a *Analyzer) ResolvedStructMemberOf(expr *ast.MemberExpression) (ResolvedS
 	plan, ok := a.resolvedStructMemberPlans[expr]
 	plan.Tags = cloneStructTags(plan.Tags)
 	return plan, ok
+}
+
+// ResolvedPropertyAccessOf returns the Sema-owned operation selected for a
+// property expression or assignment target without repeating property lookup.
+//
+// Rules:
+//   - rules/declarations/properties.md — §15 "Lowering"
+//   - rules/corrections/applied/semantic-ir-properties-correction-20260813.md
+func (a *Analyzer) ResolvedPropertyAccessOf(expr ast.Expression) (ResolvedPropertyAccess, bool) {
+	if a == nil || expr == nil {
+		return ResolvedPropertyAccess{}, false
+	}
+	access, ok := a.resolvedPropertyAccesses[expr]
+	return access, ok
 }
 
 // ResolvedStructFieldAt returns an immutable snapshot for tooling and other

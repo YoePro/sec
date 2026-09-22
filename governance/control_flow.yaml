@@ -944,3 +944,66 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run For -count=1
         result: passed
+  - id: frontend.loop-break-targeted-exit-analysis
+    area: frontend-control-flow
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    primary_document: rules/control-flow/flowcontrol_for.md
+    primary_document_revision: '2.0'
+    primary_document_created: '2026-08-16'
+    primary_document_last_updated: '2026-08-16'
+    related_document: rules/control-flow/flowcontrol_while.md
+    summary: Implements current-loop-targeted infinite-loop exit classification for for and while true. The query
+      stops at nested loop ownership boundaries, remains transparent through switch/select/unsafe containers, and
+      excludes breaks in constant-unreachable if branches.
+    rules:
+    - rules/control-flow/flowcontrol_for.md
+    - rules/control-flow/flowcontrol_while.md
+    - rules/control-flow/flowcontrol_switch.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/for_valid.sec
+    - testdata/for_invalid.sec
+    - testdata/while_valid.sec
+    - testdata/while_invalid.sec
+    implemented:
+    - break statements are validated against active loop context
+    - break analysis records state in the nearest active loop break frame
+    - direct break from an infinite for creates a continuing post-loop path
+    - direct break from while true creates a continuing post-loop path
+    - break inside switch nested in a loop semantically targets the surrounding loop
+    - infinite for with no syntactically discovered break is classified non-continuing
+    - while true with no syntactically discovered break is classified non-continuing
+    - outer-loop break search stops at nested for and while boundaries
+    - nested for and while breaks no longer make an outer infinite loop appear continuing
+    - switch remains transparent because it creates no Sec break target
+    - constant-unreachable if branches do not create false loop exits
+    verification:
+    - command: go test ./internal/sema -run 'Test(NestedWhileBreak|NestedForBreak|UnreachableBreakDoesNotExit)' -count=1
+      result: passed
+    bug_reference:
+    - correction21.md
+    governance_reconciliation:
+    - 'Narrow frontend.for-loops-v2''s implemented claim "infinite-loop non-continuation without reachable break":
+      direct/current-loop cases are represented, but nested-loop break target identity is not preserved by the return/fallthrough
+      helper.'
+    - Add the same limitation to frontend.while-statements-v2. Its required matrix already says "nested break does
+      not exit outer loop", but the shared blockContainsBreak() helper violates that rule for return-path classification.
+    - Keep actual nearest-loop break-frame tracking as implemented; the defect is the secondary AST-based break-presence
+      query.
+    - Keep switch-nested break targeting the surrounding loop. The correction must not introduce a C-style switch
+      break target.
+    required_tests:
+    - outer infinite for with nested for break remains non-continuing
+    - outer infinite for with nested while break remains non-continuing
+    - outer while true with nested for break remains non-continuing
+    - outer while true with nested while break remains non-continuing
+    - direct outer-loop break creates continuation
+    - break inside if directly belonging to outer loop creates continuation
+    - break inside switch nested in outer loop creates continuation
+    - code after outer infinite loop with only nested-loop breaks is unreachable
+    - non-void function ending in such outer loop satisfies return analysis

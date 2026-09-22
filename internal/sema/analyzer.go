@@ -66,6 +66,7 @@ type Analyzer struct {
 	arrayIndexMutationEpoch     uint64
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
+	resolvedPropertyAccesses    map[ast.Expression]ResolvedPropertyAccess
 	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
 	callGraph                   *CallGraph
@@ -283,6 +284,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.arrayIndexMutationEpoch = 0
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
+	a.resolvedPropertyAccesses = map[ast.Expression]ResolvedPropertyAccess{}
 	a.nextBindingID = 1
 	a.definitionTokens = map[sourceTokenKey][]lexer.Token{}
 	a.callGraph = newCallGraph()
@@ -10873,6 +10875,7 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 			if !readable {
 				return Type{Kind: InvalidType}, false
 			}
+			a.recordResolvedPropertyRead(expr, target, property)
 			return property.Type, true
 		}
 		if symbol, ok := a.symbols[expr.Value]; ok {
@@ -10953,6 +10956,7 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 			if !readable {
 				return Type{Kind: InvalidType}, false
 			}
+			a.recordResolvedPropertyRead(expr, dereferenceType(objectType), property)
 			return property.Type, true
 		}
 		a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
@@ -11394,6 +11398,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		referenceOrigin, hasReferenceOrigin := a.localReferenceOriginForTransfer(stmt.Value)
 		if !a.validateAssignmentOwnership(stmt) {
 			return
+		}
+		if propertyOK {
+			a.recordResolvedPropertyWrite(stmt.Target, a.types[a.currentImplTarget], property, stmt.Operator)
 		}
 		a.applyAssignmentOwnership(stmt)
 		a.updateAssignedConstInt(symbol.Name, stmt)
@@ -12351,6 +12358,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	if !a.validateAssignmentOwnership(stmt) {
 		return
 	}
+	if propertyOK {
+		a.recordResolvedPropertyWrite(stmt.Target, a.propertyOwnerForMember(member, staticProperty), property, stmt.Operator)
+	}
 	a.applyAssignmentOwnership(stmt)
 	if stmt.Operator == "=" && !propertyOK && !staticSymbolOK {
 		a.updateContainedOriginsForAssignment(member, stmt.Value)
@@ -13287,6 +13297,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			if a.currentImplTarget != "" {
 				if target, ok := a.types[a.currentImplTarget]; ok {
 					if property, ok := a.resolveReadableProperty(target, expr.Value, expr.Token); ok {
+						a.recordResolvedPropertyRead(expr, target, property)
 						return property.Type, expressionValue{Display: expr.String()}
 					}
 				}
@@ -13299,9 +13310,12 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		// Implicit property symbols remain available for assignment lookup, but an
 		// expression read must independently require a getter.
 		if symbol.ImplicitMember {
-			if property, propertyOK := a.lookupCurrentImplProperty(expr.Value); propertyOK && !property.HasGetter {
-				a.addErrorAtToken(expr.Token, "property %s has no getter", expr.Value)
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			if property, propertyOK := a.lookupCurrentImplProperty(expr.Value); propertyOK {
+				if !property.HasGetter {
+					a.addErrorAtToken(expr.Token, "property %s has no getter", expr.Value)
+					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
+				a.recordResolvedPropertyRead(expr, a.types[a.currentImplTarget], property)
 			}
 			if symbol.RegisterAccess == RegisterWriteOnly {
 				a.addErrorAtToken(expr.Token, "register field %s is write-only and cannot be read", expr.Value)
@@ -14293,6 +14307,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			if !readable {
 				return Type{Kind: InvalidType}, false
 			}
+			a.recordResolvedPropertyRead(expr, protected, returnProperty)
 			return returnProperty.Type, true
 		}
 	}
@@ -14320,6 +14335,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
 			Kind: MemberProperty, OwnerType: objectType, MemberType: property.Type, FieldName: property.Name,
 		}
+		a.recordResolvedPropertyRead(expr, objectType, property)
 		return property.Type, true
 	}
 
@@ -14410,6 +14426,7 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 			a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
 				Kind: MemberProperty, OwnerType: typ, MemberType: property.Type, FieldName: property.Name,
 			}
+			a.recordResolvedPropertyRead(expr, typ, property)
 			return property.Type, true
 		}
 		if member, ok := compilerKnownMember(typ, expr.Property.Value, true); ok && member.Kind == CompilerKnownProperty {

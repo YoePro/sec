@@ -100,3 +100,338 @@ integrations:
         result: passed; matched continue guards suppress only later indexes while ineffective and conditional guards remain findings
       - command: go test ./...
         result: passed after the endpoint-continue pitfall analysis update
+  - id: analysis.call-graph
+    area: frontend-analysis-and-tooling
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Provides the compiler-owned semantic call-graph slice consumed by Sema
+      analysis and standard LSP call hierarchy without constructing a second
+      tooling-owned graph.
+    rules:
+      - rules/analysis/call_graph.md
+    code:
+      - internal/sema/call_graph.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/analyzer_test.go
+      - internal/sema/allocation_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - parser and Sema support for spawn and await with recorded task, thread, and process execution kinds
+      - immutable compiler-owned graph snapshots from each completed Sema analysis
+      - deterministic callable and call-site identities within one analyzed source snapshot
+      - validated synchronous direct, static-method, and foreign-direct call sites
+      - exact selected-overload and resolved-method targets
+      - incoming and outgoing call-site queries with source locations
+      - valid module-main program-entry root discovery
+      - whole-graph root reachability with literal true and false branch pruning
+      - Tarjan same-stack strongly connected components and direct or mutual recursion classification
+      - task-spawn and thread-start execution relations on the resolved outer spawn call
+      - synchronous classification of argument calls evaluated before spawning
+      - derived task-entry and thread-entry roots only for reachable spawn sites
+      - exclusion of task and thread spawn edges from same-stack recursion
+      - standard LSP prepare, incoming, and outgoing call hierarchy
+      - preserved dispatch and execution metadata in LSP call-hierarchy items
+      - LSP hover summaries for callers, callees, roots, recursion, and spawn edges
+      - source-ordered direct Arena create, allocate, reset, and release event sites
+      - synchronous Arena MayAllocate propagation and shortest callable cause paths
+      - exclusion of spawned-body allocation from the spawner synchronous summary
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: go vet ./...
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - callable and call-site identity and reachability stable across snapshots and concrete CompilationPlan variants
+      - generic-specialization, closure, defer, destructor, and compiler-generated callable nodes
+      - indirect function-value and interface target sets with open callable contracts
+      - target, initialization, test, benchmark, interrupt, foreign-export, generated, and open-world roots
+      - complete semantic path pruning beyond literal boolean branches
+      - process, interrupt, callback, await, join, defer, and destruction execution relations
+      - dedicated task-spawn, thread-start, process-launch, and complete-execution SCC views
+      - effect domains beyond the initial Arena allocation summary
+      - path-aware ordered effect merging and general diagnostic cause paths
+      - persistent workspace graph indexing, incremental invalidation, and stale-result suppression
+  - id: analysis.arena-allocation
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Provides compiler-known Arena allocation validation, allocation generation
+      tracking, and stale-reference diagnostics without allocator lowering.
+    rules:
+      - rules/memory/allocation.md
+      - rules/memory/arena.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/call_graph.go
+    tests:
+      - internal/sema/allocation_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/analyzer_test.go
+    implemented:
+      - compiler-known Arena type and AllocationError enum
+      - compiler-known Arena.New, Arena.FromBuffer, Arena.WithCapacity, Arena.Growable, Arena.Alloc, Arena.Reset, and Arena.Release member recognition in the represented frontend subset
+      - semantic validation of Arena.Alloc[T](count) with Result[ref mut T[], AllocationError] result typing
+      - Arena.Reset syntax, arity, mutable-receiver validation, and generation mutation
+      - Arena.Release syntax, arity, mutable-receiver validation, generation mutation, and consumption of the represented lexical owner
+      - lexical Arena binding-name and generation metadata on arena-backed references and slices in the represented subset
+      - rejection of arena-backed references and slices after a reset through the same represented Arena identity advances their generation
+      - initial conservative generation-state merging with known defer, switch-fallthrough, and loop-backedge limitations
+      - initial allocation context, symbol storage-origin metadata, and allocation-effect facts
+      - source-ordered direct Arena events and synchronous MayAllocate summaries in the compiler call graph
+    verification:
+      - command: go test ./internal/sema
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
+      - classify Arena itself as move-only and non-trivially destructible and derive those traits through containing aggregates
+      - replace lexical Arena binding-name identity with stable compiler-owned ArenaDomain identity
+      - retain Arena.FromBuffer backing identity as an exclusive mutable borrow for the complete Arena lifetime and transfer that responsibility with the Arena owner
+      - allocation-context propagation and complete allocation-effect inference through function bodies
+      - sized, trivially-destructible, default-value, overflow, and alignment checks required by the safe allocation contract
+      - allocation failure handling beyond ordinary Result syntax
+      - complete ownership, move-state, and storage-origin propagation through references, slices, and Semantic IR
+      - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
+      - allocator implementation, target-specific backing storage, capacity analysis, and runtime behavior
+  - id: analysis.arena-reset-release-dependency-legality
+    area: frontend-analysis
+    status: partial
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    primary_rule: rules/memory/allocation.md
+    canonical_arena_rule: rules/memory/arena.md
+    summary: Arena.Reset and Arena.Release perform an operation-point dependency query in addition to receiver, arity,
+      and generation/domain validation. The implemented query rejects represented escaping dependencies while allowing
+      immediate locals to become stale and be diagnosed on later use. Complete NLL across containers, captures, tasks,
+      foreign retention, and nested Arenas remains incomplete.
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/call_graph.go
+    tests:
+    - internal/sema/allocation_test.go
+    - internal/sema/lifetime_test.go
+    - internal/sema/analyzer_test.go
+    implemented:
+    - Arena.Reset arity/type-argument validation
+    - Arena.Reset mutable-receiver validation
+    - Arena.Reset generation advancement
+    - Arena.Release arity/type-argument validation
+    - Arena.Release mutable-receiver validation
+    - Arena.Release generation advancement
+    - Arena.Release consumes the represented Arena owner
+    - stale-generation diagnostics for represented Arena-backed references/slices
+    - direct Arena Reset/Release call-graph effect recording
+    - operation-point validation of represented validity-preserving Arena dependencies
+    - stable ArenaDomain identity across owner moves
+    - corrected defer, switch, match, and loop generation-state propagation in the represented frontend subset
+    partial:
+    - dependency liveness is conservative and does not yet model every nested Arena, container, capture, task/thread,
+      foreign-retained, weak-handle, or implicit-destruction path
+    remaining:
+    - broaden the ArenaDomain dependency query to full NLL/last-use semantics
+    - distinguish weak/stale-capable handles from strong validity-preserving dependencies
+    - integrate nested Arena, container, capture, task/thread, foreign-retained, and deferred-use dependencies
+    - consume corrected branch/switch/loop/defer flow state from the relevant corrections
+    - add focused Reset/Release operation-point diagnostics and regression tests
+    - add correction25 rulebook/rule traceability comments to touched semantic functions
+    bug_reference:
+    - correction28.md
+    governance_reconciliation:
+    - Narrow "semantic validation of mutable Arena.Reset calls" to syntax, receiver mutability, and generation mutation
+      until dependency-crossing legality is implemented.
+    - Keep stale-generation rejection as implemented in its represented subset; it is not the same as Reset legality
+      proof.
+    - Add Release dependency legality explicitly to remaining work.
+    - Qualify "conservative generation-state merging across if, switch, match, for, while, and break" with correction18.md,
+      correction24.md, and correction25.md until those flow-state bugs are implemented.
+    - Keep the already-listed Alloc[T] sized/destructibility/default/overflow/ alignment gaps as existing remaining
+      work; do not duplicate them as new correction28 findings.
+  - id: analysis.transferability
+    area: transfer-capability-and-boundary-analysis
+    status: planned
+    repository_baseline: 814a584
+    rules:
+    - rules/memory/transferability.md
+    - rules/concurrency/tasks.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Transferability analysis supplies boundary-specific concurrency facts and never derives transferability from machine copyability alone.
+    remaining:
+    - derive TaskTransferable, ThreadTransferable, ProcessTransferable, ISRTransferable and ThreadSafeShared as conditional
+      compiler facts
+    - compute recursive/cyclic transferability with deterministic fixed-point analysis
+    - retain value-specific restrictions instead of over-generalizing nominal type summaries
+    - consume scheduler migration/pinning facts
+    - consume allocation/storage-domain and destination destruction-context facts
+    - consume FFI handle/callback affinity and retention contracts
+    - consume process adapter/serialization/shared-memory contracts
+    - consume ISR synchronization/noPanic/noAlloc/noBlock/bounded-work facts
+    - persist and validate separate-compilation transfer summaries
+    - account for task migration, detach lifetime, task captures, and terminal payload ownership
+    required_tests:
+    - recursive type analysis terminates deterministically
+    - conditional summary depends on destination context
+    - unknown dynamic/interface target is conservative
+    - foreign unknown handle is conservative
+    - process transfer depends on selected adapter
+    - ISR transfer depends on direction/operation
+  - id: analysis.layout
+    status: partial
+    remaining:
+    - build by-value dependency graph and recursive-cycle diagnostics
+    - cache generic layout by type identity plus CompilationPlan
+    - track native/target/contract stability
+    - complete padding-leak and zero-init validity analysis
+  - id: analysis.memory-model
+    status: partial
+    remaining:
+    - share Place/location identity across ownership/borrow/lifetime/concurrency/transfer analyses
+    - complete field/index/range overlap proofs
+    - complete lifetime/storage dependency graphs
+    - complete resource-state versus ownership-state separation
+    - complete target/addressability/relocation/memory-space facts
+  - id: analysis.storage
+    status: partial
+    remaining:
+    - unify lifetime region dependencies with storage-domain identities
+    - complete address-stability/relocation/invalidation analysis
+    - complete generation/epoch analysis beyond Arena-specific cases
+    - integrate concurrent reclamation protection without a universal runtime protocol
+    - share location/storage identity with concurrency analysis
+  - id: analysis.unsafe
+    status: partial
+    remaining:
+    - build trust-provenance graph
+    - propagate unsafe callable compatibility through interfaces/function values/generics/dynamic dispatch
+    - integrate canonical effects without suppressing them
+    - reject compiler-known false caller obligations even inside unsafe
+  - id: analysis.reference-model
+    area: reference-validity-epoch-relocation-analysis
+    status: partial
+    repository_baseline: 814a584
+    remaining:
+    - integrate canonical storage/invalidation-domain identities
+    - complete temporal/spatial/provenance/type/borrow/relocation/address-space validity as separate analysis facts
+    - complete generation/epoch analysis across allocation, Arena, collection, slot, mapping and owner-control domains
+    - implement checked generation increment and exhaustion/retirement proof
+    - integrate concurrency reclamation protection without treating generation checks as synchronization
+    - integrate task/thread/process/ISR transfer constraints
+    required_tests:
+    - Arena reset invalidation
+    - collection backing replacement invalidation
+    - slot reuse invalidation
+    - same-address/new-identity stale rejection
+    - concurrent multiword epoch protocol rejection
+    - static proof removes runtime validation
+  - id: analysis.arena
+    area: arena-domain-epoch-dependency-capacity-effects
+    status: partial
+    repository_baseline: 814a584
+    implemented:
+    - initial generation metadata and stale-generation rejection
+    - initial branch/loop generation merging
+    - active allocation-context representation
+    - initial storage-origin metadata
+    - compiler-owned task-spawn/thread-start call graph relationships
+    - derived task/thread entry roots
+    - source-ordered direct Arena effect sites
+    - synchronous MayAllocate propagation with shortest cause path
+    remaining:
+    - replace legacy storage-origin/root approximations with canonical ArenaDomain/storage identities
+    - complete path-aware Arena owner/state/epoch merging
+    - complete Reset/Release blockers through references, closures, results, defer, nested Arenas and FFI retention
+    - complete task/thread/cancellation/structured-concurrency dependency propagation
+    - complete allocation-context propagation
+    - complete ordered Arena effects beyond summary MayAllocate
+    - implement byte-accurate alignment-aware Exact/Bounded/Unknown/Unbounded demand analysis
+    - implement recursion/indirect-call/separate-compilation Arena demand summaries
+    - implement safe epoch exhaustion/rekey/retirement handling
+  - id: analysis.semantic-ir-v2
+    area: semantic-fact-bridge
+    status: partial
+    repository_baseline: 998d8d1
+    rules:
+    - rules/compiler/semantic_ir.md
+    - rules/concurrency/concurrency.md
+    governance_reconciliation:
+    - Concurrency facts survive into Semantic IR while the concrete operation vocabulary remains owned by semantic_ir.md.
+    - Preserve atomic identity/order/outcome/fence, mutex/guard/context, cancellation-effect/commit, and process-transfer/lifecycle facts without duplicating source Sema.
+    remaining:
+    - make all builders consume immutable resolved Sema/analysis plans rather than rerun AST resolution
+    - bridge canonical Place/storage/reference identities into Semantic IR
+    - bridge complete effect summaries and verified guarantees
+    - bridge transferability/task/thread lifecycle facts
+    - represent task await semantically as TaskOutcome[T] and never as a flow-sensitive direct T result
+    - bridge allocation-context/Arena demand and epoch facts
+    - bridge Iterator[T] conformance, Next target, yield/binding/effect/cleanup facts
+    - bridge hardware/interrupt selected-plan facts
+    - preserve cause/provenance needed for mentor diagnostics
+    required_tests:
+    - Semantic IR generation does not mutate/re-resolve AST
+    - compiler/LSP and Semantic IR share Iterator target
+    - effect cause chains survive
+    - ownership/lifetime/storage provenance survives
+    - target plan edits invalidate affected semantic plans
+  - id: analysis.compiler-analysis
+    area: analysis-coordination-and-fact-ownership
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - formalize a shared analysis fact/provenance API across existing analyzers
+    - establish canonical semantic IDs for every shared Place/storage/execution fact
+    - make Invalid/Valid/Unproven coordination explicit across cross-analysis validators
+    - document/implement deterministic dependency and fixed-point scheduling
+    - prevent duplicated fact derivation between older Sema paths and newer analysis modules
+    - integrate all analysis summaries with CompilationPlan dependency identity
+  - id: analysis.iterator
+    area: iterator-conformance-analysis
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - expose compiler-known Iterator[T] through the canonical interface/conformance engine
+    - produce one resolved iteration plan with concrete conformance, Next target, yield type, binding modes, effects
+      and cleanup
+    - remove/reject legacy closed-whitelist or naming-convention iterator discovery where present
+    - share exact Iterator resolution with Semantic IR and LSP
+  - id: analysis.interprocedural-coordination
+    area: call-effect-escape-closure-resource-coordination
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - coordinate call graph, closure target sets, effects, escape, transferability, stack, races, deadlocks and ISR
+      using one execution-edge model
+    - support open versus closed target-set summaries conservatively
+    - support deterministic recursive fixed points
+    - propagate trust provenance from FFI/platform/unsafe contracts
+    - support execution-root-specific summaries for task/thread/ISR/callback contexts
+  - id: analysis.incremental-coordination
+    area: snapshot-plan-cache-invalidation
+    status: planned
+    repository_baseline: 998d8d1
+    remaining:
+    - attach semantic dependency fingerprints to reusable analysis facts
+    - prevent reuse across incompatible CompilationPlans
+    - provide narrow invalidation for types, conformances, call target sets, Iterator targets, effects, FFI/platform
+      and target changes
+    - keep progressive LSP snapshots internally consistent
+    - make parallel analysis deterministic
+  - id: analysis.compiler-pipeline
+    area: frontend-analysis-and-target-gates
+    status: partial
+    repository_baseline: 998d8d1
+    remaining:
+    - establish a single per-snapshot/per-CompilationPlan analysis completion gate
+    - require every mandatory proof before Semantic IR while permitting advisory analysis to remain non-blocking
+    - integrate target/platform validation progressively instead of a single late conceptual stage
+    - make Iterator[T] resolved plan a lowering-readiness requirement
+    - make test roots, task/thread/ISR roots and reachability plan-aware
+    - preserve Invalid versus Unproven proof classification through pipeline diagnostics

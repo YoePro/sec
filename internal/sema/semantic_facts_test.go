@@ -825,6 +825,71 @@ fn Read(meter: Meter) int { return meter.Value }`
 	}
 }
 
+// Property operations retain their Sema-selected execution category so later
+// stages never reconstruct getter/setter semantics from member-like syntax.
+//
+// Rules:
+//   - rules/declarations/properties.md — §§4–7 and §15
+//   - rules/corrections/applied/semantic-ir-properties-correction-20260813.md
+func TestResolvedPropertyAccessKinds(t *testing.T) {
+	source := `module main
+enum PropertyError error { Rejected }
+type Counter struct { value: int }
+impl Counter {
+  property Value: int {
+    get { return self.value }
+    set next { self.value = next }
+  }
+  property Checked: int {
+    get { return self.value }
+    try set next { return Err(PropertyError.Rejected) }
+  }
+}
+fn Update(counter: Counter) void {
+  let read := counter.Value
+  counter.Value = 2
+  try counter.Checked = 3 {
+    Err(error) => { discard error }
+  }
+  counter.Value += 4
+}`
+	p := parser.New(lexer.NewWithFile(source, "property-access-facts.sec"))
+	result := p.Parse()
+	if result.HasErrors {
+		t.Fatalf("parse: %v", p.Errors())
+	}
+	a := NewAnalyzer()
+	if errs := a.Analyze(result.Program); len(errs) != 0 {
+		t.Fatalf("sema: %v", errs)
+	}
+
+	function := result.Program.Statements[4].(*ast.FunctionDeclaration)
+	read := function.Body.Statements[0].(*ast.LetStatement).Value
+	write := function.Body.Statements[1].(*ast.AssignmentStatement).Target
+	fallible := function.Body.Statements[2].(*ast.TryAssignmentStatement).Assignment.Target
+	compound := function.Body.Statements[3].(*ast.AssignmentStatement).Target
+
+	tests := []struct {
+		expression ast.Expression
+		kind       ResolvedPropertyAccessKind
+		name       string
+		operator   string
+		fallible   bool
+	}{
+		{read, PropertyRead, "Value", "", false},
+		{write, PropertyWrite, "Value", "=", false},
+		{fallible, PropertyFallibleWrite, "Checked", "=", true},
+		{compound, PropertyCompoundUpdate, "Value", "+=", false},
+	}
+	for _, test := range tests {
+		access, ok := a.ResolvedPropertyAccessOf(test.expression)
+		if !ok || access.Kind != test.kind || access.Name != test.name || access.Operator != test.operator ||
+			access.Fallible != test.fallible || access.OwnerType.Name != "Counter" || access.PropertyType.Kind != IntType {
+			t.Fatalf("property access for %s = %#v, %t", test.name, access, ok)
+		}
+	}
+}
+
 func TestResolvedMatchPlanIsReadOnlyAndNumeric(t *testing.T) {
 	source := `module main
 enum Flag: bit[1] { Off = 0, On = 1 }

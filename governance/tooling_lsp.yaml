@@ -2,6 +2,40 @@ schema_version: 1
 area: tooling-lsp
 purpose: Language-server behavior, protocol integration, and editor actions.
 integrations:
+  - id: tooling.lsp-same-module-analysis
+    area: tooling
+    status: implemented
+    integrated: "2026-08-24"
+    summary: >-
+      Analyzes every recoverable sibling source declaring the active file's module
+      as one compiler-owned semantic program, including unsaved editor
+      snapshots, so declarations resolve consistently across module files.
+    rules:
+      - rules/projects/modules.md
+      - rules/projects/projects.txt
+      - rules/tooling/lsp.md
+    code:
+      - cmd/lsp/main.go
+      - internal/lsp/server/documents.go
+      - internal/lsp/server/module_sources.go
+    tests:
+      - cmd/lsp/main_test.go
+      - internal/lsp/server/module_sources_test.go
+    implemented:
+      - deterministic same-directory .sec discovery and same-module filtering
+      - active in-memory source retained while assembling sibling AST statements
+      - open sibling snapshots take precedence over their on-disk contents
+      - one Sema analysis supplies diagnostics, completion, hover, definitions, highlights, semantic tokens, and call hierarchy
+      - cross-file definition locations retain the declaring file URI and range
+      - diagnostics are published only for the requested source while sibling declarations contribute semantic facts
+      - opening, changing, saving, or closing one module document refreshes diagnostics for open sibling documents
+      - recoverable sibling parser errors retain parsed declarations, including types and bodyless function signatures; only fatal parser results are excluded, and syntax diagnostics remain owned by the sibling document
+    verification:
+      - command: go test ./internal/lsp/server -count=1
+        result: passed; partial unsaved sibling declarations remain visible and supersede disk contents
+      - command: go test ./cmd/lsp -run 'SameModule|CoreInt|OpenSibling|DifferentModule' -count=1
+        result: passed
+
   - id: tooling.vscode-language-icon
     area: tooling
     status: implemented

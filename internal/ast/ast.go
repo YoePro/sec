@@ -1026,6 +1026,9 @@ func (le *LambdaExpression) String() string {
 				out += ", "
 			}
 			if capture.Name != nil {
+				if capture.Mode == LambdaCaptureMove {
+					out += "<-"
+				}
 				out += capture.Name.Value
 			}
 		}
@@ -1055,8 +1058,17 @@ func (le *LambdaExpression) String() string {
 	return out
 }
 
+type LambdaCaptureMode string
+
+const (
+	LambdaCaptureCopy LambdaCaptureMode = "copy"
+	LambdaCaptureMove LambdaCaptureMode = "move"
+)
+
 type LambdaCapture struct {
-	Name *Identifier
+	Token lexer.Token
+	Name  *Identifier
+	Mode  LambdaCaptureMode
 }
 
 type ReturnStatement struct {

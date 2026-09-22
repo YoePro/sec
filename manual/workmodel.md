@@ -30,11 +30,11 @@ Jag tycker därför att vi ska sluta försöka få manualen att sluta på 45. De
 | 54 | 54-concurrency.html | Concurrency | Skriven, paraplykapitlet | 
 | 55 | 55-tasks.html | Tasks | Skriven | 
 | 56 | 56-spawn.html | Spawn | Skriven | 
-| 57 | 57-await.html | Await and Task Outcomes | sync-behov | 
+| 57 | 57-await.html | Await and Task Outcomes | Skriven | 
 | 58 | 58-threads.html | Threads and Thread-Local Storage | Threads är klar; TLS har sync-behov | 
-| 59 | 59-cancellation.html | Cancellation and Context | Skriv nu | 
+| 59 | 59-cancellation.html | Cancellation and Context | Skriven | 
 | 60 | 60-scheduling.html | Scheduling, Blocking and Structured Concurrency | Vänta tills sync-required-böckerna är synkade | 
-| 61 | 61-channels-select.html | Channels and Select | Select klar, Channels behöver sync | 
+| 61 | 61-channels-select.html | Channels and Select | Skriven | 
 | 62 | 62-events.html | Events | Vänta på sync | 
 | 63 | 63-mutexes.html | Mutexes and Locks | Skriven | 
 | 64 | 64-atomics.html | Atomics and Memory Order | Skriven | 

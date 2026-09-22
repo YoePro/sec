@@ -383,8 +383,8 @@ integrations:
   - id: frontend.type-contracts-v2
     area: frontend-types-analysis-and-lowering
     status: partial
-    updated: '2026-09-09'
-    audited: '2026-08-19'
+    updated: '2026-09-22'
+    audited: '2026-09-22'
     repository_baseline: c515862
     document_revision: inferred 2.0
     document_revision_note: rules/types/contracts.md has no explicit revision metadata. Repository history places
@@ -451,6 +451,7 @@ integrations:
     - exact first-candidate arithmetic proves divisibility and parity consistency without range enumeration or host-width narrowing
     - satisfiable types remain legal even when their implicit default is ambiguous; zero-only and signed-boundary domains are preserved
     - assignment to currently represented constrained storage requires try in implemented paths
+    - obsolete variable-level, type-first-storage-level, and ordinary struct-field contracts are rejected by Sema with stable S1050 migration diagnostics and are never applied to storage types
     partial:
     - membership is currently restricted by implementation to primitive/scalar/enum compile-time constants rather
       than the full canonical domain of named values with compile-time semantic equality
@@ -459,8 +460,7 @@ integrations:
       domain
     - explicit-default constant evaluation supports only a subset of the canonical allocation-free compile-time constant
       domain
-    - obsolete variable-level, type-first-storage-level, and ordinary struct-field contracts are still accepted and
-      applied by parser/Sema even though contracts.md makes them invalid Sec 0.1 syntax
+    - parser and AST retain obsolete storage-site contract nodes for recovery and migration tooling before Sema rejects them
     - contract diagnostics are a mixture of stable IDs and ad-hoc messages
     - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
     remaining:
@@ -473,8 +473,6 @@ integrations:
     - extend in-list membership to every named type whose values support the required compile-time semantic equality,
       without memory-identity comparison or hidden coercion
     - extend contract-bound and membership constant evaluation to the complete canonical compile-time constant subset
-    - reject every obsolete variable-level and ordinary field-level contract form with focused migration diagnostics
-      instead of applying a hidden storage-site contract
     - implement runtime validation for explicit conversion into constrained named types
     - implement canonical fallible constrained assignment and compound-assignment behavior through try
     - define and use the canonical Result error type for failed contract validation
@@ -517,6 +515,8 @@ integrations:
       result: passed after the fix
     - command: go test ./...
       result: passed
+    - command: go test ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(StorageSiteContract|VariableLevel|StructFieldRangeContract)' -count=1
+      result: passed on 2026-09-22 with stable diagnostic registration, variable/field rejection, no hidden contract application, and LSP propagation
   - id: frontend.default-values-inherited-membership
     area: frontend-default-resolution-and-contract-validation
     status: implemented
@@ -553,15 +553,16 @@ integrations:
   - id: frontend.target-sized-integer-semantics
     area: frontend-target-semantics-and-legacy-lowering
     status: partial
-    audited: '2026-08-19'
+    audited: '2026-09-22'
     repository_baseline: c515862
     document_revision: inferred 2.x
     document_revision_note: rules/types/types.md has no explicit document-revision metadata. It is the canonical replacement
       for types.txt and its current structure and Sec 0.1 decisions belong to the revision-2-era rulebook set. Later
       specialized target/layout and MLIR package rulebooks take precedence where more specific.
     summary: Compiler target selection now passes the authoritative ResolvedScalarPlan into Sema, where target-sized
-      int and uint bounds are instantiated for 32-bit and 64-bit targets. Legacy AST backends still require complete
-      scalar-plan integration or explicit rejection.
+      int and uint bounds are instantiated for 32-bit and 64-bit targets. Explicit compile-time integer conversions
+      are checked against those selected bounds. Legacy AST backends still require complete scalar-plan integration
+      or explicit rejection.
     rules:
     - rules/types/types.md
     - rules/memory/layout.md
@@ -583,6 +584,7 @@ integrations:
     - internal/codegen/mlir/generator.go
     tests:
     - internal/sema/analyzer_test.go
+    - internal/sema/target_plan_test.go
     - internal/layout/scalar_plan_test.go
     - internal/ir/semantic/semantic_test.go
     - internal/lowering/secmlir/emitter_test.go
@@ -598,12 +600,14 @@ integrations:
     - verified 32-bit and 64-bit Sec MLIR target plans
     - Sema target-sized int and uint bounds derive from ResolvedScalarPlan.PointerWidthBits
     - compiler target analysis constructs Sema with the selected scalar plan
+    - explicit compile-time integer conversions reject constants outside the selected target-sized int or uint range
+      while accepting the same constants on a wider target
     partial:
     - direct LLVM independently maps int to i32 and uint to i64 regardless of selected target
     - legacy AST-to-LLVM-dialect MLIR independently maps int to i32 and uint to i64 regardless of selected target
     remaining:
-    - audit literal shaping, conversion, constant arithmetic, shifts, enums, named types, contracts, defaults, constants,
-      and generic substitutions for target-sized bounds
+    - audit literal shaping, runtime conversion planning, constant arithmetic, shifts, enums, named types, contracts,
+      defaults, constants, and generic substitutions for target-sized bounds
     - remove independent target-sized width guesses from legacy direct LLVM
     - remove independent target-sized width guesses from legacy AST-to-LLVM-dialect MLIR
     - make any maintained legacy backend consume canonical target scalar facts or reject unsupported target-sized
@@ -632,6 +636,9 @@ integrations:
     - direct LLVM int and uint target-width parity or explicit unsupported error
     - legacy MLIR int and uint target-width parity or explicit unsupported error
     - Sema and Sec MLIR scalar-layout representability agreement
+    verification:
+    - command: go test ./internal/sema -run 'TestTargetScalarPlan' -count=1
+      result: passed on 2026-09-22 with 32-bit rejection and 64-bit acceptance for explicit int and uint constant conversions
   - id: frontend.units-declaration-authority
     area: frontend-unit-resolution
     status: implemented

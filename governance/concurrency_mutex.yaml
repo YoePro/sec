@@ -6,6 +6,7 @@ integrations:
     area: mutex-language-surface
     rulebook: rules/concurrency/mutex.md
     status: partial
+    reviewed: '2026-09-22'
     normative:
     - Mutex[T] and MutexGuard[T] are @noCopy compiler-known/source-visible generic types.
     - Mutex[T] owns exactly one protected T and one synchronization identity.
@@ -22,13 +23,15 @@ integrations:
     - No public Unlock/Value/Get guard API exists.
     - Mutex is non-reentrant.
     - Live guards cannot cross spawn/await/suspending join/select.
+    implemented:
+    - Sema rejects a live MutexGuard[T] across await and select while accepting a guard explicitly consumed before the boundary.
     remaining:
     - Synchronize canonical CamelCase method registration and legacy lowercase call sites/tests.
     - Implement/verify @noCopy semantic declarations for Mutex[T] and MutexGuard[T].
     - Implement exact timeout/context overload resolution.
     - Implement deterministic guard destruction/release lowering.
     - Implement execution-entity-bound guard escape analysis.
-    - Implement await/join/select/spawn live-guard diagnostics.
+    - Implement suspending-join and spawn live-guard diagnostics; await and select boundaries are enforced.
     - Implement same-execution repeated-lock detection.
     - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
     - Reject consuming complete-T forwarded operations.
@@ -61,6 +64,9 @@ integrations:
       expectation: Statically provable same-execution reacquisition while guard is live is rejected.
     corrections_applied:
     - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
+    verification:
+    - command: go test ./internal/sema -run 'Test(AwaitRejectsLiveMutexGuard|AwaitAllowsConsumedMutexGuard|SelectRejectsLiveMutexGuard|SelectAllowsMovedMutexGuard)' -count=1
+      result: passed on 2026-09-22
 
   - id: semantic-ir.mutex-v2
     area: semantic-ir-mutex-context-facts

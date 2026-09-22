@@ -80,10 +80,12 @@ fn Branches(score: int) void {
     }
 }
 
+type Age int range 0..130
+
 type User struct {
     Active: bool,
     Name: string,
-    Age: int range 0..130,
+    Age: Age,
 }
 
 fn GetUser() User {

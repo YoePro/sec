@@ -340,6 +340,12 @@ func numericSuffixMigrationMessage(token lexer.Token) (string, bool) {
 	), true
 }
 
+// parseCaptureLambdaExpression parses explicit copy and revision-2 move
+// captures while diagnosing the removed `-> name` consuming spelling.
+//
+// Rules:
+//   - rules/declarations/lambda-functions.md — §§15–17 "Capture forms"
+//   - rules/corrections/applied/grammar-ownership-v2-correction-20260826.md — "Capture syntax"
 func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 	captures := []ast.LambdaCapture{}
 
@@ -348,12 +354,40 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 	}
 
 	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
-		if !p.expectPeek(lexer.IDENT) {
+		capture := ast.LambdaCapture{Mode: ast.LambdaCaptureCopy}
+		switch p.peekToken.Type {
+		case lexer.IDENT:
+			p.nextToken()
+			capture.Token = p.curToken
+		case lexer.MOVE_ASSIGN:
+			p.nextToken()
+			capture.Token = p.curToken
+			capture.Mode = ast.LambdaCaptureMove
+			if !p.expectPeek(lexer.IDENT) {
+				return nil
+			}
+		case lexer.CONSUME_ARROW:
+			p.nextToken()
+			capture.Token = p.curToken
+			capture.Mode = ast.LambdaCaptureMove
+			p.addError(
+				"legacy consuming capture syntax '->' is not supported; use '<-' at %d:%d",
+				p.curToken.Line,
+				p.curToken.Column,
+			)
+			if !p.expectPeek(lexer.IDENT) {
+				return nil
+			}
+		default:
+			p.addError(
+				"capture entry must be an identifier or '<-' identifier at %d:%d",
+				p.peekToken.Line,
+				p.peekToken.Column,
+			)
 			return nil
 		}
-		captures = append(captures, ast.LambdaCapture{
-			Name: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme},
-		})
+		capture.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+		captures = append(captures, capture)
 
 		if p.peekToken.Type == lexer.COMMA {
 			p.nextToken()

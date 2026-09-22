@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-09-21"
+    revised: "2026-09-22"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -60,6 +60,8 @@ integrations:
       - local generic interface inheritance composes method, property, and event requirements from the resolved concrete parent
         specialization instead of reloading its unspecialized template
       - rejection of unknown constraints and constraints that do not name interfaces
+      - generic function templates retain their resolved interface constraint and recheck every explicit or inferred concrete substitution
+      - generic function constraint satisfaction requires valid explicit conformance rather than structural member matching, including concrete generic-interface identity and inherited interface guarantees
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
       - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
     remaining:
@@ -68,7 +70,7 @@ integrations:
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
       - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
       - complete generic interface inheritance validation across modules and canonical cross-module specialization identity beyond the implemented local concrete requirement substitution
-      - require valid explicit interface conformance when satisfying every generic constraint; matching members alone are insufficient
+      - extend the implemented explicit-conformance check from single-constraint generic functions to generic types, unions, enums, interfaces, impl scopes, and future method-level generics
       - retain ordered constraint sets in templates and recheck them for every explicit or inferred concrete substitution
       - ensure generic templates use only operations guaranteed by their declared constraints
       - complete generic primary and impl extends member composition for every substituted member category
@@ -94,6 +96,8 @@ integrations:
         result: passed on 2026-09-04 with generic enum parsing, concrete member resolution, impl scope, arity checking, and nominal identity coverage
       - command: go test ./internal/sema -run GenericInterfaceInheritanceKeepsConcreteParentRequirements -count=1
         result: passed
+      - command: go test ./internal/sema -run TestGenericFunctionConstraint -count=1
+        result: passed on 2026-09-22 with explicit, inferred, generic-interface, inherited-interface, and invalid-conformance coverage
 
   - id: compiler.generics-lowering
     area: compiler-semantic-ir-and-mlir

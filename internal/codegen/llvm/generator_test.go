@@ -190,10 +190,14 @@ func TestGenerateIfElse(t *testing.T) {
 	input := `
 module main
 
+fn Condition() bool {
+	return true
+}
+
 fn main() int {
 	let mut result: int := 0
 
-	if false {
+	if Condition() {
 		result = 1
 	} else {
 		result = 2
@@ -210,7 +214,7 @@ fn main() int {
 	}
 
 	expectedParts := []string{
-		`br i1 false, label %if.then.`,
+		`br i1 %t`,
 		`label %if.else.`,
 		`if.else.`,
 		`store i32 2`,

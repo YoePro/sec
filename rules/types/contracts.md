@@ -21,8 +21,9 @@ or immutable bindings, ordinary struct fields, or individual storage locations.
 
 Implementation is partial. Named integer contracts, compile-time literal checks,
 ordered membership values, duplicate detection and explicit type defaults are
-implemented. The parser and Sema still require an audit to reject every obsolete
-variable- and field-contract form. Every `in [...]` member is checked against
+implemented. The parser retains obsolete variable- and field-contract nodes for
+recovery and migration tooling, while Sema rejects them with a stable focused
+diagnostic and does not apply them to the storage type. Every `in [...]` member is checked against
 
 Static proof of a local contract fact is not by itself a required CTE context.
 Where the owning declaration requires a bound, member, divisor, or other value

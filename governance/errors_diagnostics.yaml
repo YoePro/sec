@@ -6,13 +6,15 @@ integrations:
     area: semantic-diagnostics
     status: partial
     integrated: '2026-09-16'
-    summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block, with a source range and actionable explanation shared by CLI and LSP.
+    audited: '2026-09-22'
+    summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block and for the first statement in an if branch or while body excluded by a literal boolean condition, with a source range and actionable explanation shared by CLI and LSP.
     rules:
       - rules/tooling/diagnostics.txt
       - rules/control-flow/flowcontrol_if.md
     code:
       - internal/diagnostics/diagnostics.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_control_flow.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
     tests:
@@ -20,20 +22,27 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/concurrency_test.go
       - internal/sema/assert_false_termination_test.go
+      - internal/sema/unreachable_branch_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
     implemented:
       - S3001 control-flow.unreachable-statement is registered as a mandatory semantic error
       - statements after terminating return, break, continue, and other established non-continuing paths retain the error and carry S3001, an exact source range, and actionable help
+      - non-empty branches excluded by literal false and literal true conditions report S3001 on their first statement while empty excluded branches remain valid
+      - non-empty while bodies excluded by literal false report S3001 on their first statement while the canonical empty form remains valid
       - CLI prints the stable code and help; LSP publishes the same Sema code and help
     remaining:
-      - route other proven-unreachable statement paths through the same canonical S3001 diagnostic where their flow proof exists
+      - route other proven-unreachable statement paths, including non-literal compile-time condition proofs, through the same canonical S3001 diagnostic where their flow proof exists
       - implement the general sec explain S3001 command, localization, and machine-readable emitted-diagnostic output
     verification:
       - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler -run 'Test(UnreachableStatementsInsideWhileBody|SwitchCaseReportsUnreachableAfterReturn|InfiniteForWithContinueMakesFollowingReturnUnreachable|CancelOutsideCancellableContext|AssertFalseRejectsFollowingCodeButUnprovenAssertFallsThrough|PrintSemaErrorIncludesStableIDAndDescription|RegistryIsValid|KnownDiagnosticSeverities)' -count=1
         result: passed
       - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -count=1
         result: passed, including S3001 LSP code and help
+      - command: go test ./internal/sema -run 'TestConstantIfBranchesReportCanonicalUnreachableStatement' -count=1
+        result: passed on 2026-09-22 with literal-false, literal-true else, and empty-branch coverage
+      - command: go test ./internal/sema -run 'TestConstantFalseWhileReportsCanonicalUnreachableStatement' -count=1
+        result: passed on 2026-09-22
       - command: go run ./cmd/compiler sema testdata/sema/assert_false_termination_invalid.sec
         result: printed S3001 with source position and help; exited with the expected fixture error plus four unrelated try errors in sec/core/string.sec
       - command: go test ./...

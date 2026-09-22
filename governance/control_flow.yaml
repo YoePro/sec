@@ -255,6 +255,7 @@ integrations:
     area: frontend-control-flow
     status: partial
     integrated: "2026-08-16"
+    reviewed: "2026-09-22"
     document_revision: "2.0"
     repository_baseline: "0f92cf4"
     replaces: rules/control-flow/flowcontrol_if.txt
@@ -277,12 +278,14 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_control_flow.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/unreachable_branch_test.go
       - internal/formatter/formatter_test.go
       - internal/codegen/mlir/generator_test.go
       - testdata/if_invalid.sec
@@ -338,6 +341,7 @@ integrations:
     area: frontend-control-flow
     status: partial
     integrated: "2026-08-16"
+    reviewed: "2026-09-22"
     document_revision: "2.0"
     repository_baseline: "56be75d"
     replaces: rules/control-flow/flowcontrol_while.txt
@@ -362,12 +366,14 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_control_flow.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/unreachable_branch_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
       - cmd/lsp/main_test.go
@@ -390,13 +396,14 @@ integrations:
       - while true uses a current-loop-targeted break query that stops at nested loops and excludes constant-unreachable branches
       - reachable while-true break paths included in continuation and definite-assignment state
       - unreachable statements after break, continue, and return routed through the canonical error policy
+      - the first statement in a literal-false while body is routed through canonical S3001 while an empty literal-false body remains valid
       - LLVM and MLIR condition, body, backedge, continue, break, and exit lowering
       - canonical Markdown metadata with implementation governance kept in this ledger
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
       - add dedicated parser diagnostics and tests for loop values and pattern-binding conditions
       - permit non-binding boolean is state tests from owning rulebooks while rejecting payload and structural binding in conditions
-      - diagnose bodies and statements proven unreachable by constant conditions and non-continuing flow through the canonical unreachable-code policy
+      - diagnose bodies and statements proven unreachable by non-literal constant conditions and other non-continuing flow through the canonical unreachable-code policy
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
       - verify that break and continue inside a switch nested in while target the surrounding loop in Sema, CFG, Semantic IR, and both backends
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
@@ -444,6 +451,8 @@ integrations:
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
       - command: go test ./internal/parser ./cmd/lsp -run 'TestParseDoWhileReportsFocusedErrorAndPreservesDoIdentifierCalls|TestParseWhileElseReportsFocusedErrorAndRecovers|TestParseLabeledLoopControlReportsFocusedErrors|TestParseWhileDeclarationHeadersReportFocusedErrorsAndRecover|TestAnalyzeReportsFocusedDoWhileDiagnostic|TestAnalyzeReportsFocusedWhileElseDiagnostic|TestAnalyzeReportsFocusedLabeledLoopControlDiagnostics|TestAnalyzeReportsFocusedWhileDeclarationHeaderDiagnostic' -count=1
         result: passed on 2026-09-03
+      - command: go test ./internal/sema -run 'TestConstantFalseWhileReportsCanonicalUnreachableStatement' -count=1
+        result: passed on 2026-09-22 with non-empty and empty literal-false body coverage
 
   - id: frontend.switch-statements-v2
     area: frontend-control-flow

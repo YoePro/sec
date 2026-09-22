@@ -523,28 +523,48 @@ type UnitDefinition struct {
 }
 
 type Function struct {
-	Name              string
-	Module            string
-	CompilerKnownID   string
-	CompilerInternal  bool
-	GenericParameters []string
-	Parameters        []FunctionParameter
-	ReturnType        Type
-	Token             lexer.Token
-	Extern            bool
-	Unsafe            bool
-	Static            bool
-	ABI               string
-	LinkName          string
-	AllocationEffect  AllocationEffect
-	ImplTarget        string
-	ReceiverMutable   bool
-	ReceiverConsuming bool
-	Initializer       bool
-	ConstructionType  *Type
-	ConstructionError *Type
-	ReturnOrigin      localReferenceOrigin
-	HasReturnOrigin   bool
+	Name                     string
+	Module                   string
+	CompilerKnownID          string
+	CompilerInternal         bool
+	GenericParameters        []string
+	GenericConstraints       []GenericConstraint
+	GenericConstraintFailure *GenericConstraintFailure
+	Parameters               []FunctionParameter
+	ReturnType               Type
+	Token                    lexer.Token
+	Extern                   bool
+	Unsafe                   bool
+	Static                   bool
+	ABI                      string
+	LinkName                 string
+	AllocationEffect         AllocationEffect
+	ImplTarget               string
+	ReceiverMutable          bool
+	ReceiverConsuming        bool
+	Initializer              bool
+	ConstructionType         *Type
+	ConstructionError        *Type
+	ReturnOrigin             localReferenceOrigin
+	HasReturnOrigin          bool
+}
+
+// GenericConstraint retains one resolved compile-time interface requirement
+// on a generic parameter. It is semantic template metadata, not a runtime
+// interface conversion or hidden dictionary.
+type GenericConstraint struct {
+	Parameter string
+	Interface Type
+	Token     lexer.Token
+}
+
+// GenericConstraintFailure identifies the first failed concrete substitution
+// so overload selection can reject that specialization and issue the canonical
+// call-site diagnostic only after all candidates have been considered.
+type GenericConstraintFailure struct {
+	Parameter string
+	Argument  Type
+	Interface Type
 }
 
 type FunctionParameter struct {

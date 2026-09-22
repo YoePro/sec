@@ -252,6 +252,62 @@ fn Invalid() int {
 	})
 }
 
+// A live MutexGuard[T] may not cross await because await is a potential
+// suspension point. Explicitly consuming the guard before await ends the
+// acquisition and makes the boundary valid.
+//
+// Rules:
+//   - rules/concurrency/await.md — §42 "Mutex guards across await"
+//   - rules/concurrency/mutex.md — §41 "Await while holding a guard"
+func TestAwaitRejectsLiveMutexGuard(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+	value: int,
+}
+
+fn Work() int { return 1 }
+
+fn Invalid(mutex: Mutex[State]) void {
+	let guard := mutex.lock()
+	let work := spawn Work()
+	let outcome := await work
+	discard outcome
+	discard guard
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"mutex guard guard remains active across await at 13:17, previous declaration at 11:6",
+	})
+}
+
+func TestAwaitAllowsConsumedMutexGuard(t *testing.T) {
+	input := `
+module main
+
+type State struct {
+	value: int,
+}
+
+fn Work() int { return 1 }
+fn Consume(guard: MutexGuard[State]) void {}
+
+fn Valid(mutex: Mutex[State]) void {
+	let guard := mutex.lock()
+	Consume(<-guard)
+	let work := spawn Work()
+	let outcome := await work
+	discard outcome
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, nil)
+}
+
 func TestCancelOutsideCancellableContext(t *testing.T) {
 	input := `
 module main

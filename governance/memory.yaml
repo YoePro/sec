@@ -6,7 +6,7 @@ integrations:
     area: raw-pointer-types-and-operations
     status: partial
     document_revision: "2.0"
-    reviewed: "2026-09-01"
+    reviewed: "2026-09-22"
     repository_baseline: "814a584"
     summary: >-
       Tracks the revision-2.0 RawPtr address-value model and its integration
@@ -36,6 +36,7 @@ integrations:
       - VolatileRead and VolatileWrite have stable compiler-known identities, unsafe gating and effect publication
       - LSP completion and hover consume compiler-known raw-pointer member definitions for represented operations
       - basic explicit conversions between uint, RawPtr and compatible RawPtr forms are recognized under unsafe gating in the represented frontend
+      - RawPtr[void] is rejected for typed Read, Write, VolatileRead, VolatileWrite, element Offset, AddBytes, and element Difference even inside unsafe
     remaining:
       - implement canonical null source syntax and rules end to end
       - implement ordinary Read and Write frontend semantics completely where compiler-known member classification is incomplete
@@ -43,19 +44,22 @@ integrations:
       - implement complete RawPtr arithmetic target layout and range validation
       - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2 and references-v2 proof facts into raw-to-safe conversion validation
       - reject compiler-known null, dangling, unaligned, uninitialized and conflicting raw-to-safe operations even inside unsafe
-      - complete RawPtr[void] operation restrictions across every compiler-known member
       - lock and implement exact source spelling for ref/ref mut to and from RawPtr in a dedicated conversion decision
     required_tests:
       - RawPtr[T] and RawPtr[void] type construction
       - copy, move, store and return RawPtr without pointee ownership transfer
       - Read and Write require unsafe
       - RawPtr[void].Read and Write rejected
+      - RawPtr[void] element Offset, AddBytes, and Difference rejected
       - known null dereference rejected in unsafe
       - known dangling raw use rejected when lifetime fact exists
       - known alias-conflicting raw-to-ref mut conversion rejected
       - target-width overflow rejected
     corrections_applied:
       - rules/corrections/applied/raw-pointers-null-domain-correction-20260816.md
+    verification:
+      - command: go test ./internal/sema -run 'TestRawPtr(Void|PointerArithmetic|Conversion)|TestCompilerKnownRawPointer' -count=1
+        result: passed on 2026-09-22
 
   - id: analysis.raw-pointers
     area: raw-pointer-provenance-effects-and-safety-facts

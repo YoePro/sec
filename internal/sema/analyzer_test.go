@@ -359,7 +359,7 @@ fn main() void {
 	live()
 }
 `)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{"unreachable statement at 10:3"})
 
 	graph := analyzer.CallGraph()
 	roots := graph.Roots()
@@ -1324,25 +1324,22 @@ type Compatible Choices range 1..3
 	}
 }
 
-func TestVariableLevelContractRequiresTryOnLaterAssignment(t *testing.T) {
+// Contracts belong to named types and cannot be attached to one variable.
+//
+// Rule: rules/types/contracts.md — "Core rule".
+func TestVariableLevelContractRequiresNamedType(t *testing.T) {
 	input := `
 let mut percentage: int range 0..100 := 50
-
-fn Test() void {
-	percentage = 60
-	try percentage = 70 {
-		Err(error) => {
-			discard error
-		}
-	}
-}
 `
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"assigning variable percentage requires try because int has contracts at 5:2",
+		"contracts belong to named types; variable percentage cannot declare an inline contract at 2:25",
 	}
 	assertSemaErrors(t, errors, expected)
+	if errors[0].ID != diagnostics.StorageSiteContract || errors[0].Help != "declare a named constrained type and use that type at this storage site" {
+		t.Fatalf("storage contract diagnostic metadata = %+v", errors[0])
+	}
 }
 
 func TestVariableLevelUniqueRejectsScalarStorage(t *testing.T) {
@@ -1353,7 +1350,8 @@ let mut values: int[3] unique := [1, 2, 3]
 
 	errors := analyzeSource(t, input)
 	expected := []string{
-		"unique contract does not apply to string at 2:21",
+		"contracts belong to named types; variable bad cannot declare an inline contract at 2:21",
+		"contracts belong to named types; variable values cannot declare an inline contract at 3:24",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -3636,7 +3634,11 @@ type User struct {
 	}
 }
 
-func TestStructFieldRangeContract(t *testing.T) {
+// Ordinary stored fields use named constrained types rather than inline
+// storage-site contracts.
+//
+// Rule: rules/types/contracts.md — "Core rule".
+func TestStructFieldRangeContractRequiresNamedType(t *testing.T) {
 	input := `
 type User struct {
 	Active: bool,
@@ -3651,7 +3653,7 @@ let bad := User{ Active: true, Name: "Ada", Age: 131 }
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 
 	expected := []string{
-		"value 131 violates range contract int 0..130 at 9:50",
+		"contracts belong to named types; field User.Age cannot declare an inline contract at 5:11",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -3660,8 +3662,8 @@ let bad := User{ Active: true, Name: "Ada", Age: 131 }
 	if len(user.Fields) != 3 {
 		t.Fatalf("wrong field count. got=%d want=3", len(user.Fields))
 	}
-	if len(user.Fields[2].Type.Contracts) != 1 {
-		t.Fatalf("Age should have one range contract, got %d", len(user.Fields[2].Type.Contracts))
+	if len(user.Fields[2].Type.Contracts) != 0 {
+		t.Fatalf("invalid inline field contract leaked into semantic type: %+v", user.Fields[2].Type.Contracts)
 	}
 }
 
@@ -7565,6 +7567,169 @@ fn UnknownFunctionConstraint[T: MissingConstraint](value: T) void {
 	assertSemaErrors(t, errors, expected)
 }
 
+// Generic function substitutions require explicit interface conformance;
+// structural similarity alone must not satisfy a constraint.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/generics.md — §29 "Overload resolution"
+//   - rules/declarations/interfaces.md — §4 "Explicit conformance"
+func TestGenericFunctionConstraintRequiresExplicitConformance(t *testing.T) {
+	input := `
+module main
+
+interface Tagged {
+}
+
+type Explicit struct {
+}
+
+impl Explicit implements Tagged {
+}
+
+type StructuralOnly struct {
+}
+
+fn Accept[T: Tagged](value: T) T {
+	return value
+}
+
+fn Valid(explicit: Explicit) void {
+	discard Accept(explicit)
+	discard Accept[Explicit](explicit)
+}
+
+fn Invalid(value: StructuralOnly) void {
+	discard Accept(value)
+	discard Accept[StructuralOnly](value)
+}
+`
+
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"type StructuralOnly does not satisfy constraint Tagged for T at 26:10",
+		"type StructuralOnly does not satisfy constraint Tagged for T at 27:10",
+	})
+
+	template := analyzer.functions["Accept"][0]
+	if len(template.GenericConstraints) != 1 || template.GenericConstraints[0].Parameter != "T" || template.GenericConstraints[0].Interface.Name != "Tagged" {
+		t.Fatalf("Accept constraints = %+v, want T: Tagged", template.GenericConstraints)
+	}
+}
+
+// An explicit implements clause is insufficient when its required members are
+// invalid; constraint satisfaction consumes validated conformance.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/interfaces.md — §6 "Conformance requirements"
+func TestGenericFunctionConstraintRejectsInvalidExplicitConformance(t *testing.T) {
+	input := `
+module main
+
+interface Named {
+	fn Name() string
+}
+
+type Broken struct {
+}
+
+impl Broken implements Named {
+}
+
+fn Accept[T: Named](value: T) void {
+	discard value
+}
+
+fn Use(value: Broken) void {
+	Accept(value)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 2 || !strings.Contains(errors[0].Message, "type Broken implements Named but is missing method Name") ||
+		!strings.Contains(errors[1].Message, "type Broken does not satisfy constraint Named for T") {
+		t.Fatalf("constraint/conformance errors = %v", errors)
+	}
+}
+
+// Generic interface specialization identity and explicit interface inheritance
+// both participate in constraint satisfaction.
+//
+// Rules:
+//   - rules/declarations/generics.md — §13 "Constraint resolution"
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/interfaces.md — §5 "Interface inheritance"
+func TestGenericFunctionConstraintUsesConcreteInheritedInterface(t *testing.T) {
+	input := `
+module main
+
+interface Tagged[T] {
+}
+
+interface Detailed[T] implements Tagged[T] {
+}
+
+type Correct struct {
+}
+
+impl Correct implements Detailed[int] {
+}
+
+type Wrong struct {
+}
+
+impl Wrong implements Tagged[string] {
+}
+
+fn Accept[T: Tagged[int]](value: T) void {
+	discard value
+}
+
+fn Use(correct: Correct, wrong: Wrong) void {
+	Accept(correct)
+	Accept(wrong)
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"type Wrong does not satisfy constraint Tagged[int] for T at 28:2",
+	})
+}
+
+// Expected-result inference must apply the same constraint check as argument
+// inference and explicit specialization.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/generics.md — §19 "Inference"
+func TestGenericFunctionConstraintChecksExpectedResultInference(t *testing.T) {
+	input := `
+module main
+
+interface Tagged {
+}
+
+type StructuralOnly struct {
+}
+
+fn Make[T: Tagged]() T {
+	unreachable
+}
+
+fn Use() void {
+	let value: StructuralOnly := Make()
+	discard value
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "type StructuralOnly does not satisfy constraint Tagged for T") {
+		t.Fatalf("expected-result constraint errors = %v", errors)
+	}
+}
+
 func TestGenericUnionTypeReferences(t *testing.T) {
 	input := `
 module main
@@ -10462,6 +10627,35 @@ fn Invalid(ptr: RawPtr[int], voidPtr: RawPtr[void], bytes: RawPtr[byte], other: 
 	})
 }
 
+// Unsafe does not turn an opaque RawPtr[void] into a typed pointee. Typed
+// access and element-based difference require a concrete element type.
+//
+// Rules:
+//   - rules/memory/raw_pointers.md — §3(3)–(4) "RawPtr[void]"
+//   - rules/memory/raw_pointers.md — §11(6), §12(5), and §14(7)–(8)
+func TestRawPtrVoidRejectsTypedAccessAndElementDifference(t *testing.T) {
+	input := `
+module main
+
+fn Invalid(opaque: RawPtr[void], other: RawPtr[void]) void {
+	unsafe {
+		let value := opaque.Read()
+		opaque.Write(1)
+		let distance := opaque.Difference(other)
+		discard value
+		discard distance
+	}
+}
+`
+
+	errors := analyzeSourceRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"RawPtr[void].Read cannot materialize a value; select a concrete pointee type at 6:23",
+		"RawPtr[void].Write cannot consume a value; select a concrete pointee type at 7:10",
+		"RawPtr.Difference requires a typed element pointer, got RawPtr[void] at 8:26",
+	})
+}
+
 func TestAggregateReferenceFieldHoldsBorrow(t *testing.T) {
 	input := `
 module main
@@ -11216,7 +11410,7 @@ fn Test() int {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{"unreachable statement at 7:4"})
 }
 
 func TestWhileTrueWithBreakRequiresReturnAfterLoop(t *testing.T) {
@@ -11530,7 +11724,7 @@ fn Test() int {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{"unreachable statement at 7:4"})
 }
 
 func TestInfiniteForWithContinueMakesFollowingReturnUnreachable(t *testing.T) {

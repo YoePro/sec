@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Channels and Select - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#channels-select">Channels and Select</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#in-process">In-Process Channels</a>
+        <a href="#core-types">Core Types</a>
+        <a href="#construction">Construction and Options</a>
+        <a href="#capabilities">Optional Capabilities</a>
+        <a href="#sender">Sender[T]</a>
+        <a href="#receiver">Receiver[T]</a>
+        <a href="#send-results">Send Result Types</a>
+        <a href="#receive-results">Receive Result Types</a>
+        <a href="#sharing">Sender Sharing and Limits</a>
+        <a href="#revocation">Revocable Messages</a>
+        <a href="#expiration-stats">Expiration and Statistics</a>
+        <a href="#close-discard">Close, Discard and Lifecycle</a>
+        <a href="#ordering">FIFO Ordering and Rendezvous</a>
+        <a href="#cancellation">Cancellation and Waiting</a>
+        <a href="#select-basics">Select Basics</a>
+        <a href="#select-branches">Selectable Branches</a>
+        <a href="#readiness">Readiness and Commit</a>
+        <a href="#priority">Source-Order Priority</a>
+        <a href="#default-timeout">Default and Timeout</a>
+        <a href="#ownership">Ownership in Select</a>
+        <a href="#memory">Memory Semantics</a>
+        <a href="#target">Target and Runtime Requirements</a>
+        <a href="#tooling">Tooling and Diagnostics</a>
+        <a href="#status">Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+        <div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html" class="active">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Channels and Select</div>
+
+        <h1 id="channels-select">Channels and Select</h1>
+
+        <p>
+            Sec channels provide typed, in-process ownership transfer between concurrent execution
+            entities. They are the main message-passing primitive for tasks and threads. The
+            companion <code>select</code> statement waits on multiple concurrent operations and
+            commits exactly one of them.
+        </p>
+
+        <p>
+            This chapter covers the ordinary Sec 0.1 channel model and the parts of
+            <code>select</code> that matter most when working with channels. It does not replace
+            the separate concurrency chapters on tasks, cancellation, mutexes, atomics or IPC.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>Channel[T]</code> is a typed, in-process,
+            move-only message channel with one receive capability and one or more send
+            capabilities. Blocking operations are cancellation points. Non-blocking operations are
+            not. <code>select</code> observes readiness non-destructively and commits exactly one
+            branch.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Message passing is often simpler and safer than shared mutable state. A channel lets
+                one execution entity transfer ownership of a value to another without sharing the
+                same mutable object directly.
+            </p>
+
+            <p>
+                Sec channels deliberately model ownership transfer exactly. When a send commits,
+                ownership of the message moves into the channel or directly to a rendezvous receiver.
+                When a receive commits, ownership moves out to the receiver. Result types always show
+                whether ownership moved or was returned to the caller.
+            </p>
+        </section>
+
+        <section id="in-process">
+            <h2>In-Process Channels</h2>
+
+            <p>
+                Ordinary <code>Channel[T]</code>, <code>Sender[T]</code>,
+                <code>Receiver[T]</code> and <code>MessageTicket[T]</code> are strictly
+                <em>in-process</em> capabilities. They do not automatically become IPC.
+            </p>
+
+            <pre><code>task  -&gt; task
+task  -&gt; thread
+thread -&gt; task
+thread -&gt; thread</code></pre>
+
+            <p>
+                If communication must cross a process boundary, Sec uses the separate IPC model from
+                chapter 66. Ordinary channels are not <code>ProcessTransferable</code> and are never
+                silently lowered to process messaging.
+            </p>
+        </section>
+
+        <section id="core-types">
+            <h2>Core Types</h2>
+
+            <p>The compiler-known source-visible channel surface in Sec 0.1 includes:</p>
+
+            <pre><code>Channel[T]
+Sender[T]
+Receiver[T]
+MessageTicket[T]
+ChannelCapability
+ChannelOptions
+ChannelStatistics
+SenderID
+ChannelSendResult[T]
+ChannelTrySendResult[T]
+ChannelTryReceiveResult[T]
+ChannelRevocableSendResult[T]
+ChannelRevokeResult[T]
+MessageDisposition</code></pre>
+
+            <p>
+                The public container type is <code>Channel[T]</code>. It is <code>@noCopy</code>
+                and exposes exactly two public fields: <code>Tx</code> and <code>Rx</code>.
+            </p>
+
+            <pre><code>@noCopy
+type Channel[T] struct {
+    Tx: Sender[T]
+    Rx: Receiver[T]
+
+    try init(capacity: uint) AllocationError
+    try init(options: ChannelOptions) AllocationError
+}</code></pre>
+
+            <p>
+                The hidden queueing and synchronization state is part of the implementation, but it
+                is not a third public field and must not leak into the source model.
+            </p>
+        </section>
+
+        <section id="construction">
+            <h2>Construction and Options</h2>
+
+            <p>
+                Channel construction is fallible only through <code>AllocationError</code> when the
+                selected profile requires dynamic allocation or cannot prove construction infallible.
+            </p>
+
+            <pre><code>let messages := try Channel[string](capacity: 16)
+
+let jobs := try Channel[Job](options: ChannelOptions {
+    Capacity: 64,
+    MaxSenders: 8,
+    Capabilities: { ChannelCapability.Statistics }
+})</code></pre>
+
+            <p>
+                <code>ChannelOptions</code> contains exactly three public fields:
+            </p>
+
+            <ul>
+                <li><code>Capacity: uint</code></li>
+                <li><code>MaxSenders: uint</code></li>
+                <li><code>Capabilities: set[ChannelCapability]</code></li>
+            </ul>
+
+            <p>
+                <code>MaxSenders</code> must be at least <code>1</code>. The option fields that fix
+                endpoint identity and optional runtime metadata must be known before lowering.
+            </p>
+        </section>
+
+        <section id="capabilities">
+            <h2>Optional Capabilities</h2>
+
+            <p>
+                Channels can enable a closed set of optional features through
+                <code>ChannelCapability</code>.
+            </p>
+
+            <pre><code>enum ChannelCapability {
+    Revocation
+    Expiration
+    ISRSafeSend
+    Statistics
+}</code></pre>
+
+            <ul>
+                <li><code>Revocation</code> enables <code>SendRevocable(...)</code> and message tickets.</li>
+                <li><code>Expiration</code> enables message lifetime overloads.</li>
+                <li><code>ISRSafeSend</code> allows target-validated bounded non-blocking <code>TrySend</code> from ISR context.</li>
+                <li><code>Statistics</code> enables statistics snapshots.</li>
+            </ul>
+
+            <p>
+                There is no general channel priority capability in Sec 0.1. Priority between
+                competing operations is expressed through source order in <code>select</code>, not by
+                a per-channel priority configuration.
+            </p>
+        </section>
+
+        <section id="sender">
+            <h2>Sender[T]</h2>
+
+            <p>
+                <code>Sender[T]</code> is move-only. It owns one send capability for one channel
+                identity.
+            </p>
+
+            <pre><code>@noCopy
+type Sender[T]
+
+impl Sender[T] {
+    fn Share() Option[Sender[T]]
+
+    fn Send(message: T) ChannelSendResult[T]
+    fn Send(message: T, lifetime: duration) ChannelSendResult[T]
+    fn TrySend(message: T) ChannelTrySendResult[T]
+
+    fn SendRevocable(message: T) ChannelRevocableSendResult[T]
+    fn SendRevocable(
+        message: T,
+        lifetime: duration
+    ) ChannelRevocableSendResult[T]
+
+    fn Statistics() ChannelStatistics
+
+    fn Close() void
+}</code></pre>
+
+            <p>
+                <code>Share()</code> does not consume the original sender. <code>Close()</code>
+                consumes the local sender capability. Blocking <code>Send(...)</code> is a waiting
+                operation; <code>TrySend(...)</code> is the non-blocking counterpart.
+            </p>
+        </section>
+
+        <section id="receiver">
+            <h2>Receiver[T]</h2>
+
+            <p>
+                <code>Receiver[T]</code> is also move-only. Sec 0.1 defines exactly one live receive
+                capability for an ordinary channel.
+            </p>
+
+            <pre><code>@noCopy
+type Receiver[T]
+
+impl Receiver[T] {
+    fn Receive() Option[T]
+    fn TryReceive() ChannelTryReceiveResult[T]
+
+    fn Discard() void
+    fn Statistics() ChannelStatistics
+    fn Close() void
+}</code></pre>
+
+            <p>
+                <code>Discard()</code> does not consume the receiver. <code>Close()</code> does.
+                A normal blocking receive returns <code>Option[T]</code>: <code>Some(value)</code>
+                means one message was received; <code>None</code> means the send side is closed and
+                the channel is drained.
+            </p>
+        </section>
+
+        <section id="send-results">
+            <h2>Send Result Types</h2>
+
+            <p>
+                Sec uses exact result types so the caller can see whether ownership transferred or was
+                returned.
+            </p>
+
+            <h3>Blocking send</h3>
+
+            <pre><code>type ChannelSendResult[T] union {
+    Sent
+    Closed(T)
+}</code></pre>
+
+            <p>
+                <code>Sent</code> means the send committed. <code>Closed(T)</code> means the receive
+                side closed before commit, so ownership of the unsent message returns to the caller.
+            </p>
+
+            <h3>Non-blocking send</h3>
+
+            <pre><code>type ChannelTrySendResult[T] union {
+    Sent
+    WouldBlock(T)
+    Closed(T)
+}</code></pre>
+
+            <p>
+                <code>WouldBlock(T)</code> is used when the channel is open but the send cannot commit
+                immediately. It returns ownership of the unsent value. This is especially important
+                for bounded channels and rendezvous channels with no immediately matching receiver.
+            </p>
+        </section>
+
+        <section id="receive-results">
+            <h2>Receive Result Types</h2>
+
+            <p>
+                Blocking <code>Receive()</code> returns <code>Option[T]</code>. Non-blocking receive
+                has its own exact result type.
+            </p>
+
+            <pre><code>type ChannelTryReceiveResult[T] union {
+    Received(T)
+    Empty
+    Closed
+}</code></pre>
+
+            <ul>
+                <li><code>Received(T)</code> means a deliverable message was received immediately.</li>
+                <li><code>Empty</code> means the channel is open but no deliverable message is available immediately.</li>
+                <li><code>Closed</code> means the send side is closed and no deliverable queued message remains.</li>
+            </ul>
+
+            <p>
+                <code>Closed</code> carries no payload because there is no message to transfer.
+            </p>
+        </section>
+
+        <section id="sharing">
+            <h2>Sender Sharing and Limits</h2>
+
+            <p>
+                The initial <code>Tx</code> capability counts toward <code>MaxSenders</code>.
+                Additional senders are created explicitly through <code>Share()</code>.
+            </p>
+
+            <pre><code>let work := try Channel[Job](options: ChannelOptions {
+    Capacity: 32,
+    MaxSenders: 2,
+    Capabilities: { }
+})
+
+match work.Tx.Share() {
+    Some(other) =&gt; {
+        StartProducer(&lt;-other)
+    }
+
+    None =&gt; {
+        HandleSenderLimit()
+    }
+}</code></pre>
+
+            <p>
+                <code>None</code> means the configured sender limit is already reached. It does not
+                consume or invalidate the original sender.
+            </p>
+        </section>
+
+        <section id="revocation">
+            <h2>Revocable Messages</h2>
+
+            <p>
+                If a channel enables <code>ChannelCapability.Revocation</code>, the sender may use
+                <code>SendRevocable(...)</code>. A successful revocable send returns a
+                <code>MessageTicket[T]</code> that owns the right to attempt later revocation.
+            </p>
+
+            <pre><code>type ChannelRevocableSendResult[T] union {
+    Accepted(MessageTicket[T])
+    Closed(T)
+}
+
+type ChannelRevokeResult[T] union {
+    Revoked(T)
+    Unavailable(MessageDisposition)
+}</code></pre>
+
+            <p>
+                <code>MessageTicket[T]</code> is move-only and <code>Revoke()</code> consumes it.
+                Revocation is ticket-owned, not sender-owned.
+            </p>
+
+            <pre><code>match ticket.Revoke() {
+    Revoked(message) =&gt; {
+        Recover(&lt;-message)
+    }
+
+    Unavailable(disposition) =&gt; {
+        HandleDisposition(disposition)
+    }
+}</code></pre>
+
+            <p>
+                If revocation loses the race, the result reports a terminal
+                <code>MessageDisposition</code>: <code>Received</code>, <code>Expired</code> or
+                <code>Discarded</code>.
+            </p>
+        </section>
+
+        <section id="expiration-stats">
+            <h2>Expiration and Statistics</h2>
+
+            <p>
+                If <code>ChannelCapability.Expiration</code> is enabled, send and revocable-send
+                overloads may attach a message lifetime using <code>duration</code>. Expiration is a
+                message property, not a select timeout.
+            </p>
+
+            <p>
+                If <code>ChannelCapability.Statistics</code> is enabled, sender and receiver expose a
+                statistics snapshot. The public type is:
+            </p>
+
+            <pre><code>type ChannelStatistics struct {
+    Sent: uint64
+    Received: uint64
+    Revoked: uint64
+    Expired: uint64
+    Discarded: uint64
+}</code></pre>
+
+            <p>
+                The counters are saturating snapshots. They are useful for instrumentation and
+                observability, not as a synchronization substitute for actual program logic.
+            </p>
+        </section>
+
+        <section id="close-discard">
+            <h2>Close, Discard and Lifecycle</h2>
+
+            <p>
+                Closing sender capabilities eventually closes the send side. Closing the receiver
+                closes the receive side immediately. Discarding drops queued deliverable messages from
+                the receive side without consuming the receiver itself.
+            </p>
+
+            <ul>
+                <li><code>Sender[T].Close()</code> consumes that sender capability.</li>
+                <li><code>Receiver[T].Close()</code> consumes the receiver capability.</li>
+                <li><code>Receiver[T].Discard()</code> preserves the receiver capability.</li>
+            </ul>
+
+            <p>
+                A blocking receive returns <code>None</code> only when the send side is closed and
+                the channel is drained. A non-blocking receive returns <code>Closed</code> under the
+                same fully drained closed condition.
+            </p>
+        </section>
+
+        <section id="ordering">
+            <h2>FIFO Ordering and Rendezvous</h2>
+
+            <p>
+                Ordinary Sec channels are FIFO by successful message commit order. One sender
+                preserves its own successful commit order, while concurrent senders are ordered by the
+                actual global channel commit order.
+            </p>
+
+            <p>
+                A channel may be buffered or rendezvous-style depending on capacity and runtime
+                realization. The source-level rules stay the same: send and receive commit at a
+                definite point, and the exact result type reports success, closure or immediate
+                inability to proceed.
+            </p>
+
+            <p>
+                Revoked, expired and discarded messages are skipped without reordering the remaining
+                deliverable committed messages.
+            </p>
+        </section>
+
+        <section id="cancellation">
+            <h2>Cancellation and Waiting</h2>
+
+            <p>
+                Waiting channel operations are current-execution cancellation points. That includes
+                blocking <code>Send(...)</code>, blocking <code>Receive()</code> and blocking
+                <code>select</code>. The non-waiting <code>Try...</code> operations are not
+                cancellation points.
+            </p>
+
+            <p>
+                Sec 0.1 does not define <code>SendTimed</code>, <code>ReceiveTimed</code> or
+                <code>ref Context</code> overloads on ordinary channels. Timeouts are composed through
+                <code>select</code> and <code>after</code> branches instead.
+            </p>
+        </section>
+
+        <section id="select-basics">
+            <h2>Select Basics</h2>
+
+            <p>
+                <code>select</code> waits on multiple concurrent operations and executes exactly one
+                branch.
+            </p>
+
+            <pre><code>select {
+    message := rx.Receive() =&gt; {
+        Process(message)
+    }
+
+    after 100ms =&gt; {
+        HandleTimeout()
+    }
+}</code></pre>
+
+            <p>
+                A single execution of <code>select</code> chooses at most one branch. After the
+                chosen branch body completes, control continues after the statement.
+            </p>
+        </section>
+
+        <section id="select-branches">
+            <h2>Selectable Branches</h2>
+
+            <p>
+                For channels, the most common select branches are receives, sends, revocable sends,
+                timeout branches and a final optional default branch.
+            </p>
+
+            <h3>Receive branch</h3>
+
+            <pre><code>select {
+    result := rx.Receive() =&gt; {
+        match result {
+            Some(message) =&gt; Process(&lt;-message)
+            None =&gt; HandleClosed()
+        }
+    }
+}</code></pre>
+
+            <h3>Send branch</h3>
+
+            <pre><code>select {
+    result := tx.Send(&lt;-message) =&gt; {
+        match result {
+            Sent =&gt; HandleSent()
+            Closed(returned) =&gt; Recover(&lt;-returned)
+        }
+    }
+}</code></pre>
+
+            <h3>Revocable send branch</h3>
+
+            <pre><code>select {
+    result := tx.SendRevocable(&lt;-message) =&gt; {
+        match result {
+            Accepted(ticket) =&gt; Store(&lt;-ticket)
+            Closed(returned) =&gt; Recover(&lt;-returned)
+        }
+    }
+
+    after 20ms =&gt; {
+        HandleTimeout(message)
+    }
+}</code></pre>
+
+            <p>
+                When the send or receive branch is not selected, it must not consume ownership or
+                mutate observable channel state.
+            </p>
+        </section>
+
+        <section id="readiness">
+            <h2>Readiness and Commit</h2>
+
+            <p>
+                Every selectable operation has two conceptual phases:
+            </p>
+
+            <pre><code>readiness
+commit</code></pre>
+
+            <p>
+                Readiness answers whether an operation <em>could</em> proceed. Commit performs the
+                operation, transfers ownership and publishes the branch result. Only the selected
+                branch commits. Non-selected branches remain unconsumed and must not change observable
+                state.
+            </p>
+        </section>
+
+        <section id="priority">
+            <h2>Source-Order Priority</h2>
+
+            <p>
+                Branches are considered in source order. If multiple branches are ready at the same
+                selection point, the first ready branch wins. This is an intentional source-visible
+                priority rule, not an implementation accident.
+            </p>
+
+            <pre><code>select {
+    critical := criticalRx.Receive() =&gt; {
+        HandleCritical(critical)
+    }
+
+    normal := normalRx.Receive() =&gt; {
+        HandleNormal(normal)
+    }
+}</code></pre>
+
+            <p>
+                If both receives are ready, the <code>critical</code> branch is selected. Sec 0.1
+                does not inject hidden fairness that overrides source order. A later branch may
+                starve if an earlier branch is continuously ready.
+            </p>
+        </section>
+
+        <section id="default-timeout">
+            <h2>Default and Timeout</h2>
+
+            <p>
+                A timeout branch uses <code>after duration =&gt; {{ ... }}</code>. The timeout begins
+                when execution enters the <code>select</code>. It uses a monotonic time source.
+            </p>
+
+            <pre><code>select {
+    message := rx.Receive() =&gt; {
+        Process(message)
+    }
+
+    after 100ms =&gt; {
+        HandleTimeout()
+    }
+}</code></pre>
+
+            <p>
+                A <code>default</code> branch is optional and executes only when no preceding
+                selectable branch is ready. If present, it must be the final branch and the select
+                does not wait.
+            </p>
+
+            <pre><code>select {
+    message := rx.Receive() =&gt; {
+        Process(message)
+    }
+
+    default =&gt; {
+        DoOtherWork()
+    }
+}</code></pre>
+
+            <p>
+                A positive timeout branch together with a final default branch is normally a static
+                error because the timeout can never be selected when no earlier branch is ready.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership in Select</h2>
+
+            <p>
+                <code>select</code> must preserve ownership exactly. If a branch commits, it may
+                transfer ownership according to that operation's ordinary result type. If a branch is
+                not selected, the original values and handles remain available according to normal
+                ownership rules.
+            </p>
+
+            <p>
+                This matters especially for message sends, revocable sends and move-only messages.
+                The runtime must not partially consume a message on a branch that loses the select.
+            </p>
+        </section>
+
+        <section id="memory">
+            <h2>Memory Semantics</h2>
+
+            <p>
+                A committed send/receive pair establishes the channel's required synchronization edge.
+                The receiver observes memory effects published by the sender according to the
+                concurrency memory model. Polling statistics or merely observing cancellation state is
+                not equivalent to successful channel synchronization.
+            </p>
+
+            <p>
+                <code>select</code> must preserve the same synchronization semantics as direct send or
+                receive operations. Only the committed branch contributes the synchronization edge.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target and Runtime Requirements</h2>
+
+            <p>
+                The selected immutable <code>CompilationPlan</code> determines whether channels,
+                select, timeouts and optional capabilities are supported. A target may implement them
+                through scheduler wait sets, event loops, RTOS primitives, OS polling facilities or
+                compiler-generated cooperative state machines.
+            </p>
+
+            <p>
+                Whatever mechanism is used, the target must preserve the Sec source semantics:
+            </p>
+
+            <ul>
+                <li>exact result types;</li>
+                <li>in-process channel identity;</li>
+                <li>source-order priority in select;</li>
+                <li>exactly-one branch commit;</li>
+                <li>ownership rollback for non-selected branches;</li>
+                <li>cancellation-point behavior for waiting operations;</li>
+                <li>timeout and synchronization rules.</li>
+            </ul>
+
+            <p>
+                A target that cannot support a required branch combination or capability must reject
+                the program instead of approximating the semantics.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>Tooling and Diagnostics</h2>
+
+            <p>
+                Hover, completion and navigation should expose the canonical channel surface rather
+                than legacy names. Tooling should prefer <code>Tx</code>, <code>Rx</code>,
+                <code>Share</code>, <code>Send</code>, <code>TrySend</code>, <code>Receive</code>,
+                <code>TryReceive</code>, <code>SendRevocable</code>, <code>Revoke</code>,
+                <code>Discard</code> and <code>Close</code>.
+            </p>
+
+            <p>Common diagnostics include:</p>
+
+            <ul>
+                <li>use of consumed sender or receiver capability;</li>
+                <li>attempting to share beyond <code>MaxSenders</code>;</li>
+                <li>using revocation APIs without the <code>Revocation</code> capability;</li>
+                <li>using statistics without the <code>Statistics</code> capability;</li>
+                <li>placing <code>default</code> before the final branch in <code>select</code>;</li>
+                <li>combining a positive timeout with a final <code>default</code> that makes the timeout unreachable;</li>
+                <li>using timeouts on a target without a valid timer source.</li>
+            </ul>
+        </section>
+
+        <section id="status">
+            <h2>Implementation Status</h2>
+
+            <p>
+                The channels rulebook is normative and the governance status for the integrated
+                channel surface is <strong>partial</strong>.
+            </p>
+
+            <p>Already present or partly present:</p>
+
+            <ul>
+                <li>compiler-known intrinsic identities for <code>Channel[T]</code>, <code>Sender[T]</code>, <code>Receiver[T]</code> and <code>MessageTicket[T]</code>;</li>
+                <li>initial compiler-known support for several related result/configuration identities.</li>
+            </ul>
+
+            <p>Still incomplete or planned:</p>
+
+            <ul>
+                <li>the full exact source API and all capability-gated operations;</li>
+                <li>complete lifecycle semantics for close/discard/revocation/expiration;</li>
+                <li>select integration with exact readiness/commit rollback behavior;</li>
+                <li>cancellation-point commit races and target/runtime lowering;</li>
+                <li>complete Semantic IR and LSP/tooling support.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Use channels for explicit ownership transfer between concurrent entities.</li>
+                <li>Model sender fan-out explicitly with <code>Share()</code> and a deliberate <code>MaxSenders</code>.</li>
+                <li>Use blocking operations when waiting is acceptable and <code>Try...</code> operations when it is not.</li>
+                <li>Handle returned ownership explicitly on <code>Closed(T)</code> and <code>WouldBlock(T)</code>.</li>
+                <li>Use revocable sends only when you truly need post-send recovery behavior.</li>
+                <li>Use timeout composition through <code>select</code> and <code>after</code>; do not invent timed wrappers in user code.</li>
+                <li>Treat source order in <code>select</code> as a real priority policy.</li>
+                <li>Do not assume fairness for later select branches.</li>
+                <li>Keep ordinary channels in-process; use the IPC APIs for cross-process messaging.</li>
+                <li>Remember that a statistics snapshot is observability, not program synchronization.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li><code>Channel[T]</code> is the canonical typed in-process message channel in Sec 0.1.</li>
+                <li><code>Channel[T]</code> is <code>@noCopy</code> and exposes exactly <code>Tx</code> and <code>Rx</code>.</li>
+                <li><code>Sender[T]</code>, <code>Receiver[T]</code> and <code>MessageTicket[T]</code> are move-only capabilities.</li>
+                <li>Construction is fallible only through <code>AllocationError</code> when needed.</li>
+                <li><code>ChannelOptions</code> fixes capacity, sender limit and capability set.</li>
+                <li>The optional capabilities are exactly Revocation, Expiration, ISRSafeSend and Statistics.</li>
+                <li>Blocking <code>Send(...)</code> uses <code>ChannelSendResult[T]</code>; non-blocking <code>TrySend(...)</code> uses <code>ChannelTrySendResult[T]</code>.</li>
+                <li>Blocking <code>Receive()</code> returns <code>Option[T]</code>; non-blocking <code>TryReceive()</code> uses <code>ChannelTryReceiveResult[T]</code>.</li>
+                <li><code>Share()</code> returns <code>Option[Sender[T]]</code> and respects <code>MaxSenders</code>.</li>
+                <li>Revocable sends use <code>MessageTicket[T]</code> and <code>ChannelRevokeResult[T]</code>.</li>
+                <li>Ordinary channels are FIFO by committed message order and strictly in-process.</li>
+                <li>Waiting channel operations are cancellation points; <code>Try...</code> operations are not.</li>
+                <li>Ordinary channels define no timed APIs and no <code>ref Context</code> overloads.</li>
+                <li><code>select</code> waits on multiple concurrent operations and commits exactly one branch.</li>
+                <li>Source order is the explicit priority rule in <code>select</code>.</li>
+                <li><code>default</code> is optional, must be final, and makes the select non-waiting.</li>
+                <li><code>after</code> provides timeout composition using a monotonic time source.</li>
+                <li>Non-selected select branches must not consume ownership or mutate observable state.</li>
+                <li>The normative model is complete, but current implementation support remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="60-scheduling.html">Previous: Scheduling, Blocking and Structured Concurrency</a>
+            <a href="62-events.html">Next: Events</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-21</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

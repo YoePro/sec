@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cancellation and Context - Sec Language Manual</title>
+    <link rel="stylesheet" href="manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="index.html" class="site-logo">
+            <img src="logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="01-introduction.html">Language</a>
+            <a href="stdlib.html">Stdlib</a>
+            <a href="syntax-reference.html">Syntax</a>
+            <a href="best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Section navigation">
+        <h2 class="sidebar-title">Sec Manual</h2>
+        <div class="sidebar-section">This page</div>
+        <a href="#cancellation">Cancellation and Context</a>
+        <a href="#purpose">Purpose</a>
+        <a href="#cooperative">Cooperative Cancellation</a>
+        <a href="#identities">Task and Thread Identity</a>
+        <a href="#request-cancel">RequestCancel()</a>
+        <a href="#current">Current Execution Contexts</a>
+        <a href="#cancel-statement">The cancel Statement</a>
+        <a href="#cleanup">Cancellation Cleanup</a>
+        <a href="#effect">Inferred Cancellation Requirement</a>
+        <a href="#cancellation-points">Cancellation Points</a>
+        <a href="#commit">Commit Races</a>
+        <a href="#await-join">Await and Join</a>
+        <a href="#channels-select">Channels and Select</a>
+        <a href="#mutex">Mutex Acquisition</a>
+        <a href="#memory">Memory Semantics</a>
+        <a href="#context-model">Context Model</a>
+        <a href="#context-types">Context Types</a>
+        <a href="#context-api">Context API</a>
+        <a href="#context-hierarchy">Context Hierarchy</a>
+        <a href="#deadlines">Deadlines and Timeouts</a>
+        <a href="#context-vs-execution">Context vs Execution Cancellation</a>
+        <a href="#ownership">Ownership and Lifetimes</a>
+        <a href="#target">Target and Runtime Requirements</a>
+        <a href="#tooling">Diagnostics and Tooling</a>
+        <a href="#status">Implementation Status</a>
+        <a href="#best-practices">Best Practices</a>
+        <a href="#summary">Summary</a>
+<div class="sidebar-section">Language</div>
+        <a href="01-introduction.html">01 Introduction</a>
+        <a href="02-basic-syntax.html">02 Basic Syntax</a>
+        <a href="03-types.html">03 Types</a>
+        <a href="04-named-types.html">04 Named Types</a>
+        <a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+        <a href="06-functions.html">06 Functions</a>
+        <a href="07-if.html">07 If Statements</a>
+        <a href="08-switch.html">08 Switch Statements</a>
+        <a href="09-match.html">09 Match Expressions</a>
+        <a href="10-enums.html">10 Enums</a>
+        <a href="11-unions.html">11 Unions</a>
+        <a href="12-registers.html">12 Registers</a>
+        <a href="13-units.html">13 Units</a>
+        <a href="14-generics.html">14 Generics</a>
+        <a href="15-loops.html">15 Loops and Iteration</a>
+        <a href="16-impl.html">16 Impl Blocks</a>
+        <a href="17-properties.html">17 Properties</a>
+        <a href="18-interfaces.html">18 Interfaces</a>
+        <a href="19-arrays.html">19 Arrays</a>
+        <a href="20-slices.html">20 Slices</a>
+        <a href="21-indexing.html">21 Indexing</a>
+        <a href="22-storage.html">22 Values, Places and Storage</a>
+        <a href="23-references.html">23 References</a>
+        <a href="24-ownership.html">24 Ownership</a>
+        <a href="25-copy-move.html">25 Copying and Moving</a>
+        <a href="26-borrowing.html">26 Borrowing</a>
+        <a href="27-spread.html">27 Spread</a>
+        <a href="28-modules.html">28 Modules and Imports</a>
+        <a href="29-projects.html">29 Projects</a>
+        <a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+        <a href="31-ffi.html">31 Foreign Function Interfaces</a>
+        <a href="32-visibility.html">32 Visibility and Scopes</a>
+        <a href="33-result-option.html">33 Result and Option</a>
+        <a href="34-error-handling.html">34 Errors and try</a>
+        <a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+        <a href="36-defer.html">36 Defer and Cleanup</a>
+        <a href="37-attributes.html">37 Attributes</a>
+        <a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+        <a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+        <a href="40-allocation.html">40 Memory Allocation</a>
+        <a href="41-arena.html">41 Arenas</a>
+        <a href="42-lifetimes.html">42 Lifetimes</a>
+        <a href="43-destruction.html">43 Destruction</a>
+        <a href="44-layout.html">44 Memory Layout and Representation</a>
+        <a href="45-collections.html">45 Collections</a>
+        <a href="46-shaped-types.html">46 Shaped Types</a>
+        <a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+        <a href="48-effects.html">48 Effects and Verified Guarantees</a>
+        <a href="49-platforms.html">49 Platforms and Target Profiles</a>
+        <a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+        <a href="51-interrupts.html">51 Interrupts and ISRs</a>
+        <a href="52-inline-assembly.html">52 Inline Assembly</a>
+        <a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+        <a href="54-concurrency.html">54 Concurrency</a>
+        <a href="55-tasks.html">55 Tasks</a>
+        <a href="56-spawn.html">56 Spawn</a>
+        <a href="57-await.html">57 Await and Task Outcomes</a>
+        <a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+        <a href="59-cancellation.html" class="active">59 Cancellation and Context</a>
+        <a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+        <a href="61-channels-select.html">61 Channels and Select</a>
+        <a href="62-events.html">62 Events</a>
+        <a href="63-mutexes.html">63 Mutexes and Locks</a>
+        <a href="64-atomics.html">64 Atomics and Memory Order</a>
+        <a href="65-processes.html">65 Processes and Command</a>
+        <a href="66-ipc.html">66 Inter-Process Communication</a>
+        <a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+        <a href="68-testing.html">68 Testing</a>
+        <a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+        <a href="70-formatting.html">70 Formatting</a>
+        <a href="71-diagnostics.html">71 Diagnostics</a>
+        <a href="72-lsp.html">72 Editor and Language Server</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="stdlib.html">Standard Library</a>
+        <a href="syntax-reference.html">Syntax Reference</a>
+        <a href="best-practices.html">Best Practices</a>
+
+        <div class="sidebar-section">Status</div>
+        <a href="test-status.html">Implementation Status</a>
+
+        <div class="sidebar-section">Community</div>
+        <a href="bug-report.html">Report a Bug</a>
+        <a href="join.html">Join</a>
+
+    
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb"><a href="index.html">Sec Manual</a> / Cancellation and Context</div>
+
+        <h1 id="cancellation">Cancellation and Context</h1>
+
+        <p>
+            Cancellation in Sec is cooperative. One execution entity may request that another stop,
+            but safe Sec code is not torn down at an arbitrary instruction. Cancellation becomes
+            terminal only when the target execution observes the request and commits cancellation at
+            an explicit check or a cancellation-aware operation boundary.
+        </p>
+
+        <p>
+            Sec deliberately separates two related but different mechanisms. <em>Execution
+            cancellation</em> applies to the current <code>Task[T]</code> or <code>Thread[T]</code>.
+            <em>Context cancellation</em> is an operation-local capability used to propagate a
+            cancellable branch and optional deadline through APIs without granting a callee authority
+            to cancel its caller's execution identity.
+        </p>
+
+        <div class="rule">
+            <strong>Core rule:</strong> <code>RequestCancel()</code> requests cooperative
+            cancellation. It does not consume a lifecycle handle and does not mean the target has
+            already stopped. Terminal cancellation is a separate committed control-flow event.
+        </div>
+
+        <section id="purpose">
+            <h2>Purpose</h2>
+
+            <p>
+                Concurrent code needs a way to stop work that is no longer required without losing
+                ownership, skipping cleanup or introducing unsafe asynchronous teardown. Sec's
+                cancellation model therefore preserves deterministic destruction and explicit
+                lifecycle ownership while still allowing waits and long-running operations to react
+                to cancellation requests.
+            </p>
+
+            <p>The model covers:</p>
+
+            <ul>
+                <li>requesting cancellation of tasks and threads;</li>
+                <li>observing cancellation on the current logical task or physical thread;</li>
+                <li>the terminating <code>cancel</code> statement;</li>
+                <li>cancellation-aware operation commit races;</li>
+                <li>compiler-inferred requirements for cancellable execution;</li>
+                <li><code>Context</code>, <code>ContextSource</code> and deadlines;</li>
+                <li>deterministic cleanup and memory visibility.</li>
+            </ul>
+        </section>
+
+        <section id="cooperative">
+            <h2>Cooperative Cancellation</h2>
+
+            <p>
+                A cancellation request is state, not an asynchronous exception. Safe Sec does not
+                destroy a task or thread merely because another execution called
+                <code>RequestCancel()</code>.
+            </p>
+
+            <p>The target may react through:</p>
+
+            <ul>
+                <li>an explicit <code>CancelRequested</code> check followed by <code>cancel</code>;</li>
+                <li>a cancellation-aware wait such as <code>await</code>, lock acquisition or a channel wait;</li>
+                <li>another operation whose rulebook defines a cancellation commit boundary.</li>
+            </ul>
+
+            <p>
+                Cancellation is distinct from a normal return, <code>Err(E)</code>, panic, hard thread
+                termination, process termination and hardware reset. A timeout on one operation is
+                also not automatically terminal cancellation of the task or thread that performed it.
+            </p>
+        </section>
+
+        <section id="identities">
+            <h2>Task and Thread Identity</h2>
+
+            <p>
+                Sec supports cooperative cancellation for two execution identities:
+            </p>
+
+            <pre><code>Task[T]
+Thread[T]</code></pre>
+
+            <p>
+                A task is a logical Sec execution identity. A thread is a physical/native execution
+                identity. They remain distinct even when a task currently runs on that thread.
+            </p>
+
+            <p>
+                Task migration does not change task cancellation identity. Likewise, cancelling a
+                task must not implicitly cancel its executor thread, and cancelling a physical thread
+                must not silently rewrite the cancellation state of a logical task running on it.
+            </p>
+        </section>
+
+        <section id="request-cancel">
+            <h2>RequestCancel()</h2>
+
+            <p>
+                Both owning handle types expose the same cancellation request operation:
+            </p>
+
+            <pre><code>impl Task[T] {
+    fn RequestCancel() void
+}
+
+impl Thread[T] {
+    fn RequestCancel() void
+}</code></pre>
+
+            <p><code>RequestCancel()</code> is:</p>
+
+            <ul>
+                <li>cooperative;</li>
+                <li>idempotent;</li>
+                <li>non-consuming;</li>
+                <li>a no-op after terminal completion.</li>
+            </ul>
+
+            <pre><code>let worker := try spawn Work()
+worker.RequestCancel()
+let outcome := await worker</code></pre>
+
+            <p>
+                Requesting cancellation does not resolve the lifecycle obligation. An owning task or
+                thread handle must still be awaited, joined, detached or transferred according to the
+                owning lifecycle rules.
+            </p>
+        </section>
+
+        <section id="current">
+            <h2>Current Execution Contexts</h2>
+
+            <p>
+                Current-execution observation deliberately mirrors the two execution identities:
+            </p>
+
+            <pre><code>Task.Current().CancelRequested
+Thread.Current().CancelRequested</code></pre>
+
+            <p>The compiler-known views are:</p>
+
+            <pre><code>type TaskContext
+
+type ThreadContext</code></pre>
+
+            <p>
+                <code>TaskContext</code> is a non-owning view of the current logical task;
+                <code>ThreadContext</code> is a non-owning view of the current physical thread. Neither
+                view grants lifecycle ownership or cancellation authority over an owning handle.
+            </p>
+
+            <p>
+                <code>Task.Current()</code> is valid only where a logical task context exists.
+                <code>Thread.Current()</code> additionally depends on the selected target/profile
+                having a physical-thread context. The compiler must not fabricate one from the other.
+            </p>
+        </section>
+
+        <section id="cancel-statement">
+            <h2>The cancel Statement</h2>
+
+            <p>The complete Sec 0.1 source syntax is:</p>
+
+            <pre><code>cancel</code></pre>
+
+            <p>
+                <code>cancel</code> is a terminating statement, not an expression. It commits terminal
+                cooperative cancellation of the current cancellable execution entity.
+            </p>
+
+            <p>
+                If a logical task exists, bare <code>cancel</code> terminates that task. Otherwise, in
+                an explicit cancellable physical thread callable, it terminates that thread. Task
+                identity therefore takes precedence when task code is running on a worker thread.
+            </p>
+
+            <pre><code>if Task.Current().CancelRequested {
+    cancel
+}</code></pre>
+
+            <p>
+                Merely reading <code>CancelRequested</code> does not terminate execution. Code may
+                observe the request, perform bounded cleanup or bookkeeping, and execute
+                <code>cancel</code> when it is ready to commit terminal cancellation.
+            </p>
+        </section>
+
+        <section id="cleanup">
+            <h2>Cancellation Cleanup</h2>
+
+            <p>
+                Terminal cooperative cancellation follows ordinary deterministic cleanup rules.
+                Active <code>defer</code> blocks run, owned values are destroyed and resources release
+                through their normal ownership paths.
+            </p>
+
+            <p>
+                A live <code>MutexGuard[T]</code> owned by the cancelling execution must therefore be
+                destroyed and release its lock before terminal cancellation completes.
+            </p>
+
+            <div class="rule">
+                <strong>Rule:</strong> <code>cancel</code> is invalid inside <code>defer</code>. Cleanup
+                code may not recursively replace the terminal control flow already performing that
+                cleanup.
+            </div>
+
+            <p>
+                Cancellation does not fabricate a normal result value and does not become an
+                <code>Err(E)</code> merely because the callable's declared return type is
+                <code>Result[T, E]</code>.
+            </p>
+        </section>
+
+        <section id="effect">
+            <h2>Inferred Cancellation Requirement</h2>
+
+            <p>
+                Sec 0.1 has a compiler-inferred semantic effect meaning that a callable requires a
+                current cancellable execution context. There is no required source annotation such as
+                <code>@cancellable</code>.
+            </p>
+
+            <pre><code>fn Inner() void {
+    cancel
+}
+
+fn Outer() void {
+    Inner()
+}</code></pre>
+
+            <p>
+                Both functions require current cancellable execution. The requirement propagates
+                transitively through the semantic call graph, recursion, generic instantiation and
+                indirect callable values. Storing a cancellation-dependent function in a function
+                value must not erase the requirement.
+            </p>
+
+            <p>
+                <code>Task.Current()</code> carries the more specific requirement that a current
+                logical task exists. <code>Thread.Current()</code> instead carries a physical-thread
+                capability requirement.
+            </p>
+        </section>
+
+        <section id="cancellation-points">
+            <h2>Cancellation Points</h2>
+
+            <p>
+                A cancellation point is an operation boundary where pending current-execution
+                cancellation may compete with the operation's own normal commit.
+            </p>
+
+            <p>Examples include:</p>
+
+            <ul>
+                <li><code>await</code>;</li>
+                <li>cancellation-aware join;</li>
+                <li>blocking channel send/receive;</li>
+                <li>waiting <code>select</code>;</li>
+                <li>mutex acquisition;</li>
+                <li>timer and I/O waits;</li>
+                <li>runtime/task yield where the owning rule defines cancellation awareness;</li>
+                <li>target-declared interruptible waits.</li>
+            </ul>
+
+            <p>
+                Each owning rulebook defines exactly what counts as a successful operation commit.
+                Cancellation does not invent a generic fallback result for every operation.
+            </p>
+        </section>
+
+        <section id="commit">
+            <h2>Commit Races</h2>
+
+            <p>
+                Every cancellation-aware operation must resolve to exactly one committed source-level
+                outcome.
+            </p>
+
+            <ul>
+                <li>If cancellation commits first, no partial operation result or ownership transfer may remain.</li>
+                <li>If the operation commits first, its result and ownership effects are real.</li>
+                <li>A later cancellation observation must not roll back a committed operation.</li>
+                <li>Runtime wakeup races must not produce both outcomes.</li>
+                <li>Runtime wakeup races must not lose both outcomes and abandon ownership/state.</li>
+            </ul>
+
+            <p>
+                This first-commit discipline is the common rule used by await, select, channels,
+                mutex acquisition and other waits.
+            </p>
+        </section>
+
+        <section id="await-join">
+            <h2>Await and Join</h2>
+
+            <p>
+                Cancellation of the waiting execution is different from cancellation of the execution
+                being awaited or joined.
+            </p>
+
+            <p>
+                For consuming <code>await</code>, the await rulebook defines the stronger cleanup rule:
+                if caller cancellation wins before await commit, await retains lifecycle ownership,
+                requests cancellation of the child, waits for a terminal child outcome, destroys that
+                outcome exactly once and only then allows caller cancellation to complete.
+            </p>
+
+            <p>
+                Join remains distinct because it preserves the owning handle. Cancellation must not
+                lose that handle in a completion/cancellation race.
+            </p>
+        </section>
+
+        <section id="channels-select">
+            <h2>Channels and Select</h2>
+
+            <p>
+                Cancellation must never partially transfer a channel message. If cancellation wins
+                before channel commit, ownership remains according to the channel's pre-commit state.
+                If the channel operation commits first, its exact send/receive result and ownership
+                changes remain committed.
+            </p>
+
+            <p>
+                For <code>select</code>, a cancellation winner before branch commit means that no
+                branch may consume ownership, no message may transfer, no task/thread result may be
+                consumed and losing registrations must be removed.
+            </p>
+
+            <p>
+                Sec 0.1 channel APIs do not implicitly read a lexical <code>Context</code>. Channel
+                wait timeouts are composed explicitly through <code>select</code> and <code>after</code>.
+            </p>
+        </section>
+
+        <section id="mutex">
+            <h2>Mutex Acquisition</h2>
+
+            <p>
+                Ordinary <code>Mutex[T].Lock()</code> acquisition and current-execution cancellation
+                compete at the acquisition boundary.
+            </p>
+
+            <ul>
+                <li>If cancellation commits first, no <code>MutexGuard[T]</code> exists.</li>
+                <li>If acquisition commits first, the caller owns the guard.</li>
+                <li>If cancellation follows, deterministic cleanup releases the acquired guard.</li>
+            </ul>
+
+            <p>
+                A Context-aware lock additionally has a separate operation-local Context outcome. That
+                does not merge Context cancellation with current task/thread cancellation.
+            </p>
+        </section>
+
+        <section id="memory">
+            <h2>Memory Semantics</h2>
+
+            <p>
+                Cancellation request state must be safely observable and data-race-free. The compiler
+                and runtime may use atomics or another target primitive internally, but the source
+                semantics remain the same.
+            </p>
+
+            <p>
+                A cancellation request does <strong>not</strong> automatically publish unrelated
+                application data. Shared mutable data still requires a mutex, atomic, channel,
+                completion synchronization or another canonical happens-before relation.
+            </p>
+        </section>
+
+        <section id="context-model">
+            <h2>Context Model</h2>
+
+            <p>
+                <code>Context</code> is a separate capability model for operation-local cancellation
+                and deadlines. Sec separates observation/propagation from cancellation authority.
+            </p>
+
+            <ul>
+                <li><code>Context</code> is the observation and propagation capability.</li>
+                <li><code>ContextSource</code> owns cancellation authority for one derived branch.</li>
+                <li>A callee receiving only <code>ref Context</code> cannot cancel its caller's branch.</li>
+                <li>Context termination does not itself terminally cancel the current task or thread.</li>
+            </ul>
+        </section>
+
+        <section id="context-types">
+            <h2>Context Types</h2>
+
+            <p>The canonical source-visible types are:</p>
+
+            <pre><code>enum ContextError error {
+    // Explicit or inherited Context cancellation committed first.
+    Cancelled
+
+    // The effective Context deadline expired first.
+    DeadlineExceeded
+}
+
+@noCopy
+type Context
+
+@noCopy
+type ContextSource</code></pre>
+
+            <p>
+                <code>Context</code> may be owned as a standalone value, moved to another owner and
+                borrowed as <code>ref Context</code>. It does not grant cancellation authority.
+            </p>
+
+            <p>
+                <code>ContextSource</code> owns exactly one child Context, cancellation authority for
+                that branch and the associated deadline/timer/cancellation registrations. A child
+                Context owned by a source cannot be moved out of it.
+            </p>
+        </section>
+
+        <section id="context-api">
+            <h2>Context API</h2>
+
+            <p>The canonical public surface is:</p>
+
+            <pre><code>impl Context {
+    static fn Background() Context
+
+    fn WithCancel() ContextSource
+    fn WithTimeout(timeout: duration) ContextSource
+    fn WithDeadline(deadline: Instant) ContextSource
+
+    IsCancelled bool
+    Error Option[ContextError]
+    Deadline Option[Instant]
+}
+
+impl ContextSource {
+    Context ref Context
+
+    fn Cancel() void
+}</code></pre>
+
+            <p>
+                <code>Context</code> intentionally has no <code>Cancel()</code> method. Cancellation
+                authority remains with <code>ContextSource</code>. Its <code>Context</code> property is
+                borrowed access to the child and has static type <code>ref Context</code>.
+            </p>
+
+            <p>
+                <code>ContextSource.Cancel()</code> is idempotent. It changes the still-existing child
+                Context to its terminal cancellation state when cancellation wins, but it does not
+                destroy either the Context or the source.
+            </p>
+        </section>
+
+        <section id="context-hierarchy">
+            <h2>Context Hierarchy</h2>
+
+            <p>
+                Parent cancellation propagates downward to still-existing descendants. Cancellation
+                does not propagate upward, and cancelling one child branch does not automatically
+                cancel sibling branches.
+            </p>
+
+            <pre><code>let root := Context.Background()
+let request := root.WithCancel()
+let database := request.Context.WithTimeout(2<s>)</code></pre>
+
+            <p>
+                A derived <code>ContextSource</code> depends on its parent Context lifetime and cannot
+                outlive that parent. This keeps the cancellation tree and borrowed Context identities
+                deterministic under ordinary ownership rules.
+            </p>
+        </section>
+
+        <section id="deadlines">
+            <h2>Deadlines and Timeouts</h2>
+
+            <p>
+                Context timeouts use Sec's existing lowercase <code>duration</code> type. Absolute
+                deadlines use <code>Instant</code>.
+            </p>
+
+            <pre><code>let child := parent.WithTimeout(5<s>)
+let deadlineChild := parent.WithDeadline(deadline)</code></pre>
+
+            <p>
+                A child cannot have an effective deadline later than an earlier parent deadline.
+                <code>WithTimeout</code> derives a monotonic deadline from the current monotonic time,
+                then applies the parent bound.
+            </p>
+
+            <p>
+                A Context has exactly one committed terminal cause: <code>Cancelled</code> or
+                <code>DeadlineExceeded</code>. Whichever commits first remains the immutable
+                <code>Context.Error</code>; a later cancellation or deadline expiry does not rewrite it.
+            </p>
+        </section>
+
+        <section id="context-vs-execution">
+            <h2>Context vs Execution Cancellation</h2>
+
+            <p>
+                Passing <code>ref Context</code> to an operation does not make that Context the current
+                task or thread cancellation identity.
+            </p>
+
+            <p>
+                If a Context-aware operation sees its supplied Context cancel first, it returns or
+                propagates <code>ContextError.Cancelled</code>. If the effective deadline wins, it
+                returns or propagates <code>ContextError.DeadlineExceeded</code>. Neither event by
+                itself terminally cancels the current task or thread.
+            </p>
+
+            <p>
+                Current-execution cancellation remains independently active and, when it wins at a
+                cancellation point, follows terminal execution cancellation cleanup rather than being
+                converted into a <code>ContextError</code>.
+            </p>
+        </section>
+
+        <section id="ownership">
+            <h2>Ownership and Lifetimes</h2>
+
+            <p>
+                Both <code>Context</code> and <code>ContextSource</code> are <code>@noCopy</code>.
+                Standalone Context values move according to ordinary Sec ownership rules. The child
+                Context inside a source is borrow-only outside that source.
+            </p>
+
+            <pre><code>fn QueryDatabase(ctx: ref Context) Result[Data, DatabaseError] {
+    let query := ctx.WithTimeout(2<s>)
+    return ExecuteQuery(query.Context)
+}</code></pre>
+
+            <p>
+                A function that only needs to observe or propagate Context should normally accept
+                <code>ref Context</code>. If it needs its own cancellation authority, it derives its
+                own child source instead of receiving authority over the parent's branch.
+            </p>
+
+            <p>
+                Destroying <code>ContextSource</code> destroys its child Context and associated
+                registrations according to ownership rules. Destruction itself is not a cancellation
+                event and must not synthesize <code>ContextError.Cancelled</code>.
+            </p>
+        </section>
+
+        <section id="target">
+            <h2>Target and Runtime Requirements</h2>
+
+            <p>
+                The selected <code>CompilationPlan</code> determines how cooperative cancellation,
+                wakeups, timers and waiting operations are implemented. A target may use atomics,
+                scheduler state, RTOS primitives, native thread facilities or another mechanism as
+                long as the same Sec semantics are preserved.
+            </p>
+
+            <p>
+                Target/runtime choices must preserve data-race-free request observation, exactly-one
+                commit at cancellation points, deterministic cleanup and exactly-one terminal Context
+                cause. Unsupported target capabilities are diagnosed through target validation rather
+                than by changing the source type model.
+            </p>
+        </section>
+
+        <section id="tooling">
+            <h2>Diagnostics and Tooling</h2>
+
+            <p>Useful diagnostics include:</p>
+
+            <pre><code>cancel is not valid inside defer cleanup
+
+call to ProcessBatch requires a current cancellable task or thread execution context
+
+ContextSource.Context is borrowed from its ContextSource and cannot be moved out
+
+Context does not grant cancellation authority; cancel the owning ContextSource instead</code></pre>
+
+            <p>
+                Tooling should preserve the symmetric Task/Thread API names while still showing their
+                distinct identities. LSP hover and completion should expose the canonical
+                <code>RequestCancel()</code>, <code>CancelRequested</code>, <code>ContextError</code> and
+                Context surfaces from compiler/Sema facts rather than maintaining a parallel model.
+            </p>
+        </section>
+
+        <section id="status">
+            <h2>Implementation Status</h2>
+
+            <p>
+                The cancellation rulebook is normative revision 2.0. The current implementation is
+                partial and is tracked in <code>governance/concurrency_cancellation.yaml</code>.
+            </p>
+
+            <p>Implemented today:</p>
+
+            <ul>
+                <li><code>Task[T]</code> and <code>Thread[T]</code> expose compiler-known <code>RequestCancel()</code>.</li>
+                <li>The call has the exact zero-argument, <code>void</code>, idempotent, non-consuming surface.</li>
+                <li>Sema and LSP preserve the canonical member identity and hover/completion information.</li>
+            </ul>
+
+            <p>Still planned or incomplete:</p>
+
+            <ul>
+                <li><code>Task.Current()</code> and full <code>TaskContext</code> cancellation observation;</li>
+                <li>full synchronization of <code>Thread.Current()</code>/<code>ThreadContext</code>;</li>
+                <li>runtime cancellation state, wakeups and cancellation-point commit races;</li>
+                <li>deterministic runtime cancellation cleanup and terminal outcome publication;</li>
+                <li>compiler-inferred cancellation effects through the complete call graph;</li>
+                <li>the complete <code>Context</code>/<code>ContextSource</code>/<code>ContextError</code> subsystem;</li>
+                <li>Semantic IR and target/runtime lowering for cancellation.</li>
+            </ul>
+        </section>
+
+        <section id="best-practices">
+            <h2>Best Practices</h2>
+
+            <ul>
+                <li>Treat <code>RequestCancel()</code> as a request, not proof that the target has stopped.</li>
+                <li>Resolve lifecycle ownership after requesting cancellation.</li>
+                <li>Use <code>Task.Current()</code> for logical task cancellation and <code>Thread.Current()</code> for physical thread cancellation.</li>
+                <li>Use <code>cancel</code> only to commit terminal cancellation of the current execution.</li>
+                <li>Do not use <code>cancel</code> inside <code>defer</code>.</li>
+                <li>Do not treat Context cancellation as terminal current-execution cancellation.</li>
+                <li>Pass <code>ref Context</code> when a callee needs observation/propagation but not cancellation authority.</li>
+                <li>Derive a child <code>ContextSource</code> when a callee needs to cancel its own branch.</li>
+                <li>Use <code>duration</code> and <code>Instant</code> for timeout/deadline APIs; do not invent another duration type.</li>
+                <li>Remember that cancellation-state publication does not synchronize unrelated mutable application data.</li>
+                <li>At cancellation points, reason in terms of operation commit versus cancellation commit, never partial success.</li>
+            </ul>
+        </section>
+
+        <section id="summary">
+            <h2>Summary</h2>
+
+            <ul>
+                <li>Cancellation in Sec is cooperative and never arbitrary safe-code teardown.</li>
+                <li><code>Task[T]</code> and <code>Thread[T]</code> expose non-consuming, idempotent <code>RequestCancel()</code>.</li>
+                <li>Task and thread cancellation identities remain distinct.</li>
+                <li><code>Task.Current().CancelRequested</code> observes logical task cancellation.</li>
+                <li><code>Thread.Current().CancelRequested</code> observes physical thread cancellation.</li>
+                <li><code>cancel</code> terminally cancels the current task when one exists, otherwise an eligible explicit thread.</li>
+                <li>Terminal cancellation runs ordinary defer/destruction cleanup.</li>
+                <li>Cancellation requirements are compiler-inferred and propagate transitively through callables.</li>
+                <li>Cancellation-aware waits use an exactly-one commit discipline.</li>
+                <li>Operation success cannot be rolled back after commit, and cancellation cannot leave partial ownership transfer.</li>
+                <li>Context is an operation-local cancellation/deadline capability, not the current execution identity.</li>
+                <li><code>Context</code> grants observation/propagation; <code>ContextSource</code> grants cancellation authority.</li>
+                <li><code>ContextError</code> is exactly <code>Cancelled</code> or <code>DeadlineExceeded</code>.</li>
+                <li>Context terminal cause is first-wins and immutable.</li>
+                <li>Parent Context cancellation propagates downward, never upward.</li>
+                <li>Both Context and ContextSource are <code>@noCopy</code>.</li>
+                <li>The child Context owned by ContextSource is borrowed through <code>ContextSource.Context</code>.</li>
+                <li>Cancellation requests and Context state are safely observable but do not publish unrelated program data.</li>
+                <li>The normative model is complete; current implementation support remains partial.</li>
+            </ul>
+        </section>
+
+        <div class="page-navigation">
+            <a href="58-threads.html">Previous: Threads and Thread-Local Storage</a>
+            <a href="60-scheduling.html">Next: Scheduling, Blocking and Structured Concurrency</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Document revision 1.0 &middot; 2026-09-21</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

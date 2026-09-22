@@ -1358,6 +1358,38 @@ func (a *Analyzer) validateGenericParameterConstraints(parameters []*ast.Generic
 	}
 }
 
+// resolvedGenericParameterConstraints retains valid interface constraints on a
+// generic callable template for rechecking after explicit or inferred concrete
+// substitution. Invalid declarations are diagnosed by
+// validateGenericParameterConstraints and are not duplicated here.
+//
+// Rules:
+//   - rules/declarations/generics.md — §11 "Constraints"
+//   - rules/declarations/generics.md — §13 "Constraint resolution"
+//   - rules/declarations/generics.md — §33 "Sema requirements"
+func (a *Analyzer) resolvedGenericParameterConstraints(parameters []*ast.GenericParameter) []GenericConstraint {
+	constraints := make([]GenericConstraint, 0, len(parameters))
+	for _, parameter := range parameters {
+		if parameter == nil || parameter.Name == nil || parameter.Constraint == nil {
+			continue
+		}
+		base, exists := a.types[a.resolveTypeName(parameter.Constraint.Name)]
+		if !exists || base.Kind != InterfaceType {
+			continue
+		}
+		constraint, ok := a.resolveType(parameter.Constraint)
+		if !ok || constraint.Kind != InterfaceType {
+			continue
+		}
+		constraints = append(constraints, GenericConstraint{
+			Parameter: parameter.Name.Value,
+			Interface: constraint,
+			Token:     parameter.Constraint.Token,
+		})
+	}
+	return constraints
+}
+
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 	// Register the single primary impl for each target first. Extension validity
 	// must not depend on which source file was appended to the module program
@@ -2570,6 +2602,9 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	// Legality and outstanding borrow/defer obligations are still checked
 	// before accepting the no-op or conditionally required destruction.
 	if place, ok := a.resolvePlace(stmt.Value); ok {
+		if a.rejectOrdinaryMethodWholeSelfConsumption(place, expressionToken(stmt.Value)) {
+			return
+		}
 		if _, _, partial, unavailable := a.unavailablePlace(place); unavailable && !partial {
 			if !a.validateExplicitDiscardType(place.Type, expressionToken(stmt.Value)) {
 				return
@@ -2798,8 +2833,10 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	elseReachable := true
 	if isBoolLiteral(stmt.Condition, true) {
 		elseReachable = false
+		a.diagnoseConstantConditionUnreachableBlock(stmt.Alternative, "branch")
 	} else if isBoolLiteral(stmt.Condition, false) {
 		thenReachable = false
+		a.diagnoseConstantConditionUnreachableBlock(stmt.Consequence, "branch")
 	} else if availabilityTest != nil && availabilityTest.StaticallyKnown {
 		thenReachable = availabilityTest.Value
 		elseReachable = !availabilityTest.Value
@@ -3204,6 +3241,9 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
 			a.addErrorAtToken(expressionToken(stmt.Condition), "while condition must be bool, got %s", typeDisplayName(conditionType))
+		}
+		if isBoolLiteral(stmt.Condition, false) {
+			a.diagnoseConstantConditionUnreachableBlock(stmt.Body, "loop body")
 		}
 	}
 
@@ -3930,6 +3970,18 @@ func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 }
 
 func (a *Analyzer) checkMutexGuardsAcrossSelect(token lexer.Token) {
+	a.checkLiveMutexGuardsAcrossBoundary(token, "select")
+}
+
+// checkLiveMutexGuardsAcrossBoundary enforces suspension/blocking boundaries
+// for compiler-known MutexGuard[T] bindings. A guard explicitly consumed before
+// the boundary no longer holds the acquisition and therefore does not diagnose.
+//
+// Rules:
+//   - rules/concurrency/mutex.md — §41 "Await while holding a guard"
+//   - rules/concurrency/await.md — §42 "Mutex guards across await"
+//   - rules/concurrency/select.md — "Mutex guards across select"
+func (a *Analyzer) checkLiveMutexGuardsAcrossBoundary(token lexer.Token, boundary string) {
 	for name, symbol := range a.symbols {
 		if !isMutexGuardType(symbol.Type) {
 			continue
@@ -3937,7 +3989,7 @@ func (a *Analyzer) checkMutexGuardsAcrossSelect(token lexer.Token) {
 		if _, moved := a.moved[name]; moved {
 			continue
 		}
-		a.addErrorAtTokenWithPrevious(token, symbol.Token, "mutex guard %s remains active across select", name)
+		a.addErrorAtTokenWithPrevious(token, symbol.Token, "mutex guard %s remains active across %s", name, boundary)
 	}
 }
 
@@ -4779,16 +4831,17 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	}
 	a.recordDefinition(fn.Name.Token)
 	function := Function{
-		Name:              name,
-		Module:            a.currentModule,
-		GenericParameters: genericParameterNameValues(fn.GenericParameters),
-		Token:             fn.Name.Token,
-		Extern:            fn.Extern,
-		Unsafe:            fn.Unsafe,
-		Static:            fn.Static,
-		ABI:               fn.ABI,
-		LinkName:          fn.LinkName,
-		AllocationEffect:  AllocationEffectNone,
+		Name:               name,
+		Module:             a.currentModule,
+		GenericParameters:  genericParameterNameValues(fn.GenericParameters),
+		GenericConstraints: a.resolvedGenericParameterConstraints(fn.GenericParameters),
+		Token:              fn.Name.Token,
+		Extern:             fn.Extern,
+		Unsafe:             fn.Unsafe,
+		Static:             fn.Static,
+		ABI:                fn.ABI,
+		LinkName:           fn.LinkName,
+		AllocationEffect:   AllocationEffectNone,
 	}
 	if a.currentImplTarget != "" {
 		function.ImplTarget = a.currentImplTarget
@@ -5744,22 +5797,23 @@ func (a *Analyzer) blockWritesTargetMember(block *ast.BlockStatement, target Typ
 func (a *Analyzer) statementWritesTargetMember(stmt ast.Statement, target Type, memberNames map[string]bool, shadowed map[string]bool) bool {
 	switch stmt := stmt.(type) {
 	case *ast.LetStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
+		return stmt.Ownership == ast.OwnershipMove && isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
 	case *ast.LetGroupStatement:
 		for _, let := range stmt.Lets {
-			if let != nil && a.expressionCallsMutableTargetMethod(let.Value, target) {
+			if let != nil && (let.Ownership == ast.OwnershipMove && isSelfMemberProjection(let.Value) || a.expressionCallsMutableTargetMethod(let.Value, target)) {
 				return true
 			}
 		}
 		return false
 	case *ast.AssignmentStatement:
-		return assignmentTargetUsesSelf(stmt.Target) || assignmentTargetUsesUnshadowedMember(stmt.Target, memberNames, shadowed) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
+		return assignmentTargetUsesSelf(stmt.Target) || assignmentTargetUsesUnshadowedMember(stmt.Target, memberNames, shadowed) ||
+			stmt.Ownership == ast.OwnershipMove && isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
 	case *ast.TryAssignmentStatement:
 		return stmt.Assignment != nil && a.statementWritesTargetMember(stmt.Assignment, target, memberNames, shadowed)
 	case *ast.ExpressionStatement:
 		return a.expressionCallsMutableTargetMethod(stmt.Expression, target)
 	case *ast.DiscardStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
+		return isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
 	case *ast.AssertStatement:
 		return a.expressionCallsMutableTargetMethod(stmt.Condition, target)
 	case *ast.ReturnStatement:
@@ -5808,6 +5862,9 @@ func (a *Analyzer) expressionCallsMutableTargetMethod(expr ast.Expression, targe
 	case nil, *ast.Identifier, *ast.IntegerLiteral, *ast.FloatLiteral, *ast.BooleanLiteral, *ast.CharLiteral, *ast.StringLiteral:
 		return false
 	case *ast.PrefixExpression:
+		if expr.Operator == "<-" && isSelfMemberProjection(expr.Right) {
+			return true
+		}
 		return a.expressionCallsMutableTargetMethod(expr.Right, target)
 	case *ast.InfixExpression:
 		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Right, target)
@@ -9175,7 +9232,7 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 			a.addErrorAtToken(field.Type.Token, "bare slice type %s must be used behind ref", typeDisplayName(fieldType))
 			continue
 		}
-		if field.Contract != nil {
+		if field.Contract != nil && !a.rejectStorageSiteContract(field.Contract, "field", name+"."+field.Name.Value) {
 			a.checkContractLiteralBounds(fieldType, field.Contract)
 			fieldType = a.applyContracts(fieldType, field.Contract)
 		}
@@ -10353,6 +10410,90 @@ func hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, requ
 	return false
 }
 
+// hasValidExplicitInterfaceConformance reports whether a concrete substituted
+// type has an explicit implements path to the required interface and the
+// declared conformance is valid. Merely possessing structurally matching
+// members never satisfies a generic constraint.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/interfaces.md — §4 "Explicit conformance"
+//   - rules/declarations/interfaces.md — §5 "Interface inheritance"
+//   - rules/declarations/interfaces.md — §6 "Conformance requirements"
+func (a *Analyzer) hasValidExplicitInterfaceConformance(argument Type, required Type) bool {
+	concrete := dereferenceType(argument)
+	if concrete.Kind == InterfaceType {
+		return interfaceIncludesConstraint(concrete, required, map[string]bool{})
+	}
+	for _, declared := range concrete.Implements {
+		if !interfaceIncludesConstraint(declared, required, map[string]bool{}) {
+			continue
+		}
+		if a.typeSatisfiesInterfaceRequirements(concrete, declared) {
+			return true
+		}
+	}
+	return false
+}
+
+// interfaceIncludesConstraint follows explicit interface inheritance when a
+// child interface is used to satisfy a parent generic constraint.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/interfaces.md — §5 "Interface inheritance"
+func interfaceIncludesConstraint(candidate Type, required Type, visiting map[string]bool) bool {
+	if sameConcreteType(candidate, required) {
+		return true
+	}
+	identity := canonicalTypeIdentity(candidate)
+	if visiting[identity] {
+		return false
+	}
+	visiting[identity] = true
+	defer delete(visiting, identity)
+	for _, parent := range candidate.Implements {
+		if interfaceIncludesConstraint(parent, required, visiting) {
+			return true
+		}
+	}
+	return false
+}
+
+// typeSatisfiesInterfaceRequirements performs the non-diagnostic half of
+// ordinary conformance validation so a malformed explicit implements clause
+// cannot satisfy a generic substitution.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/interfaces.md — §6 "Conformance requirements"
+func (a *Analyzer) typeSatisfiesInterfaceRequirements(typ Type, iface Type) bool {
+	for _, required := range iface.InterfaceMethods {
+		if !hasCompatibleInterfaceMethod(typ, iface, a.functions[typ.Name+"."+required.Name], required) {
+			return false
+		}
+	}
+	for _, required := range iface.InterfaceProperties {
+		property, ok := lookupProperty(typ, required.Name)
+		if !ok || !sameConcreteType(property.Type, required.Type) || property.Static != required.Static {
+			return false
+		}
+		if required.RequiresGet && !property.HasGetter {
+			return false
+		}
+		if required.RequiresSet && (!property.HasSetter || property.Fallible != required.SetterFallible) {
+			return false
+		}
+	}
+	for _, required := range iface.InterfaceEvents {
+		event, ok := lookupEvent(typ, required.Name)
+		if !ok || !sameConcreteType(event.Payload, required.Payload) {
+			return false
+		}
+	}
+	return true
+}
+
 func compatibleInterfaceMethodSignature(method Function, required Function) bool {
 	methodParams := explicitInterfaceComparableParameters(method.Parameters)
 	requiredParams := explicitInterfaceComparableParameters(required.Parameters)
@@ -10751,6 +10892,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 			a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
 			return Type{Kind: InvalidType}, false
 		}
+		if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
+			return Type{Kind: InvalidType}, false
+		}
 		return targetType, true
 	case *ast.CallExpression:
 		if typ, ok := a.inferPropertyBodyCallAsConversion(target, setter, setterType, expr); ok {
@@ -10859,6 +11003,9 @@ func (a *Analyzer) inferPropertyBodyCallAsConversion(target Type, setter *ast.Pr
 	if targetType.Kind == RegisterType && isIntegerType(valueType) {
 		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Arguments[0]), true
 	}
+	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, true
+	}
 	return targetType, true
 }
 
@@ -10934,6 +11081,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 	var declaredType Type
 	var ok bool
+	inlineContract := a.rejectStorageSiteContract(stmt.Contract, "variable", stmt.Name.Value)
 
 	if stmt.Type != nil && stmt.Type.UnitOnly && stmt.Value != nil {
 		declaredType, ok = a.resolveUnitOnlyType(stmt.Type)
@@ -10943,7 +11091,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		declaredType, _ = a.inferExpression(stmt.Value)
 		ok = declaredType.Kind != InvalidType
 	}
-	if ok && stmt.Contract != nil {
+	if ok && stmt.Contract != nil && !inlineContract {
 		a.checkContractLiteralBounds(declaredType, stmt.Contract)
 		declaredType = a.applyContracts(declaredType, stmt.Contract)
 	}
@@ -11328,88 +11476,6 @@ func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
 	a.markMoveSource(stmt.Value)
 }
 
-func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value ast.Expression, token lexer.Token, declaration bool, inferredDeclaration bool) bool {
-	place, ok := a.resolvePlace(value)
-	if !ok {
-		if mode == ast.OwnershipMove {
-			a.addErrorAtToken(token, "explicit move requires a reusable source place")
-			return false
-		}
-		return true
-	}
-	if a.variadicPackElementExpression(value) && (mode == ast.OwnershipMove || requiresOwnershipTransfer(place.Type)) {
-		// rules/declarations/functions.md section 34: no direct or partial
-		// move may extract an element from the invocation-lifetime pack.
-		a.addErrorAtToken(expressionToken(value), "cannot move element out of variadic parameter pack")
-		return false
-	}
-	if _, _, _, unavailable := a.unavailablePlace(place); unavailable {
-		// inferExpression has already emitted the primary use-after-move error;
-		// do not apply ownership again and overwrite the original move site.
-		return false
-	}
-	if mode == ast.OwnershipMove {
-		if !place.Addressable {
-			a.addErrorAtToken(token, "explicit move requires an addressable source place")
-			return false
-		}
-		if _, isIndex := value.(*ast.IndexExpression); isIndex {
-			a.addErrorAtToken(token, "explicit indexed extraction is not implemented; move the containing value")
-			return false
-		}
-		if len(place.Projections) > 0 && !place.PartialMoveSafe {
-			a.addErrorAtToken(token, "partial move requires independently tracked local struct storage")
-			return false
-		}
-		return !a.checkBorrowedMovePlace(place, expressionToken(value))
-	}
-	classification := CopyClassificationOf(place.Type)
-	if classification == CopyTrivial || classification == CopySemantic {
-		return true
-	}
-	moveSyntax := "<-"
-	if declaration && inferredDeclaration {
-		moveSyntax = ":<-"
-	}
-	help := "use `destination <- source` to transfer ownership"
-	if declaration {
-		help = "use `let destination :<- source` to transfer ownership"
-	}
-	switch classification {
-	case CopyNonCopyable:
-		a.addErrorAtTokenWithMetadata(
-			expressionToken(value),
-			diagnostics.ImplicitMoveDisallowed,
-			help,
-			"%s value %s cannot be copied because %s; use explicit move syntax %s",
-			typeDisplayName(place.Type),
-			place.String(),
-			nonCopyableCause(place.Type),
-			moveSyntax,
-		)
-		return false
-	case CopyConditional:
-		a.addErrorAtTokenWithMetadata(
-			expressionToken(value),
-			diagnostics.ImplicitMoveDisallowed,
-			help,
-			"cannot copy value %s because generic copyability has not been proven; use explicit move syntax %s",
-			place.String(),
-			moveSyntax,
-		)
-		return false
-	}
-	a.addErrorAtTokenWithMetadata(
-		expressionToken(value),
-		diagnostics.ImplicitMoveDisallowed,
-		help,
-		"cannot copy move-only value %s; use explicit move syntax %s",
-		place.String(),
-		moveSyntax,
-	)
-	return false
-}
-
 func directNonCopyableField(typ Type) (string, Type, bool) {
 	for _, field := range typ.Fields {
 		if CopyClassificationOf(field.Type) == CopyNonCopyable {
@@ -11448,21 +11514,6 @@ func compilerKnownNonCopyable(typ Type) bool {
 	default:
 		return false
 	}
-}
-
-func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
-	place, ok := a.resolvePlace(expr)
-	if !ok {
-		return false
-	}
-	if a.checkBorrowedMovePlace(place, expressionToken(expr)) {
-		return false
-	}
-	a.markPlaceUnavailable(place, expressionToken(expr), "moved")
-	if len(place.Projections) == 0 && place.Type.Kind != ReferenceType {
-		a.endBorrowsHeldBy(place.Root)
-	}
-	return true
 }
 
 // analyzeIndexAssignmentStatement validates replacement through any resolved
@@ -13606,6 +13657,7 @@ func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expres
 	if expr.Value == nil {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	a.checkLiveMutexGuardsAcrossBoundary(expr.Token, "await")
 	valueType, _ := a.inferExpression(expr.Value)
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -14053,9 +14105,13 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	a.validateLambdaCaptureOwnership(expr)
+
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
+	previousMoved := a.moved
+	previousMoveReasons := a.moveReasons
 	previousFunctionName := a.currentFunctionName
 	previousFunctionReturn := a.currentFunctionReturn
 	previousInFunctionBody := a.inFunctionBody
@@ -14071,6 +14127,13 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	a.symbols = map[string]Symbol{}
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
+	a.moved = copyMoved(previousMoved)
+	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	for _, capture := range expr.Captures {
+		if capture.Name != nil {
+			clearRootPlaceStateMaps(a.moved, a.moveReasons, capture.Name.Value)
+		}
+	}
 	for name, symbol := range previousSymbols {
 		if symbol.Local {
 			captureCandidates[name] = symbol
@@ -14095,6 +14158,8 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
+		a.moved = previousMoved
+		a.moveReasons = previousMoveReasons
 		a.currentFunctionName = previousFunctionName
 		a.currentFunctionReturn = previousFunctionReturn
 		a.inFunctionBody = previousInFunctionBody
@@ -15637,6 +15702,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
 		return targetType, expressionValue{Display: expr.String()}
 	}
+	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
 }
@@ -16257,6 +16325,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 
 	matches := []overloadMatch{}
 	var receiverError string
+	var constraintFailure *GenericConstraintFailure
 	hadGenericArityMatch := false
 	hadGenericInference := false
 	hadExplicitGenericCall := len(expr.GenericArguments) > 0
@@ -16278,6 +16347,13 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				hadExplicitGenericInferenceFailure = hadExplicitGenericInferenceFailure || inferenceFailed
 				continue
 			}
+			if instantiated.GenericConstraintFailure != nil {
+				if constraintFailure == nil {
+					failure := *instantiated.GenericConstraintFailure
+					constraintFailure = &failure
+				}
+				continue
+			}
 			function = instantiated
 		} else if len(function.GenericParameters) > 0 {
 			hadGenericArityMatch = true
@@ -16287,6 +16363,13 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				continue
 			}
 			hadGenericInference = true
+			if instantiated.GenericConstraintFailure != nil {
+				if constraintFailure == nil {
+					failure := *instantiated.GenericConstraintFailure
+					constraintFailure = &failure
+				}
+				continue
+			}
 			function = instantiated
 		}
 		matchesArguments := true
@@ -16362,6 +16445,16 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		a.bindDefinitions(callCalleeDefinitionToken(expr), ambiguous)
 		a.addErrorAtToken(expr.Token, "ambiguous call to %s", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if constraintFailure != nil {
+		a.addErrorAtToken(
+			expr.Token,
+			"type %s does not satisfy constraint %s for %s",
+			typeDisplayName(constraintFailure.Argument),
+			typeDisplayName(constraintFailure.Interface),
+			constraintFailure.Parameter,
+		)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -16893,6 +16986,16 @@ func (a *Analyzer) inferRuneArrayToStringCall(expr *ast.CallExpression) (Type, e
 	return a.types["string"], expressionValue{Display: expr.String()}, true
 }
 
+// inferRawPointerCall validates compiler-known raw-address operations. Unsafe
+// authorizes the operation class but does not manufacture a pointee type for
+// RawPtr[void] or waive the operation's concrete element requirements.
+//
+// Rules:
+//   - rules/memory/raw_pointers.md — §3(3)–(4) "RawPtr[void]"
+//   - rules/memory/raw_pointers.md — §11 "Raw-pointer read"
+//   - rules/memory/raw_pointers.md — §12 "Raw-pointer write"
+//   - rules/memory/raw_pointers.md — §13 "Volatile raw-pointer access"
+//   - rules/memory/raw_pointers.md — §14 "Pointer arithmetic"
 func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok {
@@ -16922,7 +17025,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		element := compilerKnownRawPointerElement(receiverType)
 		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.Read requires a concrete non-void element type")
+			a.addErrorAtToken(member.Property.Token, "RawPtr[void].Read cannot materialize a value; select a concrete pointee type")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return element, expressionValue{Display: expr.String()}, true
@@ -16935,8 +17038,12 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		element := compilerKnownRawPointerElement(receiverType)
+		if element.Kind == InvalidType || element.Kind == VoidType {
+			a.addErrorAtToken(member.Property.Token, "RawPtr[void].Write cannot consume a value; select a concrete pointee type")
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)
-		if element.Kind == InvalidType || element.Kind == VoidType || !canInitialize(element, valueType, expr.Arguments[0]) {
+		if !canInitialize(element, valueType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.Write value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -17018,6 +17125,10 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		if len(expr.Arguments) != 1 {
 			a.addErrorAtToken(expr.Token, "RawPtr.Difference expects 1 argument, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(receiverType.TypeArgs) != 1 || receiverType.TypeArgs[0].Kind == VoidType {
+			a.addErrorAtToken(member.Property.Token, "RawPtr.Difference requires a typed element pointer, got %s", typeDisplayName(receiverType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		otherType, _ := a.inferExpression(expr.Arguments[0])
@@ -17739,137 +17850,6 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread 
 	return types, expressions, preparedSpreadValues, runtimeSpreadValues, true
 }
 
-// inferCallArgumentExpression admits the ownership marker only at the direct
-// argument boundary. Its transfer is validated after overload selection and
-// committed only after every outer-call argument succeeds. See ownership.md
-// sections 10.4 and 13-14 and copy_move.md sections 7-8.
-func (a *Analyzer) inferCallArgumentExpression(arg ast.Expression) (Type, expressionValue) {
-	move, explicit := explicitMoveArgument(arg)
-	if !explicit {
-		return a.inferExpression(arg)
-	}
-	typ, value := a.inferExpression(move.Right)
-	if typ.Kind != InvalidType {
-		a.expressionTypes[arg] = typ
-	}
-	return typ, value
-}
-
-func explicitMoveArgument(expr ast.Expression) (*ast.PrefixExpression, bool) {
-	move, ok := expr.(*ast.PrefixExpression)
-	return move, ok && move.Operator == "<-" && move.Right != nil
-}
-
-func explicitMoveSource(expr ast.Expression) ast.Expression {
-	if move, ok := explicitMoveArgument(expr); ok {
-		return move.Right
-	}
-	return expr
-}
-
-// validateCallArgumentOwnership enforces visible transfer from every reusable
-// Place while preserving marker-free forwarding of fresh temporaries.
-func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
-	valid := true
-	for sourceIndex, arg := range sourceArgs {
-		param, ok := functionParameterForArgument(function, sourceIndex)
-		if !ok {
-			return false
-		}
-		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
-		move, explicit := explicitMoveArgument(arg)
-		source := explicitMoveSource(arg)
-		borrowParameter := param.Ref || param.MutableRef || param.Type.Kind == ReferenceType
-		if explicit {
-			if preparedSpread || borrowParameter {
-				a.addErrorAtToken(move.Token, "explicit <- argument requires an owning value parameter")
-				valid = false
-				continue
-			}
-			if !a.validateNamedOwnershipSource(ast.OwnershipMove, source, move.Token, false, false) {
-				valid = false
-			}
-			continue
-		}
-		if preparedSpread || borrowParameter {
-			continue
-		}
-		place, reusable := a.resolvePlace(source)
-		if !reusable {
-			continue
-		}
-		needsTransfer := param.Consuming || requiresOwnershipTransfer(place.Type)
-		if !needsTransfer {
-			continue
-		}
-		a.addErrorAtTokenWithMetadata(
-			expressionToken(source),
-			diagnostics.ImplicitMoveDisallowed,
-			fmt.Sprintf("write `<-%s` to make the ownership transfer explicit", place.String()),
-			"reusable source %s passed to %s must use explicit <- ownership transfer",
-			place.String(),
-			function.Name,
-		)
-		valid = false
-	}
-	return valid
-}
-
-func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
-	identifier, ok := expression.(*ast.Identifier)
-	if !ok {
-		a.markMoveSource(expression)
-		return
-	}
-	if a.checkBorrowedMove(identifier.Value, identifier.Token) {
-		return
-	}
-	a.moved[identifier.Value] = identifier.Token
-	a.moveReasons[identifier.Value] = "consumed by method call"
-	a.endBorrowsHeldBy(identifier.Value)
-}
-
-func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, isMethodCall bool) {
-	for sourceIndex, arg := range sourceArgs {
-		param, parameterOK := functionParameterForArgument(function, sourceIndex)
-		if !parameterOK {
-			return
-		}
-		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
-		// Both shared and mutable-reference parameters borrow their argument.
-		// MutableRef is represented separately from Ref in FunctionParameter, so
-		// checking only Ref incorrectly consumed ref-mut reborrows after calls.
-		// rules/declarations/functions.md permits canonical type-position
-		// `name: ref T` and `name: ref mut T` in addition to legacy parameter
-		// flags. Both representations are borrows and must never consume the
-		// caller Place after a successful call.
-		if param.Ref || param.MutableRef || param.Type.Kind == ReferenceType {
-			continue
-		}
-		// rules/declarations/spread.md; correction14.md says a consuming
-		// destination consumes the prepared copy, never the source array.
-		if preparedSpread {
-			continue
-		}
-		source := explicitMoveSource(arg)
-		_, explicit := explicitMoveArgument(arg)
-		if param.Consuming || explicit {
-			if a.markExplicitMoveSource(source) {
-				if ident, ok := source.(*ast.Identifier); ok {
-					a.moveReasons[ident.Value] = "consumed by call"
-					a.endBorrowsHeldBy(ident.Value)
-				}
-			}
-			continue
-		}
-		if a.markMoveSource(source) {
-			if ident, ok := source.(*ast.Identifier); ok {
-				a.endBorrowsHeldBy(ident.Value)
-			}
-		}
-	}
-}
-
 func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok {
@@ -18210,6 +18190,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	}
 
 	matches := []overloadMatch{}
+	var constraintFailure *GenericConstraintFailure
 	for _, function := range functions {
 		if !functionAcceptsCallArguments(function, len(argTypes), runtimeSpreadValues) || len(function.GenericParameters) == 0 {
 			continue
@@ -18222,6 +18203,13 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 			instantiated, ok = a.inferGenericFunctionInstanceWithExpected(function, argTypes, expected)
 		}
 		if !ok {
+			continue
+		}
+		if instantiated.GenericConstraintFailure != nil {
+			if constraintFailure == nil {
+				failure := *instantiated.GenericConstraintFailure
+				constraintFailure = &failure
+			}
 			continue
 		}
 
@@ -18253,6 +18241,16 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		}
 		a.bindDefinitions(callCalleeDefinitionToken(expr), ambiguous)
 		a.addErrorAtToken(expr.Token, "ambiguous call to %s", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if constraintFailure != nil {
+		a.addErrorAtToken(
+			expr.Token,
+			"type %s does not satisfy constraint %s for %s",
+			typeDisplayName(constraintFailure.Argument),
+			typeDisplayName(constraintFailure.Interface),
+			constraintFailure.Parameter,
+		)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	return Type{}, expressionValue{}, false
@@ -18364,6 +18362,12 @@ func (a *Analyzer) instantiateGenericFunction(function Function, substitution ma
 
 	out := function
 	out.GenericParameters = nil
+	out.GenericConstraints = make([]GenericConstraint, 0, len(function.GenericConstraints))
+	for _, constraint := range function.GenericConstraints {
+		constraint.Interface = substituteGenericType(constraint.Interface, substitution)
+		out.GenericConstraints = append(out.GenericConstraints, constraint)
+	}
+	out.GenericConstraintFailure = a.genericFunctionConstraintFailure(function, substitution)
 	out.Parameters = make([]FunctionParameter, 0, len(function.Parameters))
 	for _, param := range function.Parameters {
 		param.Type = substituteGenericType(param.Type, substitution)
@@ -18372,6 +18376,33 @@ func (a *Analyzer) instantiateGenericFunction(function Function, substitution ma
 	out.ReturnType = substituteGenericType(function.ReturnType, substitution)
 	a.genericFuncInstances[key] = out
 	return out
+}
+
+// genericFunctionConstraintFailure verifies every concrete generic function
+// substitution against the template's declared interface constraints. A
+// matching member shape without an explicit and valid implements relationship
+// is deliberately insufficient.
+//
+// Rules:
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/generics.md — §29 "Overload resolution"
+//   - rules/declarations/interfaces.md — §4 "Explicit conformance"
+func (a *Analyzer) genericFunctionConstraintFailure(function Function, substitution map[string]Type) *GenericConstraintFailure {
+	for _, constraint := range function.GenericConstraints {
+		argument, exists := substitution[constraint.Parameter]
+		if !exists {
+			continue
+		}
+		required := substituteGenericType(constraint.Interface, substitution)
+		if !a.hasValidExplicitInterfaceConformance(argument, required) {
+			return &GenericConstraintFailure{
+				Parameter: constraint.Parameter,
+				Argument:  argument,
+				Interface: required,
+			}
+		}
+	}
+	return nil
 }
 
 func genericTypeInstanceKey(typ Type) genericInstanceKey {
@@ -18887,8 +18918,36 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
 		return targetType, expressionValue{Display: expr.String()}
 	}
+	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
+}
+
+// validateConstantIntegerConversion enforces the destination representation
+// for an explicitly converted compile-time integer. Runtime conversions keep
+// their existing checked-conversion planning; this frontend proof only rejects
+// constants which cannot be represented on the selected target.
+//
+// Rules:
+//   - rules/types/types.md — "Explicit conversions"
+//   - rules/types/types.md — "int and uint"
+func (a *Analyzer) validateConstantIntegerConversion(target Type, source Type, expression ast.Expression) bool {
+	if !isIntegerType(target) || !isIntegerType(source) {
+		return true
+	}
+	value, known := a.integerConstantValue(expression)
+	if !known {
+		return true
+	}
+	representation, _, ok := a.integerRepresentation(target)
+	if !ok {
+		return true
+	}
+	representation.Name = target.Name
+	representation.Contracts = nil
+	return !a.checkIntegerValueRange(representation, value, expressionToken(expression))
 }
 
 // enumToIntegerConversionResultType implements the checked narrowing rule in

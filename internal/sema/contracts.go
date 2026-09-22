@@ -63,6 +63,48 @@ func flattenASTContracts(contract ast.Contract) []ast.Contract {
 	return []ast.Contract{contract}
 }
 
+// rejectStorageSiteContract diagnoses the obsolete variable/field contract
+// forms while leaving the parsed node intact for recovery and tooling. Type
+// contracts belong exclusively to named type declarations in Sec 0.1.
+//
+// Rules:
+//   - rules/types/contracts.md — "Status"
+//   - rules/types/contracts.md — "Core rule"
+func (a *Analyzer) rejectStorageSiteContract(contract ast.Contract, siteKind string, siteName string) bool {
+	if contract == nil {
+		return false
+	}
+	token := astContractToken(contract)
+	a.addErrorAtTokenWithMetadata(
+		token,
+		diagnostics.StorageSiteContract,
+		"declare a named constrained type and use that type at this storage site",
+		"contracts belong to named types; %s %s cannot declare an inline contract",
+		siteKind,
+		siteName,
+	)
+	return true
+}
+
+// astContractToken returns the first source token of a parsed contract
+// conjunction for focused contract diagnostics.
+//
+// Rule: rules/types/contracts.md — "Composition".
+func astContractToken(contract ast.Contract) lexer.Token {
+	switch contract := contract.(type) {
+	case *ast.ContractList:
+		return contract.Token
+	case *ast.RangeContract:
+		return contract.Token
+	case *ast.MembershipContract:
+		return contract.Token
+	case *ast.MarkerContract:
+		return contract.Token
+	default:
+		return lexer.Token{}
+	}
+}
+
 func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 	for _, contract := range flattenASTContracts(contractNode) {
 		typ = a.applyContract(typ, contract)

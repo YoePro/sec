@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Events - Sec Language Manual</title>
+<link href="manual.css" rel="stylesheet"/>
+<link href="/apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180"/>
+<link href="/image/favicon-32x32.png" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/image/favicon-16x16.png" rel="icon" sizes="16x16" type="image/png"/>
+<link href="/site.webmanifest" rel="manifest"/>
+</head>
+<body>
+<header class="site-header">
+<div class="header-inner">
+<a class="site-logo" href="index.html">
+<img alt="Sec" src="logo.svg"/>
+<span class="site-title">Sec</span>
+</a>
+<nav class="header-nav">
+<a href="01-introduction.html">Language</a>
+<a href="stdlib.html">Stdlib</a>
+<a href="syntax-reference.html">Syntax</a>
+<a href="best-practices.html">Best Practices</a>
+<a href="https://github.com/YoePro/sec">GitHub</a>
+</nav>
+</div>
+</header>
+<div class="layout">
+<nav aria-label="Section navigation" class="sidebar">
+<h2 class="sidebar-title">Sec Manual</h2><div class="sidebar-section">This page</div>
+<a href="#events">Events</a>
+<a href="#status-note">Status of This Chapter</a>
+<a href="#purpose">Purpose</a>
+<a href="#default-policy">Default Policy</a>
+<a href="#declaration">Declaring an Event</a>
+<a href="#publication">Publication Rights</a>
+<a href="#subscription">Subscription</a>
+<a href="#capacity">Capacity</a>
+<a href="#dispatch">Dispatch and Handler Semantics</a>
+<a href="#payload">Payload Ownership</a>
+<a href="#reentrancy">Reentrancy and Mutation</a>
+<a href="#storage">Explicit Event Storage</a>
+<a href="#visibility">Visibility and Interfaces</a>
+<a href="#ownership">Copy, Move and Address Stability</a>
+<a href="#allocation">Allocation</a>
+<a href="#concurrency">Tasks, Threads and Thread Safety</a>
+<a href="#interrupts">Interrupts</a>
+<a href="#comparisons">Events Compared with Other Primitives</a>
+<a href="#compiler">Compiler Model</a>
+<a href="#diagnostics">Diagnostics</a>
+<a href="#implementation">Implementation Status</a>
+<a href="#best-practices">Best Practices</a>
+<a href="#summary">Summary</a>
+<div class="sidebar-section">Language</div>
+<a href="01-introduction.html">01 Introduction</a>
+<a href="02-basic-syntax.html">02 Basic Syntax</a>
+<a href="03-types.html">03 Types</a>
+<a href="04-named-types.html">04 Named Types</a>
+<a href="05-structs-properties-and-impl.html">05 Structs, Properties &amp; Impl</a>
+<a href="06-functions.html">06 Functions</a>
+<a href="07-if.html">07 If Statements</a>
+<a href="08-switch.html">08 Switch Statements</a>
+<a href="09-match.html">09 Match Expressions</a>
+<a href="10-enums.html">10 Enums</a>
+<a href="11-unions.html">11 Unions</a>
+<a href="12-registers.html">12 Registers</a>
+<a href="13-units.html">13 Units</a>
+<a href="14-generics.html">14 Generics</a>
+<a href="15-loops.html">15 Loops and Iteration</a>
+<a href="16-impl.html">16 Impl Blocks</a>
+<a href="17-properties.html">17 Properties</a>
+<a href="18-interfaces.html">18 Interfaces</a>
+<a href="19-arrays.html">19 Arrays</a>
+<a href="20-slices.html">20 Slices</a>
+<a href="21-indexing.html">21 Indexing</a>
+<a href="22-storage.html">22 Values, Places and Storage</a>
+<a href="23-references.html">23 References</a>
+<a href="24-ownership.html">24 Ownership</a>
+<a href="25-copy-move.html">25 Copying and Moving</a>
+<a href="26-borrowing.html">26 Borrowing</a>
+<a href="27-spread.html">27 Spread</a>
+<a href="28-modules.html">28 Modules and Imports</a>
+<a href="29-projects.html">29 Projects</a>
+<a href="30-unsafe.html">30 Unsafe and Raw Pointers</a>
+<a href="31-ffi.html">31 Foreign Function Interfaces</a>
+<a href="32-visibility.html">32 Visibility and Scopes</a>
+<a href="33-result-option.html">33 Result and Option</a>
+<a href="34-error-handling.html">34 Errors and try</a>
+<a href="35-panic.html">35 Panic, Assertions and Runtime Checks</a>
+<a href="36-defer.html">36 Defer and Cleanup</a>
+<a href="37-attributes.html">37 Attributes</a>
+<a href="38-conditional-compilation.html">38 Conditional Compilation and Build Selection</a>
+<a href="39-compile-time-evaluation.html">39 Compile-Time Evaluation</a>
+<a href="40-allocation.html">40 Memory Allocation</a>
+<a href="41-arena.html">41 Arenas</a>
+<a href="42-lifetimes.html">42 Lifetimes</a>
+<a href="43-destruction.html">43 Destruction</a>
+<a href="44-layout.html">44 Memory Layout and Representation</a>
+<a href="45-collections.html">45 Collections</a>
+<a href="46-shaped-types.html">46 Shaped Types</a>
+<a href="47-lambdas-closures.html">47 Lambdas and Closures</a>
+<a href="48-effects.html">48 Effects and Verified Guarantees</a>
+<a href="49-platforms.html">49 Platforms and Target Profiles</a>
+<a href="50-hardware-access.html">50 Fixed Addresses, Volatile and Hardware Access</a>
+<a href="51-interrupts.html">51 Interrupts and ISRs</a>
+<a href="52-inline-assembly.html">52 Inline Assembly</a>
+<a href="53-initialization.html">53 Program Initialization and Shutdown</a>
+<a href="54-concurrency.html">54 Concurrency</a>
+<a href="55-tasks.html">55 Tasks</a>
+<a href="56-spawn.html">56 Spawn</a>
+<a href="57-await.html">57 Await and Task Outcomes</a>
+<a href="58-threads.html">58 Threads and Thread-Local Storage</a>
+<a href="59-cancellation.html">59 Cancellation and Context</a>
+<a href="60-scheduling.html">60 Scheduling, Blocking and Structured Concurrency</a>
+<a href="61-channels-select.html">61 Channels and Select</a>
+<a class="active" href="62-events.html">62 Events</a>
+<a href="63-mutexes.html">63 Mutexes and Locks</a>
+<a href="64-atomics.html">64 Atomics and Memory Order</a>
+<a href="65-processes.html">65 Processes and Command</a>
+<a href="66-ipc.html">66 Inter-Process Communication</a>
+<a href="67-concurrency-safety.html">67 Transferability, Data Races and Deadlocks</a>
+<a href="68-testing.html">68 Testing</a>
+<a href="69-analysis.html">69 Static Analysis and sec analyse</a>
+<a href="70-formatting.html">70 Formatting</a>
+<a href="71-diagnostics.html">71 Diagnostics</a>
+<a href="72-lsp.html">72 Editor and Language Server</a>
+<div class="sidebar-section">Reference</div>
+<a href="stdlib.html">Standard Library</a>
+<a href="syntax-reference.html">Syntax Reference</a>
+<a href="best-practices.html">Best Practices</a>
+<div class="sidebar-section">Status</div>
+<a href="test-status.html">Implementation Status</a>
+<div class="sidebar-section">Community</div>
+<a href="bug-report.html">Report a Bug</a>
+<a href="join.html">Join</a>
+</nav>
+<main class="content">
+<div class="breadcrumb"><a href="index.html">Sec Manual</a> / Events</div>
+<h1 id="events">Events</h1>
+<div class="note" id="status-note">
+<strong>Provisional chapter:</strong> this page documents the current Sec event model so the
+    manual remains complete and navigable. The underlying Events rulebook is an older revision and is
+    expected to be rewritten. This chapter must therefore be reviewed and synchronized again when the
+    new rulebook lands. Where the current rulebook explicitly leaves syntax or policy design open,
+    this page leaves it open too.
+</div>
+<p>
+    Events provide typed publish/subscribe communication owned by a value or type. They are intended
+    for notifications such as GUI actions, component state changes, device notifications, domain
+    events, plugin hooks and diagnostic hooks.
+</p>
+<p>
+    An event is not a channel, completion object, hardware interrupt, timer, semaphore, cancellation
+    object or general waitable synchronization signal. Its default behavior is synchronous fan-out:
+    one publication invokes zero or more subscribed handlers in subscription order.
+</p>
+<section id="purpose">
+<h2>Purpose</h2>
+<p>
+        An instance event has state. Subscriber slots, active subscriptions and event lifetime are
+        therefore part of the owning value's storage model. Sec does not allow an <code>impl</code>
+        block to silently add hidden per-instance event storage.
+    </p>
+<div class="rule">
+<strong>Core rule:</strong> instance-event storage belongs to the data definition of the
+        owning type. Behavior and publication policy may be exposed through <code>impl</code>, but
+        <code>impl</code> does not secretly enlarge each instance.
+    </div>
+</section>
+<section id="default-policy">
+<h2>Default Policy</h2>
+<p>The current Sec 0.1 default event policy is:</p>
+<pre><code>subscriber capacity: 4
+dispatch: synchronous
+dispatch order: subscription order
+publication: owning impl only
+subscription: according to field visibility
+storage: inline fixed-capacity storage
+allocation: none
+thread safety: not implied
+ISR publication: not implied</code></pre>
+<p>
+        The default capacity of four is deliberate. Reaching capacity does not trigger allocation,
+        growth or replacement of another subscriber.
+    </p>
+</section>
+<section id="declaration">
+<h2>Declaring an Event</h2>
+<p>The short form declares the event as part of the owning type:</p>
+<pre><code>type Button struct {
+    ButtonPressed: Event[ButtonPressData]
+}</code></pre>
+<p>
+        The event is part of <code>Button</code>'s layout and lifetime. The owner then defines the
+        behavior that publishes it:
+    </p>
+<pre><code>impl Button {
+    fn Press(data: ButtonPressData) void {
+        ButtonPressed.Publish(data)
+    }
+}</code></pre>
+<p>
+        When the default policy is sufficient, the event does not need to be repeated in the
+        <code>impl</code> block.
+    </p>
+</section>
+<section id="publication">
+<h2>Publication Rights</h2>
+<p>
+        Inside the owning <code>impl</code>, the event exposes publication capability. Outside that
+        owning implementation, publication is forbidden by default even when the event is visible.
+    </p>
+<pre><code>button.ButtonPressed.Publish(data) // invalid outside Button's owning impl</code></pre>
+<p>A suitable diagnostic is:</p>
+<pre><code>event ButtonPressed may only be published by Button</code></pre>
+<p>
+        Visibility and publication authority are intentionally separate. External code may be able to
+        observe and subscribe to an event without gaining the right to publish it.
+    </p>
+</section>
+<section id="subscription">
+<h2>Subscription</h2>
+<p>Subscribers attach a handler through <code>Subscribe(...)</code>:</p>
+<pre><code>let result := button.ButtonPressed.Subscribe(OnButtonPressed)</code></pre>
+<p>
+        A successful subscription produces a move-only <code>Subscription</code>. Closing that
+        subscription unregisters the handler, and destroying the subscription has the same effect.
+    </p>
+<pre><code>subscription.Close()</code></pre>
+<p>
+        The current compiler-known subscription result has two implemented outcome variants:
+    </p>
+<pre><code>Subscribed(Subscription)
+Full</code></pre>
+<p>
+        The handler and every capture it retains must remain valid for at least as long as the
+        subscription can remain active.
+    </p>
+</section>
+<section id="capacity">
+<h2>Capacity</h2>
+<p>
+<code>Event[T]</code> uses the default capacity of four subscriptions. A different fixed
+        capacity can be selected explicitly:
+    </p>
+<pre><code>type Button struct {
+    ButtonPressed: Event[ButtonPressData, 8]
+}</code></pre>
+<p>
+        Capacity is compile-time known, must be greater than zero and contributes fixed storage to
+        the owning type. When an event is full, <code>Subscribe(...)</code> reports <code>Full</code>.
+        It does not allocate, grow, overwrite or silently remove another subscriber.
+    </p>
+</section>
+<section id="dispatch">
+<h2>Dispatch and Handler Semantics</h2>
+<p>Default publication is synchronous:</p>
+<pre><code>ButtonPressed.Publish(data)</code></pre>
+<p>
+        All currently eligible handlers are invoked before <code>Publish(...)</code> returns.
+        Publication does not implicitly spawn tasks, create threads, enqueue work or allocate.
+    </p>
+<p>The current handler model is conceptually:</p>
+<pre><code>fn Handler(data: T) void</code></pre>
+<p>
+        Handlers return <code>void</code>. Application errors must be handled by the handler or
+        represented through explicit program state. An unhandled panic follows the ordinary panic
+        rules; the event model does not introduce a separate exception mechanism.
+    </p>
+</section>
+<section id="payload">
+<h2>Payload Ownership</h2>
+<p>
+        Default synchronous publication borrows the payload for the duration of dispatch. Handlers do
+        not take ownership simply because they receive the event notification.
+    </p>
+<p>
+        This matters for move-only values: a single publication to multiple subscribers must not
+        implicitly clone a move-only payload. Any future ownership-transferring event policy would
+        need its own explicit rules.
+    </p>
+</section>
+<section id="reentrancy">
+<h2>Reentrancy and Mutation During Dispatch</h2>
+<p>
+        A handler may call methods on the publisher and may cause nested publication. Nested
+        publication is permitted unless a selected event policy explicitly forbids it.
+    </p>
+<p>Subscription changes during dispatch follow these rules:</p>
+<ul>
+<li>a handler may close its own subscription or another subscription it owns;</li>
+<li>a subscription removed before its dispatch turn is not invoked;</li>
+<li>a subscription added during publication does not participate until the next publication.</li>
+</ul>
+<p>
+        The runtime must preserve memory safety and subscription-list integrity through reentrant and
+        mutation-heavy dispatch.
+    </p>
+</section>
+<section id="storage">
+<h2>Explicit Event Storage</h2>
+<p>
+        Code that needs explicit storage control may separate storage from the public event member:
+    </p>
+<pre><code>type Button struct {
+    buttonPressedStorage: EventStorage[ButtonPressData, 8]
+}
+
+impl Button {
+    event ButtonPressed using buttonPressedStorage
+}</code></pre>
+<p>This division is important:</p>
+<pre><code>EventStorage
+    layout, capacity, ownership and storage policy
+
+event member
+    public name, access policy and publication rights</code></pre>
+<p>
+        The short <code>Event[T, Capacity]</code> form is conceptually equivalent to compiler-generated
+        fixed storage plus an event view. Generated storage remains part of layout and ABI reporting
+        and must not hide dynamic allocation.
+    </p>
+<div class="note">
+        The current Events rulebook sketches an <code>impl event ... using ... { ... }</code> policy
+        block, but explicitly states that the exact policy-block syntax is still open. This manual
+        therefore does not present that syntax as final Sec syntax.
+    </div>
+</section>
+<section id="visibility">
+<h2>Visibility and Interfaces</h2>
+<p>
+        Normal visibility controls whether external code can observe and subscribe to an event.
+        Visibility does not grant publication rights.
+    </p>
+<p>An interface may require an observable event member:</p>
+<pre><code>interface PressSource {
+    event ButtonPressed[ButtonPressData]
+}</code></pre>
+<p>
+        This requirement grants observation/subscription semantics, not permission to publish. The
+        current rulebook also states that an explicit mechanism for external publication remains to be
+        designed.
+    </p>
+</section>
+<section id="ownership">
+<h2>Copy, Move and Address Stability</h2>
+<p>
+        Event storage is not implicitly copyable. Copying an event-owning value must never duplicate
+        active subscriptions.
+    </p>
+<p>
+        Moving an event-owning value is valid only when the selected storage representation and all
+        active subscriptions remain valid. Inline storage may therefore create an address-stability
+        requirement after subscriptions exist.
+    </p>
+<p>
+        The compiler may reject later moves, require stable storage or use an address-independent slot
+        representation. Whichever strategy is selected must be visible to ownership, lifetime and
+        escape analysis.
+    </p>
+</section>
+<section id="allocation">
+<h2>Allocation</h2>
+<p>
+        The default event policy performs no hidden allocation. Its subscriber slots are fixed-capacity
+        inline storage owned by the containing value.
+    </p>
+<p>
+        An allocation-capable event backend, if used, must be selected explicitly and obey the normal
+        allocation, arena, failure and target-profile rules. Reaching default capacity must never
+        silently switch to allocation.
+    </p>
+</section>
+<section id="concurrency">
+<h2>Tasks, Threads and Thread Safety</h2>
+<p>
+        The default event is not implicitly thread-safe. Concurrent publication, subscription or
+        unsubscription requires external synchronization or a future explicitly thread-safe policy.
+    </p>
+<p>
+        Events may be used from tasks and threads when the selected policy permits it. Because default
+        dispatch is synchronous, handlers execute in the publishing execution context. They do not
+        automatically run on the execution entity that originally subscribed.
+    </p>
+<p>
+        Cross-context delivery should therefore use an explicit channel, dispatcher or adapter rather
+        than relying on hidden event scheduling.
+    </p>
+</section>
+<section id="interrupts">
+<h2>Interrupts</h2>
+<p>
+        Ordinary event publication is not ISR-safe. An ISR must not invoke arbitrary event handlers,
+        allocate, block or acquire ordinary mutexes simply because an event exists.
+    </p>
+<p>
+        ISR code should instead use an ISR-safe channel, bounded notification mechanism, atomic state
+        or deferred work that later publishes the software event in an ordinary execution context.
+    </p>
+</section>
+<section id="comparisons">
+<h2>Events Compared with Other Primitives</h2>
+<h3>Events and channels</h3>
+<pre><code>Event[T]
+    One publication fans out borrowed data to zero or more handlers.
+    Default dispatch is synchronous.
+
+Channel[T]
+    One committed message transfers ownership to one receiver.
+    Delivery may be buffered and asynchronous.</code></pre>
+<h3>Events and completion</h3>
+<p>
+        Completion is one-shot terminal readiness. An event may publish repeatedly. Task, thread,
+        process, DMA and I/O completion are therefore not ordinary events, although adapters may expose
+        notifications as events.
+    </p>
+<h3>Events and interrupts</h3>
+<p>
+        A hardware interrupt is an asynchronous control transfer to an ISR. An event is a software
+        publish/subscribe object. The two are intentionally different abstractions.
+    </p>
+</section>
+<section id="compiler">
+<h2>Compiler Model</h2>
+<p>The current compiler recognizes these event-related identities:</p>
+<pre><code>Event[T]
+Event[T, Capacity]
+EventStorage[T, Capacity]
+Subscription
+EventSubscribeResult</code></pre>
+<p>Semantic analysis must reason about at least:</p>
+<ul>
+<li>payload type and fixed capacity;</li>
+<li>storage backend and owner type;</li>
+<li>publication rights and visibility;</li>
+<li>subscription ownership and handler lifetime;</li>
+<li>captures and address stability;</li>
+<li>dispatch order, reentrancy and mutation during dispatch;</li>
+<li>thread-safety and allocation policy;</li>
+<li>copy/move restrictions and target support.</li>
+</ul>
+<p>
+        The current rulebook also specifies that Semantic IR preserve event storage creation,
+        exposure, subscription, unsubscription, publication, dispatch and subscription lifecycle
+        rather than immediately erasing those semantics into arbitrary calls.
+    </p>
+</section>
+<section id="diagnostics">
+<h2>Diagnostics</h2>
+<p>Representative diagnostics from the current model include:</p>
+<pre><code>event capacity must be greater than zero
+
+event ButtonPressed has reached its subscriber capacity of 4
+
+event ButtonPressed may only be published by Button
+
+subscription handler captures value local that does not outlive the subscription
+
+event-owning value button cannot be moved while subscriptions are active
+
+event publication is not thread-safe under the selected policy
+
+event publication is not permitted in an interrupt routine
+
+copying Button would duplicate event storage and subscriptions</code></pre>
+<p>
+        Diagnostics should distinguish parse, semantic, ownership, concurrency and target-profile
+        failures rather than collapsing all event misuse into one generic message.
+    </p>
+</section>
+<section id="implementation">
+<h2>Implementation Status</h2>
+<div class="note">
+        This status reflects the current older Events rulebook and should be rechecked when that
+        rulebook is replaced.
+    </div>
+<p>Current compiler support includes:</p>
+<ul>
+<li>short-form <code>Event[T]</code> and <code>Event[T, Capacity]</code> fields;</li>
+<li>explicit <code>EventStorage[T, Capacity]</code> fields;</li>
+<li><code>impl event ... using ...</code> exposure;</li>
+<li>interface event requirements;</li>
+<li>compiler-known <code>Event</code>, <code>EventStorage</code>, <code>Subscription</code> and <code>EventSubscribeResult</code> identities;</li>
+<li>default capacity four and positive-capacity validation;</li>
+<li>event ownership metadata on struct types;</li>
+<li>event interface conformance checks;</li>
+<li><code>Publish(payload)</code> payload checking and owner-only publication diagnostics;</li>
+<li><code>Subscribe(handler)</code> checking for <code>fn(T) void</code>;</li>
+<li>compiler-known <code>Subscription.Close()</code>.</li>
+</ul>
+<p>Not yet implemented according to the current rulebook:</p>
+<ul>
+<li>runtime subscriber storage and dispatch;</li>
+<li>active subscription tracking;</li>
+<li>subscription-specific capture lifetime analysis;</li>
+<li>address-stability enforcement after subscription;</li>
+<li>thread-safe and ISR-safe event policies;</li>
+<li>policy blocks after <code>impl event ... using ...</code>;</li>
+<li>Semantic IR lowering for event operations.</li>
+</ul>
+</section>
+<section id="best-practices">
+<h2>Best Practices</h2>
+<ul>
+<li>Use events for synchronous notification fan-out, not for ownership-transfer queues.</li>
+<li>Keep event storage in the owning type so layout and lifetime remain explicit.</li>
+<li>Publish from the owning implementation unless a future explicit capability says otherwise.</li>
+<li>Keep subscriptions alive for exactly as long as their handlers should remain registered.</li>
+<li>Choose an explicit capacity when four subscriptions are not enough.</li>
+<li>Do not rely on hidden allocation when capacity is exhausted.</li>
+<li>Remember that default dispatch runs handlers synchronously in the publisher's execution context.</li>
+<li>Do not assume default events are thread-safe or ISR-safe.</li>
+<li>Use channels or explicit dispatchers when delivery must cross execution contexts.</li>
+<li>Be cautious when moving an event-owning value after active subscriptions exist.</li>
+</ul>
+</section>
+<section id="summary">
+<h2>Summary</h2>
+<ul>
+<li><code>Event[T]</code> provides typed publish/subscribe notification.</li>
+<li>Instance event storage belongs to the owning type.</li>
+<li>The default subscription capacity is four.</li>
+<li>Default dispatch is synchronous and follows subscription order.</li>
+<li>Default publication is restricted to the owning <code>impl</code>.</li>
+<li>Visibility may grant subscription without granting publication.</li>
+<li>A successful subscription owns a move-only <code>Subscription</code>.</li>
+<li>Closing or destroying a subscription unregisters its handler.</li>
+<li>Default dispatch borrows the payload; it does not clone move-only values for subscribers.</li>
+<li>Default events perform no hidden allocation.</li>
+<li>Default events are not implicitly thread-safe or ISR-safe.</li>
+<li>Events and channels serve different purposes: fan-out notification versus one-receiver ownership transfer.</li>
+<li>The current compiler already understands much of the event source model, but runtime dispatch and several safety analyses remain incomplete.</li>
+<li>This chapter is provisional because the underlying Events rulebook is expected to be revised.</li>
+</ul>
+</section>
+<div class="page-navigation">
+<a href="61-channels-select.html">Previous: Channels and Select</a>
+<a href="63-mutexes.html">Next: Mutexes and Locks</a>
+</div>
+</main>
+</div>
+<footer class="site-footer">
+<div class="site-footer-inner">
+<div>
+<p>© 2026 Sec Language</p>
+<p>Document revision 0.9 · 2026-09-21 · provisional pending Events rulebook revision</p>
+</div>
+<a href="https://sec-lang.com">sec-lang.com</a>
+</div>
+</footer>
+</body>
+</html>

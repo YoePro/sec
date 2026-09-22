@@ -1292,6 +1292,34 @@ func TestMoveDeclarationsRequireCanonicalOperator(t *testing.T) {
 	}
 }
 
+// Legacy word-form union moves must be rejected rather than being recovered as
+// two adjacent expression statements. The word `move` itself remains an
+// ordinary identifier when it is the complete initializer expression.
+//
+// Rules:
+//   - rules/corrections/applied/unions-ownership-v2-correction-20260826.md — "Canonical move syntax"
+func TestRejectLegacyWordFormMoveInitializer(t *testing.T) {
+	legacy := New(lexer.New(`
+type Choice union {
+	None
+}
+
+fn Transfer(source: Choice) void {
+	let target := move source
+	discard target
+}
+`))
+	legacy.ParseProgram()
+	if len(legacy.Errors()) != 1 || !strings.Contains(legacy.Errors()[0], "legacy word-form move syntax is not supported") {
+		t.Fatalf("legacy move diagnostics = %v", legacy.Errors())
+	}
+
+	identifier := New(lexer.New(`let move := 1
+let target := move`))
+	identifier.ParseProgram()
+	checkParserErrors(t, identifier)
+}
+
 func TestParseCharAndRuneNumericSuffixes(t *testing.T) {
 	input := `let ch: char := 65t
 let ru: rune := 0x41r`
@@ -5424,6 +5452,46 @@ fn Test() int {
 	}
 	if lambda.ReturnType.Name != "int" {
 		t.Fatalf("wrong return type. got=%q", lambda.ReturnType.Name)
+	}
+}
+
+// Capture syntax retains an explicit AST ownership mode, and the removed
+// consuming-arrow spelling receives a targeted parser diagnostic.
+//
+// Rules:
+//   - rules/declarations/lambda-functions.md — §§15–17 "Capture forms"
+func TestParseExplicitMoveLambdaCapture(t *testing.T) {
+	p := New(lexer.New(`
+fn Test() void {
+	let first := 1
+	let second := 2
+	let closure := capture(first, <-second) fn() int {
+		return first + second
+	}
+}
+`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	letStmt := fn.Body.Statements[2].(*ast.LetStatement)
+	lambda, ok := letStmt.Value.(*ast.LambdaExpression)
+	if !ok || len(lambda.Captures) != 2 {
+		t.Fatalf("capture lambda = %#v", letStmt.Value)
+	}
+	if lambda.Captures[0].Mode != ast.LambdaCaptureCopy || lambda.Captures[1].Mode != ast.LambdaCaptureMove {
+		t.Fatalf("capture modes = %#v", lambda.Captures)
+	}
+	if got := lambda.String(); !strings.Contains(got, "capture(first, <-second)") {
+		t.Fatalf("lambda string = %q", got)
+	}
+
+	legacy := New(lexer.New(`fn Test(value: int) void {
+	let closure := capture(-> value) fn() void {}
+}`))
+	legacy.ParseProgram()
+	if len(legacy.Errors()) != 1 || !strings.Contains(legacy.Errors()[0], "use '<-'") {
+		t.Fatalf("legacy capture diagnostics = %v", legacy.Errors())
 	}
 }
 

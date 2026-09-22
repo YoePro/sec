@@ -318,7 +318,6 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 			return Place{}, false
 		}
 		objectType := base.Type
-		throughReference := objectType.Kind == ReferenceType
 		if objectType.Kind == ReferenceType {
 			if objectType.Element == nil {
 				return Place{}, false
@@ -337,8 +336,17 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 		if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
 			base = appendPlaceProjection(base, PlaceProjection{Kind: PlaceField, Name: expr.Property.Value, Token: expr.Property.Token})
 			base.Type = fieldType
-			if !throughReference {
+			// Field declarations do not carry independent mutability. Preserve the
+			// authority of the root or dereferenced access path: an immutable root
+			// cannot be made writable merely by projecting one of its fields. The
+			// implicit self root is the exception at body-analysis time: method
+			// mutation is used to derive the receiver's mutable/exclusive contract,
+			// which is then enforced at call sites.
+			//
+			// Rules: rules/memory/ownership.md — §8 "Field mutability and receiver authority".
+			if base.Root == "self" {
 				base.Mutable = true
+				base.PartialMoveSafe = true
 			}
 			return base, true
 		}

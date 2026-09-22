@@ -14,7 +14,7 @@ func TestAssertionPanicEffectsAndTransitivePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, string(source))
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{"unreachable statement at 19:9"})
 	graph := analyzer.CallGraph()
 	for _, name := range []string{"Proven", "DeadBranch"} {
 		id := callGraphNodeIDByName(t, graph, name)

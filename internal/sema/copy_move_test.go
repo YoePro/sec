@@ -1449,7 +1449,7 @@ fn Test() void {
 `
 
 	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{"unreachable statement at 16:3"})
 }
 
 func TestPlaceLoopMergeKeepsEntryAndBodyMoveState(t *testing.T) {

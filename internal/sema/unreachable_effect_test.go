@@ -19,7 +19,7 @@ func TestCheckedUnreachableTerminatesAndRecordsReachableEffect(t *testing.T) {
 		t.Fatal(err)
 	}
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, string(source))
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{"unreachable statement at 9:9"})
 
 	stop := analyzer.CallGraph().EffectSummary(callGraphNodeIDByName(t, analyzer.CallGraph(), "Stop"))
 	if !stop.MayPanic || len(stop.DirectEffects) != 1 || stop.DirectEffects[0].Kind != EffectMayPanicUnreachable {

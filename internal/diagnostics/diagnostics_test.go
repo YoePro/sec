@@ -169,3 +169,13 @@ func TestForbiddenTrySuccessHandlerDiagnosticIsRegistered(t *testing.T) {
 		t.Fatalf("forbidden try success handler diagnostic = %+v", definition)
 	}
 }
+
+func TestStorageSiteContractDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(StorageSiteContract)
+	if !ok {
+		t.Fatal("missing storage-site contract diagnostic")
+	}
+	if definition.Name != "types.storage-site-contract" || definition.Family != "types" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("storage-site contract diagnostic = %+v", definition)
+	}
+}

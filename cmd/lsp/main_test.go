@@ -1002,6 +1002,26 @@ func TestImmutableRequiresInitializerDiagnosticReachesLSP(t *testing.T) {
 	t.Fatalf("missing %s in %+v", diagnostics.ImmutableRequiresInitializer, items)
 }
 
+// Obsolete storage-site contracts retain one stable Sema/LSP diagnostic and a
+// migration hint toward named constrained types.
+//
+// Rule: rules/types/contracts.md — "Core rule".
+func TestStorageSiteContractDiagnosticReachesLSP(t *testing.T) {
+	items := analyze("", "module main\nfn Test() void {\n    let mut score: int range 0..100 := 50\n}\n")
+	for _, item := range items {
+		if item.Code != diagnostics.StorageSiteContract {
+			continue
+		}
+		if item.Severity != 1 || item.Range.Start.Line != 2 ||
+			!strings.Contains(item.Message, "contracts belong to named types") ||
+			!strings.Contains(item.Message, "help: declare a named constrained type") {
+			t.Fatalf("storage-site contract LSP diagnostic = %+v", item)
+		}
+		return
+	}
+	t.Fatalf("missing %s in %+v", diagnostics.StorageSiteContract, items)
+}
+
 func TestUnattachedAttributeDiagnosticReachesLSP(t *testing.T) {
 	items := analyze("", "module main\n@noPanic\n")
 	if len(items) != 1 {

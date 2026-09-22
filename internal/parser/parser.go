@@ -7252,6 +7252,9 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 		p.nextToken()
 		stmt.Value = p.parseExpression(LOWEST)
 	}
+	if p.rejectLegacyWordMoveInitializer(stmt) {
+		return nil
+	}
 	if stmt.Value == nil && len(p.errors) > initializerErrorCount {
 		return nil
 	}
@@ -7269,6 +7272,31 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 	}
 
 	return stmt
+}
+
+// rejectLegacyWordMoveInitializer diagnoses the removed `move source` form
+// without reserving `move`, which remains a valid ordinary identifier. The
+// check is limited to a second expression on the same source line after an
+// initializer whose complete parsed value is the identifier `move`.
+//
+// Rules:
+//   - rules/corrections/applied/unions-ownership-v2-correction-20260826.md — "Canonical move syntax"
+//   - rules/memory/ownership.md — §10 "Explicit move syntax"
+func (p *Parser) rejectLegacyWordMoveInitializer(stmt *ast.LetStatement) bool {
+	identifier, ok := stmt.Value.(*ast.Identifier)
+	if !ok || identifier.Value != "move" || p.peekToken.Line != identifier.Token.Line || !p.isExpressionStart(p.peekToken.Type) {
+		return false
+	}
+
+	p.addError(
+		"legacy word-form move syntax is not supported; use ':<-' for an inferred declaration or '<-' for a typed declaration at %d:%d",
+		identifier.Token.Line,
+		identifier.Token.Column,
+	)
+	for p.peekToken.Type != lexer.EOF && p.peekToken.Type != lexer.RBRACE && p.peekToken.Line == identifier.Token.Line {
+		p.nextToken()
+	}
+	return true
 }
 
 func (p *Parser) parseStaticStatement() ast.Statement {

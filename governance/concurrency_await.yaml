@@ -6,7 +6,7 @@ integrations:
     area: concurrency
     feature: await-expression-semantics
     status: partial
-    reviewed: "2026-09-21"
+    reviewed: "2026-09-22"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-16
     summary: >-
@@ -68,6 +68,7 @@ integrations:
       - "TaskOutcome[T] core documentation precedes the variants it documents"
       - "LSP enum completion projects the exact compiler-owned TaskError inventory"
       - "await v2 is synchronized across tasks, cancellation, blocking, structured concurrency, Semantic IR, target profiles, and tooling rulebooks"
+      - "Sema rejects await while a compiler-known MutexGuard[T] binding remains live and permits await after the guard has been explicitly consumed"
     remaining:
       - "implement explicit await commit state in Semantic IR/runtime"
       - "implement current-execution cancellation registration for await"
@@ -116,3 +117,5 @@ integrations:
         result: passed
       - command: go test ./cmd/lsp -run 'Test(HoverUsesCompilerOwnedTaskOutcomeType|CompletionUsesExactCompilerOwnedTaskErrorVariants)' -count=1
         result: passed
+      - command: go test ./internal/sema -run 'Test(AwaitRejectsLiveMutexGuard|AwaitAllowsConsumedMutexGuard)' -count=1
+        result: passed on 2026-09-22 with guard-acquisition provenance and moved-guard coverage

@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-26"
     document_revision: "2.0"
-    revised: "2026-09-21"
+    revised: "2026-09-22"
     repository_baseline: "b3315f6"
     replaces: pre-v2 rules/memory/ownership.md
     summary: >-
@@ -49,6 +49,17 @@ integrations:
       - frontend.match-v2
       - frontend.discard-v2
       - frontend.defer-v2
+    code:
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/place.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_lifetime_test.go
+      - internal/sema/copy_move_test.go
     implemented:
       - canonical Place identity for roots, fields, selected indexes and slices, references, and union payload projections
       - direct unavailable tracking with moved, discarded, and detached source provenance
@@ -68,17 +79,18 @@ integrations:
       - Sema records the exact tested Place and query polarity, resolves wholly available, unavailable, partially available, and uninitialized states statically where current Place facts suffice, and does not read the queried Place or reinterpret the test as Option/null/borrow/device state
       - continuing-path move-state joins retain an internal conditional marker; binary Available|Unavailable leaf tests refine the positive and negative branches, including a terminating negative branch whose fallthrough proves availability
       - negative whole-aggregate tests preserve existing recursive partial masks and still-owned sibling fields rather than collapsing them to a fabricated Unavailable reason
+      - ordinary instance methods reject complete-self consumption through discard, explicit consuming calls, and explicit terminal return while preserving ordinary copy of copyable self values
+      - struct-field Place projection preserves root mutation authority so immutable roots reject direct and nested field assignment, mutable roots remain writable, and method-body writes derive mutable/exclusive self authority for call-site enforcement
+      - ordinary methods may explicitly move an independently tracked owned self member; declaration, assignment, argument, return, and discard scans propagate the required mutable/exclusive receiver contract without permitting whole-self consumption
+      - immutable inline aggregates permit explicit partial ownership transfer from an independently tracked field while preserving sibling availability; immutability continues to forbid field replacement
+      - legacy word-form move initializers are rejected with guidance toward canonical :<- and <- syntax while move remains available as an ordinary identifier
+      - consuming -> parameters require explicit <- for reusable local and projected Places regardless of copyability, accept fresh temporaries marker-free, and commit successful transfers through the shared Place ownership path
+      - explicit reusable-source moves into an outer call remain uncommitted until every argument is valid; failure of a later argument preserves earlier local and projected caller ownership
+      - closure capture AST and parser distinguish plain copy capture from explicit <- move capture, reject legacy -> capture syntax, reject implicit move-only copy capture, consume copyable and move-only outer Places explicitly, and analyze the resulting environment binding with independent availability
     remaining:
       - availability-reason-separation
-      - explicit-consuming-call-arguments
-      - call-transfer-commit-with-explicit-move
-      - union-legacy-move-syntax
-      - closure-capture-explicit-move
-      - ordinary-method-no-whole-self-consume
-      - method-member-consumption
-      - immutable-root-field-mutability
+      - closure-capture-reference-modes-and-lifetimes
       - partial-availability-v2
-      - immutable-partial-move
       - custom-free-partial-move-ban
       - conditional-availability
       - ownership-is-available-dynamic-state-and-complete-recursive-refinement
@@ -207,3 +219,19 @@ integrations:
     verification:
       - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic -run 'Availability' -count=1
         result: passed; contextual tokens, dedicated AST, both spellings, static owned/moved and partial facts, conditional branch refinement, sibling-mask preservation, formatting, and static Semantic IR folding are covered
+      - command: go test ./internal/sema -run 'TestOrdinaryMethodCannotConsumeWholeSelf' -count=1
+        result: passed on 2026-09-22 with discard, consuming-call, explicit-return, and copy-preservation coverage
+      - command: go test ./internal/sema -run 'TestStructFieldMutabilityFollowsRootAuthority' -count=1
+        result: passed on 2026-09-22 with nested immutable-root rejection, mutable-root acceptance, and mutable self-receiver derivation
+      - command: go test ./internal/sema -run 'TestMethodMayConsumeOwnedSelfMember' -count=1
+        result: passed on 2026-09-22 with independently tracked member move and mutable receiver derivation
+      - command: go test ./internal/sema -run 'TestImmutableAggregatePermitsExplicitPartialMove' -count=1
+        result: passed on 2026-09-22 with explicit immutable-root field transfer and subsequent sibling use
+      - command: go test ./internal/parser -run 'TestRejectLegacyWordFormMoveInitializer|TestMoveDeclarationsRequireCanonicalOperator|TestParseExplicitMoveOwnership' -count=1
+        result: passed on 2026-09-22 with legacy word-form rejection, canonical syntax acceptance, and ordinary move identifier preservation
+      - command: go test ./internal/sema -run 'TestConsumingParameterRequiresExplicitMoveForProjectedCopyablePlace|TestCallArgumentsRequireVisibleReusableSourceTransfer|TestDiscardConvergesAfterConsumingCopyableArgument' -count=1
+        result: passed on 2026-09-22 with copyable local and projected reusable-source enforcement, explicit transfer, sibling availability, and marker-free fresh temporaries
+      - command: go test ./internal/sema -run 'TestFailedLaterArgumentDoesNotCommitEarlierExplicitProjectedMove|TestCallArgumentsRequireVisibleReusableSourceTransfer' -count=1
+        result: passed on 2026-09-22 with later-argument failure preserving earlier explicit local and projected source ownership
+      - command: go test ./internal/parser ./internal/sema -run 'TestParseExplicitMoveLambdaCapture|TestLambdaCaptureCopyAndExplicitMoveOwnership' -count=1
+        result: passed on 2026-09-22 with capture-mode AST preservation, legacy syntax rejection, copy-only plain capture, explicit outer-source consumption, and independent environment availability

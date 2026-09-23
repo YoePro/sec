@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -131,7 +132,11 @@ type ParameterUsageParameterSummary struct {
 	Binding      BindingID
 	Index        int
 	Name         string
+	Declaration  lexer.Token
 	DeclaredType Type
+	DeclaredRef  bool
+	DeclaredMut  bool
+	Consuming    bool
 	Receiver     bool
 	Demand       ParameterDemand
 	Uses         []ParameterUse
@@ -259,6 +264,185 @@ func buildParameterUsageAnalysis(program *ast.Program, analyzer *Analyzer) *Para
 	return builder.result
 }
 
+const largeByValueParameterThresholdBytes int64 = 64
+
+// emitLargeValueParameterAdvisories emits A2001 only after the complete local
+// and interprocedural demand fixed point proves that a shared borrow preserves
+// every currently modeled critical capability. Size is cost evidence only.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Candidate narrowing"
+//   - rules/analysis/parameter_usage_analysis.md — "Unknown critical dimensions block narrowing"
+//   - rules/analysis/parameter_usage_analysis.md — "Large-value advisory"
+func (a *Analyzer) emitLargeValueParameterAdvisories() {
+	if a == nil || a.parameterUsageAnalysis == nil {
+		return
+	}
+	for _, id := range a.parameterUsageAnalysis.summaryOrder {
+		summary := a.parameterUsageAnalysis.summaries[id]
+		if summary == nil || summary.Precision != ParameterDemandExact {
+			continue
+		}
+		for _, parameter := range summary.Parameters {
+			a.emitLargeValueParameterAdvisory(parameter)
+		}
+	}
+}
+
+// emitLargeValueParameterAdvisory combines a proven shared-borrow semantic
+// candidate with the current size policy without altering ParameterDemand.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Large value to reference"
+//   - rules/analysis/parameter_usage_analysis.md — "Semantic demand and recommendation policy are separate"
+//   - rules/analysis/parameter_usage_analysis.md — "ResolvedLayout as cost input"
+func (a *Analyzer) emitLargeValueParameterAdvisory(parameter ParameterUsageParameterSummary) {
+	typ := parameter.DeclaredType
+	if !sharedReferencePreservesParameterDemand(parameter) || typ.Kind == ReferenceType || typ.Kind == SliceType || typ.Kind == VoidType || typ.Kind == InvalidType {
+		return
+	}
+	size, ok := estimatedTypeSizeBytes(typ, map[string]bool{})
+	if !ok || size < largeByValueParameterThresholdBytes {
+		return
+	}
+	help := "Pass the parameter by shared reference when the function does not need to own or copy the whole value."
+	if typ.Kind == ArrayType {
+		if parameterDemandHasShape(parameter.Demand, ParameterShapeExactExtent) || parameterDemandHasShape(parameter.Demand, ParameterShapeUnknown) {
+			a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
+			return
+		}
+		a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s or ref %s[]", parameter.Name, typeDisplayName(typ), typeDisplayName(typ), arrayElementDisplayName(typ))
+		return
+	}
+	a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large value %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
+}
+
+// sharedReferencePreservesParameterDemand is the conservative capability gate
+// for the current A2001 shared-reference candidate.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Candidate narrowing"
+//   - rules/analysis/parameter_usage_analysis.md — "Candidate blockers"
+func sharedReferencePreservesParameterDemand(parameter ParameterUsageParameterSummary) bool {
+	demand := parameter.Demand
+	if parameter.DeclaredRef || parameter.DeclaredMut || parameter.Consuming || demand.Precision != ParameterDemandExact {
+		return false
+	}
+	if demand.Access != ParameterAccessUnused && demand.Access != ParameterAccessRead {
+		return false
+	}
+	if demand.Mutation != ParameterNoMutation || demand.Ownership != ParameterBorrowSufficient || demand.Lifetime != ParameterLifetimeCallOnly || demand.Identity != ParameterValueOnly {
+		return false
+	}
+	if demand.Representation != ParameterRepresentationNone || hasSpecialParameterStorage(demand.Storage) {
+		return false
+	}
+	return !parameterDemandHasShape(demand, ParameterShapeUnknown)
+}
+
+func parameterDemandHasShape(demand ParameterDemand, shape ParameterShapeDemand) bool {
+	for _, candidate := range demand.Shapes {
+		if candidate == shape {
+			return true
+		}
+	}
+	return false
+}
+
+func estimatedTypeSizeBytes(typ Type, visiting map[string]bool) (int64, bool) {
+	switch typ.Kind {
+	case BoolType, CharType:
+		return 1, true
+	case RuneType:
+		return 4, true
+	case IntType, UintType, FloatType:
+		return numericTypeSizeBytes(typ), true
+	case DecimalType:
+		return 16, true
+	case EnumType, RegisterType:
+		if typ.BitWidth > 0 {
+			return maxParameterSize(1, (typ.BitWidth+7)/8), true
+		}
+		if typ.RegisterWidth > 0 {
+			return maxParameterSize(1, (typ.RegisterWidth+7)/8), true
+		}
+		return 4, true
+	case StringType, ReferenceType, RawPtrType, SliceType, FunctionType:
+		return 16, true
+	case ArrayType:
+		length, ok := legacyArrayLength(typ)
+		if typ.Element == nil || !ok || length < 0 {
+			return 0, false
+		}
+		elementSize, ok := estimatedTypeSizeBytes(*typ.Element, visiting)
+		if !ok || length != 0 && elementSize > int64(^uint64(0)>>1)/length {
+			return 0, false
+		}
+		return elementSize * length, true
+	case StructType:
+		key := typeDisplayName(typ)
+		if visiting[key] {
+			return 0, false
+		}
+		visiting[key] = true
+		var total int64
+		for _, field := range typ.Fields {
+			fieldSize, ok := estimatedTypeSizeBytes(field.Type, visiting)
+			if !ok {
+				delete(visiting, key)
+				return 0, false
+			}
+			total += fieldSize
+		}
+		delete(visiting, key)
+		return total, true
+	case ResultType, UnionType:
+		var maxPayload int64
+		for _, argument := range typ.TypeArgs {
+			if size, ok := estimatedTypeSizeBytes(argument, visiting); ok && size > maxPayload {
+				maxPayload = size
+			}
+		}
+		for _, variant := range typ.UnionVariants {
+			if variant.Payload != nil {
+				if size, ok := estimatedTypeSizeBytes(*variant.Payload, visiting); ok && size > maxPayload {
+					maxPayload = size
+				}
+			}
+			var fields int64
+			fieldsOK := len(variant.PayloadFields) > 0
+			for _, field := range variant.PayloadFields {
+				size, ok := estimatedTypeSizeBytes(field.Type, visiting)
+				if !ok {
+					fieldsOK = false
+					break
+				}
+				fields += size
+			}
+			if fieldsOK && fields > maxPayload {
+				maxPayload = fields
+			}
+		}
+		return 8 + maxPayload, true
+	default:
+		return 0, false
+	}
+}
+
+func arrayElementDisplayName(typ Type) string {
+	if typ.Kind == ArrayType && typ.Element != nil {
+		return typeDisplayName(*typ.Element)
+	}
+	return typeDisplayName(typ)
+}
+
+func maxParameterSize(left int64, right int64) int64 {
+	if left > right {
+		return left
+	}
+	return right
+}
+
 func (b *parameterUsageBuilder) analyzeFunction(declaration *ast.FunctionDeclaration, implTarget string) {
 	if declaration == nil || declaration.Name == nil || declaration.Body == nil {
 		return
@@ -281,7 +465,9 @@ func (b *parameterUsageBuilder) analyzeFunction(declaration *ast.FunctionDeclara
 		fact := b.parameterFact(parameter)
 		item := ParameterUsageParameterSummary{
 			Binding: fact.ID, Index: index, Name: parameter.Name.Value,
-			DeclaredType: escapeSnapshotType(fact.Type), Demand: defaultParameterDemand(),
+			Declaration: parameter.Name.Token, DeclaredType: semanticSnapshotType(fact.Type),
+			DeclaredRef: parameter.Ref, DeclaredMut: parameter.MutableRef, Consuming: parameter.Consuming,
+			Demand: defaultParameterDemand(),
 		}
 		summary.Parameters = append(summary.Parameters, item)
 	}
@@ -293,7 +479,7 @@ func (b *parameterUsageBuilder) analyzeFunction(declaration *ast.FunctionDeclara
 		}
 	}
 	if implTarget != "" {
-		receiverType := escapeSnapshotType(b.analyzer.types[implTarget])
+		receiverType := semanticSnapshotType(b.analyzer.types[implTarget])
 		summary.Receiver = &ParameterUsageParameterSummary{
 			Index: -1, Name: "self", DeclaredType: receiverType, Receiver: true, Demand: defaultParameterDemand(),
 		}
@@ -376,12 +562,23 @@ func (b *parameterUsageBuilder) applyEscapeSummary(id CallableID) {
 	}
 }
 
+// applyEscapeDispositions imports lifetime and transfer evidence without
+// treating a copied projected return as a surviving borrow dependency.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Returning a parameter by value"
+//   - rules/analysis/parameter_usage_analysis.md — "Returning a borrow/view"
+//   - rules/analysis/parameter_usage_analysis.md — "Retaining/storing a parameter"
 func (b *parameterUsageBuilder) applyEscapeDispositions(parameter *ParameterUsageParameterSummary, dispositions []EscapeParameterDisposition) {
 	for _, disposition := range dispositions {
 		switch disposition {
 		case EscapeParameterReturned:
-			parameter.Demand.Lifetime = ParameterLifetimeReturned
-			parameter.Demand.Identity = strongerIdentity(parameter.Demand.Identity, ParameterAddressRequired)
+			if typeCarriesReferenceOrigin(parameter.DeclaredType) || parameterHasUseKind(parameter, ParameterUseReference) {
+				parameter.Demand.Lifetime = ParameterLifetimeReturned
+				parameter.Demand.Identity = strongerIdentity(parameter.Demand.Identity, ParameterAddressRequired)
+			} else if parameterHasWholePlaceUse(parameter) {
+				parameter.Demand.Ownership = strongerOwnership(parameter.Demand.Ownership, ParameterOwnershipRequired)
+			}
 		case EscapeParameterRetained, EscapeParameterStoredInEscapingCarrier:
 			parameter.Demand.Lifetime = ParameterLifetimeRetained
 		case EscapeParameterOwnershipTransferred:
@@ -398,6 +595,30 @@ func (b *parameterUsageBuilder) applyEscapeDispositions(parameter *ParameterUsag
 			parameter.Demand.Precision = ParameterDemandPartial
 		}
 	}
+}
+
+// parameterHasUseKind distinguishes a returned borrow dependency from a
+// copied scalar/field result that carries no lifetime relation to its source.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Returning a parameter by value"
+//   - rules/analysis/parameter_usage_analysis.md — "Returning a borrow/view"
+func parameterHasUseKind(parameter *ParameterUsageParameterSummary, kind ParameterUseKind) bool {
+	for _, use := range parameter.Uses {
+		if use.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func parameterHasWholePlaceUse(parameter *ParameterUsageParameterSummary) bool {
+	for _, use := range parameter.Uses {
+		if len(use.Place.Projections) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *parameterUsageBuilder) walkBlock(block *ast.BlockStatement) {
@@ -617,24 +838,25 @@ func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 		}
 	}
 	for index, argument := range call.Arguments {
+		argumentSource := parameterUsageTransferSource(argument)
 		if index >= len(resolved.Function.Parameters) {
-			b.markUnknownCallArgument(argument)
+			b.markUnknownCallArgument(argumentSource)
 			continue
 		}
 		parameter := resolved.Function.Parameters[index]
 		if parameter.Ref || parameter.Type.Kind == ReferenceType {
 			mutable := parameter.MutableRef || parameter.Type.ReferenceMutable
-			b.markExpression(argument, ParameterUseCall, mutable, ParameterBorrowSufficient, ParameterAddressRequired)
-			b.walkExpressionChildren(argument)
+			b.markExpression(argumentSource, ParameterUseCall, mutable, ParameterBorrowSufficient, ParameterAddressRequired)
+			b.walkExpressionChildren(argumentSource)
 		} else {
 			ownership := ParameterBorrowSufficient
 			if parameter.Consuming {
 				ownership = ParameterConsumptionRequired
 			}
-			b.walkExpression(argument)
-			b.markExpression(argument, ParameterUseCall, false, ownership, ParameterValueOnly)
+			b.walkExpression(argumentSource)
+			b.markExpression(argumentSource, ParameterUseCall, false, ownership, ParameterValueOnly)
 		}
-		if callerParameter, place, rooted := b.parameterPlace(argument); rooted {
+		if callerParameter, place, rooted := b.parameterPlace(argumentSource); rooted {
 			site.arguments = append(site.arguments, parameterUsageCallArgument{
 				callerParameter: callerParameter, callerPlace: cloneEscapePlace(place), calleeIndex: index,
 			})
@@ -643,6 +865,21 @@ func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
 	if len(site.arguments) > 0 {
 		b.callSites = append(b.callSites, site)
 	}
+}
+
+// parameterUsageTransferSource exposes the canonical Place below explicit <-
+// so consuming call demand is attributed to the caller parameter rather than
+// lost on the syntactic ownership marker.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Move use"
+//   - rules/analysis/parameter_usage_analysis.md — "Calls propagate demand"
+func parameterUsageTransferSource(expression ast.Expression) ast.Expression {
+	prefix, ok := expression.(*ast.PrefixExpression)
+	if ok && prefix.Operator == "<-" && prefix.Right != nil {
+		return prefix.Right
+	}
+	return expression
 }
 
 const parameterUsageProjectionLimit = 8
@@ -958,11 +1195,11 @@ func (b *parameterUsageBuilder) parameterPlace(expression ast.Expression) (*Para
 	case *ast.Identifier:
 		if resolved, ok := b.analyzer.ResolvedBindingOf(expression); ok {
 			if parameter := b.byBinding[resolved.ID]; parameter != nil {
-				return parameter, Place{Root: parameter.Name, RootToken: resolvedToken(b.analyzer, resolved.ID), Type: escapeSnapshotType(resolved.Type)}, true
+				return parameter, Place{Root: parameter.Name, RootToken: resolvedToken(b.analyzer, resolved.ID), Type: semanticSnapshotType(resolved.Type)}, true
 			}
 			if resolved.Kind == BindingParameter {
 				if parameter := b.byName[resolved.Name]; parameter != nil {
-					return parameter, Place{Root: parameter.Name, RootToken: expression.Token, Type: escapeSnapshotType(resolved.Type)}, true
+					return parameter, Place{Root: parameter.Name, RootToken: expression.Token, Type: semanticSnapshotType(resolved.Type)}, true
 				}
 			}
 		}
@@ -1163,7 +1400,7 @@ func cloneParameterUsageCallableSummary(summary ParameterUsageCallableSummary) P
 }
 
 func cloneParameterUsageParameterSummary(summary ParameterUsageParameterSummary) ParameterUsageParameterSummary {
-	summary.DeclaredType = escapeSnapshotType(summary.DeclaredType)
+	summary.DeclaredType = semanticSnapshotType(summary.DeclaredType)
 	summary.Demand.Shapes = append([]ParameterShapeDemand(nil), summary.Demand.Shapes...)
 	summary.Demand.Storage = append([]ParameterStorageDemand(nil), summary.Demand.Storage...)
 	summary.Uses = append([]ParameterUse(nil), summary.Uses...)

@@ -345,6 +345,22 @@ type ResolvedTry struct {
 	EnclosingResultType Type
 }
 
+type ResolvedTryAssignmentKind string
+
+const (
+	ResolvedTryAssignmentPropagation ResolvedTryAssignmentKind = "propagation"
+	ResolvedTryAssignmentHandled     ResolvedTryAssignmentKind = "handled"
+)
+
+// ResolvedTryAssignment records whether a fallible assignment propagates or
+// uses local handlers and preserves the exact error-channel decision for IR.
+type ResolvedTryAssignment struct {
+	Kind                ResolvedTryAssignmentKind
+	ErrorType           Type
+	EnclosingResultType Type
+	HandlerPlan         ResolvedTryPlan
+}
+
 type ResolvedTryHandlerPatternKind string
 
 const (
@@ -1371,6 +1387,23 @@ func (a *Analyzer) ResolvedTryPlanOf(expr *ast.TryExpression) (ResolvedTryPlan, 
 	}
 	plan.Handlers = append([]ResolvedTryHandler(nil), plan.Handlers...)
 	return plan, true
+}
+
+// ResolvedTryAssignmentOf returns the compiler-owned control-flow decision for
+// a successfully analyzed fallible assignment.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §23 "Fallible assignment"
+func (a *Analyzer) ResolvedTryAssignmentOf(stmt *ast.TryAssignmentStatement) (ResolvedTryAssignment, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedTryAssignment{}, false
+	}
+	fact, ok := a.resolvedTryAssignments[stmt]
+	if !ok {
+		return ResolvedTryAssignment{}, false
+	}
+	fact.HandlerPlan.Handlers = append([]ResolvedTryHandler(nil), fact.HandlerPlan.Handlers...)
+	return fact, true
 }
 
 // ResolvedMatchPlanOf returns the immutable source-order match decision recorded

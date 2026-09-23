@@ -1524,18 +1524,30 @@ func TestRejectIncrementAndDecrementExpressionUse(t *testing.T) {
 	}
 }
 
-func TestRejectTryAssignmentWithoutHandlerBlock(t *testing.T) {
-	l := lexer.New(`try p += 1`)
+// TestParseTryAssignmentWithoutHandlerBlock fixes the grammar boundary between
+// a naked propagating assignment and the following statement.
+//
+// Rules:
+//   - rules/foundations/grammar.md — TryAssignmentStatement
+//   - rules/errors/errorhandling.md — §23 "Fallible assignment"
+func TestParseTryAssignmentWithoutHandlerBlock(t *testing.T) {
+	l := lexer.New("try p += 1\ndiscard p")
 	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
 
-	p.ParseProgram()
-
-	expected := `try assignment requires a handler block at 1:1`
-	if len(p.Errors()) != 1 {
-		t.Fatalf("wrong parser error count. got=%d want=1 errors=%v", len(p.Errors()), p.Errors())
+	if len(program.Statements) != 2 {
+		t.Fatalf("statement count = %d, want 2", len(program.Statements))
 	}
-	if p.Errors()[0] != expected {
-		t.Fatalf("wrong parser error. got=%q want=%q", p.Errors()[0], expected)
+	stmt, ok := program.Statements[0].(*ast.TryAssignmentStatement)
+	if !ok || stmt.Assignment == nil {
+		t.Fatalf("first statement = %T, want TryAssignmentStatement", program.Statements[0])
+	}
+	if stmt.Assignment.Operator != "+=" || stmt.Assignment.Value.String() != "1" || len(stmt.Handlers) != 0 {
+		t.Fatalf("naked try assignment = %+v", stmt)
+	}
+	if _, ok := program.Statements[1].(*ast.DiscardStatement); !ok {
+		t.Fatalf("second statement = %T, want DiscardStatement", program.Statements[1])
 	}
 }
 

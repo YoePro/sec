@@ -133,6 +133,41 @@ fn Forward(value: ref int) void {
 	}
 }
 
+// TestLargeValueAdvisoryRequiresProvenBorrowSufficiency ensures size alone
+// cannot recommend a shared reference when either the declaration or a
+// reachable call requires ownership consumption.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Candidate narrowing"
+//   - rules/analysis/parameter_usage_analysis.md — "Unknown critical dimensions block narrowing"
+//   - rules/analysis/parameter_usage_analysis.md — "Large-value advisory"
+func TestLargeValueAdvisoryRequiresProvenBorrowSufficiency(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `module main
+
+type Frame struct {
+	a: int, b: int, c: int, d: int,
+	e: int, f: int, g: int, h: int,
+}
+
+fn Sink(-> frame: Frame) void {
+	discard frame
+}
+
+fn Forward(frame: Frame) void {
+	Sink(<-frame)
+}
+`)
+	assertSemaErrors(t, errors, nil)
+	if warnings := analyzer.Warnings(); len(warnings) != 0 {
+		t.Fatalf("ownership-consuming large parameters received narrowing advice: %#v", warnings)
+	}
+
+	forward := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "Forward"), "frame")
+	if forward.Demand.Ownership != ParameterConsumptionRequired {
+		t.Fatalf("forward demand = %#v, want consumption-required", forward.Demand)
+	}
+}
+
 func TestParameterUsageSummarizesImplicitReceiver(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

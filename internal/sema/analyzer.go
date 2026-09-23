@@ -53,9 +53,13 @@ type Analyzer struct {
 	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
 	resolvedTries              map[*ast.TryExpression]ResolvedTry
 	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
+	resolvedTryAssignments     map[*ast.TryAssignmentStatement]ResolvedTryAssignment
 	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
 	resolvedOptionIfBindings   map[*ast.IfStatement]ResolvedOptionIfBinding
 	resolvedAvailabilityTests  map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
+	resolvedLambdaCaptures     map[*ast.LambdaExpression][]CaptureRecord
+	resolvedCallableIdentities map[ast.Expression]ResolvedCallableIdentity
+	resolvedClosureCreations   map[*ast.LambdaExpression]ClosureCreationSummary
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
 	// facts keyed by source syntax. Consumers will use the read-only query
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
@@ -109,7 +113,7 @@ type Analyzer struct {
 	inSwitchCaseBody            bool
 	inDeferBlock                bool
 	deferOuterSymbols           map[string]Symbol
-	deferCaptures               map[string]lexer.Token
+	deferCaptures               map[string]borrowRecord
 	suppressPlaceRootRead       int
 	loopBackedgePlaces          map[string]bool
 	cancellableDepth            int
@@ -274,9 +278,13 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
+	a.resolvedTryAssignments = map[*ast.TryAssignmentStatement]ResolvedTryAssignment{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedOptionIfBindings = map[*ast.IfStatement]ResolvedOptionIfBinding{}
 	a.resolvedAvailabilityTests = map[*ast.AvailabilityExpression]ResolvedAvailabilityTest{}
+	a.resolvedLambdaCaptures = map[*ast.LambdaExpression][]CaptureRecord{}
+	a.resolvedCallableIdentities = map[ast.Expression]ResolvedCallableIdentity{}
+	a.resolvedClosureCreations = map[*ast.LambdaExpression]ClosureCreationSummary{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
 	a.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
@@ -383,6 +391,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeTestBodies(program)
 	a.validateNoPanicGuarantees(program)
 	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
+	a.emitLargeValueParameterAdvisories()
 	a.pitfallAnalysis = buildPitfallAnalysis(program, a)
 
 	return a.errors
@@ -785,10 +794,10 @@ func (a *Analyzer) Functions() map[string][]Function {
 func (a *Analyzer) Symbols() map[string]Symbol {
 	out := make(map[string]Symbol, len(a.symbols)+len(a.completionSymbols))
 	for name, symbol := range a.completionSymbols {
-		out[name] = symbol
+		out[name] = cloneSymbol(symbol)
 	}
 	for name, symbol := range a.symbols {
-		out[name] = symbol
+		out[name] = cloneSymbol(symbol)
 	}
 	return out
 }
@@ -2188,12 +2197,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 	case *ast.AssignmentStatement:
 		a.analyzeAssignmentStatement(stmt, false)
 	case *ast.TryAssignmentStatement:
-		if stmt.Assignment != nil {
-			a.analyzeAssignmentStatement(stmt.Assignment, true)
-		}
-		if len(stmt.Handlers) > 0 {
-			a.analyzeTryAssignmentHandlers(stmt)
-		}
+		a.analyzeTryAssignmentStatement(stmt)
 	case *ast.DeferStatement:
 		a.analyzeDeferStatement(stmt)
 	case *ast.DiscardStatement:
@@ -2611,7 +2615,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 			if !a.validateExplicitDiscardType(place.Type, expressionToken(stmt.Value)) {
 				return
 			}
-			if a.checkDeferredUse(place.Root, expressionToken(stmt.Value), "discard") || a.checkBorrowedMovePlace(place, expressionToken(stmt.Value)) {
+			if a.checkBorrowedMovePlaceForAction(place, expressionToken(stmt.Value), "discard") {
 				return
 			}
 			// Preserve the resolved type and definition facts normally recorded by
@@ -2649,7 +2653,8 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if !exists {
 		return
 	}
-	if a.checkDeferredUse(ident.Value, ident.Token, "discard") || a.checkBorrowedMove(ident.Value, ident.Token) {
+	place, placeOK := a.rootPlace(ident.Value)
+	if placeOK && a.checkBorrowedMovePlaceForAction(place, ident.Token, "discard") {
 		return
 	}
 	a.moved[ident.Value] = ident.Token
@@ -3082,74 +3087,6 @@ func (a *Analyzer) analyzeBranchBlockWithCallGraphReachability(block *ast.BlockS
 		a.callGraphPathReachable = previous
 	}()
 	return a.analyzeBranchBlock(block)
-}
-
-func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
-	if !a.inFunctionBody {
-		a.addErrorAtToken(stmt.Token, "defer is only valid inside functions")
-		return
-	}
-	if a.inDeferBlock {
-		a.addErrorAtToken(stmt.Token, "defer is not allowed inside defer")
-		return
-	}
-	if stmt.Body == nil {
-		a.addErrorAtToken(stmt.Token, "defer requires a block")
-		return
-	}
-	if a.loopDepth > 0 {
-		a.addWarningAtToken(stmt.Token, "defer inside loop registers once per execution and runs at function exit")
-	}
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousInDeferBlock := a.inDeferBlock
-	previousDeferOuterSymbols := a.deferOuterSymbols
-	previousDeferCaptures := a.deferCaptures
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
-	a.closedResources = copyMoved(previousClosedResources)
-	a.borrows = copyBorrows(previousBorrows)
-	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
-	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
-	a.inDeferBlock = true
-	a.deferOuterSymbols = previousSymbols
-	a.deferCaptures = map[string]lexer.Token{}
-	defer func() {
-		for name, token := range a.deferCaptures {
-			place, _ := a.rootPlace(name)
-			previousBorrows[name] = append(previousBorrows[name], borrowRecord{
-				Root:   name,
-				Place:  place,
-				Holder: "$defer",
-				Kind:   deferredUse,
-				Token:  token,
-			})
-		}
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
-		a.closedResources = previousClosedResources
-		a.borrows = previousBorrows
-		a.localRefContainers = previousLocalRefContainers
-		a.arenaGenerations = previousArenaGenerations
-		a.inDeferBlock = previousInDeferBlock
-		a.deferOuterSymbols = previousDeferOuterSymbols
-		a.deferCaptures = previousDeferCaptures
-	}()
-
-	a.analyzeBlockStatements(stmt.Body)
 }
 
 func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
@@ -4914,7 +4851,6 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 				continue
 			}
 		}
-		a.warnLargeByValueParameter(param.Name.Value, paramType, param.Ref, param.MutableRef, param.Name.Token)
 		function.Parameters = append(function.Parameters, FunctionParameter{
 			Name:       param.Name.Value,
 			Type:       paramType,
@@ -5099,111 +5035,6 @@ func isSupportedExternABI(abi string) bool {
 	}
 }
 
-const largeByValueParameterThresholdBytes int64 = 64
-
-func (a *Analyzer) warnLargeByValueParameter(name string, typ Type, ref bool, mutableRef bool, token lexer.Token) {
-	if ref || mutableRef || typ.Kind == ReferenceType || typ.Kind == SliceType || typ.Kind == VoidType || typ.Kind == InvalidType {
-		return
-	}
-	size, ok := estimatedTypeSizeBytes(typ, map[string]bool{})
-	if !ok || size < largeByValueParameterThresholdBytes {
-		return
-	}
-	if typ.Kind == ArrayType {
-		a.addWarningAtTokenWithMetadata(token, diagnostics.LargeValueParameter, "Pass the parameter by shared reference when the function does not need to own or copy the whole value.", "parameter %q passes large array %s by value; consider ref %s or ref %s[]", name, typeDisplayName(typ), typeDisplayName(typ), arrayElementDisplayName(typ))
-		return
-	}
-	a.addWarningAtTokenWithMetadata(token, diagnostics.LargeValueParameter, "Pass the parameter by shared reference when the function does not need to own or copy the whole value.", "parameter %q passes large value %s by value; consider ref %s", name, typeDisplayName(typ), typeDisplayName(typ))
-}
-
-func estimatedTypeSizeBytes(typ Type, visiting map[string]bool) (int64, bool) {
-	switch typ.Kind {
-	case BoolType, CharType:
-		return 1, true
-	case RuneType:
-		return 4, true
-	case IntType, UintType, FloatType:
-		return numericTypeSizeBytes(typ), true
-	case DecimalType:
-		if typ.Name == "decimal128" {
-			return 16, true
-		}
-		return 16, true
-	case EnumType, RegisterType:
-		if typ.BitWidth > 0 {
-			return maxInt64(1, (typ.BitWidth+7)/8), true
-		}
-		if typ.RegisterWidth > 0 {
-			return maxInt64(1, (typ.RegisterWidth+7)/8), true
-		}
-		return 4, true
-	case StringType, ReferenceType, RawPtrType, SliceType, FunctionType:
-		return 16, true
-	case ArrayType:
-		length, ok := legacyArrayLength(typ)
-		if typ.Element == nil || !ok || length < 0 {
-			return 0, false
-		}
-		elementSize, ok := estimatedTypeSizeBytes(*typ.Element, visiting)
-		if !ok {
-			return 0, false
-		}
-		if length != 0 && elementSize > int64(^uint64(0)>>1)/length {
-			return 0, false
-		}
-		return elementSize * length, true
-	case StructType:
-		key := typeDisplayName(typ)
-		if visiting[key] {
-			return 0, false
-		}
-		visiting[key] = true
-		var total int64
-		for _, field := range typ.Fields {
-			fieldSize, ok := estimatedTypeSizeBytes(field.Type, visiting)
-			if !ok {
-				delete(visiting, key)
-				return 0, false
-			}
-			total += fieldSize
-		}
-		delete(visiting, key)
-		return total, true
-	case ResultType, UnionType:
-		var maxPayload int64
-		for _, arg := range typ.TypeArgs {
-			size, ok := estimatedTypeSizeBytes(arg, visiting)
-			if ok && size > maxPayload {
-				maxPayload = size
-			}
-		}
-		for _, variant := range typ.UnionVariants {
-			if variant.Payload != nil {
-				size, ok := estimatedTypeSizeBytes(*variant.Payload, visiting)
-				if ok && size > maxPayload {
-					maxPayload = size
-				}
-			}
-			var fields int64
-			fieldsOK := len(variant.PayloadFields) > 0
-			for _, field := range variant.PayloadFields {
-				size, ok := estimatedTypeSizeBytes(field.Type, visiting)
-				if !ok {
-					fieldsOK = false
-					break
-				}
-				fields += size
-			}
-			if fieldsOK && fields > maxPayload {
-				maxPayload = fields
-			}
-		}
-		return 8 + maxPayload, true
-	default:
-		return 0, false
-	}
-}
-
 func numericTypeSizeBytes(typ Type) int64 {
 	switch typ.Name {
 	case "int8", "uint8", "byte":
@@ -5219,20 +5050,6 @@ func numericTypeSizeBytes(typ Type) int64 {
 	default:
 		return 8
 	}
-}
-
-func arrayElementDisplayName(typ Type) string {
-	if typ.Kind == ArrayType && typ.Element != nil {
-		return typeDisplayName(*typ.Element)
-	}
-	return typeDisplayName(typ)
-}
-
-func maxInt64(left int64, right int64) int64 {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 func (a *Analyzer) validateExternFunction(function Function) {
@@ -7908,9 +7725,22 @@ func (a *Analyzer) analyzeReturnTryResultForwarding(functionName string, returnT
 func copySymbols(in map[string]Symbol) map[string]Symbol {
 	out := make(map[string]Symbol, len(in))
 	for name, symbol := range in {
-		out[name] = symbol
+		out[name] = cloneSymbol(symbol)
 	}
 	return out
+}
+
+// cloneSymbol detaches analysis-owned callable target storage whenever symbol
+// state crosses a scope or public snapshot boundary.
+//
+// Rules:
+//   - rules/compiler/compiler_analysis.md — immutable analysis results
+//   - rules/analysis/closure_analysis.md — "Callable target sets"
+func cloneSymbol(symbol Symbol) Symbol {
+	if symbol.HasCallableIdentity {
+		symbol.CallableIdentity = cloneResolvedCallableIdentity(symbol.CallableIdentity)
+	}
+	return symbol
 }
 
 func copyConstInts(in map[string]*big.Int) map[string]*big.Int {
@@ -11177,6 +11007,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			if hasReferenceOrigin {
 				a.localRefContainers[stmt.Name.Value] = referenceOrigin
 			}
+			a.recordBoundCallableIdentity(stmt.Name.Value, stmt.Value)
 			a.setConstInt(stmt.Name.Value, stmt.Value)
 		}
 		return
@@ -11227,6 +11058,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		if hasReferenceOrigin {
 			a.localRefContainers[stmt.Name.Value] = referenceOrigin
 		}
+		a.recordBoundCallableIdentity(stmt.Name.Value, stmt.Value)
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 	}
 }
@@ -11300,6 +11132,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	// invalidate active comparison facts after any assignment; this is safe
 	// until the general refinement engine tracks per-binding SSA versions.
 	defer func() { a.arrayIndexMutationEpoch++ }()
+	a.recordDeferPlaceExpression(stmt.Target)
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
 		a.analyzeMemberAssignmentStatement(stmt, member, allowFallible)
 		return
@@ -11421,6 +11254,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		if hasReferenceOrigin {
 			a.localRefContainers[symbol.Name] = referenceOrigin
 		}
+		a.recordBoundCallableIdentity(symbol.Name, stmt.Value)
 	}
 }
 
@@ -12167,10 +12001,19 @@ func (a *Analyzer) checkBorrowedMove(name string, token lexer.Token) bool {
 }
 
 func (a *Analyzer) checkBorrowedMovePlace(place Place, token lexer.Token) bool {
+	return a.checkBorrowedMovePlaceForAction(place, token, "move")
+}
+
+// checkBorrowedMovePlaceForAction validates ownership-invalidating move or
+// discard against deferred Place dependencies and ordinary live borrows.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §21 "Defer and delayed use", §22 "Moves, discard, replacement, and destruction"
+func (a *Analyzer) checkBorrowedMovePlaceForAction(place Place, token lexer.Token, action string) bool {
+	if a.checkDeferredUsePlace(place, token, action) {
+		return true
+	}
 	for _, candidate := range placeOriginAlternatives(place) {
-		if a.checkDeferredUse(candidate.Root, token, "move") {
-			return true
-		}
 		for _, record := range a.borrows[candidate.Root] {
 			if record.Kind == deferredUse {
 				continue
@@ -12190,30 +12033,6 @@ func (a *Analyzer) checkBorrowedMovePlace(place Place, token lexer.Token) bool {
 		}
 	}
 	return false
-}
-
-func (a *Analyzer) checkDeferredUse(name string, token lexer.Token, action string) bool {
-	for _, record := range a.borrows[name] {
-		if record.Kind != deferredUse {
-			continue
-		}
-		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required by defer", action, name)
-		return true
-	}
-	return false
-}
-
-func (a *Analyzer) recordDeferCapture(name string, symbol Symbol, token lexer.Token) {
-	if !a.inDeferBlock || a.deferCaptures == nil {
-		return
-	}
-	outer, ok := a.deferOuterSymbols[name]
-	if !ok || outer.Token != symbol.Token {
-		return
-	}
-	if _, exists := a.deferCaptures[name]; !exists {
-		a.deferCaptures[name] = token
-	}
 }
 
 func borrowRootName(expr ast.Expression) (string, bool) {
@@ -12461,54 +12280,6 @@ func (a *Analyzer) isRegisterBitField(member *ast.MemberExpression) bool {
 func (a *Analyzer) isZeroOrOneIntegerConstant(expr ast.Expression) bool {
 	value, ok := a.integerConstantValue(expr)
 	return ok && (value.Sign() == 0 || value.Cmp(big.NewInt(1)) == 0)
-}
-
-func (a *Analyzer) analyzeTryAssignmentHandlers(stmt *ast.TryAssignmentStatement) {
-	if stmt.Assignment == nil {
-		return
-	}
-	errorType, ok := a.tryAssignmentErrorType(stmt.Assignment)
-	if !ok {
-		a.addErrorAtToken(stmt.Token, "try assignment handlers require a known error type")
-		return
-	}
-	resultType := Type{
-		Name:     "Result",
-		Kind:     ResultType,
-		TypeArgs: []Type{{Name: "void", Kind: VoidType}, errorType},
-	}
-	expr := &ast.TryExpression{
-		Token:      stmt.Token,
-		Expression: &ast.Identifier{Token: stmt.Token, Value: "__try_assignment"},
-		Handlers:   stmt.Handlers,
-	}
-	a.analyzeTryHandlers(expr, resultType)
-}
-
-func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, bool) {
-	switch target := stmt.Target.(type) {
-	case *ast.MemberExpression:
-		property, ok := a.lookupPropertyOnMember(target)
-		if !ok || property.Error == nil {
-			return Type{}, false
-		}
-		return *property.Error, true
-	case *ast.Identifier:
-		property, ok := a.lookupCurrentImplProperty(target.Value)
-		if ok {
-			if property.Error == nil {
-				return Type{}, false
-			}
-			return *property.Error, true
-		}
-		symbol, ok := a.symbols[target.Value]
-		if ok && hasContracts(symbol.Type) {
-			return a.types["ContractError"], true
-		}
-		return Type{}, false
-	default:
-		return Type{}, false
-	}
 }
 
 func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
@@ -13283,6 +13054,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			if functions := a.accessibleFunctions(a.functions[expr.Value]); len(functions) > 0 {
 				if len(functions) == 1 {
 					a.bindDefinition(expr.Token, functions[0].Token)
+					a.recordNamedCallableIdentity(expr, functions[0])
 					return functionTypeFromFunction(functions[0]), expressionValue{Display: expr.String()}
 				}
 				a.addErrorAtToken(expr.Token, "ambiguous function value %s; explicit function type required", expr.Value)
@@ -13336,6 +13108,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.recordDeferCapture(expr.Value, symbol, expr.Token)
+		if symbol.HasCallableIdentity {
+			a.resolvedCallableIdentities[expr] = cloneResolvedCallableIdentity(symbol.CallableIdentity)
+		}
 		return symbol.Type, expressionValue{Display: expr.String()}
 	case *ast.PrefixExpression:
 		return a.inferPrefixExpression(expr)
@@ -13382,6 +13157,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 			if a.checkPlaceAvailableForRead(place, expr.Property.Token) || a.checkBorrowedReadPlace(place, expr.Property.Token) {
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
+			a.recordDeferPlace(place, expr.Property.Token)
 		}
 		return typ, expressionValue{Display: expr.String()}
 	case *ast.ArrayLiteral:
@@ -13389,16 +13165,22 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 	case *ast.IndexExpression:
 		typ, value := a.inferIndexExpression(expr)
 		if typ.Kind != InvalidType {
-			if place, ok := a.resolvePlace(expr); ok && a.checkBorrowedReadPlace(place, expr.Token) {
-				return Type{Kind: InvalidType}, value
+			if place, ok := a.resolvePlace(expr); ok {
+				if a.checkBorrowedReadPlace(place, expr.Token) {
+					return Type{Kind: InvalidType}, value
+				}
+				a.recordDeferPlace(place, expr.Token)
 			}
 		}
 		return typ, value
 	case *ast.SliceExpression:
 		typ, value := a.inferSliceExpression(expr)
 		if typ.Kind != InvalidType {
-			if place, ok := a.resolvePlace(expr); ok && a.checkBorrowedReadPlace(place, expr.Token) {
-				return Type{Kind: InvalidType}, value
+			if place, ok := a.resolvePlace(expr); ok {
+				if a.checkBorrowedReadPlace(place, expr.Token) {
+					return Type{Kind: InvalidType}, value
+				}
+				a.recordDeferPlace(place, expr.Token)
 			}
 		}
 		return typ, value
@@ -14086,6 +13868,14 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 	}
 }
 
+// inferLambdaExpression validates a lambda, constructs its capture environment
+// in the enclosing callable, and analyzes its body under a distinct callable
+// identity and lexical capture scope.
+//
+// Rules:
+//   - rules/declarations/lambda-functions.md — §§13–21 explicit captures and lambda bodies
+//   - rules/analysis/closure_analysis.md — "Callable creation"
+//   - rules/analysis/call_graph.md — "Callable node" and "Call-site record"
 func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expressionValue) {
 	returnType, ok := a.resolveType(expr.ReturnType)
 	if !ok {
@@ -14120,6 +13910,12 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	}
 
 	a.validateLambdaCaptureOwnership(expr)
+	a.recordLambdaCaptureFacts(expr)
+	a.recordLambdaCallableIdentity(expr)
+	lambdaCallable := CallableID("")
+	if identity, exists := a.resolvedCallableIdentities[expr]; exists {
+		lambdaCallable = a.callGraph.addClosureCallable(identity, a.currentModule)
+	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
@@ -14127,6 +13923,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	previousMoved := a.moved
 	previousMoveReasons := a.moveReasons
 	previousFunctionName := a.currentFunctionName
+	previousCallable := a.currentCallable
 	previousFunctionReturn := a.currentFunctionReturn
 	previousInFunctionBody := a.inFunctionBody
 	previousInLambda := a.inLambda
@@ -14175,6 +13972,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.moved = previousMoved
 		a.moveReasons = previousMoveReasons
 		a.currentFunctionName = previousFunctionName
+		a.currentCallable = previousCallable
 		a.currentFunctionReturn = previousFunctionReturn
 		a.inFunctionBody = previousInFunctionBody
 		a.inLambda = previousInLambda
@@ -14184,6 +13982,9 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	}()
 
 	a.defineLambdaCaptures(expr, captureCandidates, previousAssigned)
+	// Environment construction executes in the enclosing callable. Only the
+	// lambda body itself changes the active call-graph caller.
+	a.currentCallable = lambdaCallable
 
 	for i, param := range expr.Parameters {
 		mutableBinding := !param.Ref && !param.MutableRef && params[i].Kind != ReferenceType
@@ -14200,39 +14001,6 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	}
 
 	return lambdaType, expressionValue{Display: expr.String()}
-}
-
-func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols map[string]Symbol, outerAssigned map[string]bool) {
-	seen := map[string]lexer.Token{}
-	for _, capture := range expr.Captures {
-		if capture.Name == nil {
-			continue
-		}
-		name := capture.Name.Value
-		if _, exists := seen[name]; exists {
-			a.addErrorAtToken(capture.Name.Token, "duplicate capture %s", name)
-			continue
-		}
-		seen[name] = capture.Name.Token
-		symbol, ok := outerSymbols[name]
-		if !ok {
-			if symbol, exists := a.symbols[name]; exists && !symbol.Local {
-				a.addErrorAtToken(capture.Name.Token, "cannot capture non-local declaration %s; reference it directly", name)
-			} else {
-				a.addErrorAtToken(capture.Name.Token, "undefined capture %s", name)
-			}
-			continue
-		}
-		if assigned, exists := outerAssigned[name]; exists && !assigned {
-			a.addErrorAtToken(capture.Name.Token, "cannot capture unassigned variable %s", name)
-			continue
-		}
-		symbol.Mutable = false
-		a.symbols[name] = symbol
-		a.assigned[name] = true
-		delete(a.constInts, name)
-		a.recordCaptureEscapeFact(name, capture.Name.Token, symbol)
-	}
 }
 
 func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -18627,6 +18395,7 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
+	a.recordFunctionValueCall(expr)
 
 	return *calleeType.FunctionReturnType, expressionValue{Display: expr.String()}
 }
@@ -18642,16 +18411,18 @@ func (a *Analyzer) resolveFunctionValueInitializer(target Type, expr ast.Express
 		return Type{}, false
 	}
 
-	matches := []Type{}
+	matches := []Function{}
 	for _, function := range functions {
 		fnType := functionTypeFromFunction(function)
 		if sameFunctionType(target, fnType) {
-			matches = append(matches, fnType)
+			matches = append(matches, function)
 		}
 	}
 
 	if len(matches) == 1 {
-		return matches[0], true
+		a.bindDefinition(ident.Token, matches[0].Token)
+		a.recordNamedCallableIdentity(ident, matches[0])
+		return functionTypeFromFunction(matches[0]), true
 	}
 	if len(matches) > 1 {
 		a.addErrorAtToken(ident.Token, "ambiguous function value %s; explicit function type required", ident.Value)

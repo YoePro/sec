@@ -1266,3 +1266,670 @@ integrations:
     - imported non-local declaration follows ordinary lookup
     - nested lambda retains direct module-level lookup
     - nested lambda separately enforces explicit capture of eligible enclosing local
+  - id: frontend.static-declarations-members
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-14"
+    revised: "2026-09-07"
+    document_revision: "2.2"
+    summary: >-
+      Explicit static impl bindings are type-owned; non-static impl bindings
+      are instance-owned. The previous immutable-let equivalence is corrected.
+      Static frontend registration and qualification remain integrated, and
+      formatting preserves impl static. Per-instance impl binding storage and
+      initialization are not implemented; Sema diagnoses this explicitly and
+      never reinterprets instance declarations as static members. General
+      static Semantic IR, lowering, specialization and destruction remain partial.
+    rules:
+      - rules/declarations/static.md
+      - rules/declarations/impl.md
+      - rules/declarations/properties.md
+      - rules/foundations/grammar.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/foundations/attributes.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/lexer/lexer.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/static.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/types.go
+      - internal/sema/call_graph.go
+      - internal/formatter/formatter.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/builder.go
+      - internal/lowering/secmlir/emitter.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/concurrency_test.go
+      - cmd/lsp/main_test.go
+      - testdata/associated_values_valid.sec
+      - testdata/impl_instance_let_invalid.sec
+      - internal/formatter/formatter_test.go
+      - cmd/compiler/diagnostic_catalog_test.go
+    normative_delta:
+      - static let is type-owned and accessed through Type.Name; bare let is instance-owned and requires an instance
+      - mutability is independent of ownership category; let mut is mutable instance storage and static let mut is mutable type storage
+      - immutable static let is not redundant and must never be rewritten to let
+      - instance initializers belong to construction rather than the static dependency graph
+      - static and instance names share the combined member-name namespace but are different semantic categories
+    implemented:
+      - static keyword tokenization and declaration-position parsing
+      - static let and static let mut parsing at module, function, and impl-member positions
+      - static fn parsing and AST classification, including receiver-free interface requirements
+      - ordinary impl fn declarations remain instance-bound with compiler-provided implicit self
+      - static-let symbols are classified with Static storage origin by Sema
+      - type-associated static storage is registered under its qualified type member identity and supports Type.Name reads
+      - static functions participate in resolved static-method calls and compiler-owned call-graph dispatch facts
+      - static storage declarations in primary and same-module impl extends fragments enter the combined semantic member surface
+      - static members remain separate from nominal instance fields and layout
+      - compiler-known static properties and functions participate in LSP member completion through the shared Sema registry
+      - static properties are classified in impl and interface AST, require explicit setter parameters, and are validated without an implicit receiver
+      - static property reads and writes use Type.Name while instance-qualified static and type-qualified instance property access are rejected
+      - interface property conformance and inherited requirement merging preserve the static-versus-instance category
+      - LSP hover and completion expose static properties and separate type-qualified members from instance members
+      - canonical formatting removes redundant module-level static while preserving impl and function-local static declarations
+      - explicitly typed module storage is predeclared independently of source order for frontend dependency analysis
+      - known runtime calls and invocation-local captures are rejected in static initializers, and static dependency cycles receive deterministic diagnostics
+      - function-local static declarations retain Static storage classification rather than automatic Inline classification in Sema
+      - non-static impl lets retain Static=false and are explicitly rejected pending per-instance storage/initialization support rather than registered as static symbols
+      - impl static let is preserved by ordinary and fix-enabled formatting
+      - S1026 redundant-static information diagnostic is retired and no longer emitted
+      - only explicit static impl bindings enter type-qualified completion and the static initializer dependency graph
+      - testdata/associated_values_valid.sec uses explicit static for every type-owned binding
+    remaining:
+      - implement per-instance impl let and let mut storage, construction-time initialization, self/instance lookup, ownership, destruction, layout and lowering before accepting those declarations
+      - represent associated immutable values unambiguously in Semantic IR and retain one representation with explicit static identity
+      - lower compile-time associated values and addressable immutable associated storage consistently through Sec MLIR and every backend
+      - complete focused nested-impl and generic-specialization identity tests for associated immutable values
+      - complete cross-category duplicate diagnostics against fields, properties, methods, events, and nested types in every impl fragment ordering
+      - complete hover, references, document-symbol, and semantic-token regression coverage for static and instance member categories
+      - prevent static fn bodies from receiving implicit self or unqualified instance-member access
+      - classify ordinary module-level bindings as static storage and reject static fn outside valid impl/interface contexts
+      - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
+      - complete targeted diagnostics rejecting instance-qualified access to static methods and every remaining storage edge case
+      - lower static properties through Semantic IR, Sec MLIR, and the backend
+      - materialize function-local static declarations as one persistent storage location in Semantic IR and backend lowering
+      - extend static compile-time evaluation from known runtime-call and local-capture rejection to the complete compiler-known evaluator contract
+      - extend source-order-independent dependency inference to untyped static declarations and generic specializations
+      - specialize generic static storage independently for every concrete monomorphization
+      - analyze statically provable unsynchronized shared mutable access and unsafe mutable-reference escape
+      - remove redundant module-level static during canonical formatting and optionally provide an informational LSP diagnostic
+      - represent StaticStorage, StaticLoad, StaticStore, StaticMethod, StaticProperty, StaticInitialize, and StaticDestroy explicitly or unambiguously in Semantic IR
+      - lower static storage, initialization, access, mutation, specialization, and target-supported deterministic destruction through Sec MLIR and LLVM
+      - preserve dependency- and use-constrained shutdown order without promising destruction after forced termination
+      - verify that static never implies linker section, absolute address, MMIO, memory space, or another physical placement policy
+      - add the revision-2.0 parser, Sema, formatter, LSP, concurrency, Semantic IR, and backend regression matrix recorded by the static rulebook
+    required_tests:
+      - static let resolves as Type.Name and is not offered on instance receivers
+      - bare let never resolves as Type.Name or enters static storage/dependency analysis
+      - formatter preserves static in primary and extended impl bindings and remains idempotent
+      - no S1026 diagnostics or remove-static quick fixes for impl bindings
+      - once instance storage is implemented, independent instances retain independent member state with correct initialization and cleanup
+      - combined static/instance name conflicts are rejected across implementation fragments
+    verification:
+      - command: go test ./...
+        result: passed for corrected static/instance distinction; per-instance storage remains explicitly unsupported
+  - id: frontend.structs
+    area: frontend-analysis-and-lowering
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical named struct declarations, stored fields and tags,
+      complete and partial literals, recursive semantic defaults, field Places,
+      derived value classifications, spread construction, and backend coverage.
+    rules:
+      - rules/declarations/struct.md
+      - rules/types/default_values.md
+      - rules/declarations/spread.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/memory/layout.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/types.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/codegen/mlir/generator.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/defaults_test.go
+      - internal/sema/copy_move_test.go
+      - internal/codegen/mlir/generator_test.go
+    implemented:
+      - named struct declarations through type Name struct syntax
+      - typed comma-separated stored fields with trailing comma support
+      - empty structs and duplicate or unknown field diagnostics
+      - quote-aware raw-string field tags retained as ordered open-key metadata, including quoted whitespace, structural quote validation, and field-boundary recovery
+      - named complete, partial, empty, multiline, comma-separated, and trailing-comma struct literals
+      - unknown and duplicate explicit struct-literal field diagnostics
+      - recursive semantic defaults for omitted defaultable fields
+      - rejection of omitted non-defaultable fields
+      - mutable declaration default initialization for defaultable structs
+      - same-type struct spread parsing and Sema validation for implicitly copyable sources
+      - stored-field member access, assignment, borrow, move, Place projection, and sibling-field distinction
+      - derived frontend equality comparability when every stored field is comparable
+      - derived copy and destruction classification from stored fields and nominal no-copy policy
+      - concrete non-generic struct lowering with nested values and supported direct field reads and assignments
+      - immutable source-order struct literal and stored-member plans with declaration-order final fields, explicit spread/default provenance, and current ownership-action vocabulary
+      - verified Semantic IR struct definitions, full construction, explicit spread expansion, trivial field extraction, and functional replacement operation model
+      - schema-9 StructTagAttr, StructFieldAttr, nominal struct type, construct/spread/extract/replace operations, verifier coverage, and deterministic Sec MLIR emission
+      - defaulted mutable trivial struct storage and nested leaf-to-root field replacement with one root store
+      - synthetic struct-like union payload identity and guarded P12 whole-payload binding for the copy-trivial subset
+      - recursive target-sized scalar resolution inside preserved struct wrappers while trivial-core storage remains high-level
+    remaining:
+      - resolve forward and mutually recursive non-generic struct field graphs completely before field-dependent analysis
+      - diagnose every direct or indirect by-value recursive struct cycle as infinite size
+      - lower generic structs across all supported operations
+      - extend the implemented schema-9 copy-trivial struct path with later-package move, semantic-copy, borrow, cleanup, and ownership-sensitive spread cases
+      - support reference and slice fields consistently across every backend path
+      - complete partial-move and partial-initialization masks for nested aggregates
+      - represent and lower construction-failure cleanup for already initialized nontrivial fields
+      - complete derived struct equality lowering
+      - validate explicit foreign-compatible struct layout contracts
+      - synchronize remaining struct diagnostics and valid, invalid, recovery, ownership, cleanup, FFI, and end-to-end tests
+    verification:
+      - command: go test ./internal/parser -run Struct -count=1
+        result: passed
+      - command: go test ./internal/sema -run Struct -count=1
+        result: passed
+      - command: go test ./internal/ir/semantic -run Package13 -count=1
+        result: passed
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin' -count=1
+        result: passed
+      - command: cmake --build build/sec-mlir --target check-sec-mlir -j2
+        result: passed (78/78)
+  - id: frontend.spread
+    area: frontend-analysis-and-semantic-ir
+    status: partial
+    integrated: "2026-08-13"
+    summary: >-
+      Tracks canonical postfix spread parsing and fixed-array call, fixed-array
+      literal, and same-type struct spread semantics without hidden moves or
+      allocation.
+    rules:
+      - rules/declarations/spread.md
+      - rules/declarations/struct.md
+      - rules/collections/collections.md
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ast/ast.go
+      - internal/lexer/lexer.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/lexer/lexer_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+    implemented:
+      - postfix expression... syntax in call arguments, fixed-array literals, and struct literal entries
+      - fixed-array expansion counts for calls and array literals
+      - compact, checked fixed-array literal length accounting without materializing one analysis entry per expanded element
+      - same-exact-type non-consuming struct spread with left-to-right source analysis and explicit-field overrides
+      - semantic struct defaults after accepted explicit/spread resolution; invalid same-type move-only spreads can still suppress missing NonDefaultable field diagnostics
+      - rejection of standalone spread and runtime-length sources in fixed-arity calls and fixed-array literals
+      - rejection of hidden consuming reads for move-only fixed-array elements and move-only struct sources
+      - diagnostics that retain the original reference or dynamic-array source type for runtime-arity failures
+    remaining:
+      - preserve exactly-once evaluation, expansion order, ownership decisions, and struct override/default provenance in Semantic IR or a proven equivalent normalized representation
+      - complete visibility and construction-invariant diagnostics for struct spread across module boundaries
+      - add permanent spread_valid.sec and spread_invalid.sec fixtures covering all canonical cases
+      - add parser recovery coverage for prefix, repeated, missing-source, and out-of-context spread
+      - support runtime-length sequence spread only if a separate runtime-arity destination rule defines it
+    verification:
+      - command: go test ./internal/sema -run 'Test(CallSpread|ArrayLiteralSpread|StructSpread|InvalidStructSpread)' -count=1
+        result: passed
+  - id: frontend.function-overload-backend-identity
+    area: frontend-semantic-ir-and-lowering
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-14'
+    document_last_updated: '2026-08-14'
+    summary: Supplements frontend.functions-v2 with the missing backend identity status for ordinary overloads. Sema
+      resolves overloads by parameter signature and records the exact selected callable, but the legacy direct LLVM
+      generator stores only one declaration per source function name and emits ordinary overload declarations under
+      the same unmangled LLVM symbol. The legacy AST-to-LLVM-dialect MLIR generator distinguishes overloads only by
+      arity and explicitly rejects same-arity overloads. End-to-end lowering therefore does not yet preserve the canonical
+      Sema-selected overload identity for overloads distinguished by parameter type.
+    rules:
+    - rules/declarations/functions.md
+    - rules/declarations/generics.md
+    - rules/compiler/semantic_ir.md
+    - rules/mlir/sec_mlir_lowering.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/codegen/llvm/generator.go
+    - internal/codegen/llvm/functions.go
+    - internal/codegen/llvm/expressions.go
+    - internal/codegen/mlir/generator.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/codegen/llvm/generator_test.go
+    - internal/codegen/mlir/generator_test.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    implemented:
+    - ordinary overload groups are registered in Sema by source name
+    - overload identity excludes return type
+    - overloads differing only by ordinary versus forced-consuming parameter mode are rejected
+    - exact parameter matches are preferred over matches requiring conversion
+    - ambiguous equally ranked Sema candidates are rejected
+    - the exact selected ordinary callable is retained in resolved Sema call facts
+    - legacy MLIR provides deterministic arity-based symbols when overloads differ in arity
+    - legacy MLIR explicitly rejects same-name same-arity overload groups rather than guessing a parameter-type overload
+    partial:
+    - direct LLVM stores functions in map[string]*ast.FunctionDeclaration, so later declarations replace earlier declarations
+      in the name lookup used by code generation and function-value materialization
+    - direct LLVM llvmFunctionSymbol() returns the ordinary source function name for every non-extern overload, so
+      distinct ordinary overload definitions do not receive distinct backend symbols
+    - legacy AST-to-LLVM-dialect MLIR mangles overloads only by parameter count and rejects overloads that share the
+      same arity even when Sema has resolved them unambiguously by parameter type
+    - legacy MLIR resolveFunction() performs backend call lookup by source name and arity instead of consuming the
+      exact callable selected by Sema
+    - backend symbol identity is therefore not yet a preserved consequence of canonical parameter-signature overload
+      identity
+    remaining:
+    - preserve the exact Sema-selected callable identity in Semantic IR call facts
+    - assign deterministic backend symbols to ordinary overloads using canonical semantic signature identity rather
+      than source name or arity alone
+    - ensure symbol identity includes parameter types and all signature dimensions that participate in callable identity,
+      while excluding return type and non-discriminating ownership mode exactly as required by the rulebooks
+    - make direct LLVM retain overload groups or consume resolved callable facts rather than overwriting declarations
+      by source name
+    - prevent direct LLVM from emitting multiple distinct overload definitions under one ordinary source symbol
+    - make legacy MLIR consume the resolved overload identity instead of re-resolving calls by arity
+    - support same-arity parameter-type overloads through every maintained backend or reject the backend path with
+      an explicit unsupported-lowering diagnostic before producing IR
+    - preserve deterministic overload symbols across source order, modules, generic specialization, and repeated builds
+    - add end-to-end tests where two overloads have the same name and arity but different parameter types and both
+      are called
+    - add tests proving overload symbols cannot collide when physical lowered parameter types happen to coincide but
+      semantic overload identity remains distinct where the ABI permits the distinction
+    - integrate native variadic overload identity later without conflating it with C/foreign varargs
+    governance_reconciliation:
+    - frontend.functions-v2 already records the broad remaining work to represent calls in Semantic IR and lower calls
+      through Sec MLIR/LLVM. This supplement makes the specifically missing ordinary-overload symbol and selected-callable
+      identity problem explicit.
+    - Do not downgrade Sema ordinary-overload resolution. The frontend already resolves same-arity overloads by semantic
+      parameter types.
+    - 'Do not classify the legacy MLIR same-arity error itself as a semantic compiler bug: that backend explicitly
+      reports the unsupported case. The missing implementation is preservation/lowering of the already resolved callable.'
+    - The direct LLVM path requires special care because it does not provide the same explicit same-arity-overload
+      guard and uses one source symbol for every ordinary overload.
+    required_tests:
+    - same-name different-arity overloads lower to distinct deterministic symbols
+    - same-name same-arity different-parameter-type overloads both lower and call the Sema-selected targets
+    - source declaration order does not change backend overload symbols
+    - return type never contributes to overload symbol identity because such source overloads are already invalid
+    - forced-consuming versus ordinary mode does not create a distinct overload symbol because such source overload
+      pairs are already invalid
+    - direct LLVM never silently overwrites overload lookup by source name
+    - direct LLVM never emits distinct overload definitions under the same backend symbol
+    - legacy MLIR no longer re-resolves a Sema-resolved call by arity
+    - unsupported backend paths fail before publishing invalid or ambiguous IR
+  - id: frontend.register-wide-bit-fields
+    area: frontend-register-analysis
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Implements exact arbitrary-precision value domains for raw register bit[N] fields independently from
+      host and target-sized uint widths. Field identity retains the declared width and compile-time assignment checks
+      consume the exact big.Int bounds.
+    rules:
+    - rules/declarations/registers.md
+    - rules/types/types.md
+    - rules/memory/layout.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - testdata/register_valid.sec
+    - testdata/register_invalid.sec
+    implemented:
+    - positive integer-literal register widths
+    - positive integer-literal raw bit-field widths
+    - exact sum-of-field-width validation
+    - lsb-first and msb-first bit-offset calculation from declared widths
+    - raw bit-field range checking through arbitrary-precision MinInteger and MaxInteger bounds
+    - arbitrary-precision MinInteger and MaxInteger storage exists in the general semantic Type representation
+    - raw bit[N] semantic type names and BitWidth facts remain distinct from target-sized uint identity
+    - bit[65] and bit[128] assignment boundaries are covered with values above uint64
+    verification:
+    - command: go test ./internal/sema -run 'TestWideRegisterField|TestRegister' -count=1
+      result: passed
+    bug_reference:
+    - correction13.md
+    governance_reconciliation:
+    - 'Narrow frontend.registers implemented wording for bit[N] field value ranges and constant assignment checks:
+      layout width is exact, but raw semantic field ranges are currently capped at 64 bits.'
+    - Keep the separately documented remaining work for nested registers, compile-time width expressions, access semantics,
+      checked integer-to-register conversions, and lowering.
+    required_tests:
+    - bit[64] exact maximum accepted
+    - bit[64] first out-of-range value rejected
+    - bit[65] value 2^64 accepted
+    - bit[65] exact maximum accepted
+    - bit[65] first out-of-range value rejected
+    - bit[128] value 2^100 accepted
+    - bit[128] exact maximum accepted
+    - bit[128] first out-of-range value rejected
+    - backend inability to lower wide field does not change frontend semantic width
+  - id: frontend.spread-validity-and-ownership
+    area: frontend-spread-analysis
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-14'
+    summary: Struct spread contributes omitted fields only after full type and copyability validation. Fixed-array
+      call spread prepares non-consuming copied argument slots, including for consuming destinations, so ownership
+      bookkeeping never consumes the source array. Explicit indexed Semantic IR projection facts remain pending.
+    rules:
+    - rules/declarations/spread.md
+    - rules/declarations/functions.md
+    - rules/declarations/struct.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    tests:
+    - internal/sema/analyzer_test.go
+    implemented:
+    - postfix spread source type analysis
+    - fixed-array compile-time expansion counts for calls
+    - fixed-array spread element copyability rejection for move-only elements
+    - same-exact-type validation for struct spread
+    - struct-spread source copyability diagnostic
+    - explicit-field duplicate checking remains independent of spread entries
+    - missing NonDefaultable-field diagnostics work when no spread is treated as supplying the struct
+    - invalid same-type move-only struct spreads contribute no fields to omitted-field/default resolution
+    - fixed-array expanded arguments are marked as prepared copied values for ownership analysis
+    - consuming destination parameters do not consume a valid fixed-array spread source
+    partial:
+    - expanded slots retain the source expression plus a prepared-value marker rather than a canonical indexed Semantic
+      IR projection fact
+    remaining:
+    - introduce resolved per-expanded-argument facts carrying source, index, prepared value, destination parameter,
+      and ownership operation
+    - preserve one source evaluation and increasing-index expansion order
+    - feed resolved spread facts into Semantic IR rather than reconstructing source semantics from repeated AST expressions
+    - audit return-reference/provenance and borrow bookkeeping for spread arguments once indexed expanded-argument
+      facts exist
+    bug_reference:
+    - correction14.md
+    governance_reconciliation:
+    - Narrow frontend.spread's implemented statement that invalid spreads are unable to suppress missing NonDefaultable-field
+      diagnostics; the same-type non-copyable case currently violates it.
+    - Keep fixed-array call spread type/arity/copyability analysis as implemented within that scope, but record post-resolution
+      ownership as partial because consuming destination parameters can currently consume the whole source array.
+    - The existing remaining Semantic-IR spread-provenance item does not by itself document these frontend Sema defects.
+    required_tests:
+    - move-only same-type struct spread does not suppress missing field errors
+    - wrong-type struct spread does not suppress missing field errors
+    - valid struct spread supplies required fields
+    - copyable array spread into consuming parameters leaves source available
+    - direct non-spread consuming argument still becomes unavailable
+    - multiple consuming expanded slots never move source array
+    - move-only element spread remains rejected
+    - spread source analyzed exactly once
+    - expanded call slots preserve increasing indices
+  - id: frontend.static-context-receiver-storage
+    area: frontend-static-analysis
+    status: implemented
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-14'
+    summary: Static impl functions retain owning-type qualification without receiving self or implicit instance members.
+      Module bindings have static storage independent of redundant spelling, and static fn outside impl is rejected.
+    rules:
+    - rules/declarations/static.md
+    - rules/declarations/functions.md
+    - rules/declarations/impl.md
+    - rules/declarations/properties.md
+    - rules/foundations/grammar.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/parser/parser.go
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    - internal/sema/call_graph.go
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/concurrency_test.go
+    implemented:
+    - static keyword tokenization
+    - AST Static classification for static fn
+    - AST Static classification for static let and static let mut
+    - static fn is accepted as an impl member
+    - static function metadata retains Static=true
+    - static let symbols with an explicit static modifier are assigned StorageOriginStatic
+    - static member owner type is retained through impl-qualified function registration
+    - ordinary instance methods receive compiler-provided implicit self and instance-member aliases
+    - static method bodies do not receive self or implicit instance-member aliases
+    - receiver mutability inference and receiver-use classification exclude static methods
+    - ordinary module-level bindings use StorageOriginStatic without requiring explicit static
+    - Sema rejects static fn outside impl with focused guidance
+    bug_reference:
+    - correction15.md
+    governance_reconciliation:
+    - Remove or downgrade the current implemented claim "ordinary impl fn declarations remain instance-bound with
+      compiler-provided implicit self while static fn bodies receive no self". The ordinary-method half is implemented;
+      the static-method half is false at c515862.
+    - Keep "static-let symbols are classified with Static storage origin by Sema" only for explicitly static declarations,
+      and add that automatic module-level static storage classification is not yet implemented.
+    - Add validation of static declaration context to remaining work; parser acceptance of static fn is currently
+      broader than revision 2.0.
+    - Existing remaining items for static properties, access qualification, compile-time initialization, specialization,
+      concurrency, destruction, formatter normalization, and explicit Semantic IR/lowering remain unchanged.
+    required_tests:
+    - static method self use rejected
+    - static method unqualified instance field read rejected
+    - static method unqualified instance field write rejected
+    - ordinary instance method retains implicit self
+    - static method semantic fact has no receiver
+    - module-level ordinary let has static storage origin
+    - module-level ordinary let mut has static storage origin
+    - redundant module static let has identical semantic storage
+    - function-local ordinary let remains automatic
+    - function-local static let remains static
+    - module-level static fn rejected
+    - block-local static fn rejected
+    - impl static fn accepted
+    - impl extends static fn accepted
+  - id: frontend.struct-field-tags
+    area: frontend-struct-parser-and-metadata
+    status: implemented
+    audited: '2026-08-27'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Supplements frontend.structs with quote-aware field-tag parsing. The parser now scans key/value entries
+      left-to-right, recognizes separators only outside quoted values, preserves whitespace and escape spelling,
+      rejects malformed quote structure, and recovers at the current field comma. AST and Sema retain ordered open-key
+      metadata. Section 4 supplies the normative raw-escape behavior where the compiler preserves escape spelling while
+      recognizing the structural quote. The existing generic-specialization, Semantic IR, and Sec-MLIR paths preserve
+      the resulting ordered metadata and now have regression coverage. Sema exposes immutable field metadata and LSP
+      field hover consumes it without decoding values or assigning built-in meaning to open tag keys.
+    rules:
+    - rules/declarations/struct.md
+    - rules/foundations/grammar.md
+    code:
+    - internal/parser/parser.go
+    - internal/ast/ast.go
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic/builder.go
+    - internal/lowering/secmlir/emitter.go
+    - cmd/lsp/main.go
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/analyzer_test.go
+    - internal/sema/semantic_facts_test.go
+    - internal/ir/semantic/package13_test.go
+    - internal/lowering/secmlir/emitter_test.go
+    - cmd/lsp/main_test.go
+    implemented:
+    - optional raw-string tag token recognized after a stored field type
+    - multiple simple whitespace-separated key/value entries represented in AST
+    - open key names with no compiler hard-coded consumer allowlist
+    - tag key/value metadata copied from AST into semantic StructField metadata
+    - generic struct specialization preserves StructField metadata while substituting field types
+    - quote-aware key:"value" scanning without strings.Fields or destructive quote trimming
+    - whitespace and empty content inside quoted values are preserved
+    - malformed internal and unterminated quote structure is rejected
+    - escape spelling is preserved while escaped quotes do not terminate the value
+    - malformed tags recover at the current field comma and retain later fields
+    - canonical raw escape semantics are consumed exactly as section 4 specifies; escapes remain metadata and are not
+      decoded or normalized by the compiler
+    - generic specialization, Semantic IR construction, and Sec-MLIR schema-v9 lowering preserve ordered tag metadata
+    - resolved stored-field member facts expose ordered tag metadata through an immutable snapshot
+    - declaration-oriented consumers can query immutable ResolvedStructFieldMetadata by semantic definition identity
+    - LSP field hover displays compiler-resolved open-key metadata while retaining raw escapes, whitespace, and order
+    verification:
+    - command: go test ./internal/parser -run StructFieldTag -count=1
+      result: passed
+    - command: go test ./internal/sema -run GenericStructAndFunctionHeaders -count=1
+      result: passed
+    - command: go test ./internal/sema -run ResolvedStructPlansPreserveSourceOrderOverridesDefaultsAndMembers -count=1
+      result: passed
+    - command: go test ./internal/ir/semantic -run Package13BuildsEmptyAndConcreteGenericWideStructs -count=1
+      result: passed
+    - command: go test ./internal/lowering/secmlir -run EmitPackage13StructsEndToEnd -count=1
+      result: passed
+    - command: go test ./cmd/lsp -run StructFieldHoverPreservesOpenTagMetadata -count=1
+      result: passed
+    bug_reference:
+    - correction16.md
+    governance_reconciliation:
+    - The correction16 quote-aware parsing and recovery requirements, together with the later canonical escape semantics
+      in struct.md section 4, are now covered through parser, Sema, Semantic IR, and Sec-MLIR lowering.
+    - struct.md requires metadata preservation for consumers but does not define built-in meanings for tag keys; package
+      13 sections 12.2 and 70 explicitly keep reflection and serialization behavior out of scope while requiring the
+      metadata bridge now implemented and exposed to tooling.
+    required_tests:
+    - simple tag entry accepted
+    - multiple simple tag entries accepted
+    - custom key accepted
+    - empty quoted tag value accepted
+    - quoted tag value containing whitespace accepted
+    - malformed internal quote structure rejected
+    - unterminated quoted value rejected
+    - tag source order preserved
+    - malformed first-field tag still permits parsing later valid fields
+    - malformed middle-field tag recovers at field boundary
+    - generic specialization preserves ordered field tags
+    - resolved member tag facts are immutable snapshots
+    - declaration field-metadata facts are immutable snapshots
+    - Semantic IR preserves field tags on concrete generic structs
+    - Sec-MLIR emission preserves raw escapes, whitespace, and tag order
+    - LSP field hover exposes resolved open-key metadata without decoding values
+  - id: frontend.union-constructor-value-semantics
+    area: frontend-union-construction
+    status: partial
+    audited: '2026-08-19'
+    repository_baseline: c515862
+    document_revision: '2'
+    document_created: '2026-08-13'
+    document_last_updated: '2026-08-13'
+    summary: Union constructor payloads apply ordinary compatibility and integer representability validation. Resolved
+      unnamed constructors transfer move-only payload ownership into the aggregate without treating ordinary function
+      calls as constructors. Canonical Semantic IR payload-preparation facts remain pending.
+    rules:
+    - rules/declarations/unions.md
+    - rules/declarations/struct.md
+    - rules/types/types.md
+    - rules/memory/copy_move.md
+    - rules/memory/ownership.md
+    - rules/compiler/semantic_ir.md
+    - rules/mlir/packages/sec-mlir-dialect_package11.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/types.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/semantic_facts_test.go
+    - testdata/union_valid.sec
+    - testdata/union_invalid.sec
+    - testdata/semantic_ir/enum_union_values.sec
+    implemented:
+    - payload-less union construction arity checking
+    - single unnamed payload arity checking
+    - single unnamed payload broad type compatibility checking
+    - struct-like payload known-field and duplicate-field checking
+    - struct-like payload broad field type compatibility checking
+    - omitted Defaultable struct-like payload field synthesis
+    - omitted NonDefaultable struct-like payload field diagnostics
+    - generic payload substitution before represented concrete construction
+    - union payload copyability classification
+    - struct-literal aggregate ownership walk used by struct-like payload construction
+    - resolved union variant identity and declaration-order variant index facts
+    - integer representability validation for expected, qualified, generic-substituted, and named-field payloads
+    - resolved unnamed union constructors transfer ownership from move-only payload sources
+    - ordinary function calls remain governed by ordinary call-argument ownership
+    partial:
+    - union constructor payload preparation is not yet represented as one explicit resolved value/ownership fact independent
+      of AST shape
+    remaining:
+    - introduce explicit resolved union-constructor payload preparation facts
+    - distinguish payload copy preparation from ownership transfer
+    - make unnamed and struct-like payload ownership semantics independent of AST representation
+    - audit reference-origin/contained-origin propagation through both union constructor forms
+    - feed resolved constructor preparation into Semantic IR and lowering without reconstructing copy/move semantics
+      from syntax
+    bug_reference:
+    - correction17.md
+    governance_reconciliation:
+    - 'Narrow frontend.unions implemented wording "payload construction arity and type checking": arity and broad
+      type compatibility are implemented, but complete typed initialization/representability checking is partial.'
+    - Keep implemented match payload Place ownership and copyability classification. Add union-constructor payload
+      ownership transfer as a separate partial frontend area.
+    - Keep Package 11 implemented within its documented dependency-bounded scope; this correction concerns the frontend
+      preparation/proof supplied to later IR.
+    - Generic-union recursive storage remains governed by correction8.md and should not be duplicated here.
+    required_tests:
+    - unnamed uint8 payload accepts 255
+    - unnamed uint8 payload rejects 256
+    - named uint8 payload field rejects 300
+    - generic uint8 union payload rejects out-of-range literal
+    - equivalent struct and union field representability behavior
+    - copyable unnamed payload leaves source usable
+    - move-only unnamed payload transfers ownership
+    - moved unnamed payload source cannot be reused
+    - borrowed move-only source cannot be transferred into unnamed payload
+    - unnamed and struct-like payload ownership semantics agree
+    - temporary move-only payload constructor remains valid
+    - resolved constructor fact records payload ownership preparation

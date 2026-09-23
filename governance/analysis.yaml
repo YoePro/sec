@@ -100,6 +100,79 @@ integrations:
         result: passed; matched continue guards suppress only later indexes while ineffective and conditional guards remain findings
       - command: go test ./...
         result: passed after the endpoint-continue pitfall analysis update
+  - id: sema.parameter-usage-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-08"
+    revised: "2026-09-23"
+    summary: >-
+      Implements immutable post-Sema ParameterDemand summaries from resolved
+      bindings, canonical Places, calls, escape facts, and interprocedural fixed
+      points. A2001 large-value advice now runs only after exact demand proves a
+      shared borrow preserves every modeled critical capability; size remains
+      recommendation cost evidence rather than semantic proof.
+    rules:
+      - rules/analysis/parameter_usage_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/collections/collections.md
+      - rules/platform/ffi.md
+      - rules/analysis/effect_analysis.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/parameter_usage.go
+      - internal/sema/escape_analysis.go
+      - internal/sema/semantic_snapshot.go
+    tests:
+      - internal/sema/parameter_usage_test.go
+      - internal/sema/copy_move_test.go
+    implemented:
+      - canonical access, mutation, ownership, lifetime, identity, shape, storage, representation, and precision dimensions
+      - deterministic per-callable summaries for explicit parameters and implicit impl receivers
+      - immutable Analyzer snapshot API with defensive structural cloning of types, Places, projections, uses, and demand sets
+      - local read, field and element write, index, slice, iteration, reference formation, and explicit move evidence
+      - canonical Place evidence for fields, constant and dynamic indexes, and half-open slices
+      - random-access, sequence, known-range, and constant minimum-extent shape demand
+      - direct resolved ref and ref-mut call-boundary demand plus dimension-specific conservative unknown demand for unresolved and foreign calls
+      - returned, retained, transferred, task, thread, and foreign lifetime demand consumed from escape summaries
+      - copied projected returns no longer create false returned-lifetime or address-identity demand
+      - explicit <- call arguments attribute consumption demand to the underlying caller Place
+      - focused regressions for unused parameters, field reads and writes, indexing, iteration, returned borrows, implicit self, and snapshot immutability
+      - transitive direct-call demand propagation for ordinary parameters and method receivers with translated Place projections
+      - declaration-order-independent monotone fixed-point solving over call-graph SCC ordering, including recursive and mutually recursive callables
+      - bounded propagated projection depth with partial-precision widening and conservative unknown widening when an interactive summary budget is exhausted
+      - interprocedural convergence metadata in immutable analysis snapshots
+      - A2001 is emitted after demand convergence only for exact call-only, non-mutating, value-identity, representation-neutral BorrowSufficient parameters
+      - explicit reference and consuming declaration contracts block the shared-reference advisory
+      - large-value size estimation is recommendation evidence and does not mutate semantic demand
+    remaining:
+      - complete structural collection mutation, explicit copy, retention, whole-value, unreachable-path, and implicit unqualified receiver-member demand
+      - consume closure/callable target summaries and open callable contracts for function-value calls
+      - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
+      - add fixed-array exact-extent and contiguous-sequence demand where semantic operations prove those requirements
+      - derive capability-preserving narrowing candidates for fixed arrays, owning sequences, mutable references, and unnecessary mutability or ownership beyond the guarded A2001 shared-reference slice
+      - replace approximate size estimation with ResolvedLayout and separate target-specific recommendation cache invalidation
+      - respect explicit fixed-extent, ownership, hardware, FFI, storage, and representation contracts as narrowing blockers
+      - add recommendation confidence, reason, and blocked-candidate reporting
+      - add versioned persisted demand summaries for separate compilation
+      - extend the current Interactive summary-iteration budget to depth-specific Standard and Deep recommendation and persistence work
+      - expose configurable LSP hover/advisory information without making optional insight mandatory
+      - integrate parameter usage into default sec analyse --all behavior and support explicit parameter-usage-only analysis selection
+      - add narrowing, projection-widening recursion, FFI, recommendation-policy, shadowing, and false-positive regression tests
+    verification:
+      - command: go test ./internal/sema -run 'TestParameterUsage|TestLarge(ValueAdvisory|ByValue)' -count=1
+        result: passed; demand summaries, positive guarded advice, and ownership-consuming no-advisory behavior are covered
+      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
+        result: passed across all compiler, LSP, frontend, Semantic IR, and lowering packages
+
   - id: analysis.call-graph
     area: frontend-analysis-and-tooling
     status: partial
@@ -116,6 +189,7 @@ integrations:
       - cmd/lsp/main.go
     tests:
       - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_closure_test.go
       - internal/sema/allocation_test.go
       - cmd/lsp/main_test.go
     implemented:
@@ -138,7 +212,13 @@ integrations:
       - source-ordered direct Arena create, allocate, reset, and release event sites
       - synchronous Arena MayAllocate propagation and shortest callable cause paths
       - exclusion of spawned-body allocation from the spawner synchronous summary
+      - concrete call-graph nodes for valid capturing and non-capturing lambda bodies
+      - exact closed function-value and closure call sites sourced from canonical callable target sets
+      - function-value calls inside lambdas are attributed to the lambda callable rather than the enclosing declaration
+      - unknown function-value parameters create no unsound empty-target graph edge while open callable contracts remain unavailable
     verification:
+      - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestEscapeAnalysisRecordsCaptureWithoutLambdaReturnLeakage|TestCallGraph' -count=1
+        result: passed; exact indirect targets, distinct lambda callers, capture-creation ownership, and existing call-graph behavior are covered
       - command: go test ./...
         result: passed
       - command: go vet ./...
@@ -147,8 +227,8 @@ integrations:
         result: passed
     remaining:
       - callable and call-site identity and reachability stable across snapshots and concrete CompilationPlan variants
-      - generic-specialization, closure, defer, destructor, and compiler-generated callable nodes
-      - indirect function-value and interface target sets with open callable contracts
+      - generic-specialization, defer, destructor, and compiler-generated callable nodes plus CompilationPlan-qualified closure nodes
+      - joined/open function-value and interface target sets with sound open callable contracts
       - target, initialization, test, benchmark, interrupt, foreign-export, generated, and open-world roots
       - complete semantic path pruning beyond literal boolean branches
       - process, interrupt, callback, await, join, defer, and destruction execution relations
@@ -435,3 +515,551 @@ integrations:
     - make Iterator[T] resolved plan a lowering-readiness requirement
     - make test roots, task/thread/ISR roots and reachability plan-aware
     - preserve Invalid versus Unproven proof classification through pipeline diagnostics
+  - id: sema.closure-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-08"
+    revised: "2026-09-23"
+    summary: >-
+      Existing parser and Sema support provides function types, named function
+      values, function-value calls, explicit owned value-capture validation,
+      lambda body analysis, selected closure/reference escape rejection, and
+      configurable terminating analysis budgets. The canonical closure/callable-
+      flow service, target-set dataflow, closure summaries, recursive SCC fixed
+      points, and open callable contracts remain to be implemented.
+    rules:
+      - rules/analysis/closure_analysis.md
+      - rules/declarations/lambda-functions.md
+      - rules/analysis/call_graph.md
+      - rules/analysis/escape_analysis.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/memory/storage.md
+      - rules/analysis/effect_analysis.md
+      - rules/compiler/compiler_analysis.md
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
+    code:
+      - internal/ast/ast.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_closure.go
+      - internal/sema/analyzer_closure_capture.go
+      - internal/sema/call_graph.go
+      - internal/sema/analysis_budget.go
+      - internal/sema/semantic_snapshot.go
+      - internal/sema/types.go
+      - internal/lsp/server/documents.go
+      - cmd/compiler/init.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_closure_test.go
+      - internal/sema/analysis_budget_test.go
+      - cmd/lsp/main_test.go
+      - cmd/compiler/main_test.go
+    implemented:
+      - lambda and explicit capture parsing with capture-list AST retention
+      - resolved function-type representation with parameter and return types
+      - named function values with contextual overload resolution
+      - function-value assignment compatibility checking
+      - function-value call argument and return-type validation
+      - lambda-local function scope and normal lambda return validation
+      - explicit capture validation for duplicate, undefined, and unassigned captures
+      - Sec 0.1 captured bindings exposed to the lambda body as immutable bindings
+      - rejection of implicit access to uncaptured enclosing locals
+      - selected rejection of returned lambdas that capture references to local storage
+      - selected aggregate and union-payload reference escape checks that include lambda values
+      - explicit temporary restriction rejecting escaping captured lambdas until environment ownership/lowering is implemented
+      - canonical Place/provenance infrastructure for fields, indices, slices, union payloads, branch/loop joins, aggregate-contained origins, and direct return-origin summaries
+      - direct function/method reference-origin summary fixed points and transitive call-site instantiation available as reusable interprocedural-analysis infrastructure
+      - canonical Interactive, Standard, and Deep analysis-depth configuration that never changes language semantics
+      - Standard-by-default compiler analysis and Interactive-by-default LSP analysis
+      - project-configured LSP depth through analysis.lsp_depth in .sec/sec.toml
+      - finite Interactive return-origin summary iterations with conservative unknown widening at the resource limit
+      - configuration-change and watched-file refresh of diagnostics for all open documents without server restart
+      - canonical per-lambda CaptureRecord facts with source Place, structurally snapshotted captured type, explicit capture mode, validated copy/move transfer, and source-unavailability consequence
+      - captured referent Place, storage, generation, arena-domain, owned-resource, and callable-capability dependencies retained for later analyses
+      - read-only defensive capture-fact query that publishes no facts for invalid or duplicate captures
+      - typed callable-body, function-value-origin, closure-creation-site, and abstract-environment identities with explicit runtime-instance abstraction markers
+      - exact named-function targets for direct and contextually disambiguated function values
+      - exact non-capturing and capturing lambda body targets with deterministic source-snapshot identity
+      - invalid capture lists publish neither capture records nor callable identity facts
+      - canonical CallableTargetSet model shared by callable-creation facts and direct call-graph sites
+      - exact one-body closed target sets for named functions, capturing lambdas, and non-capturing lambdas
+      - defensive target-set snapshots from both callable identity and call-graph queries
+      - canonical per-lambda ClosureCreationSummary joining body, value origin, exact target set, creation site, abstract environment, and ordered capture records
+      - positive NoEnvironment-equivalent creation summaries for non-capturing lambdas and known abstract-environment summaries for capturing lambdas
+      - closure creation summaries preserve capture transfer and dependency facts without selecting physical layout, storage, or allocation
+      - defensive creation-summary snapshots and absence of summaries for invalid capture lists
+      - field-sensitive aggregate capture dependencies flattened from canonical contained-reference provenance with deterministic carrier paths
+      - nested capture dependencies preserve every bounded referent Place alternative and unknown/mutability state
+      - defensive nested dependency snapshots in both CaptureRecord and ClosureCreationSummary queries
+      - exact callable identity follows direct local function-value initialization, identifier copies, and direct rebinding
+      - captured local function values preserve their closed target set and nested abstract closure-environment dependency
+      - unresolved callable parameters remain explicitly unknown rather than acquiring a false NoEnvironment or empty-target proof
+      - callable target sets carried through symbols and capture summaries are defensively snapshotted
+      - exact local function-value and closure calls consume canonical target sets in the shared call graph
+      - lambda bodies have distinct call-graph callable nodes so nested calls retain the correct caller identity
+      - unknown callable parameters do not create unsound empty-target graph edges before callable contracts exist
+    verification:
+      - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestLambdaCapturePreservesNestedReferentDependencies|TestResolvedCallableIdentitiesAreExactAndStable|TestResolvedLambdaCaptureFacts|TestInvalidLambdaCaptureDoesNotPublishFact|TestLambda|TestResolvedCallable|TestCallGraph' -count=1
+        result: passed; direct binding/rebinding and nested callable dependencies, unknown callable-parameter handling, nested carrier-path dependencies, immutable closure creation summaries, exact stable callable identities and target sets, canonical capture facts, call-graph integration, invalid-capture exclusion, and existing lambda/callable behavior are covered
+      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
+        result: passed across all packages; the established unrelated pitfall regression remains excluded
+      - command: parse governance/*.yaml and implementation-status.yaml with duplicate integration-ID validation
+        result: passed
+
+    remaining:
+      - extend callable-body and creation-site identity with concrete CompilationPlan and generic-specialization identity when those services are available
+      - preserve the implemented abstract-environment versus runtime-instance distinction through later Semantic IR and lowering representation
+      - propagate the implemented exact TargetSet facts beyond direct local initialization/copy/rebinding through control-flow joins, aggregates, calls, and interprocedural summaries
+      - add ClosedSet joins plus KnownSetPlusOpenContract and OpenContract facts once canonical callable contracts are available
+      - callable-value flow through branches, loops, projected Places, aggregates, arrays, collections, options, and unions
+      - monovariant 0-CFA-equivalent baseline with deterministic bounded precision and conservative widening
+      - callable-parameter symbolic identities and interprocedural invocation, forwarding, and return summaries
+      - recursive and mutually recursive callable-summary fixed points using call-graph SCCs or an equivalent declaration-order-independent algorithm
+      - closure creation-site abstraction for loops and recursion without conflating runtime closure-instance identity
+      - complete slice/view backing-storage and generation dependency propagation beyond the implemented direct and aggregate-contained reference provenance
+      - propagate handle-specific and aggregate-contained callable target, contract, and environment dependencies beyond implemented direct local function-value captures
+      - integration with escape analysis for environment escape and retention destinations
+      - integration with lifetime/storage validation for environment and captured dependency validity
+      - integration with ownership analysis for capture and callable copy/move legality
+      - extend implemented call-graph integration from exact local callable values to joined targets, callable parameters, returns, aggregates, and open contracts
+      - integration with effect, stack, ISR, concurrency, and parameter-usage analyses through callable target/contract and environment facts
+      - persisted versioned closure/callable summaries for separate compilation and conservative stale/missing-summary fallback
+      - summary invalidation keyed by body, capture list, resolved targets, contracts, Place/provenance facts, specialization, CompilationPlan dependencies, and schema version
+      - extend the three budgets across callable targets, origin/cause-path depth, context sensitivity, caching, diagnostics, and optional insight
+      - sec analyse integration where the default runs all available analyses and an explicit analysis may be selected
+      - LSP NeedToKnow versus OptionalInsight presentation and per-feature configuration
+      - explicit cache and summary invalidation when persistent closure-analysis services are introduced
+      - Semantic IR representation of function-value creation/calls, closure creation, capture transfer, environment dependencies, and callable forwarding required by downstream analyses
+      - closure/environment lowering that obeys storage.md and never repairs escape with implicit heap promotion or hidden allocation
+      - synchronize closure-analysis implementation with lambda v2 capture modes and callable-capability inference
+      - dedicated positive, negative, interprocedural, CFA-precision, recursion, analysis-budget, LSP-integration, and termination regression tests
+  - id: sema.escape-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    audited: "2026-08-11"
+    summary: >-
+      Builds a compiler-owned immutable escape-fact and callable-summary slice
+      on canonical Place and reference provenance. Return, aggregate-carrier,
+      explicit-capture, and outer-place facts are integrated with existing
+      branch/loop provenance and direct-call return-origin summaries. Full
+      retention, indirect-call, recursion, separate-compilation, concurrency,
+      and foreign-retention analysis remains.
+    rules:
+      - rules/analysis/escape_analysis.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/reference_model.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/collections/collections.md
+      - rules/declarations/lambda-functions.md
+      - rules/platform/ffi.md
+      - rules/analysis/call_graph.md
+    code:
+      - internal/sema/place.go
+      - internal/sema/escape_analysis.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/escape_analysis_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/analyzer_test.go
+    implemented:
+      - canonical referent Place provenance for directly created local references and slice aliases
+      - field, index, and slice projection across every known reference-origin alternative
+      - bounded path-disjunctive reference-origin sets across branches and loop joins
+      - deterministic provenance-cap fallback to conservative unknown-origin rejection
+      - nested field-sensitive reference origins for locally constructed structs and fixed arrays
+      - aggregate-origin preservation through whole-value transfer and replacement assignment
+      - constant-index element precision and conservative dynamic-index origin joins
+      - aggregate-contained origin joins across branches and loop fixed points
+      - rejection of selected local-reference escape through assignments, returned aggregates, union payload match values, and lambdas
+      - declaration-order-independent fixed-point return-origin summaries for direct functions and methods
+      - symbolic parameter, receiver, projection, multi-source, and aggregate return paths
+      - transitive call-site origin instantiation for supported direct calls
+      - returned granting-borrow retention for supported direct reference calls
+      - dedicated immutable EscapeAnalysis snapshots with deterministic fact and callable-summary ordering
+      - canonical escape subject, mode, destination, source, and parameter-disposition representation
+      - historical return facts for owned values, references, views, raw pointers, callable values, and reference-carrying aggregates
+      - canonical Place source provenance and field-sensitive carrier paths on returned aggregate dependencies
+      - symbolic Returned parameter and receiver dispositions without inferring NoEscape from absent facts
+      - closure capture facts and Captured parameter or receiver dispositions for explicit lambda captures
+      - historical OuterPlace borrow-escape facts retained for rejected local-reference assignments
+      - Result Ok and Err payload return facts using the payload's semantic type
+      - isolation of final escape facts from iterative reference-summary passes and unattributed lambda-body returns
+      - defensive snapshot cloning that does not expose mutable compiler type internals
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - migrate remaining legacy lifetime-analysis bookkeeping to consume the dedicated escape-analysis result where practical
+      - prove NoEscape and classify Retained, StoredInEscapingCarrier, OwnershipTransferred, task/thread transfer, foreign transfer, and UnknownRetention parameter and receiver facts
+      - produce facts for the represented retention, aggregate, task, thread, static, thread-local, foreign, handle, and unknown destinations
+      - complete indexed, sliced, aliased, aggregate, and dynamic-container dependency propagation without losing canonical Place precision
+      - complete mutation, rebinding, move, copy, replacement, destruction, and carrier-state integration for escape facts
+      - add recursive and mutually recursive escape-summary SCC fixed points with projection widening and guaranteed termination
+      - add persisted, versioned, validated escape-summary metadata for separate compilation
+      - add function-value call summary composition and conservative unknown-target behavior
+      - integrate closure-environment dependency escape and later closure-analysis refinement
+      - implement explicit call retention contracts and retained-borrow propagation
+      - implement task and thread transfer escape classification
+      - implement FFI retention-contract consumption including conservative unknown foreign retention
+      - integrate Static and ThreadLocal escape destinations with lifetime/storage validation
+      - preserve storage-domain, backing, epoch/generation, and handle dependencies needed by lifetime/reference validation
+      - add cause-path production for escape diagnostics
+      - add canonical escape diagnostic IDs through central diagnostics governance
+      - connect escape facts to the common Interactive, Standard, and Deep analysis execution surface, sec analyse selection, and LSP consumers without weakening required proofs
+      - add positive, negative, precision, recursive, separate-compilation, callable, FFI, storage/generation, and concurrency test matrices required by rules/analysis/escape_analysis.md
+  - id: sema.stack-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    audited: "2026-08-11"
+    summary: >-
+      Adds canonical semantic and machine stack-resource analysis: materialized
+      frame accounting, call-path composition, recursive SCC and finite-depth
+      reasoning, indirect and foreign stack contracts, execution-root stack
+      domains, stack-budget proofs, incremental summaries, and LSP/tooling
+      integration without changing storage origin or performing hidden promotion.
+    rules:
+      - rules/analysis/stack_analysis.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/control-flow/defer.md
+      - rules/collections/collections.md
+      - rules/platform/ffi.md
+      - rules/platform/interrupts.md
+      - rules/analysis/effect_analysis.md
+      - rules/projects/projects.txt
+      - rules/tooling/lsp.md
+    remaining:
+      - add canonical stack-bound representation distinguishing Exact, UpperBound, Unknown, and Unbounded results
+      - add separate semantic and machine stack summary models without overwriting one analysis level with the other
+      - derive semantic own-frame demand from maximum simultaneously live materialized automatic storage rather than summing all declarations
+      - consume ResolvedLayout as the authoritative size, alignment, stride, aggregate, array, union, pointer, and descriptor layout source
+      - integrate canonical lifetime, escape, destruction, defer, addressability, pinning, partial-move, and storage facts to constrain stack-slot reuse
+      - distinguish inline fixed-array and embedded aggregate storage from descriptors, views, arena-backed storage, and allocator-backed backing memory
+      - model materialized semantic temporaries, return storage, direct construction, cleanup state, destruction, error paths, and panic paths without double-counting storage
+      - compose direct acyclic call paths so nested calls sum simultaneously live frames while sequential and mutually exclusive calls contribute their maximum
+      - consume canonical call-graph SCCs for direct, mutual, indirect, callback, and reentrant recursion rather than constructing a parallel call graph
+      - add recursion-depth facts distinguishing exact depth, finite upper-bound depth, unknown depth, and proven unbounded depth
+      - support simple finite recursion-depth proofs from canonical constant, range, constrained-type, root-contract, and call-argument transformation facts
+      - ensure a recursion progress proof applies to every relevant recursive transition before using it for a finite SCC stack bound
+      - add deterministic recursive SCC stack composition that accounts for different frame costs across different cycles
+      - consume closed callable target sets by taking the maximum permitted target stack contribution
+      - consume open callable stack contracts and preserve Unknown when an open target set has no verified finite stack bound
+      - model callable, foreign, runtime, and platform reentry so permitted callback paths can participate in recursive SCCs
+      - consume explicit foreign, runtime, and compiler-known platform stack contracts without defining their import mechanism in stack analysis
+      - add per-execution-root and per-physical-stack-domain maximum stack analysis for program, thread, task, ISR, platform, and runtime-defined roots
+      - compose nested execution contributions when the active runtime or CompilationPlan places logical execution contexts on the same physical stack
+      - add stack budgets that identify stack domain, semantic or machine measurement level, and maximum bytes without inventing stack-specific project syntax
+      - distinguish proven budget excess, failure to prove a required finite bound, and proven unbounded stack demand in diagnostics
+      - revalidate hard machine-stack budgets after target ABI, backend frame layout, spills, saved registers, and outgoing call areas are known
+      - preserve known stack prefixes, contributors, and unknown causes when an overall finite upper bound is unavailable
+      - add deterministic maximum-cause paths, recursive SCC explanations, depth-source reporting, and major frame-contributor reporting
+      - add versioned persisted semantic and CompilationPlan-specific machine stack summaries for separate compilation
+      - add dependency-driven invalidation for body, callee summary, target-set, SCC, layout, lifetime/storage, cleanup, specialization, foreign-contract, CompilationPlan, ABI, and schema changes
+      - add symbolic generic stack summaries where sound and instantiate them when size, constant, specialization, and plan inputs become known
+      - integrate Interactive, Standard, and Deep analysis budgets with Pending or partial tooling state that is never presented as a verified finite bound
+      - expose configurable LSP NeedToKnow versus OptionalInsight stack information and refresh affected analysis when project configuration changes without an LSP restart
+      - integrate stack analysis into default sec analyse all-analysis behavior and support explicit stack-only analysis selection
+      - expose reusable verified stack proofs to build validation, ISR analysis, resource reporting, embedded/platform tooling, and other compiler consumers
+      - add required frame, live-range, call-path, recursion, indirect-call, foreign/runtime, storage-accounting, CompilationPlan, budget, separate-compilation, incremental/LSP, performance, and determinism regression tests
+      - update implementation-status verification commands when the first conforming vertical slice is integrated
+
+
+  - id: sema.isr-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    summary: >-
+      Adds canonical Sec ISR constraint analysis using resolved interrupt profiles,
+      reusable transitive function-requirement summaries, execution-context
+      propagation, stack/data-race/deadlock composition, runtime and FFI interrupt
+      contracts, generic specialization, dependency-tracked positive proofs,
+      progressive LSP refinement, and deterministic Valid/Invalid/Unproven root
+      classification without duplicating the supporting analyses.
+    rules:
+      - rules/analysis/isr_analysis.md
+      - rules/platform/interrupts.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.md
+      - rules/analysis/effect_analysis.md
+      - rules/analysis/stack_analysis.md
+      - rules/analysis/data_races.md
+      - rules/analysis/deadlock_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/platform/ffi.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
+    remaining:
+      - add deterministic ISR-root discovery and resolved ISR-profile lookup from the active CompilationPlan and canonical platform/runtime execution model
+      - keep ISR profile capabilities distinct from mandatory positive safety proofs such as bounded stack, race freedom, deadlock freedom, and foreign interrupt safety
+      - add reusable per-function local ISR-requirement summaries over canonical semantic operations rather than source-name blacklists
+      - represent ISR requirement facts per semantic dimension with proven absence, reachable presence, and localized Unknown rather than one global unknown state
+      - retain deterministic representative semantic cause sites for local and transitive requirement facts
+      - account for compiler-required runtime helpers and target-specific lowering requirements before a source operation can serve as positive ISR-safety evidence
+      - define and enforce the invariant that lowering cannot silently introduce behavior that violates the active ISR profile assumptions used during analysis
+      - build transitive function-requirement summaries over the canonical call graph rather than reanalyzing helper bodies independently for every ISR root
+      - solve recursive and mutually recursive call-graph SCC requirement summaries with deterministic monotone fixed-point iteration
+      - propagate ordinary synchronous callees in the current execution context and consume canonical execution transitions for deferred, worker, spawned, runtime, and foreign handoff behavior
+      - preserve symbolic context requirements such as thread-local, runtime, memory-space, and interrupt-safety dependencies where this avoids per-root summary explosion
+      - consume closed callable target sets and conservatively join requirements for every target that may execute in the interrupt context
+      - consume open callable contracts and localize Unknown to missing blocking, allocation, runtime, context, or interrupt-safety dimensions
+      - support symbolic generic requirement summaries and specialization-aware instantiation where layout, destruction, stack, runtime, or semantic behavior differs
+      - consume canonical storage origins and distinguish automatic, static, thread-local, arena, and allocator-backed requirements rather than treating all dynamic storage as heap allocation
+      - consume runtime reentrancy, thread-context, compiler-known helper, and interrupt-safety contracts as independent semantic dimensions
+      - include destruction, defer, cleanup, panic, error, and compiler-required cleanup behavior in reachable ISR requirements
+      - consume synchronous foreign reentry callbacks in the current ISR context when required by the FFI contract
+      - consume asynchronous foreign handoff and callback context transitions without attributing later worker execution to the ISR while still checking the handoff operation itself
+      - consume resolved platform preemption, nesting, masking, and reentry relationships rather than deriving interrupt behavior from raw priority values alone
+      - consume nested physical stack-domain results from stack analysis without recomputing or double-counting nested ISR stack contributions
+      - map Exact stack use below or at budget to satisfied and Exact stack use above budget to proven violation
+      - map UpperBound stack use below or at budget to satisfied but treat UpperBound above budget as failure to prove safety unless actual overflow is independently proven
+      - preserve stack Unknown as Unproven and stack Unbounded as a violation when a finite stack requirement is mandatory
+      - consume relevant data-race results without duplicating Place, alias, race pairing, or happens-before logic
+      - map ProvenRace to violated, ProvenRaceFree to satisfied, and Unknown to unproven when the ISR profile requires race freedom
+      - consume relevant deadlock results without duplicating WaitForGraph or cycle-proof logic
+      - preserve ProvenDeadlock, PotentialDeadlock, and Unknown proof strength when evaluating ISR deadlock-freedom requirements
+      - keep ISR capability violations such as forbidden blocking synchronization distinct from supporting deadlock classifications
+      - add deterministic per-profile constraint evaluation with statuses equivalent to Satisfied, Violated, Unproven, Pending, and NotApplicable where appropriate
+      - classify an ISR root Invalid when any mandatory constraint is proven violated and Valid only when every mandatory proof is current and satisfied
+      - distinguish Pending analysis from completed Unproven safety and never use stale or pending dependencies as positive ISR-safety evidence
+      - preserve unresolved dimensions even when another proven violation already makes the root Invalid
+      - add explicit supporting proof dependencies from ISR root results to function summaries, stack results, race results, deadlock results, runtime contracts, FFI contracts, and resolved profiles
+      - integrate ISR analysis with the compiler's canonical dependency graph rather than introducing incompatible private invalidation where shared infrastructure exists
+      - on edits, invalidate changed local summaries, dependent transitive summaries, and affected positive ISR-root proofs before expensive recomputation
+      - propagate incremental recomputation through a dependency worklist only when an exported requirement summary changes
+      - reevaluate profile-only changes such as ISR stack budgets without unnecessarily recomputing unaffected function summaries
+      - invalidate target/CompilationPlan-sensitive summaries when runtime helpers, stack ABI, preemption/nesting, FFI/platform contracts, memory spaces, or lowering behavior changes
+      - support fast Interactive reporting of direct proven ISR violations before unrelated supporting analysis completes
+      - prevent the LSP from presenting a root as Valid while any mandatory supporting dependency is stale or Pending
+      - use progressive Interactive refinement toward Standard-equivalent results and optional Deep precision without adding a separate global Intermediate mode
+      - make Deep ISR analysis preferentially request stronger precision from the owning supporting analysis responsible for an unresolved dependency rather than reimplementing stack, alias, race, deadlock, or callable reasoning
+      - expose proven violations and required ISR-safety proof failures as NeedToKnow LSP diagnostics while keeping positive proof explanations and detailed dependency chains configurable OptionalInsight
+      - retain the applicable ISR root/profile and transitive semantic call/cause path in diagnostics
+      - group multiple presentation consequences of one semantic cause without merging independent underlying proof states
+      - avoid generic automatic fixes such as moving work to a thread or replacing synchronization unless a canonical transformation proves the edit correct
+      - integrate ISR analysis into default sec analyse all-analysis behavior and support explicit ISR-only selection through canonical tooling
+      - export compatible versioned function-requirement summaries for separate compilation and localize Unknown when required imported dimensions are missing
+      - include summary schema, compiler/language semantic version, effect/runtime/storage/callable/FFI contract versions, and relevant CompilationPlan keys in compatibility decisions where they can change ISR meaning
+      - make requirement summaries, ISR-root classifications, representative causes, and diagnostic ordering deterministic independent of declaration order, worklist order, cache iteration, or compiler worker scheduling
+      - add required profile-resolution, effects, context-propagation, stack, race, deadlock, runtime/reentrancy, FFI, callable, generic, cleanup, incremental-LSP, progressive-result, performance, determinism, and false-positive regression tests
+      - add explicit regression coverage for the UpperBound-above-stack-budget case so insufficient upper-bound precision is not misreported as proven stack overflow
+      - update implementation-status verification commands when the first conforming ISR-analysis vertical slice is integrated
+  - id: sema.data-race-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    audited: "2026-08-11"
+    summary: >-
+      Adds canonical Sec data-race analysis over the concurrency memory model,
+      including symbolic memory-access summaries, Place overlap, execution
+      contexts, synchronization, happens-before reasoning, bounded race
+      candidate pairing, diagnostics, and incremental LSP refinement.
+    rules:
+      - rules/analysis/data_races.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/copy_move.md
+      - rules/collections/collections.md
+      - rules/analysis/effect_analysis.md
+      - rules/platform/ffi.md
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
+      - rules/concurrency/concurrency.md
+    governance_reconciliation:
+      - concurrency.md owns the invariant that ordinary data races are invalid; data_races.md owns analysis, classifications, and diagnostics.
+      - race analysis consumes canonical program-order, publication, synchronizes-with, modification-order, release-sequence, fence, atomic-identity and completion facts from concurrency_memory_model.md
+    remaining:
+      - add canonical semantic memory-access events carrying Place/provenance, access kind, execution context, atomicity, and source location
+      - consume canonical Place/provenance rather than coarse variable identity so fields, constant indices, dynamic indices, slices, and disjoint backing ranges retain precision
+      - add storage-overlap classification that distinguishes Disjoint, Overlap, and MayOverlap without treating lost alias precision as a proven race
+      - add finite execution-context abstractions for threads, tasks, repeated spawn sites, foreign callbacks, ISR execution, platform execution, and unknown contexts
+      - represent whether one creation-site context class may have multiple overlapping runtime instances so a task body can race with another instance of itself
+      - consume canonical program-order, publication, synchronization, completion/join, atomic, platform, and foreign happens-before facts from the concurrency memory model
+      - distinguish ProvenRace, scoped ProvenRaceFree, and Unknown results throughout analysis and diagnostics
+      - preserve structural Unknown reasons such as alias, concurrency, synchronization, foreign, callable, atomic, platform-preemption, and precision-widening uncertainty
+      - distinguish a proven race from failure to prove a positive race-freedom requirement imposed by language, runtime, target, project, or CompilationPlan policy
+      - consume canonical borrow exclusivity and ownership-transfer facts as positive evidence that conflicting concurrent accesses cannot coexist
+      - consume escape and publication facts so retained or published storage can become reachable from additional execution contexts without treating publication itself as permanent race protection
+      - add symbolic function summaries for parameter, receiver, captured, static, thread-local, foreign, and unknown Place roots
+      - preserve field, index, slice, and other Place projections in exported summaries to the precision supported by Place analysis
+      - add may-read and may-write summary domains and keep them distinct from must-properties used for positive synchronization proofs
+      - track definitely-held synchronization identity at each relevant access and use intersection rather than union for must-held facts across control-flow joins
+      - preserve canonical lock identity and synchronization-guard/token relationships across function boundaries without inferring protection from naming conventions
+      - instantiate symbolic callee memory, lock, publication, and execution summaries at caller Places using canonical provenance
+      - keep ordinary synchronous calls in the caller execution context unless canonical semantics state otherwise
+      - model spawn, thread, task, foreign-callback, ISR, and runtime execution effects according to their canonical semantics
+      - consume canonical join/completion relationships so worker completion can establish ordering before subsequent accesses
+      - support execution-context overlap intervals sufficiently to avoid treating a completed joined task as concurrent with all later continuation code
+      - consume closed callable target sets from closure/callable-flow analysis and conservatively join race-relevant summaries over all possible targets
+      - consume open callable memory, retention, publication, spawn, synchronization, and concurrency contracts and widen only missing dimensions
+      - solve recursive and mutually recursive call-graph SCC summaries by deterministic monotone fixed point without treating ordinary recursion itself as concurrency
+      - add bounded Place/index/range widening so large arrays and dynamic collections do not require one analysis node per runtime index
+      - prove disjoint concurrent collection partitions and aggregate fields race-free when canonical Place/range/borrowing facts establish disjoint storage
+      - avoid treating distinct union payload projections as disjoint unless canonical layout and active-variant facts justify the proof
+      - integrate MMIO, volatile, and target-defined memory spaces through canonical memory-space and CompilationPlan semantics rather than ordinary race assumptions
+      - consume FFI contracts for foreign reads, writes, retention, publication, callback execution context, asynchronous access, completion ordering, and synchronization without inferring behavior from names
+      - integrate ISR/thread access pairing with canonical preemption, interrupt masking, priority, and nesting facts while leaving ISR-specific policy to ISR analysis
+      - add bounded race candidate indexing/grouping by Place root or alias class, projection/range class, access kind, execution context, and synchronization class
+      - support summary-level candidate pairing before event-level expansion so large programs do not require naive global O(n^2) access comparison
+      - require a sound reachable unsafe witness before classifying a candidate as ProvenRace and preserve Unknown when only possible aliasing or concurrency is established
+      - add scoped reusable RaceFreeProof facts for disjoint storage, exclusive ownership, non-overlapping execution, read-only sharing, mutual exclusion, happens-before ordering, and canonical atomic safety
+      - retain deterministic representative access pairs, cause paths, overlap reasons, concurrency reasons, and missing-ordering explanations
+      - group equivalent abstract race occurrences to avoid diagnostic explosion while preserving distinct Place/context root causes
+      - provide LSP diagnostics with primary and related source locations so programmers can navigate between conflicting accesses
+      - ensure race diagnostics explain the missing safety relationship without prescribing a mutex or other architectural synchronization strategy as an automatic universal fix
+      - offer automatic race fixes only when a canonical transformation is proven semantically safe; prioritize explanation, navigation, and cause paths otherwise
+      - integrate Interactive, Standard, and Deep analysis budgets without introducing a separate global Intermediate analysis mode
+      - support progressive LSP refinement from fast Interactive results through Standard-equivalent results and optional Deep precision
+      - represent Pending tooling state separately from Unknown, ProvenRace, and ProvenRaceFree and invalidate stale positive proofs immediately when dependencies change
+      - expose ProvenRace and required race-freedom failures as NeedToKnow LSP diagnostics while keeping positive proof explanations and detailed concurrency facts configurable OptionalInsight
+      - watch project analysis configuration and refresh affected summaries, findings, diagnostics, and optional insight without requiring an LSP restart
+      - add dependency-driven incremental invalidation for body, callee summary, callable target, execution context, ownership, escape/publication, Place/range, synchronization, FFI, ISR/platform, CompilationPlan, and schema changes
+      - stop unnecessary transitive invalidation when a reanalyzed function produces an exported data-race summary semantically equivalent to the previous summary
+      - add versioned separate-compilation summaries carrying symbolic accesses, publication, execution effects, must-held synchronization, callback behavior, and localized uncertainty
+      - introduce CompilationPlan dependence only where atomic, runtime, ISR/preemption, foreign, or memory-space behavior actually differs
+      - integrate data-race analysis into default sec analyse all-analysis behavior and support explicit data-race-only analysis selection
+      - add deterministic grouping and representative-cause selection independent of declaration order, worklist order, cache order, or parallel compiler scheduling
+      - add required proven-race, race-free, Unknown, failure-to-prove, synchronization, publication/join, Place/provenance, ownership, callable, FFI, ISR, incremental-LSP, performance, and false-positive regression tests
+      - update implementation-status verification commands when the first conforming vertical slice is integrated
+  - id: sema.deadlock-analysis
+    area: frontend-analysis-and-lowering
+    status: planned
+    audited: "2026-08-11"
+    summary: >-
+      Adds canonical Sec deadlock analysis over synchronization resources and
+      execution contexts: flow-sensitive held-resource tracking, symbolic
+      acquisition/release and wait summaries, lock-order and generalized wait-for
+      graphs, self-deadlock, task/thread completion cycles, callback/reentry,
+      FFI/ISR integration, cycle realizability classification, deterministic
+      witnesses, and incremental LSP/Deep tooling that distinguishes proven,
+      potential, unknown, and failure-to-prove states.
+    rules:
+      - rules/analysis/deadlock_analysis.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/analysis/data_races.md
+      - rules/analysis/call_graph.md
+      - rules/compiler/compiler_analysis.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/memory/lifetime_analysis.md
+      - rules/analysis/escape_analysis.md
+      - rules/analysis/closure_analysis.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/control-flow/defer.md
+      - rules/collections/collections.md
+      - rules/analysis/effect_analysis.md
+      - rules/platform/ffi.md
+      - rules/tooling/lsp.md
+      - rules/projects/projects.txt
+      - rules/concurrency/concurrency.md
+    governance_reconciliation:
+      - concurrency.md owns common blocking and progress semantics; deadlock_analysis.md owns graph construction, proof strength, classification, and diagnostics.
+    remaining:
+      - add canonical synchronization-resource identity using Place/provenance and resource semantics rather than resource names
+      - preserve Same, Disjoint, MayAlias, and Unknown resource-identity relationships or equivalent canonical precision
+      - add flow-sensitive held-resource state distinguishing definitely-held from possibly-held resources
+      - integrate canonical acquire, successful acquisition, release, nonblocking/fallible acquisition, guard lifetime, guard move, destruction, defer, cleanup, and error-path semantics
+      - distinguish waiting for a blocking resource from successful ownership so wait dependencies and held-resource state are modeled separately
+      - add lock-order relationships only when the predecessor resource may still be held at the later acquisition point
+      - preserve weaker proof strength for edges derived from PossiblyHeld state rather than silently treating them as definite
+      - add symbolic interprocedural deadlock summaries for acquisitions, releases, waits, held-on-return state, required held-on-entry state, execution effects, and localized uncertainty
+      - preserve symbolic parameter, receiver, captured, static, allocation-site, and bounded collection resource origins across summaries
+      - instantiate callee resource identities at call sites and detect self-aliasing when distinct symbolic parameters resolve to the same non-reentrant runtime resource
+      - propagate caller-held resources across callees that acquire additional resources while allowing canonical release or ownership-transfer semantics to remove inherited held state
+      - add caller-to-callee acquisition-order propagation so a caller-held external resource can order before a callee internal or static acquisition
+      - consume canonical guard/token ownership and lifetime facts so synchronization ownership follows move, destruction, release, and scoped lifetime semantics
+      - add deterministic interprocedural fixed points over canonical call-graph SCCs without conflating call-graph recursion SCCs with deadlock dependency SCCs
+      - add LockOrderGraph construction as a compact projection of nested acquisition relationships
+      - add generalized WaitForGraph construction for execution-to-resource, resource-to-owner/progress-provider, task/thread completion, foreign completion, condition/event, and mixed dependency relationships
+      - consume canonical task/thread join and completion semantics so direct, mutual, and mixed completion cycles can participate in deadlock analysis
+      - support join-while-holding-resource cases where a joined worker or thread requires the held resource to complete
+      - preserve finite execution-context abstractions for threads, tasks, repeated creation sites, callbacks, ISR execution, platform execution, and unknown contexts
+      - represent whether one semantic creation-site context class may have multiple overlapping runtime instances so same-body instances can participate in one cycle
+      - keep ordinary synchronous calls in the caller execution context while propagating callee resource behavior interprocedurally
+      - consume closed callable target sets and open callable contracts for MayBlock, MayAcquire, completion waits, callback execution, and reentry behavior
+      - add callback-while-holding-resource propagation so callable targets can contribute lock-order or wait-for edges across indirect calls
+      - consume canonical FFI contracts for blocking, foreign resource acquisition, completion waits, callback execution context, synchronous/asynchronous reentry, and foreign synchronization without inferring behavior from names
+      - keep unknown foreign waits localized rather than connecting them speculatively to unrelated program resources
+      - integrate ISR/preemption relationships so an ISR waiting for a resource held by the preempted context can form a self/cross-context deadlock witness
+      - consume canonical interrupt masking, priority, nesting, and exclusion facts to eliminate impossible ISR cycles without moving ISR-specific policy into deadlock analysis
+      - consume canonical condition/event progress-provider semantics and model condition waits that release/reacquire a resource according to their actual contract
+      - preserve resource-specific reentrancy, capacity, acquisition-count, release, and progress semantics instead of silently treating all synchronization resources as exclusive mutexes
+      - add bounded symbolic resource abstractions for dynamic resource collections, including indexed resources and AnyIndex-like widened identities while preserving known roots/projections
+      - consume canonical range, index, alias, ownership, and ordering facts so same-resource, proven-disjoint, and sorted dynamic acquisition cases remain distinguishable
+      - add dependency-edge evidence carrying source cause, execution context, interprocedural cause path, path-condition summary, and proof strength sufficient for stable cycle diagnostics
+      - distinguish ProvenDeadlock, PotentialDeadlock, and Unknown throughout analysis, summaries, diagnostics, and tooling
+      - require a sound reachable simultaneously realizable cyclic wait witness before classifying a result as ProvenDeadlock
+      - classify meaningful supported cycles with incomplete path, identity, scheduling, capacity, or compatibility proof as PotentialDeadlock rather than ProvenDeadlock
+      - keep insufficient dependency information as Unknown rather than fabricating a potential cycle
+      - distinguish deadlock findings from failure to prove a positive deadlock-freedom requirement imposed by language, target, runtime, ISR, project, or CompilationPlan policy
+      - add path-compatibility reasoning coupled to execution-instance identity so mutually exclusive branches in one instance can still be considered across distinct concurrent instances where permitted
+      - consume MayOverlap, CannotOverlap, MayPreempt, MayReenter, completion, and related canonical execution-context facts when deciding cycle realizability
+      - add explicit self-deadlock reasoning for non-reentrant resource reacquisition and self-wait dependencies without requiring a second execution context
+      - consume guaranteed timeout, cancellation, completion, and other progress facts only when canonical semantics guarantee cycle-breaking progress; merely possible escape must not eliminate a deadlock proof
+      - add resource-capacity reasoning sufficient to avoid treating counting or multi-capacity resources as capacity-one locks; preserve PotentialDeadlock or Unknown when capacity precision is insufficient
+      - add deterministic cycle detection and SCC condensation over lock-order and generalized wait-for dependency graphs
+      - select deterministic representative cycles favoring stronger proof, smaller understandable dependency chains, precise identities, clear source locations, and minimal uncertainty
+      - retain compact interprocedural cause paths for every representative cycle edge so diagnostics can navigate through nested calls without dumping the full graph
+      - use symbolic path summaries, bounded context sensitivity, SCC condensation, edge aggregation, and widening to avoid exponential path or runtime-instance explosion
+      - ensure precision loss may weaken ProvenDeadlock to PotentialDeadlock or Unknown but never strengthen an unsupported result
+      - allow increased Deep precision to upgrade PotentialDeadlock to ProvenDeadlock when the missing witness is established or remove it when path/resource/execution incompatibility is proven
+      - add scoped positive NoLockOrderCycle or NoDeadlockCycle facts where a partial-order or generalized no-cycle proof is established
+      - provide LSP diagnostics with primary and related source locations for acquisitions, waits, completion dependencies, callbacks, and other representative cycle edges
+      - present ProvenDeadlock and high-confidence PotentialDeadlock findings as NeedToKnow while keeping positive no-cycle explanations and detailed graph views configurable OptionalInsight
+      - ensure Unknown is not presented as PotentialDeadlock and that required deadlock-freedom proof failures receive their own diagnostic category
+      - prioritize cycle explanation, navigation, resource order, and cause paths over generic automatic lock-reordering fixes
+      - integrate Interactive, Standard, and Deep analysis budgets without introducing a separate global Intermediate analysis mode
+      - support progressive LSP refinement from fast Interactive/cached findings through Standard-equivalent analysis and optional Deep precision
+      - represent Pending LSP analysis state separately from ProvenDeadlock, PotentialDeadlock, and Unknown and invalidate stale findings immediately when proof dependencies change
+      - keep finding identity stable across refinement when the same semantic cycle persists and only proof detail or classification strength changes
+      - watch project analysis configuration and refresh affected summaries, findings, graph views, and optional insight without requiring an LSP restart
+      - add dependency-driven incremental invalidation for body, callee summary, callable target, resource identity, Place/provenance, acquire/release, guard lifetime, ownership, completion, callback/reentry, FFI, ISR/platform, capacity, CompilationPlan, and schema changes
+      - stop unnecessary transitive invalidation when a reanalyzed function produces an exported deadlock summary semantically equivalent to its previous summary
+      - invalidate dependent cycle findings when any required supporting edge disappears even if other graph edges remain
+      - add versioned separate-compilation summaries carrying symbolic acquisitions, releases, waits, resource-order edges, held-on-return state, execution effects, callback/reentry behavior, and localized uncertainty
+      - introduce CompilationPlan dependence only where runtime scheduling, ISR/preemption, platform synchronization, foreign behavior, resource capacity, or callback/reentry semantics actually differ
+      - integrate deadlock analysis into default sec analyse all-analysis behavior and support explicit deadlock-only analysis selection
+      - expose optional Deep lock-order and WaitForGraph views, unknown-wait causes, held-resource state, resource aliases, join dependencies, callback/reentry edges, ISR/preemption edges, and positive no-cycle proofs
+      - add required ProvenDeadlock, PotentialDeadlock, Unknown, safe/non-deadlock, interprocedural, defer/cleanup, task/thread, callable, FFI, ISR, resource-semantics, dynamic-resource, incremental-LSP, performance, determinism, and false-positive regression tests
+      - maintain a permanent false-positive regression corpus for partial lock orders, scoped guards, condition waits that release mutexes, nonblocking acquisition, guaranteed timeout, serialized execution, ISR masking, ordered dynamic locks, resource transfer, reentrancy, and join-after-release patterns
+      - update implementation-status verification commands when the first conforming vertical slice is integrated

@@ -153,7 +153,7 @@ integrations:
     replaces: rules/control-flow/defer.txt
     summary: >-
       Tracks revision-2.0 invocation-scoped deferred cleanup. The parser and
-      Sema support block-form defer, delayed outer-binding uses, later move and
+      Sema support block-form defer, delayed outer-Place uses, later move and
       discard conflicts, loop-registration diagnostics, forbidden loop/switch
       transfer, nested-defer rejection, and local handling of fallible cleanup.
       MLIR provides a usable static defer stack with reached-registration flags
@@ -176,6 +176,7 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_defer.go
       - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
@@ -183,6 +184,7 @@ integrations:
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_defer_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
       - internal/codegen/mlir/generator_test.go
@@ -196,6 +198,7 @@ integrations:
       - loop defer warning records that every reached execution registers cleanup for invocation exit
       - deferred reads analyzed against ordinary values at cleanup time
       - pending deferred uses reject conflicting later move and discard operations
+      - delayed dependencies retain canonical field, index, and slice Place precision; proven-disjoint sibling fields remain independently movable
       - definite-assignment and lexical name resolution applied at the registration site
       - break, continue, and fallthrough rejected inside deferred cleanup
       - nested defer rejected
@@ -251,6 +254,54 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run Defer -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
+
+  - id: sema.defer-delayed-uses
+    area: frontend
+    status: partial
+    integrated: "2026-08-03"
+    revised: "2026-09-23"
+    summary: >-
+      Tracks outer Places used by defer as delayed dependencies and rejects
+      overlapping later move or discard without runtime borrow tracking.
+      Dependencies now preserve canonical field, constant/dynamic index, slice,
+      property, dereference, and alternative-origin precision. Cleanup-order
+      validation in Semantic IR remains outside this frontend slice.
+    rules:
+      - rules/control-flow/defer.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/borrowing.md
+      - rules/memory/copy_move.md
+      - rules/memory/memory_model.md
+    related_integrations:
+      - frontend.defer-v2
+      - sema.place-analysis
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_defer.go
+      - internal/sema/place.go
+    tests:
+      - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_defer_test.go
+    implemented:
+      - direct outer-binding reads and writes register invocation-scoped delayed dependencies
+      - member, index, and slice uses retain their complete canonical Place instead of widening immediately to the root binding
+      - nested projections are recorded once at the narrowest successfully resolved expression boundary
+      - moves and discards are rejected only when their Place overlaps a registered delayed dependency
+      - moving a proven-disjoint sibling struct field remains valid while moving the depended-on field or whole aggregate is rejected
+      - shadowing inside the defer body does not capture an unrelated outer binding
+      - conditional defer dependencies continue through the existing branch borrow-state merge
+      - dependency ordering is deterministic when one defer references multiple Places
+      - Sec 0.1 defer reads values when cleanup executes and intentionally defines no special owned-copy or move capture syntax
+      - defer-specific analysis was extracted from the oversized analyzer.go into analyzer_defer.go
+    remaining:
+      - validate delayed dependencies against the unified source-ordered cleanup stack once explicit Semantic IR cleanup regions exist
+      - consume delayed Place dependencies in Semantic IR without reconstructing them from defer-body syntax
+    verification:
+      - command: go test ./internal/sema -run Defer -count=1
+        result: passed; legacy root dependencies, conditional registration, shadowing, control-flow restrictions, and field-sensitive overlap are covered
+      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
+        result: passed across all compiler, LSP, frontend, Semantic IR, and lowering packages
+
   - id: frontend.if-statements-v2
     area: frontend-control-flow
     status: partial

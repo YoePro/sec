@@ -235,3 +235,210 @@ integrations:
         result: passed on 2026-09-22 with later-argument failure preserving earlier explicit local and projected source ownership
       - command: go test ./internal/parser ./internal/sema -run 'TestParseExplicitMoveLambdaCapture|TestLambdaCaptureCopyAndExplicitMoveOwnership' -count=1
         result: passed on 2026-09-22 with capture-mode AST preservation, legacy syntax rejection, copy-only plain capture, explicit outer-source consumption, and independent environment availability
+  - id: sema.place-analysis
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Introduces compile-time storage-place identity and structural overlap for
+      borrow, assignment, addressability, and self-move analysis without runtime
+      ownership or borrow tracking.
+    rules:
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/collections/collections.md
+      - rules/declarations/properties.md
+    code:
+      - internal/sema/place.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/copy_move_test.go
+      - internal/sema/lifetime_test.go
+    implemented:
+      - Place roots with field, property, constant/dynamic index, slice, and reference-dereference projections
+      - place type, mutability, and addressability classification
+      - structural overlap with disjoint fields and distinct constant indices
+      - conservative overlap for dynamic indices, symbolic slice bounds, properties, and root-prefix relationships
+      - place-sensitive borrow creation, read, and assignment conflict checks
+      - place-based explicit self-move overlap validation
+      - rejection of borrowing temporary and non-addressable expressions
+      - explicit moves from nested struct-field places
+      - field-sensitive unavailable state with disjoint sibling-field access
+      - whole-aggregate rejection while a field remains moved
+      - successful field assignment reinitializing the moved place
+      - conservative partial-move rejection for aliased, register, fixed-address, and nonlocal storage
+      - projection-sensitive move-state and causal-reason merging across if, switch, select, and statement-match branches
+      - exhaustive-branch field reinitialization with literal-unreachable-path exclusion
+      - loop-header Place fixed point over entry, normal fallthrough, and continue states
+      - next-condition and next-iteration verification for loop-carried unavailable places
+      - separate break exit availability and fresh per-iteration for bindings
+      - union variant payload Place projections, including nested struct subject paths
+      - inferred move-only payload extraction, copyable payload copy, and temporary forwarding
+      - statement and expression match availability merging with whole-subject invalidation
+      - union payload reinitialization and overlapping-borrow validation
+      - canonical referent Place provenance for directly created local reference and slice aliases
+      - field and index reborrow overlap through aliases, including disjoint constant projections
+      - reference provenance preservation across shared-reference copies and mutable-reference moves, including active-borrow holder transfer
+      - calls through ref mut parameters reborrow rather than consume the caller's reference, preserving later try and match uses of the same Place
+      - normalized half-open Place intervals for statically known inclusive, exclusive, and open slice bounds
+      - disjoint static slice ranges, outside constant indices, and empty slice ranges
+      - constant index and subrange composition through local slice aliases
+      - branch-scoped ref and ref mut payload patterns for named unions and Result variants
+      - active-variant payload Place provenance with mutability and overlapping-borrow validation
+      - rejection of temporary payload borrows and escape through match values, assignments, returned aggregates, or lambdas
+      - loop-header active-borrow joins over entry, normal fallthrough, and continue states
+      - loop-header local-reference-origin joins with next-condition and next-iteration verification
+      - post-loop borrow and reference-origin joins including explicit break exits and fresh for bindings
+      - bounded path-disjunctive reference-origin sets across branch and loop joins
+      - field, index, and slice projection across every known reference-origin alternative
+      - reborrow registration and conflict checking across every possible owner root
+      - deterministic 16-place provenance cap with conservative unknown-origin rejection
+      - nested field-sensitive reference origins for locally constructed structs and fixed arrays
+      - aggregate-origin preservation through whole-value transfer and replacement assignment
+      - constant-index element precision and conservative dynamic-index origin joins
+      - aggregate-contained origin joins across branches and loop fixed points
+      - declaration-order-independent fixed-point return-origin summaries for direct functions and methods
+      - symbolic parameter, receiver, projection, multi-source, and aggregate return paths
+      - transitive call-site origin instantiation and returned granting-borrow retention
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - indexed, sliced, and aliased move availability beyond roots, nested fields, and owned union payloads
+      - recursive aggregate availability masks
+      - symbolic slice-range and imported or opaque foreign alias/provenance overlap
+      - multi-field active-variant borrowed payload destructuring
+      - general destruction responsibility and conditional cleanup-state lattices beyond close-tracked resources
+      - persisted summary metadata, function-value calls, recursive summary cycles, and all generic reference calls
+      - Semantic IR copy, move, replacement, and destruction operations
+  - id: sema.resource-cleanup-state
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-08-07"
+    summary: >-
+      Tracks the compile-time must-closed state of local io.File and io.Directory
+      resources across branches and loop control-flow edges without runtime
+      ownership tables or cleanup tracking.
+    rules:
+      - rules/memory/destruction.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/lifetime_analysis.md
+    code:
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/destruction_test.go
+    implemented:
+      - isolated resource-close state for if, switch, select, and match branches
+      - must-closed intersection over all continuing branch paths
+      - loop-header close-state intersection over entry, fallthrough, and continue edges
+      - separate break and continue close-state snapshots
+      - zero-iteration preservation for ordinary for and while loops
+      - while-true post-state derived from reachable break exits
+      - reassignment reopening a resource on a loop edge
+      - removal of iteration-local resource state from recorded loop edges
+      - next-condition and next-iteration verification when loop close state changes
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
+    remaining:
+      - general non-trivial destruction responsibility beyond File and Directory
+      - conditional and partial aggregate cleanup state
+      - explicit cleanup regions and terminal ownership actions in Semantic IR
+      - destruction and cleanup lowering before LLVM translation
+  - id: "frontend.borrowing"
+    area: "frontend-borrowing-place-liveness"
+    status: "partial"
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    repository_baseline: "069c111"
+    rules:
+      - "rules/memory/borrowing.md"
+      - "rules/memory/ownership.md"
+      - "rules/memory/copy_move.md"
+      - "rules/memory/reference_model.md"
+      - "rules/declarations/functions.md"
+      - "rules/declarations/lambda-functions.md"
+      - "rules/control-flow/flowcontrol_match.md"
+      - "rules/control-flow/defer.md"
+    code:
+      - "internal/sema/analyzer.go"
+      - "internal/sema/place.go"
+      - "internal/sema/types.go"
+      - "internal/ast/ast.go"
+      - "internal/parser/parser.go"
+    tests:
+      - "internal/sema/analyzer_test.go"
+      - "internal/sema/copy_move_test.go"
+      - "internal/sema/lifetime_test.go"
+      - "internal/parser/parser_test.go"
+    implemented:
+      - "ref and ref mut parameter parsing/type representation and call-site borrow handling."
+      - "Place-sensitive active borrow tracking with fields, properties, constant/dynamic indices, slices, dereference, and union payload projections."
+      - "Shared/shared coexistence, exclusive mutable conflicts, immutable-owner mutable-borrow rejection, owner read blocking during mutable borrow, owner mutation blocking during shared/mutable borrow, and move blocking during overlapping borrows."
+      - "Local reference-holder tracking, holder reassignment, shared-reference copy provenance, mutable-reference move holder transfer, and aggregate-contained reference-origin preservation."
+      - "Call reborrow behavior for ref mut parameters without consuming the caller's mutable-reference holder."
+      - "Disjoint struct fields, distinct constant array indices, normalized static slice intervals, empty ranges, and conservative dynamic-index/symbolic-range overlap."
+      - "Branch and loop borrow joins, loop-carried conflict diagnostics, break/continue handling, finite reference-origin alternative sets, and deterministic conservative widening."
+      - "Match whole-payload ref/ref mut Place borrowing with guard/arm scope, mutability checks, overlapping-borrow validation, and several escape rejections."
+      - "Delayed defer root uses that block incompatible move/discard before deferred execution."
+      - "Declaration-order-independent direct function/method returned-reference origin summaries and supported transitive call-site origin instantiation."
+    remaining:
+      - "non-lexical-final-use: make borrow live ranges end at the final proven use/path dependency rather than relying on holder lexical scope where current implementation remains conservative"
+      - "availability-integration: reject borrow creation from ownership-v2 Unavailable and unresolved ConditionallyAvailable Places while allowing control-flow-refined Available sub-Places; keep is available distinct from borrow authority"
+      - "complete-holder-graph: model every shared-reference copy, nested aggregate holder, closure capture, returned reference, view/slice, and derived reborrow so borrow end occurs only when all surviving dependencies end"
+      - "nested-reborrow-authority: explicitly model parent/child shared and mutable reborrow suspension/restoration, including shared reborrow from ref mut and nested mutable reborrow"
+      - "complete-call-borrow-effects: verify multi-argument overlap, method receiver/argument overlap, fallible later-argument preparation, generic/imported/opaque calls, and call-retention summaries"
+      - "property-effects: replace conservative receiver-wide property overlap only when canonical property/effect summaries prove narrower addressability and storage effects"
+      - "symbolic-range-disjointness: extend safe proof for symbolic/runtime index and slice ranges without unsound assumptions"
+      - "borrowed-match-destructuring: extend beyond one whole/positional payload binding only after match/unions define supported field-borrow forms; preserve guard-false borrow end and no hidden escape"
+      - "closure-borrow-escape: integrate complete lambda/closure escape summaries for capture(ref ...) and capture(ref mut ...), including nested captured references/views and function-value calls"
+      - "defer-place-precision: replace root-only delayed-use tracking with canonical Place-sensitive dependencies and distinguish ordinary future value use from actual retained reference holders"
+      - "returned-reference-summary-completeness: persist and consume summary metadata across separate compilation, function values, generic instantiations, imported modules, recursive/mutually recursive SCCs, and opaque call contracts"
+      - "storage-invalidation-integration: connect collections, arena reset/release, relocation, replacement, physical-addressing contracts, and reference-model invalidation events to borrow legality"
+      - "ffi-retention-contracts: integrate explicit foreign retain/no-retain contracts and conservatively reject safe-borrow assumptions for unknown retained foreign pointers"
+      - "concurrency-integration: reuse Place/provenance/borrow facts in send/share/data-race analysis without treating borrow exclusivity as sufficient synchronization"
+      - "mentor-diagnostic-completeness: consistently report both borrow origin/holder and conflicting access/move/discard/destruction with path/loop explanation and safe restructuring help"
+    required_tests:
+      - "multiple shared borrows of overlapping Place accepted"
+      - "shared plus overlapping mutable borrow rejected"
+      - "two overlapping mutable borrows rejected"
+      - "mutable borrow from immutable Place rejected"
+      - "owner read rejected during overlapping mutable borrow"
+      - "owner mutation/replacement rejected during overlapping shared or mutable borrow"
+      - "borrow can end before lexical scope exit after final proven use"
+      - "copied shared-reference holder keeps borrow live after original holder final use"
+      - "moving ref mut holder transfers borrow and moved-from holder becomes unavailable"
+      - "ref mut argument to ref mut parameter reborrows and caller reference is usable after call"
+      - "shared reborrow from ref mut blocks parent mutation only for child borrow live range"
+      - "disjoint struct-field mutable borrows accepted"
+      - "whole aggregate borrow overlaps every field"
+      - "distinct constant indices accepted; dynamic indices conservative"
+      - "disjoint static slice intervals accepted and empty interval borrows no elements"
+      - "symbolic slice overlap remains conservative unless proven"
+      - "borrow from Unavailable Place rejected"
+      - "borrow from ConditionallyAvailable Place rejected until is available/control-flow refinement proves Available"
+      - "is available does not bypass active mutable/shared borrow conflict"
+      - "move/discard/destruction/replacement rejected while overlapping borrow live"
+      - "proven disjoint sibling move remains valid while another field is borrowed"
+      - "outer holder borrow retained on one branch remains active after merge"
+      - "branch-local holder ends before merge and terminating branch does not pollute later borrow state"
+      - "loop-carried borrow conflicts are detected across backedge and related to prior-iteration origin"
+      - "Some(ref value) and Some(ref mut value) obey arm/guard scope and subject authority"
+      - "guard-false match candidate borrow ends before next arm"
+      - "borrowed match subject cannot transfer move-only payload ownership"
+      - "capture(ref value) cannot escape referent lifetime"
+      - "capture(ref mut value) blocks conflicting outer access and remains move-only"
+      - "defer future use blocks earlier invalidating move/discard/destruction"
+      - "extern ref/ref mut call-bounded borrow cannot be retained absent explicit retention contract"
+      - "generation/epoch validity check does not permit otherwise conflicting borrow"

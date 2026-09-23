@@ -6510,6 +6510,12 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 	return stmt
 }
 
+// parseTryAssignmentStatement parses both locally handled and naked fallible
+// assignments. A missing handler is semantic propagation, not parser recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — TryAssignmentStatement
+//   - rules/errors/errorhandling.md — §23 "Fallible assignment"
 func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	stmt := &ast.TryAssignmentStatement{Token: p.curToken}
 
@@ -6557,15 +6563,12 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 		return nil
 	}
 	stmt.Assignment = assignment
-	if p.peekToken.Type != lexer.LBRACE {
-		p.addError("try assignment requires a handler block at %d:%d", stmt.Token.Line, stmt.Token.Column)
-		p.skipDeclarationRest()
-		return nil
-	}
-	p.nextToken()
-	stmt.Handlers = p.parseTryHandlerBlock()
-	if stmt.Handlers == nil {
-		return nil
+	if p.peekToken.Type == lexer.LBRACE {
+		p.nextToken()
+		stmt.Handlers = p.parseTryHandlerBlock()
+		if stmt.Handlers == nil {
+			return nil
+		}
 	}
 	return stmt
 }

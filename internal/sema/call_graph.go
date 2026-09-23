@@ -12,6 +12,45 @@ import (
 // when those compiler services become available.
 type CallableID string
 
+// CallableBodyID identifies one executable callable body in an analysis
+// snapshot. It is distinct from function-type identity and runtime value
+// identity.
+//
+// Rules:
+//   - rules/analysis/closure_analysis.md — "Callable body"
+type CallableBodyID string
+
+// CallableContractID identifies a compiler-visible open callable contract.
+// Exact facts leave it empty; later callable-flow widening may attach one
+// without discarding still-known concrete targets.
+//
+// Rules:
+//   - rules/analysis/closure_analysis.md — "Function type versus callable contract"
+type CallableContractID string
+
+// CallableTargetSet is the canonical call-graph may-target representation. A
+// closed set contains every possible concrete target. An open set must carry a
+// covering callable contract.
+//
+// Rules:
+//   - rules/analysis/closure_analysis.md — "Callable target sets"
+//   - rules/analysis/closure_analysis.md — "Soundness of target sets"
+type CallableTargetSet struct {
+	KnownTargets    []CallableBodyID
+	IsClosed        bool
+	OpenContract    CallableContractID
+	HasOpenContract bool
+}
+
+// exactCallableTargetSet constructs the one-target closed form produced by a
+// statically selected callable body.
+//
+// Rules:
+//   - rules/analysis/closure_analysis.md — "Exact"
+func exactCallableTargetSet(body CallableBodyID) CallableTargetSet {
+	return CallableTargetSet{KnownTargets: []CallableBodyID{body}, IsClosed: true}
+}
+
 // CallSiteID identifies one semantic invocation within its containing callable.
 type CallSiteID string
 
@@ -28,9 +67,11 @@ const (
 type CallDispatchKind string
 
 const (
-	CallDispatchDirect       CallDispatchKind = "direct"
-	CallDispatchStaticMethod CallDispatchKind = "static-method"
-	CallDispatchForeign      CallDispatchKind = "foreign-direct"
+	CallDispatchDirect        CallDispatchKind = "direct"
+	CallDispatchStaticMethod  CallDispatchKind = "static-method"
+	CallDispatchClosure       CallDispatchKind = "closure"
+	CallDispatchFunctionValue CallDispatchKind = "function-value"
+	CallDispatchForeign       CallDispatchKind = "foreign-direct"
 )
 
 type CallExecutionRelation string
@@ -105,6 +146,7 @@ type CallSite struct {
 	ID        CallSiteID
 	Caller    CallableID
 	Targets   []CallableID
+	TargetSet CallableTargetSet
 	Source    lexer.Token
 	Dispatch  CallDispatchKind
 	Execution CallExecutionRelation
@@ -123,6 +165,7 @@ type CallRoot struct {
 type CallGraph struct {
 	nodes        map[CallableID]CallableNode
 	nodeOrder    []CallableID
+	bodyNodes    map[CallableBodyID]CallableID
 	sites        []CallSite
 	siteIDs      map[CallSiteID]bool
 	roots        map[CallRootID]CallRoot
@@ -134,6 +177,7 @@ type CallGraph struct {
 func newCallGraph() *CallGraph {
 	return &CallGraph{
 		nodes:        map[CallableID]CallableNode{},
+		bodyNodes:    map[CallableBodyID]CallableID{},
 		siteIDs:      map[CallSiteID]bool{},
 		roots:        map[CallRootID]CallRoot{},
 		arenaEffects: map[CallableID][]ArenaEffectSite{},
@@ -186,6 +230,15 @@ func callableID(function Function) CallableID {
 	return CallableID(fmt.Sprintf("%s|%s|%s:%d:%d", function.Module, function.Name, token.File, token.Line, token.Column))
 }
 
+// callableBodyID maps a resolved named declaration to the body identity shared
+// by callable creation facts and direct call-graph target sets.
+//
+// Rules:
+//   - rules/analysis/closure_analysis.md — "Named functions", "Callable body"
+func callableBodyID(function Function) CallableBodyID {
+	return CallableBodyID("callable-body|" + string(callableID(function)))
+}
+
 func (g *CallGraph) addCallable(function Function) CallableID {
 	if g == nil {
 		return ""
@@ -202,7 +255,63 @@ func (g *CallGraph) addCallable(function Function) CallableID {
 		}
 		g.nodeOrder = append(g.nodeOrder, id)
 	}
+	g.bodyNodes[callableBodyID(function)] = id
 	return id
+}
+
+// addClosureCallable registers a lambda body as a concrete callable node while
+// retaining its distinct callable-body identity for target-set resolution.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Callable node" and "Callable node identity"
+//   - rules/analysis/closure_analysis.md — "Callable body"
+func (g *CallGraph) addClosureCallable(identity ResolvedCallableIdentity, module string) CallableID {
+	if g == nil || identity.Body == "" || identity.Source.Line <= 0 || identity.Source.Column <= 0 {
+		return ""
+	}
+	if existing, ok := g.bodyNodes[identity.Body]; ok {
+		return existing
+	}
+	id := CallableID(identity.Body)
+	g.nodes[id] = CallableNode{
+		ID: id, Name: "lambda", Module: module, Declaration: identity.Source,
+	}
+	g.nodeOrder = append(g.nodeOrder, id)
+	g.bodyNodes[identity.Body] = id
+	return id
+}
+
+// addTargetSetCall records one indirect invocation without expanding it into
+// unrelated anonymous call sites. Known bodies are linked to their canonical
+// graph nodes and the complete target-set fact remains attached to the site.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Call-site record"
+//   - rules/analysis/call_graph.md — "Dispatch kinds"
+//   - rules/analysis/closure_analysis.md — "Soundness of target sets"
+func (g *CallGraph) addTargetSetCall(caller CallableID, targets CallableTargetSet, source lexer.Token, dispatch CallDispatchKind, execution CallExecutionRelation) {
+	if g == nil || caller == "" || source.Line <= 0 || source.Column <= 0 {
+		return
+	}
+	resolved := make([]CallableID, 0, len(targets.KnownTargets))
+	for _, body := range targets.KnownTargets {
+		if target, ok := g.bodyNodes[body]; ok {
+			resolved = append(resolved, target)
+		}
+	}
+	// A closed target set must never lose a concrete body at the graph boundary.
+	if targets.IsClosed && len(resolved) != len(targets.KnownTargets) {
+		return
+	}
+	id := CallSiteID(fmt.Sprintf("%s|%s:%d:%d|%s|%s", caller, source.File, source.Line, source.Column, dispatch, execution))
+	if g.siteIDs[id] {
+		return
+	}
+	g.siteIDs[id] = true
+	g.sites = append(g.sites, CallSite{
+		ID: id, Caller: caller, Targets: resolved, TargetSet: cloneCallableTargetSet(targets),
+		Source: source, Dispatch: dispatch, Execution: execution,
+	})
 }
 
 func (g *CallGraph) addCall(caller CallableID, target Function, source lexer.Token, dispatch CallDispatchKind, execution CallExecutionRelation) {
@@ -219,6 +328,7 @@ func (g *CallGraph) addCall(caller CallableID, target Function, source lexer.Tok
 		ID:        id,
 		Caller:    caller,
 		Targets:   []CallableID{targetID},
+		TargetSet: exactCallableTargetSet(callableBodyID(target)),
 		Source:    source,
 		Dispatch:  dispatch,
 		Execution: execution,
@@ -234,8 +344,11 @@ func (g *CallGraph) clone() *CallGraph {
 		copyGraph.nodes[id] = g.nodes[id]
 		copyGraph.nodeOrder = append(copyGraph.nodeOrder, id)
 	}
+	for body, id := range g.bodyNodes {
+		copyGraph.bodyNodes[body] = id
+	}
 	for _, site := range g.sites {
-		site.Targets = append([]CallableID(nil), site.Targets...)
+		site = cloneCallSite(site)
 		copyGraph.sites = append(copyGraph.sites, site)
 		copyGraph.siteIDs[site.ID] = true
 	}
@@ -628,6 +741,7 @@ func (g *CallGraph) nodesInOrder(included map[CallableID]bool) []CallableNode {
 
 func cloneCallSite(site CallSite) CallSite {
 	site.Targets = append([]CallableID(nil), site.Targets...)
+	site.TargetSet = cloneCallableTargetSet(site.TargetSet)
 	return site
 }
 

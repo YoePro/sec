@@ -739,6 +739,10 @@ type Symbol struct {
 	Local            bool
 	ScopeDepth       int
 	RegisterAccess   RegisterFieldAccess
+	// CallableIdentity is present only when closure analysis has proved the
+	// exact callable value currently stored in this binding.
+	CallableIdentity    ResolvedCallableIdentity
+	HasCallableIdentity bool
 }
 
 func builtinTypes() map[string]Type {

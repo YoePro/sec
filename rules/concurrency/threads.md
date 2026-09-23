@@ -1065,3 +1065,11 @@ core/errors.sec
 
 In particular, older examples where `spawn thread` directly returns `Thread[T]`
 must be changed to account for `Result[Thread[T], ThreadSpawnError]` or `try`.
+
+## Debug-information integration
+
+Canonical Sec `ThreadID`, a platform/native thread identifier, and logical
+`TaskID` are distinct identities. A debugger may correlate a running task with
+its current worker thread without merging them. Debug observation grants no
+join, detach, cancellation, termination, or result authority. Debugger
+presentation is owned by `rules/compiler/debug_information.md`.

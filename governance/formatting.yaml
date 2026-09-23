@@ -201,3 +201,333 @@ integrations:
     verification:
       - command: go test ./cmd/compiler ./internal/formatter -count=1
         result: passed, including stdin CLI and I/O failure tests
+  - id: tooling.formatter-v2
+    status: partial
+
+    rulebook:
+      path: rules/tooling/formatter.md
+      revision: "2.0"
+      sec_version: "0.1"
+      repository_baseline: main-reviewed-2026-09-23
+
+    governance:
+      canonical_owner: governance/formatting.yaml
+      merge_mode: update_existing
+      preserve_existing_history: true
+      preserve_index_owner: true
+      paragraph_references_are_stable: true
+
+    implementation_state:
+      implemented:
+        - >-
+          A formatter implementation already exists and provides a base for
+          canonical source formatting rather than requiring a green-field
+          implementation.
+        - >-
+          Formatter behavior is already shared with the LSP formatting path;
+          revision 2.0 requires that this remain one canonical implementation.
+        - >-
+          Existing correction behavior includes at least the established
+          statement correction `i++` to `i += 1`; revision 2.0 expands this
+          into an explicit, opt-in, grammar-aware Language Corrections model.
+
+      incomplete:
+        - >-
+          The formatter does not yet have the complete lossless,
+          error-tolerant syntax representation required by § 5 and § 25.
+        - >-
+          Full trivia preservation, exact malformed-region preservation, and
+          CST-proven safe formatting remain incomplete.
+        - >-
+          The complete revision-2.0 canonical layout contract is not yet
+          implemented across declarations, expressions, control flow,
+          comments, imports, patterns, ownership syntax, registers, units,
+          assertions, ranges, and test declarations.
+        - >-
+          Project-owned formatter configuration and `format_version = 1`
+          compatibility behavior are not yet complete.
+        - >-
+          The Language Corrections catalogue in § 27 is not yet implemented as
+          one grammar-aware opt-in correction engine.
+        - >-
+          The full golden, idempotence, malformed-source, width-boundary,
+          configuration-matrix, and CLI/LSP equivalence suites required by
+          § 30 are not yet complete.
+
+    obligations:
+      - id: formatter-lossless-syntax
+        status: planned
+        rules:
+          - "§ 5(1)"
+          - "§ 5(2)"
+          - "§ 5(3)"
+          - "§ 5(4)"
+          - "§ 5(5)"
+          - "§ 5(6)"
+          - "§ 5(8)"
+          - "§ 25(1)"
+          - "§ 25(2)"
+          - "§ 25(3)"
+          - "§ 25(4)"
+          - "§ 25(5)"
+          - "§ 25(6)"
+          - "§ 25(7)"
+        requirement: >-
+          Provide one shared lexer/parser syntax authority that can produce a
+          lossless, error-tolerant CST or equivalent syntax representation.
+          Preserve exact token lexemes, whitespace trivia, comments,
+          source-sensitive string text, exact source ranges, and explicit
+          uncertain/error regions. AST and CST may be parallel products of the
+          same parser logic; no formatter-only grammar is permitted.
+        acceptance:
+          - Reconstruct all formatter-owned and formatter-preserved source bytes.
+          - Format valid syntax surrounding an uncertain region without altering the uncertain region.
+          - Preserve every uncertain/error region byte-for-byte.
+          - Never synthesize missing source tokens as an ordinary formatting action.
+          - Keep ordinary formatting independent of semantic analysis.
+
+      - id: formatter-canonical-layout
+        status: planned
+        rules:
+          - "§ 3(1)"
+          - "§ 3(2)"
+          - "§ 3(5)"
+          - "§ 3(6)"
+          - "§ 3(7)"
+          - "§ 6"
+          - "§ 7"
+          - "§ 8"
+          - "§ 9"
+          - "§ 10"
+          - "§ 11"
+          - "§ 12"
+        requirement: >-
+          Implement the canonical revision-2.0 layout engine, including
+          idempotence, clean single-line/multiline preservation, structured
+          indentation, vertical style, executable-block layout, structural
+          alignment, preferred-width behavior, delimiter/trailing-comma rules,
+          and comment formatting.
+        acceptance:
+          - Canonical output is idempotent.
+          - Mixed or half-formatted layouts normalize deterministically.
+          - Clean permitted multiline layouts are not collapsed merely because width increases.
+          - Width breaks syntax rather than literal data.
+          - Alignment padding respects the configured maximum.
+
+      - id: formatter-project-configuration
+        status: planned
+        rules:
+          - "§ 4(1)"
+          - "§ 4(2)"
+          - "§ 4(3)"
+          - "§ 4(4)"
+          - "§ 4(5)"
+          - "§ 4(8)"
+          - "§ 4(9)"
+          - "§ 4(10)"
+          - "§ 4(11)"
+          - "§ 4(12)"
+          - "§ 4(14)"
+          - "§ 4(15)"
+          - "§ 4(16)"
+          - "§ 4(17)"
+        requirement: >-
+          Implement project-owned formatter configuration and the
+          `format_version` contract. The initial style version is 1. Support
+          structured/compact vertical style, indentation widths 2/4/6, fixed
+          width, adaptive width clamped to 80..200 with fallback 120, and the
+          normative alignment-padding rule. Language Corrections remain
+          disabled by default.
+        acceptance:
+          - Existing `format_version = 1` output does not intentionally drift between formatter implementation releases.
+          - Personal editor preferences do not silently change canonical project source bytes.
+          - Fixed and adaptive width modes produce deterministic output for a known effective width.
+
+      - id: formatter-imports-and-file-layout
+        status: planned
+        rules:
+          - "§ 13"
+          - "§ 14"
+          - "§ 29(7)"
+        requirement: >-
+          Implement the canonical import region and top-level file layout.
+          Preserve attached comments, sort imports canonically within their
+          groups, keep stdlib/ordinary/platform grouping, and never reorder
+          ordinary top-level declarations.
+        acceptance:
+          - Imports are never removed by ordinary formatting.
+          - Attached import comments move with their import.
+          - Ordinary top-level declarations retain source order.
+
+      - id: formatter-language-surface
+        status: planned
+        rules:
+          - "§ 15"
+          - "§ 16"
+          - "§ 17"
+          - "§ 18"
+          - "§ 19"
+          - "§ 20"
+          - "§ 21"
+          - "§ 22"
+          - "§ 23"
+          - "§ 24"
+        requirement: >-
+          Implement canonical formatting for the complete current Sec 0.1
+          source surface covered by formatter revision 2.0: type/aggregate
+          declarations, functions, methods, properties, lambdas, attributes,
+          calls, chains, indexing, slicing, control flow, try/defer/unsafe,
+          patterns/destructuring, ownership and borrowing markers, registers,
+          units, assert, ranges/step, and top-level test declarations.
+        acceptance:
+          - Current Sec syntax is emitted; obsolete Sec syntax is never canonical output.
+          - "`->name` and `<-value` ownership markers retain their exact syntactic role."
+          - "Unit expressions inside `<...>` use compact unit-operator spacing."
+          - Range expressions remain on one line whenever syntactically possible, even with modest preferred-width overflow.
+          - '`test "name" { ... }` preserves the test-name string exactly.'
+
+      - id: formatter-language-corrections
+        status: partial
+        rules:
+          - "§ 26"
+          - "§ 27"
+        requirement: >-
+          Implement Language Corrections as a separate opt-in, grammar-aware
+          source-fix layer. A correction is permitted only when the intended
+          Sec construct is locally unambiguous. Do not infer programmer intent,
+          mutability, ownership policy, missing types, overloads, control-flow
+          meaning, error policy, or allocation policy.
+        acceptance:
+          - "`language_corrections = false` performs no correction-catalogue rewrites."
+          - Corrections operate on proven syntax context, not blind regular-expression substitution.
+          - Positive and negative tests exist for every correction rule.
+          - "Historical consuming parameter syntax `name: <- Type` corrects to `->name: Type` only when that syntax is unambiguous."
+          - "Statement `i++` corrects to `i += 1` without introducing expression-level post-increment semantics."
+          - The correction catalogue can expand through dogfooding without weakening the unambiguity rule.
+
+      - id: formatter-cli-lsp-unification
+        status: partial
+        rules:
+          - "§ 28(1)"
+          - "§ 28(2)"
+          - "§ 28(3)"
+          - "§ 28(4)"
+          - "§ 28(5)"
+          - "§ 28(6)"
+          - "§ 28(7)"
+          - "§ 28(8)"
+        requirement: >-
+          Keep CLI and LSP formatting on the same canonical formatter engine.
+          Given identical source, project configuration, format version, and
+          effective width, both surfaces must produce equivalent source bytes.
+          Diagnostic suggestions may expose safe corrections without applying
+          them when Language Corrections are disabled.
+        acceptance:
+          - No independent LSP formatter grammar or formatting policy exists.
+          - CLI/LSP equivalence tests compare exact output bytes.
+          - Format-on-save preserves clean permitted multiline intent.
+
+      - id: formatter-invariants
+        status: planned
+        rules:
+          - "§ 29"
+          - "§ 31"
+        requirement: >-
+          Enforce formatter safety invariants: idempotence, semantic
+          preservation for ordinary formatting, literal spelling preservation,
+          comment preservation, malformed-region preservation, no semantic
+          guesses, no formatter-only grammar, no arbitrary declaration
+          reordering, no import removal, and no ownership/mutability/control-flow
+          changes for style.
+        acceptance:
+          - Ordinary formatting never changes numeric or string literal spelling.
+          - Ordinary formatting never changes ownership, borrowing, mutability, unsafe boundaries, control flow, or error behavior.
+          - Obsolete Sec syntax is not emitted as canonical output.
+
+      - id: formatter-conformance-tests
+        status: planned
+        rules:
+          - "§ 30"
+        requirement: >-
+          Build the conformance suite around golden output, automatic second-pass
+          idempotence, parse-format-parse round trips, malformed-source byte
+          preservation, width/configuration boundaries, Language Corrections,
+          and CLI/LSP equivalence.
+        acceptance:
+          - Every normative behavior has a golden test where practical.
+          - Golden canonical output is formatted a second time and remains byte-identical.
+          - Round-trip tests preserve syntax/AST meaning modulo trivia and source positions.
+          - Width coverage includes 80, 120, 200 and fixed boundaries 119/120/121.
+          - Vertical styles cover structured and compact.
+          - Indentation widths cover 2, 4, and 6.
+          - Language Corrections have both positive and negative tests.
+          - Malformed-region tests assert exact protected bytes.
+          - Test declarations have formatter round-trip coverage with exact test-name preservation.
+
+    dependencies:
+      - id: tooling.lsp-v2
+        relationship: >-
+          LSP formatting, format-on-save, diagnostics, and correction suggestions
+          must use the shared formatter contract.
+      - id: tooling.testing-v1
+        relationship: >-
+          Test declarations and testing.Run/lambda formatting follow ordinary
+          formatter rules; test-name strings are preserved exactly.
+      - id: frontend.lossless-syntax
+        relationship: >-
+          The parser/lexer must expose enough lossless, error-tolerant syntax
+          information to satisfy § 5 and § 25. The exact internal CST storage
+          design remains an implementation choice.
+
+    required_tests:
+      - golden canonical formatting
+      - second-pass idempotence
+      - parse-format-parse semantic round trip
+      - comments and documentation comments
+      - malformed and incomplete source byte preservation
+      - width 80/120/200
+      - width boundaries 119/120/121
+      - structured and compact vertical styles
+      - indentation widths 2/4/6
+      - import grouping, sorting, aliases, and attached comments
+      - ownership markers and consuming parameters
+      - registers and units
+      - assert and range/step formatting
+      - patterns and destructuring
+      - test declaration round trip and exact test-name preservation
+      - Language Corrections positive cases
+      - Language Corrections negative/ambiguous cases
+      - CLI/LSP exact-output equivalence
+
+    excluded:
+      - semantic code migration or transpilation
+      - guessing programmer intent
+      - formatter-owned language grammar separate from the compiler parser
+      - arbitrary malformed-source repair
+      - automatic import removal
+      - ordinary top-level declaration reordering
+      - semantic normalization of numeric or string literals
+      - automatic ownership, mutability, error-policy, or control-flow changes
+
+    sync_actions:
+      - >-
+          Merge this integration payload into the existing
+          governance/formatting.yaml owner. Do not create a second
+          formatter owner fragment.
+      - >-
+          Preserve any existing implementation history, evidence, commit links,
+          owner metadata, and completed obligations already present in
+          governance/formatting.yaml.
+      - >-
+          Reconcile existing formatter implementation facts against revision 2.0
+          paragraph references rather than replacing verified status with this
+          conservative baseline.
+      - >-
+          Keep governance/index.yaml mapped to the existing canonical formatter
+          owner; only update index metadata if required by the repository's
+          current governance schema.
+      - >-
+          Use the stable normative paragraph identifiers from
+          rules/tooling/formatter.md revision 2.0 in code comments, tests,
+          diagnostics, and future governance updates where a rule reference is
+          needed.

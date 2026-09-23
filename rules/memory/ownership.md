@@ -1892,3 +1892,11 @@ Explain mistakes like a mentor, not like a compiler textbook.
 owned value. `ContextSource.Context` is a source-bounded `ref Context` and
 cannot be moved out. A live mutex guard remains within its acquiring execution
 entity and cannot cross spawn or suspending await/join/select boundaries.
+
+## Debug-information integration
+
+`rules/compiler/debug_information.md` consumes the canonical Place and
+availability state defined by the memory rulebooks so moved, destroyed,
+uninitialized, and partially available values are not displayed as live. Debug
+observation creates no borrow, lifetime extension, pin, owner, or resource
+capability and introduces no parallel ownership state.

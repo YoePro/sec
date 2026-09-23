@@ -783,3 +783,11 @@ stability/contract provenance
 § 46(9) Representation validity is separate from size/alignment.
 
 § 46(10) Sema/plan resolution establishes canonical layout; Semantic IR preserves it; MLIR/LLVM/backends implement it without becoming a competing source of language semantics.
+
+## Debug-information integration
+
+Debuggers may consume resolved physical representation metadata while
+presenting canonical Sec source types according to
+`rules/compiler/debug_information.md`. Doing so does not make private or
+internal layout a stable public source ABI unless this rulebook already grants
+that guarantee.

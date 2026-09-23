@@ -20,7 +20,7 @@ belongs in the applicable canonical fragment under `governance/`.
 | `errors/` | Error handling, panic, and runtime checks. |
 | `concurrency/` | Tasks, threads, processes, IPC, synchronization, scheduling, and the concurrency memory/runtime models. |
 | `analysis/` | Compiler analyses and their shared semantic contracts. |
-| `compiler/` | Compiler architecture, pipeline, parser recovery, canonical Semantic IR, linking, and final artifacts. |
+| `compiler/` | Compiler architecture, pipeline, parser recovery, canonical Semantic IR, debug information, linking, and final artifacts. |
 | `mlir/` | Sec MLIR governance, dialect, lowering, version history, amendments, and implementation packages. |
 | `platform/` | Target profiles, platform resolution, interrupts, inline assembly, FFI, fixed-address and volatile access, hardware-register access, and ABI rules. |
 | `projects/` | Project and build organization. |

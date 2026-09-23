@@ -1985,7 +1985,23 @@ code size/speed tradeoffs.
 
 § 100(2) They do not redefine source semantics.
 
-§ 100(3) Source mappings should survive optimizations according to `debug_information.md` when that rulebook is finalized.
+§ 100(3) Source mappings and the semantic provenance required by
+`rules/compiler/debug_information.md` must survive until all requested debug
+consumers are complete.
+
+§ 100(4) Every transformation that affects code with surviving debug provenance
+must preserve it accurately, transform it accurately, or explicitly invalidate
+it. Stale debug metadata is never a legal compiler output. This obligation
+continues through semantic transformation, monomorphization, optimization,
+inlining or outlining, code motion, aggregate splitting, task/state-machine
+lowering, ABI lowering, Sec MLIR and LLVM lowering, LTO, link-time coalescing,
+and final artifact emission.
+
+§ 100(5) Requested debug level is orthogonal to optimization legality. `Full`
+does not implicitly disable optimization, tail calls, frame omission, body
+sharing, dead-code elimination, or other legal transformations. When exact
+source state cannot be reconstructed after a legal transformation, the
+compiler reduces debug precision rather than fabricating a value or frame.
 
 ---
 

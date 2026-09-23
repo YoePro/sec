@@ -2791,3 +2791,16 @@ constant folding is optional optimization, not the implementation of required
 CTE. MLIR infrastructure may be reused internally only when it preserves
 canonical typed Sec and active-target semantics instead of compiler-host ABI
 behavior.
+
+# Debug-information integration
+
+Sec MLIR and every maintained later lowering preserve the source ranges,
+semantic identities, availability facts, concrete specialization identities,
+and other provenance required by the selected contract in
+`rules/compiler/debug_information.md` until those facts are materialized into
+target debug metadata. Backend line numbers are not a replacement for those
+canonical facts.
+
+A lowering path that cannot preserve a requested debug contract must reject the
+request or remain explicitly incomplete. It must not silently claim truthful
+`Full` metadata.

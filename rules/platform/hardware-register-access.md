@@ -2212,3 +2212,12 @@ The compiler preserves declared physical semantics but does not infer active pol
 ### 41.9 Hardware programming remains runtime-free by default
 
 The complete static hardware register model can be used without garbage collection, hidden allocation, background synchronization, runtime ownership tracking, or a general Sec runtime.
+
+### 41.10 Debug observation
+
+`Full` debug information does not authorize automatic source-value evaluation
+through a hardware read unless the target can classify that read as safe
+observational access. A debugger may expose type, address, and identity while
+leaving the value unreadable in ordinary source inspection. Debug metadata does
+not weaken the MMIO, volatile, authority, or side-effect rules in this book;
+`rules/compiler/debug_information.md` owns only debugger presentation.

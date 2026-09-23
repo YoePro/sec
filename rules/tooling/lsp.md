@@ -3848,3 +3848,12 @@ does not expose the removed `Priority` capability. `Statistics()` is offered
 only when the resolved channel capability facts permit it, or is annotated with
 that capability requirement. Navigation treats compiler-known/source-visible
 channel identities as the same semantic symbols consumed by Sema.
+
+## Debug-information source-coordinate integration
+
+LSP and debug information consume compatible canonical source-file and range
+identities. Protocol UTF-16 conversion remains an LSP transport concern;
+`rules/compiler/debug_information.md` consumes compiler source coordinates and
+lowers them to the selected physical debug format. A future debugger plugin may
+reuse compiler/LSP naming and type-display services without requiring `Full` to
+embed an LSP database.

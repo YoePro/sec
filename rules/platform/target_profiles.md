@@ -696,3 +696,16 @@ realization, blocking behavior, and interrupt safety. A semantically valid
 `Atomic[uint64]` may therefore fail a selected target operation capability
 without becoming an invalid Sec type. Compiler-host capabilities and target word
 size never define language eligibility.
+
+## Debug-information target capabilities
+
+Resolved target information represents debug support with granular semantic
+capabilities rather than one `DebugSupported` boolean. The plan distinguishes
+supported levels and placements, source mapping, full source value/type and
+availability support, logical task inspection when active features require it,
+artifact/source correlation, and requested physical stack walking.
+
+A native physical format is a mechanism, not proof that all Sec `Full`
+capabilities exist. A statically known unsupported combination is rejected while
+validating the `CompilationPlan`; it is never silently downgraded. Canonical
+debug semantics are owned by `rules/compiler/debug_information.md`.

@@ -869,6 +869,24 @@ Semantic validity and source/debug provenance are separate concerns.
 
 A source-location change may require refreshed diagnostics, LSP mapping, or debug information while leaving semantic specialization reusable.
 
+Debug information consumes canonical concrete specialization identity according
+to `rules/compiler/debug_information.md`. The following identities remain
+distinct even when legal code sharing occurs:
+
+```text
+Concrete semantic specialization identity
+    != PlanEntry identity
+    != ImplementationBody identity
+    != machine address
+    != backend mangled name
+```
+
+Distinct concrete specializations retain distinct debugger identities. Debug
+tooling, breakpoints, and cached debug data never create specialization demand
+that is absent from canonical program reachability. A backend may clone physical
+entries when needed for truthful tooling, but debugging introduces neither a
+unique-body requirement nor runtime generic reflection.
+
 ### 17.5 Dependency-sensitive invalidation
 
 Cached generic results should record the semantic facts on which they depend.

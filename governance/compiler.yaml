@@ -30,6 +30,113 @@ integrations:
       - make every maintained legacy backend consume canonical CompilationPlan layout/type facts or reject unsupported lowering
       - centralize implementation-capability diagnostics distinct from source/target errors
       - preserve verified target/profile/reference/ownership/effect facts through object/link generation
+      - preserve, transform, or explicitly invalidate canonical debug provenance through final emission under compiler.debug-information-v1
+  - id: compiler.debug-information-v1
+    area: compiler-debug-information-and-artifact-correlation
+    status: planned
+    integrated: null
+    document_revision: "1.0"
+    repository_baseline: main-reviewed-2026-09-23
+    summary: >-
+      Implements the canonical Sec 0.1 debug-information model with exactly three
+      levels (None, LineTables, Full), range/origin-aware source provenance,
+      semantic step points, truthful optimized-value tracking, ownership/lifetime
+      availability, concrete generic-specialization identities, logical Task /
+      physical Thread / Process debug identities, embedded or separate debug
+      artifacts with exact image and source-content correlation, target-neutral
+      lowering to supported physical debug formats, and compiler verification plus
+      conformance obligations. Debug information is artifact/tooling metadata and
+      never changes Sec program semantics.
+    rules:
+      - rules/compiler/debug_information.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/monomorphization.md
+      - rules/compiler/compiler.md
+      - rules/compiler/linking.md
+      - rules/mlir/sec_mlir.md
+      - rules/platform/target_profiles.md
+      - rules/platform/abi.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/await.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/processes.md
+      - rules/errors/panic.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/memory/memory_model.md
+      - rules/memory/storage.md
+      - rules/memory/layout.md
+      - rules/platform/hardware-register-access.md
+      - rules/tooling/lsp.md
+    implemented: []
+    existing_foundations:
+      - Semantic IR already preserves canonical source provenance and semantic identities required by debug lowering.
+      - Monomorphization already distinguishes concrete semantic specialization identity from physical PlanEntry and implementation-body identity.
+      - Compiler/linking governance already owns final artifact verification, LTO, reproducibility, and artifact identity concerns needed by debug companions.
+      - Task, await, thread, and process rulebooks already define the execution identities and suspension/lifecycle relations consumed by debugger metadata.
+      - LSP/source-position infrastructure already provides shared source-coordinate concepts that debug mapping must not contradict.
+    remaining:
+      - introduce canonical compiler-internal DebugInformationLevel with exactly None, LineTables, and Full
+      - keep debug level orthogonal to optimization, runtime checks, panic strategy, ABI, ownership, scheduling, and program semantics
+      - introduce target-neutral debug step-point and source-provenance facts with source range, lexical scope, semantic operation identity, user/synthetic/inlined origin, and inline chain
+      - preserve same-line distinct source step points using columns/ranges/discriminators where the target encoding permits
+      - implement LineTables emission for source mapping, concrete function/specialization identity, inline chains, breakpoints, stepping, and source symbolization
+      - implement Full lexical-scope, parameter, local, static/global, capture, canonical Sec type, generic substitution, and exact value-location/reconstruction metadata
+      - integrate Semantic IR ownership/lifetime availability so moved, discarded, destroyed, uninitialized, inactive-variant, partially available, and conditionally available Places are never represented as stale live values
+      - support projection-level partial aggregate debug availability where the target/Sec-aware debugger path can represent it
+      - support exact constant, register, memory, piecewise, and pure-expression value reconstruction without executing user code or other program-visible effects
+      - preserve semantic struct fields, enum members, active union variants, Option/Result alternatives, named types, units, references, strings, arrays, slices/views, and opaque-resource boundaries instead of exposing lowered carriers as canonical source types
+      - add device/MMIO debug-read safety metadata so ordinary Full inspection never performs a potentially side-effecting read without an explicit debugger/platform operation
+      - preserve concrete generic specialization identity in both LineTables and Full independently of machine address, mangled name, PlanEntry sharing, or implementation-body sharing
+      - bind generic source breakpoints to all executable concrete specializations without causing monomorphization demand
+      - preserve enclosing specialization identity for generic methods, closures/lambdas, captures, and per-instantiation static storage
+      - implement logical Task frame identity across suspension/resumption and worker migration without requiring physical worker stack preservation
+      - preserve distinct Process, physical Thread, and logical Task identities plus causal spawn/await/join relations without fabricating call frames
+      - provide debugger-facing runtime hooks for active logical-task inspection where selected target support requires them while keeping them outside Sec source reflection
+      - introduce target-neutral debug placement support for Embedded and Separate independently from debug level
+      - introduce exact generated-image/debug-companion correlation identity and reject stale or incompatible companion artifacts
+      - make debug mapping image-aware and relocatable across ASLR, shared libraries, dynamic images, and firmware placement
+      - separate debug stripping from generation and protect metadata required by runtime, ABI, panic, loader, or other non-debug semantics
+      - separate canonical SourceFileIdentity from SourceLookupPath and support deterministic source-root/path remapping
+      - add source-content identity sufficient for debugger tooling to detect source-version mismatch without requiring embedded source text
+      - make debug artifact generation deterministic/reproducible under the build reproducibility contract and exclude incidental host paths, timestamps, random IDs, process IDs, and traversal order where configured/avoidable
+      - define backend lowering from the target-neutral Sec debug model to target-supported physical formats such as DWARF or CodeView without relabeling Sec as another source language
+      - use Sec-specific debugger extensions/companion records when a standard physical debug format cannot faithfully encode required Sec availability, logical-task, or causal facts
+      - preserve canonical Sec source signatures independently of hidden ABI parameters, sret, split registers, tag/payload transport, closure environments, and generated thunks
+      - model physical stack-walk support separately from source debug level and never infer Sec panic/runtime unwinding from debugger CFI/frame recovery
+      - preserve mixed-language stack boundaries and Sec callback source identity without requiring foreign dependencies to carry Sec-equivalent debug metadata
+      - retain optimization freedom for inlining, tail calls, frame omission, code sharing, dead stripping, and LTO while reducing debug precision rather than fabricating frames/values when exact reconstruction is impossible
+      - add granular CompilationPlan debug capabilities for requested level, placement, active source/value/type support, logical-execution support, artifact/source correlation, and physical stack walking where needed
+      - reject unsupported level/placement/active-feature combinations at compile/build time with no silent downgrade
+      - make every transforming compiler pass preserve, accurately transform, or explicitly invalidate debug provenance through final emission
+      - add compiler-development verifier invariants for stale value locations, inactive variants, unresolved generic runtime types, merged specialization identities, synthetic step points, and invalid source/artifact identity relations
+      - add independent None, LineTables, and Full conformance matrices across representative optimization levels and targets
+      - add structural compiler debug-model tests, target physical-format tests, and supported debugger/Sec-aware integration tests
+      - add LineTables tests for mapping, same-line step points, inline chains, generic identities, breakpoints, stepping, synthetic suppression, optimized-away operations, relocation, split artifacts, and source mismatch
+      - add Full tests for locals/parameters, shadowing, reinitialization, ownership availability, partial moves, unions, exact constants, piecewise values, optimized-out values, named/unit types, Option/Result, references, strings, arrays/views, generics, per-instantiation statics, suspended-task locals, and MMIO-safe-read behavior
+      - add companion-artifact mismatch, source-content mismatch, path-remapping, reproducibility, and negative target-capability tests
+    excluded:
+      - source-level DebugInfo, DebugFrame, DebugVariable, or debugger-control APIs
+      - a Sec debugger expression evaluator
+      - a mandatory remote-debugging protocol
+      - symbol-server, source-server, or debuginfod protocol standardization
+      - mandatory embedded source text
+      - one universal physical debug format or format version
+      - mandatory frame pointers
+      - a general runtime/panic unwinder introduced for debugging
+      - runtime generic reflection or dictionaries introduced by debug metadata
+      - arbitrary safe debugger mutation of Sec values
+      - complete serialization of Semantic IR or the compiler semantic database into Full debug artifacts
+    corrections_applied:
+      - rules/corrections/applied/debug-information-cross-rulebook-correction-20260923.md
+    governance_reconciliation:
+      - keep governance/index.yaml unchanged because compiler.yaml already owns compiler pipeline, linking, initialization, and artifacts
+      - cross-link compiler.backend-architecture and compiler.linking to debug-provenance and final-artifact obligations without duplicating their existing work
+      - leave target/platform capability ownership in the existing CompilationPlan/target governance model; debug-information consumes resolved target facts
+      - make compiler_testing.md own the harness and debugger-driving infrastructure when that rulebook is written
+      - make incremental_compilation.md own cache invalidation and reuse rules for debug/backend artifact state when that rulebook is written
   - id: compiler.linking
     area: compiler-linking-and-artifacts
     status: partial
@@ -59,6 +166,7 @@ integrations:
       - rules/concurrency/concurrency.md
       - rules/mlir/sec_mlir.md
       - rules/compiler/semantic_ir.md
+      - rules/compiler/debug_information.md
     code:
       - cmd/compiler/main.go
       - cmd/compiler/target.go
@@ -133,6 +241,7 @@ integrations:
       - add multi-Variant tests proving each selected Target Variant receives an independent LinkPlan, link operation, and output artifact
       - add deterministic symbol, archive, provider, reachability, dead-stripping, LTO, toolchain-materialization, search-path, artifact-verification, cross-compilation, and diagnostic regression tests
       - update repository-level implementation-status verification commands once the first canonical LinkPlan vertical slice is implemented
+      - integrate requested debug level and placement, exact image/companion correlation, post-LTO mapping finalization, and safe strip policy under compiler.debug-information-v1
     excluded:
       - Sec module and source declaration identity semantics
       - ABI parameter/return classification

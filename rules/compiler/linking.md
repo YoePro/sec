@@ -1253,3 +1253,22 @@ This rulebook does not require:
 - source-level library ordering semantics;
 - eager inclusion of every static archive member;
 - whole-program assumptions that violate the selected dynamic-linking model.
+
+---
+
+## Debug-information integration
+
+When the resolved `CompilationPlan` requests debug information, final-artifact
+planning and verification include the requested debug level and placement, the
+exact image/companion correlation identity, post-LTO source-map finalization,
+and a strip policy that distinguishes debug-only metadata from metadata required
+by runtime, ABI, loader, panic, or another non-debug contract.
+
+A separate debug artifact correlates with the exact generated image, not merely
+with a project or filename. LTO, identical-code folding/coalescing, outlining,
+dead stripping, relocation, and symbol/address rewriting must update, merge,
+relocate, or invalidate affected mappings before final verification. Relevant
+debug inputs participate in reproducibility and cache identity; incidental host
+paths, timestamps, and random values do not enter deterministic output where the
+resolved policy excludes them. The canonical semantic contract is owned by
+`rules/compiler/debug_information.md`.

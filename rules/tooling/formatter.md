@@ -1,2772 +1,1809 @@
 # Formatter
 
-## Status
-
-This document is the canonical formatter rulebook for Sec. The former legacy
-text rulebook has been replaced and is no longer canonical.
-
-Implementation governance for this rulebook is maintained in
-`governance/formatting.yaml`.
-
-The formatter follows a gofmt-like philosophy:
-
-- Sec has one canonical source style;
-- formatting is deterministic;
-- ordinary formatting is not user-configurable;
-- equivalent source should converge to the same output;
-- formatting must be safe to run repeatedly;
-- the formatter, compiler, and language server must share implementation;
-- safe source repair is separated from ordinary formatting.
-
-This rulebook supersedes earlier statements that formatting always requires
-fully valid syntax.
-
-The formatter should format valid source and preserve useful formatting around
-recoverable syntax errors.
-
-For defaults and empty collections, ordinary formatting must:
-
-- preserve explicit named-type `default` clauses;
-- preserve the semantic source order of every `in [...]` list;
-- preserve omitted struct fields rather than expanding them;
-- format `list[T] {}` and `list[T, Capacity] {}` as empty collection literals,
-  distinct from named-struct literals;
-- never insert explicit default values.
-
-Expansion of omitted fields or insertion/declaration of defaults belongs to an
-explicit LSP/refactoring action. No special configurable default style is
-introduced.
+- **Status:** Normative
+- **Created:** 2026-07-31
+- **Last updated:** 2026-09-23
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/tooling/formatter.md`
+- **Replaces:** Earlier legacy revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-09-23`
+- **Implementation governance:** `governance/formatting.yaml`
+- **Related rulebooks:** `rules/tooling/testing.md`, `rules/tooling/lsp.md`, `rules/concurrency/await.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`
 
 ---
 
-# Current implementation status
+## § 1. Purpose and authority
 
-The repository contains a working initial shared formatter in:
+**Governance tags:** `tooling.formatter-v2`
 
-```text
-internal/formatter
-```
+§ 1(1) This rulebook defines the canonical Sec 0.1 source formatting model.
 
-The LSP calls this package for document formatting. The CLI uses it for in-place
-formatting and check mode on explicit files, plus standard-input formatting.
-The fix engine is not integrated yet.
+§ 1(2) The formatter is part of the official Sec toolchain and defines the canonical presentation of source text for a selected formatting configuration.
 
-## Implemented
+§ 1(3) This rulebook owns:
 
-The current LSP formatter already implements:
+- canonical whitespace and indentation;
+- brace and block layout;
+- vertical spacing;
+- structural alignment;
+- line-width and continuation behavior;
+- comment formatting;
+- import layout and ordering;
+- declaration and expression layout;
+- control-flow layout;
+- formatting of ownership, unit, register, test, and other Sec-specific syntax;
+- behavior on malformed and incomplete source;
+- formatter configuration and format-version semantics;
+- formatter invariants and conformance tests;
+- the optional Language Corrections model.
 
-- full-document formatting through `textDocument/formatting`;
-- whole-document replacement edits;
-- preservation of LF versus CRLF line endings;
-- conversion of tabs in leading and ordinary source whitespace to four spaces;
-- removal of trailing horizontal whitespace;
-- exactly one final newline for non-empty formatted source;
-- collapsing repeated blank lines;
-- indentation based on braces, parentheses, and brackets;
-- indentation of `switch` cases;
-- indentation of `select` branches;
-- indentation of grouped imports;
-- indentation of parenthesized type-first declaration groups;
-- indentation of nested blocks;
-- single-line function-parameter comma spacing;
-- single-line call argument spacing and trailing-comma removal without folding
-  intentional multiline calls;
-- same-line parenthesis, bracket, and brace boundary-trivia normalization
-  without folding intentional multiline groups;
-- single-line `let` declaration comma spacing;
-- local trailing-line-comment alignment with a four-space gutter in struct,
-  enum, register, union, and similar nominal declaration blocks;
-- initial in-place `sec fmt <file.sec>...` integration through the shared
-  formatter package;
-- `sec fmt --check <file.sec>...` through the shared formatter, reporting all
-  affected files without modifying them; exit code 0 means no changes, and 1
-  means formatting differences or an input/option error;
-- `sec fmt --stdin` reads standard input and writes only formatted source to
-  standard output using LF line endings; read/write failures exit with code 1
-  and diagnostics on standard error; combinations with file paths or `--check`
-  are rejected before processing input;
-- unambiguous `func` to `fn` normalization;
-- canonical placement of an inline `@noCopy` attribute on its own line;
-- preservation of ordinary identifiers and calls named `func`;
-- parser-confirmed `x++` and `x--` normalization to `x += 1` and `x -= 1`,
-  while invalid expression uses remain unchanged;
-- a lexer-backed, byte-lossless CST foundation retaining real tokens,
-  comments, whitespace, invalid tokens, diagnostics, source ranges, and nested
-  groups of real delimiters;
-- lexer-backed detection of trailing line comments during declaration-comment
-  alignment, without treating comment-like text in literals or same-line block
-  comments as a line comment;
-- format-on-save integration in the VS Code extension;
-- tests for switch, select, grouped imports, declaration groups, function
-  signatures, bootstrap lexer source, and `func` normalization.
+§ 1(4) This rulebook does not redefine language semantics. When another normative rulebook owns the syntax or semantics of a construct, the formatter preserves that construct and applies only the layout rules defined here.
 
-## Partially implemented
+§ 1(5) Mutable implementation status belongs in the implementation-governance fragment, not in this normative rulebook.
 
-The current formatter is partially implemented in these areas:
-
-- comment preservation remains primarily line-based; only trailing-comment
-  boundary detection uses the lexer-backed CST foundation so far;
-- indentation is inferred from source text rather than a lossless syntax tree;
-- malformed and incomplete source can sometimes be formatted, but recovery is
-  not systematic;
-- function and declaration normalization is limited to selected single-line
-  forms;
-- the LSP emits one whole-document edit rather than minimal edits;
-- grouped declarations are indented but not comprehensively aligned;
-- line comments outside the implemented nominal-declaration groups retain
-  indentation but are not yet comprehensively aligned;
-- struct tags are preserved as source text but are not aligned;
-- ordinary formatting and safe fixing do not yet share a structured edit model.
-
-## Not implemented
-
-The following are not yet implemented:
-
-- a shared `internal/fixes` package;
-- the complete `sec fmt` command model defined here beyond in-place formatting
-  and checking of explicit source files and standard-input formatting;
-- `sec fmt --fix`;
-- recursive directory and project formatting;
-- range formatting;
-- on-type formatting;
-- minimal text edits;
-- a structural CST/AST- and trivia-aware printer;
-- stable formatting of all recoverable syntax;
-- missing-colon repair;
-- struct-field column alignment;
-- struct-tag column alignment;
-- end-of-line comment alignment outside nominal declaration groups;
-- declaration-table alignment;
-- multiline width-based layout;
-- canonical import sorting policy;
-- structured formatter diagnostics;
-- formatter-disable directives;
-- formatter fuzz testing;
-- formatter idempotence testing across the full grammar.
+§ 1(6) Examples in this revision use current Sec syntax only. Historical Sec syntax may appear only when it is explicitly shown as input to a Language Correction.
 
 ---
 
-# Purpose
+## § 2. Stable normative paragraph identifiers
 
-The formatter converts Sec source into the canonical source representation.
+**Governance tags:** `tooling.formatter-v2`
 
-Its responsibilities include:
+§ 2(1) Every normative paragraph identifier in this rulebook is a stable external reference.
 
-```text
-indentation
-spacing
-line breaks
-blank lines
-delimiter placement
-comment placement
-comment alignment
-struct tag alignment
-canonical spelling of accepted noncanonical syntax
-stable printing of recoverable syntax
-```
+§ 2(2) An identifier such as `§ 10(7)` may be referenced by compiler source, tests, diagnostics, governance files, documentation, or other rulebooks.
 
-The formatter is not:
+§ 2(3) Once a published revision assigns a normative identifier, later revisions must not renumber that identifier merely because surrounding text is inserted, removed, reorganized, or expanded.
 
-```text
-a type checker
-a replacement for Sema
-a general refactoring engine
-a code-style configuration framework
-an optimizer
-an ownership inference engine
-```
+§ 2(4) A removed normative paragraph leaves its identifier reserved. The identifier must not later be reused for an unrelated rule.
+
+§ 2(5) New normative paragraphs added to an existing section use new paragraph identifiers and do not shift existing paragraph identifiers.
+
+§ 2(6) Section identifiers are likewise stable after publication. New subject matter that cannot be added without renumbering existing sections must be appended in a way that preserves existing section identities.
+
+§ 2(7) Editorial wording may change across document revisions, but references to an existing paragraph identifier must continue to identify the same normative subject.
+
+§ 2(8) Document revision, Sec language version, formatting style version, and formatter implementation version are separate concepts.
 
 ---
 
-# Formatter layers
+## § 3. Canonical formatting model
 
-Sec distinguishes three source-transformation layers.
+**Governance tags:** `tooling.formatter-v2`
 
-## Canonical formatting
+§ 3(1) Formatting is canonical for a selected project formatting configuration.
 
-Used by:
-
-```text
-sec fmt
-LSP document formatting
-LSP range formatting
-LSP on-type formatting
-format on save
-```
-
-Canonical formatting:
-
-- does not change program semantics;
-- does not require successful Sema;
-- may use a tolerant syntax tree;
-- preserves comments and documentation;
-- preserves identifier spelling;
-- preserves literal values;
-- preserves string and raw-string contents;
-- preserves copy versus move syntax;
-- is deterministic and idempotent.
-
-## Syntax normalization
-
-Syntax normalization converts an accepted, unambiguous noncanonical spelling
-into canonical Sec spelling.
-
-It may run as part of ordinary formatting.
-
-Initial normalization rules include:
-
-```text
-func -> fn
-x++  -> x += 1
-x--  -> x -= 1
-```
-
-Normalization is allowed only when the parser proves the intended construct.
-
-## Safe fixing
-
-Used by:
-
-```text
-sec fmt --fix
-LSP quick fixes
-LSP fix all
-safe fixes on save
-```
-
-Safe fixing may repair invalid source when the compiler proves one unique,
-machine-applicable correction.
-
-Examples include:
-
-```text
-insert a missing parameter colon
-replace invalid copy initialization with explicit move initialization
-replace invalid copy assignment with explicit move assignment
-insert an unambiguous missing comma
-insert one canonical import when exactly one module provides the symbol
-rewrite a proven reversed type declaration from `type kind Name` to
-    `type Name kind`
-```
-
-For the contextual word `register`, the fix requires a proving register shape
-such as `type register Name[Width]`. It must not rewrite an ordinary identifier
-named `register` when that shape is absent.
-
-Safe fixing runs before canonical formatting.
-
----
-
-# Shared implementation
-
-The canonical implementation must live in reusable packages.
-
-Target structure:
-
-```text
-internal/formatter/
-internal/fixes/
-```
-
-The following must call the same formatter:
-
-```text
-sec fmt
-sec fmt --check
-sec fmt --stdin
-LSP document formatting
-LSP range formatting
-LSP on-type formatting
-refactoring output
-generated source output
-```
-
-The following must call the same fix engine:
-
-```text
-sec fmt --fix
-LSP quick fix
-LSP fix all
-safe fixes on save
-```
-
-No formatting rules may be duplicated in:
-
-```text
-cmd/lsp
-the VS Code extension
-another editor extension
-a refactoring implementation
-a code generator
-```
-
----
-
-# Command model
-
-Required CLI forms:
-
-```text
-sec fmt <path>
-sec fmt --check <path>
-sec fmt --stdin
-sec fmt --fix <path>
-sec fmt --fix --check <path>
-```
-
-A path may identify:
-
-```text
-a `.sec` file
-a directory
-a project root
-```
-
-## `sec fmt <path>`
-
-Formats source and rewrites changed files in place.
-
-It applies:
-
-```text
-canonical formatting
-syntax normalization
-```
-
-It does not apply semantic fixes.
-
-## `sec fmt --check <path>`
-
-Does not modify files.
-
-It exits non-zero when any selected source file is not canonical.
-
-It reports affected files.
-
-## `sec fmt --stdin`
-
-Reads Sec source from standard input and writes formatted source to standard
-output.
-
-A virtual filename may be supplied later for module and diagnostic context.
-
-## `sec fmt --fix <path>`
-
-Applies:
-
-```text
-safe machine-proven fixes
-canonical formatting
-```
-
-It must report applied fixes.
-
-It must not apply code cleanup or discretionary refactoring.
-
-## `sec fmt --fix --check <path>`
-
-Does not modify files.
-
-It exits non-zero when safe fixes or canonical formatting would change source.
-
----
-
-# File selection
-
-Directory and project formatting includes:
-
-```text
-*.sec
-```
-
-Legacy `.se` support may remain while the extension is supported by the project.
-
-The formatter must ignore:
-
-```text
-build outputs
-vendor or dependency caches
-generated files marked read-only
-directories excluded by project configuration
-```
-
-Generated files may opt into formatting through explicit metadata.
-
----
-
-# Canonical configuration
-
-Ordinary formatting is not configurable.
-
-The following are language decisions, not per-project preferences:
-
-```text
-indent width
-brace placement
-operator spacing
-comma placement
-comment spacing
-alignment rules
-canonical keyword spelling
-final newline
-```
-
-Project configuration may control only operational behavior such as:
-
-```text
-which files are selected
-whether generated files are included
-whether safe fixes run on save
-whether code cleanup runs on save
-```
-
----
-
-# Source model
-
-The final formatter must operate on a lossless, error-tolerant syntax model.
-
-It must retain:
-
-```text
-tokens
-whitespace trivia
-line comments
-block comments
-documentation comments
-raw strings
-source ranges
-missing-token recovery nodes
-error nodes
-```
-
-The AST alone is not sufficient when it does not preserve all comments and
-trivia.
-
-The current lexical CST foundation retains every source byte as lexer tokens
-or intervening trivia, including invalid bytes and an initial BOM. It also
-groups real matching `()`, `[]`, and `{}` tokens without assigning grammatical
-roles; incomplete groups and unmatched closers remain inspectable. It is not
-yet a grammar tree and does not yet contain parser-synthesized missing-token
-or recovery nodes.
-
-A temporary line-based implementation may remain during migration, but the
-canonical architecture is syntax-tree and trivia aware.
-
----
-
-# General invariants
-
-Formatted source must satisfy:
-
-```text
-deterministic output
-idempotence
-semantic preservation
-comment preservation
-literal preservation
-stable line endings
-exactly one final newline
-no trailing whitespace
-no emitted tabs
-```
-
-Formally:
+§ 3(2) Canonical formatting is idempotent:
 
 ```text
 Format(Format(source)) == Format(source)
 ```
 
-For valid source:
+§ 3(3) Ordinary formatting must preserve program semantics.
 
-```text
-Parse(source) and Parse(Format(source))
-```
+§ 3(4) Whitespace is generally formatter-owned except where source text itself is data, where comments contain preserved preformatted material, where malformed source is protected by § 25, or where this rulebook explicitly preserves a clean layout choice.
 
-must have equivalent language semantics.
+§ 3(5) A clean permitted single-line form may remain single-line.
 
----
+§ 3(6) A clean permitted multiline form may remain multiline even when it would fit on one line.
 
-# Line endings
+§ 3(7) A mixed or partially formatted layout is normalized to the canonical layout.
 
-The formatter preserves the file's established line-ending style when it is
-consistent:
+§ 3(8) Width or structural rules may force a single-line construct to become multiline.
 
-```text
-LF
-CRLF
-```
+§ 3(9) A wider viewport or larger effective width must not by itself collapse a deliberately clean multiline construct that this rulebook permits to remain multiline.
 
-Mixed line endings are normalized to the dominant style.
+§ 3(10) The formatter must not rewrite literal data merely to satisfy line width.
 
-When no dominant style exists, use LF.
+§ 3(11) The general principle is:
 
-`sec fmt --stdin` uses LF unless an explicit line-ending mode is later provided.
+> Break syntax, not data.
 
-A formatted non-empty file ends with exactly one line ending.
-
-An empty file remains empty or ends with one newline according to the final CLI
-policy; the implementation must use one deterministic rule.
+§ 3(12) Ordinary formatting does not perform semantic cleanup such as removing redundant parentheses, translating foreign-language syntax, changing literal spelling, or inferring programmer intent. Such transformations belong only to Language Corrections under § 26 and § 27.
 
 ---
 
-# Indentation
+## § 4. Formatter configuration and format version
 
-Indentation uses four spaces.
+**Governance tags:** `tooling.formatter-v2`
 
-Tabs are never emitted for indentation or alignment.
-
-Indentation increases inside multiline:
+§ 4(1) The initial formatting style version is:
 
 ```text
-blocks
-parenthesized groups
-bracketed groups
-multiline argument lists
-multiline parameter lists
-multiline literals
-multiline declaration groups
+format_version = 1
 ```
 
-Delimiter characters inside:
+§ 4(2) `format_version` identifies the canonical formatting contract, not the formatter executable version and not this document revision.
+
+§ 4(3) A formatter implementation update must not deliberately change canonical output for an existing `format_version`.
+
+§ 4(4) A normative style change that intentionally changes canonical output requires a new `format_version` unless the change corrects an implementation that did not conform to the already-published format contract.
+
+§ 4(5) The default project formatting configuration is:
 
 ```text
-strings
-raw strings
-character literals
-comments
+format_version = 1
+
+vertical_style = "structured"
+
+indentation_width = 4
+
+width_mode = "fixed"
+line_width = 120
+
+adaptive_min_width = 80
+adaptive_max_width = 200
+adaptive_fallback_width = 120
+
+language_corrections = false
 ```
 
-do not affect indentation.
+§ 4(6) `vertical_style` accepts:
 
-Example:
-
-```sec
-fn main() int {
-    if ready {
-        return 0
-    }
-
-    return 1
-}
+```text
+structured
+compact
 ```
+
+§ 4(7) `structured` is the default.
+
+§ 4(8) `indentation_width` accepts `2`, `4`, or `6` spaces. Tabs are not canonical indentation.
+
+§ 4(9) `width_mode = "fixed"` uses `line_width` as the preferred line width.
+
+§ 4(10) `width_mode = "adaptive"` derives an effective width from the editor or presentation environment and clamps it to the inclusive range `adaptive_min_width..adaptive_max_width`.
+
+§ 4(11) The default adaptive range is `80..200`.
+
+§ 4(12) A formatter invocation with no usable adaptive viewport uses `adaptive_fallback_width`, whose default is `120`.
+
+§ 4(13) Preferred line width is a target, not a source-language limit. An unbreakable or deliberately preserved construct may exceed it.
+
+§ 4(14) The default maximum alignment padding is four indentation widths. With the default indentation width this is sixteen spaces.
+
+§ 4(15) All configuration that changes canonical source bytes is project-owned. Personal editor preferences must not silently produce a different canonical project source form.
+
+§ 4(16) Brace placement, colon attachment, operator placement, trailing-comma policy, and other rules explicitly fixed by this rulebook are normative and are not formatter preference knobs.
+
+§ 4(17) `language_corrections` controls the optional correction layer. It is disabled by default and is separate from ordinary canonical formatting.
 
 ---
 
-# Blank lines
+## § 5. Required syntax representation
 
-The formatter emits no repeated empty lines.
+**Governance tags:** `tooling.formatter-v2`
 
-Two or more consecutive empty lines become one.
+§ 5(1) A conforming formatter must operate from an error-tolerant, lossless syntax representation sufficient to reconstruct all source bytes that matter to formatting and preservation.
 
-Blank lines normally separate:
+§ 5(2) The representation must preserve at least:
 
-```text
-target directives from module
-module from imports
-import groups from declarations
-top-level declarations
-functions
-major logical statement groups when a blank line already exists
-```
+- source tokens and their exact lexemes;
+- whitespace trivia;
+- line comments;
+- block comments;
+- raw or otherwise source-sensitive string text;
+- exact source ranges;
+- malformed regions;
+- parser recovery structure sufficient to distinguish proven syntax from uncertain syntax.
 
-No blank line is emitted:
+§ 5(3) A semantic AST alone is insufficient as the formatter source of truth because ordinary ASTs discard layout and may discard source text that must be preserved.
 
-```text
-immediately after an opening brace
-immediately before a closing brace
-between a documentation comment and its declaration
-between a standalone attached comment and its declaration
-between `}` and `else`
-between `}` and another required continuation
-```
+§ 5(4) The compiler may produce CST and AST as parallel outputs from shared lexer/parser logic.
 
-The formatter preserves a single intentional blank line inside a function when
-it separates logical sections.
+§ 5(5) Sec must not maintain separate, diverging grammars merely to support formatting.
 
-It does not invent many blank lines based on semantic analysis.
+§ 5(6) Ordinary formatting must not require semantic analysis.
+
+§ 5(7) Import grouping may consult compiler-known module classification metadata when needed to distinguish standard-library, ordinary, and platform imports.
+
+§ 5(8) The concrete CST storage implementation is not defined by this rulebook. The behavioral requirements in this section and § 25 are normative.
 
 ---
 
-# Braces
+## § 6. Indentation and basic whitespace
 
-Opening braces remain on the same line as the construct they belong to.
+**Governance tags:** `tooling.formatter-v2`
 
-Canonical:
+§ 6(1) Canonical indentation uses spaces only.
 
-```sec
-if ready {
-}
-```
+§ 6(2) Each nested structural block increases indentation by one configured indentation width.
 
-Not canonical:
+§ 6(3) Continuation indentation is structural and must remain visually subordinate to the construct it continues.
 
-```sec
-if ready
-{
-}
-```
-
-This applies to:
-
-```text
-functions
-structs
-unions
-enums
-interfaces
-impl blocks
-properties
-getters
-setters
-unsafe blocks
-asm blocks
-if
-else
-for
-while
-switch
-select
-match
-try handlers
-struct literals
-```
-
-`else` remains on the same line as the preceding closing brace:
+§ 6(4) A colon in a declaration binds to the identifier on its left:
 
 ```sec
-if ready {
-    Run()
-} else {
-    Stop()
-}
+let host: string := "localhost"
 ```
 
----
-
-# General spacing
-
-No space before:
-
-```text
-,
-:
-)
-]
-}
-.
-```
-
-One space after:
-
-```text
-,
-:
-```
-
-except where alignment or a compact grammar form defines a specific rule.
-
-Binary and assignment operators have one space on both sides:
+not:
 
 ```sec
-a + b
-a == b
-a && b
-value := 10
-value :<- source
-value = other
-value <- source
-value += 1
-left x right
+let host : string := "localhost"
 ```
 
-Unary operators have no following space:
+§ 6(5) Binary operators normally have one space on both sides in single-line expressions:
 
 ```sec
-!enabled
+let total := base + tax
+```
+
+§ 6(6) Unary operators attach to their operand according to the language grammar:
+
+```sec
+!ready
 -value
 ```
 
-Member access has no spaces:
+§ 6(7) Assignment and initialization operators use surrounding spaces:
 
 ```sec
-value.field
-Vehicle.FuelType.diesel
+value = next
+let count := 3
 ```
 
-Function calls have no space before `(`:
+§ 6(8) Trailing whitespace is not canonical except where it is literal source data inside a preserved source-sensitive construct.
+
+---
+
+## § 7. Vertical spacing
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 7(1) The formatter never emits more than one consecutive empty line in ordinary formatted source.
+
+§ 7(2) The formatter does not place an empty line immediately inside an opening or closing brace merely for decoration.
+
+§ 7(3) In `structured` style, major declaration groups receive structural separation where defined by this rulebook.
+
+§ 7(4) In `compact` style, optional structural blank lines are removed while required separation and comment attachment remain intact.
+
+§ 7(5) Aggregate or group type declarations are separated from surrounding unrelated declarations in `structured` style.
+
+§ 7(6) Adjacent simple named-type declarations may remain a compact declaration block when they form one homogeneous group.
+
+§ 7(7) A doc-commented function, method, property, test declaration, or similar major declaration receives structural separation in `structured` style unless it is the first declaration in the enclosing region or the documentation is file-level documentation.
+
+§ 7(8) Documentation comments remain attached to the declaration they document.
+
+§ 7(9) A deliberate standalone `//` comment may divide two declaration groups and therefore ends alignment across that boundary.
+
+§ 7(10) In `structured` style, a multiline control-flow block may be separated from surrounding ordinary statements when the separation improves structural reading.
+
+§ 7(11) Consecutive simple declarations may remain together.
+
+§ 7(12) Consecutive `defer` blocks remain together unless an intervening comment or syntax requires separation.
+
+§ 7(13) In `structured` style, a very long outlier may start a new alignment group when aligning it with the previous group would create excessive whitespace. `compact` style removes that optional blank line.
+
+---
+
+## § 8. Braces and executable blocks
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 8(1) Opening braces for declarations and control-flow constructs are placed on the same line as the construct header whenever the header itself is not structurally multiline.
+
+§ 8(2) Canonical `if`/`else` layout is:
 
 ```sec
-Add(1, 2)
-Color(1)
-```
-
-Function declarations have no space between name and parameter list:
-
-```sec
-fn Add(a: int, b: int) int {
+if condition {
+    First()
+} else {
+    Second()
 }
 ```
 
----
+§ 8(3) `} else {` is canonical and must not be split into three independent lines.
 
-# Ownership tokens
+§ 8(4) Executable brace blocks are multiline even when they contain only one statement.
 
-Canonical move initialization:
+§ 8(5) The formatter rewrites a one-line executable block such as:
 
 ```sec
-let destination :<- source
+defer { Close() }
 ```
 
-Canonical typed move initialization:
+into:
 
 ```sec
-let destination: Buffer <- source
-```
-
-Canonical move assignment:
-
-```sec
-destination <- source
-```
-
-Rules:
-
-- one space before and after `:<-`;
-- one space before and after `<-`;
-- `:<-` remains one token;
-- ordinary formatting preserves `:=` versus `:<-`;
-- ordinary formatting preserves `=` versus `<-`;
-- ordinary formatting never infers ownership transfer.
-
-The formatter must never change:
-
-```sec
-let destination := source
-```
-
-to:
-
-```sec
-let destination :<- source
-```
-
-based on type information.
-
-That correction belongs to the safe fix engine.
-
-The formatter must never change:
-
-```sec
-let value := CreateBuffer()
-```
-
-to:
-
-```sec
-let value :<- CreateBuffer()
-```
-
-The first form is canonical direct initialization from a temporary.
-
----
-
-# Accepted syntax normalization
-
-The formatter may normalize accepted noncanonical source only when the parser
-identifies the intended construct exactly.
-
-## Function keyword
-
-Input:
-
-```sec
-func Run() void {
+defer {
+    Close()
 }
 ```
 
-Output:
+§ 8(6) Aggregate value literals are not executable blocks and may use a clean permitted single-line representation where the grammar and width rules allow it.
+
+§ 8(7) Empty structural declaration blocks may remain compact:
 
 ```sec
-fn Run() void {
+type Marker struct {}
+interface Empty {}
+```
+
+§ 8(8) An empty executable block follows the ordinary executable-block rules of its construct and must not be reformatted as an aggregate value literal.
+
+---
+
+## § 9. Structural horizontal alignment
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 9(1) Alignment is based on syntactic anchors, not arbitrary character columns.
+
+§ 9(2) Compatible declarations in one contiguous homogeneous group may align identifier, type, initializer, tag, or trailing-comment anchors.
+
+§ 9(3) Example:
+
+```sec
+let host:    string   := "localhost"
+let port:    uint16   := 8080
+let timeout: Duration := 30<s>
+```
+
+§ 9(4) `mut` may occupy a structural modifier column when a mixed declaration group benefits from it:
+
+```sec
+let     host:    string   := "localhost"
+let mut port:    uint16   := 8080
+let     timeout: Duration := 30<s>
+```
+
+§ 9(5) Struct fields follow the same structural alignment principle:
+
+```sec
+type Endpoint struct {
+    Host:    string,
+    Port:    uint16,
+    Timeout: Duration,
 }
 ```
 
-The normalization applies only to a complete, body-bearing function declaration
-or another parser-confirmed function declaration form.
+§ 9(6) Struct field tags are secondary alignment anchors and remain attached to the field before the field delimiter required by the grammar.
 
-The formatter must leave these unchanged:
-
-```sec
-func(callback)
-let func := callback
-object.func()
-```
-
-unless separate language rules reject them.
-
-## Increment
-
-Input:
+§ 9(7) Named-value groups align `:=` where useful:
 
 ```sec
-count++
+Distance (
+    TellusLuna := 1<unit>
+    TellusSol  := 10<unit>
+)
 ```
 
-Output:
+§ 9(8) Comments and blank lines terminate an alignment group.
+
+§ 9(9) Primary syntax anchors take precedence over distant secondary columns. Alignment must not create large empty gaps merely to align a far-right tag or comment.
+
+§ 9(10) If required alignment padding exceeds the configured maximum alignment padding, the formatter drops candidate alignment columns for the complete contiguous group rather than producing extreme spacing.
+
+§ 9(11) Properties with bodies are behavioral declarations and are not horizontally aligned across separate property declarations.
+
+§ 9(12) Functions and methods are not horizontally aligned against neighboring functions or methods.
+
+§ 9(13) Multiline infix expressions use a stable operand column with leading operators:
 
 ```sec
-count += 1
+let total :=
+      basePrice
+    + shipping
+    - discount
 ```
 
-## Decrement
-
-Input:
+§ 9(14) Logical expressions use the same principle:
 
 ```sec
-count--
+let ready :=
+      hasConfiguration
+   && hasConnection
+   && !isStopping
 ```
 
-Output:
-
-```sec
-count -= 1
-```
-
-`++` and `--` are statement-only accepted aliases.
-
-They do not return a value.
-
-Invalid:
-
-```sec
-let old := count++
-```
-
-The formatter must not convert invalid expression use into a different
-expression.
-
-The canonical compound assignment remains subject to:
-
-```text
-mutability
-type checking
-contracts
-fallible assignment
-required `try`
-```
-
-The normalization does not bypass those rules.
+§ 9(15) The leading-operator layout applies to ordinary arithmetic, logical, comparison, bitwise, and string-concatenation expressions when those expressions are broken across lines.
 
 ---
 
-# Future normalization registry
+## § 10. Preferred width and wrapping
 
-The implementation should maintain an explicit registry of accepted
-noncanonical spellings.
+**Governance tags:** `tooling.formatter-v2`
 
-Each entry records:
+§ 10(1) Preferred width is a formatting target, not a hard source limit.
 
-```text
-source pattern
-canonical pattern
-parser confidence requirement
-whether ordinary formatting may apply it
-whether `--fix` is required
-diagnostic ID
-tests
-```
+§ 10(2) The formatter first breaks at syntactic boundaries.
 
-Candidate future normalizations must not be enabled merely because they are
-common in another language.
+§ 10(3) String literal contents are never split or rewritten merely to satisfy preferred width.
 
-Examples requiring separate decisions include:
+§ 10(4) Once an ordinary comma-separated syntactic list becomes multiline, it uses its complete multiline layout rather than a half-broken mixture, except where this rulebook explicitly permits packed simple scalar collection elements.
 
-```text
-function -> fn
-def -> fn
-var -> let mut
-const -> let
-elif -> else if
-elseif -> else if
-C-style array spelling
-semicolon removal
-and/or/not aliases
-nil/null aliases
-```
+§ 10(5) Simple scalar collection values may pack multiple elements on a line when multiline layout remains readable and width permits it.
 
-No candidate is canonical until its own language decision is recorded.
+§ 10(6) Complex collection elements use one element per line once the collection is multiline.
+
+§ 10(7) Alignment yields to structural wrapping when alignment would force unreasonable width or padding.
+
+§ 10(8) Existing line breaks are not generally authoritative, except that a clean permitted multiline construct may remain multiline under § 3(6).
+
+§ 10(9) Long type expressions may use a hanging continuation after `:=` or another enclosing syntactic anchor rather than forcing a very wide declaration line.
+
+§ 10(10) A construct that cannot be broken without reducing clarity may exceed preferred width.
 
 ---
 
-# Safe syntax fixes
+## § 11. Delimiters, comma-separated lists, and trailing commas
 
-Safe syntax fixes repair invalid source through the shared fix engine.
+**Governance tags:** `tooling.formatter-v2`
 
-They are not ordinary formatting.
+§ 11(1) A single-line comma-separated list has no trailing comma.
 
-## Missing parameter colon
+§ 11(2) A multiline comma-separated list has a trailing comma when the grammar permits a trailing comma for that list.
 
-Input:
+§ 11(3) A multiline closing delimiter appears on its own aligned line.
 
-```sec
-fn Parse(value string) Token {
-}
-```
+§ 11(4) The opening delimiter remains attached to its construct unless the construct-specific grammar requires another form.
 
-Diagnostic:
+§ 11(5) A trailing comma is not an independent permanent multiline marker. If a construct canonically becomes single-line, the trailing comma is removed.
 
-```text
-expected `:` between parameter name `value` and type `string`
-```
+§ 11(6) A clean permitted multiline layout may remain multiline even if it would fit on one line; in that case its multiline trailing-comma rule remains in force.
 
-Safe result:
+§ 11(7) The formatter never invents comma syntax for a construct whose grammar is comma-free.
 
-```sec
-fn Parse(value: string) Token {
-}
-```
-
-## Missing typed-binding colon
-
-Input:
-
-```sec
-let value int := 1
-```
-
-When the parser proves the declaration intent, a safe fix may produce:
-
-```sec
-let value: int := 1
-```
-
-This rule must not run where the token sequence has another valid meaning.
-
-## Declaration assignment token
-
-Input:
-
-```sec
-let value = 1
-```
-
-When declaration intent is exact and no alternative grammar applies, a safe fix
-may produce:
-
-```sec
-let value := 1
-```
-
-The same applies to:
-
-```sec
-let mut value = 1
-```
-
-becoming:
-
-```sec
-let mut value := 1
-```
-
-This is a `--fix` operation, not ordinary formatting.
-
-## Missing comma
-
-A missing comma may be inserted in:
-
-```text
-struct fields
-enum values
-multiline declaration tables
-multiline literals
-multiline arguments
-```
-
-only when the recovery tree proves the intended item boundary.
-
-## Move correction
-
-Input:
-
-```sec
-let destination := source
-```
-
-where the resolved copy classification does not permit copying `source` and an
-explicit ownership transfer is legal.
-
-Safe fix:
-
-```sec
-let destination :<- source
-```
-
-The fix is automatically safe only when:
-
-- move is legal;
-- no later source use becomes invalid;
-- no borrow conflict exists;
-- no overload changes;
-- no conversion changes;
-- source and destination do not conflict.
-
-Otherwise it is an explicit refactoring with consequence preview.
+§ 11(8) In particular, named-value groups and register fields follow their own grammar and do not inherit comma policy from calls, arrays, structs, or parameter lists.
 
 ---
 
-# Comments
+## § 12. Comments
 
-Sec supports:
+**Governance tags:** `tooling.formatter-v2`
 
-```text
-// line comments
-/* block comments */
-/** documentation comments */
-```
+§ 12(1) A normal line comment begins with `// ` when it contains text.
 
-The formatter preserves comment text.
-
-It may change only:
-
-```text
-indentation
-surrounding whitespace
-alignment
-canonical documentation-comment framing
-```
-
-It must not reflow ordinary comment prose by default.
-
----
-
-# Comment attachment
-
-A comment is attached according to source position and blank lines.
-
-## Leading comment
-
-A standalone comment group immediately before a declaration or statement,
-without an empty line, belongs to that declaration or statement.
+§ 12(2) An empty line-comment paragraph is written:
 
 ```sec
-// Opens the input file.
-let file := OpenFile()
+//
 ```
 
-## Trailing comment
+§ 12(3) Consecutive line comments form one comment block unless syntax or an empty line separates them.
 
-A line comment after code belongs to that source item.
+§ 12(4) Trailing line comments may align after the code columns of one contiguous homogeneous declaration group.
+
+§ 12(5) A blank line, standalone comment, or incompatible declaration terminates trailing-comment alignment.
+
+§ 12(6) Trailing-comment alignment obeys the maximum alignment padding rule.
+
+§ 12(7) The formatter does not aggressively reflow ordinary `//` prose.
+
+§ 12(8) A multiline block comment uses aligned star form:
 
 ```sec
-let retryCount := 3    // Maximum retry attempts.
+/*
+ * Text
+ */
 ```
 
-## Detached comment
-
-A blank line separates a comment group from following code.
-
-Detached comments retain their relative source position.
-
-## Documentation comment
-
-A `/** ... */` comment belongs to the declaration immediately following it.
-
-No blank line is emitted between them.
-
----
-
-# Line comments
-
-Standalone line comments use the same indentation as surrounding source.
-
-Example:
+§ 12(9) A single-line block comment may remain:
 
 ```sec
-fn main() void {
-    // Prepare output.
-    let message := "hello"
-
-    // Print output.
-    fmt.println(message)
-}
+/* text */
 ```
 
-A trailing line comment has at least four spaces before `//`:
-
-```sec
-let value := 10    // Explanation.
-```
-
-Within an alignment group, trailing comments align to one column.
-
----
-
-# Block comments
-
-Single-line block comments remain single-line when their text fits:
-
-```sec
-/* explanation */
-```
-
-Multiline ordinary block comments preserve text and line structure.
-
-Their outer indentation follows the containing construct.
-
-The formatter must not convert ordinary block comments into documentation
-comments.
-
----
-
-# Documentation comments
-
-Canonical form:
+§ 12(10) Documentation block comments use the same visual multiline alignment while retaining their semantic documentation form:
 
 ```sec
 /**
- * Returns true when the value is positive.
- *
- * @param value value to inspect
- * @return true when value is greater than zero
+ * Summary.
  */
-fn IsPositive(value: int) bool {
-    return value > 0
-}
 ```
 
-Rules:
+§ 12(11) In a multiline block comment, paragraph separation uses one empty comment line:
 
-- documentation comments use `/** ... */`;
-- each interior line begins with the current indentation, `*`, and optional
-  text;
-- the closing `*/` aligns with the opening `/**`;
-- no blank line separates documentation from its declaration;
-- comment text and tags are preserved;
-- ordinary formatting does not reorder documentation tags.
+```sec
+/*
+ * First paragraph.
+ *
+ * Second paragraph.
+ */
+```
 
-Accepted documentation tag names are defined by the documentation rulebook.
+§ 12(12) Block-comment indentation follows surrounding syntax.
+
+§ 12(13) Prose in a block comment may be reflowed according to preferred width when doing so does not alter preformatted material.
+
+§ 12(14) Preformatted comment content is preserved rather than reflowed.
+
+§ 12(15) Documentation comments remain immediately attached to the declaration or member they document.
+
+§ 12(16) Comments documenting enum variants, union variants, public members, or similar declarations appear before the declaration they describe and are never moved after it by the formatter.
 
 ---
 
-# Alignment
+## § 13. Imports
 
-Alignment is part of canonical formatting for declaration-like consecutive
-groups.
+**Governance tags:** `tooling.formatter-v2`
 
-The formatter uses spaces, never tabs.
-
-Alignment must remain local and predictable.
-
-It must not create enormous whitespace because one unrelated line is very long.
-
----
-
-# Alignment groups
-
-An alignment group consists of consecutive compatible single-line items.
-
-A group ends at:
-
-```text
-a blank line
-a standalone comment
-a documentation comment
-a multiline item
-a preprocessor or target boundary
-a different declaration shape
-a nested block boundary
-```
-
-A trailing comment does not end the group.
-
-A struct field without a tag may remain in the same group as tagged fields.
-
----
-
-# Struct field formatting
-
-Struct fields are one per line.
-
-Every field ends with a comma.
-
-Basic canonical form:
-
-```sec
-type User struct {
-    active: bool,
-    name: string,
-    age: Age,
-}
-```
-
-Within one alignment group, field names and field type starts align.
-
-Example:
-
-```sec
-type User struct {
-    ID:       int,
-    Name:     string,
-    Password: string,
-}
-```
-
-The colon remains immediately after the field name.
-
-Spaces after the colon align the type column.
-
----
-
-# Struct tags
-
-Struct tags use raw-string syntax after the complete field type and before the
-field comma.
-
-Example:
-
-```sec
-type User struct {
-    ID:       int    `json:"id" xml:"id"`,
-    Name:     string `json:"name" xml:"name"`,
-    Password: string `json:"-"`,
-}
-```
-
-Within one field group:
-
-- tag starts align to one column;
-- fields without tags reserve the tag column only when needed to align trailing
-  comments;
-- tag contents are preserved exactly;
-- tag key order is preserved;
-- tag values are preserved;
-- ordinary formatting does not invent tags;
-- ordinary formatting does not sort tags.
-
-Example with one untagged field:
-
-```sec
-type User struct {
-    ID:        int    `json:"id"`,
-    Name:      string `json:"name"`,
-    CacheOnly: bool,
-}
-```
-
-No trailing whitespace is emitted on the untagged field.
-
----
-
-# Struct trailing comments
-
-Trailing line comments on consecutive struct fields align.
-
-Canonical example:
-
-```sec
-type User struct {
-    ID:       int    `json:"id"`,      // Stable database identifier.
-    Name:     string `json:"name"`,    // Display name.
-    Password: string `json:"-"`,       // Never serialize.
-}
-```
-
-The formatter aligns these conceptual columns:
-
-```text
-field name and colon
-type
-struct tag
-comma
-trailing comment
-```
-
-The comma remains part of the field syntax and occurs before the trailing
-comment.
-
-When a field has no tag:
-
-```sec
-type User struct {
-    ID:      int    `json:"id"`,    // Stable identifier.
-    Enabled: bool,                  // Runtime state only.
-}
-```
-
-The trailing comments still align.
-
----
-
-# Struct alignment limits
-
-Alignment is not applied across:
-
-```text
-blank lines
-documentation comments
-standalone comments
-multiline field types
-multiline tags
-conditional source boundaries
-```
-
-Example:
-
-```sec
-type Config struct {
-    ID:   int,       // Identity.
-    Name: string,    // Display name.
-
-    // Network configuration.
-    Endpoint: string `json:"endpoint"`,
-    Timeout:  int    `json:"timeout"`,
-}
-```
-
-The two sections form separate alignment groups.
-
-If one field is multiline, it is formatted independently.
-
-The implementation may define a maximum alignment expansion to avoid
-pathological whitespace, but that threshold is language-defined and not
-user-configurable.
-
-Until such a threshold is chosen, align the complete local group.
-
----
-
-# Enum alignment
-
-Enum values remain one per line and end with commas.
-
-Simple values:
-
-```sec
-enum Direction {
-    north,
-    east,
-    south,
-    west,
-}
-```
-
-Initialized values may align assignment operators within one group:
-
-```sec
-enum Permission uint {
-    none    = 0,
-    read    = 1 << iota,
-    write   = 1 << iota,
-    execute = 1 << iota,
-}
-```
-
-String-backed enums use the same member ordering, comma, and assignment
-alignment rules. Formatting preserves the explicit `string` underlying type and
-must not remove required string member initializers.
-
-Trailing comments may align:
-
-```sec
-enum Status int {
-    New      = 0,     // Created but not processed.
-    Invoiced = 1,     // Invoice generated.
-    Paid     = 10,    // Payment completed.
-}
-```
-
-Alignment must preserve enum order.
-
----
-
-# Typed declaration groups
-
-Parenthesized type-first declaration groups are formatted as:
-
-```sec
-TokenType (
-    ILLEGAL := "ILLEGAL",
-    EOF     := "EOF",
-    IDENT   := "IDENT",
-    INT     := "INT",
-)
-```
-
-Within one group:
-
-- names align;
-- initialization operators align;
-- initializer starts align;
-- commas remain;
-- trailing comments align when present.
-
-Example:
-
-```sec
-TokenType (
-    ILLEGAL := "ILLEGAL",    // Invalid token.
-    EOF     := "EOF",        // End of input.
-    IDENT   := "IDENT",      // Identifier.
-)
-```
-
-The formatter preserves declaration order.
-
-Sorting is a separate code action.
-
----
-
-# Type-first mutable declarations
-
-Canonical single-line form:
-
-```sec
-Car mut: Audi, Saab, Volvo, Skoda
-```
-
-The formatter may wrap a long declaration according to future line-width rules.
-
-It does not automatically merge separate declarations into this form.
-
-Merging is code cleanup or refactoring.
-
----
-
-# General trailing-comment alignment
-
-Trailing comments may align in compatible local groups such as:
-
-```text
-struct fields
-enum values
-typed declaration groups
-register fields
-simple consecutive variable declarations
-```
-
-They do not align across unrelated statements merely because they are adjacent.
-
-Example not automatically aligned as one group:
-
-```sec
-let input := Read()
-Process(input)    // Performs validation.
-```
-
----
-
-# Imports
-
-Single imports are one per line:
+§ 13(1) Exactly one import may remain in single-import form:
 
 ```sec
 import "fmt"
-import "io"
 ```
 
-Grouped imports:
+§ 13(2) Two or more imports are formatted as one import region:
 
 ```sec
 import (
     "fmt"
-    sys "platform/linux/amd64"
+    "net/http"
+    sys "platform/linux"
 )
 ```
 
-Each grouped entry is indented four spaces.
+§ 13(3) The formatter may gather imports that are scattered among top-level declarations into the canonical import region.
 
-Import order is preserved by ordinary formatting until an explicit canonical
-sorting rule is approved.
+§ 13(4) The formatter must never remove an import merely because it appears unused. Unused-import removal is not formatting.
 
-`Organize imports` is a code action and code-cleanup operation.
+§ 13(5) Imports are sorted by canonical import path, not by alias spelling.
 
-It may:
+§ 13(6) Comments attached to an import move with that import when imports are reordered.
+
+§ 13(7) The canonical import classes are:
+
+1. Sec standard-library modules;
+2. ordinary project and dependency modules;
+3. platform modules.
+
+§ 13(8) In `structured` style, one empty line separates non-empty import classes.
+
+§ 13(9) In `compact` style, optional blank separation between import classes is removed.
+
+§ 13(10) Imports within one class are ordered lexically by canonical import path.
+
+---
+
+## § 14. Top-level file layout
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 14(1) The canonical major top-level order is:
 
 ```text
-remove unused imports
-merge compatible groups
-sort according to the approved policy
-add required imports
+module
+import region
+declarations in source order
 ```
 
-Ordinary formatting does not remove or reorder imports.
+§ 14(2) A module declaration occupies its own line.
+
+§ 14(3) The import region follows the module declaration and precedes ordinary declarations.
+
+§ 14(4) Ordinary top-level declarations remain in source order.
+
+§ 14(5) The formatter must not sort functions, types, tests, properties, implementations, or other ordinary top-level declarations.
+
+§ 14(6) Existing vertical-spacing rules apply between top-level declarations.
+
+§ 14(7) This rulebook does not invent formatting behavior for compiler-directive syntax that is not yet defined by the canonical Sec grammar.
 
 ---
 
-# Top-level layout
+## § 15. Type declarations and aggregate syntax
 
-The formatter preserves top-level declaration order.
+**Governance tags:** `tooling.formatter-v2`
 
-Typical layout:
+§ 15(1) A non-empty structural declaration block such as a struct, enum, union, register, interface, or implementation block is multiline.
+
+§ 15(2) An aggregate value literal is distinct from a structural declaration block and may use a clean permitted single-line or multiline representation.
+
+§ 15(3) Struct fields use the ordinary declaration alignment rules of § 9.
+
+§ 15(4) Enum explicit-value assignments may align their `=` anchors when they form a homogeneous contiguous group and the grammar uses `=` for that declaration form.
+
+§ 15(5) Documentation comments remain before the member or variant they document and break alignment groups when appropriate.
+
+§ 15(6) A generic parameter or generic argument list remains single-line if it cleanly fits and has not been deliberately written in a permitted multiline form.
+
+§ 15(7) A multiline generic list uses one element per line and a trailing comma when the grammar defines the list as comma-separated:
 
 ```sec
-#target(os: "linux", arch: "amd64")
+Result[
+    ValueType,
+    ErrorType,
+]
+```
 
-module main
+§ 15(8) A clean deliberately multiline generic list may remain multiline even if later width conditions would allow it to collapse.
 
-import "fmt"
+§ 15(9) A short `implements` list may remain on the declaration header:
 
-type Percent int range 0..100
-
-fn main() int {
-    return 0
+```sec
+type Car struct implements Vehicle, Serializable, Inspectable {
+    ...
 }
 ```
 
-One primary public type per file is a code-quality recommendation, not a
-formatter transformation.
+§ 15(10) When width requires continuation, an `implements` list may use a compact continuation:
 
-Moving declarations to files is a refactoring.
+```sec
+type Car struct implements Vehicle,
+    Serializable, Inspectable {
+    ...
+}
+```
+
+§ 15(11) A deliberately vertical `implements` list is also permitted:
+
+```sec
+type Car struct implements
+    Vehicle,
+    Serializable,
+    Inspectable {
+    ...
+}
+```
+
+§ 15(12) The formatter must not create an extreme hanging indent merely to align every continued interface name under the first interface token.
 
 ---
 
-# Functions
+## § 16. Functions, methods, properties, lambdas, and attributes
 
-Canonical:
+**Governance tags:** `tooling.formatter-v2`
+
+§ 16(1) A function or method signature remains single-line when it cleanly fits and has not been deliberately written in a permitted multiline form.
+
+§ 16(2) A multiline parameter list uses one parameter per line with a trailing comma:
 
 ```sec
-fn Add(a: int, b: int) int {
-    return a + b
+fn Connect(
+    host: string,
+    port: uint16,
+    timeout: Duration,
+) Result[Connection, ConnectError] {
+    ...
 }
 ```
 
-Unsafe function:
+§ 16(3) Compatible parameter declarations may align their `Name: Type` structure when the alignment remains within the configured padding limit.
+
+§ 16(4) The return type follows the closing parameter delimiter. If the complete signature becomes structurally multiline, the return type follows the ordinary long-type and width rules rather than introducing a separate arrow syntax.
+
+§ 16(5) Sec methods use the language's implicit receiver model. The formatter must not invent an explicit receiver parameter.
+
+§ 16(6) A function or method body is an executable block and therefore follows § 8.
+
+§ 16(7) Properties use ordinary declaration spacing:
 
 ```sec
-unsafe fn _rawSyscall3(number: uint, arg1: uint, arg2: uint, arg3: uint) int {
-    asm {
-        "syscall"
+property Name: string {
+    get {
+        return _name
+    }
+
+    set value {
+        _name = value
     }
 }
 ```
 
-Parameters use:
+§ 16(8) In `structured` style, accessors in one property may be separated by one structural blank line. `compact` removes that optional blank line.
 
-```text
-name: Type
-```
-
-Single-line parameter lists use comma and one space.
-
-Single-line signatures do not have a trailing parameter comma.
-
-Callable value types preserve their source-level invocation capability and use
-canonical spacing:
+§ 16(9) A fallible setter keeps `try set` together:
 
 ```sec
-fn(int) int
-mut fn(int) int
--> fn(int) int
-```
-
-The formatter emits one space between `mut` and `fn`, and one space between
-`->` and `fn`. It emits no space between `fn` and the callable parameter list.
-These prefixes belong to callable types; a lambda expression itself continues
-to begin with plain `fn` as specified by
-`rules/declarations/lambda-functions.md`.
-
----
-
-# Multiline function parameters
-
-Once a signature is broken across lines, use one parameter per line:
-
-```sec
-fn CreateUser(
-    name: string,
-    email: string,
-    enabled: bool,
-) Result[User, CreateError] {
+try set value {
+    ...
 }
 ```
 
-Multiline parameter lists use a trailing comma.
+§ 16(10) A lambda uses ordinary `fn` syntax and ordinary function formatting:
 
-The closing `)` aligns with the start of `fn`.
+```sec
+let double := fn(value: int) int {
+    return value * 2
+}
+```
 
-Width-based breaking belongs to the line-width section.
+§ 16(11) Explicit capture syntax remains attached to the lambda:
+
+```sec
+let multiply := capture(factor) fn(value: int) int {
+    return value * factor
+}
+```
+
+§ 16(12) A multiline capture list uses one capture per line with a trailing comma. Captures are not packed across multiple entries once the capture list is multiline.
+
+§ 16(13) Function types use the normal function-type syntax and the same parameter-list breaking rules:
+
+```sec
+fn(int, string) bool
+```
+
+§ 16(14) Attributes are written one per line and immediately before the declaration they modify. Multiple attributes, when present, each occupy their own line. Example:
+
+```sec
+@build(target: "linux")
+fn Example() void {
+    ...
+}
+```
+
+§ 16(15) Attributes remain in source order. The formatter never sorts attributes.
+
+§ 16(16) A long attribute argument list follows ordinary call formatting.
+
+§ 16(17) Documentation, attributes, and the declaration appear in this order with no blank line between them:
+
+```sec
+/**
+ * Summary.
+ */
+@build(target: "linux")
+fn Example() void {
+    ...
+}
+```
+
+§ 16(18) Function modifiers remain compact on the function declaration line where the grammar permits them:
+
+```sec
+unsafe fn ReadRaw() void {
+    ...
+}
+```
+
+```sec
+extern "C" fn write(
+    fd: int32,
+    buffer: RawPtr[byte],
+    length: uint,
+) int64
+```
+
+§ 16(19) The formatter does not reorder modifiers independently of grammar.
 
 ---
 
-# Calls
+## § 17. Calls, expressions, chains, indexing, and slicing
 
-Short call:
+**Governance tags:** `tooling.formatter-v2`
 
-```sec
-CreateUser(name, email, true)
-```
+§ 17(1) A call remains single-line when it cleanly fits and has not been deliberately written in a permitted multiline form.
 
-Multiline call:
+§ 17(2) A multiline call uses one argument per line with a trailing comma:
 
 ```sec
-CreateUser(
-    name,
-    email,
-    true,
+Connect(
+    host,
+    port,
+    timeout,
 )
 ```
 
-Multiline argument lists use one argument per line and trailing commas.
+§ 17(3) Calls do not use a half-packed multiline layout.
 
-The formatter must preserve evaluation order.
+§ 17(4) Named call arguments may align their structural anchors when they form one homogeneous group and the padding limit permits it.
 
-An invocation that is already on one physical line is normalized to one space
-after each comma and no trailing argument comma:
+§ 17(5) A nested inner call may remain single-line when it independently fits even when its surrounding call is multiline.
 
-```sec
-return self.token(lookupIdent(literal), literal, line, column)
-```
-
-An existing line break in an invocation is intentional source layout. The
-formatter must preserve the multiline form regardless of whether its arguments
-would fit on one line. Multiline calls retain one argument per line and the
-trailing comma.
-
-## Same-line delimiter trivia
-
-A balanced delimiter group whose opening and closing delimiter occur on the
-same physical line uses canonical boundary whitespace:
+§ 17(6) A multiline member or property chain uses leading dots:
 
 ```sec
-Call(value)
-[first, second]
-{ statement }
-{}
+let result :=
+    client
+        .Request()
+        .WithHeader(name, value)
+        .WithTimeout(timeout)
+        .Send()
 ```
 
-Parenthesized and bracketed groups have no padding immediately inside their
-delimiters. Top-level comma-separated items in those groups use one space after
-each comma and no trailing comma. A non-empty braced group has one space after
-`{` and before `}`; an empty braced group is `{}`.
+§ 17(7) Each continued chain segment occupies its own structural continuation line unless a segment's own syntax requires a multiline call.
 
-This normalization does not collapse whitespace inside quoted literals or
-comments. It does not join, fold, or otherwise rewrite a delimiter group whose
-matching delimiter occurs on another physical line. Multiline `()`, `[]`, and
-`{}` retain their existing source line boundaries and follow their respective
-multiline layout rules.
+§ 17(8) A multiline call inside a chain follows the ordinary multiline call rules.
+
+§ 17(9) Ordinary indexing remains compact:
+
+```sec
+values[index]
+matrix[row][column]
+```
+
+§ 17(10) If an index expression itself must break, the index delimiters become structural:
+
+```sec
+values[
+    CalculateIndex(
+        first,
+        second,
+    )
+]
+```
+
+§ 17(11) The indexing delimiter level does not acquire a trailing comma merely because the inner expression contains comma-separated syntax.
+
+§ 17(12) Slicing remains compact around the range expression:
+
+```sec
+values[start..end]
+```
+
+§ 17(13) Ordinary formatting never removes parentheses merely because they appear redundant. Parenthesis removal is a Language Correction and only applies when enabled and unambiguous.
 
 ---
 
-# Variables
+## § 18. Control flow
 
-Canonical inferred declarations:
+**Governance tags:** `tooling.formatter-v2`
 
-```sec
-let value := 10
-let mut value := 10
-```
+§ 18(1) `if`, `while`, `for`, `match`, and `switch` use same-line opening braces.
 
-Canonical typed declarations:
+§ 18(2) Parentheses are not introduced around ordinary Sec conditions by the formatter.
 
-```sec
-let value: int := 10
-let mut value: int
-let mut value: int := 10
-```
-
-Multiple declarations:
+§ 18(3) A `match` with short homogeneous arms may align `=>` when the padding limit permits:
 
 ```sec
-let a := 1, b := "hello", c := true
-let mut a := 1, b := "hello", c := false
-```
-
-Type-first declarations:
-
-```sec
-int mut: a, b, c
-float: a := 5.4, pi := 3.14
-```
-
-Move declarations:
-
-```sec
-let destination :<- source
-let destination: Buffer <- source
-```
-
----
-
-# Types
-
-Named type:
-
-```sec
-type Percent int range 0..100
-```
-
-Unit-bearing type:
-
-```sec
-type Money decimal<SEK>
-```
-
-Generic type:
-
-```sec
-type Box[T] struct {
-    value: T,
+match value {
+    Some(item) => Use(item)
+    None       => HandleMissing()
 }
 ```
 
-The formatter does not change type meaning or normalize unit expressions beyond
-operator and delimiter spacing.
+§ 18(4) A block match arm uses an executable block:
 
-Unit declarations preserve the optional default numeric carrier and category;
-the formatter does not insert redundant `decimal`. Compiler-known unit metadata
-uses canonical PascalCase:
+```sec
+match value {
+    Some(item) => {
+        Prepare(item)
+        Use(item)
+    }
+
+    None => {
+        HandleMissing()
+    }
+}
+```
+
+§ 18(5) In `structured` style, block match arms may be separated by one blank line. `compact` removes that optional separation.
+
+§ 18(6) Short match arms remain grouped tightly.
+
+§ 18(7) `switch` case alternatives remain comma-separated according to the switch grammar:
+
+```sec
+switch value {
+case 1, 3, 5, 10..<20:
+    Selected()
+
+case >= 100:
+    Large()
+
+default:
+    Other()
+}
+```
+
+§ 18(8) When a switch case alternative list becomes too long, continuation lines hang structurally under the case header rather than creating a large alignment column.
+
+§ 18(9) The case `:` follows the final alternative. The formatter does not insert a trailing comma immediately before the case colon.
+
+§ 18(10) A switch case body is indented one structural level from its case label.
+
+§ 18(11) In `structured` style, switch cases may be separated by one blank line. `compact` removes that optional separation.
+
+§ 18(12) Canonical loop forms include:
+
+```sec
+for item in items {
+    Use(item)
+}
+```
+
+```sec
+for {
+    Poll()
+}
+```
+
+```sec
+while running {
+    Poll()
+}
+```
+
+§ 18(13) Sec formatting does not invent a C-style `for` clause.
+
+§ 18(14) Long loop or condition expressions follow ordinary expression continuation rules.
+
+§ 18(15) `break` and `continue` require no formatter-specific layout beyond ordinary statement indentation.
+
+---
+
+## § 19. `try`, `defer`, and `unsafe`
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 19(1) `try` propagation remains an ordinary prefix expression:
+
+```sec
+let data := try Read(path)
+```
+
+§ 19(2) A `try` handler block uses ordinary block and match-arm formatting:
+
+```sec
+let data := try Read(path) {
+    Err(error) => return Err(error)
+}
+```
+
+§ 19(3) Short homogeneous handler arms may align `=>` under the same padding limits as `match` arms.
+
+§ 19(4) Handler arms with blocks follow the ordinary match-arm block rules.
+
+§ 19(5) The formatter preserves an explicit surrounding `match` when the source contains one and never adds or removes a semantic `match` merely to restyle `try`.
+
+§ 19(6) A long `try` operand call uses ordinary multiline call formatting. The handler opening brace follows the completed operand expression.
+
+§ 19(7) Sec 0.1 `defer` formatting is block-based:
+
+```sec
+defer {
+    Close()
+}
+```
+
+§ 19(8) A one-line `defer` executable block is expanded under § 8.
+
+§ 19(9) Consecutive defers remain together.
+
+§ 19(10) In `structured` style, a defer that closes a setup sequence may remain attached to that setup, while a following unrelated work sequence may receive one structural blank line.
+
+§ 19(11) An `unsafe` executable block follows ordinary executable-block formatting:
+
+```sec
+unsafe {
+    RawOperation()
+}
+```
+
+§ 19(12) An `unsafe fn` declaration follows ordinary modifier and function formatting.
+
+§ 19(13) The formatter must not widen or narrow an unsafe boundary by moving operations into or out of an `unsafe` block.
+
+---
+
+## § 20. Patterns and destructuring
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 20(1) Simple nested patterns remain compact when they fit:
+
+```sec
+Some(value)
+Some(SameSite.Strict)
+Ok(Some(value))
+```
+
+§ 20(2) Pattern delimiters do not acquire interior padding:
+
+```sec
+Some(value)
+```
+
+not:
+
+```sec
+Some( value )
+```
+
+§ 20(3) A comma-separated pattern payload that becomes multiline follows the ordinary complete multiline-list rule:
+
+```sec
+Variant(
+    first,
+    second,
+)
+```
+
+§ 20(4) A clean struct pattern may remain single-line when permitted by width and grammar:
+
+```sec
+Point { X: x, Y: y }
+```
+
+§ 20(5) A multiline struct pattern follows aggregate structural alignment:
+
+```sec
+Point {
+    X: x,
+    Y: y,
+}
+```
+
+§ 20(6) A multiline pattern used as a match arm completes before the arm separator:
+
+```sec
+Some(
+    VeryLongPattern(
+        first,
+        second,
+    ),
+) => {
+    Process()
+}
+```
+
+§ 20(7) A destructuring declaration may keep its initializer after the closing pattern delimiter when that line remains readable:
+
+```sec
+let Point {
+    X: x,
+    Y: y,
+} := point
+```
+
+§ 20(8) If the initializer must also break, it follows ordinary expression continuation:
+
+```sec
+let Point {
+    X: x,
+    Y: y,
+} :=
+    CalculatePoint(
+        first,
+        second,
+    )
+```
+
+§ 20(9) `_` is formatted as an atomic wildcard pattern.
+
+§ 20(10) Ownership-bearing pattern syntax is preserved exactly according to the canonical pattern grammar. The formatter must never add or remove ownership or borrow markers merely for style.
+
+---
+
+## § 21. Ownership, borrow, and consuming markers
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 21(1) A consuming parameter uses the canonical parameter marker before the parameter name:
+
+```sec
+fn ConsumingFire(->buffer: Buffer) void {
+    ...
+}
+```
+
+§ 21(2) The `->` consuming-parameter marker attaches directly to the parameter name:
+
+```sec
+->buffer
+```
+
+§ 21(3) The formatter must not produce whitespace between `->` and the parameter name.
+
+§ 21(4) A consuming call-site marker attaches directly to the consumed named value:
+
+```sec
+ConsumingFire(<-buffer)
+```
+
+§ 21(5) The formatter must not produce whitespace between `<-` and its operand binding.
+
+§ 21(6) Multiline calls preserve the same ownership spelling:
+
+```sec
+Send(
+    context,
+    <-buffer,
+    timeout,
+)
+```
+
+§ 21(7) The formatter never inserts a consuming marker merely because a type is move-only or a callee parameter is consuming.
+
+§ 21(8) Fresh temporaries that do not require a source move marker remain unmarked:
+
+```sec
+Send(CreateBuffer())
+```
+
+§ 21(9) Return sites do not acquire `<-` from formatting.
+
+§ 21(10) Borrow type syntax follows ordinary type formatting:
+
+```sec
+source: ref Buffer
+target: ref mut Buffer
+```
+
+§ 21(11) Alignment may treat ownership or mutability markers as structural prefix information, but must never separate a marker from the identifier or type component to which the grammar attaches it.
+
+---
+
+## § 22. Registers and units
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 22(1) A register declaration is a structural declaration block and follows the ordinary indentation and alignment rules.
+
+§ 22(2) Register fields do not inherit struct comma policy. The formatter must not invent commas between register fields.
+
+§ 22(3) Example:
+
+```sec
+type MotorProtocol register[8] {
+    Speed:   bit[4]<rpm>
+    Enabled: bit
+    _:       bit[3]
+}
+```
+
+§ 22(4) Reserved `_` register fields participate in structural alignment like other register fields.
+
+§ 22(5) Address attributes follow ordinary attribute formatting. Canonical platform-aware examples use symbolic platform addresses where available:
+
+```sec
+@address(ports.USB3)
+let mut usbControl: USBControl
+```
+
+§ 22(6) The formatter does not replace a symbolic address with a numeric address and does not replace a numeric address with a symbolic address. Address selection is not formatting.
+
+§ 22(7) Unit declarations follow ordinary declaration spacing:
+
+```sec
+unit rpm uint physical
+unit SEK decimal other
+```
+
+§ 22(8) Operators inside a unit expression enclosed by the unit annotation syntax are compact:
+
+```sec
+decimal<m/s>
+bit[4]<rpm>
+```
+
+§ 22(9) The formatter must not produce ordinary runtime-expression spacing inside a unit annotation:
+
+```sec
+decimal<m / s>
+```
+
+is not canonical.
+
+§ 22(10) Runtime arithmetic remains ordinary expression syntax and therefore retains ordinary operator spacing:
+
+```sec
+let speed := distance / time
+```
+
+---
+
+## § 23. `assert`, ranges, and `step`
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 23(1) Canonical assertion syntax is statement syntax, not function-call syntax:
+
+```sec
+assert condition
+```
+
+§ 23(2) An assertion message follows a comma:
+
+```sec
+assert value > 0, "value must be positive"
+```
+
+§ 23(3) A long assertion condition keeps the first operand with `assert` and continues with ordinary leading-operator layout:
+
+```sec
+assert configuration.IsValid
+    && connection.IsReady
+    && !context.CancelRequested
+```
+
+§ 23(4) A long assertion message may follow on a structural continuation line after the condition delimiter when needed:
+
+```sec
+assert configuration.IsValid
+    && connection.IsReady
+    && !context.CancelRequested,
+    "configuration must be ready"
+```
+
+§ 23(5) Range operators remain compact:
+
+```sec
+0..10
+0..<10
+start..end
+```
+
+§ 23(6) A range with `step` remains compact as one conceptual expression where possible:
+
+```sec
+0..100 step 5
+```
+
+§ 23(7) Range expressions should remain on one line whenever syntactically possible, even when they exceed the preferred width slightly.
+
+§ 23(8) The formatter prefers a moderate width overrun to a visually fragmented range expression.
+
+---
+
+## § 24. Test declarations
+
+**Governance tags:** `tooling.formatter-v2`, `tooling.testing-v1`
+
+§ 24(1) A Sec test declaration uses the canonical top-level test form:
+
+```sec
+test "Request parses GET" {
+    ...
+}
+```
+
+§ 24(2) A test declaration is formatted as an ordinary top-level declaration with a named executable block.
+
+§ 24(3) There is exactly one space between `test` and the test-name string and one space between the test-name string and the opening brace.
+
+§ 24(4) The test body follows ordinary Sec executable-block formatting.
+
+§ 24(5) The formatter must not rewrite, split, concatenate, normalize, or otherwise modify the test-name string merely to satisfy preferred width.
+
+§ 24(6) A long test name may exceed preferred width:
+
+```sec
+test "The parser correctly preserves all comments surrounding a malformed generic declaration" {
+    ...
+}
+```
+
+§ 24(7) In `structured` style, adjacent top-level tests receive the same structural separation as adjacent functions or other major executable declarations.
+
+§ 24(8) In `compact` style, optional blank separation between adjacent tests is removed.
+
+§ 24(9) Nested `test` declarations are not created by formatting. Subtests expressed through `testing.Run(...)` follow ordinary call and lambda formatting.
+
+§ 24(10) Legacy attribute-based test declarations are not canonical Sec syntax in this revision and must not appear in ordinary formatter examples.
+
+§ 24(11) Converting a historical test function into a named `test "..." {}` declaration is not an automatic Language Correction because deriving a human test name from a function identifier is not uniquely determined.
+
+---
+
+## § 25. Malformed and incomplete source
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 25(1) The formatter formats syntax that the lossless error-tolerant representation proves to be valid.
+
+§ 25(2) A parser recovery node or other uncertain syntax region is preserved byte-for-byte.
+
+§ 25(3) The formatter must not reindent, re-space, wrap, reorder comments, repair tokens, or insert syntax inside an uncertain region.
+
+§ 25(4) The formatter must not synthesize a missing source token merely to make malformed source look valid.
+
+§ 25(5) Valid syntax surrounding an uncertain region may still be formatted normally when doing so does not alter bytes owned by the uncertain region.
+
+§ 25(6) Format-on-save may run while a user is in the middle of typing a token, string, declaration, or expression. The formatter must not damage that incomplete source.
+
+§ 25(7) The governing principle is:
+
+> Format what the CST proves; preserve what it cannot prove.
+
+§ 25(8) The CLI and LSP may report parser or formatter diagnostics for malformed source.
+
+§ 25(9) `sec fmt --check` must not report a malformed file as fully conforming merely because the format-safe regions are already canonical.
+
+---
+
+## § 26. Language Corrections model
+
+**Governance tags:** `tooling.formatter-v2`
+
+§ 26(1) Language Corrections are an optional source-fix layer distinct from ordinary formatting.
+
+§ 26(2) Language Corrections are disabled by default:
 
 ```text
-LongName Symbol BaseUnit Status Dimension Kind Scale System Transform Offset
-Origin LogBase LogFactor Reference
+language_corrections = false
 ```
 
-Dimension vectors use compact exponent notation with ordinary comma spacing,
-for example `[length^1, time^-1]`. Structural annotations use compact operator
-spacing such as `<kg*m/s^2>` while preserving source factor order and required
-parentheses.
+§ 26(3) When disabled, ordinary formatting must not perform a transformation merely because the formatter recognizes foreign-language muscle memory, obsolete Sec syntax, or redundant syntax.
 
-Formatting never replaces a named unit with a structural expression or the
-reverse, reorders factors for semantic canonicalization, changes a carrier, or
-invents/removes a conversion.
+§ 26(4) When enabled, a Language Correction may perform a local syntactic rewrite only when the intended Sec construct and resulting Sec syntax are uniquely determined from the local syntactic structure.
+
+§ 26(5) A correction must not guess programmer intent.
+
+§ 26(6) A correction must not infer mutability, ownership intent, a missing type, an overload choice, control-flow meaning, error-handling policy, allocation policy, or another semantic decision that is not uniquely established by the source.
+
+§ 26(7) Corrections are grammar-context-sensitive. They are not blind textual or regular-expression substitutions.
+
+§ 26(8) The same token sequence may be correctable in a known declaration or type position and uncorrectable elsewhere.
+
+§ 26(9) Multiple individually safe corrections may be composed when each intermediate or final transformation remains syntactically unambiguous.
+
+§ 26(10) When a correction is not safe, the source remains unchanged. A compiler or LSP diagnostic may still explain the expected Sec syntax.
+
+§ 26(11) Known foreign symbols may be mapped through an explicit whitelist only when the canonical Sec symbol and semantic correspondence are defined.
+
+§ 26(12) An unknown namespace, library type, ownership wrapper, error construct, or language-specific semantic feature must not be translated merely because its spelling resembles a Sec construct.
+
+§ 26(13) The correction catalogue is extensible through dogfooding.
+
+§ 26(14) A new correction may be added without changing the correction model when the transformation is locally unambiguous, preserves the uniquely determined intended Sec construct, and is covered by positive and negative conformance tests.
+
+§ 26(15) Expanding the correction catalogue does not change ordinary canonical formatter output while `language_corrections = false`.
 
 ---
 
-# Struct literals
+## § 27. Initial Language Corrections catalogue
 
-Short struct literals may remain on one line when concise:
+**Governance tags:** `tooling.formatter-v2`
+
+§ 27(1) The initial catalogue includes common foreign function keywords where the construct is unambiguously a Sec function declaration:
 
 ```sec
-let point := Point { start: 0, size: 1 }
+func Parse() void
 ```
 
-The exact space between type name and `{` follows the canonical struct-literal
-grammar. Once locked, the parser and formatter must use one spelling
-consistently.
-
-Multiline form:
+becomes:
 
 ```sec
-let user := User {
-    ID: 1,
-    Name: "Ada",
-}
+fn Parse() void
 ```
 
-Multiline fields end with commas.
+and equivalent unambiguous `function` or `proc` declaration keywords become `fn`.
 
-Struct literal field order is preserved.
-
----
-
-# Impl blocks and properties
-
-Canonical:
+§ 27(2) A foreign return arrow in a function return-type position may be removed:
 
 ```sec
-impl Vehicle {
-    property TopSpeed: Speed {
-        get {
-            return _speed
-        }
-
-        set value {
-            _speed = value
-        }
-    }
-}
+fn Parse() -> Result[string, Error]
 ```
 
-Immutable type-owned values require explicit `static let` in canonical output:
+becomes:
 
 ```sec
-impl Program {
-    static let OneCare := "Zebra OneCare"
-}
+fn Parse() Result[string, Error]
 ```
 
-Inside an `impl`, `static let` and `let` have different receiver and ownership
-semantics. Ordinary and fix-enabled formatting must preserve `static` on
-implementation bindings, including immutable bindings.
-
-Nested types and enums follow their ordinary formatting rules.
-
-No unnecessary `self` parameter is inserted.
-
-Lifecycle members and construction retain their distinct canonical forms:
+§ 27(3) A declaration with a missing Sec colon and foreign-style type placement may be corrected when declaration structure is unambiguous:
 
 ```sec
-impl Buffer {
-    init(size: uint) AllocationError {
-    }
-
-    free {
-    }
-}
-
-let buffer := try new Buffer(4096)
+let value int = 3
 ```
 
-`init` is formatted without `fn`; its trailing type is not described as a
-return type. The formatter must never rewrite `Type(value)` to `new Type(value)`
-or the reverse, and must not imply heap allocation. Nested impls use ordinary
-impl-block indentation. Explicit receiver parameters are not canonical output.
-
----
-
-# Control flow
-
-## If
+becomes:
 
 ```sec
-if value {
-    return 1
-} else {
-    return 0
-}
+let value: int := 3
 ```
 
-Optional redundant outer parentheses may be removed:
+§ 27(4) The same declaration rule applies to unambiguous property syntax:
 
 ```sec
-if (value) {
+property Name string {
+    ...
 }
 ```
 
 becomes:
 
 ```sec
-if value {
+property Name: string {
+    ...
 }
 ```
 
-only when precedence and readability remain clear.
+§ 27(5) The same declaration rule may apply to function parameters and stored fields when the parser can prove their declaration context.
 
-## For
+§ 27(6) Foreign mutable `var` local declarations may map to Sec mutable bindings when the declaration is unambiguous:
 
 ```sec
-for i in 0..10 {
-    continue
+var value = 3
+```
+
+becomes:
+
+```sec
+let mut value := 3
+```
+
+§ 27(7) Foreign immutable `const` local declarations may map to Sec immutable bindings only when the construct does not carry additional foreign compile-time semantics that would make the mapping ambiguous:
+
+```sec
+const value = 3
+```
+
+becomes:
+
+```sec
+let value := 3
+```
+
+§ 27(8) A plain foreign `let` must not be made mutable merely because another language gives `let` different usage conventions. The formatter does not guess mutability.
+
+§ 27(9) Foreign Go-style array or slice type placement may be corrected in a proven type position:
+
+```sec
+[]byte
+```
+
+becomes:
+
+```sec
+byte[]
+```
+
+and:
+
+```sec
+[][]byte
+```
+
+becomes:
+
+```sec
+byte[][]
+```
+
+§ 27(10) Foreign generic delimiters may be corrected in a proven generic type or generic call position:
+
+```sec
+Result<string, Error>
+```
+
+becomes:
+
+```sec
+Result[string, Error]
+```
+
+§ 27(11) Rust-style turbofish may be corrected when the target and generic argument structure are unambiguous:
+
+```sec
+Parser::Parse::<Token>(input)
+```
+
+becomes:
+
+```sec
+Parser.Parse[Token](input)
+```
+
+§ 27(12) `::` between components of an otherwise valid Sec qualified name may be corrected to `.`:
+
+```sec
+Status::Ready
+```
+
+becomes:
+
+```sec
+Status.Ready
+```
+
+§ 27(13) `::` is not blindly replaced everywhere. Special foreign roots, namespaces, or library names require either an explicit known-symbol mapping or no correction.
+
+§ 27(14) A known foreign symbol mapping must name a real canonical Sec symbol. The correction engine must not implement a general rule such as removing every `std::` prefix.
+
+§ 27(15) Statement-form increment and decrement are corrected when the operation is an independent statement:
+
+```sec
+i++
+i--
+```
+
+becomes:
+
+```sec
+i += 1
+i -= 1
+```
+
+§ 27(16) Increment or decrement embedded in a larger expression is not corrected unless a future rule can prove a unique Sec semantic equivalent.
+
+§ 27(17) Redundant control-condition parentheses may be removed when doing so is syntactically and semantically unambiguous:
+
+```sec
+if (ready) {
+    Start()
 }
 ```
 
-Infinite loop:
+becomes:
+
+```sec
+if ready {
+    Start()
+}
+```
+
+§ 27(18) The same rule applies to unambiguous `while`, `switch`, and supported `for` condition forms.
+
+§ 27(19) Redundant expression parentheses may be removed only when precedence and grouping are provably unchanged:
+
+```sec
+return (value)
+```
+
+may become:
+
+```sec
+return value
+```
+
+while:
+
+```sec
+(a + b) * c
+```
+
+must remain grouped.
+
+§ 27(20) A trailing foreign statement semicolon may be removed when it is unambiguously only a statement terminator.
+
+§ 27(21) A correction must not treat a semicolon-separated C-style multi-statement line as a trivial whitespace problem unless the complete transformation is explicitly defined and unambiguous.
+
+§ 27(22) A C-style infinite loop may be corrected:
+
+```sec
+for (;;) {
+    Poll()
+}
+```
+
+becomes:
 
 ```sec
 for {
-    Run()
+    Poll()
 }
 ```
 
-## While
+§ 27(23) A Rust-style infinite `loop` may be corrected to the Sec infinite-loop form when the construct is otherwise unambiguous.
+
+§ 27(24) A Go-style condition loop may be corrected when the header contains only one condition expression:
+
+```sec
+for running {
+    Poll()
+}
+```
+
+becomes:
 
 ```sec
 while running {
-    Run()
+    Poll()
 }
 ```
 
-## Switch
+§ 27(25) A C-style loop containing initialization, condition, and increment clauses is not automatically translated because doing so requires control-flow and declaration decisions beyond local syntactic correction.
+
+§ 27(26) Foreign `defer` expression syntax may be corrected to Sec block-only `defer` when the deferred operation is unambiguous:
 
 ```sec
-switch value {
-    case 0:
-        return 0
-    case 1:
-        return 1
-    default:
-        return -1
+defer Close()
+```
+
+becomes:
+
+```sec
+defer {
+    Close()
 }
 ```
 
-Cases are indented one level from `switch`.
-
-Case bodies are indented one additional level.
-
-## Select
+§ 27(27) Historical Sec consuming-parameter syntax is corrected:
 
 ```sec
-select {
-    value := receiver.Receive() => {
-        Use(value)
-    }
-    after timeout => {
-        return
-    }
-    default => {
-        return
-    }
+fn ConsumingFire(buffer: <- Buffer) void {
+    ...
 }
 ```
 
-## Match
-
-Expression form:
+becomes:
 
 ```sec
-return match result {
-    Ok(value) => value
-    Err(error) => 0
+fn ConsumingFire(->buffer: Buffer) void {
+    ...
 }
 ```
 
-Block form:
+§ 27(28) The correction engine must not add `->` merely because a parameter type is move-only.
+
+§ 27(29) Foreign inequality spelling may be corrected only where the foreign token sequence has one unambiguous Sec comparison meaning. An example is F#-style `<>` in a proven comparison expression becoming `!=`.
+
+§ 27(30) Foreign aggregate declaration keywords may be corrected when the resulting Sec declaration is uniquely determined, for example:
 
 ```sec
-match result {
-    Ok(value) => {
-        Use(value)
-    }
-    Err(error) => {
-        return
-    }
+struct Point {
+    ...
 }
 ```
 
-## Error handling revision 2
-
-The formatter preserves and canonicalizes error-marked enum/union declarations,
-`try set value ErrorType`, direct try handlers with `where` guards, positive
-`is Some(value)`, `return try expression`, consuming `.Ok()`/`.Err()` calls,
-and borrowed `OkRef`/`ErrRef` properties.
-
-It must not emit explicit Ok/Some try handlers, recreate the removed
-`try { match { ... } }` wrapper, omit the declared error type from valid try-set
-syntax, or rewrite consuming projections into borrowed projections (or the
-reverse). These operations have distinct semantics.
-
----
-
-# `discard`
-
-Canonical:
+becoming:
 
 ```sec
-discard value
-discard Calculate()
-```
-
-Exactly one space follows `discard`.
-
-The formatter preserves the keyword, formats the operand using ordinary
-expression rules, and keeps `discard` as a statement rather than a function
-call. It must preserve evaluation order and ownership semantics.
-
-The formatter does not insert explicit `discard` for ordinary implicit call
-results and does not remove an explicit `discard` from source.
-
-Diagnostic configuration must not make an otherwise valid file fail to format
-or change canonical formatting. Insertion of explicit discard is a separately
-requested semantic code action, not an unconditional formatter rewrite.
-
----
-
-# Assertion statements
-
-The formatter preserves both assertion forms defined by `rules/errors/panic.md`
-and emits exactly one space after the optional message comma:
-
-```sec
-assert condition
-assert condition, "message"
-```
-
-Commas nested in the condition or contained in the message literal are not the
-assertion-message separator and remain governed by their owning expression or
-literal rules. Formatting never converts `assert` into function-call syntax.
-
-Explicit panic uses exactly one space between the keyword and its static
-string-literal payload:
-
-```sec
-panic "message"
-```
-
-Formatting never converts this statement into function-call syntax.
-
----
-
-# Contextual `x`
-
-The matrix multiplication operator is formatted as a binary operator:
-
-```sec
-let result := left x right
-```
-
-An identifier named `x` is formatted as an ordinary identifier:
-
-```sec
-let x := 10
-Use(x)
-```
-
-The formatter relies on parser context.
-
-It must not rewrite identifier `x` as an operator or vice versa.
-
----
-
-# Contextual `set`
-
-The contextual spelling `set` is preserved according to parser context.
-
-Type use:
-
-```sec
-let values: set[int]
-```
-
-Property setter:
-
-```sec
-set value {
+type Point struct {
+    ...
 }
 ```
 
-The formatter does not treat ordinary invalid attempts to declare a symbol named
-`set` as a formatting problem.
+§ 27(31) Equivalent unambiguous enum or union declaration forms may use the same correction principle.
+
+§ 27(32) The correction engine does not automatically translate `null`, `nil`, `nullptr`, foreign `new`, foreign ownership wrappers, Rust `?`, foreign exception handling, C-style pointer/borrow syntax, or another construct whose Sec meaning is not uniquely determined.
 
 ---
 
-# Operators and parentheses
+## § 28. CLI, LSP, and diagnostics
 
-The formatter follows the canonical operator precedence table.
+**Governance tags:** `tooling.formatter-v2`, `tooling.lsp-v2`
 
-It may remove redundant outer parentheses only when:
+§ 28(1) CLI formatting and LSP formatting use the same canonical formatter rules.
 
-- meaning is unchanged;
-- parser recovery is not involved;
-- readability is not reduced.
+§ 28(2) Given identical source, project configuration, formatter style version, and effective width, CLI and LSP formatting must produce equivalent source bytes.
 
-It must preserve parentheses that affect precedence:
+§ 28(3) Adaptive width may legitimately produce different wrapping when the effective width differs, but all other canonical rules remain identical.
 
-```sec
-(1 + 2) * 3
-```
+§ 28(4) Format-on-save must respect the clean multiline preservation rules of § 3.
 
-It should preserve clarifying parentheses around mixed boolean and comparison
-expressions when removal would reduce readability.
+§ 28(5) Ordinary formatter diagnostics may report malformed syntax, unavailable formatting context, unsupported configuration, or internal formatter failure.
 
----
+§ 28(6) When Language Corrections are disabled, compiler or LSP diagnostics may still provide a correction suggestion without changing source.
 
-# Line width
+§ 28(7) Diagnostics for a foreign or historical syntax form should show canonical Sec syntax when the intended correction is unambiguous.
 
-The first formatter implementation may avoid forced width-based wrapping.
-
-The target model should use a soft width, not a hard syntax limit.
-
-A future canonical soft target may be:
-
-```text
-100 or 120 columns
-```
-
-The exact value requires a separate language decision.
-
-Until then:
-
-- preserve already sensible multiline structure;
-- break only constructs with canonical multiline forms;
-- never truncate or reflow string content;
-- never force trailing comments into unreadable columns merely to align them.
-
-Alignment and line width must cooperate.
-
-When aligned trailing comments would exceed the future soft target, the
-formatter may place the comment on the preceding line or keep a minimal
-two-space separation according to a future exact rule.
+§ 28(8) The formatter must not claim semantic validity merely because formatting succeeded.
 
 ---
 
-# Incomplete and recoverable source
+## § 29. Formatter invariants
 
-The formatter should format unaffected structure even when source contains
-recoverable errors.
+**Governance tags:** `tooling.formatter-v2`
 
-Examples:
+§ 29(1) Idempotence is mandatory.
 
-```text
-missing parameter colon
-missing comma
-unfinished expression
-unfinished member access
-unfinished function body
-```
+§ 29(2) Ordinary formatting is semantics-preserving.
 
-Rules:
+§ 29(3) Ordinary formatting does not add, remove, or substitute language syntax except canonical punctuation and grouping syntax explicitly owned by this formatting contract, such as multiline trailing commas and canonical import-region structure.
 
-- never delete unknown tokens;
-- never invent a semantic expression without a compiler fix;
-- preserve error-node text;
-- format surrounding valid blocks;
-- apply syntax normalization only when the recovered construct is unambiguous;
-- require `--fix` for inserted missing syntax.
+§ 29(4) Literal token spelling is preserved unless an enabled Language Correction explicitly owns that transformation.
 
----
+§ 29(5) Numeric literal spelling is not normalized by ordinary formatting.
 
-# Range formatting
+§ 29(6) String literal contents are not normalized by ordinary formatting.
 
-LSP range formatting must use the shared formatter.
+§ 29(7) Comments are preserved. Comment movement is limited to syntax-aware movement of an attached comment with a construct that the formatter is explicitly permitted to reorder, such as an import.
 
-The formatter expands the requested range to complete safe syntax boundaries.
+§ 29(8) Comment text changes only under the comment-formatting rules of § 12 and must preserve preformatted material.
 
-Possible expansion units:
+§ 29(9) Uncertain malformed regions remain byte-for-byte unchanged under § 25.
 
-```text
-statement
-declaration
-comment group
-parameter list
-argument list
-struct field group
-block
-```
+§ 29(10) Ordinary formatting does not require semantic analysis.
 
-Range formatting must not return edits outside the expanded range except when
-required to maintain a syntactically complete attached comment or delimiter.
+§ 29(11) Import classification metadata is the limited exception described by § 5(7); it does not authorize general semantic rewriting.
+
+§ 29(12) `format_version = 1` is a conformance-test contract.
 
 ---
 
-# On-type formatting
+## § 30. Conformance testing
 
-Initial trigger candidates:
+**Governance tags:** `tooling.formatter-v2`
 
-```text
-}
-)
-]
-,
-:
-newline
-```
+§ 30(1) Every normative formatter behavior must have a golden formatting test where practical.
 
-On-type formatting should be conservative and fast.
-
-It may:
+§ 30(2) The minimum golden structure is:
 
 ```text
-indent the current line
-align a completed local group
-place `else`
-format a completed field
-format a completed case
+messy input -> canonical output
+canonical output -> unchanged
+boundary case
 ```
 
-It must not run semantic fixes unless the user enabled inline safe fixes.
+§ 30(3) Every golden canonical output is formatted a second time automatically to verify idempotence.
+
+§ 30(4) Valid-source round-trip testing must verify:
+
+```text
+parse source
+format source
+parse formatted source
+compare equivalent syntax/AST meaning modulo trivia and source positions
+```
+
+§ 30(5) Round-trip testing must verify that meaningful token structure is preserved by ordinary formatting.
+
+§ 30(6) Regression suites must cover at least:
+
+- line comments;
+- block comments;
+- documentation comments;
+- malformed and incomplete source;
+- very long lines;
+- deeply nested constructs;
+- alignment boundaries;
+- imports with aliases and attached comments;
+- ownership markers;
+- registers and units;
+- tests;
+- patterns and destructuring;
+- Language Corrections positive cases;
+- Language Corrections negative cases.
+
+§ 30(7) Width tests must include effective widths `80`, `120`, and `200`.
+
+§ 30(8) Fixed-width boundary tests around the default must include at least `119`, `120`, and `121` columns.
+
+§ 30(9) Vertical-style tests must cover both `structured` and `compact`.
+
+§ 30(10) Indentation tests must cover widths `2`, `4`, and `6`.
+
+§ 30(11) Malformed-source tests must verify exact byte preservation for every protected uncertain region.
+
+§ 30(12) Every Language Correction requires both:
+
+- positive tests proving the intended correction occurs;
+- negative tests proving nearby ambiguous or semantically different syntax is not rewritten.
+
+§ 30(13) Test-declaration conformance must include formatter round-trip coverage for `test "name" { ... }` and must verify exact preservation of the test-name string.
+
+§ 30(14) Import tests must verify that sorting and grouping do not remove imports and that attached comments move with their imports.
+
+§ 30(15) CLI/LSP equivalence tests must compare output for the same effective width and project configuration.
 
 ---
 
-# Minimal edits
+## § 31. Non-goals and forbidden shortcuts
 
-The shared formatter should be able to produce:
+**Governance tags:** `tooling.formatter-v2`
 
-```text
-full formatted text
-minimal text edits
-```
+§ 31(1) A conforming formatter must not use semantic guesses to make invalid source compile.
 
-CLI may rewrite the file.
+§ 31(2) A conforming formatter must not maintain a second independent Sec grammar solely for formatting.
 
-LSP should prefer minimal, non-overlapping edits when practical.
+§ 31(3) A conforming formatter must not discard comments or source data that are not formatter-owned.
 
-Edits must use the client's negotiated position encoding.
+§ 31(4) A conforming formatter must not rewrite arbitrary malformed source in the hope of repairing it.
 
----
+§ 31(5) A conforming formatter must not use blind regular-expression replacement as the implementation model for grammar-sensitive Language Corrections.
 
-# Generated code
+§ 31(6) A conforming formatter must not reorder ordinary top-level declarations.
 
-Generated Sec code must be canonical.
+§ 31(7) A conforming formatter must not remove imports as an ordinary formatting action.
 
-Generators should construct syntax or structured source and call the shared
-formatter.
+§ 31(8) A conforming formatter must not change ownership, borrowing, mutability, unsafe boundaries, control flow, or error behavior merely for style.
 
-They must not embed a separate style printer.
-
-A generated-file marker may disable manual refactoring while still allowing
-formatting.
+§ 31(9) A conforming formatter must not use obsolete Sec syntax as canonical output.
 
 ---
 
-# Formatter directives
+## § 32. Summary of the Sec 0.1 formatting contract
 
-Sec 0.1 does not require formatter-disable directives.
+**Governance tags:** `tooling.formatter-v2`
 
-A future design may support narrowly scoped directives such as:
+§ 32(1) Sec formatting is canonical, deterministic, and idempotent for a selected project formatting configuration.
 
-```text
-format off
-format on
-```
+§ 32(2) The default style is four-space indentation, structured vertical spacing, fixed preferred width `120`, and `format_version = 1`.
 
-Only if concrete cases require them.
+§ 32(3) Clean permitted multiline intent may be preserved, while mixed layouts are normalized.
 
-Directives must not become a general escape from canonical style.
+§ 32(4) Structural syntax takes precedence over arbitrary horizontal alignment.
 
----
+§ 32(5) Executable blocks are multiline; aggregate values may retain clean single-line or multiline layout where permitted.
 
-# Diagnostics
+§ 32(6) Multiline comma-separated lists use complete multiline layout with canonical trailing commas where the grammar permits them.
 
-Formatter and fix diagnostics require stable IDs.
+§ 32(7) Comments, malformed regions, literal data, ownership markers, and test-name strings are preserved according to their dedicated rules.
 
-Suggested rules:
+§ 32(8) Imports form one canonical region and may be sorted and grouped, while ordinary declarations remain in source order.
 
-```text
-format.noncanonical-source
-format.unrecoverable-region
-format.unsafe-fix-refused
-format.ambiguous-normalization
-format.generated-file-read-only
-```
+§ 32(9) Ordinary formatting is distinct from optional Language Corrections.
 
-Syntax fixes retain their parser or Sema diagnostic IDs.
+§ 32(10) Language Corrections fix only locally unambiguous syntax and never guess programmer intent.
 
-`sec fmt --check` should report files and optionally first differing ranges
-without pretending formatting differences are language errors.
+§ 32(11) The correction catalogue may expand through dogfooding without weakening the unambiguity requirement.
 
----
-
-# Safety classification
-
-Every transformation is classified as:
-
-```text
-Formatting
-SyntaxNormalization
-SafeFix
-CodeCleanup
-StructuralRefactoring
-BehaviorChanging
-PotentiallyLossy
-```
-
-Ordinary formatter accepts only:
-
-```text
-Formatting
-SyntaxNormalization
-```
-
-`--fix` accepts:
-
-```text
-Formatting
-SyntaxNormalization
-SafeFix
-```
-
-No automatic mode accepts:
-
-```text
-BehaviorChanging
-PotentiallyLossy
-```
-
----
-
-# Better code analysis boundary
-
-The formatter does not automatically perform improvements such as:
-
-```text
-merge adjacent declarations
-split files by primary type
-extract function
-rename symbols
-sort declaration tables
-convert move to borrow
-remove an apparently unnecessary temporary
-```
-
-Those are diagnostics, code cleanup, or refactoring.
-
-Example:
-
-```sec
-let mut Audi: Car
-let mut Saab: Car
-let mut Volvo: Car
-let mut Skoda: Car
-```
-
-may receive a refactoring to:
-
-```sec
-Car mut: Audi, Saab, Volvo, Skoda
-```
-
-Ordinary formatting preserves the original declaration structure.
-
----
-
-# Tests
-
-## Golden tests
-
-Every syntax construct requires input and expected-output files.
-
-Include:
-
-```text
-valid canonical source
-valid noncanonical source
-recoverable source
-comments
-raw strings
-Unicode identifiers
-line endings
-nested constructs
-```
-
-## Idempotence
-
-Every formatter test must verify:
-
-```text
-Format(output) == output
-```
-
-## Semantic preservation
-
-For valid source, compare canonical AST or semantic representation before and
-after formatting.
-
-## Comment preservation
-
-Verify:
-
-```text
-comment count
-comment text
-attachment
-relative order
-documentation ownership
-```
-
-## Struct alignment
-
-Required tests:
-
-```sec
-type User struct {
-ID:int `json:"id"`,// Stable identifier.
-Name:string `json:"name"`, // Display name.
-Password:string `json:"-"`,// Never serialize.
-}
-```
-
-Expected:
-
-```sec
-type User struct {
-    ID:       int    `json:"id"`,      // Stable identifier.
-    Name:     string `json:"name"`,    // Display name.
-    Password: string `json:"-"`,       // Never serialize.
-}
-```
-
-Test fields with:
-
-```text
-no tag
-one tag
-multiple tags
-no comment
-trailing comment
-blank-line group break
-standalone comment group break
-documentation comment
-long type
-multiline type
-```
-
-## Typed declaration alignment
-
-Input:
-
-```sec
-TokenType (
-ILLEGAL:="ILLEGAL",
-EOF:="EOF",
-IDENT:="IDENT",
-)
-```
-
-Expected:
-
-```sec
-TokenType (
-    ILLEGAL := "ILLEGAL",
-    EOF     := "EOF",
-    IDENT   := "IDENT",
-)
-```
-
-## Normalization tests
-
-Test:
-
-```text
-func declaration -> fn
-func call remains func
-x++ -> x += 1
-x-- -> x -= 1
-increment expression remains diagnostic
-```
-
-## Ownership tests
-
-Verify ordinary formatting preserves:
-
-```text
-:=
-:<-
-=
-<-
-```
-
-Verify `--fix` changes copy syntax only through a proven diagnostic fix.
-
-## Fuzzing
-
-Fuzz:
-
-```text
-lexer token streams
-valid syntax trees
-recoverable source
-comments
-raw strings
-Unicode
-nested delimiters
-```
-
-The formatter must not panic.
-
----
-
-# Required synchronization
-
-This rulebook must remain synchronized with:
-
-```text
-lsp.md
-ownership.md
-copy_move.md
-lexical_structure.md
-grammar.md
-operators.md
-types.md
-struct.md
-enum rules
-register rules
-comments and documentation rules
-imports and modules rules
-diagnostics.txt
-compiler_pipeline.md
-parser recovery rules
-language-rulebook-status.md
-rules_implementations.txt
-```
-
----
-
-# Appendix A — Codex implementation plan
-
-## A.1 Rename the rulebook
-
-The filename migration is complete. `rules/tooling/formatter.md` is canonical,
-repository references are updated, and no duplicate canonical file remains.
-
-## A.2 Preserve current tests
-
-Before moving code, preserve the formatter tests currently located in:
-
-```text
-cmd/lsp/main_test.go
-```
-
-Move or duplicate them into the shared formatter test package before deleting
-LSP-local functions.
-
-## A.3 Create shared formatter package
-
-Create:
-
-```text
-internal/formatter
-```
-
-Initial API:
-
-```go
-type Options struct {
-    Fix bool
-}
-
-type Result struct {
-    Text        string
-    Edits       []TextEdit
-    Diagnostics []diagnostics.Diagnostic
-}
-
-func Format(source Source, options Options) Result
-func FormatRange(source Source, target SourceRange, options Options) Result
-```
-
-Exact Go types may follow existing compiler source abstractions.
-
-## A.4 Move current implementation
-
-Move these responsibilities from `cmd/lsp`:
-
-```text
-formatSource
-function signature normalization
-let declaration normalization
-indentation helpers
-branch indentation helpers
-comma splitting helpers
-func normalization
-```
-
-The LSP must call the shared package.
-
-## A.5 Build lossless syntax and trivia support
-
-Extend lexer/parser infrastructure or add a formatter syntax layer retaining:
-
-```text
-all tokens
-comments
-whitespace trivia
-missing tokens
-error nodes
-source ranges
-```
-
-Do not infer comment attachment from trimmed lines in the final implementation.
-The lexer-backed token/trivia and delimiter-group layers are the first steps;
-grammar-aware structure and parser recovery must be added before they can
-replace line-based printing.
-
-## A.6 Add alignment engine
-
-Implement a generic local alignment engine.
-
-Inputs:
-
-```text
-alignment group
-column cells
-minimum spacing
-group boundaries
-```
-
-Initial clients:
-
-```text
-struct fields
-struct tags
-trailing comments
-enum initializers
-typed declaration groups
-register fields
-```
-
-Use spaces only.
-
-## A.7 Implement struct alignment
-
-Parse each single-line field into cells:
-
-```text
-nameColon
-typeAndContracts
-tag
-comma
-comment
-```
-
-Align compatible fields.
-
-Preserve tag raw text exactly.
-
-Preserve comment text exactly.
-
-Do not align across group boundaries.
-
-## A.8 Add ownership tokens
-
-Update lexer and formatter for:
-
-```text
-:<-
-<-
-```
-
-Preserve ordinary versus move syntax.
-
-## A.9 Add increment/decrement normalization
-
-Recognize parser-confirmed statement-only:
-
-```text
-postfix ++
-postfix --
-```
-
-Print as:
-
-```text
-+= 1
--= 1
-```
-
-Do not add increment/decrement expression semantics.
-
-## A.10 Shared fix engine
-
-Create or use:
-
-```text
-internal/fixes
-```
-
-Formatter with `Fix: true` applies only diagnostics marked:
-
-```text
-machine applicable
-safe
-unambiguous
-```
-
-Then formats the result.
-
-## A.11 Implement missing-colon fix
-
-Add structured parser recovery and fix data for:
-
-```sec
-fn Parse(value string) Token {
-}
-```
-
-The fix inserts exactly one colon at the compiler-provided position.
-
-## A.12 CLI integration
-
-Implement:
-
-```text
-sec fmt
-sec fmt --check
-sec fmt --stdin
-sec fmt --fix
-```
-
-Ensure exit codes are documented and tested.
-
-## A.13 LSP integration
-
-Replace LSP-local formatting with calls to the shared formatter.
-
-Implement:
-
-```text
-document formatting
-range formatting
-on-type formatting
-safe fixes on save
-```
-
-## A.14 Update VS Code extension
-
-Keep formatting settings thin.
-
-The extension must not implement alignment or syntax normalization.
-
-Expose separate settings for:
-
-```text
-format on save
-safe fixes on save
-code cleanup on save
-inline safe fixes
-```
-
-## A.15 Update implementation tracker
-
-Record:
-
-```text
-current LSP formatter behavior implemented
-shared formatter package pending
-struct alignment pending
-fix engine pending
-CLI pending or current actual status
-```
-
-Do not mark a feature implemented until tests exercise the shared path.
-
----
-
-# Design summary
-
-Sec has one canonical formatter.
-
-The LSP, CLI, fix engine, refactorings, and generators share it.
-
-Ordinary formatting preserves semantics and may normalize only parser-proven
-noncanonical syntax such as:
-
-```text
-func -> fn
-x++ -> x += 1
-x-- -> x -= 1
-```
-
-Invalid source repairs require `sec fmt --fix` or an LSP safe fix.
-
-Struct fields use gofmt-like local alignment for:
-
-```text
-field names and types
-struct tags
-commas
-trailing line comments
-```
-
-Comments, tag text, declaration order, copy syntax, and move syntax are
-preserved.
-
-Code-quality improvements and refactorings remain separate from formatting.
-
-## Ownership revision 2 markers
-
-The formatter preserves and canonically lays out every semantic ownership
-marker, including `:<-`, move assignment `<-`, `Consume(<-source)`, payload
-forms such as `Some(<-source)` and `Payload: <-source`,
-`capture(<-source)`, and optional `return <-source`. It must never add, remove,
-or relocate a move marker as a style-only rewrite.
-
-The legacy `capture(-> source)` spelling is invalid and must never be produced.
-Idempotence coverage includes declaration, assignment, call, payload, capture,
-and return marker positions.
-
-## Source test formatting
-
-The formatter accepts `*_test.sec` as ordinary Sec input and formats the
-canonical top-level form without changing its test identity:
-
-```sec
-test "name" {
-    testing.Expect(true)
-}
-```
-
-The test name string and ordinary `testing.*` calls follow existing literal,
-call, block, comment, and line-breaking rules. Formatting must not rewrite a
-test into an attributed function or infer test semantics from a filename alone.
+§ 32(12) Published normative paragraph identifiers are stable references and are never casually renumbered in later revisions.

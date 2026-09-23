@@ -1116,3 +1116,12 @@ task execution failed with TaskError
 § 33(7) Implementation milestones must not substitute an older task model for the semantics in this revision.
 
 § 33(8) Corrections required in adjacent rulebooks by this revision are tracked separately through the corrections workflow.
+
+## Debug-information integration
+
+Debug tooling treats `TaskID` as a logical execution identity independent of
+the worker thread that currently runs the task. Suspension, resumption, and
+migration do not create a new task debug identity. Observation grants no task
+lifecycle or result authority, and debugger-only task enumeration or frame
+metadata is not a Sec source reflection API. Debugger presentation is owned by
+`rules/compiler/debug_information.md`.

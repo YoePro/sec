@@ -2156,6 +2156,19 @@ optional reason/provenance
 
 § 90(3) Source mapping must survive Semantic IR transformations and lowering as required by diagnostics/debug information.
 
+§ 90(4) Source provenance, semantic declaration identities, Place and projection
+identities, availability transitions, concrete specialization identities, and
+synthesized-origin relations required by
+`rules/compiler/debug_information.md` remain available until all requested
+debug consumers are complete. A pass must not discard or coarsen them merely
+because source semantic analysis no longer needs them.
+
+§ 90(5) Debug lowering consumes the canonical Semantic IR availability facts;
+it does not define a second debug-specific availability lattice. Synthesized
+operations retain their origin relation for stepping policy, and concrete
+specialization identity remains independent of machine address and backend
+symbol spelling.
+
 § 90(4) Diagnostics prefer the original user location over synthetic helper locations.
 
 ---

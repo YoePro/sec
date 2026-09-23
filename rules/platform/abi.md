@@ -1057,7 +1057,14 @@ physical call contract introduces:
 - widened argument transport;
 - machine-only temporaries.
 
-The exact debug-information encoding belongs to the debug-information rulebook.
+Hidden result pointers, split-register transport, tag/payload transport,
+closure environments, and compiler-generated adapters do not become Sec source
+parameters in the debugger view. Debugger stack-walk metadata and physical
+frame-pointer policy remain target implementation details and do not alter the
+Sec ABI unless the selected ABI itself requires them.
+
+The exact debug-information encoding belongs to
+`rules/compiler/debug_information.md`.
 
 ---
 

@@ -4290,3 +4290,12 @@ join.
 
 Targets that cannot implement these semantics reject the corresponding source
 operations at compile time.
+
+## Debug-information integration
+
+Each process is a separate debug address-space domain. `ProcessID` may identify
+the Sec process in debugger metadata, but it is not an OS PID and grants no
+attach authority. Parent/child spawn and join relations are causal or wait
+relations, not call-stack edges. Automatic child follow/attach remains a
+debugger, target, and security policy. Debugger presentation is owned by
+`rules/compiler/debug_information.md`.

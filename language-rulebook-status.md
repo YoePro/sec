@@ -573,10 +573,10 @@ multiple target outputs
 | Rulebook | Status | Notes |
 |---|---|---|
 | `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Proven statements after a block terminator now carry mandatory S3001 with explanatory help in CLI and LSP, tracked by `diagnostics.unreachable-statement-s3001` in `governance/errors_diagnostics.yaml`. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
-| `tooling/formatter.md` | **Written** | Canonical formatting preserves impl static let because removing static changes member ownership and receiver requirements. A lexer-backed, byte-lossless CST foundation now retains tokens and trivia, groups real nested delimiters, and identifies real trailing line comments for formatter alignment; grammar-aware syntax and parser recovery nodes remain open. Explicit-file `sec fmt --check` is implemented with non-writing checks, affected-file reports, and tested exit codes. `sec fmt --stdin` formats standard input to standard output using LF; recursive selection and the broader formatter remain incomplete. |
+| `tooling/formatter.md` | **Written** | Revision 2.0 defines canonical, project-configured formatting with stable paragraph IDs, `format_version = 1`, lossless error-tolerant syntax requirements, complete Sec surface layout, malformed-region preservation, and an opt-in grammar-aware Language Corrections layer. The shared CLI/LSP formatter, explicit-file check/stdin modes, lexer-backed CST foundation, delimiter handling, and selected spacing/alignment behavior exist; the full layout/configuration/correction/conformance contract remains partial under `tooling.formatter-v2` in `governance/formatting.yaml`. |
 | `tooling/testing.md` | **Written** | Canonical source-level `test`, `*_test.sec`, `sec test`, compiler-known `testing.*`, subtests, integration tests, `TestCompilationPlan`, execution-provider, structured-result, LSP and editor-integration semantics. Sema validates `ExpectEqual`/`RequireEqual` with canonical equality rules (S1042-S1043) and `Pass`/`Fail`/`Skip` signatures (S1044); terminal flow, execution, and lowering remain open. Implementation progress is tracked by `tooling.language-testing`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `tooling/diagnostics.txt`; avoid duplication. |
-| `debug_information.md` | **Planned** | Source mapping, variables, optimized code, generics, async/task frames, and targets. |
+| `compiler/debug_information.md` | **Written** | Canonical Sec 0.1 debug-information model: None/LineTables/Full, source step points, truthful optimized values, ownership/lifetime availability, concrete generic identities, logical task/thread/process debug views, split artifacts/source correlation, target-neutral lowering, and compiler conformance. Implementation is tracked by `compiler.debug-information-v1` in `governance/compiler.yaml`. |
 | `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
 | `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; static and instance bindings are distinct, and impl static-removal advice is withdrawn. Nested member completion uses the active cursor and recoverable same-module declarations. Shared bidirectional source-position mapping now covers diagnostics, hover, navigation, references, highlights, call hierarchy, document symbols, edits, and semantic tokens using protocol UTF-16 coordinates, compiler scalar columns, multiline tokens, and LF/CRLF/CR normalization. Diagnostic refreshes are coalesced per module with obsolete-result rejection; in-flight analysis cancellation and cross-feature caching remain pending. Implementation remains partial as detailed in governance. |
@@ -603,6 +603,7 @@ compiler/compiler.md
 compiler/compiler_analysis.md
 compiler/compiler_pipeline.md
 compiler/compiler_known_members.md
+compiler/debug_information.md
 compiler/linking.md
 concurrency/concurrency.md
 concurrency/concurrency_memory_model.md
@@ -720,7 +721,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-debug_information.md
 compiler_testing.md
 incremental_compilation.md
 ```

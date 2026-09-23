@@ -1946,3 +1946,13 @@ deterministic diagnostics after parallel rebuild.
 § 94(14) Source invalidity, target/profile invalidity, missing compiler support, missing toolchain support, and internal compiler errors are distinct.
 
 § 94(15) Mutable implementation/governance data belongs in `implementation-status.yaml`, not in this normative rulebook.
+
+## Debug-information architecture integration
+
+`rules/compiler/debug_information.md` is part of the canonical compiler
+architecture. Debug lowering consumes canonical Semantic IR and resolved
+`CompilationPlan` facts; it is not an independent source of language semantics.
+A native DWARF, CodeView, or comparable emitter alone does not prove complete
+Sec debug support. An unsupported requested debug contract is a build/compiler
+diagnostic, while inconsistent metadata after support was promised is a compiler
+defect.

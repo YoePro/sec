@@ -1535,3 +1535,12 @@ asynchronous destruction
 § 71(5) Cross-rulebook synchronization required by this revision is tracked by the accompanying await-v2 correction.
 
 § 71(6) After all correction steps are applied, the correction should be archived under `rules/corrections/applied/`.
+
+## Debug-information integration
+
+`rules/compiler/debug_information.md` owns debugger-specific suspension and
+stepping representation. An `await` source range and its live semantic state
+remain available to debug lowering when `LineTables` or `Full` requires logical
+suspended-task inspection. Compiler-generated resume and state-machine paths
+remain implementation details and do not turn one `await` into a second source
+call or source frame.

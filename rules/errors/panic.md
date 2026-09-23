@@ -795,3 +795,12 @@ assert condition, "message"
 **§ 31(11)** Explicit panic is written `panic "message"`; call syntax and dynamic messages are invalid in Sec 0.1.
 
 **§ 31(12)** Panic cleanup occurs only where the selected canonical panic policy guarantees it; no rule may silently invent exception unwinding.
+
+## Debug-information integration
+
+Debugger physical stack walking is not Sec panic or runtime unwinding. CFI,
+frame metadata, and debugger-reconstructed source frames do not create a general
+Sec unwind runtime. Panic reporting may consume canonical source/provenance
+facts without making `LineTables` or `Full` mandatory unless this rulebook
+separately requires particular metadata. Debug metadata semantics are owned by
+`rules/compiler/debug_information.md`.

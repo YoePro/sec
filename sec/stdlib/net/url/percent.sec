@@ -66,8 +66,19 @@ fn PercentEncode(value: string, component: Component) string {
 *   `value` is borrowed and remains owned by the caller.
 */
 fn PercentEncode(value: ref byte[], component: Component) string {
-    //TODO: Implement url.PercentEncode(byte[], Component)
-    return ""
+    let mut result := ""
+
+    for item in value {
+        if _IsLiteralByte(item, component) {
+            result += string(item)
+            continue
+        }
+
+        result += "%"
+        result += item.ToString(byte.ByteStringFormat.Hexadecimal)
+    }
+
+    return result
 }
 
 /**
@@ -260,7 +271,7 @@ fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
 }
 
 fn _IsUnreserved(value: byte) bool {
-    if value >= 'A' && value <= 'Z' {
+    if value in "A".."Z" {
         return true
     }
 
@@ -276,4 +287,49 @@ fn _IsUnreserved(value: byte) bool {
     value == '.' ||
     value == '_' ||
     value == '~'
+}
+
+fn _IsLiteralByte(value: byte, component: Component) bool {
+    if _IsUnreserved(value) {
+        return true
+    }
+
+    if _IsSubDelimiter(value) {
+        return true
+    }
+
+    match component {
+        Component.UserInfo => {
+            return value == ':'
+        }
+
+        Component.RegisteredName => {
+            return false
+        }
+
+        Component.Path => {
+            return value == ':' ||
+            value == '@' ||
+            value == '/'
+        }
+
+        Component.PathSegment => {
+            return value == ':' ||
+            value == '@'
+        }
+
+        Component.Query => {
+            return value == ':' ||
+            value == '@' ||
+            value == '/' ||
+            value == '?'
+        }
+
+        Component.Fragment => {
+            return value == ':' ||
+            value == '@' ||
+            value == '/' ||
+            value == '?'
+        }
+    }
 }

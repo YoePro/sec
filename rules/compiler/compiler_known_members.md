@@ -392,6 +392,8 @@ CKF-LEN
 CKM-SIZEOF-VALUE
 CKM-SIZEOF-TYPE
 CKM-TOSTRING-STRING
+CKM-TOSTRING-BYTE-SEQUENCE
+CKM-TOSTRING-CHAR-SEQUENCE
 CKM-TOSTRING-RUNE-SEQUENCE
 CKM-STRING-TOBYTEARRAY
 CKM-STRING-TOCHARARRAY
@@ -712,6 +714,7 @@ StringIdentity
 StringToByteArray
 StringToCharArray
 StringToRuneArray
+ByteSequenceToString
 RuneSequenceToString
 CharSequenceToString
 Arena operations
@@ -1591,17 +1594,14 @@ Target code may provide optimized helpers.
 Sec 0.1 requires no-argument `ToString()` on:
 
 ```text
-string;
-bool;
-signed integers;
-unsigned integers;
-byte;
-binary floating-point types;
-decimal types;
-char;
-rune;
-eligible named types related to these types.
+every concrete type that can produce an ordinary value.
 ```
+
+This is a compiler-provided fallback surface, not a claim that every type has
+the same formatting behavior. Scalar, sequence, collection, and aggregate
+families retain their distinct canonical representations. Generic and
+interface member lookup may use the fallback only when the active contract or
+concrete specialization establishes its availability.
 
 Numeric formatting overloads may also include:
 
@@ -1732,7 +1732,13 @@ That interface does not change the compiler-known built-in registry.
 
 ---
 
-# Rune and char sequence `ToString()`
+# Byte, char, and rune sequence `ToString()`
+
+Arrays and slices whose element type is exactly `byte` provide:
+
+```sec
+value.ToString()
+```
 
 Arrays and slices whose element type is exactly `rune` provide:
 
@@ -1756,7 +1762,7 @@ let chars := "test string".ToCharArray()
 let second := chars[0..<4].ToString()
 ```
 
-The operation:
+For these three text-element families, the operation:
 
 ```text
 uses only the represented elements;
@@ -1767,16 +1773,11 @@ preserves element order;
 does not exist as a general array formatting operation.
 ```
 
-`byte[]` and byte slices do not automatically receive `ToString()` because byte
-data does not by itself establish encoding.
-
-Use:
-
-```sec
-string.FromByteArray(bytes)
-```
-
-or another explicit decoder.
+For a byte sequence, `ToString()` materializes a string from exactly the
+represented bytes in order. It has the same byte-preserving semantics as
+`string.FromByteArray`, does not append a terminator, and does not reinterpret
+each byte as a separate Unicode scalar. The program remains responsible for
+supplying bytes permitted by the canonical string encoding policy.
 
 ---
 
@@ -2853,6 +2854,7 @@ ToCharArray
 ToRuneArray
 string.FromByteArray
 string.FromRuneArray
+byte-sequence ToString
 char-sequence ToString
 rune-sequence ToString
 ```
@@ -3075,11 +3077,13 @@ bool ToString;
 numeric ToString;
 char ToString;
 rune ToString;
+byte array ToString;
+byte slice ToString;
 char array ToString;
 char slice ToString;
 rune array ToString;
 rune slice ToString;
-byte array ToString rejection;
+ordinary aggregate and collection fallback ToString;
 selected slice bounds;
 no terminator scan;
 empty input;
@@ -3199,7 +3203,7 @@ global len;
 Ptr;
 SizeOf;
 string identity ToString;
-char/rune sequence ToString;
+byte/char/rune sequence ToString;
 ToByteArray;
 ToCharArray;
 ToRuneArray;
@@ -3261,6 +3265,7 @@ CKM-LEN-PROPERTY
 CKM-LEN-FUNCTION
 CKM-SIZEOF
 CKM-TOSTRING
+CKM-BYTE-SEQUENCE-TOSTRING
 CKM-CHAR-SEQUENCE-TOSTRING
 CKM-RUNE-SEQUENCE-TOSTRING
 CKM-STRING-TOBYTEARRAY
@@ -3298,7 +3303,7 @@ global len recognition;
 string ToString;
 rune ToString stub;
 string ToRuneArray stub;
-rune-sequence ToString recognition;
+byte/char/rune-sequence ToString recognition;
 Arena semantic members;
 RawPtr type and operations;
 numeric core declarations.
@@ -3312,7 +3317,7 @@ stable CKM identities for the currently exposed entries;
 canonical Ptr and Len lookup with lowercase migration spellings;
 global len recognition;
 value-form and type-form SizeOf type resolution;
-fundamental and char/rune-sequence ToString type resolution;
+universal fallback and byte/char/rune-sequence ToString type resolution;
 string ToByteArray, ToCharArray, and ToRuneArray type resolution;
 string.FromByteArray and string.FromRuneArray type resolution;
 integer Min, Max, and Bits and floating representation property lookup;
@@ -3511,8 +3516,10 @@ replace it with the exact canonical shape.
 
 `string.ToString()` is identity.
 
-`char` and `rune` arrays and slices provide materializing `ToString()` over the
-represented range without terminator scanning.
+`byte`, `char`, and `rune` arrays and slices provide materializing `ToString()`
+over the represented range without terminator scanning. Byte sequences preserve
+their encoded bytes, char sequences follow the canonical char conversion, and
+rune sequences encode each Unicode scalar, including multibyte scalars.
 
 Strings provide materializing `ToByteArray()`, `ToCharArray()`, and
 `ToRuneArray()`.

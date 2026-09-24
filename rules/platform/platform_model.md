@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-08-24
+- **Last updated:** 2026-09-24
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/platform_model.md`
@@ -956,6 +956,13 @@ link failure obscures the real cause.
 
 Which platform operations are required depends on the active plan; not every platform
 must provide every operation known to Sec.
+
+Every thread-capable selected platform must provide one complete concrete
+`ThreadPlatform` declaration with at least its target-native thread identity
+property `ID`. The portable thread view does not coerce that identity to
+`uint64` and does not expose a raw owning or mutating native handle. Source
+selection and navigation resolve the specification placeholder to that concrete
+target declaration.
 
 Source-validation directives such as target constraints validate compatibility with
 the selected CompilationPlan. They do not choose or mutate the platform plan.

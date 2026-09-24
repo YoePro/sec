@@ -411,18 +411,21 @@ impl string {
 }
 ```
 
-`rune` arrays and rune slice views additionally provide a compiler-known
-materializing method:
+`byte`, `char`, and `rune` arrays and slice views additionally provide a
+compiler-known materializing method:
 
 ```sec
 let runes: rune[2] := ['A', 'B']
 let text := runes.ToString()
 ```
 
-`ToString()` is available only when the element type is exactly `rune`. It
-accepts no arguments, returns `string`, does not mutate or consume the source,
-and has the same allocation and encoding behavior as `string.FromRuneArray`.
-It is not a general `array.ToString()` formatting operation.
+For those three element types, `ToString()` accepts no arguments, returns
+`string`, and does not mutate or consume the source. Byte sequences preserve
+the represented encoded bytes as `string.FromByteArray` does; char sequences
+apply `char.ToString()` element semantics; rune sequences encode each Unicode
+scalar as `string.FromRuneArray` does. Other concrete values retain the
+universal compiler-provided fallback described by
+`compiler_known_members.md`, but do not use these text-sequence semantics.
 
 These are the minimum required constructors.
 
@@ -1600,8 +1603,8 @@ Implemented:
   redeclaration.
 - `string.len`, array `.len` and slice `.len` are intrinsic members returning
   `uint`.
-- `rune` arrays and rune slice views provide compiler-known `ToString()` text
-  materialization, including fixed arrays such as `rune[2]`.
+- `byte`, `char`, and `rune` arrays and slice views provide compiler-known
+  `ToString()` text materialization, including fixed arrays such as `rune[2]`.
 - Impl-method receiver mutability is inferred through evaluated expressions,
   including method calls used as `let` and grouped-`let` initializers, control
   conditions, assignment values, and nested expression operands.

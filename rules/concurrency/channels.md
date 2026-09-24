@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-15
-- **Last updated:** 2026-09-15
+- **Last updated:** 2026-09-24
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/channels.md`
@@ -1151,7 +1151,7 @@ Unavailable(MessageDisposition.Expired)
 
 ## § 46. Select readiness versus commit
 
-**Governance tags:** `concurrency.channels-v2`, `concurrency.select-v1`
+**Governance tags:** `concurrency.channels-v2`, `concurrency.select-v2`
 
 § 46(1) Selectable channel operations use distinct readiness and commit phases.
 
@@ -1173,7 +1173,7 @@ Unavailable(MessageDisposition.Expired)
 
 ## § 47. Select send result typing
 
-**Governance tags:** `concurrency.channels-v2`, `concurrency.select-v1`
+**Governance tags:** `concurrency.channels-v2`, `concurrency.select-v2`
 
 § 47(1) A selected channel operation yields its ordinary declared result type.
 
@@ -1201,15 +1201,17 @@ select {
 
 § 47(2) A selected `SendRevocable` branch yields `ChannelRevocableSendResult[T]`, not a raw `MessageTicket[T]`.
 
-§ 47(3) A selected `TrySend` branch yields `ChannelTrySendResult[T]` if `TrySend` is accepted as a selectable immediate operand by the generic select rules.
+§ 47(3) `TrySend` and `TryReceive` are ordinary nonblocking calls and are never primitive selectable operations in Sec 0.1. Their ordinary-call result types remain `ChannelTrySendResult[T]` and `ChannelTryReceiveResult[T]` respectively.
 
-§ 47(4) Ownership merge after `select` must account for the exact selected outcome.
+§ 47(4) `MessageTicket[T].Revoke`, `Share`, `Discard`, `Statistics`, and endpoint `Close` are ordinary non-waiting operations and are not primitive selectable operations.
+
+§ 47(5) Ownership merge after `select` must account for the exact selected outcome.
 
 ---
 
 ## § 48. Waiting timeout
 
-**Governance tags:** `concurrency.channels-v2`, `concurrency.select-v1`
+**Governance tags:** `concurrency.channels-v2`, `concurrency.select-v2`
 
 § 48(1) Sec 0.1 defines no channel-specific `SendTimed` or `ReceiveTimed` waiting API.
 
@@ -1723,7 +1725,7 @@ implicit process bridging
 
 ## § 68. Governance
 
-**Governance tags:** `concurrency.channels-v2`, `frontend.channels-v2`, `tooling.channels-v2`, `semantic-ir.channels-v2`, `lowering.channels-v2`, `concurrency.select-v1`, `concurrency.cancellation-v2`, `concurrency.memory-model-v2`, `allocation.general-v2`, `analysis.transferability`, `sema.deadlock-analysis`, `compiler.platform-model`
+**Governance tags:** `concurrency.channels-v2`, `frontend.channels-v2`, `tooling.channels-v2`, `semantic-ir.channels-v2`, `lowering.channels-v2`, `concurrency.select-v2`, `concurrency.cancellation-v2`, `concurrency.memory-model-v2`, `allocation.general-v2`, `analysis.transferability`, `sema.deadlock-analysis`, `compiler.platform-model`
 
 § 68(1) `governance/concurrency_channels.yaml` is the sole canonical implementation-status owner for the channel integration introduced by this revision.
 

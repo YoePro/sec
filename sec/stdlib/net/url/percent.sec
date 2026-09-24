@@ -47,7 +47,10 @@ enum Component {
 * Standards:
 *   - RFC 3986 sections 2.1-2.3 and 3.
 */
-fn PercentEncode(value: string, component: Component) string
+fn PercentEncode(value: string, component: Component) string {
+    //TODO: Implement url.PercentEncode(string, Component)
+    return ""
+}
 
 /**
 * Percent-encodes arbitrary bytes for one RFC 3986 component context.
@@ -62,7 +65,10 @@ fn PercentEncode(value: string, component: Component) string
 * Ownership:
 *   `value` is borrowed and remains owned by the caller.
 */
-fn PercentEncode(value: ref byte[], component: Component) string
+fn PercentEncode(value: ref byte[], component: Component) string {
+    //TODO: Implement url.PercentEncode(byte[], Component)
+    return ""
+}
 
 /**
 * Percent-decodes encoded text and validates the result as UTF-8.
@@ -195,8 +201,10 @@ fn ValidatePercentEncoding(value: string) Result[void, PercentError] {
 * Standards:
 *   - RFC 3986 section 6.2.2.2.
 */
-fn NormalizePercentEncoding(value: string) Result[string, PercentError]
-
+fn NormalizePercentEncoding(value: string) Result[string, PercentError] {
+    //TODO: Implement url.NormalizePercentEncoding()
+    return Ok("")
+}
 /**
 * Converts one ASCII hexadecimal digit to its numeric value.
 *
@@ -249,4 +257,23 @@ fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
     }
 
     return Err(PercentError.InvalidEscape(index))
+}
+
+fn _IsUnreserved(value: byte) bool {
+    if value >= 'A' && value <= 'Z' {
+        return true
+    }
+
+    if value >= 'a' && value <= 'z' {
+        return true
+    }
+
+    if value >= '0' && value <= '9' {
+        return true
+    }
+
+    return value == '-' ||
+    value == '.' ||
+    value == '_' ||
+    value == '~'
 }

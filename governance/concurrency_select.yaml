@@ -1,4 +1,115 @@
 schema_version: 1
 area: concurrency-select
 purpose: Select expressions, cases, and selection semantics.
-integrations: []
+integrations:
+  - id: concurrency.select-v2
+    area: concurrency
+    feature: select-readiness-commit
+    status: partial
+    reviewed: "2026-09-24"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-23
+    summary: >-
+      Canonical Sec 0.1 select semantics with source-order priority, explicit
+      preparation/readiness/commit phases, conditional ownership, cancellation
+      races, exact selectable operation categories, unified selectable join for
+      Task/Thread/Process/Command, and explicit exclusion of nonblocking Try*
+      operations and CancelRequested boolean properties.
+    rules:
+      - rules/concurrency/select.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/await.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/processes.md
+      - rules/concurrency/ipc.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/structured_concurrency.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/target_profiles.md
+      - rules/tooling/lsp.md
+      - language-rulebook-status.md
+    normative:
+      - "select chooses at most one compiler-recognized concurrent operation per execution."
+      - "When multiple branches are ready at one selection point, the first ready source branch wins."
+      - "Selectable operations have explicit prepare, readiness, and commit semantics; only the selected branch commits."
+      - "Readiness inspection is non-destructive and may not perform source-visible operation effects."
+      - "Prepared move-only values remain conditionally owned until selected commit, another branch commits, or cancellation cleanup."
+      - "Selected branch bindings have exactly the ordinary operation return type."
+      - "Sender[T].Send, Sender[T].SendRevocable, and Receiver[T].Receive are selectable."
+      - "Sender[T].TrySend and Receiver[T].TryReceive are not selectable in Sec 0.1."
+      - "MessageTicket[T].Revoke, Share, Discard, Statistics, and endpoint Close are not selectable."
+      - "await Task[T] is selectable and consumes the Task[T] handle only when its branch commits."
+      - "join Task[T], join Thread[T], join Process[T], and join Command are selectable."
+      - "A selected join consumes the one-shot join capability and preserves the handle value according to the owning execution-kind rulebook."
+      - "A non-selected join consumes no join capability and performs no lifecycle resolution."
+      - "ProcessObserver.Wait() is selectable; task/thread observer select remains unavailable until an exact public wait operation is defined."
+      - "PipeReader.Read and PipeWriter.Write are selectable; ReadExact and WriteAll are not primitive selectable operations."
+      - "IPCSender[T].Send, IPCReceiver[T].Receive, IPCMutex.Lock, and IPCSemaphore.Acquire are selectable."
+      - "IPCMutex.TryLock and IPCSemaphore.TryAcquire are not selectable."
+      - "Task.Current().CancelRequested and Thread.Current().CancelRequested are bool observations and are not selectable."
+      - "A waiting select is a current-execution cancellation point; cancellation winning before branch commit commits no branch."
+      - "after uses canonical duration and monotonic time; default is unique and final."
+      - "select itself adds no generic synchronization edge; the selected operation contributes its ordinary synchronization."
+      - "Sec 0.1 defines no user-implementable Selectable interface."
+    implemented:
+      - "parser/frontend recognize select syntax, operation branches, after, and default"
+      - "frontend has initial channel receive/send and await branch recognition"
+      - "process join and ProcessObserver.Wait select semantics are already defined by processes.md"
+      - "IPC rulebook already defines primitive selectable pipe, typed IPC, IPCMutex.Lock, and IPCSemaphore.Acquire operations"
+      - "legacy select source-order priority and non-selected no-effect model are documented"
+      - "select revision 2.0 and its channel, await, task, thread, cancellation, Semantic IR, target-profile, and LSP cross-rulebook corrections are synchronized"
+    remaining:
+      - "remove TrySend/TryReceive from selectable operation recognition"
+      - "reject MessageTicket.Revoke and other ordinary non-waiting channel methods as selectable"
+      - "remove CancelRequested bool property from selectable cancellation examples/recognition"
+      - "implement task join selection with one-shot join-capability commit and preserved Task[T] handle"
+      - "implement thread join selection with one-shot join-capability commit and preserved Thread[T] handle"
+      - "ensure process/Command join remains aligned with process lifecycle semantics"
+      - "keep ProcessObserver.Wait selectable and prevent hidden TaskObserver/ThreadObserver wait synthesis"
+      - "implement exact one-time branch preparation and conditional ownership representation"
+      - "implement source-order ready selection independently of native notification order"
+      - "implement atomic cancellation-versus-branch-commit race"
+      - "implement non-selected withdrawal/rollback without operation side effects"
+      - "complete Semantic IR facts for source order, preparation, readiness, conditional ownership, commit, rollback, timeout, default, and cancellation"
+      - "complete lowering/runtime wait-set integration across supported mixed operation kinds"
+      - "validate no hidden unbounded allocation in target select registration"
+      - "update LSP hover/completion/navigation to exact selectable set"
+    required_tests:
+      - "source-order selects the first ready branch"
+      - "a continuously ready earlier branch may starve a later branch"
+      - "exactly one branch commits"
+      - "non-selected operations have no source-visible effect"
+      - "branch preparation evaluates operands exactly once"
+      - "TrySend is rejected as selectable"
+      - "TryReceive is rejected as selectable"
+      - "CancelRequested is rejected as selectable"
+      - "selected channel Send yields ChannelSendResult[T]"
+      - "selected revocable send creates a ticket only on Accepted commit"
+      - "selected await consumes Task[T] and yields TaskOutcome[T]"
+      - "non-selected await preserves Task[T]"
+      - "task join is selectable and preserves handle while consuming join capability"
+      - "thread join is selectable and preserves handle while consuming join capability"
+      - "process and Command join remain selectable"
+      - "ProcessObserver.Wait is selectable"
+      - "task/thread observer selection is rejected without an exact wait operation"
+      - "Pipe Read/Write selectable; ReadExact/WriteAll rejected as primitive selectable"
+      - "IPCMutex.Lock/IPCSemaphore.Acquire selectable; Try variants rejected"
+      - "zero-duration after is immediately ready but obeys source order"
+      - "default is unique and last"
+      - "current-execution cancellation winning pre-commit commits no branch"
+      - "conditional move ownership returns on a non-selected normal continuation"
+      - "conflicting duplicate exclusive candidates are rejected"
+      - "live guard across waiting select is rejected"
+      - "native notification order cannot override source-order priority"
+      - "LSP completion excludes non-selectable Try*/CancelRequested"
+    governance_reconciliation:
+      - "concurrency_select.yaml owns select syntax, branch preparation/readiness/commit, source-order priority, timeout/default, and select-specific cancellation/ownership semantics"
+      - "channel/task/thread/process/IPC fragments remain owners of their operations' exact result/lifecycle/synchronization contracts"
+      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
+      - "implementation status belongs in split governance fragments rather than root implementation-status.yaml"
+    corrections_applied:
+      - rules/corrections/applied/select-v2-cross-rulebook-correction-20260924.md

@@ -9,8 +9,10 @@ Implemented:
 - compiler-known thread runtime metadata/error types exist:
   `ThreadConfig`, `ThreadContext`, `ThreadID`, `ThreadPriority`,
   `ThreadStatus`, `ThreadSpawnError`, `ThreadStartError`,
-  `ThreadSchedulingError`, `ThreadTerminationError` and
-  `ThreadContextError`;
+  plus legacy `ThreadSchedulingError` and `ThreadTerminationError` identities
+  pending removal from the portable thread surface;
+- compiler-known `ThreadContextError` exists for the separately owned
+  foreign-thread attachment API in `thread_local.md`;
 - compiler-known `ThreadLocal[T]` key type exists;
 - unresolved task and thread handles are tracked conservatively at local scope
   exit;
@@ -258,14 +260,16 @@ If it cannot, `spawn thread` is unsupported.
 
 ## Static embedded storage
 
-A profile may provide static storage types such as:
+A profile may provide explicit static storage types such as:
 
 ```sec
-ThreadStorage[StackSize]
+ThreadStorage(capacity)
 TaskStorage[StateSize]
 ```
 
-Explicit backing storage must not be replaced by hidden allocation.
+`ThreadStorage` is non-generic and `@noCopy`; its constructor capacity is
+compile-time-required. Explicit backing storage must not be replaced by hidden
+allocation.
 
 The compiler should determine:
 
@@ -590,20 +594,6 @@ enum ThreadStartError error {
     InvalidState
     ResourceUnavailable
     PermissionDenied
-    NativeFailure
-}
-
-enum ThreadSchedulingError error {
-    Unsupported
-    InvalidValue
-    PermissionDenied
-    NativeFailure
-}
-
-enum ThreadTerminationError error {
-    Unsupported
-    PermissionDenied
-    InvalidState
     NativeFailure
 }
 

@@ -1595,6 +1595,14 @@ Prefer:
 Invalid or unavailable candidates should not appear as ordinary top-ranked
 completion items.
 
+Within a `select` operation position, completion offers only canonical
+selectable operations valid for the resolved type and context. In Sec 0.1 it
+must not offer `TrySend`, `TryReceive`, `TryLock`, `TryAcquire`, or
+`CancelRequested` as primitive select candidates. Hover on a branch binding
+shows the selected operation's exact ordinary result type, and navigation
+resolves to the owning ordinary operation or type declaration rather than a
+duplicate select-only declaration.
+
 ---
 
 ## Unavailable completion explanation
@@ -3848,6 +3856,23 @@ does not expose the removed `Priority` capability. `Statistics()` is offered
 only when the resolved channel capability facts permit it, or is annotated with
 that capability requirement. Navigation treats compiler-known/source-visible
 channel identities as the same semantic symbols consumed by Sema.
+
+## Thread v2 integration
+
+Hover, completion, and navigation consume the exact CamelCase portable thread
+surface from `rules/concurrency/threads.md`. Tooling exposes
+`ThreadSetting[T]`, `ThreadPriority`, `ThreadStartMode`, `ThreadStatus`,
+`ThreadTerminationKind`, `ThreadTermination`, `ThreadSpawnError`,
+`ThreadStartError`, `ThreadConfig`, non-generic `ThreadStorage`, and `CpuSet`
+with their exact declarations and ownership constraints.
+
+Completion does not offer lowercase legacy thread members, portable
+`SetPriority`/`SetAffinity`, `ThreadSchedulingError`,
+`ThreadTerminationError`, or `ThreadObserver.Wait`/observer select. Navigation
+from `ThreadPlatform` resolves to the selected target's concrete declaration.
+Hover distinguishes configuration preference from requirement, reports
+explicit-storage borrow lifetime, and shows terminal `Value`, `Panic`, or
+`Termination` availability only for the matching joined status.
 
 ## Debug-information source-coordinate integration
 

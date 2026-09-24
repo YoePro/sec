@@ -36,7 +36,7 @@ Examples:
 ```sec
 discard value
 discard Calculate()
-discard worker.value
+discard worker.Value
 ```
 
 `discard` is a statement.
@@ -674,7 +674,7 @@ After a lifecycle operation has resolved the execution obligation, the handle ru
 If a stored result is explicitly discarded:
 
 ```sec
-discard worker.value
+discard worker.Value
 ```
 
 that place is consumed.

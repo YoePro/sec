@@ -102,11 +102,13 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			members = append(members, CompilerKnownMember{ID: compilerKnownIsEmptyID(typ), Name: "IsEmpty", Kind: CompilerKnownProperty, Result: boolType})
 		}
 	}
-	if compilerKnownPrintableType(typ) {
+	if compilerKnownToStringReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: compilerKnownToStringID(typ), Name: "ToString", Kind: CompilerKnownMethod, Result: stringType})
 	}
 	sequence := dereferenceType(typ)
 	if sequence.Kind == ResultType && len(sequence.TypeArgs) == 2 {
+		okRef := compilerKnownSharedReference(sequence.TypeArgs[0])
+		errRef := compilerKnownSharedReference(sequence.TypeArgs[1])
 		members = append(members,
 			CompilerKnownMember{
 				ID:            "CKM-RESULT-OK",
@@ -123,6 +125,22 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 				Result:        compilerKnownOption(sequence.TypeArgs[1]),
 				Signature:     "fn Err() Option[E]",
 				Documentation: "Consumes an owned Result and returns its error payload as an Option.",
+			},
+			CompilerKnownMember{
+				ID:            "CKM-RESULT-OK-REF",
+				Name:          "OkRef",
+				Kind:          CompilerKnownProperty,
+				Result:        compilerKnownOption(okRef),
+				Signature:     "property OkRef: Option[ref T]",
+				Documentation: "Borrows the success payload without consuming the Result.",
+			},
+			CompilerKnownMember{
+				ID:            "CKM-RESULT-ERR-REF",
+				Name:          "ErrRef",
+				Kind:          CompilerKnownProperty,
+				Result:        compilerKnownOption(errRef),
+				Signature:     "property ErrRef: Option[ref E]",
+				Documentation: "Borrows the error payload without consuming the Result.",
 			},
 		)
 	}
@@ -381,14 +399,34 @@ func compilerKnownSequenceType(typ Type) bool {
 	return compilerKnownCollectionName(sequence.Name)
 }
 
-// compilerKnownPrintableType recognizes only type families whose canonical
-// fallback text semantics are currently specified. General byte/element
-// arrays deliberately do not inherit sequence-to-string behavior.
+// compilerKnownToStringReceiver exposes the universal fallback on every
+// concrete value receiver. Generic and interface declarations still need a
+// contract that guarantees ToString; the fallback is selected only after a
+// concrete runtime value type is known.
 //
 // Rules:
-//   - rules/compiler/compiler_known_members.md — "Required built-in ToString() surface"
-//   - rules/compiler/compiler_known_members.md — "Rune and char sequence ToString()"
-func compilerKnownPrintableType(typ Type) bool {
+//   - rules/compiler/compiler_known_members.md — "ToString()"
+//   - rules/compiler/compiler_known_members.md — "User-defined ToString()"
+//   - rules/compiler/compiler_known_members.md — "Generic lookup"
+func compilerKnownToStringReceiver(typ Type) bool {
+	value := dereferenceType(typ)
+	switch value.Kind {
+	case InvalidType, VoidType, NeverType, GenericType, InterfaceType, VariadicPackType:
+		return false
+	default:
+		return true
+	}
+}
+
+// compilerKnownInterpolationFallbackReceiver is narrower than direct
+// ToString lookup. Interpolation remains an explicitly governed formatting
+// context and does not opt every universal type-oriented fallback into
+// data-revealing formatting.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Interpolation and formatting"
+//   - rules/compiler/compiler_known_members.md — "Generic lookup"
+func compilerKnownInterpolationFallbackReceiver(typ Type) bool {
 	value := dereferenceType(typ)
 	if value.Kind == BoolType || value.Kind == StringType || value.Kind == CharType || value.Kind == RuneType || isNumericType(value) {
 		return true
@@ -489,10 +527,15 @@ func compilerKnownIsEmptyID(typ Type) string {
 func compilerKnownToStringID(typ Type) string {
 	sequence := dereferenceType(typ)
 	if (sequence.Kind == ArrayType || sequence.Kind == SliceType) && sequence.Element != nil {
-		if sequence.Element.Kind == CharType {
+		switch {
+		case sequence.Element.Name == "byte":
+			return "CKM-TOSTRING-BYTE-SEQUENCE"
+		case sequence.Element.Kind == CharType:
 			return "CKM-TOSTRING-CHAR-SEQUENCE"
+		case sequence.Element.Kind == RuneType:
+			return "CKM-TOSTRING-RUNE-SEQUENCE"
 		}
-		return "CKM-TOSTRING-RUNE-SEQUENCE"
+		return "CKM-TOSTRING-VALUE"
 	}
 	switch sequence.Kind {
 	case StringType:
@@ -520,6 +563,16 @@ func compilerKnownOption(value Type) Type {
 	typ := builtinTypes()["Option"]
 	typ.TypeArgs = []Type{value}
 	return typ
+}
+
+// compilerKnownSharedReference constructs the immutable payload reference used
+// by Result.OkRef/ErrRef without assigning receiver provenance prematurely;
+// Sema attaches that provenance at the concrete member-access site.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §6.2 "Non-consuming borrowed projections"
+func compilerKnownSharedReference(value Type) Type {
+	return Type{Name: referenceTypeName(value, false), Kind: ReferenceType, Element: &value}
 }
 
 func compilerKnownResult(value Type, err Type) Type {

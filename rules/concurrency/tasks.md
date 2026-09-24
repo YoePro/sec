@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-04
-- **Last updated:** 2026-09-04
+- **Last updated:** 2026-09-24
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/tasks.md`
@@ -616,6 +616,14 @@ join worker
 
 § 17(12) Await and join are not interchangeable: await transfers a `TaskOutcome[T]` and consumes the owning handle; join preserves a terminal handle for inspection.
 
+§ 17(13) `join Task[T]` is selectable in Sec 0.1.
+
+§ 17(14) A task-join branch is ready only when the task is terminal and its outstanding one-shot join capability can commit immediately.
+
+§ 17(15) Selected task join consumes that join capability, establishes task-completion synchronization, preserves the `Task[T]` handle for terminal inspection, and transfers no `TaskOutcome[T]`.
+
+§ 17(16) A non-selected task-join branch consumes no join capability and changes no lifecycle state.
+
 ---
 
 ## § 18. Identity, name, status, and common handle surface
@@ -743,7 +751,7 @@ synthesized merely from a physical worker thread.
 
 § 21(5) An observer may inspect permitted metadata such as identity, name, platform information, and status.
 
-§ 21(6) An observer may participate in observation-oriented synchronization primitives such as `select` when those rules permit it.
+§ 21(6) Sec 0.1 defines no exact public `TaskObserver[T]` wait operation. A task observer is therefore not selectable, and the compiler/runtime must not synthesize a hidden observer-select operation.
 
 § 21(7) An observer must not:
 

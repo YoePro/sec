@@ -150,6 +150,7 @@ integrations:
       - allocation-context semantics from P19 where required
     implemented:
       - Sema and LSP expose exactly Len, IsEmpty, Ptr, SizeOf, Append, Clear, RemoveAt, and ToString
+      - byte, char, and rune arrays and slice views use distinct compiler-known ToString materialization identities; other concrete arrays retain the universal type-oriented fallback
       - Append validates element type and returns Result[void, CollectionError]
       - Append accepts contextually typed struct literals directly as values, including under naked try propagation
       - Clear resolves as infallible void mutation

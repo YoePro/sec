@@ -1019,7 +1019,7 @@ select {
         // ownership commits only if this selected operation returns Ok()
     }
 
-    after 1s => {
+    after 1<s> => {
         // message remains available
     }
 }
@@ -1594,7 +1594,7 @@ A non-selected mutex branch does not acquire the mutex and produces no guard.
 
 A non-selected semaphore branch does not decrement the permit count.
 
-`TryLock()` and `TryAcquire()` are already nonblocking and need no primitive select integration.
+`TryLock()` and `TryAcquire()` are nonblocking and are not primitive selectable operations. `IPCSemaphore.Release()` is likewise not selectable.
 
 ---
 

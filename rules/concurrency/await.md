@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-16
-- **Last updated:** 2026-09-16
+- **Last updated:** 2026-09-24
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/await.md`
@@ -979,7 +979,7 @@ mutex guard state remains active across await
 
 ## § 48. Timeout
 
-**Governance tags:** `concurrency.await-v2`, `concurrency.select-v1`
+**Governance tags:** `concurrency.await-v2`, `concurrency.select-v2`
 
 § 48(1) Sec 0.1 defines no await timeout parameter or `Await(context)` method surface.
 
@@ -993,17 +993,19 @@ mutex guard state remains active across await
 
 ## § 49. Select interaction
 
-**Governance tags:** `concurrency.await-v2`, `concurrency.select-v1`
+**Governance tags:** `concurrency.await-v2`, `concurrency.select-v2`
 
 § 49(1) Generic select syntax/readiness/commit remains owned by `select.md`.
 
-§ 49(2) When a select branch consumes a task result with await-equivalent semantics, its result type remains `TaskOutcome[T]`.
+§ 49(2) `await Task[T]` is selectable and a selected await branch has exact result type `TaskOutcome[T]`.
 
 § 49(3) Non-selected branches must not consume the owning task handle.
 
 § 49(4) A selected branch that commits task-outcome ownership must follow the same terminal-outcome transfer semantics as direct await.
 
-§ 49(5) Select cancellation/timeout cleanup must resolve any lifecycle ownership it has already consumed according to the owning select/task rules.
+§ 49(5) Mere branch preparation does not consume the task handle. If another branch or current-execution cancellation wins before await-branch commit, the handle remains source-owned and direct-await cancellation cleanup is not invoked.
+
+§ 49(6) Once the await branch commits, it consumes the handle and the ordinary await lifecycle and cancellation rules apply from that commit point onward.
 
 ---
 

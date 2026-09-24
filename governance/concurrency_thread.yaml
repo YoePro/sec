@@ -1,4 +1,145 @@
 schema_version: 1
 area: concurrency-thread
 purpose: Threads and thread-creation boundaries.
-integrations: []
+integrations:
+  - id: concurrency.thread-v2
+    area: concurrency
+    feature: physical-thread-lifecycle
+    status: partial
+    reviewed: "2026-09-24"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-24
+    summary: >-
+      Canonical Sec 0.1 physical thread model with exact ThreadConfig,
+      ThreadSetting, ThreadStorage, priority/affinity/start semantics, exact
+      thread status and terminal metadata, CamelCase Thread[T] API, selectable
+      join, observer boundaries, cooperative cancellation, target-resolved
+      ThreadPlatform, ownership/lifetime requirements, analysis, IR, lowering,
+      tooling and governance.
+    rules:
+      - rules/concurrency/threads.md
+      - rules/concurrency/spawn.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/await.md
+      - rules/concurrency/select.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/structured_concurrency.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/thread_local.md
+      - rules/concurrency/mutex.md
+      - rules/errors/panic.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/transferability.md
+      - rules/memory/destruction.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/tooling/lsp.md
+      - language-rulebook-status.md
+    normative:
+      - "spawn thread Callable(...) returns Result[Thread[T], ThreadSpawnError] where T is the complete declared callable return type."
+      - "Thread[T] is @noCopy and remains a physical/native execution identity distinct from Task[T] and Process[T]."
+      - "ThreadSetting[T] is exactly Default, Preferred(T), Required(T); plain T never implicitly means Preferred(T)."
+      - "ThreadStartMode is exactly Eager and Deferred."
+      - "ThreadPriority is exactly Lowest, Low, Normal, High, Highest and does not imply real-time scheduling."
+      - "CpuSet is a compiler-known immutable CPU-index set and is not an alias of set[uint]."
+      - "ThreadStorage is non-generic @noCopy storage created by ThreadStorage(capacity), with compile-time-required capacity and no dynamic allocation."
+      - "ThreadConfig is @noCopy with exact fields Name, Stack, Affinity, Priority, Start, Storage."
+      - "Named ThreadConfig values are consumed by spawn thread using the normal <- marker."
+      - "Explicit ThreadStorage is a requirement and remains exclusively borrowed until thread/native cleanup releases it."
+      - "ThreadStatus is exactly Created, Running, Completed, Cancelled, Panicked, Terminated."
+      - "ThreadTerminationKind is exactly Requested, External, Fault, Unknown; ThreadTermination contains exactly Kind."
+      - "Thread[T] public portable surface is ID, Name, Status, Value, Panic, Termination, Platform, Observe, Start, RequestCancel."
+      - "All portable Thread[T] public member names use CamelCase."
+      - "Value is available only after successful join and Status == Completed."
+      - "Panic is available only after successful join and Status == Panicked."
+      - "Termination is available only after successful join and Status == Terminated."
+      - "join Thread[T] consumes the one-shot join capability but preserves the Thread[T] handle and is selectable in Sec 0.1."
+      - "If current-execution cancellation wins before join commit, join consumes nothing and the surrounding cleanup still owns the unresolved Thread[T] lifecycle."
+      - "ThreadObserver[T] is copyable, non-owning, metadata-only, and has no Wait()/primitive select operation in Sec 0.1."
+      - "RequestCancel is cooperative, idempotent, non-consuming, and does not resolve lifecycle ownership."
+      - "Thread.Current() returns ThreadContext for the physical/native execution identity; CancelRequested is a bool observation and not selectable."
+      - "ThreadPlatform is target-resolved; every thread-capable target must provide a complete concrete declaration with native ID metadata."
+      - "Portable safe Sec defines no general hard-kill Thread[T] method."
+      - "ThreadSchedulingError and ThreadContextError are not retained as portable Sec 0.1 APIs without a canonical public operation."
+    implemented:
+      - "compiler-known Thread[T] identity exists and is classified move-only"
+      - "compiler-known legacy ThreadObserver[T], ThreadConfig, ThreadContext, ThreadID, ThreadPriority, ThreadStatus and several thread error identities exist"
+      - "unresolved Thread[T] locals are diagnosed at scope exit"
+      - "discard thread is rejected for unresolved handles"
+      - "detach Thread[void] and detach Thread[T] discard have initial frontend recognition"
+      - "threads revision 2.0 and its spawn, scheduling, runtime-model, select, cancellation, Semantic IR, platform-model, and LSP cross-rulebook corrections are synchronized"
+    remaining:
+      - "implement exact ThreadSetting[T] union and remove implicit plain-value preference behavior"
+      - "implement exact ThreadStartMode and ThreadPriority declarations"
+      - "implement canonical CpuSet literal/type identity"
+      - "replace legacy ThreadStorage[N] concept with non-generic @noCopy ThreadStorage(capacity)"
+      - "require compile-time ThreadStorage capacity and provision target-aligned backing storage without dynamic allocation"
+      - "implement exact @noCopy ThreadConfig and contextual inline defaults"
+      - "implement named ThreadConfig consumption through ordinary <- semantics"
+      - "implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup"
+      - "implement raw spawn thread Result[Thread[T], ThreadSpawnError]"
+      - "freeze exact ThreadSpawnError and ThreadStartError source declarations"
+      - "replace lowercase thread members with canonical CamelCase source/LSP identities"
+      - "implement exact ThreadTerminationKind/ThreadTermination"
+      - "implement terminal Value/Panic/Termination availability analysis"
+      - "implement deferred Start state and fallible Start()"
+      - "implement one-shot join capability and terminal completion synchronization"
+      - "implement selectable join Thread[T] according to select-v2"
+      - "implement join cancellation race without implicit detach/termination/join cleanup policy"
+      - "implement copyable metadata-only ThreadObserver[T]"
+      - "remove/suppress hidden ThreadObserver Wait/select behavior until an exact API is designed"
+      - "implement detach runtime cleanup and detached borrow/storage escape analysis"
+      - "implement RequestCancel and Thread.Current/ThreadContext exact physical-thread semantics"
+      - "implement Thread.Yield physical scheduling hint"
+      - "provide target-resolved complete ThreadPlatform declarations for every supported thread target"
+      - "remove stale portable ThreadSchedulingError and ThreadTerminationError identities; retain ThreadContextError only for the separately owned thread-local attachment API"
+      - "remove the legacy universal worker.platform.Terminate() implementation assumption from the portable thread API"
+      - "complete thread spawn/join memory-model integration"
+      - "complete thread data-race/deadlock/starvation analysis"
+      - "complete thread Semantic IR facts without making the legacy opcode-name list normative"
+      - "complete target-specific lowering/runtime integration"
+      - "update LSP hover/completion/navigation to exact thread-v2 source surface"
+    required_tests:
+      - "spawn thread raw result is Result[Thread[T], ThreadSpawnError]"
+      - "unsupported physical-thread target is a compile-time diagnostic"
+      - "ThreadSetting[T] variants are exactly Default, Preferred(T), Required(T)"
+      - "plain thread configuration values do not implicitly become Preferred"
+      - "ThreadPriority variants are exact and portable relative only"
+      - "CpuSet is not set[uint] and validates target CPU indices"
+      - "ThreadStorage is non-generic, noCopy, compile-time-sized, and allocation-free"
+      - "ThreadConfig fields/defaults and noCopy behavior are exact"
+      - "named ThreadConfig spawn requires ordinary move consumption"
+      - "explicit storage borrow remains active until cleanup"
+      - "eager/deferred start semantics and Start errors"
+      - "ThreadSpawnError variants are exact"
+      - "ThreadStatus variants are exact"
+      - "ThreadTerminationKind/ThreadTermination are exact"
+      - "Thread[T] public surface is CamelCase and exact"
+      - "Value/Panic/Termination availability matches joined terminal status"
+      - "move-only Value extracts once"
+      - "join consumes one join capability and preserves handle"
+      - "join Thread[T] is selectable and non-selected join has no effect"
+      - "caller cancellation before join commit preserves unresolved lifecycle ownership"
+      - "ThreadObserver[T] is copyable/non-owning and exposes no Wait/select"
+      - "detach result-discard and borrowed-state rules"
+      - "RequestCancel is cooperative/non-consuming/idempotent"
+      - "Thread.Current identifies the physical execution thread"
+      - "CancelRequested is bool and not selectable"
+      - "Thread.Yield creates no synchronization edge"
+      - "ThreadPlatform resolves to a complete target declaration"
+      - "status polling does not substitute for join synchronization"
+      - "Semantic IR rejects duplicated join/result ownership"
+    governance_reconciliation:
+      - "concurrency_thread.yaml owns portable Thread[T], ThreadConfig, ThreadStorage, thread lifecycle, terminal metadata, observer and current-thread surfaces"
+      - "concurrency_select.yaml remains owner of generic select source-order/readiness/commit semantics while thread-v2 owns what thread join commit means"
+      - "concurrency_cancellation.yaml remains owner of general cooperative cancellation and cancellation-point commit semantics"
+      - "panic governance remains owner of PanicInfo"
+      - "platform governance remains owner of concrete target ThreadPlatform declarations"
+      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
+      - "implementation status belongs in this split governance fragment rather than root implementation-status.yaml"
+    corrections_applied:
+      - rules/corrections/applied/threads-v2-cross-rulebook-correction-20260924.md

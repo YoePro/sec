@@ -39,6 +39,87 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
 	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
 }
 
+// TestCompilerKnownUniversalToStringAndTextSequences verifies both layers of
+// the canonical fallback: every concrete value has ToString, while byte,
+// char, and rune sequences retain distinct materialization identities.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "ToString()"
+//   - rules/compiler/compiler_known_members.md — "Byte, char, and rune sequence ToString()"
+//   - rules/collections/collections.md — §4 "ToString"
+func TestCompilerKnownUniversalToStringAndTextSequences(t *testing.T) {
+	input := `
+module main
+
+type Packet struct { value: int }
+type Plain struct { value: int }
+type Formatted struct { value: int }
+
+impl Packet {
+	fn ToString() string {
+		return self.value.ToString()
+	}
+}
+
+impl Formatted {
+	fn ToString(format: string) string {
+		return format
+	}
+}
+
+fn Bytes(high: byte, low: byte) string {
+	let bytes: byte[] := [high, low]
+	return bytes.ToString()
+}
+
+fn Chars(chars: ref char[]) string {
+	return chars.ToString()
+}
+
+fn Runes(runes: rune[]) string {
+	return runes.ToString()
+}
+
+fn TypeFallback(values: int[]) string {
+	return values.ToString()
+}
+
+fn ObjectFallback(value: Plain) string {
+	return value.ToString()
+}
+
+fn OverloadDoesNotReplaceFallback(value: Formatted) string {
+	return value.ToString()
+}
+
+fn ExplicitOverloadRemainsCallable(value: Formatted) string {
+	return value.ToString("custom")
+}
+
+fn UserReplacement(packet: Packet) string {
+	return packet.ToString()
+}
+`
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+
+	sequenceIDs := []struct {
+		element Type
+		want    string
+	}{
+		{element: builtinTypes()["byte"], want: "CKM-TOSTRING-BYTE-SEQUENCE"},
+		{element: builtinTypes()["char"], want: "CKM-TOSTRING-CHAR-SEQUENCE"},
+		{element: builtinTypes()["rune"], want: "CKM-TOSTRING-RUNE-SEQUENCE"},
+		{element: builtinTypes()["int"], want: "CKM-TOSTRING-VALUE"},
+	}
+	for _, test := range sequenceIDs {
+		typ := NewDynamicArrayType(test.element)
+		member, ok := compilerKnownMember(typ, "ToString", false)
+		if !ok || member.Kind != CompilerKnownMethod || member.Result.Kind != StringType || member.ID != test.want {
+			t.Fatalf("%s[].ToString = %+v, %v; want %s returning string", test.element.Name, member, ok, test.want)
+		}
+	}
+}
+
 func TestCompilerKnownRawPointerVolatileAccess(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

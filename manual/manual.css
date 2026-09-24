@@ -1,7 +1,10 @@
 :root {
   --blue: #2B6CB0;
+  --blue-ligt: #2B6CB0A0;
   --grapefruit: #FF6B6B;
-  --celadon: #8CC7A1;
+  --celadon-light: #dafce798;
+  --celadon: #8cc7a1;
+  --celadon-dark: #598b6b;
   --shadowgrey: #34252F;
   --goldenapricot: #D8973C;
 
@@ -14,8 +17,12 @@
   --accent-hover: #1e4f8a;
   --code-bg: #f3f1f2;
   --code-text: var(--shadowgrey);
-  --rule-bg: #fdf6ec;
-  --rule-border: var(--goldenapricot);
+  --note-bg: #fdf6ec;
+  --note-border: var(--goldenapricot);
+  --rule-bg: var(--celadon-light);
+  --rule-border: var(--celadon-dark);
+  --info-bg: var(--blue-ligt);
+  --info-border: var(--blue);
 
   --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "SFMono-Regular", "Consolas", "Menlo", monospace;

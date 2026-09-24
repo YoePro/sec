@@ -330,9 +330,11 @@ int[].ToString()       -> "int[]"
 ref int[].ToString()   -> "ref int[]"
 ```
 
-Exact `char[]` and `rune[]` sequence conversions are intentional special cases
-defined by the compiler-known string conversion rules: their no-argument
-`ToString()` may materialize the represented text.
+Exact `byte[]`, `char[]`, and `rune[]` sequence conversions are intentional
+special cases defined by the compiler-known string conversion rules: their
+no-argument `ToString()` materializes the represented text. Byte sequences
+preserve encoded bytes, while rune sequences encode scalar values and may
+therefore emit multiple bytes per element.
 
 A data-revealing formatting overload must borrow rather than consume the
 sequence.

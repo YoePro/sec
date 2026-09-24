@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-09-15
+- Last updated: 2026-09-24
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -1896,19 +1896,33 @@ target/profile requirements through lowering.
 § 78(2) Semantic IR preserves:
 
 ```text
-thread creation
-join/completion
-ownership transfer
-thread-affinity facts
+physical thread execution kind
+callable, return type, arguments, and captures
+ThreadConfig and ThreadSetting classification
+target-resolved configuration decisions
+explicit ThreadStorage identity, capacity, and borrow
+creation transaction and ThreadID
+eager/deferred start state
+one-shot join capability
+selectable join readiness and commit
+join cancellation race
+result, panic, and termination availability and ownership
+observer metadata retention
+detach and explicit result discard
+RequestCancel and ThreadContext
 thread-local dependency
-result/outcome
-blocking effects
-target/runtime requirements
+publication and completion-synchronization edges
+blocking effects, target requirements, and source provenance
 ```
 
 § 78(3) Task migration and physical-thread affinity must remain distinguishable where relevant.
 
 § 78(4) Thread-local references/capabilities retain physical-thread dependency.
+
+§ 78(5) Verification rejects duplicated join capability, result extraction more
+than once, terminal payload access without the matching joined terminal status,
+premature explicit-storage borrow release, and observer acquisition of owning
+lifecycle or terminal-payload authority.
 
 ---
 
@@ -1966,6 +1980,22 @@ contracts exist.
 § 80(9) Volatile access must not be lowered as synchronization.
 
 § 80(10) Semantic IR and concurrency analysis share canonical memory-location identity.
+
+§ 80(11) Select remains an explicit source-ordered operation with canonical
+candidate kinds and identities, exact operand/result types, source provenance,
+target requirements, one-time prepared values, conditional ownership, resource
+identity, readiness state, selected-branch identity, atomic commit state,
+non-selected rollback/release, optional monotonic deadline, optional final
+default, and current-execution cancellation state.
+
+§ 80(12) IR verification rejects more than one committed branch, ownership
+transfer by a non-selected branch, consumption of a non-selected join
+capability or task-await handle, ticket creation or guard/permit acquisition by
+a non-selected branch, and simultaneous selected commit and pre-commit select
+cancellation.
+
+§ 80(13) The selected operation contributes its ordinary synchronization edge;
+select itself adds no generic synchronization edge.
 
 ---
 

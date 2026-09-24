@@ -1,1003 +1,1766 @@
 # Threads
 
-## Current implementation status
-
-Implemented:
-
-- compiler-known `Thread[T]` type;
-- compiler-known `ThreadObserver[T]`, `ThreadConfig`, `ThreadContext`,
-  `ThreadID`, `ThreadPriority`, `ThreadStatus`, `ThreadSpawnError`,
-  `ThreadStartError`, `ThreadSchedulingError`, `ThreadTerminationError` and
-  `ThreadContextError` types;
-- `Thread[T]` is classified as move-only;
-- unresolved `Thread[T]` locals are diagnosed at scope exit;
-- `discard thread` is rejected for unresolved `Thread[T]` handles;
-- `detach thread` consumes a `Thread[void]` handle;
-- `detach thread discard` consumes a non-void `Thread[T]` handle with explicit
-  result discard.
-
-Not implemented yet:
-
-- `spawn thread` result model as `Result[Thread[T], ThreadSpawnError]`;
-- thread configuration parsing and semantic validation;
-- `join thread`;
-- thread handle member access and methods;
-- thread lifecycle status tracking;
-- detached-thread reference escape analysis;
-- detached-thread shutdown/runtime integration;
-- cancellation request methods;
-- thread lowering/runtime integration.
-
-## Purpose
-
-A thread is an explicit physical target execution context.
-
-A Sec thread is distinct from:
-
-- a logical `Task[T]`;
-- a separate process;
-- the physical worker thread currently executing a migratable task;
-- an interrupt service routine.
-
-`spawn thread` requests a native physical thread or the target profile's declared
-native thread equivalent.
-
-The backend must never silently lower `spawn thread` to an ordinary task.
+- **Status:** Normative
+- **Created:** 2026-09-24
+- **Last updated:** 2026-09-24
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/concurrency/threads.md`
+- **Replaces:** Earlier legacy revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-09-24`
+- **Implementation governance:** `governance/concurrency_thread.yaml`
+- **Related rulebooks:** `rules/concurrency/concurrency.md`, `rules/concurrency/spawn.md`, `rules/concurrency/tasks.md`, `rules/concurrency/await.md`, `rules/concurrency/select.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/mutex.md`, `rules/errors/panic.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/compiler/semantic_ir.md`, `rules/platform/platform_model.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
 
 ---
 
-## Basic syntax
+## § 1. Purpose and authority
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 1(1) A Sec thread is an explicit physical/native target execution identity.
+
+§ 1(2) A `Thread[T]` is distinct from:
+
+- a logical `Task[T]`;
+- a process;
+- the physical executor thread currently running a migratable task;
+- an interrupt service routine.
+
+§ 1(3) `spawn thread` requests a physical thread or the selected target profile's canonical native-thread equivalent.
+
+§ 1(4) A backend must never silently lower `spawn thread` to an ordinary task.
+
+§ 1(5) This rulebook owns the physical thread source model, thread configuration, explicit thread storage, lifecycle, join, detach, terminal status/result metadata, observation, current-thread context, cancellation-facing thread members, and thread-specific compiler/runtime obligations.
+
+§ 1(6) Mutable implementation status belongs only in `governance/concurrency_thread.yaml`.
+
+---
+
+## § 2. Canonical creation syntax
+
+**Governance tags:** `concurrency.thread-v2`, `frontend.thread-v2`
+
+§ 2(1) The basic form is:
 
 ```sec
 let worker := try spawn thread Work()
 ```
 
-If `Work()` returns `T`, the successful value has type:
+§ 2(2) If `Work()` returns `T`, the raw expression before `try` has type:
+
+```sec
+Result[Thread[T], ThreadSpawnError]
+```
+
+§ 2(3) The successful payload is:
 
 ```sec
 Thread[T]
 ```
 
-The complete expression before `try` has type:
+§ 2(4) Thread creation is eager by default.
 
-```sec
-Result[Thread[T], ThreadSpawnError]
+§ 2(5) A target/profile without physical-thread support rejects `spawn thread` at compile time.
+
+§ 2(6) Unsupported physical threads are not represented by `ThreadSpawnError`.
+
+---
+
+## § 3. Complete compiler-known/source-visible type set
+
+**Governance tags:** `concurrency.thread-v2`, `tooling.thread-v2`
+
+§ 3(1) The canonical Sec 0.1 thread surface materially owned by this rulebook includes:
+
+```text
+Thread[T]
+ThreadObserver[T]
+ThreadConfig
+ThreadSetting[T]
+ThreadStartMode
+ThreadPriority
+ThreadStatus
+ThreadID
+ThreadContext
+ThreadPlatform
+ThreadStorage
+CpuSet
+ThreadTerminationKind
+ThreadTermination
+ThreadSpawnError
+ThreadStartError
 ```
 
-A caller may handle creation failure explicitly:
+§ 3(2) `PanicInfo` is owned by `panic.md` and is reused rather than redefined.
+
+§ 3(3) Legacy compiler-known names that have no canonical public Sec 0.1 operation are not retained merely because an earlier implementation introduced an internal identity.
+
+§ 3(4) In particular, this revision does not define portable public `ThreadSchedulingError` or `ThreadContextError` APIs.
+
+§ 3(5) A target-specific platform extension may define additional exact types under its own rulebook without enlarging the portable thread surface implicitly.
+
+---
+
+## § 4. Exact `ThreadSetting[T]`
+
+**Governance tags:** `concurrency.thread-v2`, `frontend.thread-v2`
+
+§ 4(1) The exact declaration is:
 
 ```sec
-match spawn thread Work() {
-    Ok(worker) => {
-        join worker
-    }
+type ThreadSetting[T] union {
+    // Use the selected target/profile default.
+    Default
 
-    Err(error) => {
-        HandleThreadSpawnError(error)
+    // Request this value as a preference.
+    // The target may ignore or approximate it only under the diagnostic
+    // rules defined by this thread configuration model.
+    Preferred(T)
+
+    // Require this value as part of the program's thread configuration.
+    // A target/configuration that cannot guarantee it must be rejected.
+    Required(T)
+}
+```
+
+§ 4(2) There is no implicit conversion from plain `T` to `Preferred(T)`.
+
+§ 4(3) Source code must write `Preferred(value)` or `Required(value)` explicitly when it is not using `Default`.
+
+§ 4(4) This avoids configuration-specific coercion magic.
+
+---
+
+## § 5. Exact `ThreadStartMode`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 5(1) The exact declaration is:
+
+```sec
+enum ThreadStartMode {
+    // Creation may begin executing the callable as soon as creation commits.
+    Eager
+
+    // Creation establishes the physical thread identity but the user callable
+    // must not execute until Start() commits successfully.
+    Deferred
+}
+```
+
+§ 5(2) `Eager` is the default start mode.
+
+§ 5(3) `Deferred` is a semantic requirement, not a preference.
+
+---
+
+## § 6. Exact `ThreadPriority`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 6(1) The exact portable declaration is:
+
+```sec
+enum ThreadPriority {
+    // Lowest portable relative scheduler priority.
+    Lowest
+
+    // Lower than the target's normal/default thread priority.
+    Low
+
+    // Portable normal/default relative priority.
+    Normal
+
+    // Higher than normal.
+    High
+
+    // Highest portable relative scheduler priority.
+    Highest
+}
+```
+
+§ 6(2) These values are relative portable intents, not native numeric priorities.
+
+§ 6(3) `Highest` does not imply real-time scheduling.
+
+§ 6(4) Real-time scheduling policy, priority bands, deadlines, or native scheduler classes require separately specified target/platform APIs.
+
+---
+
+## § 7. Exact `CpuSet`
+
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
+
+§ 7(1) `CpuSet` is a compiler-known immutable set of canonical logical CPU indices:
+
+```sec
+type CpuSet
+```
+
+§ 7(2) Its canonical literal form is:
+
+```sec
+CpuSet { 2, 3 }
+```
+
+§ 7(3) `CpuSet` is not an alias of `set[uint]`.
+
+§ 7(4) Duplicate indices in one literal are rejected or canonicalized as the same set member according to ordinary set-literal diagnostics; they do not name multiple CPU instances.
+
+§ 7(5) Every index must be valid for the selected target/variant when statically knowable.
+
+§ 7(6) A target with no CPU-affinity concept may still parse/type `CpuSet`, but applying it as `Required(...)` must fail target validation.
+
+---
+
+## § 8. Exact `ThreadStorage`
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.borrowing`
+
+§ 8(1) `ThreadStorage` is not a value-generic type.
+
+§ 8(2) Its canonical declaration shape is:
+
+```sec
+@noCopy
+type ThreadStorage struct {
+    _capacity: uint
+
+    init(capacity: uint) {
+        _capacity = capacity
+    }
+}
+
+impl ThreadStorage {
+    property Capacity: uint {
+        get {
+            return _capacity
+        }
     }
 }
 ```
 
-`spawn thread` is eager by default.
+§ 8(3) The constructor argument `capacity` is compile-time-required.
+
+§ 8(4) Construction reserves compiler/target-managed backing storage with the selected target's required alignment.
+
+§ 8(5) `ThreadStorage(capacity)` performs no dynamic allocation.
+
+§ 8(6) `_capacity` is source-private; the actual reserved stack/control backing storage is compiler/platform-managed hidden state.
+
+§ 8(7) `Capacity` is immutable after construction.
 
 ---
 
-## Thread creation failure
+## § 9. Thread storage example
 
-Native thread creation is fallible.
+**Governance tags:** `concurrency.thread-v2`
 
-The source expression:
-
-```sec
-spawn thread Work()
-```
-
-returns:
+§ 9(1) Canonical explicit-storage use is:
 
 ```sec
-Result[Thread[T], ThreadSpawnError]
-```
+static let mut workerStorage := ThreadStorage(65536)
 
-`try` follows the ordinary Sec error-propagation rules:
-
-```sec
-let worker := try spawn thread Work()
-```
-
-A target that has no physical thread implementation must reject the program at
-compile time.
-
-This is not a runtime `ThreadSpawnError`.
-
-Expected diagnostic:
-
-```text
-target profile does not support physical threads
-```
-
----
-
-## Thread configuration
-
-Thread configuration may be written inline:
-
-```sec
-let worker := try spawn thread {
-    name: "worker",
-    stack: 64KiB,
-    affinity: CpuSet { 2, 3 },
-} Work()
-```
-
-The configuration block is contextually typed as `ThreadConfig`.
-
-It is not an untyped map or anonymous struct.
-
-A named configuration is also valid:
-
-```sec
-let myThreadConfig := ThreadConfig {
-    name: "worker",
-    stack: 64KiB,
-    affinity: CpuSet { 2, 3 },
+let config := ThreadConfig {
+    Name: Default
+    Stack: Required(65536)
+    Affinity: Default
+    Priority: Default
+    Start: ThreadStartMode.Deferred
+    Storage: Some(ref mut workerStorage)
 }
 
-let worker := try spawn thread myThreadConfig Work()
+let worker := try spawn thread <-config Work()
 ```
 
-The grammar is conceptually:
+§ 9(2) Explicit backing storage is a semantic requirement.
 
-```text
-spawn
-execution-kind
-optional-configuration
-call-expression
-```
-
-The callable expression is always last.
+§ 9(3) It must not be silently replaced by heap/runtime stack allocation.
 
 ---
 
-## ThreadConfig
+## § 10. Exact `ThreadConfig`
 
-`ThreadConfig` is a compiler-known core type.
+**Governance tags:** `concurrency.thread-v2`, `frontend.thread-v2`
 
-The initial model must support at least:
+§ 10(1) The exact declaration is:
 
-```text
-name
-stack
-affinity
-priority
-start
-storage
+```sec
+@noCopy
+type ThreadConfig struct {
+    Name: ThreadSetting[string]
+    Stack: ThreadSetting[uint]
+    Affinity: ThreadSetting[CpuSet]
+    Priority: ThreadSetting[ThreadPriority]
+    Start: ThreadStartMode
+    Storage: Option[ref mut ThreadStorage]
+
+    init() {
+        Name = Default
+        Stack = Default
+        Affinity = Default
+        Priority = Default
+        Start = ThreadStartMode.Eager
+        Storage = None
+    }
+}
 ```
 
-Additional target-specific information belongs behind target-resolved platform
-configuration or a future extension mechanism.
+§ 10(2) `ThreadConfig` is `@noCopy` because it may hold an exclusive mutable storage borrow.
 
-A missing field uses the target profile's declared default.
+§ 10(3) A named `ThreadConfig` consumed by `spawn thread` uses the ordinary call-site move marker:
+
+```sec
+let worker := try spawn thread <-config Work()
+```
+
+§ 10(4) A fresh inline configuration value requires no synthetic move marker.
 
 ---
 
-## Preferred and required configuration
+## § 11. Inline thread configuration
 
-A configuration value may be either:
+**Governance tags:** `concurrency.thread-v2`, `frontend.thread-v2`
 
-```text
-Preferred
-Required
-```
-
-A plain portable configuration value is preferred by default.
-
-Example:
+§ 11(1) The thread grammar may provide contextual inline configuration sugar:
 
 ```sec
 let worker := try spawn thread {
-    affinity: CpuSet { 2, 3 },
+    Name: Preferred("worker")
+    Stack: Required(65536)
+    Affinity: Preferred(CpuSet { 2, 3 })
+    Priority: Preferred(ThreadPriority.High)
+    Start: ThreadStartMode.Eager
 } Work()
 ```
 
-If the target does not support affinity:
+§ 11(2) The block materializes one fresh `ThreadConfig`.
 
-- the compiler emits a warning;
-- the affinity request is ignored;
-- the remaining program is compiled;
-- the diagnostic has a stable ID;
-- the build profile may promote the warning to an error.
+§ 11(3) Omitted fields use the exact `ThreadConfig.init()` defaults.
 
-A semantically required option must be written explicitly:
+§ 11(4) A plain value such as:
 
 ```sec
-let worker := try spawn thread {
-    affinity: Required(CpuSet { 2, 3 }),
-} Work()
+Priority: ThreadPriority.High
 ```
 
-If a required option cannot be guaranteed, compilation fails.
+does not implicitly mean `Preferred(ThreadPriority.High)`.
 
-The compiler must never ignore a requirement whose absence changes source-level
-program semantics.
-
-The exact internal representation of `Preferred[T]` and `Required[T]` may be
-compiler-known, but their meaning is shared by task, thread and process
-configuration where applicable.
+§ 11(5) Such a type mismatch is diagnosed normally.
 
 ---
 
-## Configuration classification
+## § 12. Preference semantics
 
-The following are normally preferences:
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
 
-```text
-name
-affinity
-priority
-diagnostic metadata
-```
+§ 12(1) `Preferred(value)` requests target realization without making exact realization part of portable program correctness.
 
-The following are semantic requirements:
+§ 12(2) If a preference cannot be implemented:
 
-```text
-deferred start
-explicit backing storage
-required affinity
-required scheduling policy
-minimum stack guarantee
-```
+- the compiler emits a stable diagnostic;
+- target/profile policy may promote the diagnostic to an error;
+- the thread remains semantically valid using the target default or documented approximation.
 
-A target profile may classify additional target-specific fields.
+§ 12(3) The compiler/runtime must not claim the preference was honored when it was not.
 
-The classification must be known during semantic analysis or target validation.
+§ 12(4) A preference that would alter language-level correctness must instead be expressed as `Required`.
 
 ---
 
-## Eager and deferred start
+## § 13. Required semantics
 
-Default:
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
 
-```text
-start: Eager
-```
+§ 13(1) `Required(value)` makes realization of that value a semantic requirement.
 
-The user callable may begin as soon as creation succeeds.
+§ 13(2) If the selected CompilationPlan can prove the requirement unsupported, compilation fails.
 
-Deferred creation is explicit:
+§ 13(3) If realization depends on runtime/native resource creation and can still fail after static validation, the applicable `ThreadSpawnError` or `ThreadStartError` represents that runtime failure.
 
-```sec
-let worker := try spawn thread {
-    start: Deferred,
-} Work()
-```
-
-After successful deferred creation:
-
-```text
-worker.status == ThreadStatus.Created
-```
-
-The callable must not execute before explicit start.
-
-Start is fallible:
-
-```sec
-try worker.Start()
-```
-
-The expression before `try` returns:
-
-```sec
-Result[void, ThreadStartError]
-```
-
-After successful start:
-
-```text
-worker.status == ThreadStatus.Running
-```
-
-Calling `Start()` twice is a semantic error when statically provable and a
-`ThreadStartError.InvalidState` otherwise.
-
-Deferred start is not restricted to embedded targets.
-
-A hosted backend may use native suspended creation or an internal start gate.
-The implementation is valid only when no user callable code executes before
-`Start()`.
-
-If a target cannot preserve deferred semantics, it must reject that
-configuration.
+§ 13(4) The compiler/runtime must never downgrade `Required(value)` to a silent preference.
 
 ---
 
-## Explicit thread storage
+## § 14. Configuration target validation
 
-A target may support explicit thread backing storage:
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
 
-```sec
-static let workerStorage := ThreadStorage[64KiB]()
+§ 14(1) Stack, affinity, priority, deferred start, and explicit storage are validated against the selected immutable `CompilationPlan`.
 
-let worker := try spawn thread {
-    start: Deferred,
-    storage: ref workerStorage,
-} Work()
-```
+§ 14(2) Host-machine support is irrelevant unless the host is also the selected target.
 
-Explicit storage is a requirement.
+§ 14(3) Target/profile limits may reject configurations such as:
 
-It must not be ignored or replaced by hidden heap allocation.
+- impossible CPU sets;
+- stack below a required minimum;
+- stack above a target maximum;
+- unsupported deferred start;
+- unsupported explicit storage;
+- unsupported required affinity;
+- unsupported required priority.
 
-The compiler must validate:
-
-- storage lifetime;
-- exclusive ownership while the thread exists;
-- stack size and alignment;
-- target compatibility;
-- detached lifetime;
-- re-use only after complete cleanup.
-
-Explicit storage is especially useful on MCU and RTOS targets but is not limited
-to them.
+§ 14(4) Statically unsupported requirements are compile-time diagnostics, not runtime error variants.
 
 ---
 
-## Thread type
+## § 15. Eager start
 
-`Thread[T]` is a compiler-known move-only lifecycle and result owner.
+**Governance tags:** `concurrency.thread-v2`
 
-It owns:
+§ 15(1) With `ThreadStartMode.Eager`, the user callable may begin immediately after creation commits.
 
-- the join capability;
-- lifecycle responsibility;
-- the terminal outcome;
-- the normal result when one exists;
-- native cleanup obligations not yet released.
+§ 15(2) A successful eager `spawn thread` may return when the thread is:
 
-It is not copyable even when `T` is copyable.
+- Running;
+- Completed;
+- Cancelled;
+- Panicked;
+- Terminated.
 
-Moving a `Thread[T]` transfers all unresolved lifecycle responsibility.
+§ 15(3) Source code must not assume its first observed `Status` is `Running`.
 
-`Thread[T]`, `Task[T]` and process handles are distinct types.
+§ 15(4) `Created` is reserved for a successfully created deferred thread whose callable has not started.
 
 ---
 
-## Common handle members
+## § 16. Deferred start
 
-Thread handles harmonize member names with task and process handles where the
-meaning is shared.
+**Governance tags:** `concurrency.thread-v2`
 
-At minimum:
-
-```sec
-worker.id
-worker.name
-worker.status
-worker.value
-worker.Observe()
-worker.platform
-```
-
-The member types remain thread-specific:
+§ 16(1) With `ThreadStartMode.Deferred`, successful creation yields:
 
 ```text
-worker.id      ThreadID
-worker.status  ThreadStatus
+Status == ThreadStatus.Created
 ```
 
-The common member name does not require a common enum or machine
-representation.
+until start commits.
+
+§ 16(2) The user callable must not execute before successful `Start()`.
+
+§ 16(3) A target may realize deferred creation through native suspended creation, an RTOS primitive, or an internal start gate.
+
+§ 16(4) The physical mechanism is irrelevant if no user callable code executes before start commit.
 
 ---
 
-## Thread identity
+## § 17. `Start()`
 
-`ThreadID` is the stable immutable Sec identity of a thread execution entity.
+**Governance tags:** `concurrency.thread-v2`
+
+§ 17(1) The owning thread handle exposes:
 
 ```sec
-let id := worker.id
+fn Start() Result[void, ThreadStartError]
 ```
 
-It is distinct from:
+§ 17(2) `Start()` does not consume `Thread[T]`.
+
+§ 17(3) Successful start changes a valid deferred `Created` thread into live execution eligibility.
+
+§ 17(4) The thread may already be terminal before source code next reads `Status`.
+
+§ 17(5) Calling `Start()` on an eager thread or already-started/terminal thread is invalid.
+
+§ 17(6) When statically provable, invalid start state is a compile-time diagnostic.
+
+§ 17(7) Otherwise it returns `Err(ThreadStartError.InvalidState)`.
+
+---
+
+## § 18. Exact `ThreadStartError`
+
+**Governance tags:** `concurrency.thread-v2`, `tooling.thread-v2`
+
+§ 18(1) The exact declaration is:
+
+```sec
+enum ThreadStartError error {
+    // The thread is not in a state where deferred start can commit.
+    InvalidState
+
+    // A runtime/native resource needed to start the already-created
+    // deferred thread is temporarily or permanently unavailable.
+    ResourceUnavailable
+
+    // The runtime/native environment denied the requested start operation.
+    PermissionDenied
+
+    // A target/runtime start failure occurred and is not represented
+    // by another ThreadStartError variant.
+    NativeFailure
+}
+```
+
+§ 18(2) Comments documenting variants appear before the variants.
+
+---
+
+## § 19. Exact `ThreadSpawnError`
+
+**Governance tags:** `concurrency.thread-v2`, `tooling.thread-v2`
+
+§ 19(1) The exact declaration is:
+
+```sec
+enum ThreadSpawnError error {
+    // Memory required for the thread/control representation could not
+    // be obtained.
+    OutOfMemory
+
+    // The target/runtime thread resource limit was reached.
+    ResourceLimit
+
+    // Required runtime-provided stack/backing storage could not be
+    // established.
+    StackAllocationFailed
+
+    // A runtime-derived configuration valid at source/target validation
+    // could not be instantiated.
+    InvalidConfiguration
+
+    // The native environment denied creation under the requested settings.
+    PermissionDenied
+
+    // Required thread-local initialization failed before callable execution
+    // was committed.
+    ThreadLocalInitializationFailed
+
+    // A target/runtime creation failure occurred and is not represented
+    // by another ThreadSpawnError variant.
+    NativeFailure
+}
+```
+
+§ 19(2) Unsupported physical-thread capability is not a `ThreadSpawnError`.
+
+§ 19(3) A statically invalid required configuration is not a `ThreadSpawnError`.
+
+---
+
+## § 20. Spawn ownership commit
+
+**Governance tags:** `concurrency.thread-v2`, `frontend.transferability`
+
+§ 20(1) Thread spawn evaluates callable/arguments/configuration in ordinary Sec evaluation order.
+
+§ 20(2) Values crossing the thread boundary follow ordinary move/copy/borrow semantics plus thread transferability/lifetime rules.
+
+§ 20(3) A named move-only source value passed by value uses `<-`.
+
+§ 20(4) Successful thread creation commits transferred ownership to the new thread.
+
+§ 20(5) Failure before creation commit must preserve or clean up source ownership according to the canonical spawn/ownership transaction rules; a backend must not invent a thread-specific leak or double-destruction path.
+
+§ 20(6) A consumed `ThreadConfig` that fails before successful thread creation releases its configuration-held borrows during ordinary failure cleanup.
+
+---
+
+## § 21. Explicit storage borrow lifetime
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.borrowing`
+
+§ 21(1) `Storage: Some(ref mut storage)` grants exclusive use of that `ThreadStorage` to the created thread lifecycle.
+
+§ 21(2) On successful creation, that mutable borrow remains active until the thread/runtime no longer uses the backing storage.
+
+§ 21(3) For a joined thread, the borrow is released only after join has completed all join-owned native cleanup.
+
+§ 21(4) For a detached thread, the runtime may retain the borrow until detached terminal cleanup is complete.
+
+§ 21(5) Source code must not reuse or mutate the storage while the exclusive borrow remains active.
+
+§ 21(6) A detached thread using local/scope storage is invalid if the storage may die before detached cleanup.
+
+---
+
+## § 22. Exact `ThreadStatus`
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.cancellation-v2`
+
+§ 22(1) The exact declaration is:
+
+```sec
+enum ThreadStatus {
+    // A deferred physical thread exists but its callable has not started.
+    Created
+
+    // The thread callable is live: running, runnable, or waiting.
+    Running
+
+    // The callable returned normally.
+    Completed
+
+    // Cooperative thread cancellation committed terminally.
+    Cancelled
+
+    // The callable terminated through a contained Sec panic.
+    Panicked
+
+    // Unsafe/platform-level abnormal termination prevented normal
+    // Sec completion.
+    Terminated
+}
+```
+
+§ 22(2) Backend-private states may exist but must map to this exact public state model.
+
+§ 22(3) `Cancelled`, `Panicked`, and `Terminated` are distinct terminal categories.
+
+---
+
+## § 23. Exact termination metadata
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 23(1) The exact portable termination-kind declaration is:
+
+```sec
+enum ThreadTerminationKind {
+    // A Sec owner/platform control path requested hard termination and the
+    // terminal state can be attributed to that request.
+    Requested
+
+    // A platform actor outside the owning Sec thread capability terminated
+    // the thread.
+    External
+
+    // Execution ended because of a native fault/crash-equivalent event.
+    Fault
+
+    // Abnormal termination is known but cannot be classified more precisely.
+    Unknown
+}
+```
+
+§ 23(2) The exact portable payload is:
+
+```sec
+type ThreadTermination struct {
+    // Portable high-level termination classification.
+    Kind: ThreadTerminationKind
+}
+```
+
+§ 23(3) The portable type contains no universal signal number, exception code, or native status integer.
+
+§ 23(4) Target-specific immutable termination metadata belongs to the selected platform declaration.
+
+---
+
+## § 24. Exact `ThreadID`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 24(1) The canonical declaration is opaque:
+
+```sec
+type ThreadID
+```
+
+§ 24(2) `ThreadID` is copyable and immutable.
+
+§ 24(3) It is Sec's stable logical identity for one physical-thread execution identity.
+
+§ 24(4) It is distinct from:
 
 - `TaskID`;
 - `ProcessID`;
-- a platform thread ID;
-- a native owning handle.
+- a native OS/RTOS thread identifier;
+- a raw owning native handle.
 
-The target-resolved platform view may expose immutable native identity:
-
-```sec
-let nativeID := worker.platform.id
-```
-
-Native identity must use a target-appropriate type.
-
-It must not be silently converted to `uint64`.
-
-A raw owning or mutating platform handle requires `unsafe`.
+§ 24(5) Sec 0.1 defines no arithmetic over `ThreadID`.
 
 ---
 
-## Name
+## § 25. Exact `Thread[T]`
 
-A thread name is immutable through the portable thread handle:
+**Governance tags:** `concurrency.thread-v2`, `analysis.transferability`
+
+§ 25(1) The canonical compiler-known/source-visible type identity is:
 
 ```sec
-let name := worker.name
+@noCopy
+type Thread[T]
 ```
 
-The preferred name is supplied before execution through `ThreadConfig`.
+§ 25(2) `T` is the callable's complete declared normal return type.
 
-A target may truncate, normalize or ignore a preferred name when it reports a
-compile-time warning.
+§ 25(3) `Thread[T]` owns:
 
-A required naming guarantee must fail if the target cannot satisfy it.
+- one unresolved thread lifecycle obligation;
+- one join capability until consumed;
+- deferred-start authority while applicable;
+- cooperative cancellation-request authority;
+- terminal status;
+- normal result storage when applicable;
+- panic metadata when applicable;
+- abnormal termination metadata when applicable;
+- join-owned native resources until join/detach resolution.
 
-A platform-specific runtime rename operation, if exposed, belongs behind
-`worker.platform` and may be fallible.
+§ 25(4) Moving `Thread[T]` transfers all unresolved ownership.
+
+§ 25(5) Copying it is invalid even when `T` is copyable.
 
 ---
 
-## Thread status
+## § 26. Exact public `Thread[T]` surface
 
-`ThreadStatus` is a compiler-known or core-defined thread-specific enum.
+**Governance tags:** `concurrency.thread-v2`, `tooling.thread-v2`
 
-The initial semantic states are:
+§ 26(1) The required portable public surface is exactly:
 
 ```text
-Created
-Running
+property ID: ThreadID
+property Name: string
+property Status: ThreadStatus
+property Value: T
+property Panic: PanicInfo
+property Termination: ThreadTermination
+property Platform: ThreadPlatform
+fn Observe() ThreadObserver[T]
+fn Start() Result[void, ThreadStartError]
+fn RequestCancel() void
+```
+
+§ 26(2) All properties are read-only from ordinary source.
+
+§ 26(3) Join and detach remain language operations, not methods.
+
+§ 26(4) Public names use Sec CamelCase.
+
+§ 26(5) Legacy lowercase spellings such as `worker.id`, `worker.status`, `worker.value`, and `worker.platform` are non-canonical.
+
+---
+
+## § 27. `ID`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 27(1) `ID` is available for every successfully created `Thread[T]`.
+
+§ 27(2) Moving the handle preserves the same `ThreadID`.
+
+§ 27(3) Joining preserves the same `ThreadID`.
+
+§ 27(4) Native identity reuse does not reuse Sec `ThreadID` identity.
+
+---
+
+## § 28. `Name`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 28(1) `Name` is immutable Sec observation/diagnostic metadata.
+
+§ 28(2) A configured preferred/required name becomes the Sec logical name when creation succeeds.
+
+§ 28(3) When `Name` is `Default`, the compiler/runtime derives a stable diagnostic name from the callable/current creation context.
+
+§ 28(4) The logical Sec `Name` is not required to equal a truncated/native OS thread title.
+
+§ 28(5) Native naming metadata, when exposed, belongs to `ThreadPlatform`.
+
+---
+
+## § 29. `Status`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 29(1) `Status` is a nonblocking immutable snapshot.
+
+§ 29(2) Reading `Status` does not join the thread.
+
+§ 29(3) Reading `Status` does not establish full completion synchronization.
+
+§ 29(4) Reading a terminal status does not by itself make terminal payload properties available where successful join is also required.
+
+---
+
+## § 30. `Value`
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.transferability`
+
+§ 30(1) `Value` has exact type `T`.
+
+§ 30(2) `Value` is available only after:
+
+```text
+successful join
++
+Status == ThreadStatus.Completed
+```
+
+§ 30(3) For copyable `T`, ordinary repeated reads follow normal copy semantics.
+
+§ 30(4) For move-only `T`, extracting `Value` transfers ownership from the hidden result slot and makes that result unavailable for a second extraction.
+
+§ 30(5) Result extraction does not make the outer `Thread[T]` an ordinary partially moved aggregate.
+
+§ 30(6) `Thread[void].Value` has type `void` after normal joined completion.
+
+---
+
+## § 31. `Panic`
+
+**Governance tags:** `concurrency.thread-v2`, `errors.panic-v2`
+
+§ 31(1) `Panic` has exact type:
+
+```sec
+PanicInfo
+```
+
+§ 31(2) It is available only after:
+
+```text
+successful join
++
+Status == ThreadStatus.Panicked
+```
+
+§ 31(3) `PanicInfo` is the canonical panic-owned type; this rulebook does not define a thread-specific copy.
+
+§ 31(4) If the selected panic policy cannot contain a panic at the thread boundary, the program/runtime may terminate before source-level `Panicked` observation is possible.
+
+---
+
+## § 32. `Termination`
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 32(1) `Termination` has exact type:
+
+```sec
+ThreadTermination
+```
+
+§ 32(2) It is available only after:
+
+```text
+successful join
++
+Status == ThreadStatus.Terminated
+```
+
+§ 32(3) The portable payload reports only the portable classification.
+
+§ 32(4) Native signal/fault/status metadata must not be fabricated into a portable integer.
+
+---
+
+## § 33. Terminal availability table
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 33(1) After successful join:
+
+```text
 Completed
+    Value available
+    Panic unavailable
+    Termination unavailable
+
 Cancelled
+    Value unavailable
+    Panic unavailable
+    Termination unavailable
+
 Panicked
+    Value unavailable
+    Panic available
+    Termination unavailable
+
 Terminated
+    Value unavailable
+    Panic unavailable
+    Termination available
 ```
 
-`Completed` means the callable returned normally.
-
-This includes a callable returning:
-
-```sec
-Err(error)
-```
-
-when its declared return type is `Result[T, E]`.
-
-`Cancelled` means cooperative cancellation completed.
-
-`Panicked` means the callable terminated through Sec panic.
-
-`Terminated` means unsafe or platform-level abnormal termination prevented
-normal Sec completion.
-
-A backend may use additional internal states but must expose the same source
-semantics.
+§ 33(2) `Created` and `Running` cannot remain the observed status after a successfully committed join.
 
 ---
 
-## Normal result
+## § 34. Join semantics
 
-A thread returning `T` stores a normal result only when its status is
-`Completed`.
+**Governance tags:** `concurrency.thread-v2`, `concurrency.select-v2`
 
-```sec
-join worker
-let result := worker.value
-```
-
-`worker.value` is unavailable before successful completion synchronization.
-
-For copyable `T`, each ordinary read follows normal copy semantics:
-
-```sec
-join worker
-
-let first := worker.value
-let second := worker.value
-```
-
-The stored value remains until it is moved, discarded or the joined handle is
-destroyed.
-
-For move-only `T`, ordinary extraction moves the result:
-
-```sec
-join worker
-let file := worker.value
-```
-
-No explicit `move(...)` syntax is required.
-
-A second extraction of a moved result is invalid.
-
----
-
-## Thread[void]
-
-A callable returning `void` produces:
-
-```sec
-Thread[void]
-```
-
-After successful join:
-
-```sec
-worker.value
-```
-
-exists and has type `void`.
-
-It represents normal completion without a payload.
-
-It is not `Option[void]` and does not return `None`.
-
----
-
-## Join
+§ 34(1) Canonical syntax is:
 
 ```sec
 join worker
 ```
 
-waits for terminal thread completion.
+§ 34(2) Join waits for terminal physical-thread completion.
 
-A successful join:
+§ 34(3) A successful join:
 
 - establishes thread-completion synchronization;
-- consumes the join capability;
+- consumes the one-shot join capability;
 - releases join-owned native resources;
-- preserves immutable identity and terminal state;
-- preserves an unconsumed normal result;
-- marks the handle as joined.
+- releases explicit storage borrow when native cleanup no longer needs it;
+- preserves the `Thread[T]` handle;
+- preserves `ID`, `Name`, terminal `Status`, `Platform`;
+- preserves unconsumed terminal payloads.
 
-The same source binding remains usable for terminal inspection:
+§ 34(4) Join does not itself return `T`.
 
-```sec
-join worker
+§ 34(5) Join does not itself consume a copyable or move-only normal result.
 
-let status := worker.status
-let id := worker.id
-let result := worker.value
-```
-
-A second join is invalid.
-
-`join` does not itself consume a copyable result.
+§ 34(6) A second join is invalid.
 
 ---
 
-## Join from task and thread contexts
+## § 35. Selectable join
 
-When called from a task context:
+**Governance tags:** `concurrency.thread-v2`, `concurrency.select-v2`
 
-```sec
-join worker
+§ 35(1) `join Thread[T]` is selectable in Sec 0.1.
+
+§ 35(2) Readiness means:
+
+```text
+the physical thread is terminal
+and
+the outstanding join capability can commit without further waiting
 ```
 
-must suspend the current task when the selected backend can register thread
-completion without blocking its physical executor worker.
+§ 35(3) If selected, join performs exactly the ordinary commit in § 34.
 
-When called from a physical thread context, it parks or blocks the current
-physical thread.
+§ 35(4) If not selected:
 
-The source-level lifecycle, ownership and memory-order semantics are identical.
+- join capability remains available;
+- no native resource is released by join;
+- no result availability is unlocked by join;
+- no completion synchronization is established by that branch.
 
-A backend that cannot provide task suspension may block only when the selected
-profile explicitly permits that behavior.
+§ 35(5) Native event-notification order does not override select source-order priority.
 
 ---
 
-## Outcome after join
+## § 36. Join from task context
 
-Normal value access is valid only for `Completed`.
+**Governance tags:** `concurrency.thread-v2`, `concurrency.blocking-v1`
 
-The terminal state may be inspected:
+§ 36(1) When executed by a logical task, waiting join should suspend the task when the selected backend can register thread completion without blocking the executor worker.
 
-```sec
-join worker
+§ 36(2) A backend may physically block only where the selected profile permits that fallback.
 
-match worker.status {
-    Completed => Use(worker.value)
-    Cancelled => HandleCancellation()
-    Panicked => HandlePanic(worker.panic)
-    Terminated => HandleTermination(worker.termination)
-}
-```
-
-The exact payload types for panic and termination are defined by the panic and
-platform rules.
-
-A cancelled, panicked or terminated thread has no normal `value`.
+§ 36(3) The source lifecycle/result semantics are identical regardless of the physical waiting implementation.
 
 ---
 
-## Observer
+## § 37. Join from physical-thread context
 
-A thread may create a non-owning observer:
+**Governance tags:** `concurrency.thread-v2`, `concurrency.blocking-v1`
 
-```sec
-let observer := worker.Observe()
-```
+§ 37(1) When executed directly by a physical thread, waiting join may park/block that physical thread.
 
-The observer type is:
+§ 37(2) Join must not busy-wait unless the selected target/profile explicitly defines an allowed bounded busy-wait strategy.
 
-```sec
-ThreadObserver
-```
-
-or a compiler-equivalent thread-specific observer type.
-
-An observer may:
-
-- read immutable identity;
-- read the name;
-- read status;
-- participate in completion observation and `select`;
-- be copied when its retained-state representation permits it.
-
-An observer may not:
-
-- join;
-- detach;
-- start a deferred thread;
-- take `value`;
-- own native lifecycle cleanup;
-- force termination.
-
-The observer must not keep join-only native resources alive after the owning
-handle resolves them.
+§ 37(3) ISR context may not perform thread join in Sec 0.1.
 
 ---
 
-## Detach
+## § 38. Join cancellation
 
-A `Thread[void]` may be detached:
+**Governance tags:** `concurrency.thread-v2`, `concurrency.cancellation-v2`
+
+§ 38(1) A cancellation-aware waiting join is a current-execution cancellation point.
+
+§ 38(2) Join commit and current-execution cancellation compete under the universal cancellation-point commit rule.
+
+§ 38(3) If join commits first, the join capability is consumed and terminal handle state/payload availability are real.
+
+§ 38(4) If caller cancellation commits first:
+
+- join does not commit;
+- the join capability remains owned;
+- no terminal payload is newly made available by join;
+- no join-owned resource is released by that failed wait.
+
+§ 38(5) The surrounding cancellation cleanup must still resolve the owning `Thread[T]` lifecycle explicitly according to structured lifecycle rules.
+
+§ 38(6) This rule does not invent implicit detach, implicit hard termination, or implicit join-after-cancellation.
+
+---
+
+## § 39. Unresolved lifecycle obligation
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.transferability`
+
+§ 39(1) An unresolved `Thread[T]` must not be silently destroyed at ordinary scope exit.
+
+§ 39(2) Before its owning path ends, it must be:
+
+- joined;
+- detached where valid;
+- moved to another valid owner;
+- otherwise consumed by an explicitly standardized lifecycle operation.
+
+§ 39(3) Cancellation and error-propagation edges participate in this lifecycle analysis.
+
+§ 39(4) A function whose cancellation/error path can abandon an unresolved thread handle must be rejected unless cleanup resolves it.
+
+---
+
+## § 40. Observer declaration
+
+**Governance tags:** `concurrency.thread-v2`, `tooling.thread-v2`
+
+§ 40(1) The canonical observer type is:
+
+```sec
+type ThreadObserver[T]
+```
+
+§ 40(2) `ThreadObserver[T]` is copyable.
+
+§ 40(3) It is non-owning and never duplicates the `Thread[T]` lifecycle owner.
+
+§ 40(4) Its exact public surface is:
+
+```text
+property ID: ThreadID
+property Name: string
+property Status: ThreadStatus
+property Platform: ThreadPlatform
+```
+
+§ 40(5) All observer properties are read-only.
+
+§ 40(6) `ThreadObserver[T]` exposes no `Value`, `Panic`, `Termination`, `Start`, `RequestCancel`, join capability, detach capability, or hard-termination authority.
+
+---
+
+## § 41. Creating an observer
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 41(1) An owning thread creates an observer through:
+
+```sec
+fn Observe() ThreadObserver[T]
+```
+
+§ 41(2) Observer creation is infallible.
+
+§ 41(3) It does not consume or borrow away lifecycle ownership.
+
+§ 41(4) Destroying an observer does not affect the physical thread.
+
+---
+
+## § 42. Observer lifetime
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 42(1) An observer may outlive movement, join, or detach of the owning `Thread[T]`.
+
+§ 42(2) Minimal retained observation state may include:
+
+- `ThreadID`;
+- logical name;
+- current/terminal `ThreadStatus`;
+- immutable target-resolved platform metadata.
+
+§ 42(3) An observer must not keep join-only native resources, result payload storage, panic payload storage, termination payload storage, or unresolved explicit-storage ownership alive solely for observation.
+
+§ 42(4) Observer retention must not require garbage collection or an owning reference cycle.
+
+---
+
+## § 43. Observer and select
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.select-v2`
+
+§ 43(1) Sec 0.1 does not define an exact public blocking `Wait()` operation on `ThreadObserver[T]`.
+
+§ 43(2) Therefore `ThreadObserver[T]` is not itself a primitive selectable completion wait in Sec 0.1.
+
+§ 43(3) The compiler/runtime must not synthesize a hidden observer-select operation.
+
+§ 43(4) A future exact observer wait may be added only through a synchronized rulebook/API revision.
+
+---
+
+## § 44. Detach
+
+**Governance tags:** `concurrency.thread-v2`, `frontend.discard-v2`
+
+§ 44(1) A `Thread[void]` may be detached:
 
 ```sec
 detach worker
 ```
 
-A non-void result requires explicit discard:
+§ 44(2) A non-void thread requires explicit result discard:
 
 ```sec
 detach worker discard
 ```
 
-Detach:
+§ 44(3) Detach consumes the owning source handle.
 
-- consumes the local thread handle;
-- relinquishes join and result ownership;
-- allows execution to continue;
-- transfers cleanup responsibility to the target runtime or program lifecycle
-  manager;
-- does not establish a completion synchronization edge.
+§ 44(4) Detach transfers lifecycle/native cleanup responsibility to the runtime/program lifecycle manager.
 
-Detached code must not retain references to scope-owned values that may die
-before the thread.
+§ 44(5) Detach does not establish completion synchronization.
+
+§ 44(6) Detached execution continues independently of the consumed source handle.
 
 ---
 
-## Cooperative cancellation
+## § 45. Detach and borrowed state
 
-Portable thread cancellation is cooperative.
+**Governance tags:** `concurrency.thread-v2`, `analysis.borrowing`
 
-```sec
-worker.RequestCancel()
-```
+§ 45(1) A detached thread must not retain a reference to scope-owned state that may die before the thread finishes using it.
 
-requests cancellation but does not force immediate termination.
+§ 45(2) Static/program-lifetime storage may still require race/synchronization proof.
 
-The running callable may observe:
+§ 45(3) Explicit `ThreadStorage` supplied to a detached thread must outlive runtime cleanup.
 
-```sec
-Thread.Current().CancelRequested
-```
-
-or reach a cancellation-aware blocking operation.
-
-The current thread may terminate as cancelled through the general `cancel`
-statement.
-
-Cancellation must run ordinary cleanup, `defer` and deterministic destruction.
+§ 45(4) If the compiler cannot prove the required lifetime, detach is rejected.
 
 ---
 
-## Unsafe hard termination
+## § 46. Cooperative cancellation
 
-Safe Sec has no general force-kill operation.
+**Governance tags:** `concurrency.thread-v2`, `concurrency.cancellation-v2`
 
-A target may expose an unsafe platform operation:
-
-```sec
-unsafe {
-    try worker.platform.Terminate()
-}
-```
-
-This may produce:
+§ 46(1) The owning handle exposes:
 
 ```sec
-Result[void, ThreadTerminationError]
+fn RequestCancel() void
 ```
 
-After successful hard termination:
+§ 46(2) `RequestCancel()`:
 
-```text
-worker.status == ThreadStatus.Terminated
-```
+- is idempotent;
+- does not consume the handle;
+- requests cancellation of that physical thread identity;
+- has no effect after terminal completion;
+- does not force immediate termination.
 
-No guarantee is made that:
+§ 46(3) It does not resolve the lifecycle obligation.
 
-- `defer` executed;
-- destructors executed;
-- mutexes were unlocked;
-- invariants remain valid;
-- thread-local values were destroyed;
-- a normal result exists.
-
-A process or watchdog is the preferred isolation boundary for code that must be
-recoverable after non-cooperative failure.
+§ 46(4) The owner must still join, detach, or transfer the handle.
 
 ---
 
-## Current physical thread
+## § 47. Current physical thread
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.cancellation-v2`
+
+§ 47(1) The canonical current-thread lookup is:
 
 ```sec
-let current := Thread.Current()
+Thread.Current()
 ```
 
-returns an immutable non-owning:
+§ 47(2) It returns:
 
 ```sec
 ThreadContext
 ```
 
-It is not `Thread[T]`.
+§ 47(3) `ThreadContext` is an immutable non-owning view of the current physical/native thread.
 
-It may represent:
+§ 47(4) It is not `Thread[T]`.
 
-- the main thread;
-- a Sec-created native thread;
-- a foreign thread attached through FFI;
-- the physical executor thread currently running a task.
+§ 47(5) It may represent:
 
-At minimum it exposes:
-
-```sec
-current.id
-current.name
-current.CancelRequested
-current.platform.id
-```
-
-It cannot be joined, detached or used to obtain a result.
-
-The canonical cancellation extension is:
-
-```sec
-impl Thread[T] {
-    fn RequestCancel() void
-}
-
-impl Thread {
-    static fn Current() ThreadContext
-}
-
-impl ThreadContext {
-    CancelRequested bool
-}
-```
-
-`RequestCancel()` is cooperative, idempotent, non-consuming, and distinct
-from unsafe `Terminate()`. `ThreadContext` retains the physical-thread
-identity, name, and platform metadata defined here; it is not interchangeable
-with logical `TaskContext`.
+- the program main thread;
+- a Sec-created physical thread;
+- an attached foreign FFI thread;
+- an executor worker currently running a logical task.
 
 ---
 
-## Yield
+## § 48. Exact `ThreadContext` surface
+
+**Governance tags:** `concurrency.thread-v2`, `tooling.thread-v2`
+
+§ 48(1) The canonical compiler-known/source-visible identity is:
 
 ```sec
+type ThreadContext
+```
+
+§ 48(2) The exact portable public surface is:
+
+```text
+property ID: ThreadID
+property Name: string
+property CancelRequested: bool
+property Platform: ThreadPlatform
+```
+
+§ 48(3) `ThreadContext` has no join, detach, result, start, or owner cancellation-request authority.
+
+§ 48(4) `CancelRequested` is a live immutable observation of cancellation request state for the current physical thread identity.
+
+§ 48(5) `CancelRequested` is not a selectable operation.
+
+---
+
+## § 49. `Thread.Current()` declaration
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 49(1) The canonical static surface is:
+
+```sec
+impl Thread {
+    static fn Current() ThreadContext
+    static fn Yield() void
+}
+```
+
+§ 49(2) `Thread.Current()` requires a target/profile with a physical-thread context.
+
+§ 49(3) It continues to refer to the physical worker even when that worker currently runs a logical task.
+
+§ 49(4) A backend must not fabricate a `ThreadContext` from `Task.Current()` identity.
+
+---
+
+## § 50. `Thread.Yield()`
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.scheduling-v1`
+
+§ 50(1) `Thread.Yield()` requests that the native scheduler give another runnable physical thread an opportunity to execute.
+
+§ 50(2) It is a scheduling hint.
+
+§ 50(3) It guarantees none of:
+
+- fairness;
+- that another thread runs;
+- a physical context switch;
+- memory synchronization.
+
+§ 50(4) `Thread.Yield()` is invalid in ISR context.
+
+§ 50(5) `Task.Yield()` remains a separate logical-task operation.
+
+---
+
+## § 51. Thread-local state
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 51(1) Thread-local storage belongs to physical `Thread` identity, not logical task identity.
+
+§ 51(2) A migratable task therefore must not assume physical thread-local identity remains stable across task suspension/resumption.
+
+§ 51(3) Thread-local initialization failure during native creation uses:
+
+```sec
+ThreadSpawnError.ThreadLocalInitializationFailed
+```
+
+where that initialization is required before creation commit.
+
+§ 51(4) Detailed thread-local declaration semantics remain owned by `thread_local.md`.
+
+---
+
+## § 52. Exact `ThreadPlatform` model
+
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
+
+§ 52(1) `ThreadPlatform` is a compiler-known target-resolved immutable thread platform view:
+
+```sec
+type ThreadPlatform
+```
+
+§ 52(2) It intentionally has no single fixed portable struct layout.
+
+§ 52(3) Every thread-capable selected platform must provide a complete concrete Sec declaration for its resolved `ThreadPlatform`.
+
+§ 52(4) Every concrete declaration must expose at least a read-only native identity member:
+
+```text
+property ID: <target-native thread identity type>
+```
+
+§ 52(5) The placeholder above is specification notation, not a Sec source type; the selected platform must replace it with one exact declared Sec type.
+
+§ 52(6) `ThreadPlatform.ID` is not `ThreadID`.
+
+§ 52(7) Raw owning or mutating native-thread handles are not part of the common portable platform view.
+
+---
+
+## § 53. Unsafe/platform hard termination boundary
+
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
+
+§ 53(1) Safe portable Sec 0.1 defines no general hard-kill method on `Thread[T]`.
+
+§ 53(2) A selected platform may define an unsafe target-specific hard-termination operation only in its fully specified platform API.
+
+§ 53(3) Such an operation must define:
+
+- its exact capability/receiver;
+- exact error type;
+- interaction with Sec lifecycle ownership;
+- resulting `ThreadStatus`;
+- whether join remains required;
+- native resource cleanup;
+- effects on `ThreadStorage`;
+- panic/destructor/defer guarantees.
+
+§ 53(4) This portable rulebook does not expose the legacy underspecified `worker.platform.Terminate()` as a universal method.
+
+§ 53(5) A successfully observed abnormal hard/platform termination is represented portably by `ThreadStatus.Terminated` plus `ThreadTermination`.
+
+---
+
+## § 54. Normal completion
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 54(1) `Completed` means the callable returned its declared `T` normally.
+
+§ 54(2) If `T` is:
+
+```sec
+Result[V, E]
+```
+
+then returning `Err(E)` is still:
+
+```text
+ThreadStatus.Completed
+```
+
+§ 54(3) The returned `Result[V, E]` remains inside `Value`.
+
+§ 54(4) Thread runtime logic must not inspect generic `T` to reclassify application-level errors.
+
+---
+
+## § 55. Cancelled completion
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.cancellation-v2`
+
+§ 55(1) `Cancelled` means cooperative cancellation committed terminally for the thread.
+
+§ 55(2) A cancellation request alone does not force `Cancelled`.
+
+§ 55(3) If the callable returns normally before cancellation terminally commits, `Completed` wins.
+
+§ 55(4) `Cancelled` has no normal `Value`, `Panic`, or `Termination` payload.
+
+---
+
+## § 56. Panicked completion
+
+**Governance tags:** `concurrency.thread-v2`, `errors.panic-v2`
+
+§ 56(1) `Panicked` means a Sec panic escaped the callable and was contained at the physical thread boundary by the selected panic policy.
+
+§ 56(2) The canonical payload is `PanicInfo`.
+
+§ 56(3) `Panicked` is not `Terminated`.
+
+§ 56(4) A target policy that terminates the whole program/process instead of containing thread panic may prevent source-level terminal observation.
+
+---
+
+## § 57. Terminated completion
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 57(1) `Terminated` means the physical thread ended abnormally outside normal return/cooperative cancellation/contained panic semantics.
+
+§ 57(2) Examples may include unsafe termination, external native termination, or a fault that the selected runtime can classify without terminating the whole program first.
+
+§ 57(3) `ThreadTerminationKind.Unknown` must be used rather than inventing a false classification.
+
+§ 57(4) Hard termination provides no portable guarantee that user `defer`, destructors, lock release, or thread-local cleanup ran.
+
+---
+
+## § 58. Memory publication on spawn
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.memory-model-v2`
+
+§ 58(1) Successful thread creation publishes all moved, copied, and valid borrowed arguments/captures to the new thread.
+
+§ 58(2) Writes sequenced before committed creation happen-before the new thread's first access to those published values as required by the concurrency memory model.
+
+§ 58(3) Failed creation establishes no child-execution publication edge.
+
+§ 58(4) Ordinary shared mutation after creation still requires valid synchronization.
+
+---
+
+## § 59. Completion synchronization
+
+**Governance tags:** `concurrency.thread-v2`, `concurrency.memory-model-v2`
+
+§ 59(1) Successful join establishes thread-completion synchronization.
+
+§ 59(2) Ordinary writes in the thread sequenced before terminal completion become visible to the successful joining continuation according to the canonical happens-before rule.
+
+§ 59(3) Merely polling `Status` does not replace join synchronization.
+
+§ 59(4) Detach creates no completion synchronization edge for the former owner.
+
+§ 59(5) `RequestCancel()` is not a completion synchronization operation.
+
+---
+
+## § 60. Thread arguments and borrows
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.transferability`, `analysis.borrowing`
+
+§ 60(1) Owned values may cross the thread boundary by move when parameter/capture semantics consume them.
+
+§ 60(2) Copyable values may cross by copy.
+
+§ 60(3) Shared/mutable references may cross only when analysis proves:
+
+- owner lifetime;
+- address stability;
+- alias legality;
+- concurrent access legality;
+- thread escape/detach lifetime;
+- target/runtime representation validity.
+
+§ 60(4) A mutable borrow passed to a thread remains exclusive until thread completion/lifecycle resolution releases it.
+
+§ 60(5) Thread creation does not extend an otherwise invalid borrow.
+
+---
+
+## § 61. Move-only thread results
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.transferability`
+
+§ 61(1) A move-only `T` is stored exactly once on normal completion.
+
+§ 61(2) Successful joined extraction through `Value` transfers ownership exactly once.
+
+§ 61(3) Detaching a non-void thread with `discard` commits explicit eventual result destruction.
+
+§ 61(4) A runtime must destroy an unconsumed terminal move-only result exactly once when the joined owner is later destroyed.
+
+---
+
+## § 62. Destruction of joined handles
+
+**Governance tags:** `concurrency.thread-v2`, `memory.destruction`
+
+§ 62(1) After successful join, destruction of `Thread[T]` may reclaim remaining metadata/runtime bookkeeping.
+
+§ 62(2) Any still-owned normal result/panic/termination payload is destroyed according to ordinary payload rules.
+
+§ 62(3) Join-owned native resources must not be released twice.
+
+§ 62(4) A moved-out `Value` must not also be destroyed by the thread handle.
+
+---
+
+## § 63. Destruction of unresolved handles
+
+**Governance tags:** `concurrency.thread-v2`, `memory.destruction`
+
+§ 63(1) Source-level destruction of an unresolved owning `Thread[T]` is not an implicit detach.
+
+§ 63(2) It is not an implicit join.
+
+§ 63(3) It is not an implicit cancellation request.
+
+§ 63(4) Static lifecycle analysis should reject paths that reach such destruction.
+
+§ 63(5) Defensive runtime/compiler checks may diagnose an invariant violation but must not silently choose lifecycle policy.
+
+---
+
+## § 64. Data-race analysis
+
+**Governance tags:** `concurrency.thread-v2`, `analysis.data-races`
+
+§ 64(1) Physical threads may execute simultaneously and share address-space storage.
+
+§ 64(2) Shared mutable data therefore participates in ordinary thread/task data-race analysis.
+
+§ 64(3) Ownership transfer that leaves one exclusive owner does not itself create a race.
+
+§ 64(4) Borrowed/shared aliases require synchronization compatible with their accesses.
+
+§ 64(5) Thread-local storage is not shared merely because the owning `ThreadContext` can be observed elsewhere.
+
+---
+
+## § 65. Deadlock/starvation analysis
+
+**Governance tags:** `concurrency.thread-v2`, `sema.deadlock-analysis`
+
+§ 65(1) Thread join contributes a wait edge from the waiting execution to the joined physical thread.
+
+§ 65(2) A join executed from a task may additionally consume/park executor capacity depending on the selected lowering.
+
+§ 65(3) Cancellation of the join wait does not automatically resolve the underlying owned thread lifecycle.
+
+§ 65(4) Deadlock/starvation analysis must therefore distinguish:
+
+- wait cancellation;
+- physical thread terminal completion;
+- lifecycle ownership resolution;
+- executor-worker blocking.
+
+§ 65(5) Holding incompatible live guards across join remains governed by blocking/mutex rules.
+
+---
+
+## § 66. Target/CompilationPlan requirements
+
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
+
+§ 66(1) The selected immutable `CompilationPlan` is target truth for physical-thread behavior.
+
+§ 66(2) Relevant facts may include:
+
+- physical thread availability;
+- native thread creation;
+- stack/storage alignment and limits;
+- maximum thread count;
+- affinity model;
+- priority model;
+- deferred-start capability;
+- thread-local initialization;
+- join/wait primitives;
+- task-to-thread wait integration;
+- cancellation wakeup support;
+- target-resolved `ThreadPlatform`;
+- detached-thread runtime management.
+
+§ 66(3) Compiler-host behavior must not substitute for selected target facts.
+
+§ 66(4) Platform support and compiler implementation support are separate diagnostics.
+
+---
+
+## § 67. ISR restrictions
+
+**Governance tags:** `concurrency.thread-v2`, `compiler.platform-model`
+
+§ 67(1) Sec 0.1 ISR code must not perform:
+
+```text
+spawn thread
+Thread[T].Start()
+join Thread[T]
+detach Thread[T]
 Thread.Yield()
 ```
 
-requests that the native scheduler give another runnable physical thread an
-opportunity to execute.
+§ 67(2) `RequestCancel()` from ISR is permitted only if the selected target/platform explicitly marks that exact path bounded and interrupt-safe.
 
-It is a scheduling hint.
+§ 67(3) Ordinary portable source must not assume ISR-safe cancellation request support.
 
-It does not guarantee:
-
-- that another thread runs;
-- fairness;
-- a context switch;
-- any memory synchronization.
-
-`Thread.Yield()` is invalid in ISR context.
-
-Task yielding is separately written:
-
-```sec
-Task.Yield()
-```
+§ 67(4) Immutable metadata reads may be permitted only where the target/core implementation satisfies canonical ISR access rules.
 
 ---
 
-## Platform view
+## § 68. Semantic analysis
 
-```sec
-worker.platform
-```
+**Governance tags:** `frontend.thread-v2`, `analysis.transferability`
 
-is a target-resolved immutable view type.
+§ 68(1) Sema must validate at least:
 
-Examples may include:
-
-```text
-LinuxThreadPlatform
-WindowsThreadPlatform
-FreeRTOSThreadPlatform
-```
-
-Portable source may use common immutable information.
-
-Target-specific source may use platform members under target build conditions.
-
-A raw native handle requires `unsafe`.
-
-Version 1.0 must provide compile-time target conditions so one source tree can
-select target-specific code without duplicating entire implementations.
-
----
-
-## Memory model
-
-Successful creation publishes all moved, copied and valid borrowed arguments to
-the new thread.
-
-All writes sequenced before successful creation happen-before the new thread's
-first access to those published values.
-
-All ordinary writes before normal terminal completion happen-before a successful
-join observing that completion.
-
-Detach does not create a completion synchronization edge.
-
-Status polling alone is not a replacement for join.
-
----
-
-## Core error types
-
-The following runtime error types must be declared in:
-
-```text
-core/errors.sec
-```
-
-```sec
-enum ThreadSpawnError {
-    OutOfMemory
-    ResourceLimit
-    StackAllocationFailed
-    InvalidConfiguration
-    PermissionDenied
-    ThreadLocalInitializationFailed
-    NativeFailure
-}
-
-enum ThreadStartError {
-    InvalidState
-    ResourceUnavailable
-    PermissionDenied
-    NativeFailure
-}
-
-enum ThreadSchedulingError {
-    Unsupported
-    InvalidValue
-    PermissionDenied
-    NativeFailure
-}
-
-enum ThreadTerminationError {
-    Unsupported
-    PermissionDenied
-    InvalidState
-    NativeFailure
-}
-```
-
-Compiler diagnostics such as unsupported target, invalid ownership and
-use-after-join are not runtime error values and must not be added to
-`core/errors.sec`.
-
----
-
-## Semantic analysis
-
-The compiler must validate:
-
-- target thread support;
-- callable and return type;
+- selected target thread support;
+- callable and complete return type `T`;
+- raw spawn result type;
 - `ThreadConfig`;
-- preferred and required options;
-- spawn error type;
-- moved, copied and borrowed arguments;
-- backing storage lifetime;
-- deferred start state;
+- explicit `ThreadSetting[T]` wrapping;
+- `CpuSet`;
+- stack/affinity/priority/start/storage requirements;
+- `ThreadStorage` compile-time capacity;
+- config ownership and mutable storage borrow;
+- thread argument/capture transfer;
+- deferred-start state;
 - one join capability;
-- value availability;
-- move-only result extraction;
-- detach result discard;
+- selectable join;
+- terminal-property availability;
+- move-only `Value` extraction;
 - observer restrictions;
-- cancellation context;
-- platform access;
-- unsafe termination;
-- thread-local initialization requirements.
+- detach/discard rules;
+- cancellation authority/context;
+- platform-view type;
+- panic/termination payload identity;
+- thread-local requirements;
+- unresolved lifecycle on every control-flow edge.
+
+§ 68(2) Sema must reject legacy implicit plain-value-to-Preferred conversion.
+
+§ 68(3) Sema must reject legacy lowercase public member names as canonical API.
+
+§ 68(4) Sema must not synthesize observer `Wait()` or observer select.
 
 ---
 
-## Semantic IR
+## § 69. Semantic IR requirements
 
-Semantic IR must represent at least:
+**Governance tags:** `semantic-ir.thread-v2`
+
+§ 69(1) Semantic IR must preserve enough explicit thread facts that lowering never reconstructs semantics from arbitrary calls/names.
+
+§ 69(2) Required facts include:
+
+- physical-thread execution kind;
+- concrete `T`;
+- callable/arguments/captures;
+- `ThreadConfig` and each `ThreadSetting` classification;
+- target-resolved configuration decisions;
+- explicit storage identity/capacity/borrow;
+- creation prepare/commit/failure;
+- `ThreadID`;
+- deferred/eager start state;
+- one-shot start state;
+- one-shot join capability;
+- selectable-join readiness/commit;
+- current-execution cancellation race for join;
+- result-slot ownership/availability;
+- panic/termination payload;
+- observer creation/retained metadata;
+- detach/discard policy;
+- `RequestCancel`;
+- current thread context;
+- memory synchronization edges;
+- source provenance;
+- target capability requirements.
+
+§ 69(3) Concrete opcode/instruction names remain owned by `semantic_ir.md`.
+
+§ 69(4) The literal opcode list from the legacy thread book is not normative.
+
+§ 69(5) IR verification must reject duplicated join capability, duplicated result ownership, use of released explicit storage, and contradictory terminal state/payload combinations.
+
+---
+
+## § 70. Lowering
+
+**Governance tags:** `lowering.thread-v2`, `compiler.platform-model`
+
+§ 70(1) Lowering consumes validated thread Semantic IR plus the selected `CompilationPlan`.
+
+§ 70(2) Lowering must preserve:
+
+- physical-thread identity rather than task substitution;
+- exact `ThreadSpawnError`/`ThreadStartError` boundaries;
+- explicit Preferred/Required semantics;
+- no hidden replacement of explicit storage;
+- deferred-start no-user-code-before-start rule;
+- exactly-one join capability;
+- selectable join semantics;
+- completion synchronization;
+- exact terminal payload availability;
+- move-only result ownership;
+- detach cleanup transfer;
+- cooperative cancellation identity;
+- target-resolved platform metadata.
+
+§ 70(3) Backend convenience must not add implicit lifecycle behavior.
+
+---
+
+## § 71. LSP hover
+
+**Governance tags:** `tooling.thread-v2`
+
+§ 71(1) Hover/navigation must expose the exact declarations/variants/payloads defined by this book.
+
+§ 71(2) Hover for `ThreadConfig` must show:
 
 ```text
-ThreadCreate
-ThreadCreateDeferred
-ThreadStart
-ThreadMove
-ThreadObserve
-ThreadCancelRequest
-ThreadJoin
-ThreadTakeValue
-ThreadCopyValue
-ThreadDiscardValue
-ThreadDetach
-ThreadDetachDiscard
-ThreadComplete
-ThreadCancel
-ThreadPanic
-ThreadTerminateUnsafe
-ThreadYieldCurrent
-ThreadCurrentContext
+Name
+Stack
+Affinity
+Priority
+Start
+Storage
 ```
 
-Creation IR must record:
+with their exact types.
 
-- callable;
-- arguments;
-- result type;
-- configuration;
-- preferred and required options;
-- copied and moved values;
-- retained borrows;
-- storage strategy;
-- target profile;
-- source location.
+§ 71(3) Hover for `ThreadSetting[T]` must show `Default`, `Preferred(T)`, and `Required(T)`.
+
+§ 71(4) Hover for `ThreadStatus` must show exactly six statuses.
+
+§ 71(5) Hover for `Thread[T]` must show canonical CamelCase properties/methods and availability rules.
+
+§ 71(6) Hover for `ThreadPlatform` must resolve to the selected target's exact concrete declaration.
+
+§ 71(7) LSP must not present stale `ThreadSchedulingError` or `ThreadContextError` as portable APIs without a real canonical operation.
 
 ---
 
-## Diagnostics
+## § 72. Completion and navigation
 
-Examples:
+**Governance tags:** `tooling.thread-v2`
+
+§ 72(1) Completion on `Thread[T]` uses canonical names:
+
+```text
+ID
+Name
+Status
+Value
+Panic
+Termination
+Platform
+Observe
+Start
+RequestCancel
+```
+
+§ 72(2) Completion should suppress/mark conditionally unavailable terminal payload properties when status/join facts prove they cannot be accessed.
+
+§ 72(3) Completion in `ThreadConfig` should offer explicit `Default`, `Preferred(...)`, and `Required(...)` values rather than inserting a plain value with implicit preference semantics.
+
+§ 72(4) Navigation for compiler-known types resolves to their canonical source/core declaration or selected platform declaration.
+
+---
+
+## § 73. Diagnostics
+
+**Governance tags:** `tooling.thread-v2`, `frontend.thread-v2`
+
+§ 73(1) Suggested diagnostics include:
 
 ```text
 target profile does not support physical threads
 ```
 
 ```text
-required thread affinity is not supported by target
+ThreadConfig.Priority requires ThreadSetting[ThreadPriority]; use Preferred(...), Required(...), or Default
 ```
 
 ```text
-thread affinity is not supported by target; preference will be ignored
+required thread affinity is not supported by selected target
 ```
 
 ```text
-cannot join deferred thread worker before it is started
+thread affinity preference is not supported; selected target default will be used
+```
+
+```text
+ThreadStorage capacity must be compile-time-known
+```
+
+```text
+thread storage workerStorage is still exclusively borrowed by worker
+```
+
+```text
+cannot start thread worker because it is not in deferred Created state
 ```
 
 ```text
@@ -1005,11 +1768,15 @@ thread worker has already been joined
 ```
 
 ```text
-thread value is unavailable before successful join
+thread Value is available only after successful join with Status == Completed
 ```
 
 ```text
-thread worker completed without a normal value because it panicked
+thread Panic is available only after successful join with Status == Panicked
+```
+
+```text
+thread Termination is available only after successful join with Status == Terminated
 ```
 
 ```text
@@ -1020,56 +1787,205 @@ detaching Thread[T] with non-void result requires explicit discard
 detached thread worker cannot retain reference to local value data
 ```
 
-Diagnostics must use stable rule-specific IDs.
-
-Task, thread and process diagnostics must have distinct IDs even when their text
-is similar.
+§ 73(2) Diagnostics should distinguish target unsupported, compiler unsupported, ownership/lifetime, configuration, and runtime typed failure.
 
 ---
 
-## Required synchronization
+## § 74. Examples
 
-This rule must be merged with and cross-checked against:
+**Governance tags:** `concurrency.thread-v2`
 
-```text
-spawn.md
-tasks.md
-await.md
-processes.md
-concurrency.md
-concurrency_memory_model.md
-scheduling.md
-blocking.md
-transferability.md
-cancellation.md
-concurrency_runtime_model.md
-thread_local.md
-structured_concurrency.md
-data_races.md
-deadlock_analysis.md
-static.md
-mutex.md
-channels.md
-select.md
-copy_move.md
-ownership.md
-borrowing.md
-lifetime_analysis.md
-destruction.md
-errorhandling.md
-semantic_ir.md
-core-library.md
-rules_implementations.txt
-core/errors.sec
+§ 74(1) Ordinary eager thread:
+
+```sec
+let worker := try spawn thread Work()
+
+join worker
+
+match worker.Status {
+    Completed => {
+        Use(<-worker.Value)
+    }
+
+    Cancelled => {
+        HandleCancellation()
+    }
+
+    Panicked => {
+        HandlePanic(worker.Panic)
+    }
+
+    Terminated => {
+        HandleTermination(worker.Termination)
+    }
+
+    Created | Running => {
+        unreachable
+    }
+}
 ```
 
-In particular, older examples where `spawn thread` directly returns `Thread[T]`
-must be changed to account for `Result[Thread[T], ThreadSpawnError]` or `try`.
+§ 74(2) Deferred configured thread:
 
-## Debug-information integration
+```sec
+let config := ThreadConfig {
+    Name: Preferred("worker")
+    Stack: Required(65536)
+    Affinity: Preferred(CpuSet { 2, 3 })
+    Priority: Preferred(ThreadPriority.High)
+    Start: ThreadStartMode.Deferred
+    Storage: None
+}
 
-Canonical Sec `ThreadID`, a platform/native thread identifier, and logical
-`TaskID` are distinct identities. A debugger may correlate a running task with
-its current worker thread without merging them. Debug observation grants no
-join, detach, cancellation, termination, or result authority. Debugger
-presentation is owned by `rules/compiler/debug_information.md`.
+let worker := try spawn thread <-config Work()
+
+try worker.Start()
+join worker
+```
+
+§ 74(3) Cooperative cancellation:
+
+```sec
+let worker := try spawn thread Work()
+
+worker.RequestCancel()
+join worker
+```
+
+§ 74(4) Requesting cancellation does not predetermine the final status.
+
+---
+
+## § 75. Restrictions
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 75(1) Portable Sec 0.1 threads must not:
+
+- silently become logical tasks;
+- copy `Thread[T]`, `ThreadConfig`, or `ThreadStorage`;
+- implicitly wrap plain configuration values as `Preferred`;
+- silently ignore `Required`;
+- silently replace explicit thread storage;
+- execute deferred callable code before successful `Start()`;
+- expose a second join capability;
+- make result payloads available before valid join/status conditions;
+- implicitly detach unresolved handles;
+- implicitly hard-terminate unresolved handles;
+- treat status polling as completion synchronization;
+- synthesize hidden observer `Wait()`/select;
+- expose native thread ID as `ThreadID`;
+- force target-specific native termination codes into portable integers;
+- expose a universal safe hard-kill operation.
+
+---
+
+## § 76. Explicitly absent Sec 0.1 APIs
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 76(1) This rulebook does not define:
+
+```text
+ThreadOutcome[T]
+await Thread[T]
+ThreadObserver[T].Wait()
+select ThreadObserver[T]
+portable hard Thread[T].Terminate()
+portable ThreadSchedulingError API
+portable ThreadContextError API
+real-time scheduling policy API
+dynamic generic ThreadStorage[N]
+implicit Preferred conversion
+automatic lifecycle resolution at destruction
+```
+
+§ 76(2) Future additions require explicit normative design.
+
+---
+
+## § 77. Conformance scenarios
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 77(1) Conformance tests must include at least:
+
+- `spawn thread Work()` raw type;
+- unsupported target compile-time rejection;
+- exact `ThreadSetting[T]`;
+- no plain-value-to-Preferred conversion;
+- exact ThreadPriority;
+- exact CpuSet literal;
+- non-generic ThreadStorage;
+- compile-time-required storage capacity;
+- no dynamic allocation for ThreadStorage construction;
+- exact ThreadConfig/defaults;
+- named config consumed with `<-`;
+- eager versus deferred start;
+- Start invalid-state handling;
+- explicit-storage borrow lifetime through join;
+- explicit-storage detached lifetime rejection where invalid;
+- exact ThreadSpawnError variants;
+- exact ThreadStartError variants;
+- exact six-state ThreadStatus;
+- exact ThreadTerminationKind/ThreadTermination;
+- canonical CamelCase Thread surface;
+- move-only Thread[T];
+- Value availability/copy/move behavior;
+- Panic availability;
+- Termination availability;
+- selectable join;
+- non-selected join no-effect;
+- caller cancellation before join commit preserves join capability;
+- unresolved cancellation path requires lifecycle cleanup;
+- observer copyability/non-ownership;
+- observer no Wait/select;
+- detach/discard requirements;
+- RequestCancel symmetry;
+- Thread.Current physical identity;
+- CancelRequested is bool observation;
+- Thread.Yield no synchronization;
+- target-resolved ThreadPlatform;
+- spawn publication and join synchronization;
+- LSP exact hover/completion/navigation;
+- Semantic IR one join capability/result ownership verification.
+
+---
+
+## § 78. Cross-rulebook synchronization
+
+**Governance tags:** `concurrency.thread-v2`
+
+§ 78(1) `select.md` treats `join Thread[T]` as normative selectable Sec 0.1 behavior.
+
+§ 78(2) `cancellation.md` uses the exact ThreadStatus declaration with comments placed before variants.
+
+§ 78(3) `cancellation.md` remains owner of general `RequestCancel`, `CancelRequested`, `cancel`, and cancellation-point commit semantics.
+
+§ 78(4) `spawn.md` uses the new `ThreadConfig` ownership syntax and exact thread configuration surface.
+
+§ 78(5) `thread_local.md` remains owner of thread-local declaration semantics.
+
+§ 78(6) `panic.md` remains owner of `PanicInfo`.
+
+§ 78(7) `platform_model.md` remains owner of how the selected platform provides the exact concrete `ThreadPlatform`.
+
+§ 78(8) `semantic_ir.md` remains owner of concrete IR vocabulary.
+
+§ 78(9) `language-rulebook-status.md` should record revision 2.0 synchronization after correction application.
+
+---
+
+## § 79. Governance
+
+**Governance tags:** `concurrency.thread-v2`, `frontend.thread-v2`, `semantic-ir.thread-v2`, `lowering.thread-v2`, `tooling.thread-v2`, `analysis.transferability`, `analysis.borrowing`, `sema.deadlock-analysis`, `compiler.platform-model`
+
+§ 79(1) `governance/concurrency_thread.yaml` is the sole canonical implementation-status owner for the portable physical-thread surface defined by this revision.
+
+§ 79(2) Related select/cancellation/spawn/panic/platform work is cross-linked to its owning fragment rather than duplicated as competing integration entries.
+
+§ 79(3) Root `implementation-status.yaml` is not a second canonical ledger.
+
+§ 79(4) Cross-rulebook synchronization required by this revision was tracked by the accompanying threads-v2 correction.
+
+§ 79(5) After synchronization is applied, the correction belongs under `rules/corrections/applied/`.

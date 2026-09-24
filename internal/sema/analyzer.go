@@ -6933,6 +6933,10 @@ func (a *Analyzer) containedReferenceOrigins(expr ast.Expression) map[string]loc
 		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
 			prefixContainedOrigins("", origin.Contained, out)
 		}
+	case *ast.MemberExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
 	case *ast.StructLiteral:
 		for _, field := range expr.Fields {
 			if field == nil || field.Value == nil {
@@ -7057,6 +7061,9 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 	case *ast.RefExpression:
 		return a.matchScopedReferenceOriginInExpression(expr.Value)
 	case *ast.MemberExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok && origin.MatchScoped {
+			return origin.Name, origin.Token, true
+		}
 		if origin, ok := a.containedOriginForAccess(expr); ok {
 			if origin.MatchScoped {
 				return origin.Name, origin.Token, true
@@ -7467,6 +7474,9 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 			return origin.Name, origin.Token, true
 		}
 	case *ast.MemberExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok && origin.Local {
+			return origin.Name, origin.Token, true
+		}
 		if origin, ok := a.containedOriginForAccess(expr); ok {
 			if origin.Local {
 				return origin.Name, origin.Token, true
@@ -11586,6 +11596,10 @@ func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder s
 		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
 			a.registerBorrowFromReturnedOrigin(holder, origin, expr.Token)
 		}
+	case *ast.MemberExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
+			a.registerBorrowFromReturnedOrigin(holder, origin, expr.Token)
+		}
 	}
 }
 
@@ -13230,7 +13244,7 @@ func (a *Analyzer) inferInterpolatedStringLiteral(expr *ast.InterpolatedStringLi
 func (a *Analyzer) resolveInterpolationFormatter(sourceIndex int, valueType Type) (ResolvedInterpolationHole, bool) {
 	hole := ResolvedInterpolationHole{SourceIndex: sourceIndex, ValueType: valueType}
 	lookupType := dereferenceType(valueType)
-	if function, ok := a.exactInterpolationToString(lookupType); ok {
+	if function, ok := a.exactUserToStringReplacement(lookupType); ok {
 		hole.Kind = InterpolationFormatUserToString
 		hole.UserFunction = &function
 		return hole, true
@@ -13242,6 +13256,9 @@ func (a *Analyzer) resolveInterpolationFormatter(sourceIndex int, valueType Type
 			return hole, true
 		}
 	}
+	if !compilerKnownInterpolationFallbackReceiver(valueType) {
+		return ResolvedInterpolationHole{}, false
+	}
 	member, ok := compilerKnownMember(valueType, "ToString", false)
 	if !ok || member.Kind != CompilerKnownMethod {
 		return ResolvedInterpolationHole{}, false
@@ -13251,12 +13268,13 @@ func (a *Analyzer) resolveInterpolationFormatter(sourceIndex int, valueType Type
 	return hole, true
 }
 
-// exactInterpolationToString selects only the replaceable canonical shared
+// exactUserToStringReplacement selects only the replaceable canonical shared
 // no-argument string-returning shape. Other overloads remain ordinary methods
-// and do not accidentally become formatting contracts.
+// and neither replace the universal fallback nor accidentally become
+// interpolation formatting contracts.
 //
 // Rules: rules/compiler/compiler_known_members.md — "User-defined ToString()".
-func (a *Analyzer) exactInterpolationToString(typ Type) (Function, bool) {
+func (a *Analyzer) exactUserToStringReplacement(typ Type) (Function, bool) {
 	if typ.Name == "" {
 		return Function{}, false
 	}
@@ -14018,6 +14036,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	if member, ok := compilerKnownMember(objectType, expr.Property.Value, false); ok && member.Kind == CompilerKnownProperty {
 		a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
+		if member.Name == "OkRef" || member.Name == "ErrRef" {
+			return a.inferBorrowedResultProjection(expr, objectType, member)
+		}
 		return member.Result, true
 	}
 
@@ -16523,10 +16544,18 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 	if !exists || member.Kind != CompilerKnownMethod {
 		return Type{}, expressionValue{}, false
 	}
-	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
 	if lookupType.Named && len(a.functions[lookupType.Name+"."+member.Name]) > 0 {
-		return Type{}, expressionValue{}, false
+		if member.Name != "ToString" {
+			return Type{}, expressionValue{}, false
+		}
+		if _, replaced := a.exactUserToStringReplacement(lookupType); replaced {
+			return Type{}, expressionValue{}, false
+		}
+		if len(expr.Arguments) > 0 {
+			return Type{}, expressionValue{}, false
+		}
 	}
+	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
 	if lookupType.Kind == RawPtrType || lookupType.Name == "Arena" {
 		return Type{}, expressionValue{}, false
 	}
@@ -16534,7 +16563,11 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 	case "Ok", "Err":
 		return a.inferConsumingResultProjection(expr, memberExpr, receiverType, lookupType, member)
 	case "ToString":
-		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".ToString", 0, 1) {
+		maxArguments := 0
+		if isNumericType(lookupType) {
+			maxArguments = 1
+		}
+		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".ToString", 0, maxArguments) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if len(expr.Arguments) == 1 {

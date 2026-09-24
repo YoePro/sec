@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-09-15
+- **Last updated:** 2026-09-24
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/cancellation.md`
@@ -644,7 +644,7 @@ call to ProcessBatch requires a current cancellable task or thread execution con
 
 § 28(2) If cancellation wins before a channel send/receive commit, message ownership remains according to the pre-commit channel state defined by `channels.md`.
 
-§ 28(3) If a `select` cancellation outcome wins before branch commit:
+§ 28(3) If current-execution cancellation wins before a `select` branch commits:
 
 - no branch may consume ownership;
 - no message may be transferred;
@@ -669,6 +669,12 @@ message transfer, ticket creation, receive removal, statistics increment, or
 terminal-state change occurs. If channel commit wins first, its exact result
 and ownership effects remain committed and later cancellation cannot roll them
 back.
+
+§ 28(9) `Task.Current().CancelRequested` and
+`Thread.Current().CancelRequested` are ordinary `bool` observations, not
+selectable operations. A waiting select already participates in
+current-execution cancellation without exposing cancellation as a branch
+result.
 
 ---
 
@@ -730,23 +736,23 @@ type TaskOutcome[T] union {
 
 ```sec
 enum ThreadStatus {
-    Created
     // Deferred thread exists but has not begun its callable.
+    Created
 
-    Running
     // The callable is executing or runnable/waiting as a live thread.
+    Running
 
-    Completed
     // The callable returned normally.
+    Completed
 
-    Cancelled
     // Cooperative thread cancellation committed terminally.
+    Cancelled
 
-    Panicked
     // The thread terminated through Sec panic under the applicable policy.
+    Panicked
 
-    Terminated
     // Unsafe/platform-level abnormal termination prevented normal Sec completion.
+    Terminated
 }
 ```
 

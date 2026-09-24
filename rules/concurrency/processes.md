@@ -3017,7 +3017,7 @@ select {
         Report(status)
     }
 
-    after 1s => {
+    after 1<s> => {
         ReportTimeout()
     }
 }

@@ -5,7 +5,8 @@
 Implemented:
 
 - compiler-known `ThreadPriority` type;
-- compiler-known `ThreadSchedulingError` type.
+- a legacy compiler-known `ThreadSchedulingError` identity pending removal or
+  internalization because Sec 0.1 defines no owning portable operation.
 
 Not implemented yet:
 
@@ -128,7 +129,7 @@ The language does not guarantee that it runs before the next source statement.
 A thread may be created with:
 
 ```sec
-start: Deferred
+Start: ThreadStartMode.Deferred
 ```
 
 The callable must not execute before:
@@ -260,21 +261,22 @@ Portable thread priority is represented by:
 ThreadPriority
 ```
 
-The exact portable levels are defined in core and must be few enough to map
-across supported targets.
+The exact portable levels are `Lowest`, `Low`, `Normal`, `High`, and `Highest`.
+They are relative intent and do not promise a native numeric priority or
+real-time scheduling.
 
 A creation-time request is written in `ThreadConfig`.
 
-A plain value is preferred:
+A preferred value is explicit:
 
 ```sec
-priority: ThreadPriority.High
+Priority: Preferred(ThreadPriority.High)
 ```
 
 A required value is explicit:
 
 ```sec
-priority: Required(ThreadPriority.High)
+Priority: Required(ThreadPriority.High)
 ```
 
 A preferred unsupported priority is ignored with a compile-time warning.
@@ -289,23 +291,10 @@ Target-specific priorities belong behind the platform view.
 
 ## Runtime priority changes
 
-A target may support:
-
-```sec
-try worker.SetPriority(ThreadPriority.High)
-```
-
-The operation returns:
-
-```sec
-Result[void, ThreadSchedulingError]
-```
-
-Runtime priority changes are requests, not compile-time guarantees.
-
-A target without runtime priority changes returns
-`ThreadSchedulingError.Unsupported` unless compilation can reject the call for a
-fixed target.
+Sec 0.1 defines no portable `Thread[T].SetPriority` operation and therefore no
+portable `ThreadSchedulingError` for such an operation. A target-specific API
+may define a runtime priority operation only in its own complete platform
+surface.
 
 ---
 
@@ -319,9 +308,9 @@ CpuSet
 
 Creation-time affinity belongs in `ThreadConfig`.
 
-A plain affinity value is preferred.
-
-`Required(...)` makes it mandatory.
+Creation-time affinity uses `Preferred(CpuSet { ... })`,
+`Required(CpuSet { ... })`, or `Default` in the `Affinity` field. Plain values
+do not implicitly become preferred settings.
 
 The compiler must validate compile-time-known CPU indexes against a fixed target
 when possible.
@@ -333,25 +322,9 @@ lowering or runtime startup where topology is not compile-time fixed.
 
 ## Runtime affinity changes
 
-A target may support:
-
-```sec
-try worker.SetAffinity(CpuSet { 2, 3 })
-```
-
-The operation returns:
-
-```sec
-Result[void, ThreadSchedulingError]
-```
-
-Changing affinity may fail because of:
-
-- unsupported target;
-- invalid CPU set;
-- permission;
-- process restrictions;
-- native scheduler failure.
+Sec 0.1 defines no portable `Thread[T].SetAffinity` operation. A target-specific
+runtime-affinity API requires a complete platform-owned declaration and does
+not extend the portable `Thread[T]` surface.
 
 ---
 
@@ -496,23 +469,9 @@ Whole-program analysis should identify statically provable:
 
 ## Core error types
 
-The following runtime error type must be declared in:
-
-```text
-core/errors.sec
-```
-
-```sec
-enum ThreadSchedulingError {
-    Unsupported
-    InvalidValue
-    PermissionDenied
-    NativeFailure
-}
-```
-
-`ThreadStartError` and spawn errors are defined by the thread and spawn rules and
-must also be declared in `core/errors.sec`.
+`ThreadStartError` and `ThreadSpawnError` are defined exactly by `threads.md`
+and must be declared in `core/errors.sec`. Sec 0.1 has no portable
+`ThreadSchedulingError` without an owning public operation.
 
 Compile-time scheduling diagnostics are not runtime errors.
 
@@ -525,8 +484,7 @@ Semantic IR must distinguish:
 ```text
 TaskYieldCurrent
 ThreadYieldCurrent
-ThreadPriorityRequest
-ThreadAffinityRequest
+ThreadConfigurationDecision
 ThreadStartDeferred
 ThreadStart
 SchedulerSuspendTask

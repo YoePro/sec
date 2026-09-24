@@ -629,8 +629,7 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		return true
 	}
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
-	if strings.HasPrefix(reason, "consumed by Result.") {
-		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was %s here and is no longer available", place.String(), reason)
+	if a.reportConsumedResultProjectionUse(place, token, movedAt, reason) {
 		return true
 	}
 	switch reason {

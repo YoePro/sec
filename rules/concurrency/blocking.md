@@ -236,7 +236,7 @@ select {
         Use(message)
     }
 
-    after 500ms => {
+    after 500<ms> => {
         HandleTimeout()
     }
 }

@@ -1,0 +1,95 @@
+module core
+
+impl byte {
+    enum ByteStringFormat {
+        Decimal,
+        Hexadecimal,
+        Octal,
+        Binary,
+    }
+
+    fn ToString(fmt: byte.ByteStringFormat) string {
+        match fmt {
+            ByteStringFormat.Decimal => {
+                return self._ToDecimal(self)
+            }
+            ByteStringFormat.Hexadecimal => {
+                return self._ToHexadecimal(self)
+            }
+            ByteStringFormat.Octal => {
+                return self._ToOctal(self)
+            }
+            ByteStringFormat.Binary => {
+                return self._ToBinary(self)
+            }
+        }
+    }
+
+    fn _ByteDigit(value: byte) byte {
+        if value < 10 {
+            return value + 48
+        }
+
+        return value + 55
+    }
+
+    fn _ToDecimal(value: byte) string {
+        if value >= 100 {
+            let bytes: byte[3] := [
+                (value / 100) + 48,
+                ((value / 10) % 10) + 48,
+                (value % 10) + 48,
+            ]
+
+            return bytes.ToString()
+        }
+
+        if value >= 10 {
+            let bytes: byte[2] := [
+                (value / 10) + 48,
+                (value % 10) + 48,
+            ]
+
+            return bytes.ToString()
+        }
+
+        let bytes: byte[1] := [
+            value + 48,
+        ]
+
+        return bytes.ToString()
+    }
+
+    fn _ToHexadecimal(value: byte) string {
+        let high := self._ByteDigit((value >> 4) & 0x0F)
+        let low  := self._ByteDigit(value & 0x0F)
+
+        let bytes: byte[2] := [high, low]
+        return bytes.ToString()
+    }
+
+    fn _ToOctal(value: byte) string {
+        let bytes: byte[3] := [
+            ((value >> 6) & 0x03) + 48,
+            ((value >> 3) & 0x07) + 48,
+            (value & 0x07) + 48,
+        ]
+
+        return bytes.ToString()
+    }
+
+    fn _ToBinary(value: byte) string {
+        let bytes: byte[8] := [
+            ((value >> 7) & 0x01) + 48,
+            ((value >> 6) & 0x01) + 48,
+            ((value >> 5) & 0x01) + 48,
+            ((value >> 4) & 0x01) + 48,
+            ((value >> 3) & 0x01) + 48,
+            ((value >> 2) & 0x01) + 48,
+            ((value >> 1) & 0x01) + 48,
+            (value & 0x01) + 48,
+        ]
+
+        return bytes.ToString()
+    }
+}

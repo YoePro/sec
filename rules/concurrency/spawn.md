@@ -144,6 +144,31 @@ Expected diagnostic:
 target profile does not support physical threads
 ```
 
+## Thread configuration
+
+Thread configuration is owned by `threads.md`. A named `ThreadConfig` is
+move-only and is consumed with the ordinary move marker:
+
+```sec
+let worker := try spawn thread <-config Work()
+```
+
+A fresh inline configuration needs no synthetic move marker and uses the exact
+CamelCase fields and explicit `ThreadSetting[T]` variants:
+
+```sec
+let worker := try spawn thread {
+    Name: Preferred("worker")
+    Stack: Required(65536)
+    Affinity: Preferred(CpuSet { 2, 3 })
+    Priority: Preferred(ThreadPriority.High)
+    Start: ThreadStartMode.Deferred
+} Work()
+```
+
+Omitted fields use `ThreadConfig.init()` defaults. Plain values do not
+implicitly become `Preferred(...)`.
+
 Invalid lowering:
 
 ```sec

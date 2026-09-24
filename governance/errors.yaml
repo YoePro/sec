@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-21"
+    revised: "2026-09-24"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -37,6 +37,8 @@ integrations:
       - internal/parser/parser.go
       - internal/parser/expression.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_result_projection.go
+      - internal/sema/compiler_known_members.go
       - internal/sema/types.go
       - internal/diagnostics/diagnostics.go
       - internal/formatter/formatter.go
@@ -44,6 +46,7 @@ integrations:
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/result_projection_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/try_handler_reachability_test.go
       - internal/sema/try_err_discard_test.go
@@ -104,13 +107,16 @@ integrations:
       - "if-some-binding-exception: Parser preserves the sole positive if option is Some(binding) payload form without introducing general if patterns, rejects is not Some(binding) with focused guidance, and retains existing non-binding None tests. Sema requires an Option subject, gives the immutable payload binding true-branch-only scope, records its exact type/variant/copy-or-move action, and merges ownership through ordinary continuing paths. Semantic IR consumes that fact, evaluates the Option subject exactly once, and lowers the maintained copy-trivial payload subset; ownership-sensitive union projection remains at the existing explicit Semantic IR package gate. Formatter coverage preserves the canonical spelling idempotently."
       - "try-success-handler-removal: Sema rejects explicit Ok(...) arms in Result and fallible-assignment try handlers and Some(...) arms in Option try with mandatory S1049 and mentor guidance to remove the arm or use match. ResolvedTryPlan is failure-only, and Semantic IR always routes implicit success directly to the merge with no source success-handler dispatch."
       - "bodyless-try-assignment-v2 frontend: Parser accepts naked try assignment, Sema requires a known fallible target and a compatible enclosing Result error channel, rejects propagation from defer/non-functions/non-Result/incompatible Result channels, and publishes a statement-level propagation or local-handler fact for downstream consumers."
+      - "result-consuming-projections frontend: Compiler-known Result.Ok() and Result.Err() return Option[T/E], consume an addressable owned Result, reject borrowed receivers, diagnose later use, and conservatively reject a projection whose forgotten alternate payload carries a non-discardable obligation."
+      - "result-borrowed-projections frontend: Compiler-known read-only Result.OkRef and Result.ErrRef properties return Option[ref T/E] without consuming the Result. Sema preserves receiver provenance through the Option, rejects escape from a local Result, accepts borrowed Result receivers, and keeps a shared borrow active so conflicting receiver mutation is diagnosed."
+      - "result-err-none-tests: Consuming Result.Ok()/Err() projections compose with the parser's non-binding Option state tests. Sema accepts both projection is None and projection is not None through the ordinary exhaustive typed Option-match path while retaining projection ownership effects."
+      - "result-projection-ownership-diagnostics: Use after consuming Result.Ok()/Err() is diagnosed from compiler-owned place state, identifies the consumed value and projection, carries the projection source location as related context, explains that the value is unavailable, and recommends OkRef/ErrRef for non-consuming inspection or ending use of the Result."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
       - "open-error-discardability: Resolve discardability of the open error root from compiler-owned concrete payload/provenance facts; current try and match Err(_) checks cover concrete error types only."
-      - "result-consuming-projections: Add consuming Result[T,E].Ok() -> Option[T] and Result[T,E].Err() -> Option[E]. The owned Result is consumed, retained move-only payload moves without hidden clone, and the non-retained active payload is destroyed exactly once."
-      - "result-borrowed-projections: Add non-consuming read-only Result properties OkRef -> Option[ref T] and ErrRef -> Option[ref E]. Their borrows are tied to the Result lifetime and normal borrow rules; the Result remains available after the borrow ends."
-      - "result-projection-discardability: Reject a consuming .Ok() or .Err() projection when the active side being intentionally forgotten may contain a non-discardable obligation, unless path-sensitive facts prove that state unreachable."
+      - "result-projection-semantic-ir-lowering: Add explicit consuming and borrowed Result projection facts/operations to Semantic IR and maintained lowering, including retained-payload transfer, exactly-once destruction of an active forgotten payload, and borrowed projection provenance."
+      - "result-projection-discardability: Extend the current conservative non-discardable alternate-payload rejection with path-sensitive proof that the forgotten state is unreachable."
       - "try-language-defined-short-circuit: Generalize try from a surface Result-only rule to compiler-known short-circuit/fallible expressions with a resolved success type and alternate/failure state, including Result, Option, checked arithmetic, indexing, constrained conversions, fallible new, and fallible assignment where defined by their owning rulebooks."
       - "try-option: Support try over Option[T]: Some(T) is implicit success, None is the alternate state, local None handlers may recover with T, and naked None propagation is valid only through a compatible enclosing Option return. Do not introduce implicit Option/Result conversion."
       - "try-failure-set: Represent multiple possible failures of one protected expression as compiler-internal failure facts without creating an anonymous source error union or automatic domain-error wrapper. Err(_) may handle a heterogeneous failure set."
@@ -123,8 +129,6 @@ integrations:
       - "try-expression-positions: Ensure try is usable anywhere its resolved success type is valid, including call arguments, boolean conditions, aggregate field initializers, nested/parenthesized expressions, and multiple argument positions. Assignment remains a statement and is not made into an expression."
       - "property-explicit-setter-error: Change fallible setter syntax to try set value ErrorType { ... } and require the same explicit error type in interface requirements. Do not infer a public setter error contract from its implementation."
       - "property-setter-success-model: For try set, normal completion is implicit success, bare return is early success, return Err(error) is failure, and return Ok() is invalid. Property getters remain infallible in Sec 0.1."
-      - "result-err-none-tests: Extend the implemented non-binding Option None test to Result projection operands once consuming Result[T,E].Err() -> Option[E] is implemented; retain is not rather than a !is operator."
-      - "result-projection-ownership-diagnostics: Always diagnose use after consuming .Ok()/.Err() (and equivalent affine consumption) from compiler-owned facts. The diagnostic must identify the value, the consuming operation/location, why later use is invalid, and a practical correction."
       - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
       - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, and nested failure boundaries. Backends must not reconstruct these semantics from syntax or unused SSA. Direct Result return-try forwarding already has a dedicated resolved fact and canonical Semantic IR lowering."
       - "errorhandling-lsp-v2: Replace the Result-only try-hover plan with compiler-resolved Result/Option/fallible-operation facts. Show success type, handled and propagated alternate states, concrete versus widened error identity, consuming versus borrowed projections, ownership consequences, and mentor diagnostics without reimplementing Sema in the LSP."
@@ -206,8 +210,12 @@ integrations:
         result: passed; non-discardable concrete error payloads cannot be ignored through Err(_)
       - command: go test ./internal/sema -run 'Test(MatchErrDiscardRejectsLifecycleError|MatchErrDiscardPatternIsAccepted|TryErrDiscardRejectsLifecycleError)' -count=1
         result: passed; match and try reject non-discardable concrete Err(_) payloads
-      - command: go test ./...
-        result: passed
+      - command: go test ./internal/sema -run 'TestResult(Consuming|Borrowed|Err)Projection' -count=1
+        result: passed; consuming and borrowed compiler-known Result projections, Option None state tests, exact payload types, receiver preservation, source-linked use-after-consume mentor diagnostics, local-reference escape rejection, borrowed receivers, and conflicting mutation diagnostics are covered
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-09-24 after adding borrowed Result projection properties and provenance tracking
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-09-24 after adding Result projections, projection Option state tests, and ownership mentor diagnostics
       - command: go test ./internal/diagnostics ./internal/sema ./internal/ir/semantic ./cmd/lsp -run 'ForbiddenTrySuccessHandler|RejectsExplicit(Ok|Some)|ImplicitSuccess' -count=1
         result: passed on 2026-09-21 with stable S1049, Result/assignment Ok rejection, Option Some rejection, LSP mentor output, failure-only resolved plans, and implicit-success Semantic IR
       - command: go test ./internal/parser ./internal/sema -run 'TryAssignment' -count=1

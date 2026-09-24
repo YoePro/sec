@@ -106,7 +106,7 @@ integrations:
     area: compiler-known-types-members-interfaces-platform-identities
     status: partial
     repository_baseline: 998d8d1
-    revised: "2026-09-21"
+    revised: "2026-09-24"
     rules:
       - rules/compiler/compiler_known_members.md
       - rules/compiler/compiler.md
@@ -124,8 +124,10 @@ integrations:
       - the superseded global SizeOf(TypeName) function is absent from the compiler-known function registry, Sema reservation,
         and LSP completion; ordinary user module functions named SizeOf remain legal
       - invalid legacy SizeOf(TypeName) calls receive ordinary unresolved-call diagnostics rather than obsolete intrinsic validation
+      - ToString is exposed by the shared compiler-known registry as a universal frontend fallback on concrete value types; an exact user-owned nominal fn ToString() string still wins ordinary method lookup, while differently shaped overloads remain callable without suppressing the no-argument fallback
+      - byte, char, and rune arrays/slices resolve to distinct stable sequence-materialization identities; byte sequence ToString returns string and preserves the represented encoded bytes, while rune sequence materialization retains scalar-to-multibyte encoding semantics
     remaining:
-      - classify ToString as a universal CompilerProvidedFallbackMember with exact eligible user replacement and complete per-type-family fallback semantics
+      - carry universal and byte/char/rune sequence ToString identities into explicit Semantic IR operations and maintained lowering, including allocation/effect facts and complete per-type-family fallback formatting semantics
       - audit every compiler-known Sec declaration for complete canonical syntax/owning module and mark compiler-only structures explicitly
       - keep compiler authority distinct from ordinary _/__ source visibility
       - expose compiler-known Iterator[T] through one canonical interface registry/conformance path
@@ -138,3 +140,7 @@ integrations:
         result: passed
       - command: go test ./cmd/lsp -run CompletionUsesCanonicalCompilerKnownGlobalFunctions -count=1
         result: passed
+      - command: go test ./internal/sema -run 'TestCompilerKnown(UniversalToStringAndTextSequences|FundamentalMembers)' -count=1
+        result: passed on 2026-09-24; universal fallback lookup, exact user replacement, and stable byte/char/rune sequence IDs return string
+      - command: go test ./cmd/lsp -run TestCompletionIncludesCompilerKnownMembers -count=1
+        result: passed on 2026-09-24; ToString completion is sourced from the shared registry for ordinary arrays and slice views

@@ -3414,13 +3414,11 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 
 	source = "module main\n\nfn Use(values: int[]) void {\n\tvalues.\n}\n"
 	dynamicItems := completeSource("", source, strings.Index(source, "values.")+len("values."))
-	assertCompletionLabels(t, dynamicItems, []string{"Append", "Clear", "IsEmpty", "Len", "Ptr", "RemoveAt", "SizeOf"})
-	assertNoCompletionLabel(t, dynamicItems, "ToString")
+	assertCompletionLabels(t, dynamicItems, []string{"Append", "Clear", "IsEmpty", "Len", "Ptr", "RemoveAt", "SizeOf", "ToString"})
 
 	source = "module main\n\nfn Use(view: ref mut int[]) void {\n\tview.\n}\n"
 	sliceItems := completeSource("", source, strings.Index(source, "view.")+len("view."))
-	assertCompletionLabels(t, sliceItems, []string{"Fill", "IsEmpty", "Len", "Ptr", "Reverse", "SizeOf"})
-	assertNoCompletionLabel(t, sliceItems, "ToString")
+	assertCompletionLabels(t, sliceItems, []string{"Fill", "IsEmpty", "Len", "Ptr", "Reverse", "SizeOf", "ToString"})
 
 	source = "module main\n\nfn Use(values: list[int]) void {\n\tvalues.\n}\n"
 	listItems := completeSource("", source, strings.Index(source, "values.")+len("values."))

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-24
-- **Last updated:** 2026-08-24
+- **Last updated:** 2026-09-24
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `45e5cd4`
@@ -201,6 +201,11 @@ Synchronization and atomic facilities depend on canonical implementation
 capability rather than one specific native instruction. A legal implementation
 may use native instructions, runtime helpers, critical-section lowering, or
 another strategy permitted by the owning rules.
+
+A program using a select `after` branch requires a target/profile capability
+for the canonical monotonic deadline semantics. A statically unsupported or
+disabled timer capability is a compile-time profile diagnostic; it is not
+lowered to a runtime `SelectError`.
 
 ## 11. Dynamic linking and deterministic static destruction
 

@@ -49,6 +49,7 @@ type Analyzer struct {
 	resolvedForIterations      map[*ast.ForStatement]ResolvedForIteration
 	resolvedConstructions      map[*ast.NewExpression]ResolvedConstruction
 	resolvedOperators          map[ast.Expression]ResolvedOperator
+	resolvedLogicalFlows       map[*ast.InfixExpression]ResolvedLogicalFlow
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
 	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
 	resolvedTries              map[*ast.TryExpression]ResolvedTry
@@ -237,6 +238,7 @@ func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
 	}
 	analyzer.types["int"] = targetSignedIntegerType("int", plan.PointerWidthBits)
 	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
+	analyzer.types["ProcessID"] = processIDType(plan.PointerWidthBits)
 	analyzer.targetUintWidthBits = plan.PointerWidthBits
 	return analyzer
 }
@@ -274,6 +276,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
+	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
@@ -641,20 +644,6 @@ func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, source 
 	})
 }
 
-func (a *Analyzer) recordResolvedOperatorEffect(expr ast.Expression) {
-	if a.summaryPass || !a.callGraphPathReachable || expr == nil {
-		return
-	}
-	resolved, ok := a.resolvedOperators[expr]
-	if !ok || !resolved.RuntimeCheck || resolved.FailureBehavior != OperatorArithmeticFailure {
-		return
-	}
-	a.callGraph.addEffect(a.currentCallable, EffectSite{
-		Kind:   EffectMayPanicArithmetic,
-		Source: expressionToken(expr),
-	})
-}
-
 // recordCompilerKnownEffects publishes effects owned by the canonical member
 // registry. See compiler_known_members.md and volatile.md sections 9 and 38.
 func (a *Analyzer) recordCompilerKnownEffects(member CompilerKnownMember, source lexer.Token) {
@@ -664,13 +653,6 @@ func (a *Analyzer) recordCompilerKnownEffects(member CompilerKnownMember, source
 	for _, kind := range member.Effects {
 		a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: kind, Source: source})
 	}
-}
-
-func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
-	if a.summaryPass || expr == nil {
-		return
-	}
-	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicArithmetic, expressionToken(expr))
 }
 
 // recordArrayIndexEffect publishes the ordinary runtime bounds effect required
@@ -685,7 +667,7 @@ func (a *Analyzer) recordArrayIndexEffect(expr *ast.IndexExpression, plan Resolv
 	if !a.callGraphPathReachable || plan.CheckKind != ArrayIndexRuntimeCheck || plan.FailureMode != ArrayIndexFailureOrdinary {
 		return
 	}
-	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source})
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonBoundsFailure}})
 }
 
 // recordListIndexEffect publishes the mandatory ordinary list bounds check as
@@ -702,7 +684,7 @@ func (a *Analyzer) recordListIndexEffect(expr *ast.IndexExpression, plan Resolve
 	if !a.callGraphPathReachable || plan.CheckKind != ArrayIndexRuntimeCheck || plan.FailureMode != ArrayIndexFailureOrdinary {
 		return
 	}
-	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source})
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonBoundsFailure}})
 }
 
 func (a *Analyzer) recordDefinition(token lexer.Token) {
@@ -2715,6 +2697,7 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 		}
 		a.resolvedAssertions[stmt] = ResolvedAssertion{
 			Reason:     PanicReasonAssertionFailed,
+			ReasonID:   diagnostics.PanicReasonAssertionFailure,
 			Condition:  stmt.Condition,
 			Message:    message,
 			HasMessage: hasMessage,
@@ -2726,7 +2709,7 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 			Refinement: refinement,
 		}
 		if !proven && !a.summaryPass && a.callGraphPathReachable {
-			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicAssertion, Source: stmt.Token})
+			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicAssertion, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonAssertionFailure}})
 		}
 	}
 }
@@ -2755,7 +2738,7 @@ func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
 	if stmt == nil || stmt.Message == nil || a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
-	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicExplicit, Source: stmt.Token})
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicExplicit, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonExplicitPanic}})
 }
 
 // analyzeUnreachableStatement records the defined panic effect of a reachable
@@ -2769,7 +2752,7 @@ func (a *Analyzer) analyzeUnreachableStatement(stmt *ast.UnreachableStatement) {
 	if stmt == nil || a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
-	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnreachable, Source: stmt.Token})
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnreachable, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonCheckedUnreachableReached}})
 }
 
 func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
@@ -16398,6 +16381,10 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 		a.addErrorAtToken(expr.Token, "%s is a compiler-internal operation available only to privileged core source", known.Name)
 		return Type{Kind: InvalidType}, result, true
 	}
+	if known.OwnerFile != "" && !sourceFileMatchesOwner(expr.Token.File, known.OwnerFile) {
+		a.addErrorAtToken(expr.Token, "%s is private to %s", known.Name, known.OwnerFile)
+		return Type{Kind: InvalidType}, result, true
+	}
 	if len(expr.GenericArguments) > 0 {
 		a.addErrorAtToken(expr.Token, "%s does not accept generic arguments", known.Name)
 		return Type{Kind: InvalidType}, result, true
@@ -16419,6 +16406,21 @@ func (a *Analyzer) inferCompilerInternalFunction(expr *ast.CallExpression, known
 		return Type{Kind: InvalidType}, result, true
 	}
 	return known.Result, result, true
+}
+
+// sourceFileMatchesOwner compares a loader-proven source path with the
+// repository-relative owner of a private compatibility helper. Absolute build
+// paths remain valid, while another trusted file with the same module cannot
+// acquire source-file-private authority.
+//
+// Rules:
+//   - rules/foundations/names_scopes_visibility.md — §12.3 "Private names"
+//   - rules/compiler/compiler_known_members.md — "Internal core string-slice helper"
+//   - rules/corrections/applied/correction-string-slice-helper-20260823.md
+func sourceFileMatchesOwner(file string, owner string) bool {
+	file = filepath.ToSlash(filepath.Clean(file))
+	owner = strings.TrimPrefix(filepath.ToSlash(filepath.Clean(owner)), "./")
+	return file == owner || strings.HasSuffix(file, "/"+owner)
 }
 
 func (a *Analyzer) inferCompilerKnownFill(expr *ast.CallExpression, expected Type, hasExpected bool) (Type, expressionValue, bool) {
@@ -16529,6 +16531,8 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		return Type{}, expressionValue{}, false
 	}
 	switch member.Name {
+	case "Ok", "Err":
+		return a.inferConsumingResultProjection(expr, memberExpr, receiverType, lookupType, member)
 	case "ToString":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+".ToString", 0, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -20275,48 +20279,6 @@ func (a *Analyzer) enumValuesForType(typ Type) ([]string, bool) {
 		return nil, false
 	}
 	return registered.EnumValues, true
-}
-
-// inferLogicalExpression implements the short-circuit control-flow rule from
-// rules/control-flow/flowcontrol_if.md and rules/foundations/operators.md.
-// correction22.md requires RHS diagnostics to be retained while impossible or
-// conditional execution effects are isolated and merged into the live state.
-func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
-	if leftType.Kind != BoolType {
-		a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	before := a.currentBranchAnalysisState()
-	shortCircuits := isBoolLiteral(expr.Left, expr.Operator == "||")
-	rhsRequired := isBoolLiteral(expr.Left, expr.Operator == "&&") || isBoolLiteral(expr.Left, false) && expr.Operator == "||"
-	previousReachable := a.callGraphPathReachable
-	if shortCircuits {
-		a.callGraphPathReachable = false
-	}
-	rightType, _ := a.inferExpression(expr.Right)
-	a.callGraphPathReachable = previousReachable
-
-	if shortCircuits {
-		a.applyBranchAnalysisState(before)
-	} else if !rhsRequired {
-		rhs := a.currentBranchAnalysisState()
-		a.assigned = mergeContinuingAssigned(before.assigned, before, rhs)
-		a.moved, a.moveReasons = mergeContinuingMoveState(before.moved, before.moveReasons, before, rhs)
-		a.closedResources = mergeContinuingClosedResources(before.closedResources, before, rhs)
-		a.borrows = mergeContinuingBorrows(before.borrows, before, rhs)
-		a.localRefContainers = mergeContinuingLocalRefContainers(before.localRefContainers, before, rhs)
-		a.arenaGenerations = mergeContinuingArenaGenerations(before.arenaGenerations, before, rhs)
-	}
-
-	if rightType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	if rightType.Kind != BoolType {
-		a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 }
 
 func (a *Analyzer) currentBranchAnalysisState() branchAnalysis {

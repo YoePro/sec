@@ -878,6 +878,8 @@ func builtinTypes() map[string]Type {
 		// lowering layers must consume this shape rather than inventing one.
 		"PanicID":               panicIDType(),
 		"PanicInfo":             {Name: "PanicInfo", Kind: StructType, Named: true},
+		"ProcessID":             processIDType(64),
+		"ProcessStatus":         processStatusType(),
 		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
@@ -1204,9 +1206,7 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 		}
 		return true
 	case StructType:
-		// rules/memory/arena.md; correction29.md: destroying an Arena ends
-		// its domain and releases or returns its backing storage.
-		if typ.Name == "Arena" {
+		if compilerKnownRequiresDestruction(typ) {
 			return false
 		}
 		key := typeDestructionKey(typ)
@@ -1242,6 +1242,40 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 				}
 			}
 		}
+		return true
+	default:
+		return false
+	}
+}
+
+// compilerKnownRequiresDestruction identifies intrinsic owners whose runtime
+// lifecycle is not represented by ordinary source-visible Fields. Keeping this
+// separate from CopyClassificationOf is intentional: copy prohibition alone
+// neither creates nor proves a destruction obligation.
+//
+// Rules:
+//   - rules/memory/destruction.md — §3 "Destruction classification"
+//   - rules/memory/arena.md — §46 "Implicit Arena destruction"
+//   - rules/concurrency/tasks.md — §7 "Lifecycle responsibility"
+//   - rules/concurrency/threads.md — owning Thread lifecycle
+//   - rules/concurrency/mutex.md — §§6 and 48 guard release and mutex destruction
+//   - rules/concurrency/channels.md — §§21, 31, 35, and 36 endpoint/ticket destruction
+//   - rules/concurrency/events.md — "Subscription"
+func compilerKnownRequiresDestruction(typ Type) bool {
+	if !typ.Intrinsic {
+		return false
+	}
+	switch typ.Name {
+	case "Task",
+		"Thread",
+		"Arena",
+		"Mutex",
+		"MutexGuard",
+		"Subscription",
+		"Channel",
+		"Sender",
+		"Receiver",
+		"MessageTicket":
 		return true
 	default:
 		return false

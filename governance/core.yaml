@@ -2,6 +2,64 @@ schema_version: 1
 area: core
 purpose: Compiler-known fundamentals and trusted core surfaces.
 integrations:
+  - id: core.string-slice-helper
+    area: core-and-lowering
+    status: partial
+    integrated: "2026-08-23"
+    revised: "2026-09-24"
+    summary: >-
+      The checked core API and representation-level behavior exist, but the
+      current compiler-known registry and name-specific direct-generator path
+      predate the correction that assigns this implementation detail to a
+      private privileged-core helper. The compatibility entry now carries and
+      enforces its exact sec/core/string.sec owner instead of granting access to
+      every trusted core file. The registry and generator cases remain
+      temporary until the referenced direct MLIR/LLVM core-body syntax is
+      defined and implemented in the frontend.
+    rules:
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/types/types.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/corrections/applied/correction-string-slice-helper-20260823.md
+    code:
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - internal/codegen/llvm/statements.go
+      - internal/codegen/mlir/generator.go
+      - cmd/lsp/main.go
+      - sec/core/string.sec
+    tests:
+      - internal/sema/compiler_known_members_test.go
+      - internal/sema/analyzer_test.go
+      - internal/codegen/llvm/generator_test.go
+      - internal/codegen/mlir/generator_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - checked string.Slice validates start <= end and end <= string length before calling the unchecked operation
+      - the current compatibility path requires loader-proven core provenance, validates (string, uint, uint) -> string, and records sec/core/string.sec as its exact temporary owner
+      - another trusted core source file cannot invoke the source-file-private compatibility helper
+      - the current compatibility path keeps the operation out of ordinary LSP completion
+      - directly emit pointer offset and end-minus-start length in the AST LLVM and MLIR generators without a helper symbol
+      - remove the invalid core implementation that attempted to apply array slice syntax to string
+    remaining:
+      - define or identify the exact privileged-core inline MLIR/LLVM function-body syntax referenced by the correction
+      - implement that syntax in lexer, parser, AST, Sema, formatter, and the applicable backend path
+      - move __StringSliceUnchecked into core/string.sec as a real source-file-private helper with a direct low-level body
+      - remove CKF-STRING-SLICE-UNCHECKED, its temporary OwnerFile fact, and the name-specific Sema, LSP, LLVM, and MLIR compatibility cases
+      - connect backing-storage lifetime facts to the finalized owned-string representation
+    verification:
+      - command: go test ./internal/sema -run 'TestCompilerKnown(StringSlice|GlobalRegistry)' -count=1
+        result: passed on 2026-09-24 with exact owner-file metadata, same-file acceptance, other-core-file rejection, argument typing, and registry coverage
+      - command: go test ./internal/codegen/llvm -run TestGenerateCompilerKnownStringSliceUnchecked -count=1
+        result: passed on 2026-09-24 after the owner-file increment through the full repository test run
+      - command: go test ./internal/codegen/mlir -run TestGenerateCompilerKnownStringSliceUnchecked -count=1
+        result: passed on 2026-09-24 after the owner-file increment through the full repository test run
+      - command: go test ./cmd/lsp -run TestCompletionExcludesCompilerInternalFunctions -count=1
+        result: passed on 2026-09-24 after the owner-file increment through the full repository test run
+      - command: go test ./... -count=1 && go vet ./...
+        result: passed on 2026-09-24
+
   - id: core.named-string-member-inheritance
     area: core-member-resolution
     status: implemented

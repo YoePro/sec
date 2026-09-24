@@ -160,3 +160,40 @@ integrations:
     verification:
       - command: go test ./cmd/lsp -run 'TestSemanticTokens(PreferAssociatedLetDeclarationOverSameNamedType|ClassifyImmutableBindingsAsReadonlyVariables)' -count=1
         result: passed
+
+  - id: tooling.lsp-try-result-hover
+    area: tooling
+    status: partial
+    integrated: "2026-08-14"
+    revised: "2026-09-24"
+    summary: >-
+      Makes hover at try and its operand explain the callable's declared
+      carrier, the value produced on success, and the exact failure-handling
+      path. This keeps ordinary absence in Option distinct from typed failure
+      in Result and makes bodyless propagation visible to the user.
+    rules:
+      - rules/errors/errorhandling.md
+      - rules/tooling/lsp.md
+    code:
+      - cmd/lsp/main.go
+      - cmd/lsp/hover_try.go
+    tests:
+      - cmd/lsp/hover_try_test.go
+    implemented:
+      - hover on a resolved Result try keyword shows the exact protected Result[T, E] carrier and the T produced by the try expression
+      - hover on the protected root callable shows the same compiler-owned try facts while nested argument tokens retain their ordinary hover
+      - bodyless Result propagation shows the exact propagated E, enclosing Result[U, E] target, and enclosing-return consumption path
+      - local Result handlers are distinguished from bodyless propagation and show the resolved error channel, exhaustive or partial handler coverage, handler count, and local consumption path
+      - all displayed try semantics come from ResolvedTryOf, ResolvedTryPlanOf, and ResolvedTypeOf rather than an LSP-owned Result model
+      - focused hover tests cover Result propagation at both the keyword and operand plus exhaustive local handling
+    remaining:
+      - consume future Sema-resolved Option try facts and explain Some success plus None propagation or recovery without treating ordinary absence as an error channel
+      - show exact locally handled and unhandled alternate states, concrete-to-error widening, and remaining panic effect when Sema exposes those presentation facts
+      - extend focused hover coverage to partial handlers, Option-returning calls, fallible operations, invalid try operands, and mismatched enclosing error types
+    reconciliation:
+      - the migrated legacy statement that Option cannot propagate with try was superseded by errorhandling revision 2; rules/errors/errorhandling.md §§ 9 and 12.2 permit Option try
+    verification:
+      - command: go test ./cmd/lsp -run 'TestTryHover' -count=1
+        result: passed
+      - command: go test ./cmd/lsp -count=1
+        result: passed

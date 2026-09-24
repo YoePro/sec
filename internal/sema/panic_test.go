@@ -3,6 +3,8 @@ package sema
 import (
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // rules/errors/panic.md § 15.2 requires bool exactly and defines no truthiness
@@ -27,13 +29,19 @@ fn Bad(value: int) void {
 // rules/errors/panic.md §§ 17 and 21 require explicit panic to be
 // non-returning and visible to @noPanic verification.
 func TestExplicitPanicTerminatesAndRecordsEffect(t *testing.T) {
-	assertSemaErrors(t, analyzeSourceRaw(t, `
+	analyzer, validErrors := analyzeSourceWithAnalyzerRaw(t, `
 module main
 
 fn Fail() int {
 	panic "failure"
 }
-`), nil)
+`)
+	assertSemaErrors(t, validErrors, nil)
+	summary := analyzer.CallGraph().EffectSummary(callGraphNodeIDByName(t, analyzer.CallGraph(), "Fail"))
+	if len(summary.DirectEffects) != 1 || len(summary.DirectEffects[0].PanicReasonIDs) != 1 ||
+		summary.DirectEffects[0].PanicReasonIDs[0] != diagnostics.PanicReasonExplicitPanic {
+		t.Fatalf("explicit panic effects = %+v", summary.DirectEffects)
+	}
 
 	errors := analyzeSourceRaw(t, `
 module main

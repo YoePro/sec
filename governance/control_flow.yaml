@@ -299,8 +299,8 @@ integrations:
     verification:
       - command: go test ./internal/sema -run Defer -count=1
         result: passed; legacy root dependencies, conditional registration, shadowing, control-flow restrictions, and field-sensitive overlap are covered
-      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
-        result: passed across all compiler, LSP, frontend, Semantic IR, and lowering packages
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
 
   - id: frontend.if-statements-v2
     area: frontend-control-flow
@@ -1058,3 +1058,222 @@ integrations:
     - break inside switch nested in outer loop creates continuation
     - code after outer infinite loop with only nested-loop breaks is unreachable
     - non-void function ending in such outer loop satisfies return analysis
+
+  - id: frontend.discard-aggregate-temporary-ownership
+    area: frontend-ownership-and-discard
+    status: partial
+    audited: '2026-08-19'
+    revised: '2026-09-24'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-07-31'
+    document_last_updated_metadata: '2026-08-16'
+    document_later_sync_commit: 20b3606
+    document_later_sync_date: '2026-08-17'
+    summary: Aggregate temporaries accepted by explicit discard now commit the same represented construction-time
+      ownership moves as ordinary aggregate initialization while preserving selected call-parameter semantics.
+    rules:
+    - rules/control-flow/discard.md
+    - rules/memory/ownership.md
+    - rules/memory/copy_move.md
+    - rules/memory/destruction.md
+    - rules/declarations/struct.md
+    - rules/declarations/unions.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/copy_move_test.go
+    implemented:
+    - explicit discard of a local identifier consumes the binding even when the value is copyable
+    - explicit discard of a move-only local identifier makes it unavailable
+    - discard checks pending deferred use and active borrow conflicts for simple identifier bindings
+    - discard of ref and ref mut local holders ends the holder
+    - explicit discard of function and method result temporaries is accepted when the result type is discardable
+    - explicit discard of named try/match error bindings is accepted in the current frontend
+    - current tests include Err(error) handler bodies containing discard error
+    - bare discard _ is rejected
+    - discarded struct and array literals commit represented move-only source transfers before terminal discard
+    - discard does not recursively reinterpret ordinary call arguments as aggregate ownership transfers
+    partial:
+    - ownership preparation of the operand result and terminal destruction of that result are not represented as separate
+      resolved semantic actions
+    remaining:
+    - integrate union constructor payload preparation through the separately tracked union constructor correction
+    - preserve borrow, deferred-use, and source availability diagnostics for ownership transfers into discarded temporaries
+    - represent operand preparation followed by explicit DiscardValue in Semantic IR
+    - lower the resolved destruction plan without double destruction
+    bug_reference:
+    - correction19.md
+    governance_reconciliation:
+    - Keep arbitrary Place discard as remaining; aggregate temporary ownership preparation is a distinct frontend
+      gap because the discarded operand is a temporary value rather than a user Place.
+    - Add named try/match error-binding discard to implemented status. At c515862, analyzer tests exercise Err(error)
+      => { discard error } successfully.
+    - Err(_) support is a separate match/try issue tracked by correction20.md and must not be described as intentionally
+      invalid by discard governance.
+    - Removed legacy remaining claims for struct and array move preparation and call-parameter preservation because
+      the same migrated entry already records those frontend behaviors as implemented.
+    required_tests:
+    - discarded move-only struct temporary makes transferred source unavailable
+    - discarded move-only array temporary makes transferred sources unavailable
+    - copyable aggregate discard does not consume reusable copyable source bindings merely through field reads
+    - borrow conflict blocks move into discarded aggregate
+    - deferred-use conflict blocks move into discarded aggregate
+    - function-call discard preserves selected parameter ownership semantics
+    - named Err(error) discard remains valid
+    - discard _ remains invalid
+
+  - id: frontend.logical-short-circuit-flow
+    area: frontend-expression-control-flow
+    status: partial
+    audited: '2026-08-19'
+    revised: '2026-09-24'
+    repository_baseline: c515862
+    primary_document: rules/control-flow/flowcontrol_if.md
+    document_revision: '2.0'
+    document_created: '2026-08-16'
+    document_last_updated: '2026-08-16'
+    summary: Logical operators use a dedicated Sema flow path. Proven-skipped RHS expressions retain static diagnostics
+      without committing runtime state or reachable call-graph effects; conditionally executed RHS state is merged with
+      the bypass path.
+    rules:
+    - rules/control-flow/flowcontrol_if.md
+    - rules/control-flow/flowcontrol_while.md
+    - rules/foundations/operators.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/analyzer_logical.go
+    - internal/sema/call_graph.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic
+    - internal/lowering/secmlir
+    - internal/codegen/mlir/generator.go
+    - internal/codegen/llvm/statements.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/analyzer_logical_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/call_graph_test.go
+    - internal/codegen/mlir/generator_test.go
+    - internal/codegen/llvm/generator_test.go
+    implemented:
+    - logical bool operand type validation
+    - logical expression result type bool
+    - maintained backend lowering has left-to-right short-circuit branch structure
+    - if branch bodies use callGraphPathReachable for literal unreachable branches
+    - consuming call arguments update caller ownership state when the call is on the analyzed live path
+    - false && RHS and true || RHS restore ownership, resource, borrow, reference, and Arena state after static checking
+    - proven-skipped RHS calls are excluded from reachable call-graph recording
+    - non-constant RHS execution is merged with the short-circuit bypass state
+    - successful logical expressions publish a canonical ResolvedLogicalFlow with operand and result types
+    - ResolvedLogicalFlow records whether the RHS is never, always, or conditionally executed
+    - ResolvedLogicalFlow records the selected left-value edge and short-circuit result for later consumers
+    - left and right operands are each inferred once in source order by the dedicated logical flow path
+    partial:
+    - literal reachability helpers recognize only BooleanLiteral syntax rather than a general compiler-proven constant-bool
+      fact
+    remaining:
+    - apply canonical compile-time bool facts rather than only literal syntax where available
+    - consume ResolvedLogicalFlow in Semantic IR and all maintained lowering paths
+    - add ownership, resource, arena, call-graph, nested-expression, and cross-context regression coverage
+    bug_reference:
+    - correction22.md
+    governance_reconciliation:
+    - The original audit narrowed frontend.if-statements-v2 because frontend runtime-state analysis was eager; correction22
+      subsequently introduced the dedicated Sema flow path and this entry now records that applied correction.
+    - Focused short-circuit side-effect tests cover the applied frontend correction; explicit Semantic IR consumption
+      and broader cross-context coverage remain separate work.
+    - Keep bool-only operand checking and lazy backend control-flow lowering as implemented.
+    - Removed legacy remaining claims for the dedicated flow path, skipped-RHS isolation, conditional state merging,
+      and call-graph exclusion because the migrated entry already records those corrections as implemented.
+    - The 2026-09-24 frontend step publishes the selected RHS edge as ResolvedLogicalFlow without extending backend scope.
+    verification:
+    - command: go test ./internal/sema -run 'TestResolvedLogicalFlowRecordsSelectedRHSEdge|TestLogicalShortCircuitDoesNotCommitImpossibleMove|TestLogicalOperatorsRequireBool' -count=1
+      result: passed on 2026-09-24
+    required_tests:
+    - false && consuming-call leaves source available
+    - true || consuming-call leaves source available
+    - true && consuming-call consumes source
+    - false || consuming-call consumes source
+    - proven skipped RHS does not advance arena generation
+    - proven skipped RHS does not close resource state
+    - proven skipped RHS does not register reachable call/effect
+    - non-literal logical RHS is represented only on its selected CFG edge
+    - nested logical expressions preserve left-to-right short-circuit flow
+    - while and non-if expression contexts use identical short-circuit semantics
+
+  - id: frontend.match-termination-consistency
+    area: frontend-control-flow
+    status: partial
+    audited: '2026-08-19'
+    revised: '2026-09-24'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-17'
+    document_last_updated: '2026-08-17'
+    summary: Statement-match termination, function return checks, and nested match arm flow consume the canonical
+      ResolvedMatchPlan rather than rebuilding coverage from pattern spellings. Union, Option, Result, enum aliases,
+      and complete open-bit domains therefore share the primary match analyzer's normalized coverage.
+    rules:
+    - rules/control-flow/flowcontrol_match.md
+    - rules/declarations/unions.md
+    - rules/declarations/enums.md
+    - rules/compiler/semantic_ir.md
+    - rules/mlir/packages/sec-mlir-dialect_package12.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/semantic_facts.go
+    - internal/ir/semantic/model.go
+    - internal/ir/semantic/builder.go
+    - internal/lowering/secmlir/emitter.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/semantic_facts_test.go
+    - internal/ir/semantic/package12_test.go
+    - testdata/match_valid.sec
+    - testdata/semantic_ir/match_cfg.sec
+    implemented:
+    - canonical analyzeMatch coverage for Result
+    - canonical analyzeMatch coverage for UnionType including Option
+    - enum match coverage normalized to arbitrary-precision numeric value classes
+    - open bit-backed enum complete-domain coverage in matchCoverageComplete
+    - ResolvedMatchPlan records exhaustive status for successful supported matches
+    - ResolvedMatchArm records source arm flow in the current supported subset
+    - Result statement match with all-returning arms is recognized by the dedicated legacy return helper
+    - Package 12 consumes ResolvedMatchPlan for enum, union, Result, and Option CFG
+    - statement termination consumes ResolvedMatchPlan.Exhaustive and resolved arm flow
+    - nested analyzed match statements participate in analyzer-aware block fallthrough and return queries
+    remaining:
+    - replace package-level structural flow reconstruction with compiler-owned resolved statement-flow facts
+    - ensure function return, unreachable-code, cleanup, Semantic IR, and lowering consume one canonical match flow
+      result
+    - add union, Option, alias-enum, open-bit-enum, and nested-match termination regression coverage
+    bug_reference:
+    - correction23.md
+    governance_reconciliation:
+    - Keep frontend.match-v2's canonical analyzeMatch coverage and Package 12 ResolvedMatchPlan CFG support as implemented.
+      Add a separate partial item for frontend statement termination/return consumers that still reconstruct coverage
+      independently.
+    - Qualify broad statement/all-terminating control-flow wording until exhaustive UnionType/Option and enum-alias
+      statement matches are recognized consistently by function return analysis.
+    - Do not duplicate the Err(_) rulebook/Sema issue here; that is tracked by correction20.md.
+    - Existing remaining work for compiler-known empty, field patterns, guarded move commit, statement-result discardability,
+      non-trivial ownership lowering, and LSP remains unchanged.
+    - Reconciled the legacy implemented status to partial because its own remaining list still requires one canonical
+      statement-flow fact across return, reachability, cleanup, Semantic IR, and lowering consumers.
+    required_tests:
+    - exhaustive Option statement match with all returns satisfies function return
+    - exhaustive ordinary union statement match with all returns satisfies function return
+    - code after exhaustive all-returning union match is unreachable
+    - enum alias statement match uses normalized numeric classes for termination
+    - complete bit-backed enum statement match is recognized as non-continuing
+    - duplicate alias arm remains rejected
+    - nested exhaustive match can terminate an outer match arm
+    - ResolvedMatchPlan exhaustiveness agrees with function-return analysis

@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-09-21"
+    updated: "2026-09-24"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
@@ -52,6 +52,7 @@ integrations:
       - ProvenFix actions for valid true/false simplifications and SuggestedEdit actions for invalid but unambiguous bool/0-or-1 intent
       - negative coverage preventing boolean-intent inference from integers other than 0 and 1
       - API-usage finding for self.Method(self) when Sema resolves an instance method and self is both its implicit receiver and a direct explicit argument; ordinary functions, static methods, other receivers, unresolved calls, and indirect self expressions remain excluded
+      - pitfall suppression coverage derives its evaluation-count expectation from the canonical rule registry, so adding an unrelated registered rule does not break the guarded inclusive-endpoint regression test
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
@@ -100,6 +101,8 @@ integrations:
         result: passed; matched continue guards suppress only later indexes while ineffective and conditional guards remain findings
       - command: go test ./...
         result: passed after the endpoint-continue pitfall analysis update
+      - command: go test ./internal/sema -run '^TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint$' -count=1
+        result: passed on 2026-09-24 with register-driven evaluation coverage and the inclusive-length rule suppressed exactly once
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
     status: partial
@@ -170,8 +173,8 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'TestParameterUsage|TestLarge(ValueAdvisory|ByValue)' -count=1
         result: passed; demand summaries, positive guarded advice, and ownership-consuming no-advisory behavior are covered
-      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
-        result: passed across all compiler, LSP, frontend, Semantic IR, and lowering packages
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
 
   - id: analysis.call-graph
     area: frontend-analysis-and-tooling
@@ -608,8 +611,8 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestLambdaCapturePreservesNestedReferentDependencies|TestResolvedCallableIdentitiesAreExactAndStable|TestResolvedLambdaCaptureFacts|TestInvalidLambdaCaptureDoesNotPublishFact|TestLambda|TestResolvedCallable|TestCallGraph' -count=1
         result: passed; direct binding/rebinding and nested callable dependencies, unknown callable-parameter handling, nested carrier-path dependencies, immutable closure creation summaries, exact stable callable identities and target sets, canonical capture facts, call-graph integration, invalid-capture exclusion, and existing lambda/callable behavior are covered
-      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
-        result: passed across all packages; the established unrelated pitfall regression remains excluded
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
       - command: parse governance/*.yaml and implementation-status.yaml with duplicate integration-ID validation
         result: passed
 

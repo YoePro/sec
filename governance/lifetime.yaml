@@ -21,7 +21,7 @@ integrations:
       required by any ownership-dependent operation. The frontend does not yet
       implement the revision-2 canonical Availability
       dimension, explicit reusable-source moves in every owning payload,
-      new closure move capture syntax, complete dynamic availability refinement, discard
+      complete dynamic availability refinement, discard
       convergence, conditional cleanup/replacement, or static-ownership policy.
     rules:
       - rules/memory/ownership.md
@@ -104,7 +104,7 @@ integrations:
       - pending-call-transfer-reservation
       - nested-call-transfer-transactions
       - conditional-scope-exit-cleanup
-      - result-projection-ownership-sync
+      - result-borrowed-projection-lifetimes-and-downstream-ownership-sync
       - guarded-match-try-ownership-fact-reuse
       - fixed-address-register-volatile-foreign-transfer-policy
       - partial-destruction
@@ -235,6 +235,212 @@ integrations:
         result: passed on 2026-09-22 with later-argument failure preserving earlier explicit local and projected source ownership
       - command: go test ./internal/parser ./internal/sema -run 'TestParseExplicitMoveLambdaCapture|TestLambdaCaptureCopyAndExplicitMoveOwnership' -count=1
         result: passed on 2026-09-22 with capture-mode AST preservation, legacy syntax rejection, copy-only plain capture, explicit outer-source consumption, and independent environment availability
+  - id: frontend.copy-move
+    area: frontend-copy-move
+    status: partial
+    integrated: "2026-08-28"
+    document_revision: "2.0"
+    revised: "2026-09-24"
+    repository_baseline: 069c111
+    rules:
+      - rules/memory/copy_move.md
+      - rules/memory/ownership.md
+      - rules/platform/volatile.md
+      - rules/declarations/functions.md
+      - rules/declarations/lambda-functions.md
+      - rules/declarations/unions.md
+      - rules/control-flow/discard.md
+      - rules/errors/errorhandling.md
+      - rules/corrections/applied/ownership-errorhandling-correction-20260824.md
+      - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
+    code:
+      - internal/ast/ast.go
+      - internal/lexer/lexer.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/analyzer_result_projection.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/place.go
+      - internal/sema/types.go
+    tests:
+      - internal/sema/copy_move_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/destruction_test.go
+      - internal/sema/result_projection_test.go
+      - internal/sema/volatile_move_test.go
+      - internal/parser/parser_test.go
+      - internal/lexer/lexer_test.go
+    implemented:
+      - Recursive CopyClassification/CopyClassificationOf support including trivial, semantic, conditional, move-only, and explicitly non-copyable classes.
+      - '@noCopy is already recognized as a type-level copy prohibition in current frontend classification.'
+      - Explicit :<- and <- parsing/AST/Sema support for established declaration and assignment forms.
+      - Place-sensitive move tracking for roots, nested fields, selected union payloads, static slice intervals, and local alias provenance.
+      - Reinitialization of supported moved/discarded Places and field-sensitive aggregate restoration.
+      - Initial branch/loop/match/select ownership joins, borrow-conflict checks, defer-retention checks, overlapping self-move rejection, formatter preservation, and LSP move quick fixes.
+      - Direct call-site <- markers are parsed and enforced for reusable ordinary move-only and explicit -> arguments; copyable ordinary arguments remain copies, fresh temporaries remain marker-free, and transfer commits only after successful full-call analysis.
+      - Terminal return ownership context recursively forwards reusable move-only sources through aggregate, Option, Result, union, nested, and value-producing match construction; explicit <- remains accepted and ordinary calls do not inherit hidden consumption.
+      - Non-terminal aggregate and union/Option construction rejects hidden consumption of reusable move-only sources, accepts explicit <-, commits it, and preserves marker-free fresh-temporary forwarding.
+      - Closure capture AST and analysis distinguish copy capture(value) from consuming capture(<-value), reject legacy capture(-> value), and make the consumed outer Place unavailable.
+      - Ordinary instance methods reject complete-self consumption while eligible independently tracked owned members may be moved with sufficient receiver authority.
+      - Result.Ok() and Result.Err() are compiler-known consuming projections with Option[T]/Option[E] result types; successful calls make a reusable owned Result Place unavailable and later use reports the projection location.
+      - Consuming Result projections reject borrowed receivers and reject a potentially active non-retained payload carrying a non-discardable obligation.
+      - Explicit ownership moves reject addressed volatile/MMIO roots and their projections, while an ordinary read into local inline storage produces a snapshot that follows normal copy/move rules.
+    remaining:
+      - result-borrowed-projections: implement non-consuming Result.OkRef/ErrRef with shared-borrow lifetime tracking
+      - result-projection-state-proof: permit a non-discardable alternate payload only when control-flow proves that Result state unreachable
+      - result-projection-semantic-ir-and-lowering: retain the selected payload, destroy the active alternate exactly once, and preserve consumption facts downstream
+      - complete Place availability integration including nested/indexed/sliced/opaque alias cases and the ownership-v2 Availability/UnavailableReason model
+      - align discard convergence, conditional availability, conditional replacement, and custom-free partial-move prohibition with ownership-v2
+      - stable diagnostic IDs and mentor diagnostics for missing <-, implicit consuming construction, use-after-move, move while borrowed, invalid overlap, move from non-owned/fixed storage, and Result projection consumption
+    required_tests:
+      - ordinary by-value parameter copies a copyable reusable argument and leaves the source available
+      - ordinary by-value parameter rejects a reusable @noCopy/move-only argument instead of consuming it implicitly
+      - -> parameter with reusable source rejects Consume(resource) and accepts Consume(<-resource)
+      - -> parameter accepts a fresh temporary without synthetic <- boilerplate
+      - Some(resource) rejects reusable move-only source while Some(<-resource) consumes it
+      - struct owning field rejects plain reusable move-only source and accepts Field: <-resource
+      - non-terminal Ok(resource) rejects reusable move-only source while Ok(<-resource) is valid
+      - return Ok(resource) remains valid as a terminal return transfer and return Ok(<-resource) is also accepted
+      - return resource and return <-resource have identical ownership results
+      - return Some(resource), returned union payloads, returned aggregates, and recursively nested returned construction forward reusable move-only sources
+      - value-producing match arms inherit terminal ownership only when the match directly supplies return
+      - ordinary calls and illegal indexed, borrowed, volatile, MMIO, or unavailable extraction do not inherit terminal structural forwarding
+      - caller receives fresh move-only function result with ordinary initialization and no marker
+      - capture(value) copies only copyable sources; capture(<-value) consumes reusable source
+      - '@noCopy forbids copy but still permits explicit move'
+      - explicit move of a copyable source makes the source unavailable
+      - volatile source read produces ordinary snapshot; later copy of snapshot performs no extra volatile access
+      - attempted :<- or <- ownership move from physical volatile/MMIO Place is rejected
+      - ordinary method cannot consume whole self but may explicitly move an eligible owned member
+      - Result.Ok()/Err() produce the corresponding Option type, consume an owned reusable Result, and diagnose later whole-result use at the consuming projection
+      - Result.Ok()/Err() reject borrowed receivers and a potentially active non-discardable alternate payload
+      - OkRef/ErrRef borrow without consuming and cannot outlive their Result
+      - selected move-only Result payload moves into Option while the active alternate is destroyed exactly once
+      - large-copy analysis can recommend ref/slice/view without changing by-value source semantics
+    verification:
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'TestResultConsumingProjection|TestCompilerKnown' -count=1
+        result: passed on 2026-09-24 with Result member typing, owned receiver consumption, use-after-consume provenance, borrowed receiver rejection, and non-discardable alternate rejection
+      - command: go test ./internal/sema -run TestExplicitMoveRejectsAddressedVolatileStorageButAllowsLocalSnapshot -count=1
+        result: passed on 2026-09-24 with root, projected, and terminal-return move rejection plus ordinary snapshot transfer coverage
+      - command: go test ./...
+        result: passed on 2026-09-24 after the Result projection increment
+      - command: go vet ./...
+        result: passed on 2026-09-24 after the Result projection increment
+  - id: frontend.destruction
+    area: frontend-destruction-and-cleanup-analysis
+    status: partial
+    integrated: "2026-09-04"
+    document_revision: "2.0"
+    revised: "2026-09-24"
+    repository_baseline: 069c111
+    rules:
+      - rules/memory/destruction.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/memory/arena.md
+      - rules/control-flow/discard.md
+      - rules/control-flow/defer.md
+      - rules/declarations/impl.md
+      - rules/errors/errorhandling.md
+      - rules/platform/volatile.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/events.md
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/place.go
+      - internal/sema/types.go
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+    tests:
+      - internal/sema/destruction_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/lifetime_test.go
+      - internal/sema/analyzer_test.go
+      - internal/parser/parser_test.go
+    implemented:
+      - Established frontend ownership/move state for direct Places, nested fields, selected union payloads, static slice intervals, branches, loops, break/continue, and local aliases.
+      - Initial must-closed resource cleanup state for local io.File/io.Directory across branch and loop control flow.
+      - Initial defer delayed-use analysis preventing conflicting move/discard before deferred reads.
+      - Recursive destruction classification for supported arrays, structs, unions, Result payloads, primitive values, references, raw pointers, slices, and resolved stored fields.
+      - Compiler-known lifecycle owners whose cleanup is hidden behind opaque intrinsic representation are non-trivially destructible, including Task, Thread, Arena, Mutex, MutexGuard, Subscription, Channel, Sender, Receiver, and MessageTicket.
+      - Destruction classification propagates recursively through aggregates while remaining independent from copy prohibition; @noCopy alone does not make an otherwise trivial value non-trivially destructible.
+      - Current frontend distinguishes several moved, returned, discarded, detached, released, and consuming-projection reasons for related diagnostics.
+      - Discard of an already unavailable discardable local or tracked field Place is accepted as a frontend no-op without a second read or destruction action; later ordinary use remains unavailable.
+      - Supported discard, move, and replacement paths reject invalidation while an overlapping borrow or deferred use requires the Place to remain valid.
+    remaining:
+      - 'destruction-classification-completion: derive custom-free, imported/foreign owner, concrete interface, generic-instantiation, and every remaining compiler-known lifecycle classification from canonical resolved facts'
+      - 'general-cleanup-responsibility: replace narrow File/Directory must-closed tracking with general exact-once destruction responsibility for every non-trivial owned value'
+      - 'availability-integration: consume ownership-v2 Available/PartiallyAvailable/Unavailable/ConditionallyAvailable plus separate UnavailableReason/provenance when computing cleanup'
+      - 'partial-aggregate-destruction: recursively destroy exactly still-owned Available sub-Places and skip moved/discarded/uninitialized sub-Places'
+      - 'conditional-destruction: preserve branch/path-specific ownership and statically eliminate conditional cleanup whenever possible'
+      - 'discard-convergence: implement explicit conditional availability/destruction plans, backend no-double-destruction, and new cleanup registration after reinitialization'
+      - 'replacement-reinitialization: distinguish Available replacement from Unavailable reinitialization and ConditionallyAvailable mixed replacement/reinitialization with pre-commit semantic validation'
+      - 'custom-free-frontend: implement free AST/parser/member registration/Sema body rules, non-callability, no Result/value return, no defer, no self escape/resurrection, no whole-self transfer, and no owned-field move-out in Sec 0.1'
+      - 'custom-free-partial-move-ban: reject partial field moves for types defining custom free and identify the free declaration in diagnostics'
+      - 'free-field-cleanup: model free body followed by remaining initialized owned-field destruction without duplicate release'
+      - 'construction-failure-cleanup: track staged init field/resource acquisition and clean only successfully initialized obligations without invoking completed-value free'
+      - 'defer-unified-order: model automatic destruction and defer registration in one source-ordered LIFO cleanup plan while preserving earliest legal destruction'
+      - 'result-option-union-cleanup: destroy only active retained payloads and integrate moved-out payload state'
+      - 'result-projection-cleanup: preserve the implemented Result.Ok()/Err() ownership consumption through retained-payload transfer and inactive-side destruction/end semantics'
+      - 'try-return-cleanup: integrate bodyless try, partial handlers, handler-produced failures, and return try with exact transferred-payload exclusion from local cleanup'
+      - 'ffi-allocator-authority: preserve release/deallocator authority and accepted-ownership state for foreign transfers'
+      - 'volatile-boundary: ensure ending local snapshots never creates additional volatile/MMIO accesses or hardware reset/clear behavior'
+      - 'static-global-destruction: defer to canonical ProgramShutdownPlan/TargetProfile support instead of applying the old blanket global-destruction restriction'
+    required_tests:
+      - trivial scalar has no required runtime destruction operation
+      - opaque compiler-known lifecycle owners are non-trivially destructible and propagate that classification through aggregates
+      - '@noCopy without cleanup-bearing fields remains trivially destructible'
+      - non-trivial local is destroyed exactly once
+      - locals clean in reverse successful registration order when lifetimes otherwise overlap
+      - struct fields destroy in reverse declaration order
+      - fixed array initialized elements destroy in reverse index order
+      - move cancels former-owner cleanup
+      - consuming -> call cancels caller cleanup only after transfer commitment
+      - return value and return <-value both transfer cleanup responsibility
+      - partially moved aggregate destroys only still-owned fields
+      - moved/discarded field is never destroyed twice
+      - custom-free type rejects partial field move
+      - conditional move yields conditional cleanup only on paths still owning the value
+      - statically resolvable conditional ownership requires no runtime availability flag
+      - discard available value destroys once and converges to unavailable
+      - second discard of unavailable Place is legal no-op and performs no destruction
+      - discard conditionally available Place destroys only still-owned paths and converges every outgoing path
+      - reinitialization of unavailable mutable Place performs no old cleanup and registers new cleanup
+      - replacement of available mutable Place destroys old value exactly once before new ownership commits
+      - conditional replacement destroys old value only on paths where it still exists
+      - create first, defer, create second exits second then defer then first
+      - defer-referenced value remains alive until deferred execution
+      - fallible init failure cleans only successfully initialized owned fields/resources
+      - completed-value free is not invoked for failed partial construction
+      - direct value.free() is rejected
+      - free cannot return value or Result
+      - defer inside free is rejected
+      - whole self escape/move from free is rejected
+      - owned field move-out from free is rejected in Sec 0.1
+      - remaining owned fields destroy after custom free exactly once
+      - Result destroys only active retained payload
+      - Option destroys Some payload only
+      - Result.Ok()/Err() consume correctly without double destruction
+      - bodyless try propagation cleans unrelated still-owned locals
+      - return try establishes transferred result before local cleanup
+      - break/continue clean only exited regions and preserve loop-carried values
+      - zero-iteration loop does not destroy never-created iteration locals
+      - RawPtr lifetime end does not infer deallocation
+      - foreign ownership transfer cancels Sec cleanup only after contract-defined acceptance
+      - volatile snapshot destruction emits no additional volatile read/write
+    verification:
+      - command: go test ./internal/sema -run 'Test(CompilerKnownLifecycleOwnersRequireDestruction|TriviallyDestructible)' -count=1
+        result: passed on 2026-09-24 with opaque lifecycle owners, recursive Result propagation, and copy/destruction independence coverage
+      - command: go test ./...
+        result: passed on 2026-09-24 after the destruction-classification increment
+      - command: go vet ./...
+        result: passed on 2026-09-24 after the destruction-classification increment
   - id: sema.place-analysis
     area: frontend-analysis
     status: partial

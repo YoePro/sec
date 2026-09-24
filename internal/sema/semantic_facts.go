@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -313,6 +314,7 @@ const (
 //   - rules/errors/panic.md — §§ 15.3–15.5 "Meaning", "Messages", "Assertions are always active"
 type ResolvedAssertion struct {
 	Reason     PanicReason
+	ReasonID   diagnostics.PanicReasonID
 	Condition  ast.Expression
 	Message    string
 	HasMessage bool

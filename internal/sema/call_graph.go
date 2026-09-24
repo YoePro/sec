@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -123,8 +124,9 @@ const (
 )
 
 type EffectSite struct {
-	Kind   EffectKind
-	Source lexer.Token
+	Kind           EffectKind
+	Source         lexer.Token
+	PanicReasonIDs []diagnostics.PanicReasonID
 }
 
 type CallableEffectSummary struct {
@@ -360,7 +362,7 @@ func (g *CallGraph) clone() *CallGraph {
 		copyGraph.arenaEffects[id] = append([]ArenaEffectSite(nil), effects...)
 	}
 	for id, effects := range g.effects {
-		copyGraph.effects[id] = append([]EffectSite(nil), effects...)
+		copyGraph.effects[id] = cloneEffectSites(effects)
 	}
 	return copyGraph
 }
@@ -614,7 +616,7 @@ func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
 	if g == nil {
 		return CallableEffectSummary{}
 	}
-	summary := CallableEffectSummary{DirectEffects: append([]EffectSite(nil), g.effects[id]...)}
+	summary := CallableEffectSummary{DirectEffects: cloneEffectSites(g.effects[id])}
 	summary.PanicPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
 		for _, effect := range g.effects[candidate] {
 			if effect.Kind == EffectMayPanicArithmetic || effect.Kind == EffectMayPanicBounds || effect.Kind == EffectMayPanicExplicit || effect.Kind == EffectMayPanicAssertion || effect.Kind == EffectMayPanicUnreachable {
@@ -625,6 +627,14 @@ func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
 	})
 	summary.MayPanic = len(summary.PanicPath) > 0
 	return summary
+}
+
+func cloneEffectSites(sites []EffectSite) []EffectSite {
+	cloned := append([]EffectSite(nil), sites...)
+	for index := range cloned {
+		cloned[index].PanicReasonIDs = append([]diagnostics.PanicReasonID(nil), cloned[index].PanicReasonIDs...)
+	}
+	return cloned
 }
 
 func (g *CallGraph) synchronousPathTo(start CallableID, predicate func(CallableID) bool) []CallableID {

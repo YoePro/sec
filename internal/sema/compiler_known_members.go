@@ -32,6 +32,7 @@ type CompilerKnownFunction struct {
 	Parameters []FunctionParameter
 	Result     Type
 	Internal   bool
+	OwnerFile  string
 }
 
 // CompilerKnownFunctions is the canonical catalog used to reserve and expose
@@ -47,8 +48,9 @@ func CompilerKnownFunctions() []CompilerKnownFunction {
 		{ID: "CKF-LEN", Name: "len", Result: types["int"]},
 		{ID: "CKF-FILL", Name: "fill", Result: Type{Kind: InvalidType}},
 		{
-			ID:   "CKF-STRING-SLICE-UNCHECKED",
-			Name: "__StringSliceUnchecked",
+			ID:        "CKF-STRING-SLICE-UNCHECKED",
+			Name:      "__StringSliceUnchecked",
+			OwnerFile: "sec/core/string.sec",
 			Parameters: []FunctionParameter{
 				{Name: "value", Type: types["string"]},
 				{Name: "start", Type: types["uint"]},
@@ -104,6 +106,26 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		members = append(members, CompilerKnownMember{ID: compilerKnownToStringID(typ), Name: "ToString", Kind: CompilerKnownMethod, Result: stringType})
 	}
 	sequence := dereferenceType(typ)
+	if sequence.Kind == ResultType && len(sequence.TypeArgs) == 2 {
+		members = append(members,
+			CompilerKnownMember{
+				ID:            "CKM-RESULT-OK",
+				Name:          "Ok",
+				Kind:          CompilerKnownMethod,
+				Result:        compilerKnownOption(sequence.TypeArgs[0]),
+				Signature:     "fn Ok() Option[T]",
+				Documentation: "Consumes an owned Result and returns its success payload as an Option.",
+			},
+			CompilerKnownMember{
+				ID:            "CKM-RESULT-ERR",
+				Name:          "Err",
+				Kind:          CompilerKnownMethod,
+				Result:        compilerKnownOption(sequence.TypeArgs[1]),
+				Signature:     "fn Err() Option[E]",
+				Documentation: "Consumes an owned Result and returns its error payload as an Option.",
+			},
+		)
+	}
 	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},

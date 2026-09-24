@@ -111,6 +111,56 @@ fn Read() Result[Point, IOError] {
 	}
 }
 
+// Compiler-known lifecycle owners have runtime destruction semantics that are
+// not expressible through their source-visible Fields. They must therefore not
+// collapse to trivial merely because the fallback Type descriptor is opaque.
+//
+// Rules:
+//   - rules/memory/destruction.md — §3 "Destruction classification"
+//   - rules/memory/arena.md — §46
+//   - rules/concurrency/mutex.md — §§6 and 48
+//   - rules/concurrency/channels.md — §§21, 31, 35, and 36
+func TestCompilerKnownLifecycleOwnersRequireDestruction(t *testing.T) {
+	types := builtinTypes()
+	intType := types["int"]
+	for _, test := range []struct {
+		name string
+		typ  Type
+	}{
+		{name: "Task", typ: instantiateCompilerKnownType(types["Task"], intType)},
+		{name: "Thread", typ: instantiateCompilerKnownType(types["Thread"], intType)},
+		{name: "Arena", typ: types["Arena"]},
+		{name: "Mutex", typ: instantiateCompilerKnownType(types["Mutex"], intType)},
+		{name: "MutexGuard", typ: instantiateCompilerKnownType(types["MutexGuard"], intType)},
+		{name: "Subscription", typ: types["Subscription"]},
+		{name: "Channel", typ: instantiateCompilerKnownType(types["Channel"], intType)},
+		{name: "Sender", typ: instantiateCompilerKnownType(types["Sender"], intType)},
+		{name: "Receiver", typ: instantiateCompilerKnownType(types["Receiver"], intType)},
+		{name: "MessageTicket", typ: instantiateCompilerKnownType(types["MessageTicket"], intType)},
+	} {
+		if TriviallyDestructible(test.typ) {
+			t.Errorf("compiler-known %s must require destruction: %+v", test.name, test.typ)
+		}
+	}
+
+	guard := instantiateCompilerKnownType(types["MutexGuard"], intType)
+	result := Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{guard, types["TaskError"]}}
+	if TriviallyDestructible(result) {
+		t.Fatal("Result containing a MutexGuard must inherit its destruction obligation")
+	}
+
+	noCopyTrivial := Type{Name: "Token", Kind: StructType, ExplicitlyNonCopyable: true, Fields: []StructField{{Name: "value", Type: intType}}}
+	if !TriviallyDestructible(noCopyTrivial) {
+		t.Fatal("@noCopy alone must not create a destruction obligation")
+	}
+}
+
+func instantiateCompilerKnownType(template Type, arguments ...Type) Type {
+	template.TypeArgs = append([]Type(nil), arguments...)
+	template.GenericParameters = nil
+	return template
+}
+
 // rules/control-flow/discard.md section 5 and destruction.md section 12 make
 // repeated discard a convergence operation. It must not be analyzed as a read
 // of the value that the first terminal action made unavailable.

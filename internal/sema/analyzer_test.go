@@ -3433,6 +3433,19 @@ fn Slice(value: string, start: uint, end: uint) string {
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "compiler-internal operation available only to privileged core source") {
 		t.Fatalf("ordinary source errors = %v", errors)
 	}
+
+	otherCoreFile := "/tmp/project/sec/core/task.sec"
+	otherLexer := lexer.NewWithFile(input, otherCoreFile)
+	otherParser := parser.New(otherLexer)
+	otherProgram := otherParser.ParseProgram()
+	if len(otherParser.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", otherParser.Errors())
+	}
+	otherProgram.SourceProvenance = map[string]ast.SourceProvenance{otherCoreFile: ast.SourceCore}
+	otherErrors := NewAnalyzer().Analyze(otherProgram)
+	if len(otherErrors) != 1 || !strings.Contains(otherErrors[0].Message, "private to sec/core/string.sec") {
+		t.Fatalf("other trusted core source errors = %v", otherErrors)
+	}
 }
 
 // rules/library/core-library.md and rules/concurrency/tasks.md sections 4-5

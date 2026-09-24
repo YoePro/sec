@@ -120,6 +120,13 @@ fn Visit(left: ref int[], right: ref int[]) void {
 	}
 }
 
+// A proven endpoint exit suppresses the inclusive-length rule. The assertion
+// follows the canonical rule registry instead of freezing its current size so
+// unrelated catalog additions cannot invalidate this suppression test.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Suppressing evidence"
+//   - rules/analysis/pitfall_analysis.md — "Inclusive upper bound against collection length"
 func TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
 
@@ -144,9 +151,19 @@ fn Visit(values: ref int[]) void {
 		t.Fatalf("suppressed result = %+v", results)
 	}
 	evaluations := analysis.Evaluations()
-	if len(evaluations) != 3 || evaluations[0].State != PitfallStateSuppressed || evaluations[0].SuppressedCount != 1 {
+	if len(evaluations) != len(PitfallRules()) {
 		t.Fatalf("evaluations = %+v", evaluations)
 	}
+	for _, evaluation := range evaluations {
+		if evaluation.Rule != PitfallInclusiveLengthIndex {
+			continue
+		}
+		if evaluation.State != PitfallStateSuppressed || evaluation.FindingCount != 0 || evaluation.SuppressedCount != 1 {
+			t.Fatalf("inclusive-length evaluation = %+v", evaluation)
+		}
+		return
+	}
+	t.Fatalf("missing %s evaluation in %+v", PitfallInclusiveLengthIndex, evaluations)
 }
 
 func TestPitfallAnalysisRecognizesOrderedEndpointExitGuards(t *testing.T) {

@@ -1727,6 +1727,9 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 	analyzer := newLSPAnalyzer(uri)
 	analyzer.Analyze(program)
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
+		if hover, ok := tryExpressionHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := contextualOperatorHover(text, program, analyzer, sourceTokens(uri, text), token); ok {
 			return hover, true
 		}

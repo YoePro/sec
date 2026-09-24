@@ -532,6 +532,9 @@ func TestCompilerKnownStringSliceIsInternalAndTyped(t *testing.T) {
 	if !known.Internal {
 		t.Fatal("compiler-known string slice operation must be internal")
 	}
+	if known.OwnerFile != "sec/core/string.sec" {
+		t.Fatalf("compiler-known string slice owner = %q", known.OwnerFile)
+	}
 	if known.Result.Kind != StringType || len(known.Parameters) != 3 {
 		t.Fatalf("unexpected string slice signature: %#v", known)
 	}

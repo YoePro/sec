@@ -260,8 +260,8 @@ integrations:
     verification:
       - command: go test ./internal/parser ./internal/sema -run 'TryAssignment' -count=1
         result: passed; parser, compatible propagation, concrete-to-open error widening, invalid channels, local handlers, and immutable fact queries are covered
-      - command: go test ./... -skip TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint -count=1
-        result: passed across all compiler, LSP, frontend, Semantic IR, and lowering packages
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
 
   - id: frontend.panic
     area: panic-assert-unreachable-frontend
@@ -278,10 +278,14 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/call_graph.go
+      - internal/sema/analyzer_panic_effects.go
       - internal/sema/types.go
       - internal/sema/semantic_facts.go
+      - internal/diagnostics/panic_reasons.go
       - internal/sema/panic_info_test.go
       - internal/sema/assertion_facts_test.go
+      - internal/sema/panic_reason_effect_test.go
+      - internal/diagnostics/panic_reasons_test.go
       - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/builder.go
       - cmd/lsp/main_test.go
@@ -309,8 +313,15 @@ integrations:
       - compiler-known nominal PanicID has the fixed uint32 representation, and compiler-known PanicInfo exposes exactly ID, File, Line, Column, and Function through one canonical Sema type also used by TaskOutcome.Panicked and LSP member completion
       - every semantically valid assertion publishes a read-only resolved fact with the stable AssertionFailed category, condition, optional static message, exact file/line/column/function provenance, and current proof state; querying unknown syntax does not synthesize facts
       - successful assertions and if true branches now publish the same ResolvedConditionFact shape with distinct provenance; dominating assertion facts feed fixed-array bounds proof through the shared condition-fact path and retain assertion-specific Sema proof provenance, while the current Semantic IR compatibility mapping remains the general analysis category pending its dedicated assertion representation
+      - the diagnostics-owned panic registry assigns stable nonzero uint32 IDs and symbolic names to all ten mandatory Sec 0.1 panic-reason categories, with zero reserved as unresolved
+      - resolved assertion facts carry the canonical AssertionFailed PanicID in addition to their symbolic frontend reason
+      - explicit panic, checked unreachable, and ordinary bounds effect sites carry their exact canonical PanicID without backend reconstruction
+      - checked integer effect sites carry canonical possible-reason sets derived from ResolvedOperator, including overflow, division by zero, and invalid shift without reparsing operator syntax
+      - signed division and remainder retain both DivisionByZero and ArithmeticOverflow, while unsigned division retains only DivisionByZero
+      - signed left shift retains InvalidShift and ArithmeticOverflow; other checked shifts retain InvalidShift
     remaining:
-      - implement stable panic-reason registry assignments and allocation-free canonical PanicInfo construction
+      - attach stable registry IDs to contracts, invalid-reference generation, foreign abort, and every later canonical panic source
+      - implement allocation-free canonical PanicInfo construction from registered reason and static source metadata
       - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
       - extend assertion panic-freedom proof beyond literal true through canonical semantic facts without suppressing condition-evaluation effects
       - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
@@ -342,6 +353,10 @@ integrations:
         result: passed; resolved assertion reason/message/provenance/proof facts coexist with exact bool validation and existing panic-effect behavior
       - command: go test ./internal/sema -run 'ResolvedAssertionFacts|ResolvedFixedArrayIndexRefinementProofs|AssertionPanicEffects|FixedArrayBounds' -count=1
         result: passed; assertions and if branches publish shared condition facts, assertion-derived bounds use explicit assertion provenance, and incomplete or invalidated facts retain runtime checks
+      - command: go test ./internal/diagnostics ./internal/sema -run 'PanicReasonRegistry|ResolvedAssertionFacts|ExplicitPanic|CheckedUnreachable|FixedArrayBoundsEffects' -count=1
+        result: passed on 2026-09-24; registry stability plus assertion, explicit panic, checked unreachable, and bounds reason-ID propagation are covered
+      - command: go test ./internal/sema -run 'CheckedIntegerEffectsCarryCanonicalPanicReasonSets|ArithmeticEffects' -count=1
+        result: passed on 2026-09-24; exact checked-integer reason sets and existing panic-effect behavior agree
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
@@ -361,6 +376,9 @@ integrations:
       - explicit panic records a direct may-panic-explicit effect and participates in existing transitive @noPanic cause paths
       - unproven assertion records a direct may-panic-assertion effect and participates in existing transitive @noPanic cause paths; literal true contributes no assertion effect
       - reachable checked unreachable records a direct may-panic-unreachable effect in the shared call graph, participates in @noPanic verification with source provenance, and is suppressed on statically impossible paths
+      - effect sites for assertion failure, explicit panic, checked unreachable, and ordinary bounds failure retain exact diagnostics-registry PanicIDs alongside their effect kinds and source provenance
+      - checked integer effect sites retain immutable ordered possible-reason sets from resolved operation kind and signedness; call-graph snapshots defensively copy those sets
+      - arithmetic panic-effect recording and try-based removal are isolated in analyzer_panic_effects.go rather than extending analyzer.go
     remaining:
       - extend assertion proof beyond literal true and integrate contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
       - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
@@ -381,6 +399,10 @@ integrations:
         result: passed; direct and transitive assertion effects, literal-true and dead-branch elimination, and cause-aware @noPanic diagnostics
       - command: go test ./internal/sema -run 'CheckedUnreachable' -count=1
         result: passed; reachable and proven-dead effects plus source-aware @noPanic enforcement use the canonical call graph
+      - command: go test ./internal/diagnostics ./internal/sema -run 'PanicReasonRegistry|ResolvedAssertionFacts|ExplicitPanic|CheckedUnreachable|FixedArrayBoundsEffects' -count=1
+        result: passed on 2026-09-24; implemented panic effects preserve stable reason IDs without changing existing noPanic reachability
+      - command: go test ./internal/sema -run 'CheckedIntegerEffectsCarryCanonicalPanicReasonSets|ArithmeticEffects' -count=1
+        result: passed on 2026-09-24; unary, add, signed and unsigned divide/remainder, and shift effects retain canonical reason sets
 
   - id: semantic-ir.panic
     area: semantic-ir-panic

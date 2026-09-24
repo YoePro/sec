@@ -62,6 +62,9 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 	if mode == ast.OwnershipMove && a.rejectOrdinaryMethodWholeSelfConsumption(place, token) {
 		return false
 	}
+	if mode == ast.OwnershipMove && a.rejectPhysicalStorageMove(place, token) {
+		return false
+	}
 	if a.variadicPackElementExpression(value) && (mode == ast.OwnershipMove || requiresOwnershipTransfer(place.Type)) {
 		// rules/declarations/functions.md section 34: no direct or partial
 		// move may extract an element from the invocation-lifetime pack.
@@ -133,6 +136,28 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 		moveSyntax,
 	)
 	return false
+}
+
+// rejectPhysicalStorageMove keeps ownership transfer distinct from an
+// observable read of addressed volatile/MMIO storage. Reading such a Place
+// produces an ordinary local snapshot, but the physical Place itself is not a
+// reusable Sec-owned value that can be consumed with :<- or <-.
+//
+// Rules:
+//   - rules/memory/copy_move.md — §19.1 "Volatile is storage semantics" and §19.2 "Volatile storage is not a movable owner"
+//   - rules/memory/ownership.md — §30 "Hardware, fixed-address storage, and FFI"
+//   - rules/platform/volatile.md — physical storage access and diagnostics
+func (a *Analyzer) rejectPhysicalStorageMove(place Place, token lexer.Token) bool {
+	symbol, ok := a.symbols[place.Root]
+	if !ok || !symbol.Volatile && !symbol.Addressed {
+		return false
+	}
+	a.addErrorAtToken(
+		token,
+		"cannot move ownership out of volatile/MMIO storage %s; read it into a local snapshot first",
+		place.String(),
+	)
+	return true
 }
 
 // markExplicitMoveSource commits one already validated explicit Place move and

@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // TestCheckedUnreachableTerminatesAndRecordsReachableEffect verifies that the
@@ -22,7 +24,8 @@ func TestCheckedUnreachableTerminatesAndRecordsReachableEffect(t *testing.T) {
 	assertSemaErrors(t, errors, []string{"unreachable statement at 9:9"})
 
 	stop := analyzer.CallGraph().EffectSummary(callGraphNodeIDByName(t, analyzer.CallGraph(), "Stop"))
-	if !stop.MayPanic || len(stop.DirectEffects) != 1 || stop.DirectEffects[0].Kind != EffectMayPanicUnreachable {
+	if !stop.MayPanic || len(stop.DirectEffects) != 1 || stop.DirectEffects[0].Kind != EffectMayPanicUnreachable ||
+		len(stop.DirectEffects[0].PanicReasonIDs) != 1 || stop.DirectEffects[0].PanicReasonIDs[0] != diagnostics.PanicReasonCheckedUnreachableReached {
 		t.Fatalf("Stop effects = %+v, want one checked-unreachable panic effect", stop)
 	}
 	dead := analyzer.CallGraph().EffectSummary(callGraphNodeIDByName(t, analyzer.CallGraph(), "DeadPath"))

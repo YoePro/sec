@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -35,7 +36,7 @@ func TestResolvedAssertionFactsPreserveCanonicalMetadata(t *testing.T) {
 		function.Body.Statements[1].(*ast.AssertStatement),
 	}
 	withMessage, ok := analyzer.ResolvedAssertionOf(assertions[0])
-	if !ok || withMessage.Reason != PanicReasonAssertionFailed || !withMessage.HasMessage ||
+	if !ok || withMessage.Reason != PanicReasonAssertionFailed || withMessage.ReasonID != diagnostics.PanicReasonAssertionFailure || !withMessage.HasMessage ||
 		withMessage.Message != "ready required" || withMessage.File != path ||
 		withMessage.Line != 4 || withMessage.Column != 5 || withMessage.Function != "Check" || withMessage.Proven {
 		t.Fatalf("message assertion fact = %+v", withMessage)

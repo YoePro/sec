@@ -4,8 +4,9 @@ purpose: Process creation, lifecycle, and process boundaries.
 integrations:
   - id: concurrency.processes-v2
     area: process-execution-and-lifecycle
-    status: planned
+    status: partial
     reviewed: '2026-09-15'
+    revised: '2026-09-24'
     document_revision: '2.1'
     repository_baseline: 0f5027d
     summary: 'Implements the canonical Sec 0.1 process model defined by rules/concurrency/processes.md: isolated Sec-callable subprocesses through spawn process, external executable launch through Command, complete compiler-known process/core types, transactional startup transfer, typed completion transfer, process observation, join/detach/termination, standard-I/O launch modes, pipes, and Resource-mode direct File/Pipe binding through the IPC capability model, target capability validation, process lifecycle analysis, Semantic IR, lowering, diagnostics, and deterministic native cleanup/reaping. The previous processes.txt file was only a placeholder and does not represent an implementation baseline.'
@@ -30,11 +31,26 @@ integrations:
     - rules/platform/target_profiles.md
     - rules/platform/platform_model.md
     - rules/concurrency/ipc.md
-    implemented: []
+    code:
+    - internal/ast/ast.go
+    - internal/parser/expression.go
+    - internal/sema/types.go
+    - internal/sema/process_types.go
+    tests:
+    - internal/parser/parser_test.go
+    - internal/sema/process_types_test.go
+    - internal/sema/target_plan_test.go
+    implemented:
+    - ProcessID is a compiler-known nominal unsigned type distinct from uint and from any native operating-system process identifier
+    - ProcessID representation follows the selected target's canonical 32-bit or 64-bit uint width and bounds
+    - ProcessStatus is a compiler-known exhaustive enum with exactly Created, Running, Completed, CompletionFailed, Panicked, and Terminated
+    - ProcessStatus.Created is the canonical default enum value; runtime-private states cannot extend the source-visible enum
+    - ProcessID and ProcessStatus participate in ordinary frontend type resolution, equality checking, intrinsic type discovery, and enum member lookup
+    - parser and AST preserve task, thread, and process as distinct spawn execution-kind modifiers
+    - spawn process remains explicitly rejected by Sema rather than degrading to task or thread execution before its transfer and lifecycle contracts exist
     remaining:
-    - add compiler-known/core declarations for Process[T], ProcessID, ProcessStatus, ExitStatus, ProcessTerminationKind, ProcessTermination, ProcessCompletionError, ProcessSpawnError, ProcessTerminationError, ProcessObserver, Command, CommandConfigurationError, CommandValidationError, CommandStartError, CommandInputMode, CommandOutputMode, and ProcessPlatform
+    - add compiler-known/core declarations for Process[T], ExitStatus, ProcessTerminationKind, ProcessTermination, ProcessCompletionError, ProcessSpawnError, ProcessTerminationError, ProcessObserver, Command, CommandConfigurationError, CommandValidationError, CommandStartError, CommandInputMode, CommandOutputMode, and ProcessPlatform
     - make every process/core declaration expose exactly the properties, methods, modifiers, enum variants, return types, and availability constraints defined by processes.md
-    - add parser and AST preservation for the process spawn modifier without allowing it to degrade to task/thread execution
     - type spawn process Callable(...) as Result[Process[T], ProcessSpawnError] while preserving the callable's complete declared return type T
     - make spawn process eager and reject any implementation that exposes an unstarted Process[T] or hidden ProcessConfig semantics
     - implement process-callable materialization for named functions, concrete generic specializations, eligible methods, and eligible callable values/lambdas
@@ -45,8 +61,8 @@ integrations:
     - implement transactional startup transfer so ownership commits only after successful process bootstrap and is preserved on every pre-commit ProcessSpawnError path
     - implement child bootstrap with all startup arguments/captures materialized before user callable entry
     - guarantee that failed spawn never leaves a hidden running child, unreaped child, leaked bootstrap object, or half-committed ownership state
-    - implement ProcessID allocation with target-sized unsigned representation and no reuse during one Sec program execution
-    - implement ProcessStatus Created, Running, Completed, CompletionFailed, Panicked, and Terminated with the exact terminal/nonterminal meanings in processes.md
+    - implement ProcessID runtime allocation without reuse during one Sec program execution and fail with resource exhaustion instead of wrapping
+    - wire lifecycle transitions, terminal payload availability, and terminal/nonterminal meaning to the implemented ProcessStatus variants
     - implement one typed terminal completion payload for Process[T] and ExitStatus completion for Command
     - implement ProcessCompletionError and owner-side completion-transfer failure semantics distinct from spawn failure, panic, and abnormal termination
     - integrate canonical PanicInfo transport for process panic without fabricating panic metadata when the child panic report cannot be established
@@ -140,3 +156,6 @@ integrations:
     - rules/corrections/applied/processes-cross-rulebook-correction-20260907.md
     - rules/corrections/applied/panic-info-compiler-known-correction-20260907.md
     - rules/corrections/applied/ipc-cross-rulebook-correction-20260915.md
+    verification:
+    - command: go test ./internal/sema -run 'TestCompilerKnownProcess|TestTargetScalarPlanDefinesIntAndUintBounds|TestCompilerKnownTypeNamesCannotBeRedeclared' -count=1
+      result: passed on 2026-09-24; target-sized nominal ProcessID, exact ProcessStatus variants, source resolution, and compiler-known reservation are covered

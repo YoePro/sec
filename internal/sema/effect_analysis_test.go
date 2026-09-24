@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // rules/collections/collections.md §8.3 requires every non-provably-invalid
@@ -171,7 +173,8 @@ fn UnsafeRuntime(values: int[4], index: int128) int {
 	graph := analyzer.CallGraph()
 	runtimeID := callGraphNodeIDByName(t, graph, "Runtime")
 	runtime := graph.EffectSummary(runtimeID)
-	if !runtime.MayPanic || len(runtime.DirectEffects) != 1 || runtime.DirectEffects[0].Kind != EffectMayPanicBounds {
+	if !runtime.MayPanic || len(runtime.DirectEffects) != 1 || runtime.DirectEffects[0].Kind != EffectMayPanicBounds ||
+		len(runtime.DirectEffects[0].PanicReasonIDs) != 1 || runtime.DirectEffects[0].PanicReasonIDs[0] != diagnostics.PanicReasonBoundsFailure {
 		t.Fatalf("Runtime effects = %+v, want one direct bounds-panic effect", runtime)
 	}
 	for _, name := range []string{"ProvenConstant", "ProvenRange"} {
@@ -186,7 +189,8 @@ fn UnsafeRuntime(values: int[4], index: int128) int {
 		t.Fatalf("CallsRuntime effects = %+v, want transitive bounds-panic path", caller)
 	}
 	unsafeRuntime := graph.EffectSummary(callGraphNodeIDByName(t, graph, "UnsafeRuntime"))
-	if !unsafeRuntime.MayPanic || len(unsafeRuntime.DirectEffects) != 1 || unsafeRuntime.DirectEffects[0].Kind != EffectMayPanicBounds {
+	if !unsafeRuntime.MayPanic || len(unsafeRuntime.DirectEffects) != 1 || unsafeRuntime.DirectEffects[0].Kind != EffectMayPanicBounds ||
+		len(unsafeRuntime.DirectEffects[0].PanicReasonIDs) != 1 || unsafeRuntime.DirectEffects[0].PanicReasonIDs[0] != diagnostics.PanicReasonBoundsFailure {
 		t.Fatalf("UnsafeRuntime effects = %+v, want unsafe block to retain ordinary bounds checking", unsafeRuntime)
 	}
 }

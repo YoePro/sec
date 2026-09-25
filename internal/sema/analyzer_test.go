@@ -7630,6 +7630,68 @@ fn Invalid(value: StructuralOnly) void {
 	}
 }
 
+// Multiple constraints remain ordered template metadata and every conjunct is
+// required for both inferred and explicit generic function specialization.
+//
+// Rules:
+//   - rules/declarations/generics.md — §12 "Multiple constraints"
+//   - rules/declarations/generics.md — §14 "Constraint satisfaction"
+//   - rules/declarations/generics.md — §29 "Overload resolution"
+func TestGenericFunctionMultipleConstraintsRequireEveryConjunct(t *testing.T) {
+	input := `
+module main
+
+interface First {}
+interface Second {}
+
+type Both struct {}
+impl Both implements First, Second {}
+
+type OnlyFirst struct {}
+impl OnlyFirst implements First {}
+
+fn Accept[T: First & Second](value: T) T {
+	return value
+}
+
+fn Valid(value: Both) void {
+	discard Accept(value)
+	discard Accept[Both](value)
+}
+
+fn Invalid(value: OnlyFirst) void {
+	discard Accept(value)
+	discard Accept[OnlyFirst](value)
+}
+`
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	assertSemaErrors(t, errors, []string{
+		"type OnlyFirst does not satisfy constraint Second for T at 23:10",
+		"type OnlyFirst does not satisfy constraint Second for T at 24:10",
+	})
+
+	template := analyzer.functions["Accept"][0]
+	if len(template.GenericConstraints) != 2 ||
+		template.GenericConstraints[0].Parameter != "T" || template.GenericConstraints[0].Interface.Name != "First" ||
+		template.GenericConstraints[1].Parameter != "T" || template.GenericConstraints[1].Interface.Name != "Second" {
+		t.Fatalf("Accept constraints = %+v, want ordered T: First & Second", template.GenericConstraints)
+	}
+}
+
+func TestMultipleGenericConstraintDeclarationErrorsAreIndependent(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+interface Valid {}
+
+fn Invalid[T: Valid & int & Missing](value: T) void {}
+`)
+	assertSemaErrors(t, errors, []string{
+		"generic constraint int is not an interface at 6:23",
+		"unknown generic constraint Missing for T at 6:29",
+	})
+}
+
 // An explicit implements clause is insufficient when its required members are
 // invalid; constraint satisfaction consumes validated conformance.
 //

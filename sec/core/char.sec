@@ -141,9 +141,8 @@ impl char {
         return None()
     }
 
-    /** Returns the lowercase variant of a letter when possible */
+    /** Returns the ASCII only lowercase variant of a letter when possible */
     fn ToLower() char {
-        // TODO: We need to cover other formats such as Latin1 and not just ASCII
         if self in 65t..90t {
             return char(int(self) | 0x20)
         }
@@ -151,9 +150,14 @@ impl char {
         return self
     }
 
-    /** Returns the uppercase variant of a letter when possible */
+    /** Returns the lowercase variant of a letter when possible, using the specified codepage */
+    fn ToLower(codePage: CodePages) char {
+        // TODO: Implement codepage specific lowercasing
+        return self.ToLower()
+    }
+
+    /** Returns the ASCII only uppercase variant of a letter when possible */
     fn ToUpper() char {
-        // TODO: We need to cover other formats such as Latin1 and not just ASCII
         if self in 97t..122t {
             return char(int(self) & 0xDF)
         }
@@ -161,4 +165,9 @@ impl char {
         return self
     }
 
+    /** Returns the uppercase variant of a letter when possible, using the specified codepage */
+    fn ToUpper(codePage: CodePages) char {
+        // TODO: Implement codepage specific uppercasing
+        return self.ToUpper()
+    }
 }

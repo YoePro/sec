@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-26"
     document_revision: "2.0"
-    revised: "2026-09-22"
+    revised: "2026-09-25"
     repository_baseline: "b3315f6"
     replaces: pre-v2 rules/memory/ownership.md
     summary: >-
@@ -53,11 +53,16 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/expression.go
       - internal/parser/parser.go
+      - internal/cst/roles.go
+      - internal/formatter/formatter.go
+      - internal/formatter/cst_spacing.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_lifetime.go
       - internal/sema/place.go
     tests:
       - internal/parser/parser_test.go
+      - internal/cst/roles_test.go
+      - internal/formatter/formatter_test.go
       - internal/sema/analyzer_lifetime_test.go
       - internal/sema/copy_move_test.go
     implemented:
@@ -75,7 +80,7 @@ integrations:
       - borrow validation before supported moves and overlapping self-move diagnostics
       - independent copy and trivial-destruction classifications
       - left-to-right call argument evaluation with outer-call transfer commit delayed until every argument is ready
-      - contextual ownership availability syntax now spans lexer, dedicated AST, parser, formatter, Sema, and static Semantic IR folding for place is available and place is not available; available/is/not remain ordinary identifiers outside the exact if-condition form
+      - contextual ownership availability syntax now spans lexer, dedicated AST, parser, parser-scoped CST block roles, shared CST formatter transformation, Sema, and static Semantic IR folding for place is available and place is not available; available/is/not remain ordinary identifiers outside the exact if-condition form
       - Sema records the exact tested Place and query polarity, resolves wholly available, unavailable, partially available, and uninitialized states statically where current Place facts suffice, and does not read the queried Place or reinterpret the test as Option/null/borrow/device state
       - continuing-path move-state joins retain an internal conditional marker; binary Available|Unavailable leaf tests refine the positive and negative branches, including a terminating negative branch whose fallthrough proves availability
       - negative whole-aggregate tests preserve existing recursive partial masks and still-owned sibling fields rather than collapsing them to a fabricated Unavailable reason
@@ -217,6 +222,8 @@ integrations:
       call_transfer: rules/memory/ownership.md sections 13-14 and 18
       runtime_state_and_policy: rules/memory/ownership.md sections 21-25 and 31-32
     verification:
+      - command: go test ./internal/cst ./internal/formatter -run 'ApplyProgramRolesMarksOnlyAvailabilityConditionBlocks|OwnershipAvailability' -count=1
+        result: passed on 2026-09-25 with parser-owned availability block scoping, ordinary-condition separation, canonical brace spacing, and idempotence
       - command: go test ./internal/lexer ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic -run 'Availability' -count=1
         result: passed; contextual tokens, dedicated AST, both spellings, static owned/moved and partial facts, conditional branch refinement, sibling-mask preservation, formatting, and static Semantic IR folding are covered
       - command: go test ./internal/sema -run 'TestOrdinaryMethodCannotConsumeWholeSelf' -count=1

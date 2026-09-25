@@ -25,3 +25,29 @@ integrations:
       - keep device-specific addressing, register indexes, command protocols, polling, reset, and initialization in drivers or device libraries
     corrections_applied:
       - rules/corrections/applied/stdlib-hw-correction-20260828.md
+
+  - id: stdlib.net-url-percent-encoding
+    area: standard-library
+    status: partial
+    integrated: "2026-09-25"
+    summary: >-
+      Implements the RFC 3986 ASCII byte classification used by net/url
+      percent encoding while retaining the public percent encode, decode, and
+      normalization bodies as separately unfinished standard-library work.
+    rules:
+      - sec/stdlib/net/url/std-net-url.md
+    code:
+      - sec/stdlib/net/url/percent.sec
+    implemented:
+      - classify ASCII letters, digits, hyphen, period, underscore, and tilde as unreserved bytes
+      - classify the complete RFC 3986 sub-delimiter set as literal bytes
+      - classify component-specific colon, at-sign, slash, and question-mark bytes without implicit char-to-byte conversion
+      - keep literal-percent input outside every literal-byte class so PercentEncode emits its percent escape
+    remaining:
+      - implement UTF-8 PercentEncode(string, Component)
+      - complete PercentDecode UTF-8 validation and string construction
+      - implement NormalizePercentEncoding
+      - add executable standard-library behavior tests for every byte value and component context
+    verification:
+      - command: go run ./cmd/compiler sema sec/stdlib/net/url/percent.sec
+        result: passed with 0 errors and 0 warnings on 2026-09-25

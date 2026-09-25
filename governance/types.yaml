@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-18"
     audited: "2026-08-27"
-    revised: "2026-09-21"
+    revised: "2026-09-25"
     document_revision: "2.0"
     repository_baseline: "20b3606"
     replaces: rules/types/units.txt
@@ -35,11 +35,15 @@ integrations:
       - internal/sema/types.go
       - internal/sema/units.go
       - internal/sema/analyzer.go
+      - internal/cst/roles.go
       - internal/formatter/formatter.go
+      - internal/formatter/cst_spacing.go
       - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
+      - internal/cst/roles_test.go
       - internal/sema/analyzer_test.go
+      - internal/formatter/formatter_test.go
       - testdata/units_valid.sec
       - testdata/units_advanced_valid.sec
       - testdata/units_invalid.sec
@@ -68,7 +72,7 @@ integrations:
       - explicit conversion functions validate normalized dimensions and act as explicit linear cross-identity or cross-Kind boundaries
       - LSP hover presents compiler-owned identity, source expression, Kind, categories, transform, point role, origin, and exact scale facts
       - formatter compacts structural unit operators while preserving named factors, grouping, and source factor order
-      - formatter canonicalizes accepted legacy case and underscore variants of unit metadata names to PascalCase only inside parsed unit impl blocks, leaves ordinary impl members untouched, and is idempotent
+      - formatter canonicalizes accepted legacy case and underscore variants of unit metadata names to PascalCase from parser-scoped CST roles and exact byte spans only inside parsed unit impl blocks, leaves ordinary impl members untouched, and is idempotent
       - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
     remaining:
       - migrate safety-relevant standard-library Kind metadata, especially frequency versus rotational frequency and energy versus torque
@@ -106,6 +110,8 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run FormatCanonicalizesUnitMetadataNames -count=1
         result: passed on 2026-09-21 with parsed unit-impl scoping, complete metadata-name canonicalization, ordinary-impl preservation, and idempotence
+      - command: go test ./internal/cst ./internal/formatter -run 'ApplyProgramRolesScopesUnitMetadataNames|FormatCanonicalizesUnitMetadataNames' -count=1
+        result: passed on 2026-09-25 with parser-owned CST role scoping, exact-span canonicalization, ordinary-impl preservation, and idempotence
   - id: frontend.default-values
     area: frontend-and-lowering
     status: partial

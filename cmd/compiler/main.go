@@ -157,7 +157,8 @@ func printUsage() {
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt --check <path>`;
 // Diagnostics.
 type formatCheckError struct {
-	paths []string
+	paths     []string
+	malformed []string
 }
 
 // Error renders stable formatting diagnostic IDs and affected filenames.
@@ -166,6 +167,9 @@ func (e *formatCheckError) Error() string {
 	var lines []string
 	for _, path := range e.paths {
 		lines = append(lines, fmt.Sprintf("%s: format.noncanonical-source: formatting would change this file", path))
+	}
+	for _, path := range e.malformed {
+		lines = append(lines, fmt.Sprintf("%s: format.malformed-source: formatter preserved malformed or incomplete source", path))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -204,7 +208,7 @@ func runFmtCommand(args []string) error {
 	if len(paths) == 0 {
 		return fmt.Errorf("expected at least one source file")
 	}
-	var changed []string
+	var changed, malformed []string
 	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -217,7 +221,14 @@ func runFmtCommand(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		formatted := secformatter.Format(secformatter.Source{Text: string(input)}, secformatter.Options{}).Text
+		result := secformatter.Format(secformatter.Source{Text: string(input)}, secformatter.Options{})
+		if result.Malformed {
+			if check {
+				malformed = append(malformed, path)
+			}
+			continue
+		}
+		formatted := result.Text
 		if formatted == string(input) {
 			continue
 		}
@@ -229,8 +240,8 @@ func runFmtCommand(args []string) error {
 			return err
 		}
 	}
-	if len(changed) > 0 {
-		return &formatCheckError{paths: changed}
+	if len(changed) > 0 || len(malformed) > 0 {
+		return &formatCheckError{paths: changed, malformed: malformed}
 	}
 	return nil
 }
@@ -3831,6 +3842,12 @@ func formatParameters(parameters []*ast.Parameter) string {
 	return out
 }
 
+// formatGenericParameters renders compiler AST/debug output with the canonical
+// ordered conjunction spelling for declaration-owned generic constraints.
+//
+// Rules:
+//   - rules/declarations/generics.md — §12 "Multiple constraints"
+//   - rules/declarations/generics.md — §32 "Parser requirements"
 func formatGenericParameters(parameters []*ast.GenericParameter) string {
 	if len(parameters) == 0 {
 		return ""
@@ -3843,8 +3860,12 @@ func formatGenericParameters(parameters []*ast.GenericParameter) string {
 		if param.Name != nil {
 			out += param.Name.Value
 		}
-		if param.Constraint != nil {
-			out += ": " + formatTypeRef(param.Constraint)
+		if len(param.Constraints) > 0 {
+			constraints := make([]string, 0, len(param.Constraints))
+			for _, constraint := range param.Constraints {
+				constraints = append(constraints, formatTypeRef(constraint))
+			}
+			out += ": " + strings.Join(constraints, " & ")
 		}
 	}
 	out += "]"

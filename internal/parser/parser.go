@@ -1123,7 +1123,11 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		return stmt
 	}
 
+	parenthesized := p.peekToken.Type == lexer.LPAREN
 	p.nextToken()
+	if parenthesized {
+		stmt.ConditionOpen = p.curToken
+	}
 	previousStopBeforeBrace := p.stopBeforeBrace
 	p.stopBeforeBrace = true
 	stmt.Condition = p.parseExpression(LOWEST)
@@ -1133,6 +1137,9 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	}
 	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
 		stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition)
+	}
+	if parenthesized && p.curToken.Type == lexer.RPAREN {
+		stmt.ConditionClose = p.curToken
 	}
 
 	if p.peekToken.Type != lexer.LBRACE {
@@ -1377,7 +1384,11 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 		return stmt
 	}
 
+	parenthesized := p.peekToken.Type == lexer.LPAREN
 	p.nextToken()
+	if parenthesized {
+		stmt.ConditionOpen = p.curToken
+	}
 	if p.curToken.Type == lexer.LET || p.curToken.Type == lexer.REF || p.curToken.Type == lexer.STATIC ||
 		(p.curToken.Type == lexer.IDENT && (p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.looksLikeTypedVariableDeclaration())) {
 		declaration := p.curToken
@@ -1402,6 +1413,9 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	p.stopBeforeBrace = previousStopBeforeBrace
 	if stmt.Condition == nil {
 		return nil
+	}
+	if parenthesized && p.curToken.Type == lexer.RPAREN {
+		stmt.ConditionClose = p.curToken
 	}
 
 	if p.peekToken.Type != lexer.LBRACE {
@@ -1500,13 +1514,20 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 	stmt := &ast.SwitchStatement{Token: p.curToken}
 
 	if p.peekToken.Type != lexer.LBRACE {
+		parenthesized := p.peekToken.Type == lexer.LPAREN
 		p.nextToken()
+		if parenthesized {
+			stmt.SubjectOpen = p.curToken
+		}
 		previousStopBeforeBrace := p.stopBeforeBrace
 		p.stopBeforeBrace = true
 		stmt.Subject = p.parseExpression(LOWEST)
 		p.stopBeforeBrace = previousStopBeforeBrace
 		if stmt.Subject == nil {
 			return nil
+		}
+		if parenthesized && p.curToken.Type == lexer.RPAREN {
+			stmt.SubjectClose = p.curToken
 		}
 	}
 
@@ -1692,6 +1713,7 @@ func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.Sw
 			return clause
 		}
 		p.nextToken()
+		clause.ColonToken = p.curToken
 		p.nextToken()
 		clause.Body = p.parseSwitchCaseBody()
 		return clause
@@ -1713,6 +1735,7 @@ func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.Sw
 			continue
 		case lexer.COLON:
 			p.nextToken()
+			clause.ColonToken = p.curToken
 			p.nextToken()
 			clause.Body = p.parseSwitchCaseBody()
 			return clause
@@ -3230,6 +3253,7 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
+	fn.ParameterOpen = p.curToken
 
 	fn.Parameters = p.parseParameters(true)
 	if fn.Parameters == nil {
@@ -3316,6 +3340,7 @@ func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclara
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
+	fn.ParameterOpen = p.curToken
 
 	fn.Parameters = p.parseParameters(allowVariadic)
 	if fn.Parameters == nil {
@@ -3435,19 +3460,8 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 
 		if p.peekToken.Type == lexer.COLON {
 			p.nextToken()
-			if !isTypeStart(p.peekToken.Type) {
-				unexpected := p.peekToken
-				p.addDiagnostic(
-					compilerdiagnostics.ParserInvalidTypeReference,
-					unexpected,
-					nil,
-					&unexpected,
-					"expected constraint type after ':' for generic parameter %s at %d:%d",
-					param.Name.Value,
-					unexpected.Line,
-					unexpected.Column,
-				)
-				param.Constraint = p.invalidTypeReference(unexpected, "")
+			param.Constraints = p.parseGenericConstraintList(param)
+			if len(param.Constraints) == 0 || param.Constraints[len(param.Constraints)-1].Invalid {
 				params = append(params, param)
 				p.skipGenericParameterList()
 				if p.curToken.Type == lexer.COMMA {
@@ -3459,8 +3473,6 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 				}
 				return params
 			}
-			p.nextToken()
-			param.Constraint = p.parseTypeReference()
 		}
 
 		params = append(params, param)
@@ -4683,6 +4695,7 @@ func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
 	initializer := &ast.InitDeclaration{Token: p.curToken}
 	// curToken is contextual identifier `init`, peekToken is `(`.
 	p.nextToken()
+	initializer.ParameterOpen = p.curToken
 	initializer.Parameters = p.parseParameters(false)
 	if initializer.Parameters == nil {
 		return nil

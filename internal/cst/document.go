@@ -36,6 +36,7 @@ type Element struct {
 	Span  Span
 	Text  string
 	Token lexer.Token
+	Roles []Role
 }
 
 // Document is the lexical layer of a concrete syntax tree. Elements are

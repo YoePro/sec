@@ -6,7 +6,7 @@ integrations:
     area: core-and-lowering
     status: partial
     integrated: "2026-08-23"
-    revised: "2026-09-24"
+    revised: "2026-09-25"
     summary: >-
       The checked core API and representation-level behavior exist, but the
       current compiler-known registry and name-specific direct-generator path
@@ -125,6 +125,7 @@ integrations:
         and LSP completion; ordinary user module functions named SizeOf remain legal
       - invalid legacy SizeOf(TypeName) calls receive ordinary unresolved-call diagnostics rather than obsolete intrinsic validation
       - ToString is exposed by the shared compiler-known registry as a universal frontend fallback on concrete value types; an exact user-owned nominal fn ToString() string still wins ordinary method lookup, while differently shaped overloads remain callable without suppressing the no-argument fallback
+      - trusted core primitive ToString overloads participate in ordinary method resolution before the compiler-known fallback when their arity is used; byte.ToString(byte.ByteStringFormat) accepts its enum argument while byte.ToString() retains the universal fallback
       - byte, char, and rune arrays/slices resolve to distinct stable sequence-materialization identities; byte sequence ToString returns string and preserves the represented encoded bytes, while rune sequence materialization retains scalar-to-multibyte encoding semantics
     remaining:
       - carry universal and byte/char/rune sequence ToString identities into explicit Semantic IR operations and maintained lowering, including allocation/effect facts and complete per-type-family fallback formatting semantics
@@ -142,5 +143,7 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'TestCompilerKnown(UniversalToStringAndTextSequences|FundamentalMembers)' -count=1
         result: passed on 2026-09-24; universal fallback lookup, exact user replacement, and stable byte/char/rune sequence IDs return string
+      - command: go test ./internal/sema -run 'CompilerKnownPrimitiveToStringOverload|CompilerKnownUniversalToString' -count=1
+        result: passed on 2026-09-25; trusted core primitive enum-argument overload resolution and the simultaneous parameterless fallback are covered
       - command: go test ./cmd/lsp -run TestCompletionIncludesCompilerKnownMembers -count=1
         result: passed on 2026-09-24; ToString completion is sourced from the shared registry for ordinary arrays and slice views

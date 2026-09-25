@@ -29,6 +29,22 @@ func TestPrintSemaErrorIncludesStableIDAndDescription(t *testing.T) {
 	}
 }
 
+func TestFormatGenericParametersPreservesConstraintConjunction(t *testing.T) {
+	parameters := []*ast.GenericParameter{
+		{
+			Name: &ast.Identifier{Value: "T"},
+			Constraints: []*ast.TypeReference{
+				{Name: "Serializable"},
+				{Name: "Comparable"},
+			},
+		},
+		{Name: &ast.Identifier{Value: "U"}},
+	}
+	if got, want := formatGenericParameters(parameters), "[T: Serializable & Comparable, U]"; got != want {
+		t.Fatalf("formatGenericParameters() = %q, want %q", got, want)
+	}
+}
+
 func TestDiagnosticCountLabel(t *testing.T) {
 	tests := []struct {
 		count    int

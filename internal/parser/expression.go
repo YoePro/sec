@@ -412,6 +412,7 @@ func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture) ast.Express
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
+	expr.ParameterOpen = p.curToken
 
 	expr.Parameters = p.parseParameters(false)
 	if expr.Parameters == nil {
@@ -482,6 +483,9 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 			p.addError("unterminated match block")
 			return arms
 		}
+		if p.curToken.Type == lexer.COMMENT {
+			continue
+		}
 
 		start := p.curToken
 		diagnosticStart := len(p.diagnostics)
@@ -508,6 +512,7 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 
 	if p.peekToken.Type == lexer.WHERE {
 		p.nextToken()
+		arm.WhereToken = p.curToken
 		p.nextToken()
 		guard := p.parseExpression(LOWEST)
 		if guard == nil {
@@ -521,6 +526,7 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 		return nil
 	}
 	p.nextToken()
+	arm.ArrowToken = p.curToken
 
 	switch p.peekToken.Type {
 	case lexer.LBRACE:
@@ -1275,6 +1281,7 @@ func (p *Parser) parseTryHandler() *ast.TryHandler {
 		return nil
 	}
 	p.nextToken()
+	handler.ArrowToken = p.curToken
 
 	switch p.peekToken.Type {
 	case lexer.LBRACE:

@@ -642,9 +642,45 @@ fn Save[T: Serializable](value: T) Result[void, IOError] {
 	if len(save.GenericParameters) != 1 {
 		t.Fatalf("wrong Save generics: %+v", save.GenericParameters)
 	}
-	constraint := save.GenericParameters[0].Constraint
-	if constraint == nil || constraint.Name != "Serializable" {
-		t.Fatalf("wrong Save constraint: %+v", constraint)
+	constraints := save.GenericParameters[0].Constraints
+	if len(constraints) != 1 || constraints[0].Name != "Serializable" {
+		t.Fatalf("wrong Save constraints: %+v", constraints)
+	}
+}
+
+// Rules:
+//   - rules/declarations/generics.md — §12 "Multiple constraints"
+//   - rules/declarations/generics.md — §32 "Parser requirements"
+func TestParseMultipleGenericConstraintsInSourceOrder(t *testing.T) {
+	input := `
+fn Process[T: Serializable & Comparable & Printable, U: Printable](value: T) U {
+	return value
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.GenericParameters) != 2 {
+		t.Fatalf("generic parameters = %+v", fn.GenericParameters)
+	}
+	want := []string{"Serializable", "Comparable", "Printable"}
+	constraints := fn.GenericParameters[0].Constraints
+	if len(constraints) != len(want) {
+		t.Fatalf("T constraints = %+v", constraints)
+	}
+	for index, name := range want {
+		if constraints[index].Name != name {
+			t.Fatalf("T constraint %d = %q, want %q", index, constraints[index].Name, name)
+		}
+	}
+	operators := fn.GenericParameters[0].ConstraintOperators
+	if len(operators) != 2 || operators[0].Type != lexer.BIT_AND || operators[1].Type != lexer.BIT_AND {
+		t.Fatalf("T constraint operators = %+v, want two concrete & tokens", operators)
+	}
+	if constraints := fn.GenericParameters[1].Constraints; len(constraints) != 1 || constraints[0].Name != "Printable" {
+		t.Fatalf("U constraints = %+v", constraints)
 	}
 }
 

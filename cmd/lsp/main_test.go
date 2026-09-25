@@ -801,6 +801,29 @@ interface Mapper[T] {
 	}
 }
 
+func TestAnalyzePublishesConjoinedGenericConstraintFailure(t *testing.T) {
+	source := `module main
+
+interface First {}
+interface Second {}
+
+type OnlyFirst struct {}
+impl OnlyFirst implements First {}
+
+fn Accept[T: First & Second](value: T) T {
+	return value
+}
+
+fn Use(value: OnlyFirst) void {
+	discard Accept(value)
+}
+`
+	reported := analyze("file:///tmp/sec-lsp-multiple-generic-constraints/main.sec", source)
+	if len(reported) != 1 || !strings.Contains(reported[0].Message, "type OnlyFirst does not satisfy constraint Second for T") {
+		t.Fatalf("analyze returned wrong multiple-constraint diagnostics: %+v", reported)
+	}
+}
+
 func TestAnalyzeRejectsDirectBoolMatchWithIfElseGuidance(t *testing.T) {
 	source := `module main
 
@@ -3998,6 +4021,28 @@ return Token{}
 	}
 }
 
+func TestFormatSourceUsesCSTGenericConstraintRole(t *testing.T) {
+	input := `fn Save[T: First&Comparable](value: int, mask: int) void {
+discard value&mask
+}
+`
+	want := `fn Save[T: First & Comparable](value: int, mask: int) void {
+    discard value&mask
+}
+`
+
+	if got := formatSource(input); got != want {
+		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourcePreservesMalformedDocumentByteForByte(t *testing.T) {
+	input := "fn Broken() void {\r\n\tlet values := [1, 2\r\n"
+	if got := formatSource(input); got != input {
+		t.Fatalf("formatSource changed malformed document:\n got %q\nwant %q", got, input)
+	}
+}
+
 func TestFormatSourceNormalizesSameLineMatchBlockSpacing(t *testing.T) {
 	input := `match self.Domain {
 Some(domain) => {                 out += "; Domain=" + domain            }
@@ -4015,8 +4060,8 @@ None => {             }
 	}
 }
 
-func TestFormatSourceNormalizesLetDeclarationListAndUnambiguousFuncTypo(t *testing.T) {
-	input := `func token(        typ: TokenType,        lexeme: string,        line: int,        column: int,) Token {
+func TestFormatSourceNormalizesLetDeclarationList(t *testing.T) {
+	input := `fn token(        typ: TokenType,        lexeme: string,        line: int,        column: int,) Token {
 let line := l.line,         column := l.column,         start := l.pos
 func(callback)
 }
@@ -4030,6 +4075,15 @@ func(callback)
 
 	if got := formatSource(input); got != want {
 		t.Fatalf("formatSource() mismatch\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestFormatSourceDoesNotApplyLanguageCorrections(t *testing.T) {
+	input := `func token() Token {
+}
+`
+	if got := formatSource(input); got != input {
+		t.Fatalf("formatSource applied an opt-in language correction: %q", got)
 	}
 }
 

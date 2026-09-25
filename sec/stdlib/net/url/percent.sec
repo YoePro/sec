@@ -1,30 +1,30 @@
 module url
 
 /*
-* Sec Standard Library - net/url - Percent encoding
-*
-* File:        stdlib/net/url/percent.sec
-* Module:      url
-* Revision:    1
-* Updated:     2026-09-15
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Component-aware UTF-8 percent encoding, byte percent encoding, decoding,
-*   validation, and RFC 3986 percent normalization.
-*
-* Standards:
-*   - RFC 3986 sections 2.1-2.4 and 6.2.2.2
-*     https://www.rfc-editor.org/rfc/rfc3986
-*
-* Rulebook:
-*   stdlib/net/url/std-net-url.md
-*/
+ * Sec Standard Library - net/url - Percent encoding
+ *
+ * File:        stdlib/net/url/percent.sec
+ * Module:      url
+ * Revision:    1
+ * Updated:     2026-09-15
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Component-aware UTF-8 percent encoding, byte percent encoding, decoding,
+ * validation, and RFC 3986 percent normalization.
+ *
+ * Standards:
+ * - RFC 3986 sections 2.1-2.4 and 6.2.2.2
+ *     https://www.rfc-editor.org/rfc/rfc3986
+ *
+ * Rulebook:
+ * stdlib/net/url/std-net-url.md
+ */
 
 /*
-* Representation rationale: the package supports a closed set of RFC 3986 generic component encoding contexts.
-* Each context has a defined allowed-character set; arbitrary user-defined contexts belong in application code.
-*/
+ * Representation rationale: the package supports a closed set of RFC 3986 generic component encoding contexts.
+ * Each context has a defined allowed-character set; arbitrary user-defined contexts belong in application code.
+ */
 enum Component {
     UserInfo,
     RegisteredName,
@@ -35,101 +35,159 @@ enum Component {
 }
 
 /**
-* Percent-encodes UTF-8 text for one RFC 3986 component context.
-*
-* Parameters:
-*   - value: Decoded Unicode text to encode as UTF-8 bytes.
-*   - component: The grammar context whose allowed characters remain literal.
-*
-* Returns:
-*   Newly allocated encoded text using uppercase hexadecimal digits.
-*
-* Standards:
-*   - RFC 3986 sections 2.1-2.3 and 3.
-*/
-fn PercentEncode(value: string, component: Component) string {
-    //TODO: Implement url.PercentEncode(string, Component)
-    return ""
-}
+ * Percent-encodes UTF-8 text for one RFC 3986 component context.
+ *
+ * Parameters:
+ * - value: Decoded Unicode text to encode as UTF-8 bytes.
+ * - component: The grammar context whose allowed characters remain literal.
+ *
+ * Returns:
+ * Newly allocated encoded text using uppercase hexadecimal digits.
+ *
+ * Errors:
+ * - PercentError.Allocation: Memory allocation for the encoded output failed.
+ *
+ * Standards:
+ * - RFC 3986 sections 2.1-2.3 and 3.
+ */
+fn PercentEncode(value: string, component: Component) Result[string, PercentError] {
+    let mut result: byte[]
+    let mut index: uint := 0
 
-/**
-* Percent-encodes arbitrary bytes for one RFC 3986 component context.
-*
-* Parameters:
-*   - value: Borrowed bytes. The function does not retain the array.
-*   - component: The grammar context whose ASCII-safe bytes remain literal.
-*
-* Returns:
-*   Newly allocated encoded text using uppercase hexadecimal digits.
-*
-* Ownership:
-*   `value` is borrowed and remains owned by the caller.
-*/
-fn PercentEncode(value: ref byte[], component: Component) string {
-    let mut result := ""
+    while index < value.ByteLen {
+        let current := value.ByteAt(index)
 
-    for item in value {
-        if _IsLiteralByte(item, component) {
-            result += string(item)
+        if _IsLiteralByte(current, component) {
+            try result.Append(current) {
+                Err(error) => return Err(PercentError.Allocation(error))
+            }
+
+            index += 1
             continue
         }
 
-        result += "%"
-        result += item.ToString(byte.ByteStringFormat.Hexadecimal)
+        try result.Append(byte('%')) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        try result.Append(_UpperHexDigit((current >> 4) & 0x0F)) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        try result.Append(_UpperHexDigit(current & 0x0F)) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        index += 1
     }
 
-    return result
+    return Ok(result.ToString())
 }
 
 /**
-* Percent-decodes encoded text and validates the result as UTF-8.
-*
-* Parameters:
-*   - value: Encoded text to decode.
-*
-* Returns:
-*   A newly allocated decoded UTF-8 string.
-*
-* Errors:
-*   - PercentError.InvalidEscape: A percent escape is malformed.
-*   - PercentError.InvalidUtf8: The decoded byte sequence is not valid UTF-8.
-*     The payload is the byte offset in the decoded byte sequence.
-*   - PercentError.Allocation: Storage for the result cannot be allocated.
-*
-* Standards:
-*   - RFC 3986 section 2.1.
-*/
+ * Percent-encodes arbitrary bytes for one RFC 3986 component context.
+ *
+ * Parameters:
+ * - value: Borrowed bytes. The function does not retain the array.
+ * - component: The grammar context whose ASCII-safe bytes remain literal.
+ *
+ * Returns:
+ * Newly allocated encoded text using uppercase hexadecimal digits.
+ *
+ * Errors:
+ * - PercentError.Allocation: Memory allocation for the encoded output failed.
+ *
+ * Ownership:
+ * `value` is borrowed and remains owned by the caller.
+ *
+ * Standards:
+ * - RFC 3986 sections 2.1-2.3 and 3.
+ */
+fn PercentEncode(value: ref byte[], component: Component) Result[string, PercentError] {
+    let mut result: byte[]
+
+    for current in value {
+        if _IsLiteralByte(current, component) {
+            try result.Append(current) {
+                Err(error) => return Err(PercentError.Allocation(error))
+            }
+
+            continue
+        }
+
+        try result.Append(byte('%')) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        try result.Append(_UpperHexDigit((current >> 4) & 0x0F)) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        try result.Append(_UpperHexDigit(current & 0x0F)) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+    }
+
+    return Ok(result.ToString())
+}
+
+/**
+ * Percent-decodes encoded text and validates the result as UTF-8.
+ *
+ * Parameters:
+ * - value: Encoded text to decode.
+ *
+ * Returns:
+ * A newly allocated decoded UTF-8 string.
+ *
+ * Errors:
+ * - PercentError.InvalidEscape: A percent escape is malformed.
+ * - PercentError.InvalidUtf8: The decoded byte sequence is not valid UTF-8.
+ *     The payload is the byte offset in the decoded byte sequence.
+ * - PercentError.Allocation: Storage for the result cannot be allocated.
+ *
+ * Standards:
+ * - RFC 3986 section 2.1.
+ */
 fn PercentDecode(value: string) Result[string, PercentError] {
     let bytes := try PercentDecodeBytes(value)
 
-    // TODO: implement url.PercentDecode
-    // UTF-8 conversion goes here.
-    return Err(PercentError.InvalidUtf8(0))
+    let decoded := try string.FromByteArray(bytes) {
+        Err(StringError.InvalidUtf8(offset)) => {
+            return Err(PercentError.InvalidUtf8(offset))
+        }
+
+        Err(StringError.AllocationFailed(error)) => {
+            return Err(PercentError.Allocation(error))
+        }
+    }
+
+    return Ok(decoded)
 }
 
 /**
-* Percent-decodes encoded text without requiring the result to be valid UTF-8.
-*
-* Parameters:
-*   - value: Encoded text to decode.
-*
-* Returns:
-*   A newly allocated owning byte array containing the decoded bytes.
-*
-* Errors:
-*   - PercentError.InvalidEscape: A percent sign is not followed by two
-*     hexadecimal digits.
-*   - PercentError.Allocation: Storage for the result cannot be allocated.
-*
-* Standards:
-*   - RFC 3986 section 2.1.
-*/
+ * Percent-decodes encoded text without requiring the result to be valid UTF-8.
+ *
+ * Parameters:
+ * - value: Encoded text to decode.
+ *
+ * Returns:
+ * A newly allocated owning byte array containing the decoded bytes.
+ *
+ * Errors:
+ * - PercentError.InvalidEscape: A percent sign is not followed by two
+ *     hexadecimal digits.
+ * - PercentError.Allocation: Storage for the result cannot be allocated.
+ *
+ * Standards:
+ * - RFC 3986 section 2.1.
+ */
 fn PercentDecodeBytes(value: string) Result[byte[], PercentError] {
     let mut result: byte[]
     let mut index: uint := 0
 
     while index < value.ByteLen {
-        if value.CharAt(index) == '%' {
+        if value.ByteAt(index) == byte('%') {
             let decoded := try _DecodeHexPair(value, index)
 
             try result.Append(decoded) {
@@ -151,109 +209,164 @@ fn PercentDecodeBytes(value: string) Result[byte[], PercentError] {
 }
 
 /**
-* Validates every percent escape in encoded text.
-*
-* Parameters:
-*   - value: Encoded text to inspect.
-*
-* Returns:
-*   Ok() when every percent sign is followed by exactly two hexadecimal
-*   digits.
-*
-* Errors:
-*   - PercentError.InvalidEscape: A percent sign is not followed by two
-*     hexadecimal digits. The payload is the byte offset of the invalid
-*     percent sign.
-*
-* Standards:
-*   - RFC 3986 section 2.1.
-*/
+ * Validates every percent escape in encoded text.
+ *
+ * Parameters:
+ * - value: Encoded text to inspect.
+ *
+ * Returns:
+ * Ok() when every percent sign is followed by exactly two hexadecimal
+ * digits.
+ *
+ * Errors:
+ * - PercentError.InvalidEscape: A percent sign is not followed by two
+ *     hexadecimal digits. The payload is the byte offset of the invalid
+ *     percent sign.
+ *
+ * Standards:
+ * - RFC 3986 section 2.1.
+ */
 fn ValidatePercentEncoding(value: string) Result[void, PercentError] {
     let mut index: uint := 0
 
     while index < value.ByteLen {
-        if value.CharAt(index) != '%' {
+        if value.ByteAt(index) != byte('%') {
             index += 1
             continue
         }
 
-        if value.ByteLen - index < 3 {
-            return Err(PercentError.InvalidEscape(uint(index)))
-        }
+        match _DecodeHexPair(value, index) {
+            Ok(decoded) => {
+                index += 3
+            }
 
-        if !value.CharAt(index + 1).IsHexDigit ||
-        !value.CharAt(index + 2).IsHexDigit {
-            return Err(PercentError.InvalidEscape(uint(index)))
+            Err(error) => {
+                return Err(error)
+            }
         }
-
-        index += 3
     }
 
     return Ok()
 }
 
 /**
-* Canonicalizes RFC 3986 percent encoding.
-*
-* Description:
-*   Hexadecimal digits in escapes become uppercase. Escapes for unreserved ASCII
-*   characters are decoded to their literal character. Reserved characters remain
-*   escaped when they were escaped in the input.
-*
-* Parameters:
-*   - value: Encoded text.
-*
-* Returns:
-*   Newly allocated normalized text.
-*
-* Errors:
-*   - PercentError.InvalidEscape: The input contains a malformed escape.
-*
-* Standards:
-*   - RFC 3986 section 6.2.2.2.
-*/
+ * Canonicalizes RFC 3986 percent encoding.
+ *
+ * Description:
+ * Hexadecimal digits in escapes become uppercase. Escapes for unreserved ASCII
+ * characters are decoded to their literal character. Reserved characters remain
+ * escaped when they were escaped in the input.
+ *
+ * Parameters:
+ * - value: Encoded text.
+ *
+ * Returns:
+ * Newly allocated normalized text.
+ *
+ * Errors:
+ * - PercentError.InvalidEscape: The input contains a malformed escape.
+ * - PercentError.Allocation: Memory allocation for the normalized output failed.
+ *
+ * Standards:
+ * - RFC 3986 section 6.2.2.2.
+ */
 fn NormalizePercentEncoding(value: string) Result[string, PercentError] {
-    //TODO: Implement url.NormalizePercentEncoding()
-    return Ok("")
-}
-/**
-* Converts one ASCII hexadecimal digit to its numeric value.
-*
-* Returns None when value is not an ASCII hexadecimal digit.
-*/
-fn _HexDigitValue(value: char) Option[byte] {
-    if !value.IsHexDigit {
-        return None
+    let mut result: byte[]
+    let mut index: uint := 0
+
+    while index < value.ByteLen {
+        if value.ByteAt(index) != byte('%') {
+            try result.Append(value.ByteAt(index)) {
+                Err(error) => return Err(PercentError.Allocation(error))
+            }
+            index += 1
+            continue
+        }
+
+        let decoded := try _DecodeHexPair(value, index)
+
+        if _IsUnreserved(decoded) {
+            try result.Append(decoded) {
+                Err(error) => return Err(PercentError.Allocation(error))
+            }
+
+            index += 3
+            continue
+        }
+
+        try result.Append(byte('%')) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        try result.Append(_UpperHexDigit((decoded >> 4) & 0x0F)) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        try result.Append(_UpperHexDigit(decoded & 0x0F)) {
+            Err(error) => return Err(PercentError.Allocation(error))
+        }
+
+        index += 3
     }
 
-    if value.IsDigit {
-        return Some(byte(int(value) - 48))
-    }
-
-    return Some(byte(int(value.ToUpper()) - 55))
+    return Ok(result.ToString())
 }
 
 /**
-* Decodes one percent-encoded byte.
-*
-* Parameters:
-*   - value: Encoded source text.
-*   - index: Byte offset of the '%' character.
-*
-* Returns:
-*   The byte represented by the two hexadecimal digits following '%'.
-*
-* Errors:
-*   - PercentError.InvalidEscape: The escape is incomplete or contains
-*     a non-hexadecimal digit.
-*/
+ * Converts one ASCII hexadecimal byte to its numeric value.
+ *
+ * Returns None when value is not an ASCII hexadecimal digit.
+ */
+fn _HexDigitValue(value: byte) Option[byte] {
+    if value in byte('0')..byte('9') {
+        return Some(value - byte('0'))
+    }
+
+    if value in byte('A')..byte('F') {
+        return Some(value - byte('A') + 10)
+    }
+
+    if value in byte('a')..byte('f') {
+        return Some(value - byte('a') + 10)
+    }
+
+    return None
+}
+
+/**
+ * Converts a hexadecimal nibble to its uppercase ASCII representation.
+ *
+ * The caller must provide a value in the range 0..15.
+ */
+fn _UpperHexDigit(value: byte) byte {
+    if value < 10 {
+        return value + byte('0')
+    }
+
+    return value - 10 + byte('A')
+}
+
+/**
+ * Decodes one percent-encoded byte.
+ *
+ * Parameters:
+ * - value: Encoded source text.
+ * - index: Byte offset of the '%' character.
+ *
+ * Returns:
+ * The byte represented by the two hexadecimal digits following '%'.
+ *
+ * Errors:
+ * - PercentError.InvalidEscape: The escape is incomplete or contains
+ *     a non-hexadecimal digit.
+ */
 fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
     if value.ByteLen - index < 3 {
         return Err(PercentError.InvalidEscape(index))
     }
 
-    let high := _HexDigitValue(value.CharAt(index + 1))
-    let low := _HexDigitValue(value.CharAt(index + 2))
+    let high := _HexDigitValue((value.ByteAt(index + 1)))
+    let low := _HexDigitValue((value.ByteAt(index + 2)))
 
     match high {
         Some(highValue) => {
@@ -270,37 +383,59 @@ fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
     return Err(PercentError.InvalidEscape(index))
 }
 
+/**
+ * Returns true when value is an RFC 3986 unreserved ASCII byte.
+ *
+ * unreserved = ALPHA / DIGIT / "-" / "." / "_" / "~"
+ */
 fn _IsUnreserved(value: byte) bool {
-    if value in "A".."Z" {
-        return true
-    }
-
-    if value >= 'a' && value <= 'z' {
-        return true
-    }
-
-    if value >= '0' && value <= '9' {
-        return true
-    }
-
-    return value == '-' ||
-    value == '.' ||
-    value == '_' ||
-    value == '~'
+    return value in byte('A')..byte('Z') ||
+    value in byte('a')..byte('z') ||
+    value in byte('0')..byte('9') ||
+    value in [
+        byte('-'),
+        byte('.'),
+        byte('_'),
+        byte('~'),
+    ]
 }
 
+/**
+ * Returns true when value is one of the RFC 3986 sub-delimiters.
+ *
+ * sub-delims = "!" / "$" / "&" / "'" / "(" / ")" /
+ *               "*" / "+" / "," / ";" / "="
+ */
+fn _IsSubDelimiter(value: byte) bool {
+    return value in [byte('!'), byte('$'), byte('&'), byte('\''), byte('('), byte(')'), byte('*'),
+        byte('+'), byte(','), byte(';'), byte('=')]
+}
+
+/**
+ * Returns true when value may appear literally in the selected URI component.
+ *
+ * This function implements the component-specific productions from RFC 3986:
+ *
+ * UserInfo       = unreserved / sub-delims / ":"
+ * RegisteredName = unreserved / sub-delims
+ * Path           = pchar / "/"
+ * PathSegment    = pchar
+ * Query          = pchar / "/" / "?"
+ * Fragment       = pchar / "/" / "?"
+ *
+ * pchar = unreserved / sub-delims / ":" / "@"
+ *
+ * A false result means that the byte must be percent-encoded.
+ */
 fn _IsLiteralByte(value: byte, component: Component) bool {
-    if _IsUnreserved(value) {
+    if _IsUnreserved(value) || _IsSubDelimiter(value) {
         return true
     }
 
-    if _IsSubDelimiter(value) {
-        return true
-    }
-
+    // 58, 64, 64
     match component {
         Component.UserInfo => {
-            return value == ':'
+            return value == byte(':') // 58
         }
 
         Component.RegisteredName => {
@@ -308,28 +443,19 @@ fn _IsLiteralByte(value: byte, component: Component) bool {
         }
 
         Component.Path => {
-            return value == ':' ||
-            value == '@' ||
-            value == '/'
+            return value in [byte(':'), byte('@'), byte('/')]
         }
 
         Component.PathSegment => {
-            return value == ':' ||
-            value == '@'
+            return value in [byte(':'), byte('@')]
         }
 
         Component.Query => {
-            return value == ':' ||
-            value == '@' ||
-            value == '/' ||
-            value == '?'
+            return value in [byte(':'), byte('@'), byte('/'), byte('?')]
         }
 
         Component.Fragment => {
-            return value == ':' ||
-            value == '@' ||
-            value == '/' ||
-            value == '?'
+            return value in [byte(':'), byte('@'), byte('/'), byte('?')]
         }
     }
 }

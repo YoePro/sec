@@ -6,21 +6,32 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-16"
+    revised: "2026-09-25"
     summary: >-
       Introduces a lexer-backed, byte-lossless concrete-syntax foundation and
-      lexical delimiter hierarchy, and uses it for trailing line-comment
-      boundaries in the shared formatter.
+      lexical delimiter hierarchy. The formatter remains primarily a bespoke
+      trimmed-line transformation pipeline, but selected grammar-aware slices
+      now use parser-owned roles projected onto exact CST tokens.
     rules:
       - rules/tooling/formatter.md
       - rules/foundations/lexical_structure.md
       - rules/compiler/parser_recovery.md
     code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
       - internal/cst/document.go
       - internal/cst/groups.go
+      - internal/cst/roles.go
       - internal/formatter/formatter.go
+      - internal/formatter/cst_spacing.go
+      - internal/formatter/corrections.go
+      - internal/formatter/block_comments.go
+      - internal/formatter/line_comments.go
     tests:
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
+      - internal/cst/roles_test.go
       - internal/formatter/formatter_test.go
       - testdata/cst/groups_valid.sec
       - testdata/cst/groups_invalid.sec
@@ -30,10 +41,28 @@ integrations:
       - use lexer-owned comment tokens for trailing-comment boundary detection during formatter alignment
       - retain the previous conservative scanner for malformed single-line source until structural recovery is available
       - derive nested parenthesized, bracketed, and braced delimiter groups from real lexer tokens, retaining incomplete groups and unmatched closers without synthetic recovery
+      - conservatively classify documents with lexer diagnostics, unmatched real closers, or incomplete real delimiter groups as uncertain and preserve their complete source bytes during ordinary formatting
+      - project parser-owned generic-constraint conjunction roles onto exact CST tokens and use their byte spans for canonical formatter spacing without rewriting ordinary bitwise-and expressions or recovered missing constraints
+      - project parser-owned contextual matrix-operator roles onto exact CST tokens and share one CST spacing pass with generic constraints, replacing the formatter's former standalone AST-reflection and line/column rewrite
+      - project parser-confirmed statement-only increment and decrement aliases onto exact CST tokens and rewrite them in the shared CST pass, replacing a second formatter-local AST reflection and line/column rewrite while preserving invalid expression uses
+      - project unit-metadata declaration roles only inside impl blocks targeting parsed unit declarations and canonicalize their names from exact CST byte spans, replacing a separate parser run and rune-column rewrite while preserving ordinary impl members
+      - project valid top-level test-name string roles onto exact CST tokens and normalize only their horizontal header trivia, replacing the formatter's per-line lexer while preserving exact string spelling and ordinary identifiers, calls, and strings
+      - project opening-block roles from parser-owned ownership AvailabilityExpression if conditions and normalize only that concrete brace boundary, replacing blind line-text substitutions while preserving ordinary available/is/not identifiers and conditions
+      - project operators and real grouping delimiters from parser-owned structural unit expressions onto exact CST tokens and compact only their horizontal trivia, replacing the formatter's angle-bracket line heuristic while preserving ordinary comparisons and arithmetic
+      - retain the exact parameter-list opener on parsed function, lambda, and initializer nodes, project it into a CST role, and remove only its preceding horizontal trivia instead of scanning signature lines
+      - project parser-confirmed commas between grouped let and typed declarators into CST roles and normalize only their horizontal separator trivia, replacing the formatter's grouped-let line scanner while leaving expression commas untouched
+      - project parser-owned match payload and field delimiters, explicit field-binding colons, where guards, and match/try arrows onto exact CST tokens, replacing the formatter's match-arm line scanner while leaving recovered invalid arrows untouched
+      - complete parser-owned match-pattern punctuation with CST roles for closing payload and field delimiters plus shallow-field commas, enforcing compact payload bindings and canonical single-line field padding without touching invalid recovered patterns
+      - project separators and terminating colons from valid parser-owned switch case/default headers onto exact CST tokens and canonicalize their horizontal punctuation spacing without claiming recovered invalid clauses
+      - use complete parent-child CST delimiter groups for the opt-in redundant nested-parentheses correction, removing the inner pair only when it is the outer pair's sole non-trivia content and preserving intervening comments
+      - retain complete outer condition-parenthesis tokens on parsed if, while, and switch nodes and project them into an opt-in correction role only when they own the whole condition or subject and the following body is valid
+      - format standalone multiline block and documentation comment tokens from the lossless CST into aligned-star form while retaining single-line and inline forms and shielding comment-owned delimiters from structural indentation
+      - normalize the post-delimiter margin of lexer-owned line-comment tokens to `// text` or canonical empty `//` without reflowing comment prose or touching comment-like text in literals and block comments
     remaining:
       - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
       - attach parser missing-token and skipped-token recovery nodes to the concrete syntax model
-      - migrate remaining indentation, alignment, and comment placement from trimmed source lines to structural syntax and trivia
+      - replace the bespoke trimmed-line formatter pipeline with a CST-driven formatter whose structure, trivia ownership, safe regions, indentation, alignment, and comment placement decisions originate in internal/cst
+      - migrate existing parser/AST/lexer-assisted formatter special cases onto grammar-aware CST roles instead of growing parallel source-analysis paths
       - support incremental and minimal-edit syntax-tree formatting
     verification:
       - command: go test ./internal/cst ./internal/formatter -count=1
@@ -167,6 +196,7 @@ integrations:
       - accept --check before or after file paths and -- to terminate option parsing
       - reject unsupported options before formatting any files and return exit code 1 for input errors
       - verify that ordinary in-place formatting makes a subsequent check pass
+      - report byte-preserved lexically malformed or delimiter-incomplete files with format.malformed-source instead of falsely accepting unchanged uncertain source as canonical
     remaining:
       - directory and project selection and --fix remain outside this explicit-file integration; --stdin is tracked by tooling.formatter-stdin
       - canonical-style coverage remains limited to the current shared formatter implementation
@@ -202,61 +232,218 @@ integrations:
       - command: go test ./cmd/compiler ./internal/formatter -count=1
         result: passed, including stdin CLI and I/O failure tests
   - id: tooling.formatter-v2
+    area: tooling
     status: partial
-
-    rulebook:
-      path: rules/tooling/formatter.md
-      revision: "2.0"
-      sec_version: "0.1"
-      repository_baseline: main-reviewed-2026-09-23
-
-    governance:
-      canonical_owner: governance/formatting.yaml
-      merge_mode: update_existing
-      preserve_existing_history: true
-      preserve_index_owner: true
-      paragraph_references_are_stable: true
-
-    implementation_state:
-      implemented:
-        - >-
-          A formatter implementation already exists and provides a base for
-          canonical source formatting rather than requiring a green-field
-          implementation.
-        - >-
-          Formatter behavior is already shared with the LSP formatting path;
-          revision 2.0 requires that this remain one canonical implementation.
-        - >-
-          Existing correction behavior includes at least the established
-          statement correction `i++` to `i += 1`; revision 2.0 expands this
-          into an explicit, opt-in, grammar-aware Language Corrections model.
-
-      incomplete:
-        - >-
-          The formatter does not yet have the complete lossless,
-          error-tolerant syntax representation required by § 5 and § 25.
-        - >-
-          Full trivia preservation, exact malformed-region preservation, and
-          CST-proven safe formatting remain incomplete.
-        - >-
-          The complete revision-2.0 canonical layout contract is not yet
-          implemented across declarations, expressions, control flow,
-          comments, imports, patterns, ownership syntax, registers, units,
-          assertions, ranges, and test declarations.
-        - >-
-          Project-owned formatter configuration and `format_version = 1`
-          compatibility behavior are not yet complete.
-        - >-
-          The Language Corrections catalogue in § 27 is not yet implemented as
-          one grammar-aware opt-in correction engine.
-        - >-
-          The full golden, idempotence, malformed-source, width-boundary,
-          configuration-matrix, and CLI/LSP equivalence suites required by
-          § 30 are not yet complete.
+    integrated: "2026-09-23"
+    revised: "2026-09-25"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-23
+    summary: >-
+      Tracks conformance of the shared Sec formatter to formatter revision 2.0.
+      The repository has a usable but primarily bespoke, line-oriented CLI/LSP
+      formatter plus a lexical CST foundation that is not yet its primary
+      engine. The formatter must migrate to a CST-driven architecture while
+      preserving existing behavior, then complete the configured,
+      grammar-aware formatting and correction contract.
+    rules:
+      - rules/tooling/formatter.md
+      - rules/foundations/lexical_structure.md
+      - rules/compiler/parser_recovery.md
+      - rules/tooling/lsp.md
+      - rules/tooling/testing.md
+    related_integrations:
+      - tooling.cst-lexical-foundation
+      - tooling.formatter-delimiter-handoff
+      - tooling.formatter-single-line-call-spacing
+      - tooling.formatter-single-line-delimiter-spacing
+      - tooling.formatter-declaration-comment-alignment
+      - tooling.formatter-check-explicit-files
+      - tooling.formatter-stdin
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/cst/document.go
+      - internal/cst/groups.go
+      - internal/cst/roles.go
+      - internal/formatter/formatter.go
+      - internal/formatter/cst_spacing.go
+      - internal/formatter/corrections.go
+      - internal/formatter/block_comments.go
+      - internal/formatter/line_comments.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/cst/document_test.go
+      - internal/cst/groups_test.go
+      - internal/cst/roles_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/compiler/main_test.go
+      - cmd/compiler/fmt_check_test.go
+      - cmd/compiler/fmt_stdin_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - >-
+        One shared formatter implementation serves sec fmt and LSP document
+        formatting; LSP does not maintain an independent formatting grammar.
+      - >-
+        The lexer-backed CST foundation preserves source-ordered tokens,
+        trivia, invalid tokens, byte ranges, delimiter groups, incomplete
+        groups, and exact source round trips for its implemented lexical scope.
+      - >-
+        Current canonical slices cover structural indentation, selected
+        delimiter and call spacing, multiline try-handler handoff, top-level
+        test declarations, ownership spellings, registers, units, assertions,
+        panic, matches, and local declaration-comment alignment.
+      - >-
+        sec fmt supports explicit in-place files, --check for explicit files,
+        and --stdin; these paths reuse the shared formatter and have focused
+        idempotence and CLI/LSP behavior tests.
+      - >-
+        The foreign `func` declaration correction is now gated behind the
+        formatter's explicit fix option; ordinary CLI/LSP formatting preserves
+        that token. Other selected historical rewrites such as statement i++
+        still predate the revision-2.0 correction boundary and remain to be
+        separated.
+      - >-
+        Redundant directly nested parentheses now use complete CST delimiter
+        parentage in the opt-in correction layer. The inner pair is removed
+        only when it is the outer pair's sole non-trivia content, so `(())`
+        becomes `()` and `Call((value))` becomes `Call(value)` without removing
+        call delimiters; ordinary formatting and comment-separated groups are
+        preserved.
+      - >-
+        Parser-confirmed `if`, `while`, and `switch` nodes now retain complete
+        outer condition-parenthesis tokens and project them into a dedicated
+        CST correction role. With fixes enabled, `if (ready)` becomes
+        `if ready`; parentheses that group only part of a larger condition,
+        failed headers, and ordinary formatting remain unchanged.
+      - >-
+        The first CST-driven language-surface slice projects parser-owned
+        generic-constraint conjunction roles onto exact concrete tokens and
+        formats their horizontal trivia from CST byte spans while preserving
+        ordinary bitwise operators and uncertain recovered syntax.
+      - >-
+        Contextual matrix-multiplication x now uses the same parser-owned CST
+        role and spacing pass, replacing its formatter-local AST reflection and
+        physical-line rewrite while preserving ordinary x identifiers.
+      - >-
+        Parser-confirmed statement-only ++ and -- aliases now use a CST role in
+        the same shared pass, replacing their formatter-local AST reflection
+        and physical-line rewrite while invalid expression uses remain
+        untouched; correction configuration remains separately incomplete.
+      - >-
+        Unit metadata names now use parser-scoped CST roles and exact concrete
+        byte spans in the shared pass, replacing a separate formatter parse and
+        rune-column rewrite while same-spelled ordinary impl members remain
+        untouched.
+      - >-
+        Valid top-level test declaration names now use parser-scoped CST roles
+        and exact string-token spans in the shared pass, replacing a per-line
+        lexer while preserving test-name bytes and ordinary test identifiers,
+        calls, and strings.
+      - >-
+        Ownership availability if blocks now use parser-scoped CST roles on
+        their exact opening braces, replacing blind line-text substitutions
+        while ordinary available, is, and not identifiers and conditions remain
+        outside the formatting role.
+      - >-
+        Parser-confirmed structural unit expressions now project their
+        multiplication, division, exponent, and real grouping-delimiter tokens
+        into CST roles. Compact unit spacing uses those exact spans, replacing
+        the formatter's angle-bracket line scanner while ordinary comparison
+        and arithmetic tokens remain outside the role.
+      - >-
+        Function, lambda, and initializer parameter lists now retain their
+        exact opening token as a parser fact and project it into a CST role.
+        Callable spacing no longer uses the formatter's separate signature-line
+        scanners, while ordinary call parentheses remain outside the role.
+      - >-
+        Grouped let and typed declarations now project only their
+        parser-confirmed declarator commas into CST roles. Separator spacing is
+        normalized from exact token spans, replacing the grouped-let line
+        scanner while commas nested in initializer expressions remain ordinary
+        expression syntax.
+      - >-
+        Match patterns now project parser-owned payload and field delimiters,
+        explicit field-binding colons, where guards, and match/try arrows onto
+        exact CST tokens. The shared spacing pass replaces the former
+        match-arm line scanner, remains idempotent, and does not claim arrows
+        from invalid arms retained through parser recovery.
+      - >-
+        Parser-confirmed match patterns now also project their closing payload
+        and shallow-field delimiters and commas between shallow fields. The CST
+        pass emits compact `Some(value)` payloads and canonical
+        `Point { X: x, Y: y }` spacing while invalid recovered patterns remain
+        outside these roles.
+      - >-
+        Valid switch case and default headers now retain their terminating
+        colon as a parser fact and project it, together with commas between
+        case alternatives, onto exact CST tokens. The shared spacing pass
+        emits `case 1, 2:` punctuation without assigning formatting roles to
+        incomplete clauses retained through parser recovery.
+      - >-
+        Standalone multiline block comments and documentation comments now use
+        lossless CST comment-token spans to produce the §12 aligned-star form,
+        retain surrounding indentation and paragraph boundaries, and keep
+        comment-contained delimiters from changing executable indentation.
+        Single-line and inline block comments remain unchanged; nested
+        multiline normalization remains outside this first slice.
+      - >-
+        Lexer-owned line comments now receive the canonical §12 delimiter
+        margin: non-empty comments use `// text`, empty comments use `//`, and
+        internal prose spacing is not reflowed. Comment-like text inside
+        strings, raw strings, and block comments remains untouched; `///`
+        follows its Sec 0.1 status as an ordinary line comment.
+      - >-
+        Ordinary formatting now preserves complete source bytes when the
+        lossless CST proves lexical errors, unmatched real closers, or
+        incomplete real delimiter groups. The shared result exposes this state
+        so sec fmt --check reports format.malformed-source rather than treating
+        unchanged uncertain input as canonical; LSP returns the same bytes.
+    remaining:
+      - >-
+        formatter-cst-engine-migration: Replace the current bespoke,
+        trimmed-line transformation pipeline with internal/cst as the primary
+        formatter source model and decision engine. Existing behavior must move
+        incrementally behind CST-owned grammatical roles and trivia rather than
+        accumulating new line scanners or parallel parser/lexer rescans.
+      - >-
+        formatter-lossless-syntax: Complete parser-owned lossless and
+        error-tolerant syntax, recovery-node attachment, trivia ownership, and
+        exact malformed-region preservation required by § 5 and § 25.
+      - >-
+        formatter-canonical-layout: Replace remaining trimmed-line heuristics
+        with structural formatting and implement the complete § 3 and
+        § 6–§ 12 canonical layout contract.
+      - >-
+        formatter-project-configuration: Implement project-owned
+        format_version = 1 configuration, structured/compact vertical style,
+        indentation widths, fixed/adaptive width, and alignment limits from § 4.
+      - >-
+        formatter-imports-and-file-layout: Implement canonical import gathering,
+        classification, comment attachment, sorting, grouping, and top-level
+        file layout from § 13–§ 14 without reordering ordinary declarations.
+      - >-
+        formatter-language-surface: Complete canonical formatting and focused
+        conformance coverage for every current Sec construct in § 15–§ 24.
+      - >-
+        formatter-language-corrections: Continue separating historical rewrite
+        behavior from ordinary formatting, replace the remaining line-oriented
+        recognizers with a grammar-aware correction engine, expose canonical
+        project configuration, and complete the § 26–§ 27 catalogue.
+      - >-
+        formatter-cli-lsp-unification: Add project configuration, effective
+        width, format-on-save, range/on-type/minimal-edit, recursive project,
+        and exact-output equivalence behavior required by § 28.
+      - >-
+        formatter-invariants-and-tests: Enforce every § 29 and § 31 invariant
+        and complete the § 30 golden, second-pass, round-trip, malformed-source,
+        width-boundary, configuration-matrix, correction, and CLI/LSP suites.
 
     obligations:
       - id: formatter-lossless-syntax
-        status: planned
+        status: partial
         rules:
           - "§ 5(1)"
           - "§ 5(2)"
@@ -273,8 +460,8 @@ integrations:
           - "§ 25(6)"
           - "§ 25(7)"
         requirement: >-
-          Provide one shared lexer/parser syntax authority that can produce a
-          lossless, error-tolerant CST or equivalent syntax representation.
+          Provide one shared lexer/parser syntax authority that produces the
+          lossless, error-tolerant CST used by the formatter.
           Preserve exact token lexemes, whitespace trivia, comments,
           source-sensitive string text, exact source ranges, and explicit
           uncertain/error regions. AST and CST may be parallel products of the
@@ -286,8 +473,37 @@ integrations:
           - Never synthesize missing source tokens as an ordinary formatting action.
           - Keep ordinary formatting independent of semantic analysis.
 
+      - id: formatter-cst-engine-migration
+        status: partial
+        rules:
+          - "§ 5(1)"
+          - "§ 5(2)"
+          - "§ 5(3)"
+          - "§ 5(4)"
+          - "§ 5(5)"
+          - "§ 25(1)"
+          - "§ 25(2)"
+          - "§ 25(3)"
+          - "§ 25(5)"
+          - "§ 25(7)"
+        requirement: >-
+          Migrate the shared formatter from its current bespoke, line-oriented
+          implementation to a CST-based engine. internal/cst is the primary
+          source of grammatical structure, exact tokens, trivia ownership,
+          safe formatting regions, and preservation boundaries. The AST may
+          remain a parallel compiler product, but it is not the formatter's
+          source of truth and must not compensate for missing CST structure
+          through an expanding collection of formatter-specific rescans.
+        acceptance:
+          - The formatter entry point builds or receives one lossless, error-tolerant CST and formats from that representation.
+          - Structural indentation, spacing, wrapping, alignment, and comment placement decisions use CST nodes and owned trivia rather than trimmed physical lines.
+          - Existing line scanners and parser/lexer-assisted special cases are removed as their CST replacements become available.
+          - New language-surface formatting is implemented by extending shared CST/parser roles, not by adding a formatter-only grammar.
+          - CLI and LSP continue to use the same formatter and retain byte-identical output throughout the migration.
+          - Focused migration tests preserve idempotence, valid syntax meaning, exact literals/comments, and malformed-region bytes.
+
       - id: formatter-canonical-layout
-        status: planned
+        status: partial
         rules:
           - "§ 3(1)"
           - "§ 3(2)"
@@ -360,7 +576,7 @@ integrations:
           - Ordinary top-level declarations retain source order.
 
       - id: formatter-language-surface
-        status: planned
+        status: partial
         rules:
           - "§ 15"
           - "§ 16"
@@ -404,6 +620,13 @@ integrations:
           - "Historical consuming parameter syntax `name: <- Type` corrects to `->name: Type` only when that syntax is unambiguous."
           - "Statement `i++` corrects to `i += 1` without introducing expression-level post-increment semantics."
           - The correction catalogue can expand through dogfooding without weakening the unambiguity rule.
+        implemented:
+          - ordinary formatting no longer rewrites a locally recognizable foreign `func` declaration to `fn`
+          - the existing explicit formatter fix option performs the bounded `func` to `fn` correction and remains idempotent
+          - ambiguous identifier, call-like, and incomplete `func` shapes remain unchanged even when fixes are enabled
+          - ordinary formatting preserves redundant nested parentheses while the explicit fix option removes only a directly nested inner pair proven by complete CST delimiter parentage
+          - redundant-parenthesis correction preserves precedence-sensitive groups, comment-separated nesting, and parenthesis-like text inside literals, and remains idempotent
+          - explicit fixes remove parser-confirmed whole-condition parentheses from valid if, while, and switch headers while preserving partial-expression grouping and ordinary formatter output
 
       - id: formatter-cli-lsp-unification
         status: partial
@@ -428,7 +651,7 @@ integrations:
           - Format-on-save preserves clean permitted multiline intent.
 
       - id: formatter-invariants
-        status: planned
+        status: partial
         rules:
           - "§ 29"
           - "§ 31"
@@ -445,7 +668,7 @@ integrations:
           - Obsolete Sec syntax is not emitted as canonical output.
 
       - id: formatter-conformance-tests
-        status: planned
+        status: partial
         rules:
           - "§ 30"
         requirement: >-
@@ -508,26 +731,10 @@ integrations:
       - ordinary top-level declaration reordering
       - semantic normalization of numeric or string literals
       - automatic ownership, mutability, error-policy, or control-flow changes
-
-    sync_actions:
-      - >-
-          Merge this integration payload into the existing
-          governance/formatting.yaml owner. Do not create a second
-          formatter owner fragment.
-      - >-
-          Preserve any existing implementation history, evidence, commit links,
-          owner metadata, and completed obligations already present in
-          governance/formatting.yaml.
-      - >-
-          Reconcile existing formatter implementation facts against revision 2.0
-          paragraph references rather than replacing verified status with this
-          conservative baseline.
-      - >-
-          Keep governance/index.yaml mapped to the existing canonical formatter
-          owner; only update index metadata if required by the repository's
-          current governance schema.
-      - >-
-          Use the stable normative paragraph identifiers from
-          rules/tooling/formatter.md revision 2.0 in code comments, tests,
-          diagnostics, and future governance updates where a rule reference is
-          needed.
+    verification:
+      - command: go test ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-09-25 for the currently implemented CST, shared formatter, CLI, and LSP formatting slices
+      - command: go test ./internal/parser ./internal/cst ./internal/formatter ./cmd/lsp -run 'ContextualMatrix|MultipleGenericConstraints|ApplyProgramRoles|GenericConstraint|Increment|Decrement|UnitMetadata|TopLevelTestDeclaration|OwnershipAvailability' -count=1
+        result: passed on 2026-09-25 for parser-owned CST formatting roles, malformed-constraint preservation, ordinary identifier/operator separation, statement-only alias selection, invalid-expression preservation, unit-impl, test-header, and ownership-availability block scoping, exact test-name preservation, idempotent output, and the shared LSP path
+      - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'Malformed' -count=1
+        result: passed on 2026-09-25 with byte-exact lexical-error, unmatched-closer, and incomplete-delimiter preservation, shared LSP behavior, and non-conforming sec fmt --check reporting without file mutation

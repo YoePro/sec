@@ -127,3 +127,26 @@ func TestFmtCheckAfterFormatting(t *testing.T) {
 		t.Fatalf("formatted source failed check: %v", err)
 	}
 }
+
+// A byte-preserved malformed file is not falsely reported as canonically
+// formatted merely because safe formatting declines to change it.
+//
+// Rules: rules/tooling/formatter.md — §25(9).
+func TestFmtCheckRejectsPreservedMalformedSource(t *testing.T) {
+	input := "fn Broken() void {\r\n\tlet values := [1, 2\r\n"
+	path := filepath.Join(t.TempDir(), "broken.sec")
+	if err := os.WriteFile(path, []byte(input), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	err := runFmtCommand([]string{"--check", path})
+	if err == nil || !strings.Contains(err.Error(), path+": format.malformed-source:") {
+		t.Fatalf("malformed check error = %v", err)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != input {
+		t.Fatalf("check changed malformed source: %q", got)
+	}
+}

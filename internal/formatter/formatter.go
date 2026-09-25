@@ -2,8 +2,6 @@
 package formatter
 
 import (
-	"reflect"
-	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -14,11 +12,16 @@ import (
 	"sec/internal/parser"
 )
 
-type Options struct{ Fix bool }
+type Options struct {
+	// Fix enables the opt-in Language Corrections layer. Ordinary formatting,
+	// including current CLI and LSP entry points, leaves it disabled.
+	Fix bool
+}
 type Source struct{ Text string }
 type Result struct {
-	Text     string
-	Comments []ast.CommentAttachment
+	Text      string
+	Comments  []ast.CommentAttachment
+	Malformed bool
 }
 
 // Format returns canonical source together with parser-owned comment
@@ -28,9 +31,40 @@ type Result struct {
 //   - rules/tooling/formatter.md — "Comment attachment"
 //   - rules/tooling/formatter.md — Appendix A.5 "Build lossless syntax and trivia support"
 func Format(source Source, options Options) Result {
+	if !options.Fix {
+		syntax := cst.Build(source.Text, "")
+		if hasUncertainConcreteSyntax(syntax) {
+			program := parser.New(lexer.New(source.Text)).ParseProgram()
+			return Result{
+				Text:      source.Text,
+				Comments:  append([]ast.CommentAttachment(nil), program.Comments...),
+				Malformed: true,
+			}
+		}
+	}
 	text := format(source.Text, options)
 	program := parser.New(lexer.New(text)).ParseProgram()
 	return Result{Text: text, Comments: append([]ast.CommentAttachment(nil), program.Comments...)}
+}
+
+// hasUncertainConcreteSyntax implements the first conservative malformed-
+// source boundary from the lossless CST: lexical errors and unmatched or
+// incomplete real delimiters protect the complete document byte-for-byte.
+// Parser recovery ranges will later permit safe formatting around narrower
+// uncertain regions without treating every parser diagnostic as malformed.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §25 "Malformed and incomplete source"
+func hasUncertainConcreteSyntax(document cst.Document) bool {
+	if len(document.Diagnostics) > 0 || len(document.UnmatchedClosers) > 0 {
+		return true
+	}
+	for _, group := range document.Groups {
+		if group.Close < 0 {
+			return true
+		}
+	}
+	return false
 }
 
 type branch struct {
@@ -45,6 +79,12 @@ func format(text string, options Options) string {
 		eol = "\r\n"
 	}
 	normal := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(text)
+	if options.Fix {
+		normal = fixRedundantNestedParentheses(normal)
+		normal = fixRedundantControlConditionParentheses(normal)
+	}
+	normal = formatCSTBlockComments(normal)
+	blockCommentLines := standaloneBlockCommentLines(normal)
 	lines := strings.Split(normal, "\n")
 	hadFinal := strings.HasSuffix(normal, "\n")
 	if hadFinal {
@@ -54,7 +94,8 @@ func format(text string, options Options) string {
 	indent := 0
 	blank := false
 	branches := []branch{}
-	for _, line := range lines {
+	for lineIndex, line := range lines {
+		commentLine := blockCommentLines[lineIndex+1]
 		line = strings.ReplaceAll(line, "\t", "    ")
 		line = strings.TrimRight(line, " \t")
 		line = strings.TrimSpace(line)
@@ -80,9 +121,13 @@ func format(text string, options Options) string {
 		}
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
+			line = normalizeFunc(line)
 		}
-		line = formatTestDeclaration(formatAvailabilityTest(formatPanic(formatAssert(formatUnitExpressions(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(formatMatchArm(formatLet(formatSignature(formatInitSignature(normalizeFunc(line))))))))))))
-		level := indent - closing(line)
+		line = formatPanic(formatAssert(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(line))))
+		level := indent
+		if !commentLine {
+			level -= closing(line)
+		}
 		if level < 0 {
 			level = 0
 		}
@@ -109,12 +154,15 @@ func format(text string, options Options) string {
 			blank = false
 		}
 		out = append(out, strings.Repeat(" ", (level+extra)*4)+line)
-		delta := delimiters(line)
+		delta := 0
+		if !commentLine {
+			delta = delimiters(line)
+		}
 		indent += delta
 		if indent < 0 {
 			indent = 0
 		}
-		if branchStart(line) && delta > 0 {
+		if !commentLine && branchStart(line) && delta > 0 {
 			branches = append(branches, branch{depth: indent, extra: switchStart(line)})
 		}
 		if at >= 0 {
@@ -126,9 +174,9 @@ func format(text string, options Options) string {
 	// columns and comment text never participates in structural indentation.
 	out = alignDeclarationTrailingComments(out)
 	result := strings.Join(out, "\n")
-	result = formatPostfixMutationAliases(result)
-	result = formatContextualMatrixOperators(result)
-	result = formatUnitMetadataNames(result)
+	result = formatCSTRoles(result)
+	result = formatCSTBlockComments(result)
+	result = formatCSTLineComments(result)
 	if hadFinal || result != "" {
 		result += "\n"
 	}
@@ -136,351 +184,6 @@ func format(text string, options Options) string {
 		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
-}
-
-// formatUnitMetadataNames canonicalizes accepted legacy case and underscore
-// variants only for metadata declarations inside an impl whose target is a
-// parsed unit declaration. Ordinary impl members with the same spelling are
-// left unchanged.
-//
-// Rules:
-//   - rules/types/units.md — "Unit metadata", canonical PascalCase names
-//   - rules/types/units.md — "Formatter requirements"
-func formatUnitMetadataNames(text string) string {
-	program := parser.New(lexer.New(text)).ParseProgram()
-	unitNames := map[string]bool{}
-	for _, statement := range program.Statements {
-		if declaration, ok := statement.(*ast.UnitDeclStatement); ok && declaration.Name != nil {
-			unitNames[declaration.Name.Value] = true
-		}
-	}
-
-	replacements := map[int][]lexer.Token{}
-	for _, statement := range program.Statements {
-		implementation, ok := statement.(*ast.ImplStatement)
-		if !ok || implementation.Target == nil || !unitNames[implementation.Target.Name] {
-			continue
-		}
-		for _, member := range implementation.Members {
-			metadata, ok := member.(*ast.UnitMetadataDeclaration)
-			if !ok {
-				continue
-			}
-			canonical, known := canonicalUnitMetadataName(metadata.Name)
-			if !known || canonical == metadata.Token.Lexeme || metadata.Token.Line <= 0 || metadata.Token.Column <= 0 {
-				continue
-			}
-			token := metadata.Token
-			token.Lexeme = canonical
-			replacements[token.Line-1] = append(replacements[token.Line-1], token)
-		}
-	}
-	if len(replacements) == 0 {
-		return text
-	}
-
-	lines := strings.Split(text, "\n")
-	for lineIndex, tokens := range replacements {
-		if lineIndex < 0 || lineIndex >= len(lines) {
-			continue
-		}
-		sort.Slice(tokens, func(i, j int) bool { return tokens[i].Column > tokens[j].Column })
-		line := []rune(lines[lineIndex])
-		for _, token := range tokens {
-			start := token.Column - 1
-			original := []rune(unitMetadataTokenAt(line, start))
-			if start < 0 || len(original) == 0 || start+len(original) > len(line) {
-				continue
-			}
-			line = append(append(append([]rune{}, line[:start]...), []rune(token.Lexeme)...), line[start+len(original):]...)
-		}
-		lines[lineIndex] = string(line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// canonicalUnitMetadataName maps every accepted migration spelling to the
-// closed canonical metadata inventory.
-//
-// Rules:
-//   - rules/types/units.md — "Unit metadata"
-func canonicalUnitMetadataName(name string) (string, bool) {
-	normalized := strings.ReplaceAll(strings.ToLower(name), "_", "")
-	names := map[string]string{
-		"longname": "LongName", "symbol": "Symbol", "baseunit": "BaseUnit",
-		"status": "Status", "dimension": "Dimension", "kind": "Kind",
-		"scale": "Scale", "system": "System", "transform": "Transform",
-		"offset": "Offset", "origin": "Origin", "logbase": "LogBase",
-		"logfactor": "LogFactor", "reference": "Reference",
-	}
-	canonical, ok := names[normalized]
-	return canonical, ok
-}
-
-// unitMetadataTokenAt returns the identifier spelling beginning at a parser
-// token's rune column so the formatter can replace only that token.
-func unitMetadataTokenAt(line []rune, start int) string {
-	if start < 0 || start >= len(line) {
-		return ""
-	}
-	end := start
-	for end < len(line) && (line[end] == '_' || unicode.IsLetter(line[end]) || unicode.IsDigit(line[end])) {
-		end++
-	}
-	return string(line[start:end])
-}
-
-// formatTestDeclaration canonicalizes only the parser-defined declaration
-// header `test StringLiteral {`. It preserves the exact string token and does
-// not reinterpret ordinary identifiers or calls named test.
-//
-// Rules:
-//   - rules/tooling/testing.md — §5.1 "Canonical form"
-//   - rules/tooling/testing.md — §41 "Formatter requirements"
-func formatTestDeclaration(line string) string {
-	l := lexer.New(line)
-	keyword := l.NextToken()
-	name := l.NextToken()
-	open := l.NextToken()
-	if keyword.Type != lexer.IDENT || keyword.Lexeme != "test" || name.Type != lexer.STRING || open.Type != lexer.LBRACE {
-		return line
-	}
-	runes := []rune(line)
-	end := open.Column - 1 + len([]rune(open.Lexeme))
-	if end < 0 || end > len(runes) {
-		return line
-	}
-	return "test " + name.Lexeme + " {" + string(runes[end:])
-}
-
-// formatAvailabilityTest normalizes the block boundary after the contextual
-// ownership-state spellings while leaving ordinary identifiers named
-// available, is, or not untouched.
-//
-// Rules:
-//   - rules/memory/ownership.md — §21 "is available and is not available"
-//   - rules/tooling/formatter.md — semantic spelling preservation
-func formatAvailabilityTest(line string) string {
-	if !strings.HasPrefix(strings.TrimSpace(line), "if ") {
-		return line
-	}
-	line = strings.ReplaceAll(line, " is not available{", " is not available {")
-	return strings.ReplaceAll(line, " is available{", " is available {")
-}
-
-// formatPostfixMutationAliases rewrites only parser-confirmed statement aliases
-// to their canonical compound-assignment spelling. Invalid expression uses are
-// left untouched because they do not produce an AssignmentStatement alias.
-//
-// Rules:
-//   - rules/tooling/formatter.md — "Increment" and "Decrement"
-//   - rules/foundations/operators.md — "Increment and decrement aliases"
-func formatPostfixMutationAliases(text string) string {
-	program := parser.New(lexer.New(text)).ParseProgram()
-	byLine := map[int][]lexer.Token{}
-	for _, token := range postfixMutationAliasTokens(program) {
-		if token.Line > 0 && token.Column > 0 {
-			byLine[token.Line-1] = append(byLine[token.Line-1], token)
-		}
-	}
-	if len(byLine) == 0 {
-		return text
-	}
-
-	lines := strings.Split(text, "\n")
-	for lineIndex, tokens := range byLine {
-		if lineIndex < 0 || lineIndex >= len(lines) {
-			continue
-		}
-		sort.Slice(tokens, func(i, j int) bool { return tokens[i].Column > tokens[j].Column })
-		line := []rune(lines[lineIndex])
-		for _, token := range tokens {
-			column := token.Column - 1
-			spelling := []rune(token.Lexeme)
-			if column < 0 || len(spelling) != 2 || column+len(spelling) > len(line) ||
-				string(line[column:column+len(spelling)]) != token.Lexeme {
-				continue
-			}
-			left := column
-			for left > 0 && isHorizontalFormatterSpace(line[left-1]) {
-				left--
-			}
-			replacement := " += 1"
-			if token.Type == lexer.DECREMENT {
-				replacement = " -= 1"
-			}
-			line = append(append(append([]rune{}, line[:left]...), []rune(replacement)...), line[column+2:]...)
-		}
-		lines[lineIndex] = string(line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// postfixMutationAliasTokens walks the parser-owned AST and returns only alias
-// tokens attached to canonical assignment statements.
-//
-// Rules:
-//   - rules/tooling/formatter.md — "Increment" and "Decrement"
-func postfixMutationAliasTokens(program *ast.Program) []lexer.Token {
-	if program == nil {
-		return nil
-	}
-	tokens := []lexer.Token{}
-	var visit func(reflect.Value)
-	visit = func(value reflect.Value) {
-		if !value.IsValid() {
-			return
-		}
-		if value.Kind() == reflect.Interface {
-			if !value.IsNil() {
-				visit(value.Elem())
-			}
-			return
-		}
-		if value.Kind() == reflect.Pointer {
-			if value.IsNil() {
-				return
-			}
-			if value.CanInterface() {
-				if assignment, ok := value.Interface().(*ast.AssignmentStatement); ok &&
-					assignment.PostfixAlias.Type != "" {
-					tokens = append(tokens, assignment.PostfixAlias)
-				}
-			}
-			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
-				visit(value.Elem())
-			}
-			return
-		}
-		switch value.Kind() {
-		case reflect.Struct:
-			if value.Type().PkgPath() != "sec/internal/ast" {
-				return
-			}
-			for index := 0; index < value.NumField(); index++ {
-				visit(value.Field(index))
-			}
-		case reflect.Slice, reflect.Array:
-			for index := 0; index < value.Len(); index++ {
-				visit(value.Index(index))
-			}
-		}
-	}
-	visit(reflect.ValueOf(program))
-	return tokens
-}
-
-// formatContextualMatrixOperators normalizes horizontal spacing only for x
-// tokens that the parser resolved as matrix-multiplication infix operators.
-// Identifiers, calls, declarations, and member names spelled x are untouched.
-//
-// Rules:
-//   - rules/tooling/formatter.md — "Contextual `x`"
-//   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
-//   - rules/foundations/operators.md — "Matrix multiplication operator `x`"
-func formatContextualMatrixOperators(text string) string {
-	program := parser.New(lexer.New(text)).ParseProgram()
-	byLine := map[int][]int{}
-	for _, token := range contextualMatrixOperatorTokens(program) {
-		if token.Line > 0 && token.Column > 0 {
-			byLine[token.Line-1] = append(byLine[token.Line-1], token.Column-1)
-		}
-	}
-	if len(byLine) == 0 {
-		return text
-	}
-
-	lines := strings.Split(text, "\n")
-	for lineIndex, columns := range byLine {
-		if lineIndex < 0 || lineIndex >= len(lines) {
-			continue
-		}
-		sort.Sort(sort.Reverse(sort.IntSlice(columns)))
-		line := []rune(lines[lineIndex])
-		for _, column := range columns {
-			if column < 0 || column >= len(line) || line[column] != 'x' {
-				continue
-			}
-			left := column
-			for left > 0 && isHorizontalFormatterSpace(line[left-1]) {
-				left--
-			}
-			right := column + 1
-			for right < len(line) && isHorizontalFormatterSpace(line[right]) {
-				right++
-			}
-			if column == 0 || column+1 >= len(line) {
-				continue
-			}
-			replacement := []rune{' ', 'x', ' '}
-			line = append(append(append([]rune{}, line[:left]...), replacement...), line[right:]...)
-		}
-		lines[lineIndex] = string(line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// isHorizontalFormatterSpace limits operator normalization to same-line trivia;
-// formatter layout never joins expressions across physical line boundaries.
-//
-// Rules:
-//   - rules/tooling/formatter.md — "Contextual `x`"
-func isHorizontalFormatterSpace(value rune) bool {
-	return value == ' ' || value == '\t'
-}
-
-// contextualMatrixOperatorTokens walks the parser-owned AST and returns only
-// x tokens whose expression node carries the canonical infix operator role.
-//
-// Rules:
-//   - rules/tooling/formatter.md — "Contextual `x`"
-//   - rules/foundations/lexical_structure.md — §10 "Contextual operator `x`"
-func contextualMatrixOperatorTokens(program *ast.Program) []lexer.Token {
-	if program == nil {
-		return nil
-	}
-	tokens := []lexer.Token{}
-	var visit func(reflect.Value)
-	visit = func(value reflect.Value) {
-		if !value.IsValid() {
-			return
-		}
-		if value.Kind() == reflect.Interface {
-			if !value.IsNil() {
-				visit(value.Elem())
-			}
-			return
-		}
-		if value.Kind() == reflect.Pointer {
-			if value.IsNil() {
-				return
-			}
-			if value.CanInterface() {
-				if infix, ok := value.Interface().(*ast.InfixExpression); ok && infix.Operator == "x" {
-					tokens = append(tokens, infix.Token)
-				}
-			}
-			if value.Type().Elem().PkgPath() == "sec/internal/ast" {
-				visit(value.Elem())
-			}
-			return
-		}
-		switch value.Kind() {
-		case reflect.Struct:
-			if value.Type().PkgPath() != "sec/internal/ast" {
-				return
-			}
-			for index := 0; index < value.NumField(); index++ {
-				visit(value.Field(index))
-			}
-		case reflect.Slice, reflect.Array:
-			for index := 0; index < value.Len(); index++ {
-				visit(value.Index(index))
-			}
-		}
-	}
-	visit(reflect.ValueOf(program))
-	return tokens
 }
 
 // alignDeclarationTrailingComments aligns local groups inside nominal
@@ -652,68 +355,6 @@ func isStandaloneComment(trimmed string) bool {
 
 func leadingSpaces(line string) int {
 	return len(line) - len(strings.TrimLeft(line, " "))
-}
-
-// formatUnitExpressions implements rules/types/units.md and
-// rules/tooling/formatter.md compact structural-unit spacing. It only edits a
-// balanced type-annotation angle group and never reorders factors or removes
-// source grouping.
-func formatUnitExpressions(line string) string {
-	if strings.Contains(line, "//") || strings.Contains(line, "/*") || strings.Contains(line, "*/") {
-		return line
-	}
-	var out strings.Builder
-	for cursor := 0; cursor < len(line); {
-		open := strings.IndexByte(line[cursor:], '<')
-		if open < 0 {
-			out.WriteString(line[cursor:])
-			break
-		}
-		open += cursor
-		close := strings.IndexByte(line[open+1:], '>')
-		if close < 0 {
-			out.WriteString(line[cursor:])
-			break
-		}
-		close += open + 1
-		content := line[open+1 : close]
-		if !strings.ContainsAny(content, "*/^()") || !looksLikeUnitAnnotation(line, open) {
-			out.WriteString(line[cursor : open+1])
-			cursor = open + 1
-			continue
-		}
-		out.WriteString(line[cursor : open+1])
-		out.WriteString(compactUnitOperators(content))
-		out.WriteByte('>')
-		cursor = close + 1
-	}
-	return out.String()
-}
-
-func looksLikeUnitAnnotation(line string, open int) bool {
-	spaced := open > 0 && unicode.IsSpace(rune(line[open-1]))
-	for i := open - 1; i >= 0; i-- {
-		if unicode.IsSpace(rune(line[i])) {
-			continue
-		}
-		if spaced {
-			// A whitespace-led '<' after an operand is a comparison, not a
-			// unit-only type annotation.
-			return line[i] == ':' || line[i] == '[' || line[i] == ',' || line[i] == '(' || line[i] == '='
-		}
-		return line[i] == '_' || line[i] == ']' || unicode.IsLetter(rune(line[i])) || unicode.IsDigit(rune(line[i]))
-	}
-	return true
-}
-
-func compactUnitOperators(content string) string {
-	fields := strings.Fields(content)
-	compact := strings.Join(fields, " ")
-	for _, operator := range []string{"*", "/", "^", "(", ")"} {
-		compact = strings.ReplaceAll(compact, " "+operator, operator)
-		compact = strings.ReplaceAll(compact, operator+" ", operator)
-	}
-	return compact
 }
 
 // formatSingleLineCallSpacing implements the single-line call rule in
@@ -937,106 +578,6 @@ func callParen(text string, open int) bool {
 	return last == '_' || last == ')' || last == ']' || unicode.IsLetter(last) || unicode.IsDigit(last)
 }
 
-func formatMatchArm(line string) string {
-	arrow := strings.Index(line, "=>")
-	if arrow < 0 {
-		return line
-	}
-	left := strings.TrimSpace(line[:arrow])
-	right := strings.TrimSpace(line[arrow+2:])
-	guard := ""
-	if where := strings.Index(left, " where "); where >= 0 {
-		guard = " where " + strings.TrimSpace(left[where+7:])
-		left = strings.TrimSpace(left[:where])
-	}
-	pattern, ok := normalizeCanonicalMatchPattern(left)
-	if !ok {
-		return line
-	}
-	if right == "" {
-		return pattern + guard + " =>"
-	}
-	return pattern + guard + " => " + right
-}
-
-func normalizeCanonicalMatchPattern(text string) (string, bool) {
-	text = strings.TrimSpace(text)
-	if text == "_" || text == "empty" {
-		return text, true
-	}
-	if open := strings.Index(text, "{"); open >= 0 {
-		if !strings.HasSuffix(text, "}") {
-			return "", false
-		}
-		name := strings.TrimSpace(text[:open])
-		if !qualifiedIdentifier(name) {
-			return "", false
-		}
-		parts := split(text[open+1 : len(text)-1])
-		if parts == nil {
-			return "", false
-		}
-		fields := make([]string, 0, len(parts))
-		for _, part := range parts {
-			field := strings.TrimSpace(part)
-			colon := strings.Index(field, ":")
-			if colon < 0 {
-				if !ident(field) {
-					return "", false
-				}
-				fields = append(fields, field)
-				continue
-			}
-			fieldName := strings.TrimSpace(field[:colon])
-			binding, ok := normalizeMatchBinding(field[colon+1:])
-			if !ident(fieldName) || !ok {
-				return "", false
-			}
-			fields = append(fields, fieldName+": "+binding)
-		}
-		return name + " { " + strings.Join(fields, ", ") + " }", true
-	}
-	if open := strings.Index(text, "("); open >= 0 {
-		if !strings.HasSuffix(text, ")") {
-			return "", false
-		}
-		name := strings.TrimSpace(text[:open])
-		binding, ok := normalizeMatchBinding(text[open+1 : len(text)-1])
-		if !qualifiedIdentifier(name) || !ok {
-			return "", false
-		}
-		return name + "(" + binding + ")", true
-	}
-	return text, qualifiedIdentifier(text)
-}
-
-func normalizeMatchBinding(text string) (string, bool) {
-	parts := strings.Fields(text)
-	switch {
-	case len(parts) == 1 && (parts[0] == "_" || ident(parts[0])):
-		return parts[0], true
-	case len(parts) == 2 && parts[0] == "ref" && ident(parts[1]):
-		return "ref " + parts[1], true
-	case len(parts) == 3 && parts[0] == "ref" && parts[1] == "mut" && ident(parts[2]):
-		return "ref mut " + parts[2], true
-	default:
-		return "", false
-	}
-}
-
-func qualifiedIdentifier(text string) bool {
-	parts := strings.Split(text, ".")
-	if len(parts) == 0 {
-		return false
-	}
-	for _, part := range parts {
-		if !ident(part) {
-			return false
-		}
-	}
-	return true
-}
-
 func normalizeReversedTypeDeclaration(line string) string {
 	for _, kind := range []string{"struct", "union"} {
 		prefix := "type " + kind + " "
@@ -1097,65 +638,6 @@ func ident(name string) bool {
 		}
 	}
 	return true
-}
-func formatSignature(line string) string {
-	prefix := "fn "
-	for _, candidate := range []string{"mut fn ", "-> fn ", "static fn "} {
-		if strings.HasPrefix(line, candidate) {
-			prefix = candidate
-			break
-		}
-	}
-	if !strings.HasPrefix(line, prefix) {
-		return line
-	}
-	open := strings.Index(line, "(")
-	if open < 0 {
-		return line
-	}
-	close := matchingParen(line, open)
-	if close < 0 {
-		return line
-	}
-	parts := split(line[open+1 : close])
-	if parts == nil {
-		return line
-	}
-	return line[:open+1] + strings.Join(parts, ", ") + line[close:]
-}
-
-func formatInitSignature(line string) string {
-	if !strings.HasPrefix(line, "init(") && !strings.HasPrefix(line, "init (") {
-		return line
-	}
-	open := strings.Index(line, "(")
-	if open < 0 {
-		return line
-	}
-	close := matchingParen(line, open)
-	if close < 0 {
-		return line
-	}
-	parts := split(line[open+1 : close])
-	if parts == nil {
-		return line
-	}
-	return "init(" + strings.Join(parts, ", ") + line[close:]
-}
-func formatLet(line string) string {
-	if !strings.HasPrefix(line, "let ") || strings.Contains(line, "//") || strings.Contains(line, "/*") {
-		return line
-	}
-	parts := split(line[4:])
-	if len(parts) < 2 {
-		return line
-	}
-	for _, p := range parts {
-		if !strings.Contains(p, ":=") {
-			return line
-		}
-	}
-	return "let " + strings.Join(parts, ", ")
 }
 
 // formatAssert canonicalizes the comma separator before an assertion message

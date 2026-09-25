@@ -31,6 +31,25 @@ func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
 	}
 }
 
+// Multiple generic constraints use a parser-owned CST role for canonical
+// operator spacing; ordinary bitwise-and expressions remain untouched.
+//
+// Rules:
+//   - rules/declarations/generics.md — §12 "Multiple constraints"
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §6 "Horizontal whitespace"
+func TestFormatGenericConstraintConjunctionsFromCST(t *testing.T) {
+	input := "fn Save[T:First&Comparable, U: Printable](value: T, mask: T) void {\nlet masked := value&mask\ndiscard masked\n}\n\ntype Box[T: Item  &  Printable] struct {\nvalue T\n}\n"
+	want := "fn Save[T:First & Comparable, U: Printable](value: T, mask: T) void {\n    let masked := value&mask\n    discard masked\n}\n\ntype Box[T: Item & Printable] struct {\n    value T\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong generic constraint formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("generic constraint formatting is not idempotent:\n%s", again)
+	}
+}
+
 // TestFormatOptionIfBinding preserves the sole canonical if payload-binding
 // spelling and remains idempotent.
 //
@@ -164,6 +183,29 @@ func TestFormatterPreservesInvalidIncrementExpression(t *testing.T) {
 	}
 }
 
+// Ordinary formatting conservatively preserves a malformed document until
+// CST recovery ranges can isolate independently safe surrounding regions.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §25 "Malformed and incomplete source"
+func TestFormatPreservesMalformedSourceByteForByte(t *testing.T) {
+	for name, input := range map[string]string{
+		"incomplete delimiters": "fn Broken() void {\r\n\tlet values := [1, 2\r\n    // unfinished\r\n",
+		"lexical error":         "fn Broken() void {\n\tdiscard \xff\n}\n",
+		"unmatched closer":      "fn Broken() void }\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := Format(Source{Text: input}, Options{})
+			if !result.Malformed {
+				t.Fatal("malformed source was reported as format-safe")
+			}
+			if result.Text != input {
+				t.Fatalf("malformed source changed:\n got %q\nwant %q", result.Text, input)
+			}
+		})
+	}
+}
+
 func TestFormatPreservesDefaultClauseAndPartialStructLiteral(t *testing.T) {
 	input := "module main\n\n" +
 		"type User string in [\"Admin\", \"User\"] default \"User\"\n\n" +
@@ -216,10 +258,34 @@ func TestFormatRemovesOnlyRedundantModuleStatic(t *testing.T) {
 }
 
 func TestFormatInitAndNewLifecycleSyntax(t *testing.T) {
-	input := "impl Buffer {\ninit( size: uint, alignment: uint, ) AllocationError {\n}\n}\n\nfn Make() Result[Buffer, AllocationError] {\nreturn try new Buffer(4096, 16)\n}\n"
+	input := "impl Buffer {\ninit ( size: uint, alignment: uint, ) AllocationError {\n}\n}\n\nfn Make() Result[Buffer, AllocationError] {\nreturn try new Buffer(4096, 16)\n}\n"
 	want := "impl Buffer {\n    init(size: uint, alignment: uint) AllocationError {\n    }\n}\n\nfn Make() Result[Buffer, AllocationError] {\n    return try new Buffer(4096, 16)\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong lifecycle formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatCallableParameterListOpenersFromCST(t *testing.T) {
+	input := "fn Apply ( value: int, callback: fn(int) int ) int {\nlet transform := fn ( item: int ) int {\nreturn item\n}\nreturn callback(transform(value))\n}\n"
+	want := "fn Apply(value: int, callback: fn(int) int) int {\n    let transform := fn(item: int) int {\n        return item\n    }\n    return callback(transform(value))\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST callable parameter-list formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST callable parameter-list formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatDeclarationGroupSeparatorsFromCST(t *testing.T) {
+	input := "fn Build() void {\nlet first := Pair(1,2) ,second := 3  ,  third := 4\nfloat: low := 1.0 ,high := 2.0\n}\n"
+	want := "fn Build() void {\n    let first := Pair(1, 2), second := 3, third := 4\n    float: low := 1.0, high := 2.0\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST declaration-group formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST declaration-group formatting is not idempotent:\n%s", again)
 	}
 }
 
@@ -443,6 +509,100 @@ func TestFixDoesNotRewriteContextualRegisterIdentifierWithoutRegisterShape(t *te
 	}
 }
 
+// Foreign function keywords belong to the opt-in Language Corrections layer.
+// Ordinary CLI/LSP formatting must not repair them merely because the intended
+// declaration happens to be locally recognizable.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §26 "Language Corrections model"
+//   - rules/tooling/formatter.md — §27(1) foreign function keywords
+func TestForeignFunctionKeywordCorrectionIsOptIn(t *testing.T) {
+	input := "func Parse() void {\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != input {
+		t.Fatalf("ordinary formatting applied a language correction: %q", got)
+	}
+
+	want := "fn Parse() void {\n}\n"
+	got := Format(Source{Text: input}, Options{Fix: true}).Text
+	if got != want {
+		t.Fatalf("opt-in correction = %q, want %q", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{Fix: true}).Text; again != got {
+		t.Fatalf("opt-in correction is not idempotent: %q", again)
+	}
+}
+
+func TestForeignFunctionKeywordCorrectionRejectsAmbiguousShapes(t *testing.T) {
+	for _, input := range []string{
+		"let func := callback\n",
+		"func Parse()\n",
+		"func(value)\n",
+	} {
+		if got := Format(Source{Text: input}, Options{Fix: true}).Text; got != input {
+			t.Fatalf("ambiguous foreign function spelling %q corrected to %q", input, got)
+		}
+	}
+}
+
+// Redundant nested parentheses are a CST-proven, opt-in Language Correction.
+// The inner pair is removed so a surrounding call delimiter is preserved.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §17(13) parenthesis preservation
+//   - rules/tooling/formatter.md — §27(19) redundant expression parentheses
+func TestRedundantNestedParenthesesCorrectionIsOptIn(t *testing.T) {
+	input := "fn Read(value: int) int {\nreturn Transform((value))\n}\n"
+	ordinary := "fn Read(value: int) int {\n    return Transform((value))\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != ordinary {
+		t.Fatalf("ordinary formatting removed parentheses:\n%s\nwant:\n%s", got, ordinary)
+	}
+
+	want := "fn Read(value: int) int {\n    return Transform(value)\n}\n"
+	got := Format(Source{Text: input}, Options{Fix: true}).Text
+	if got != want {
+		t.Fatalf("redundant-parentheses correction:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{Fix: true}).Text; again != got {
+		t.Fatalf("redundant-parentheses correction is not idempotent:\n%s", again)
+	}
+}
+
+func TestRedundantEmptyNestedParenthesesCorrection(t *testing.T) {
+	if got := Format(Source{Text: "(())\n"}, Options{Fix: true}).Text; got != "()\n" {
+		t.Fatalf("double empty parentheses corrected to %q, want %q", got, "()\n")
+	}
+}
+
+func TestRedundantParenthesesCorrectionPreservesUnsafeShapes(t *testing.T) {
+	for _, input := range []string{
+		"return (left + right) * scale\n",
+		"return (/* attached */(value))\n",
+		"return \"((value))\"\n",
+	} {
+		if got := Format(Source{Text: input}, Options{Fix: true}).Text; got != input {
+			t.Fatalf("unsafe parenthesis shape %q corrected to %q", input, got)
+		}
+	}
+}
+
+// Rules: rules/tooling/formatter.md §27(17–18).
+func TestRedundantControlConditionParenthesesCorrection(t *testing.T) {
+	input := "fn Check(ready: bool, fallback: bool, enabled: bool, value: int) void {\nif (ready) {\nreturn\n}\nwhile (ready) {\nbreak\n}\nswitch (value) {\ndefault:\nreturn\n}\nif (ready || fallback) && enabled {\nreturn\n}\n}\n"
+	ordinary := "fn Check(ready: bool, fallback: bool, enabled: bool, value: int) void {\n    if (ready) {\n        return\n    }\n    while (ready) {\n        break\n    }\n    switch (value) {\n        default:\n            return\n    }\n    if (ready || fallback) && enabled {\n        return\n    }\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != ordinary {
+		t.Fatalf("ordinary formatting removed control parentheses:\n%s\nwant:\n%s", got, ordinary)
+	}
+
+	want := "fn Check(ready: bool, fallback: bool, enabled: bool, value: int) void {\n    if ready {\n        return\n    }\n    while ready {\n        break\n    }\n    switch value {\n        default:\n            return\n    }\n    if (ready || fallback) && enabled {\n        return\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{Fix: true}).Text
+	if got != want {
+		t.Fatalf("control-parentheses correction:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{Fix: true}).Text; again != got {
+		t.Fatalf("control-parentheses correction is not idempotent:\n%s", again)
+	}
+}
+
 func TestFormatPreservesCanonicalNumericFamilySuffixes(t *testing.T) {
 	input := "fn Values() void {\nlet values := [8i, 8u, 8g, 8m, 65t, 65r, 0x41t, 0x10g, 0x10m]\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
@@ -456,8 +616,12 @@ func TestFormatPreservesCanonicalNumericFamilySuffixes(t *testing.T) {
 func TestFormatCompactsUnitExpressionWithoutReordering(t *testing.T) {
 	input := "type Flux decimal<( kg * m ) / ( s ^ 2 * A )>\n"
 	want := "type Flux decimal<(kg*m)/(s^2*A)>\n"
-	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
 		t.Fatalf("unit expression formatting changed identity or order: %q, want %q", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST unit expression formatting is not idempotent: %q, want %q", again, got)
 	}
 }
 
@@ -589,8 +753,57 @@ _=>0
     }
 }
 `
-	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
 		t.Fatalf("formatted match patterns:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST match formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatMatchPatternDelimitersFromCST(t *testing.T) {
+	input := "fn Read(value: Shape) int {\nreturn match value {\nShape.Circle ( ref mut circle )=>1\nRectangle{width : w ,height:ref h }=>2\n}\n}\n"
+	want := "fn Read(value: Shape) int {\n    return match value {\n        Shape.Circle(ref mut circle) => 1\n        Rectangle { width: w, height: ref h } => 2\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST match-pattern delimiter formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST match-pattern delimiter formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatMultilineMatchFieldPatternKeepsClosingIndentation(t *testing.T) {
+	input := "fn Read(value: Shape) int {\nreturn match value {\nRectangle {\nwidth: w,\nheight: h,\n}=>1\n}\n}\n"
+	want := "fn Read(value: Shape) int {\n    return match value {\n        Rectangle {\n            width: w,\n            height: h,\n        } => 1\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("multiline match-pattern indentation changed:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatMatchArmCommentsRemainValidTrivia(t *testing.T) {
+	input := "fn Choose(value: Choice) int {\nreturn match value {\n//first arm\nChoice.Some(item)=>item //trailing\n//between\nChoice.None=>0\n//final\n}\n}\n"
+	want := "fn Choose(value: Choice) int {\n    return match value {\n        // first arm\n        Choice.Some(item) => item // trailing\n        // between\n        Choice.None => 0\n        // final\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong match-comment formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("match-comment formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatSwitchCaseHeadersFromCST(t *testing.T) {
+	input := "fn Classify(value: int) int {\nswitch value {\ncase 1 ,  3,5 :\nreturn 1\ndefault :\nreturn 0\n}\n}\n"
+	want := "fn Classify(value: int) int {\n    switch value {\n        case 1, 3, 5:\n            return 1\n        default:\n            return 0\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST switch-header formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST switch-header formatting is not idempotent:\n%s", again)
 	}
 }
 
@@ -692,5 +905,69 @@ func TestFormatAlignsCommentAfterInlineBlockComment(t *testing.T) {
 	}
 	if again := Format(Source{Text: got}, Options{}).Text; again != got {
 		t.Fatalf("block-comment alignment is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatStandaloneMultilineBlockCommentsFromCST(t *testing.T) {
+	input := "fn Example() void {\n/* First paragraph.\nSecond line.\n\n\nThird paragraph. */\n}\n"
+	want := "fn Example() void {\n    /*\n     * First paragraph.\n     * Second line.\n     *\n     * Third paragraph.\n     */\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong multiline block-comment formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("multiline block-comment formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatStandaloneDocumentationBlockCommentRetainsForm(t *testing.T) {
+	input := "/** Summary.\nMore detail. */\nfn Example() void {}\n"
+	want := "/**\n * Summary.\n * More detail.\n */\nfn Example() void {}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong documentation block-comment formatting:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatBlockCommentsPreservesSingleLineInlineAndNestedForms(t *testing.T) {
+	input := "fn Example() void {\nlet value := 1 /* inline */\n/* outer /* nested */ remains */\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	for _, want := range []string{"let value := 1 /* inline */", "/* outer /* nested */ remains */"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("formatter changed preserved block comment %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestFormatBlockCommentKeepsPreformattedContentOpaqueToIndentation(t *testing.T) {
+	input := "fn Example() void {\n/*\n * example:\n *     if ready {\n *         Use()\n *     }\n */\nlet value := 1\n}\n"
+	want := "fn Example() void {\n    /*\n     * example:\n     *     if ready {\n     *         Use()\n     *     }\n     */\n    let value := 1\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("preformatted block comment affected structural indentation:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("preformatted block-comment formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatLineCommentMarginsFromCST(t *testing.T) {
+	input := "fn Example() void {\n//first   paragraph\n//     second\n//    \nlet value := 1 //trailing note\n}\n"
+	want := "fn Example() void {\n    // first   paragraph\n    // second\n    //\n    let value := 1 // trailing note\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong line-comment formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("line-comment formatting is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatLineCommentsUsesOnlyLexerCommentTokens(t *testing.T) {
+	input := "fn Example() void {\nlet url := \"https://example.test/a//b\"\nlet raw := `//not a comment`\n/* // block text */\n/// ordinary\n}\n"
+	want := "fn Example() void {\n    let url := \"https://example.test/a//b\"\n    let raw := `//not a comment`\n    /* // block text */\n    // / ordinary\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("line-comment token scoping failed:\n%s\nwant:\n%s", got, want)
 	}
 }

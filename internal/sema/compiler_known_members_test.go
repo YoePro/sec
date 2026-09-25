@@ -120,6 +120,44 @@ fn UserReplacement(packet: Packet) string {
 	}
 }
 
+// A trusted core primitive may add an overload without losing the universal
+// parameterless fallback. The overload's enum argument must go through normal
+// method resolution rather than the compiler-known numeric string-format path.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Lookup order"
+//   - rules/compiler/compiler_known_members.md — "User-defined ToString()"
+func TestCompilerKnownPrimitiveToStringOverloadUsesOrdinaryMethodResolution(t *testing.T) {
+	const sourceFile = "sec/core/byte.sec"
+	input := `module core
+
+impl byte {
+	enum ByteStringFormat {
+		Decimal,
+		Hexadecimal,
+	}
+
+	fn ToString(format: byte.ByteStringFormat) string {
+		return "formatted"
+	}
+}
+
+fn Format(value: byte) string {
+	return value.ToString(byte.ByteStringFormat.Hexadecimal)
+}
+
+fn Default(value: byte) string {
+	return value.ToString()
+}
+`
+	parsed := parser.New(lexer.NewWithFile(input, sourceFile)).Parse()
+	if parsed.HasErrors {
+		t.Fatalf("parser errors: %+v", parsed.Diagnostics)
+	}
+	parsed.Program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+	assertSemaErrors(t, NewAnalyzer().Analyze(parsed.Program), nil)
+}
+
 func TestCompilerKnownRawPointerVolatileAccess(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

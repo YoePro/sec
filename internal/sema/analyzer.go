@@ -1334,55 +1334,6 @@ func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter,
 	visit()
 }
 
-func (a *Analyzer) validateGenericParameterConstraints(parameters []*ast.GenericParameter) {
-	for _, param := range parameters {
-		if param == nil || param.Name == nil || param.Constraint == nil {
-			continue
-		}
-		name := a.resolveTypeName(param.Constraint.Name)
-		constraint, ok := a.types[name]
-		if !ok {
-			a.addErrorAtToken(param.Constraint.Token, "unknown generic constraint %s for %s", param.Constraint.Name, param.Name.Value)
-			continue
-		}
-		if constraint.Kind != InterfaceType {
-			a.addErrorAtToken(param.Constraint.Token, "generic constraint %s is not an interface", param.Constraint.Name)
-		}
-	}
-}
-
-// resolvedGenericParameterConstraints retains valid interface constraints on a
-// generic callable template for rechecking after explicit or inferred concrete
-// substitution. Invalid declarations are diagnosed by
-// validateGenericParameterConstraints and are not duplicated here.
-//
-// Rules:
-//   - rules/declarations/generics.md — §11 "Constraints"
-//   - rules/declarations/generics.md — §13 "Constraint resolution"
-//   - rules/declarations/generics.md — §33 "Sema requirements"
-func (a *Analyzer) resolvedGenericParameterConstraints(parameters []*ast.GenericParameter) []GenericConstraint {
-	constraints := make([]GenericConstraint, 0, len(parameters))
-	for _, parameter := range parameters {
-		if parameter == nil || parameter.Name == nil || parameter.Constraint == nil {
-			continue
-		}
-		base, exists := a.types[a.resolveTypeName(parameter.Constraint.Name)]
-		if !exists || base.Kind != InterfaceType {
-			continue
-		}
-		constraint, ok := a.resolveType(parameter.Constraint)
-		if !ok || constraint.Kind != InterfaceType {
-			continue
-		}
-		constraints = append(constraints, GenericConstraint{
-			Parameter: parameter.Name.Value,
-			Interface: constraint,
-			Token:     parameter.Constraint.Token,
-		})
-	}
-	return constraints
-}
-
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 	// Register the single primary impl for each target first. Extension validity
 	// must not depend on which source file was appended to the module program
@@ -16544,7 +16495,15 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 	if !exists || member.Kind != CompilerKnownMethod {
 		return Type{}, expressionValue{}, false
 	}
-	if lookupType.Named && len(a.functions[lookupType.Name+"."+member.Name]) > 0 {
+	// A trusted core impl on a compiler-known primitive participates in the
+	// same overload set as methods on declared nominal types. In particular,
+	// byte.ToString(ByteStringFormat) must be considered before the universal
+	// zero-argument/numeric-string fallback even though byte is not Named.
+	//
+	// Rules:
+	//   - rules/compiler/compiler_known_members.md — "Lookup order"
+	//   - rules/compiler/compiler_known_members.md — "User-defined ToString()"
+	if len(a.functions[lookupType.Name+"."+member.Name]) > 0 && (lookupType.Named || member.Name == "ToString") {
 		if member.Name != "ToString" {
 			return Type{}, expressionValue{}, false
 		}

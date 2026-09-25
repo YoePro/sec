@@ -6,7 +6,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-09-16"
+    revised: "2026-09-25"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -49,6 +49,7 @@ integrations:
       - InvalidDeclaration nodes for failed declaration-shaped top-level statements
       - InvalidMember nodes and skipped ranges for disallowed impl members
       - InvalidPattern nodes for malformed match arms and try handlers
+      - ordinary line and block comments are consumed as trivia at every match-arm boundary, including before the first arm, between arms, after short arm bodies, and before the closing brace
       - delimiter-aware later-line sibling recovery for match arms and try handlers
       - skipped-range recovery events for impl members, match arms, and try handlers
       - semantic ErrorType propagation for invalid expressions and type references
@@ -100,6 +101,7 @@ integrations:
       - testdata/parser/unterminated_recovered_block_invalid.sec
       - testdata/parser/semicolon_invalid.sec
       - internal/parser/unterminated_match_try_recovery_test.go
+      - internal/parser/match_comments_test.go
       - testdata/parser/unterminated_match_invalid.sec
       - testdata/parser/unterminated_try_handlers_invalid.sec
       - internal/parser/invalid_postfix_type_recovery_test.go
@@ -159,6 +161,8 @@ integrations:
         result: passed; three P2012 diagnostics retain exact invalid nodes and recovery events while preserving same-line sibling statements and the following function
       - command: go test ./internal/parser -run TestUnterminatedMatchAndTryBlocksRetainPartialChildren -count=1
         result: passed; EOF diagnostics remain recoverable while two ordered match arms or try handlers and their enclosing return/function AST survive
+      - command: go test ./internal/parser ./internal/formatter -run 'MatchArmComments|MatchArmBlockAcceptsComments' -count=1
+        result: passed; comments at every match-arm boundary remain trivia, two valid arms survive, and formatted line comments remain parseable and idempotent
       - command: go test ./internal/parser -run TestInvalidPostfixTypeReferencesAreRetained -count=1
         result: passed; five malformed postfix bracket families retain explicit invalid TypeReference metadata and all following declarations
       - command: go test ./internal/parser -run TestInvalidQualifiedAndUnitTypeReferencesAreRetained -count=1
@@ -202,6 +206,7 @@ integrations:
     area: frontend-and-tooling
     status: implemented
     integrated: "2026-09-11"
+    revised: "2026-09-25"
     summary: >-
       Implements statement-only postfix increment and decrement as parser
       aliases for the existing compound-assignment semantics, with canonical
@@ -217,7 +222,9 @@ integrations:
       - ../bootstrap/internal/lexer/lexer.sec
       - internal/ast/ast.go
       - internal/parser/parser.go
+      - internal/cst/roles.go
       - internal/formatter/formatter.go
+      - internal/formatter/cst_spacing.go
       - internal/lsp/features/semantic_tokens.go
       - cmd/lsp/main.go
       - vscode/syntaxes/sec.tmLanguage.json
@@ -225,6 +232,7 @@ integrations:
       - internal/lexer/lexer_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/cst/roles_test.go
       - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
       - testdata/lexer/increment_decrement.sec
@@ -237,6 +245,7 @@ integrations:
       - parser normalization to += 1 and -= 1 assignment AST nodes while retaining the original source token
       - same-line, complete-statement enforcement and focused rejection of expression-position aliases
       - existing compound-assignment mutability, typing, contract, ownership, and overflow checks without a parallel semantic path
+      - parser-confirmed alias tokens project onto exact CST roles and the shared CST formatter pass performs the existing canonical compound-assignment rewrite without touching invalid expression-position uses
     verification_notes:
       - parser-confirmed canonical formatter normalization that preserves invalid expression uses
       - LSP semantic operator tokens and TextMate operator recognition

@@ -6,7 +6,7 @@ integrations:
     area: language-testing-and-tooling
     status: partial
     repository_baseline: "814a584"
-    revised: "2026-09-21"
+    revised: "2026-09-25"
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
       selection, top-level test declarations, compiler-known testing operations,
@@ -31,6 +31,22 @@ integrations:
       - rules/tooling/diagnostics.txt
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/cst/roles.go
+      - internal/formatter/formatter.go
+      - internal/formatter/cst_spacing.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/main.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/cst/roles_test.go
+      - internal/formatter/formatter_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
     implemented:
       - contextual top-level `test "name" { ... }` recognition retains a
         distinct ast.TestDeclaration with its source name and ordinary Sec body
@@ -72,10 +88,7 @@ integrations:
         recovery, and focused Sema tests cover valid and invalid test identity,
         testing signatures, and equality operation facts and diagnostics;
         `go test ./...` passes
-      - formatter canonicalizes top-level test StringLiteral block headers, uses
-        ordinary block and testing-call formatting, preserves the exact test-name
-        string token including spacing and escapes, remains idempotent, and does
-        not rewrite ordinary identifiers or functions named test
+      - formatter projects valid top-level test-name strings onto exact CST roles, canonicalizes only their horizontal block-header trivia in the shared CST pass, uses ordinary block and testing-call formatting, preserves the exact test-name token including spacing and escapes, remains idempotent, and does not rewrite ordinary identifiers, calls, functions, or strings named test
     remaining:
       - require TestCompilationPlan context in addition to the implemented
         *_test.sec filename check, complete remaining declaration diagnostics,
@@ -137,3 +150,5 @@ integrations:
         result: passed; structured identity, source metadata, source order, declaration lookup, and defensive copying are covered
       - command: go test ./internal/formatter -run 'TopLevelTestDeclaration' -count=1
         result: passed; canonical header/body/call formatting, exact name preservation, contextual test identifier behavior, and idempotence are covered
+      - command: go test ./internal/cst ./internal/formatter -run 'ApplyProgramRolesMarksOnlyTopLevelTestDeclarationNames|TopLevelTestDeclaration' -count=1
+        result: passed on 2026-09-25 with parser-owned CST role scoping, exact test-name preservation, ordinary identifier/call/string separation, canonical header trivia, and idempotence

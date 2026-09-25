@@ -29,11 +29,69 @@ impl int {
         return other
     }
 
-    fn IsEven() bool {
-        return self % 2 == 0
+    property IsEven: bool {
+        get {
+            return self % 2 == 0
+        }
     }
 
-    fn IsOdd() bool {
-        return self % 2 != 0
+    property IsOdd: bool {
+        get {
+            return self % 2 != 0
+        }
+    }
+
+    property IsPositive: bool {
+        get {
+            return self > 0
+        }
+    }
+
+    property IsNegative: bool {
+        get {
+            return self < 0
+        }
+    }
+
+    property BitLength: uint {
+        get {
+            if self == 0 {
+                return 0
+            }
+
+            let mut length := uint(0)
+            let mut value := self
+
+            while value != 0 {
+                length += 1
+                value >>= 1
+            }
+
+            return length
+        }
+    }
+
+    property LeadingZeroCount: uint {
+        get {
+            return uint(64 - self.BitLength)
+        }
+    }
+
+    property TrailingZeroCount: uint {
+        get {
+            if self == 0 {
+                return 64
+            }
+
+            let mut count := uint(0)
+            let mut value := self
+
+            while (value & 1) == 0 {
+                count += 1
+                value >>= 1
+            }
+
+            return count
+        }
     }
 }

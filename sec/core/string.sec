@@ -114,20 +114,20 @@ impl string {
     }
 
     /**
-    * Compares two strings lexicographically by Unicode scalar value order.
-    *
-    * Sec strings use valid UTF-8 encoding. UTF-8 preserves Unicode scalar value
-    * ordering under lexicographic byte comparison, allowing Compare to operate
-    * directly on the encoded bytes without decoding each rune.
-    *
-    * Returns:
-    *   - a negative value when self sorts before other,
-    *   - zero when both strings are equal,
-    *   - a positive value when self sorts after other.
-    *
-    * This comparison is ordinal. It does not perform locale-sensitive collation,
-    * case folding, or Unicode normalization.
-    */
+     * Compares two strings lexicographically by Unicode scalar value order.
+     *
+     * Sec strings use valid UTF-8 encoding. UTF-8 preserves Unicode scalar value
+     * ordering under lexicographic byte comparison, allowing Compare to operate
+     * directly on the encoded bytes without decoding each rune.
+     *
+     * Returns:
+     * - a negative value when self sorts before other,
+     * - zero when both strings are equal,
+     * - a positive value when self sorts after other.
+     *
+     * This comparison is ordinal. It does not perform locale-sensitive collation,
+     * case folding, or Unicode normalization.
+     */
     fn Compare(other: string) int {
         let mut index: uint := 0
 
@@ -151,7 +151,6 @@ impl string {
             if left > right {
                 return 1
             }
-
             index += 1
         }
 
@@ -227,24 +226,149 @@ impl string {
         panic "String index is out of bounds"
     }
 
-    fn FromByteArray(value: ref byte[]) string {
-        // TODO: implement string.FromByteArray
-        return ""
-    }
+    fn FromByteArray(value: ref byte[]) Result[string, StringError] {
+        let mut index: uint := 0
 
-    fn FromRuneArray(value: ref rune[]) string {
-        // TODO: Implement string.FromRuneArray
-        return ""
+        while index < value.Len {
+            let first := value[index]
+
+            // ASCII occupies one byte and is always valid UTF-8.
+            if first <= 0x7F {
+                index += 1
+                continue
+            }
+
+            // Two-byte sequence:
+            // 110xxxxx 10xxxxxx
+            //
+            // C0 and C1 are excluded because they would encode an ASCII
+            // code point using an overlong representation.
+            if first in 0xC2..0xDF {
+                if index + 1 >= value.Len ||
+                !_IsUtf8Continuation(value[index + 1]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 2
+                continue
+            }
+
+            // Three-byte sequence beginning with E0.
+            //
+            // The second byte must be A0..BF to exclude overlong
+            // encodings of code points below U+0800.
+            if first == 0xE0 {
+                if index + 2 >= value.Len ||
+                !(value[index + 1] in 0xA0..0xBF) ||
+                !_IsUtf8Continuation(value[index + 2]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 3
+                continue
+            }
+
+            // Ordinary three-byte UTF-8 sequences.
+            if first in 0xE1..0xEC || first in 0xEE..0xEF {
+                if index + 2 >= value.Len ||
+                !_IsUtf8Continuation(value[index + 1]) ||
+                !_IsUtf8Continuation(value[index + 2]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 3
+                continue
+            }
+
+            // ED A0..BF would encode UTF-16 surrogate code points.
+            // Unicode scalar values exclude U+D800..U+DFFF.
+            if first == 0xED {
+                if index + 2 >= value.Len ||
+                !(value[index + 1] in 0x80..0x9F) ||
+                !_IsUtf8Continuation(value[index + 2]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 3
+                continue
+            }
+
+            // Four-byte sequence beginning with F0.
+            //
+            // The lower bound on the second byte prevents overlong
+            // encodings of values below U+10000.
+            if first == 0xF0 {
+                if index + 3 >= value.Len ||
+                !(value[index + 1] in 0x90..0xBF) ||
+                !_IsUtf8Continuation(value[index + 2]) ||
+                !_IsUtf8Continuation(value[index + 3]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 4
+                continue
+            }
+
+            // Ordinary four-byte UTF-8 sequences.
+            if first in 0xF1..0xF3 {
+                if index + 3 >= value.Len ||
+                !_IsUtf8Continuation(value[index + 1]) ||
+                !_IsUtf8Continuation(value[index + 2]) ||
+                !_IsUtf8Continuation(value[index + 3]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 4
+                continue
+            }
+
+            // F4 is the highest legal UTF-8 leading byte.
+            //
+            // Restricting the second byte to 80..8F limits the encoded
+            // scalar value to U+10FFFF.
+            if first == 0xF4 {
+                if index + 3 >= value.Len ||
+                !(value[index + 1] in 0x80..0x8F) ||
+                !_IsUtf8Continuation(value[index + 2]) ||
+                !_IsUtf8Continuation(value[index + 3]) {
+                    return Err(StringError.InvalidUtf8)
+                }
+
+                index += 4
+                continue
+            }
+
+            // Continuation bytes used as leading bytes, C0/C1, and
+            // F5..FF cannot begin a valid UTF-8 sequence.
+            return Err(StringError.InvalidUtf8)
+        }
+
+        return Ok(value.ToString())
     }
 
     /**
-    * Materializes this string as an owning array of Unicode runes.
-    *
-    * The string is decoded using Sec's normal UTF-8 string iteration semantics.
-    * One array element is produced for each rune in the string.
-    *
-    * Returns CollectionError when storage for the result cannot be allocated.
-    */
+     * Returns true when value is a UTF-8 continuation byte.
+     *
+     * UTF-8 continuation bytes have the bit pattern 10xxxxxx and
+     * therefore occupy the inclusive range 0x80..0xBF.
+     */
+    fn _IsUtf8Continuation(value: byte) bool {
+        return value in 0x80..0xBF
+    }
+
+    fn FromRuneArray(value: ref rune[]) Result[string, StringError] {
+        // TODO: Implement string.FromRuneArray
+        return Ok("")
+    }
+
+    /**
+     * Materializes this string as an owning array of Unicode runes.
+     *
+     * The string is decoded using Sec's normal UTF-8 string iteration semantics.
+     * One array element is produced for each rune in the string.
+     *
+     * Returns CollectionError when storage for the result cannot be allocated.
+     */
     fn ToRuneArray() Result[rune[], CollectionError] {
         let mut result: rune[]
 
@@ -256,17 +380,17 @@ impl string {
     }
 
     /**
-    * Reports whether this string begins with prefix.
-    *
-    * Comparison is exact and case-sensitive and operates on the UTF-8 byte
-    * representation. No Unicode normalization, case folding, or locale-sensitive
-    * comparison is performed.
-    *
-    * An empty prefix does not match. If prefix contains more bytes than this
-    * string, false is returned.
-    *
-    * The operation does not allocate.
-    */
+     * Reports whether this string begins with prefix.
+     *
+     * Comparison is exact and case-sensitive and operates on the UTF-8 byte
+     * representation. No Unicode normalization, case folding, or locale-sensitive
+     * comparison is performed.
+     *
+     * An empty prefix does not match. If prefix contains more bytes than this
+     * string, false is returned.
+     *
+     * The operation does not allocate.
+     */
     fn StartsWith(prefix: string) bool {
         if prefix.ByteLen == 0 || prefix.ByteLen > self.ByteLen {
             return false
@@ -294,17 +418,17 @@ impl string {
     }
 
     /**
-    * Reports whether this string ends with suffix.
-    *
-    * Comparison is exact and case-sensitive and operates on the UTF-8 byte
-    * representation. No Unicode normalization, case folding, or locale-sensitive
-    * comparison is performed.
-    *
-    * An empty suffix does not match. If suffix contains more bytes than this
-    * string, false is returned.
-    *
-    * The operation does not allocate.
-    */
+     * Reports whether this string ends with suffix.
+     *
+     * Comparison is exact and case-sensitive and operates on the UTF-8 byte
+     * representation. No Unicode normalization, case folding, or locale-sensitive
+     * comparison is performed.
+     *
+     * An empty suffix does not match. If suffix contains more bytes than this
+     * string, false is returned.
+     *
+     * The operation does not allocate.
+     */
     fn EndsWith(suffix: string) bool {
         if suffix.ByteLen == 0 || suffix.ByteLen > self.ByteLen {
             return false
@@ -500,17 +624,17 @@ impl string {
     }
 
     /**
-    * Creates a lazy iterator that yields substrings separated by `separator`.
-    *
-    * The operation does not materialize the complete result and does not allocate
-    * merely to perform the split. The returned iterator keeps the source string,
-    * separator, and current iteration state.
-    *
-    * Rules:
-    *   - rules/library/core-library.md — §5 String
-    *   - rules/library/core-library.md — §5.3 Required instance methods
-    *   - rules/library/core-library.md — §5.6 Allocation visibility
-    */
+     * Creates a lazy iterator that yields substrings separated by `separator`.
+     *
+     * The operation does not materialize the complete result and does not allocate
+     * merely to perform the split. The returned iterator keeps the source string,
+     * separator, and current iteration state.
+     *
+     * Rules:
+     * - rules/library/core-library.md — §5 String
+     * - rules/library/core-library.md — §5.3 Required instance methods
+     * - rules/library/core-library.md — §5.6 Allocation visibility
+     */
     fn Split(separator: string) StringSplitIterator {
         return StringSplitIterator {
             source: self,
@@ -521,20 +645,20 @@ impl string {
     }
 
     /**
-    * Splits the string using `separator` and materializes all resulting substrings
-    * into a dynamic string array.
-    *
-    * This is the allocating counterpart to `Split()`. It consumes the lazy
-    * `StringSplitIterator` produced by `Split()` and appends each produced
-    * substring to the result array. Collection growth failures are propagated as
-    * `CollectionError`.
-    *
-    * Rules:
-    *   - rules/library/core-library.md — §5 String
-    *   - rules/library/core-library.md — §5.6 Allocation visibility
-    *   - rules/collections/collections.md — §6.7 Append
-    *   - rules/collections/collections.md — §16 Collection errors
-    */
+     * Splits the string using `separator` and materializes all resulting substrings
+     * into a dynamic string array.
+     *
+     * This is the allocating counterpart to `Split()`. It consumes the lazy
+     * `StringSplitIterator` produced by `Split()` and appends each produced
+     * substring to the result array. Collection growth failures are propagated as
+     * `CollectionError`.
+     *
+     * Rules:
+     * - rules/library/core-library.md — §5 String
+     * - rules/library/core-library.md — §5.6 Allocation visibility
+     * - rules/collections/collections.md — §6.7 Append
+     * - rules/collections/collections.md — §16 Collection errors
+     */
     fn SplitToArray(separator: string) Result[string[], CollectionError] {
         let mut result: string[]
 
@@ -546,23 +670,23 @@ impl string {
     }
 
     /**
-    * Splits the string at the first occurrence of `separator`.
-    *
-    * Returns `Some` containing exactly two strings when the separator is found:
-    * the part before the first occurrence and the remaining part after it.
-    * Returns `None` when the separator is not present.
-    *
-    * The operation does not materialize a dynamic collection and uses string
-    * slices for the two returned parts.
-    *
-    * Rules:
-    *   - rules/library/core-library.md — §5 String
-    *   - rules/library/core-library.md — §1.5 Private representation helpers
-    *
-    * NOTE:
-    *   SplitOnce is not yet listed explicitly in the current core-library
-    *   rulebook and must be added to the canonical string API specification.
-    */
+     * Splits the string at the first occurrence of `separator`.
+     *
+     * Returns `Some` containing exactly two strings when the separator is found:
+     * the part before the first occurrence and the remaining part after it.
+     * Returns `None` when the separator is not present.
+     *
+     * The operation does not materialize a dynamic collection and uses string
+     * slices for the two returned parts.
+     *
+     * Rules:
+     * - rules/library/core-library.md — §5 String
+     * - rules/library/core-library.md — §1.5 Private representation helpers
+     *
+     * NOTE:
+     * SplitOnce is not yet listed explicitly in the current core-library
+     * rulebook and must be added to the canonical string API specification.
+     */
     fn SplitOnce(separator: string) Option[string[2]] {
         match self.IndexOf(separator) {
             Some(index) => {
@@ -577,6 +701,19 @@ impl string {
             None => {
                 return None
             }
+        }
+    }
+
+    /**
+     * Split the string tto lines. NOT implemented yet
+     */
+    fn SplitLines() StringSplitIterator {
+        // TODO: Implement string.SplitLines()
+        return StringSplitIterator {
+            source: self,
+            separator: "\n", // <-- This is not correct but just to not get compiler error
+            position: 0,
+            finished: false,
         }
     }
 

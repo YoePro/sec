@@ -330,9 +330,10 @@ func (uds *UnitDeclStatement) TokenLiteral() string {
 }
 
 type GenericParameter struct {
-	Token      lexer.Token
-	Name       *Identifier
-	Constraint *TypeReference
+	Token               lexer.Token
+	Name                *Identifier
+	Constraints         []*TypeReference
+	ConstraintOperators []lexer.Token
 }
 
 type UnionVariant struct {
@@ -937,6 +938,7 @@ type FunctionDeclaration struct {
 	Attributes         []*Attribute
 	Name               *Identifier
 	GenericParameters  []*GenericParameter
+	ParameterOpen      lexer.Token
 	Parameters         []*Parameter
 	ReturnType         *TypeReference
 	Body               *BlockStatement
@@ -1004,11 +1006,12 @@ func (p *Parameter) TokenLiteral() string {
 }
 
 type LambdaExpression struct {
-	Token      lexer.Token
-	Captures   []LambdaCapture
-	Parameters []*Parameter
-	ReturnType *TypeReference
-	Body       *BlockStatement
+	Token         lexer.Token
+	Captures      []LambdaCapture
+	ParameterOpen lexer.Token
+	Parameters    []*Parameter
+	ReturnType    *TypeReference
+	Body          *BlockStatement
 }
 
 func (le *LambdaExpression) expressionNode() {}
@@ -1083,11 +1086,15 @@ func (rs *ReturnStatement) TokenLiteral() string {
 }
 
 type IfStatement struct {
-	Token         lexer.Token
-	Condition     Expression
-	OptionBinding *OptionIfBinding
-	Consequence   *BlockStatement
-	Alternative   *BlockStatement
+	Token     lexer.Token
+	Condition Expression
+	// ConditionOpen and ConditionClose retain a complete outer group for the
+	// opt-in formatter correction in rules/tooling/formatter.md §27(17).
+	ConditionOpen  lexer.Token
+	ConditionClose lexer.Token
+	OptionBinding  *OptionIfBinding
+	Consequence    *BlockStatement
+	Alternative    *BlockStatement
 }
 
 func (is *IfStatement) statementNode() {}
@@ -1110,8 +1117,12 @@ type OptionIfBinding struct {
 }
 
 type SwitchStatement struct {
-	Token                  lexer.Token
-	Subject                Expression
+	Token   lexer.Token
+	Subject Expression
+	// SubjectOpen and SubjectClose retain a complete outer group for the
+	// opt-in formatter correction in rules/tooling/formatter.md §27(18).
+	SubjectOpen            lexer.Token
+	SubjectClose           lexer.Token
 	Cases                  []*SwitchCase
 	Default                *SwitchCase
 	DefaultNotFinalToken   lexer.Token
@@ -1125,10 +1136,11 @@ func (ss *SwitchStatement) TokenLiteral() string {
 }
 
 type SwitchCase struct {
-	Token   lexer.Token
-	Default bool
-	Items   []SwitchCaseItem
-	Body    *BlockStatement
+	Token      lexer.Token
+	Default    bool
+	Items      []SwitchCaseItem
+	ColonToken lexer.Token
+	Body       *BlockStatement
 }
 
 type SelectStatement struct {
@@ -1233,7 +1245,11 @@ type ForBinding struct {
 type WhileStatement struct {
 	Token     lexer.Token
 	Condition Expression
-	Body      *BlockStatement
+	// ConditionOpen and ConditionClose retain a complete outer group for the
+	// opt-in formatter correction in rules/tooling/formatter.md §27(18).
+	ConditionOpen  lexer.Token
+	ConditionClose lexer.Token
+	Body           *BlockStatement
 }
 
 func (ws *WhileStatement) statementNode() {}
@@ -1755,6 +1771,7 @@ func (te *TryExpression) String() string {
 type TryHandler struct {
 	Token      lexer.Token
 	Pattern    Expression
+	ArrowToken lexer.Token
 	Body       Expression
 	ReturnBody *ReturnStatement
 	BlockBody  *BlockStatement
@@ -1962,7 +1979,9 @@ func (me *MatchExpression) String() string {
 type MatchArm struct {
 	Token      lexer.Token
 	Pattern    *MatchPattern
+	WhereToken lexer.Token
 	Guard      Expression
+	ArrowToken lexer.Token
 	Body       Expression
 	ReturnBody *ReturnStatement
 	BlockBody  *BlockStatement
@@ -1992,10 +2011,11 @@ type ImplMember interface {
 // InitDeclaration is a lifecycle member. ErrorType describes construction
 // failure only; successful completion produces the enclosing impl target.
 type InitDeclaration struct {
-	Token      lexer.Token
-	Parameters []*Parameter
-	ErrorType  *TypeReference
-	Body       *BlockStatement
+	Token         lexer.Token
+	ParameterOpen lexer.Token
+	Parameters    []*Parameter
+	ErrorType     *TypeReference
+	Body          *BlockStatement
 }
 
 func (id *InitDeclaration) implMemberNode() {}

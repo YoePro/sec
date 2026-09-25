@@ -1,0 +1,474 @@
+schema_version: 1
+area: types
+purpose: Governance synchronization fragment for the normative default-value and defaultability semantics
+  defined by rules/types/default_values.md revision 2.0. Entries use stable IDs so implementation state
+  and identified bugs can be consumed mechanically and merged into the canonical governance ledger.
+source_rulebook:
+  path: rules/types/default_values.md
+  revision: '2.0'
+verification:
+  reviewed: '2026-09-25'
+  direct_code_audit:
+    baseline: c515862
+    audited: '2026-08-19'
+    source_files:
+    - internal/parser/parser.go
+    - internal/sema/defaults.go
+    - internal/sema/contracts.go
+    - internal/sema/analyzer_test.go
+  later_evidence_reviewed:
+  - Sec manual pages derived from the v2 rulebooks for structs, enums, unions, and generics
+  - previous governance additions for default values
+  note: Implemented/partial/unimplemented classifications below preserve the findings of the direct repository
+    code audit and later rulebook/manual synchronization evidence. Where the earlier audit explicitly
+    recorded remaining work, this fragment does not upgrade it without code evidence.
+integrations:
+- id: types.default-values-v2
+  status: partial
+  summary: Sec has semantic defaults for explicitly defaultable types rather than a universal zero-initialization
+    rule. Frontend support covers the principal primitive, named-type, enum, union, struct, fixed-array,
+    and mutable-declaration cases, while float range-derived defaults, complete generic/defaultability
+    propagation, canonical Semantic IR/lowering, and one inherited-membership correctness bug remain.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Primitive semantic defaults are resolved by Sema.
+  - Named constrained types participate in default resolution.
+  - Enum semantic defaults are supported.
+  - Explicit union default variants are supported.
+  - Struct and fixed-array defaults are recursively resolved from element/field types.
+  - Mutable declarations may use semantic defaults when their type is Defaultable.
+  - Immutable declarations without an initializer remain invalid.
+  remaining:
+  - Complete float range-derived default computation.
+  - Complete generic/defaultability propagation for every concrete generic type shape.
+  - Complete canonical Semantic IR and lowering representation for default construction.
+  - Resolve the inherited membership revalidation bug.
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    - internal/sema/contracts.go
+    - internal/parser/parser.go
+    tests:
+    - internal/sema/analyzer_test.go
+  bug_refs:
+  - types.default-values-v2.bug.inherited-membership-not-revalidated
+- id: types.default-values-v2.numeric-zero
+  status: implemented
+  summary: Defaultable numeric primitive types use numeric zero as their semantic default.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Numeric primitive default resolution produces zero.
+  - Named numeric types may use zero when their effective contracts permit it.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.bool-false
+  status: implemented
+  summary: bool has the semantic default false.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Sema resolves the default value of bool as false.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.string-empty
+  status: implemented
+  summary: string has the semantic default "".
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Sema resolves the default value of string as the empty string "".
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.rune-zero
+  status: implemented
+  summary: rune/character default semantics use the zero rune value.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - The primitive default resolver has zero-value handling for the character/rune domain.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.named-explicit
+  status: implemented
+  summary: A valid explicit default declared for a named type takes precedence over an otherwise-derived
+    default.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Explicit named-type defaults are represented by the frontend.
+  - Default resolution prefers an explicit valid default over derived fallback selection.
+  - Explicit defaults are checked against the named type's effective constraints.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/defaults.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.range-derived
+  status: partial
+  summary: For a range-constrained named numeric type without an explicit default, zero is selected when
+    valid; otherwise the semantic default is derived from the valid range nearest zero.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Zero is selected when it satisfies the effective range.
+  - Integral/range-constrained named types have derived-default support.
+  remaining:
+  - Complete the corresponding float range-derived default behavior recorded by governance as remaining.
+  - Retain exact boundary and representability semantics for every supported numeric family.
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.membership
+  status: partial
+  summary: A valid named type constrained by in [...] derives its default from the first declared membership
+    value when no explicit default overrides it. The complete membership domain must be validated before
+    default selection.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Membership-constrained named types participate in default resolution.
+  - Default resolution can select the first membership value for a valid membership contract.
+  remaining:
+  - Revalidate inherited membership values against contracts added by derived named types.
+  - Default selection must operate only after the effective membership domain has been proven valid.
+  identified_bugs:
+  - id: types.default-values-v2.bug.inherited-membership-not-revalidated
+    kind: implementation
+    severity: high
+    description: Inherited in [...] members are not revalidated when a derived named type adds new contracts.
+      Default resolution then filters inherited members that violate the added contract and silently selects
+      a later surviving member.
+    example: type Base int in [1, 2]\ntype Derived Base even
+    expected: Derived must be rejected because inherited member 1 violates the added even contract. The
+      compiler must validate the complete inherited membership domain against the complete effective contract
+      set before choosing a default.
+    actual: checkMembershipContractValues() validates only the current declaration's AST contracts. internal/sema/defaults.go
+      later filters inherited members that fail the derived contract and can choose 2 as Derived's default,
+      thereby accepting an invalid declaration.
+    affected_components:
+    - internal/sema/contracts.go
+    - checkMembershipContractValues()
+    - internal/sema/defaults.go
+    fix_guidance:
+    - Construct or resolve the complete effective contract set for the derived named type.
+    - Revalidate every inherited membership value against every effective contract.
+    - Reject the named-type declaration when any inherited membership value violates the derived contract
+      set.
+    - Do not remove invalid inherited members as part of default selection.
+    - Run default selection only after contract-domain validation has succeeded.
+    regression_tests:
+    - Reject Base in [1, 2] followed by Derived Base even.
+    - Accept an inherited membership list when every inherited member satisfies the added derived contract.
+    - Verify a valid inherited membership default remains the first declared membership value.
+    - Verify declaration/contract traversal order cannot change validity or the selected default.
+    - Reject an explicit default when later derived contracts make that default invalid.
+  evidence:
+    source:
+    - internal/sema/contracts.go
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.enum
+  status: implemented
+  summary: Every valid non-empty ordinary enum is Defaultable. The first declared member is the semantic
+    default unless exactly one member is explicitly marked default.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Implicit first-member enum default selection.
+  - Explicit enum default-member selection.
+  - The default marker changes default selection without redefining member value semantics.
+  - Mutable uninitialized enum bindings receive the enum's semantic default.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.union
+  status: implemented
+  summary: A union has no first-variant implicit default. It becomes Defaultable only through one valid
+    explicit default variant whose payload, if any, can itself be default-constructed.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Explicit union default-variant parsing and semantic resolution.
+  - Payload-less explicit default variants.
+  - Defaultable single-payload explicit default variants.
+  - Struct-like default variants whose required payload fields can be default-resolved.
+  - No implicit first-variant default.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.struct
+  status: implemented
+  summary: A struct is Defaultable exactly when every stored field is Defaultable; omitted defaultable
+    fields receive their field type's semantic default.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Recursive struct defaultability from stored field types.
+  - Omitted defaultable struct fields are materialized with semantic defaults.
+  - Omitted non-defaultable required fields are rejected.
+  - An empty struct literal can construct a fully defaulted struct when all fields are Defaultable.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.fixed-array
+  status: implemented
+  summary: A fixed array is defaultable when its element type is defaultable, and default construction
+    recursively supplies the element default for the complete fixed extent.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Fixed-array defaultability is derived from the element type.
+  - Default construction can populate fixed-array elements from the element semantic default.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.mutable-declaration
+  status: implemented
+  summary: A mutable typed declaration may omit its initializer when its type has a semantic default;
+    the declaration creates an initialized semantic value, not undefined readable storage.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Mutable typed declarations can omit initializers for Defaultable types.
+  - Sema resolves the semantic default during declaration analysis.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.immutable-declaration
+  status: implemented
+  summary: An immutable declaration still requires an initializer; defaultability does not create implicit
+    immutable constants.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Immutable typed declarations without initializers are rejected.
+  - Defaultability does not bypass the immutable declaration initialization rule.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.generics
+  status: partial
+  summary: An unconstrained generic parameter is not assumed Defaultable. Concrete generic aggregate defaultability
+    is determined from the substituted concrete types rather than from an unconditional generic zero/default
+    assumption.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - The language model does not grant an unconstrained T an assumed default.
+  - Concrete type properties are recomputed during generic instantiation in the current generic model.
+  remaining:
+  - Verify and complete Defaultable propagation for every generic aggregate/type family after substitution.
+  - Integrate any future defaultability guarantee with the canonical generic constraint/capability model.
+  - Maintain rejection of generic templates that require an unavailable defaultability guarantee.
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.callable
+  status: partial
+  summary: Callable/function values do not acquire an implicit absence/null default merely because they
+    are storable values; explicit optionality must use an explicit language type such as Option.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Sec does not define null as an ordinary callable default.
+  - Default resolution does not define a universal zero/default for arbitrary callable values.
+  remaining:
+  - Complete conformance coverage for all current callable kinds, including named function values and
+    closure forms.
+  - Ensure callable defaultability remains synchronized with the finalized callable-type implementation.
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests: []
+- id: types.default-values-v2.no-universal-default
+  status: implemented
+  summary: Sec does not assume that every type has a default value, and move analysis must not use implicit
+    default initialization to create a post-move value.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Non-defaultable types are distinguished from Defaultable types.
+  - Moved-from values become unavailable rather than being silently reset to a default value.
+  remaining: []
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests:
+    - internal/sema/analyzer_test.go
+- id: types.default-values-v2.semantic-ir-lowering
+  status: partial
+  summary: Frontend Sema resolves semantic defaults, but canonical Semantic IR/lowering coverage for default
+    construction was recorded as remaining work in the audited governance state.
+  rules:
+  - rules/types/default_values.md
+  implemented:
+  - Frontend semantic analysis determines concrete defaultability/default values for supported cases.
+  remaining:
+  - Represent default construction/default materialization explicitly enough in Semantic IR that backends
+    do not re-infer language semantics.
+  - Complete lowering coverage for every supported defaultable aggregate and constrained named-type case.
+  - Add backend/conformance fixtures that distinguish semantic defaults from raw zero-filled storage.
+  identified_bugs: []
+  evidence:
+    source:
+    - internal/sema/defaults.go
+    tests: []
+required_tests:
+- id: types.default-values-v2.test.primitives
+  covers:
+  - types.default-values-v2.numeric-zero
+  - types.default-values-v2.bool-false
+  - types.default-values-v2.string-empty
+  - types.default-values-v2.rune-zero
+- id: types.default-values-v2.test.explicit-named
+  covers:
+  - types.default-values-v2.named-explicit
+- id: types.default-values-v2.test.range-derived
+  covers:
+  - types.default-values-v2.range-derived
+- id: types.default-values-v2.test.inherited-membership
+  covers:
+  - types.default-values-v2.membership
+- id: types.default-values-v2.test.enums
+  covers:
+  - types.default-values-v2.enum
+- id: types.default-values-v2.test.unions
+  covers:
+  - types.default-values-v2.union
+- id: types.default-values-v2.test.structs
+  covers:
+  - types.default-values-v2.struct
+- id: types.default-values-v2.test.fixed-arrays
+  covers:
+  - types.default-values-v2.fixed-array
+- id: types.default-values-v2.test.declarations
+  covers:
+  - types.default-values-v2.mutable-declaration
+  - types.default-values-v2.immutable-declaration
+- id: types.default-values-v2.test.generics
+  covers:
+  - types.default-values-v2.generics
+- id: types.default-values-v2.test.callables
+  covers:
+  - types.default-values-v2.callable
+- id: types.default-values-v2.test.semantic-ir-lowering
+  covers:
+  - types.default-values-v2.semantic-ir-lowering
+legacy_sources:
+- implementation-status.yaml
+- implementation-status-default-values-additions.yaml
+legacy_reconciliation:
+- id: types.default-values-v2.reconcile.enum-status
+  summary: The 2026-08-19 audit found that enum default support already existed while the then-current
+    governance text described it as missing or incomplete. The canonical governance entry should preserve
+    the implemented status rather than the stale legacy description.
+- id: types.default-values-v2.reconcile.union-status
+  summary: The 2026-08-19 audit found that explicit union default support already existed while the then-current
+    governance text described it incorrectly. The canonical governance entry should preserve the implemented
+    status and keep non-default union empty-state semantics owned by the union rulebook.
+language_rulebook_status_sync:
+  path: language-rulebook-status.md
+  rulebook: rules/types/default_values.md
+  expected_revision: '2.0'
+  action: Ensure the status ledger identifies default_values.md as the current revision-2.0 rulebook.
+    Do not infer revision from presence or absence of the newer metadata header.
+sync_actions:
+- Merge these stable-ID entries into the canonical governance owner for rules/types/default_values.md
+  without discarding existing implementation evidence, history, or commit references.
+- Register the canonical owner in governance/index.yaml if default_values.md does not already have one.
+- Reconcile stale legacy enum/union default status with the verified implemented state before retiring
+  duplicate mutable status.
+- Preserve float range-derived defaults, Semantic IR/lowering, and conformance fixtures as remaining work
+  until code evidence supports upgrading them.
+- After migration, retire duplicate mutable status from legacy implementation-status files so governance/
+  remains the canonical machine-readable ledger.
+- Synchronize language-rulebook-status.md with revision 2.0 for default_values.md.
+machine_contract:
+  integration_required_fields:
+  - id
+  - status
+  - summary
+  - rules
+  - implemented
+  - remaining
+  - identified_bugs
+  - evidence
+  status_values:
+  - implemented
+  - partial
+  - unimplemented
+  bug_kind_values:
+  - implementation
+  - governance
+  - test
+  - tooling
+  bug_severity_values:
+  - low
+  - medium
+  - high
+  - critical
+  bug_identity_rule: A bug is defined once under the most directly affected integration. Other integrations
+    reference it through bug_refs.

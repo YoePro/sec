@@ -1,0 +1,474 @@
+schema_version: 1
+area: types
+purpose: 'Governance synchronization fragment for the normative contract semantics defined by rules/types/contracts.md
+  revision 2.0. Entries use stable IDs so implementation status can be consumed mechanically and merged
+  into the canonical governance ledger.
+
+  '
+source_rulebook:
+  path: rules/types/contracts.md
+  revision: '2.0'
+verification:
+  reviewed: 2026-09-25
+  code_evidence:
+  - internal/parser/parser.go
+  - internal/sema/contracts.go
+  - internal/sema/analyzer_test.go
+  note: 'Statuses are based on the repository code audit that inspected these source files directly. Later
+    project reviews contain no identified contract-specific implementation change that supersedes those
+    findings. A live fetch of current GitHub main was not available during this final recheck, so no newer
+    code is claimed without evidence.
+
+    '
+integrations:
+- id: types.contracts-v2
+  status: partial
+  summary: 'Sec 0.1 named-type contracts are implemented in part. Core numeric and collection-oriented
+    forms exist, but several normative string contracts, full membership semantics, contract-location
+    restrictions, and complete conjunction/satisfiability analysis remain incomplete.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Named types can carry contract metadata used by semantic analysis.
+  - Multiple contract forms may be attached to one named type.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining:
+  - Contract syntax is not consistently restricted to the normative declaration locations.
+  - Membership and complete contract-set consistency do not yet cover the full normative semantics.
+  - regex
+  - minLen
+  - maxLen
+  - exactLen
+  identified_bugs: []
+  bug_refs:
+  - types.contracts-v2.bug.inline-contract-acceptance
+  - types.contracts-v2.bug.membership-domain-too-narrow
+  - types.contracts-v2.bug.repeated-range-overwrite
+  - types.contracts-v2.bug.repeated-multipleof-overwrite
+- id: types.contracts-v2.location
+  status: partial
+  summary: 'Contracts are normative constraints of named types; variable and field declarations must not
+    create independent inline contract semantics.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Named-type contract declarations are represented and analyzed.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining:
+  - Parser/Sema paths historically accepted parts of variable- or field-level contract syntax that the
+    v2 rulebook does not define.
+  - Consistent rejection of every non-named-type inline contract form.
+  identified_bugs:
+  - id: types.contracts-v2.bug.inline-contract-acceptance
+    severity: medium
+    description: Parser/Sema paths accept parts of contract syntax on variables or fields even though
+      contracts in the revision-2.0 rulebook belong to named types.
+    expected: Contract syntax outside the normative named-type declaration locations must be rejected
+      consistently.
+    actual: Some non-named-type declaration paths accept contract syntax or preserve contract-like semantics
+      instead of issuing a diagnostic.
+    affected_components:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    fix_guidance:
+    - Centralize validation of legal contract attachment locations.
+    - Reject variable-level and field-level inline contract forms during parsing or Sema.
+    - Ensure no AST/Sema fallback path silently preserves such contracts.
+    regression_tests:
+    - Reject contract syntax on a local variable declaration.
+    - Reject contract syntax on a struct field declaration.
+    - Continue accepting the same contract on a named type declaration.
+- id: types.contracts-v2.range
+  status: implemented
+  summary: 'Range contracts are parsed and represented semantically, including bounded forms used by named
+    numeric types.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Parser support for range contracts.
+  - Semantic representation through RangeContract.
+  - Compile-time checking of known values against range constraints.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining: []
+  identified_bugs: []
+- id: types.contracts-v2.membership
+  status: partial
+  summary: 'The in [...] membership contract exists, but the accepted compile-time member domain is narrower
+    than the rulebook''s semantic-equality model.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Parser support for in [...] contract syntax.
+  - Semantic checking for the currently supported constant member forms.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining:
+  - Membership values are limited to a narrower primitive/scalar/enum constant domain than required by
+    the normative rule.
+  - Full compile-time membership values wherever the rulebook permits semantic equality.
+  identified_bugs:
+  - id: types.contracts-v2.bug.membership-domain-too-narrow
+    severity: medium
+    description: The implemented in [...] contract accepts a narrower compile-time member domain than
+      the normative semantic-equality rule permits.
+    expected: Every compile-time value permitted by the rulebook and having the required semantic equality
+      must be valid as a membership element.
+    actual: Membership handling is restricted to a smaller primitive/scalar/enum constant subset, causing
+      some normatively valid membership contracts to be rejected.
+    affected_components:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    fix_guidance:
+    - Reuse the compiler's canonical compile-time value representation.
+    - Validate membership elements through semantic equality rather than a hard-coded primitive subset.
+    - Preserve exact type identity when comparing membership elements.
+    regression_tests:
+    - Accept all currently supported primitive membership elements.
+    - Accept additional compile-time values allowed by the rulebook.
+    - Reject membership elements without valid semantic equality.
+- id: types.contracts-v2.odd_even
+  status: implemented
+  summary: 'odd and even numeric contracts are recognized and checked by semantic analysis.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - odd contract parsing and semantic checking.
+  - even contract parsing and semantic checking.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining: []
+  identified_bugs: []
+- id: types.contracts-v2.multipleOf
+  status: implemented
+  summary: 'The multipleOf contract itself is parsed and checked. Interaction between repeated multipleOf
+    constraints belongs to the separate consistency entry.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Parser support for multipleOf.
+  - Semantic representation through MultipleOfContract.
+  - Checking of an individual multipleOf constraint.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining: []
+  identified_bugs: []
+- id: types.contracts-v2.finite
+  status: implemented
+  summary: 'finite is recognized as a contract and has semantic support.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Parser support for finite.
+  - Semantic contract handling for finite.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining: []
+  identified_bugs: []
+- id: types.contracts-v2.notEmpty
+  status: implemented
+  summary: 'notEmpty is recognized as a contract and has semantic support.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Parser support for notEmpty.
+  - Semantic contract handling for notEmpty.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining: []
+  identified_bugs: []
+- id: types.contracts-v2.unique
+  status: implemented
+  summary: 'unique is recognized as a contract and has semantic support.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Parser support for unique.
+  - Semantic contract handling for unique.
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining: []
+  identified_bugs: []
+- id: types.contracts-v2.regex
+  status: unimplemented
+  summary: 'The normative regex contract has no verified parser implementation in the audited compiler
+    code.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining:
+  - Parse regex contract syntax.
+  - Represent and validate regex contracts semantically.
+  - Add positive, negative, and malformed-pattern tests.
+  identified_bugs: []
+- id: types.contracts-v2.minLen
+  status: unimplemented
+  summary: 'The normative minLen contract has no verified parser implementation in the audited compiler
+    code.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining:
+  - Parse minLen contract syntax.
+  - Represent and validate minLen semantically.
+  - Add boundary tests.
+  identified_bugs: []
+- id: types.contracts-v2.maxLen
+  status: unimplemented
+  summary: 'The normative maxLen contract has no verified parser implementation in the audited compiler
+    code.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining:
+  - Parse maxLen contract syntax.
+  - Represent and validate maxLen semantically.
+  - Add boundary tests.
+  identified_bugs: []
+- id: types.contracts-v2.exactLen
+  status: unimplemented
+  summary: 'The normative exactLen contract has no verified parser implementation in the audited compiler
+    code.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented: []
+  evidence:
+    source:
+    - internal/parser/parser.go
+    - internal/sema/contracts.go
+    tests: []
+  remaining:
+  - Parse exactLen contract syntax.
+  - Represent and validate exactLen semantically.
+  - Add exact-boundary tests.
+  identified_bugs: []
+- id: types.contracts-v2.conjunction
+  status: partial
+  summary: 'All contracts on a named type are normative conjunctions, but the current consistency analysis
+    does not reason over every repeated constraint.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - checkContractSetConsistency performs cross-contract consistency checks for supported cases.
+  - Existing tests cover at least a single range combined with a single multipleOf constraint.
+  evidence:
+    source:
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining:
+  - Repeated RangeContract values are not all retained when consistency is evaluated.
+  - Repeated MultipleOfContract values are not all retained and combined when consistency is evaluated.
+  - Complete conjunction reasoning for all repeated constraints.
+  identified_bugs:
+  - id: types.contracts-v2.bug.repeated-range-overwrite
+    severity: high
+    description: checkContractSetConsistency() retains only one RangeContract while scanning the contract
+      set, so earlier repeated range constraints can be lost.
+    expected: All range constraints on a named type are conjunctive and must participate in satisfiability
+      analysis.
+    actual: A later range replaces the previously remembered range in consistency analysis, allowing contradictions
+      between repeated ranges to escape detection.
+    affected_components:
+    - internal/sema/contracts.go
+    - checkContractSetConsistency()
+    fix_guidance:
+    - Accumulate/intersect all range constraints rather than storing only the last one.
+    - Track inclusive/exclusive and open bounds when calculating the effective interval.
+    - Diagnose an empty effective interval as an unsatisfiable contract set.
+    regression_tests:
+    - Accept two compatible range constraints.
+    - Reject two disjoint range constraints.
+    - Reject contradictions involving open/exclusive bounds.
+    - Verify declaration order does not change the result.
+  - id: types.contracts-v2.bug.repeated-multipleof-overwrite
+    severity: high
+    description: checkContractSetConsistency() retains only one MultipleOfContract while scanning the
+      contract set, so repeated divisibility constraints are not fully combined.
+    expected: All multipleOf constraints are conjunctive and the effective divisibility requirement must
+      be considered together with ranges and other contracts.
+    actual: A later multipleOf value replaces the earlier remembered value, so the analyzer can miss contract
+      sets whose combined divisibility requirements are impossible inside the permitted value domain.
+    affected_components:
+    - internal/sema/contracts.go
+    - checkContractSetConsistency()
+    fix_guidance:
+    - Combine repeated multipleOf requirements instead of replacing earlier values.
+    - For integral domains, derive an effective requirement using checked LCM-style reasoning where valid.
+    - Combine the effective divisibility requirement with range/membership constraints during satisfiability
+      analysis.
+    - Avoid overflow in any compile-time arithmetic used by the consistency checker.
+    regression_tests:
+    - Accept compatible repeated multipleOf constraints.
+    - Reject a bounded contract set with no value satisfying all multipleOf constraints.
+    - Verify declaration order does not change the result.
+    - Exercise overflow-safe handling of large divisors.
+- id: types.contracts-v2.unsatisfiable
+  status: partial
+  summary: 'Provably unsatisfiable contract sets must be rejected, but current analysis can miss contradictions
+    when several constraints of the same category are present.
+
+    '
+  rules:
+  - rules/types/contracts.md
+  implemented:
+  - Some statically provable contradictions are diagnosed.
+  evidence:
+    source:
+    - internal/sema/contracts.go
+    tests:
+    - internal/sema/analyzer_test.go
+  remaining:
+  - Contradictory repeated ranges can escape because only one range is retained by the consistency check.
+  - Combined multipleOf constraints can escape because the check does not compute the effective combined
+    divisibility requirement.
+  - General rejection of every contract set that the compiler can prove unsatisfiable.
+  - Resolve identified bugs types.contracts-v2.bug.repeated-range-overwrite and types.contracts-v2.bug.repeated-multipleof-overwrite.
+  identified_bugs: []
+  bug_refs:
+  - types.contracts-v2.bug.repeated-range-overwrite
+  - types.contracts-v2.bug.repeated-multipleof-overwrite
+required_tests:
+- id: types.contracts-v2.test.range
+  covers:
+  - types.contracts-v2.range
+- id: types.contracts-v2.test.membership
+  covers:
+  - types.contracts-v2.membership
+- id: types.contracts-v2.test.repeated_ranges
+  covers:
+  - types.contracts-v2.conjunction
+  - types.contracts-v2.unsatisfiable
+- id: types.contracts-v2.test.repeated_multipleOf
+  covers:
+  - types.contracts-v2.multipleOf
+  - types.contracts-v2.conjunction
+  - types.contracts-v2.unsatisfiable
+- id: types.contracts-v2.test.regex
+  covers:
+  - types.contracts-v2.regex
+- id: types.contracts-v2.test.length_contracts
+  covers:
+  - types.contracts-v2.minLen
+  - types.contracts-v2.maxLen
+  - types.contracts-v2.exactLen
+- id: types.contracts-v2.test.location_rejection
+  covers:
+  - types.contracts-v2.location
+legacy_sources:
+- implementation-status.yaml
+- implementation-status-contracts-additions.yaml
+sync_actions:
+- 'Merge these stable-ID entries into the canonical governance owner for rules/types/contracts.md without
+  discarding existing implementation evidence, history, or commit references.
+
+  '
+- 'Register the canonical owner in governance/index.yaml if contracts.md does not already have one.
+
+  '
+- 'After migration, retire duplicate mutable status from legacy implementation status files so governance/
+  remains the canonical machine-readable ledger.
+
+  '
+- 'Verify language-rulebook-status.md identifies rules/types/contracts.md as the current revision-2.0
+  normative contracts rulebook.
+
+  '
+machine_contract:
+  integration_required_fields:
+  - id
+  - status
+  - summary
+  - rules
+  - implemented
+  - remaining
+  - identified_bugs
+  - evidence
+  status_values:
+  - implemented
+  - partial
+  - unimplemented
+  bug_severity_values:
+  - low
+  - medium
+  - high
+  - critical
+  bug_identity_rule: A bug is defined once under the most directly affected integration. Other integrations
+    reference it through bug_refs.

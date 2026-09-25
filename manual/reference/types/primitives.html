@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Primitive Types - Sec Language Reference</title>
+    <link rel="stylesheet" href="/manual.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/image/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/image/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <style>
+        .reference-intro {
+            margin: 1.25rem 0 1.75rem;
+            padding: 1rem 1.15rem;
+            border-left: 4px solid currentColor;
+        }
+
+        .reference-status {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5rem;
+            margin: .75rem 0;
+        }
+
+        .status-badge,
+        .member-kind {
+            display: inline-block;
+            padding: .15rem .5rem;
+            border: 1px solid currentColor;
+            border-radius: 999px;
+            font-size: .78rem;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+
+        .status-badge.partial {
+            border-style: dashed;
+        }
+
+        .type-section {
+            margin-top: 2.75rem;
+            scroll-margin-top: 1.5rem;
+        }
+
+        .type-heading {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: .75rem;
+        }
+
+        .type-heading h2 {
+            margin-bottom: 0;
+        }
+
+        .type-summary {
+            margin-top: .75rem;
+        }
+
+        .type-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+            gap: .65rem;
+            margin: 1rem 0 1.5rem;
+        }
+
+        .type-info-item {
+            padding: .75rem .85rem;
+            border: 1px solid currentColor;
+            border-radius: .4rem;
+        }
+
+        .type-info-label {
+            display: block;
+            font-size: .78rem;
+            font-weight: 700;
+            opacity: .72;
+            margin-bottom: .2rem;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+
+        .type-info-value {
+            display: block;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            margin: 1rem 0 1.5rem;
+        }
+
+        .member-table,
+        .type-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .member-table th,
+        .member-table td,
+        .type-table th,
+        .type-table td {
+            padding: .6rem .7rem;
+            text-align: left;
+            vertical-align: top;
+            border-bottom: 1px solid currentColor;
+        }
+
+        .member-table th,
+        .type-table th {
+            font-size: .82rem;
+        }
+
+        .member-table td:nth-child(4),
+        .member-table td:nth-child(5),
+        .member-table td:nth-child(6) {
+            white-space: nowrap;
+        }
+
+        .member-block {
+            margin: 1.2rem 0;
+            padding: 1rem 1.1rem;
+            border: 1px solid currentColor;
+            border-radius: .45rem;
+            scroll-margin-top: 1.5rem;
+        }
+
+        .member-block-header {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: .55rem;
+            margin-bottom: .75rem;
+        }
+
+        .member-block-name {
+            font-weight: 700;
+            font-size: 1.08rem;
+        }
+
+        .member-block-sig {
+            font-family: monospace;
+        }
+
+        .member-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+            gap: .5rem .9rem;
+            margin: .75rem 0 1rem;
+        }
+
+        .member-meta-item {
+            min-width: 0;
+        }
+
+        .member-meta-label {
+            display: block;
+            font-size: .75rem;
+            font-weight: 700;
+            opacity: .72;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+
+        .member-meta-value {
+            display: block;
+            margin-top: .1rem;
+        }
+
+        .implementation-note {
+            margin-top: .75rem;
+            padding: .7rem .85rem;
+            border-left: 3px solid currentColor;
+        }
+
+        .family-note {
+            margin: 1rem 0;
+            padding: .8rem 1rem;
+            border: 1px dashed currentColor;
+            border-radius: .4rem;
+        }
+
+        .sidebar-pending {
+            display: block;
+            padding: .25rem 0;
+            opacity: .55;
+        }
+
+        .source-class {
+            font-size: .8rem;
+            opacity: .78;
+        }
+
+        @media (max-width: 760px) {
+            .member-table th:nth-child(6),
+            .member-table td:nth-child(6) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<header class="site-header">
+    <div class="header-inner">
+        <a href="../index.html" class="site-logo">
+            <img src="../logo.svg" alt="Sec" />
+            <span class="site-title">Sec</span>
+        </a>
+        <nav class="header-nav">
+            <a href="../01-introduction.html">Language</a>
+            <a href="../stdlib.html">Stdlib</a>
+            <a href="../syntax-reference.html">Reference</a>
+            <a href="../best-practices.html">Best Practices</a>
+            <a href="https://github.com/YoePro/sec">GitHub</a>
+        </nav>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Reference navigation">
+        <h2 class="sidebar-title">Sec Reference</h2>
+
+        <div class="sidebar-section">This page</div>
+        <a href="#overview">Primitive Types</a>
+        <a href="#status-model">Reference Status</a>
+        <a href="#common-members">Common Scalar Members</a>
+        <a href="#bool"><code>bool</code></a>
+        <a href="#byte"><code>byte</code></a>
+        <a href="#char"><code>char</code></a>
+        <a href="#rune"><code>rune</code></a>
+        <a href="#signed-integers">Signed Integers</a>
+        <a href="#unsigned-integers">Unsigned Integers</a>
+        <a href="#binary-floats">Binary Floats</a>
+        <a href="#decimals">Exact Decimals</a>
+        <a href="#implementation-status">Implementation Status</a>
+
+        <div class="sidebar-section">Reference</div>
+        <a href="../syntax-reference.html">Reference Overview</a>
+        <a href="primitives.html" class="active">Primitive Types</a>
+        <span class="sidebar-pending">Text and Strings</span>
+        <span class="sidebar-pending">Sequences</span>
+        <span class="sidebar-pending">Result and Option</span>
+        <span class="sidebar-pending">Concurrency Types</span>
+        <span class="sidebar-pending">Low-Level Types</span>
+
+        <div class="sidebar-section">Syntax</div>
+        <span class="sidebar-pending">Declarations</span>
+        <span class="sidebar-pending">Operators</span>
+        <span class="sidebar-pending">Control Flow</span>
+        <span class="sidebar-pending">Ownership</span>
+        <span class="sidebar-pending">Concurrency</span>
+
+        <div class="sidebar-section">Manual</div>
+        <a href="../03-types.html">03 Types</a>
+        <a href="../44-layout.html">44 Memory Layout</a>
+        <a href="../48-effects.html">48 Effects</a>
+    </nav>
+
+    <main class="content">
+        <div class="breadcrumb">
+            <a href="../syntax-reference.html">Sec Reference</a> / Types / Primitive Types
+        </div>
+
+        <h1 id="overview">Primitive Types</h1>
+
+        <p>
+            This page is the lookup reference for Sec's primitive scalar types. It documents the
+            language-level type surface first and the current compiler/core implementation second.
+            A missing implementation does not remove a member that the language or compiler-known
+            registry requires.
+        </p>
+
+        <div class="reference-intro">
+            <strong>Reference rule:</strong> exact language semantics and compiler-known members take
+            precedence over today's implementation gaps. The <em>Implementation</em> field records
+            what is currently available in the compiler and <code>sec/core</code>; it is not a second
+            language specification.
+        </div>
+
+        <section id="status-model">
+            <h2>Reference Status</h2>
+
+            <p>
+                Each member entry separates its contract from implementation coverage. This is
+                important while Sec 0.1 is still being implemented.
+            </p>
+
+            <div class="reference-status">
+                <span class="status-badge">Normative</span>
+                <span class="status-badge">Core-declared</span>
+                <span class="status-badge partial">Partial</span>
+                <span class="status-badge partial">Required, not complete</span>
+            </div>
+
+            <ul>
+                <li><strong>Normative</strong> means the language or compiler-known registry requires the surface.</li>
+                <li><strong>Core-declared</strong> means a matching declaration currently exists in <code>sec/core</code>.</li>
+                <li><strong>Partial</strong> means the declaration exists but its behavior or lowering is incomplete.</li>
+                <li><strong>Required, not complete</strong> means the contract exists even though implementation work remains.</li>
+            </ul>
+
+            <p>
+                Allocation and fallibility are documented independently. An <em>infallible</em>
+                operation may still have a compile-time validity requirement or a panic/runtime-check
+                contract. Such behavior is stated separately under <strong>Failure behavior</strong>.
+            </p>
+        </section>
+
+        <section id="common-members" class="type-section">
+            <div class="type-heading">
+                <h2>Common Scalar Members</h2>
+                <span class="status-badge">Normative</span>
+            </div>
+
+            <p class="type-summary">
+                Primitive scalar values participate in the compiler-known member system. Two layout
+                members are common enough to document once here. <code>Len</code> is intentionally
+                absent: it is a sequence/string member, not a scalar primitive member.
+            </p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead>
+                        <tr>
+                            <th>Kind</th>
+                            <th>Name</th>
+                            <th>Signature</th>
+                            <th>Allocation</th>
+                            <th>Fallibility</th>
+                            <th>Implementation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="member-kind">Unsafe property</span></td>
+                            <td><a href="#common-ptr"><code>Ptr</code></a></td>
+                            <td><code>value.Ptr: RawPtr[T]</code></td>
+                            <td>No</td>
+                            <td>Infallible</td>
+                            <td>Compiler-known; lowering incomplete in places</td>
+                        </tr>
+                        <tr>
+                            <td><span class="member-kind">Property</span></td>
+                            <td><a href="#common-sizeof"><code>SizeOf</code></a></td>
+                            <td><code>value.SizeOf / T.SizeOf: uint</code></td>
+                            <td>No</td>
+                            <td>Infallible after valid layout</td>
+                            <td>Compiler-known; target/layout dependent</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="common-ptr">
+                <div class="member-block-header">
+                    <span class="member-kind">Unsafe property</span>
+                    <span class="member-block-name">Ptr</span>
+                    <span class="member-block-sig">value.Ptr: RawPtr[T]</span>
+                </div>
+                <div class="member-meta">
+                    <div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible after validation</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Compile-time rejection if the receiver is not addressable or unsafe access is not permitted</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Safety</span><span class="member-meta-value">Unsafe</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Ownership</span><span class="member-meta-value">Does not consume or transfer ownership</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Authority</span><span class="member-meta-value">Compiler-known registry</span></div>
+                </div>
+                <p>
+                    Returns a raw pointer to the current storage representation of an addressable
+                    scalar value. The property does not allocate storage and does not extend the
+                    lifetime of the value.
+                </p>
+                <pre><code>let mut value: int32 := 42
+
+unsafe {
+    let pointer: RawPtr[int32] := value.Ptr
+}</code></pre>
+                <p>
+                    <code>Ptr</code> is the canonical public spelling. Legacy lowercase
+                    <code>ptr</code> is not the canonical Sec 0.1 member name.
+                </p>
+            </div>
+
+            <div class="member-block" id="common-sizeof">
+                <div class="member-block-header">
+                    <span class="member-kind">Property</span>
+                    <span class="member-block-name">SizeOf</span>
+                    <span class="member-block-sig">value.SizeOf / T.SizeOf: uint</span>
+                </div>
+                <div class="member-meta">
+                    <div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible after layout is resolved</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Compile-time rejection when complete layout is unavailable</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Result</span><span class="member-meta-value"><code>uint</code></span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Type form</span><span class="member-meta-value">Compile-time constant for a concrete CompilationPlan</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Authority</span><span class="member-meta-value">Compiler-known registry and layout rules</span></div>
+                </div>
+                <p>
+                    Returns the physical storage size of the scalar type under the active compilation
+                    plan. The value form evaluates its receiver exactly once but does not inspect the
+                    stored value to determine the result.
+                </p>
+                <pre><code>let typeSize: uint := int64.SizeOf
+let value: int64 := 42
+let valueSize: uint := value.SizeOf</code></pre>
+            </div>
+        </section>
+
+        <section id="bool" class="type-section">
+            <div class="type-heading">
+                <h2><code>bool</code></h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge">Core-declared</span>
+            </div>
+
+            <p class="type-summary">
+                <code>bool</code> is Sec's logical scalar type and has exactly two values:
+                <code>false</code> and <code>true</code>. Conditions require <code>bool</code>;
+                numeric values do not implicitly become booleans.
+            </p>
+
+            <div class="type-info">
+                <div class="type-info-item"><span class="type-info-label">Values</span><span class="type-info-value"><code>false</code>, <code>true</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Default</span><span class="type-info-value"><code>false</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Literal</span><span class="type-info-value"><code>true</code> / <code>false</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Numeric conversion</span><span class="type-info-value">Explicit, infallible</span></div>
+            </div>
+
+            <pre><code>let enabled: bool := true
+let ready := bool(count) // false for zero, true otherwise</code></pre>
+
+            <h3>Members</h3>
+            <p>In addition to the common scalar members <code>Ptr</code> and <code>SizeOf</code>:</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead>
+                        <tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="member-kind">Function</span></td>
+                            <td><a href="#bool-tostring"><code>ToString</code></a></td>
+                            <td><code>() string</code></td>
+                            <td>No dynamic allocation in current core implementation</td>
+                            <td>Infallible</td>
+                            <td>Implemented</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="bool-tostring">
+                <div class="member-block-header">
+                    <span class="member-kind">Function</span>
+                    <span class="member-block-name">ToString</span>
+                    <span class="member-block-sig">fn ToString() string</span>
+                </div>
+                <div class="member-meta">
+                    <div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No dynamic allocation in current core implementation</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">None</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Mutates</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Consumes</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Implemented in <code>sec/core/bool.sec</code></span></div>
+                </div>
+                <p>
+                    Returns the canonical culture-independent strings <code>"true"</code> and
+                    <code>"false"</code>. Locale-aware formatting is not part of this method.
+                </p>
+            </div>
+        </section>
+
+        <section id="byte" class="type-section">
+            <div class="type-heading">
+                <h2><code>byte</code></h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Partial</span>
+            </div>
+
+            <p class="type-summary">
+                <code>byte</code> is Sec's byte-oriented unsigned scalar. It is intended for raw
+                binary data, buffers, protocols and FFI. Equal storage width does not make
+                <code>byte</code> semantically identical to <code>uint8</code> for every purpose.
+            </p>
+
+            <div class="type-info">
+                <div class="type-info-item"><span class="type-info-label">Range</span><span class="type-info-value"><code>0..255</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Default</span><span class="type-info-value"><code>0</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Storage meaning</span><span class="type-info-value">One byte-sized unsigned value</span></div>
+                <div class="type-info-item"><span class="type-info-label">Primary use</span><span class="type-info-value">Raw byte data</span></div>
+            </div>
+
+            <pre><code>let marker: byte := 0x7F</code></pre>
+
+            <h3>Members</h3>
+            <p>In addition to the common scalar members <code>Ptr</code> and <code>SizeOf</code>:</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead>
+                        <tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="member-kind">Function</span></td>
+                            <td><a href="#byte-tostring"><code>ToString</code></a></td>
+                            <td><code>() string</code></td>
+                            <td>May allocate</td>
+                            <td>Infallible</td>
+                            <td>Required by compiler-known registry; explicit core overload missing</td>
+                        </tr>
+                        <tr>
+                            <td><span class="member-kind">Function</span></td>
+                            <td><a href="#byte-tostring-format"><code>ToString</code></a></td>
+                            <td><code>(fmt: byte.ByteStringFormat) string</code></td>
+                            <td>May allocate</td>
+                            <td>Infallible</td>
+                            <td>Core-declared</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="byte-tostring">
+                <div class="member-block-header">
+                    <span class="member-kind">Function</span>
+                    <span class="member-block-name">ToString</span>
+                    <span class="member-block-sig">fn ToString() string</span>
+                </div>
+                <div class="member-meta">
+                    <div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate / may require a string allocation context</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Compilation/profile rejection if required string materialization is unavailable</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Mutates</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Consumes</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Normatively required; current <code>byte.sec</code> defines only the formatting overload</span></div>
+                </div>
+                <p>
+                    Returns the canonical no-argument textual representation. The compiler-known
+                    registry requires a universal <code>ToString()</code> surface even where an
+                    explicit helper body has not yet been written in core.
+                </p>
+            </div>
+
+            <div class="member-block" id="byte-tostring-format">
+                <div class="member-block-header">
+                    <span class="member-kind">Function</span>
+                    <span class="member-block-name">ToString</span>
+                    <span class="member-block-sig">fn ToString(fmt: byte.ByteStringFormat) string</span>
+                </div>
+                <div class="member-meta">
+                    <div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate when materializing the string</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">No typed error result; target/profile must support required materialization</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Formats</span><span class="member-meta-value">Decimal, Hexadecimal, Octal, Binary</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Consumes</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Declared in <code>sec/core/byte.sec</code></span></div>
+                </div>
+                <p>The current core declaration defines the nested formatting enum:</p>
+                <pre><code>byte.ByteStringFormat.Decimal
+byte.ByteStringFormat.Hexadecimal
+byte.ByteStringFormat.Octal
+byte.ByteStringFormat.Binary</code></pre>
+            </div>
+        </section>
+
+        <section id="char" class="type-section">
+            <div class="type-heading">
+                <h2><code>char</code></h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Core partially complete</span>
+            </div>
+
+            <p class="type-summary">
+                <code>char</code> is Sec's character scalar type. Character literals infer as
+                <code>char</code> unless a stronger compatible context selects another scalar type.
+                The explicit numeric family suffix is <code>t</code>.
+            </p>
+
+            <div class="type-info">
+                <div class="type-info-item"><span class="type-info-label">Default</span><span class="type-info-value"><code>0t</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Literal</span><span class="type-info-value"><code>'A'</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Numeric suffix</span><span class="type-info-value"><code>t</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Text role</span><span class="type-info-value">Character scalar; distinct from <code>rune</code></span></div>
+            </div>
+
+            <pre><code>let letter := 'A'
+let zero := 0t
+let a := 65t
+let hexA := 0x41t</code></pre>
+
+            <h3>Members</h3>
+            <p>In addition to the common scalar members <code>Ptr</code> and <code>SizeOf</code>:</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead>
+                        <tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#char-tostring"><code>ToString</code></a></td><td><code>() string</code></td><td>May allocate</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-isdigit"><code>IsDigit</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-isletter"><code>IsLetter</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-islower"><code>IsLowerLetter</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-isupper"><code>IsUpperLetter</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-isletterordigit"><code>IsLetterOrDigit</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-iswhitespace"><code>IsWhitespace</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-iscontrol"><code>IsControl</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-isascii"><code>IsAscii</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#char-ishexdigit"><code>IsHexDigit</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented (ASCII)</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#char-tonumeric"><code>ToNumericValue</code></a></td><td><code>() Option[int]</code></td><td>No</td><td>Infallible</td><td>Implemented (decimal digits)</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#char-tolower"><code>ToLower</code></a></td><td><code>() char</code></td><td>No</td><td>Infallible</td><td>Partial: ASCII only</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#char-toupper"><code>ToUpper</code></a></td><td><code>() char</code></td><td>No</td><td>Infallible</td><td>Partial: ASCII only</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="char-tostring">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToString</span><span class="member-block-sig">fn ToString() string</span></div>
+                <div class="member-meta">
+                    <div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate / may require string materialization</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Profile rejection when required materialization is unavailable</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Consumes</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Mutates</span><span class="member-meta-value">No</span></div>
+                    <div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Declared in <code>sec/core/char.sec</code></span></div>
+                </div>
+                <p>Materializes the canonical string representation of the character scalar.</p>
+            </div>
+
+            <div class="member-block" id="char-isdigit">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsDigit</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">None; returns <code>false</code> outside <code>'0'..'9'</code></span></div></div>
+                <p>Reports whether the character is an ASCII decimal digit.</p>
+            </div>
+
+            <div class="member-block" id="char-isletter">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsLetter</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Current domain</span><span class="member-meta-value">ASCII letters</span></div></div>
+                <p>Returns <code>true</code> for ASCII <code>A..Z</code> or <code>a..z</code>.</p>
+            </div>
+
+            <div class="member-block" id="char-islower">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsLowerLetter</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Reports whether the character is an ASCII lowercase letter <code>a..z</code>.</p>
+            </div>
+
+            <div class="member-block" id="char-isupper">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsUpperLetter</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Reports whether the character is an ASCII uppercase letter <code>A..Z</code>.</p>
+            </div>
+
+            <div class="member-block" id="char-isletterordigit">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsLetterOrDigit</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Equivalent to the current ASCII <code>IsLetter || IsDigit</code> classification.</p>
+            </div>
+
+            <div class="member-block" id="char-iswhitespace">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsWhitespace</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Current core recognizes tab, line feed, carriage return and space.</p>
+            </div>
+
+            <div class="member-block" id="char-iscontrol">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsControl</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Current core recognizes ASCII control values below 32 and delete (127).</p>
+            </div>
+
+            <div class="member-block" id="char-isascii">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsAscii</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Reports whether the scalar value is in the ASCII range <code>0..127</code>.</p>
+            </div>
+
+            <div class="member-block" id="char-ishexdigit">
+                <div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsHexDigit</span><span class="member-block-sig">: bool</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div>
+                <p>Reports whether the character is one of <code>0..9</code>, <code>A..F</code> or <code>a..f</code>.</p>
+            </div>
+
+            <div class="member-block" id="char-tonumeric">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToNumericValue</span><span class="member-block-sig">fn ToNumericValue() Option[int]</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Returns <code>None()</code> when the character is not an ASCII decimal digit</span></div></div>
+                <p>Converts <code>'0'..'9'</code> to the corresponding integer <code>0..9</code>.</p>
+            </div>
+
+            <div class="member-block" id="char-tolower">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToLower</span><span class="member-block-sig">fn ToLower() char</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Partial: ASCII conversion only</span></div></div>
+                <p>Converts ASCII <code>A..Z</code> to lowercase and otherwise returns the value unchanged.</p>
+                <div class="implementation-note">Current core explicitly notes that non-ASCII character formats still need coverage.</div>
+            </div>
+
+            <div class="member-block" id="char-toupper">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToUpper</span><span class="member-block-sig">fn ToUpper() char</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Partial: ASCII conversion only</span></div></div>
+                <p>Converts ASCII <code>a..z</code> to uppercase and otherwise returns the value unchanged.</p>
+                <div class="implementation-note">Current core explicitly notes that non-ASCII character formats still need coverage.</div>
+            </div>
+        </section>
+
+        <section id="rune" class="type-section">
+            <div class="type-heading">
+                <h2><code>rune</code></h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Core incomplete</span>
+            </div>
+
+            <p class="type-summary">
+                <code>rune</code> is Sec's Unicode scalar type. The explicit numeric suffix is
+                <code>r</code>. <code>char</code> and <code>rune</code> are distinct types;
+                conversions between them are explicit and checked for representability.
+            </p>
+
+            <div class="type-info">
+                <div class="type-info-item"><span class="type-info-label">Domain</span><span class="type-info-value">Valid Unicode scalar values</span></div>
+                <div class="type-info-item"><span class="type-info-label">Default</span><span class="type-info-value"><code>0r</code></span></div>
+                <div class="type-info-item"><span class="type-info-label">Storage</span><span class="type-info-value">32-bit scalar representation</span></div>
+                <div class="type-info-item"><span class="type-info-label">Numeric suffix</span><span class="type-info-value"><code>r</code></span></div>
+            </div>
+
+            <pre><code>let zero := 0r
+let omega := 0x03A9r
+let face := 0x1F600r
+let asciiRune: rune := 'A'</code></pre>
+
+            <h3>Members</h3>
+            <p>In addition to the common scalar members <code>Ptr</code> and <code>SizeOf</code>:</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#rune-tostring"><code>ToString</code></a></td><td><code>() string</code></td><td>May allocate</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-isdigit"><code>IsDigit</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII only</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-isletter"><code>IsLetter</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII only</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-islower"><code>IsLowerLetter</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII only</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-isupper"><code>IsUpperLetter</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII only</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-isletterordigit"><code>IsLetterOrDigit</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII only</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-iswhitespace"><code>IsWhitespace</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII subset</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-iscontrol"><code>IsControl</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII subset</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-ishexdigit"><code>IsHexDigit</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Current core: ASCII</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-isascii"><code>IsAscii</code></a></td><td><code>bool</code></td><td>No</td><td>Infallible</td><td>Implemented</td></tr>
+                        <tr><td><span class="member-kind">Property</span></td><td><a href="#rune-utf8length"><code>Utf8Length</code></a></td><td><code>uint</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#rune-tonumeric"><code>ToNumericValue</code></a></td><td><code>() Option[int]</code></td><td>No</td><td>Infallible</td><td>Current core: decimal ASCII digits</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#rune-tolower"><code>ToLower</code></a></td><td><code>() rune</code></td><td>No</td><td>Infallible</td><td>Not implemented correctly</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#rune-toupper"><code>ToUpper</code></a></td><td><code>() rune</code></td><td>No</td><td>Infallible</td><td>Not implemented correctly</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="rune-tostring">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToString</span><span class="member-block-sig">fn ToString() string</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate / may require string materialization</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Profile rejection when string materialization is unavailable</span></div><div class="member-meta-item"><span class="member-meta-label">Encoding</span><span class="member-meta-value">Exactly one valid Unicode scalar</span></div></div>
+                <p>Encodes the rune as its canonical string representation without changing the scalar value.</p>
+            </div>
+
+            <div class="member-block" id="rune-isdigit"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsDigit</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII decimal digits only</span></div></div><p>Current core recognizes <code>0r..9r</code> in the ASCII digit range.</p></div>
+
+            <div class="member-block" id="rune-isletter"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsLetter</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII letters only</span></div></div><p>The current core body does not yet implement full Unicode letter classification.</p></div>
+
+            <div class="member-block" id="rune-islower"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsLowerLetter</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII <code>a..z</code></span></div></div><p>Current implementation is ASCII-only.</p></div>
+
+            <div class="member-block" id="rune-isupper"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsUpperLetter</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII <code>A..Z</code></span></div></div><p>Current implementation is ASCII-only.</p></div>
+
+            <div class="member-block" id="rune-isletterordigit"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsLetterOrDigit</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII classification</span></div></div><p>Combines the current <code>IsLetter</code> and <code>IsDigit</code> results.</p></div>
+
+            <div class="member-block" id="rune-iswhitespace"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsWhitespace</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">Tab, LF, CR and space</span></div></div><p>Full Unicode whitespace classification is not implemented in the current core body.</p></div>
+
+            <div class="member-block" id="rune-iscontrol"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsControl</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII control range</span></div></div><p>Current core recognizes values below 32 and delete (127).</p></div>
+
+            <div class="member-block" id="rune-ishexdigit"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsHexDigit</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Current implementation</span><span class="member-meta-value">ASCII <code>0..9 A..F a..f</code></span></div></div><p>Reports whether the rune is an ASCII hexadecimal digit.</p></div>
+
+            <div class="member-block" id="rune-isascii"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">IsAscii</span><span class="member-block-sig">: bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns <code>true</code> when the Unicode scalar value is in <code>0..127</code>.</p></div>
+
+            <div class="member-block" id="rune-utf8length"><div class="member-block-header"><span class="member-kind">Property</span><span class="member-block-name">Utf8Length</span><span class="member-block-sig">: uint</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Range</span><span class="member-meta-value"><code>1..4</code></span></div></div><p>Returns the number of UTF-8 bytes needed to encode this Unicode scalar.</p></div>
+
+            <div class="member-block" id="rune-tonumeric"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToNumericValue</span><span class="member-block-sig">fn ToNumericValue() Option[int]</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Returns <code>None()</code> outside current decimal ASCII digit set</span></div></div><p>Current core converts ASCII decimal digit runes to <code>0..9</code>.</p></div>
+
+            <div class="member-block" id="rune-tolower"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToLower</span><span class="member-block-sig">fn ToLower() rune</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible signature</span></div><div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Not implemented correctly</span></div></div><p>Intended to return the lowercase variant when one exists.</p><div class="implementation-note">The current core file is explicitly marked TODO and the method body is a stub. Do not rely on the current runtime result.</div></div>
+
+            <div class="member-block" id="rune-toupper"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToUpper</span><span class="member-block-sig">fn ToUpper() rune</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible signature</span></div><div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Not implemented correctly</span></div></div><p>Intended to return the uppercase variant when one exists.</p><div class="implementation-note">The current core file is explicitly marked TODO and the method body is a stub. Do not rely on the current runtime result.</div></div>
+        </section>
+
+        <section id="signed-integers" class="type-section">
+            <div class="type-heading">
+                <h2>Signed Integers</h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Implementation varies by width</span>
+            </div>
+
+            <p class="type-summary">
+                Sec has one target-sized signed integer type and six explicit-width signed integer
+                types. The wide types are active language types even where backend coverage is still
+                incomplete.
+            </p>
+
+            <div class="table-wrap">
+                <table class="type-table">
+                    <thead><tr><th>Type</th><th>Width</th><th>Range</th><th>Default</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>int</code></td><td>Target-sized</td><td>Selected by CompilationPlan</td><td><code>0</code></td><td>Use fixed-width types for exact ABI/layout width</td></tr>
+                        <tr><td><code>int8</code></td><td>8 bits</td><td><code>-128..127</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>int16</code></td><td>16 bits</td><td><code>-32768..32767</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>int32</code></td><td>32 bits</td><td><code>-2147483648..2147483647</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>int64</code></td><td>64 bits</td><td><code>-2^63..2^63-1</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>int128</code></td><td>128 bits</td><td><code>-2^127..2^127-1</code></td><td><code>0</code></td><td>Language type; implementation partial</td></tr>
+                        <tr><td><code>int256</code></td><td>256 bits</td><td><code>-2^255..2^255-1</code></td><td><code>0</code></td><td>Language type; implementation partial</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>The signed-integer literal family suffix is <code>i</code>:</p>
+            <pre><code>let value := 8i
+let small: int8 := 8i
+let wide: int256 := 8i</code></pre>
+
+            <h3>Family Members</h3>
+            <p>All concrete signed integer types also have the common scalar <code>Ptr</code> and <code>SizeOf</code> members.</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#signed-tostring"><code>ToString</code></a></td><td><code>() string</code></td><td>May allocate</td><td>Infallible</td><td>Required; formatting/lowering incomplete</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#signed-min-property"><code>Min</code></a></td><td><code>T.Min: T</code></td><td>No</td><td>Infallible</td><td>Compiler-known registry</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#signed-max-property"><code>Max</code></a></td><td><code>T.Max: T</code></td><td>No</td><td>Infallible</td><td>Compiler-known registry</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#signed-bits"><code>Bits</code></a></td><td><code>T.Bits</code></td><td>No</td><td>Infallible</td><td>Compiler-known registry</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="signed-tostring">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToString</span><span class="member-block-sig">fn ToString() string</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Profile rejection if materialization cannot be provided</span></div><div class="member-meta-item"><span class="member-meta-label">Formatting</span><span class="member-meta-value">Culture-independent canonical representation</span></div></div>
+                <p>Produces the canonical signed integer representation with enough information to round-trip through the matching parser.</p>
+                <div class="implementation-note"><code>sec/core/int.sec</code> declares <code>int.ToString()</code> but its body is still TODO. Fixed-width and wide integer implementations are not complete across all lowering paths.</div>
+            </div>
+
+            <div class="member-block" id="signed-min-property"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Min</span><span class="member-block-sig">T.Min: T</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Value</span><span class="member-meta-value">Minimum representable value of the exact integer type</span></div></div><p><code>Min</code> is a compile-time constant of the exact type. Do not confuse <code>int.Min</code> with the instance method <code>value.Min(other)</code> currently declared specifically on <code>int</code>.</p></div>
+
+            <div class="member-block" id="signed-max-property"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Max</span><span class="member-block-sig">T.Max: T</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Compile-time maximum representable value of the exact signed integer type.</p></div>
+
+            <div class="member-block" id="signed-bits"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Bits</span><span class="member-block-sig">T.Bits</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div><div class="member-meta-item"><span class="member-meta-label">Meaning</span><span class="member-meta-value">Semantic bit width</span></div></div><p>For <code>int</code>, the value is selected by the target profile. For fixed-width types, it matches the width in the type name.</p></div>
+
+            <h3><code>int</code>-specific Core Members</h3>
+            <p>The current core also declares these methods specifically on target-sized <code>int</code>.</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#int-abs"><code>Abs</code></a></td><td><code>() Result[int, OverflowError]</code></td><td>No</td><td>Fallible</td><td>Core-declared; overflow path incomplete</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#int-min-method"><code>Min</code></a></td><td><code>(other: int) int</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#int-max-method"><code>Max</code></a></td><td><code>(other: int) int</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#int-iseven"><code>IsEven</code></a></td><td><code>() bool</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#int-isodd"><code>IsOdd</code></a></td><td><code>() bool</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="int-abs"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">Abs</span><span class="member-block-sig">fn Abs() Result[int, OverflowError]</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Fallible</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Returns <code>Err(OverflowError)</code> when the absolute value is not representable</span></div><div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value">Current core body does not yet implement the minimum-value overflow check completely</span></div></div><p>Returns the absolute magnitude of the target-sized signed integer when representable.</p></div>
+
+            <div class="member-block" id="int-min-method"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">Min</span><span class="member-block-sig">fn Min(other: int) int</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns the smaller of <code>self</code> and <code>other</code>.</p></div>
+
+            <div class="member-block" id="int-max-method"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">Max</span><span class="member-block-sig">fn Max(other: int) int</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns the larger of <code>self</code> and <code>other</code>.</p></div>
+
+            <div class="member-block" id="int-iseven"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">IsEven</span><span class="member-block-sig">fn IsEven() bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns <code>true</code> when the value is divisible by two.</p></div>
+
+            <div class="member-block" id="int-isodd"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">IsOdd</span><span class="member-block-sig">fn IsOdd() bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns <code>true</code> when the value is not divisible by two.</p></div>
+        </section>
+
+        <section id="unsigned-integers" class="type-section">
+            <div class="type-heading">
+                <h2>Unsigned Integers</h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Implementation varies by width</span>
+            </div>
+
+            <p class="type-summary">
+                Sec has one target-sized unsigned integer type and six explicit-width unsigned
+                integer types. Wide unsigned integers are active language types even where backend
+                coverage is incomplete.
+            </p>
+
+            <div class="table-wrap">
+                <table class="type-table">
+                    <thead><tr><th>Type</th><th>Width</th><th>Range</th><th>Default</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>uint</code></td><td>Target-sized</td><td>Selected by CompilationPlan</td><td><code>0</code></td><td>Use fixed-width types for exact ABI/layout width</td></tr>
+                        <tr><td><code>uint8</code></td><td>8 bits</td><td><code>0..255</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>uint16</code></td><td>16 bits</td><td><code>0..65535</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>uint32</code></td><td>32 bits</td><td><code>0..4294967295</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>uint64</code></td><td>64 bits</td><td><code>0..2^64-1</code></td><td><code>0</code></td><td>Exact width</td></tr>
+                        <tr><td><code>uint128</code></td><td>128 bits</td><td><code>0..2^128-1</code></td><td><code>0</code></td><td>Language type; implementation partial</td></tr>
+                        <tr><td><code>uint256</code></td><td>256 bits</td><td><code>0..2^256-1</code></td><td><code>0</code></td><td>Language type; implementation partial</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>The unsigned-integer literal family suffix is <code>u</code>:</p>
+            <pre><code>let value := 8u
+let small: uint8 := 8u
+let wide: uint256 := 8u</code></pre>
+
+            <h3>Family Members</h3>
+            <p>All concrete unsigned integer types also have the common scalar <code>Ptr</code> and <code>SizeOf</code> members.</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#unsigned-tostring"><code>ToString</code></a></td><td><code>() string</code></td><td>May allocate</td><td>Infallible</td><td>Required; formatting/lowering incomplete</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#unsigned-min-property"><code>Min</code></a></td><td><code>T.Min: T</code></td><td>No</td><td>Infallible</td><td>Compiler-known registry</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#unsigned-max-property"><code>Max</code></a></td><td><code>T.Max: T</code></td><td>No</td><td>Infallible</td><td>Compiler-known registry</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#unsigned-bits"><code>Bits</code></a></td><td><code>T.Bits</code></td><td>No</td><td>Infallible</td><td>Compiler-known registry</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="unsigned-tostring"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToString</span><span class="member-block-sig">fn ToString() string</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Profile rejection if materialization cannot be provided</span></div><div class="member-meta-item"><span class="member-meta-label">Formatting</span><span class="member-meta-value">Culture-independent canonical representation</span></div></div><p>Produces the canonical unsigned integer representation.</p><div class="implementation-note"><code>sec/core/uint.sec</code> declares <code>uint.ToString()</code>, but its current body is TODO.</div></div>
+
+            <div class="member-block" id="unsigned-min-property"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Min</span><span class="member-block-sig">T.Min: T</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>The minimum representable value is zero for every unsigned integer type.</p></div>
+
+            <div class="member-block" id="unsigned-max-property"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Max</span><span class="member-block-sig">T.Max: T</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Compile-time maximum representable value of the exact unsigned integer type.</p></div>
+
+            <div class="member-block" id="unsigned-bits"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Bits</span><span class="member-block-sig">T.Bits</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns the semantic bit width. <code>uint.Bits</code> depends on the selected target profile.</p></div>
+
+            <h3><code>uint</code>-specific Core Members</h3>
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#uint-min-method"><code>Min</code></a></td><td><code>(other: uint) uint</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#uint-max-method"><code>Max</code></a></td><td><code>(other: uint) uint</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#uint-iseven"><code>IsEven</code></a></td><td><code>() bool</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#uint-isodd"><code>IsOdd</code></a></td><td><code>() bool</code></td><td>No</td><td>Infallible</td><td>Core-declared</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="uint-min-method"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">Min</span><span class="member-block-sig">fn Min(other: uint) uint</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns the smaller of <code>self</code> and <code>other</code>.</p></div>
+            <div class="member-block" id="uint-max-method"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">Max</span><span class="member-block-sig">fn Max(other: uint) uint</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns the larger of <code>self</code> and <code>other</code>.</p></div>
+            <div class="member-block" id="uint-iseven"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">IsEven</span><span class="member-block-sig">fn IsEven() bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns <code>true</code> when the value is divisible by two.</p></div>
+            <div class="member-block" id="uint-isodd"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">IsOdd</span><span class="member-block-sig">fn IsOdd() bool</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Returns <code>true</code> when the value is not divisible by two.</p></div>
+        </section>
+
+        <section id="binary-floats" class="type-section">
+            <div class="type-heading">
+                <h2>Binary Floating-Point Types</h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Reference surface still being completed</span>
+            </div>
+
+            <p class="type-summary">
+                <code>float32</code> and <code>float64</code> request explicit binary
+                floating-point widths. <code>float</code> is the general compiler-known binary
+                floating-point type. Use an explicit-width form when representation width matters.
+            </p>
+
+            <div class="table-wrap">
+                <table class="type-table">
+                    <thead><tr><th>Type</th><th>Width</th><th>Default</th><th>Literal selection</th><th>Notes</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>float</code></td><td>General target/compiler-known float</td><td><code>0</code></td><td><code>g</code> family or context</td><td>Not an ABI-width promise</td></tr>
+                        <tr><td><code>float32</code></td><td>32 bits</td><td><code>0</code></td><td>Context</td><td>Explicit width</td></tr>
+                        <tr><td><code>float64</code></td><td>64 bits</td><td><code>0</code></td><td>Context</td><td>Explicit width</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <pre><code>let value := 1.5g
+let small: float32 := 8g
+let wide: float64 := 8g</code></pre>
+
+            <h3>Members</h3>
+            <p>Binary floating-point values also have the common scalar <code>Ptr</code> and <code>SizeOf</code> members.</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#float-tostring"><code>ToString</code></a></td><td><code>() string</code></td><td>May allocate</td><td>Infallible</td><td>Normative; helper/lowering coverage incomplete</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#float-min"><code>Min</code></a></td><td><code>T.Min</code></td><td>No</td><td>Infallible</td><td>Registry-defined where supported</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#float-max"><code>Max</code></a></td><td><code>T.Max</code></td><td>No</td><td>Infallible</td><td>Registry-defined where supported</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#float-epsilon"><code>Epsilon</code></a></td><td><code>T.Epsilon</code></td><td>No</td><td>Infallible</td><td>Registry-defined where supported</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#float-infinity"><code>Infinity</code></a></td><td><code>T.Infinity</code></td><td>No</td><td>Infallible</td><td>Registry-defined where supported</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#float-negative-infinity"><code>NegativeInfinity</code></a></td><td><code>T.NegativeInfinity</code></td><td>No</td><td>Infallible</td><td>Registry-defined where supported</td></tr>
+                        <tr><td><span class="member-kind">Associated property</span></td><td><a href="#float-nan"><code>NaN</code></a></td><td><code>T.NaN</code></td><td>No</td><td>Infallible</td><td>Registry-defined where supported</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="float-tostring"><div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToString</span><span class="member-block-sig">fn ToString() string</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div><div class="member-meta-item"><span class="member-meta-label">Formatting</span><span class="member-meta-value">Culture-independent canonical round-trip form</span></div></div><p>The no-argument formatter must preserve enough precision for the type's canonical round-trip rule.</p></div>
+
+            <div class="member-block" id="float-min"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Min</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Minimum finite representable value where the selected floating type defines this canonical property.</p></div>
+            <div class="member-block" id="float-max"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Max</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Maximum finite representable value where defined.</p></div>
+            <div class="member-block" id="float-epsilon"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Epsilon</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Canonical epsilon value for the floating type where defined by the numeric model.</p></div>
+            <div class="member-block" id="float-infinity"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">Infinity</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Positive infinity where supported by the selected canonical floating model.</p></div>
+            <div class="member-block" id="float-negative-infinity"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">NegativeInfinity</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Negative infinity where supported by the selected canonical floating model.</p></div>
+            <div class="member-block" id="float-nan"><div class="member-block-header"><span class="member-kind">Associated property</span><span class="member-block-name">NaN</span></div><div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">No</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible</span></div></div><p>Canonical not-a-number value where supported by the selected canonical floating model.</p></div>
+
+            <div class="family-note">
+                The compiler-known registry names these floating associated properties, but the current
+                primitive type rulebook intentionally delegates their exact values and representability
+                to the numeric rules. This reference should be tightened when that numeric surface is
+                fully canonicalized.
+            </div>
+        </section>
+
+        <section id="decimals" class="type-section">
+            <div class="type-heading">
+                <h2>Exact Decimal Types</h2>
+                <span class="status-badge">Normative</span>
+                <span class="status-badge partial">Backend incomplete</span>
+            </div>
+
+            <p class="type-summary">
+                <code>decimal</code> and <code>decimal128</code> are exact base-10 numeric types.
+                Unsuffixed fractional and exponent literals default to <code>decimal</code> when no
+                stronger context selects another type. The explicit decimal-family suffix is
+                <code>m</code>.
+            </p>
+
+            <div class="table-wrap">
+                <table class="type-table">
+                    <thead><tr><th>Type</th><th>Canonical representation</th><th>Default</th><th>Literal selection</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>decimal</code></td><td><code>{ int64 coefficient, int32 scale }</code></td><td><code>0</code></td><td>Default fractional type / <code>m</code></td><td>Frontend substantial; arithmetic/lowering incomplete</td></tr>
+                        <tr><td><code>decimal128</code></td><td><code>{ int128 coefficient, int32 scale }</code></td><td><code>0</code></td><td>Context / <code>m</code> family</td><td>Language type; implementation partial</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <pre><code>let amount := 3.14
+let explicit := 3.14m
+let wide: decimal128 := 8m</code></pre>
+
+            <p>
+                Decimal literals are interpreted from their exact source spelling. They must not be
+                converted through binary floating point first.
+            </p>
+
+            <h3>Members</h3>
+            <p>Decimal values also have the common scalar <code>Ptr</code> and <code>SizeOf</code> members.</p>
+
+            <div class="table-wrap">
+                <table class="member-table">
+                    <thead><tr><th>Kind</th><th>Name</th><th>Signature</th><th>Allocation</th><th>Fallibility</th><th>Implementation</th></tr></thead>
+                    <tbody>
+                        <tr><td><span class="member-kind">Function</span></td><td><a href="#decimal-tostring"><code>ToString</code></a></td><td><code>() string</code></td><td>May allocate</td><td>Infallible</td><td>Required; current <code>decimal</code> body TODO</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="member-block" id="decimal-tostring">
+                <div class="member-block-header"><span class="member-kind">Function</span><span class="member-block-name">ToString</span><span class="member-block-sig">fn ToString() string</span></div>
+                <div class="member-meta"><div class="member-meta-item"><span class="member-meta-label">Allocation</span><span class="member-meta-value">May allocate</span></div><div class="member-meta-item"><span class="member-meta-label">Fallibility</span><span class="member-meta-value">Infallible source signature</span></div><div class="member-meta-item"><span class="member-meta-label">Failure behavior</span><span class="member-meta-value">Profile rejection if required string materialization is unavailable</span></div><div class="member-meta-item"><span class="member-meta-label">Formatting</span><span class="member-meta-value">Exact, culture-independent canonical decimal representation</span></div><div class="member-meta-item"><span class="member-meta-label">Implementation</span><span class="member-meta-value"><code>decimal.ToString()</code> is declared but TODO; <code>decimal128</code> coverage incomplete</span></div></div>
+                <p>Produces the canonical exact decimal representation without routing through a binary floating-point value.</p>
+            </div>
+
+            <div class="family-note">
+                <code>Scale</code> is <strong>not</strong> listed as a public member here. The compiler-known
+                registry states that representation-sensitive decimal members become public only when
+                the decimal rulebook stabilizes them as source semantics. Internal coefficient/scale
+                layout alone does not create a public API.
+            </div>
+        </section>
+
+        <section id="implementation-status" class="type-section">
+            <h2>Implementation Status</h2>
+
+            <p>
+                Primitive type identity is substantially implemented, but this reference intentionally
+                exposes several language/core contracts that are ahead of current code generation.
+            </p>
+
+            <ul>
+                <li><code>int128</code>, <code>int256</code>, <code>uint128</code>, <code>uint256</code> and <code>decimal128</code> are real Sec language types, not future syntax.</li>
+                <li>Target-sized <code>int</code>/<code>uint</code> semantics are canonical, while legacy backend paths still contain width-mapping debt.</li>
+                <li>Compiler-known <code>Ptr</code>, <code>SizeOf</code> and universal <code>ToString()</code> belong to the reference even when a core helper body is absent.</li>
+                <li><code>int.ToString()</code>, <code>uint.ToString()</code> and <code>decimal.ToString()</code> currently contain TODO bodies.</li>
+                <li><code>rune</code> is a Unicode scalar type, but its current core classification/case-conversion implementation is incomplete; case conversion is currently stubbed.</li>
+                <li><code>char.ToLower()</code> and <code>char.ToUpper()</code> currently cover ASCII only.</li>
+                <li>Materializing <code>ToString()</code> operations may require an allocation context; Sec must not silently fall back to an unrelated heap.</li>
+            </ul>
+
+            <p>
+                This status section is intentionally separate from the member contracts. As
+                implementation progresses, the status can change without changing the documented API
+                unless the normative rulebooks themselves are revised.
+            </p>
+        </section>
+
+        <div class="page-navigation">
+            <a href="../syntax-reference.html">Back to Reference Overview</a>
+        </div>
+    </main>
+</div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>
+            <p>&copy; 2026 Sec Language</p>
+            <p>Reference prototype revision 0.1 &middot; 2026-09-25</p>
+        </div>
+        <a href="https://sec-lang.com">sec-lang.com</a>
+    </div>
+</footer>
+</body>
+</html>

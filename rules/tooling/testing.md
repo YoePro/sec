@@ -84,7 +84,7 @@ This rulebook does not define:
 compiler implementation self-tests
 compiler unit-test organization in Go or C++
 benchmark semantics
-fuzz semantics
+source-language fuzz semantics
 mocking frameworks
 BDD syntax
 snapshot testing
@@ -96,9 +96,9 @@ a universal test timeout
 a universal filesystem sandbox
 ```
 
-Compiler self-testing remains the responsibility of the planned `compiler_testing.md`.
+Compiler self-testing is defined separately by `rules/compiler/compiler_testing.md`.
 
-Benchmarking and fuzzing are future design areas and are not source-language features defined by Sec 0.1.
+Benchmarking and source-language fuzzing remain future design areas and are not source-language features defined by Sec 0.1. Compiler implementation fuzzing is separate and required by `rules/compiler/compiler_testing.md`.
 
 ---
 
@@ -154,7 +154,7 @@ rules/tooling/testing.md
 is distinct from compiler verification infrastructure:
 
 ```text
-compiler_testing.md
+rules/compiler/compiler_testing.md
 ```
 
 The latter may define parser tests, Sema tests, invalid fixtures, IR tests, MLIR tests, backend tests and regression matrices for the compiler implementation.
@@ -2449,7 +2449,7 @@ These decisions require a separate future design.
 
 ### 44.2 Fuzzing
 
-Fuzz testing is an intended future testing/tooling area.
+Source-language fuzz testing is an intended future testing/tooling area.
 
 Sec 0.1 does not define:
 
@@ -2463,7 +2463,9 @@ reproduction format
 sec fuzz command semantics
 ```
 
-These decisions require a separate future design.
+These source-language decisions require a separate future design. Compiler
+implementation fuzzing is separate and is required by
+`rules/compiler/compiler_testing.md`.
 
 ### 44.3 Executable documentation examples
 
@@ -2532,7 +2534,8 @@ The result transport is not Sec source semantics.
 tooling/testing.md
 ```
 
-as a written rulebook and must keep the planned compiler-internal `compiler_testing.md` distinct.
+as a written rulebook and must keep the written compiler-verification rulebook
+`rules/compiler/compiler_testing.md` distinct.
 
 ---
 
@@ -2664,4 +2667,7 @@ A target-specific execution provider may deploy a test artifact and transport st
 
 ### 47.7 Future work
 
-Benchmarking, fuzzing, executable documentation examples and system/E2E orchestration remain future design areas.
+Benchmarking, source-language fuzz declarations and `sec fuzz` semantics,
+executable documentation examples, and source-test system/E2E orchestration
+remain future design areas. Compiler implementation fuzzing is governed by
+`rules/compiler/compiler_testing.md`.

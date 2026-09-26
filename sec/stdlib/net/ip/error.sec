@@ -1,0 +1,51 @@
+module ip
+
+enum NetworkError error {
+    PermissionDenied,
+    AddressInUse,
+    AddressNotAvailable,
+    ConnectionRefused,
+    ConnectionReset,
+    ConnectionAborted,
+    NotConnected,
+    AlreadyConnected,
+    NetworkUnreachable,
+    HostUnreachable,
+    TimedOut,
+    BrokenPipe,
+    MessageTooLarge,
+    ResourceExhausted,
+    OutOfMemory,
+    InvalidArgument,
+    WriteZero,
+    Closed,
+    Unsupported,
+    Unknown,
+}
+
+enum AddressError error {
+    Empty,
+    InvalidFormat,
+    InvalidIpv4,
+    InvalidIpv6,
+    InvalidPrefixLength,
+}
+
+enum PacketError error {
+    BufferTooSmall,
+    UnsupportedIpVersion,
+    InvalidHeaderLength,
+    InvalidTotalLength,
+    InvalidPayloadLength,
+    InvalidChecksum,
+    MalformedPacket,
+}
+
+enum NetError error {
+    ConnectionRefused,
+    Timeout,
+    InvalidPacketStructure,
+    NetworkUnreachable,
+    BufferTooSmall,
+    UnsupportedIpVersion,
+}

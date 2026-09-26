@@ -197,3 +197,40 @@ integrations:
       - known-null diagnostic explains that unsafe does not legalize null dereference
       - formatter preserves RawPtr[T] and member spellings
       - compiler and LSP agree on raw-pointer validity diagnostics
+
+  - id: frontend.layout
+    status: partial
+    remaining:
+    - build one shared canonical layout-resolution service
+    - complete int/uint target-width consistency
+    - complete enum/union/descriptor/reference resolved representations
+    - complete representation-validity analysis
+    - complete explicit layout contract parsing via owning syntax rulebooks
+  - id: semantic-ir.layout
+    status: planned
+    remaining:
+    - introduce canonical ResolvedLayout/ResolvedFieldLayout or equivalent
+    - retain size/alignment/offset/stride/padding/union/representation-validity facts
+    - attach target-resolved layout before layout-sensitive lowering
+    - verify contradictory/incomplete layout facts
+  - id: lowering.layout
+    status: partial
+    remaining:
+    - make maintained MLIR/LLVM paths consume Sec-resolved layout
+    - remove legacy hardcoded enum/int/decimal layout differences
+    - support validated unaligned/packed lowering
+    - preserve explicit layout and representation validity
+  - id: platform.layout
+    status: partial
+    remaining:
+    - complete FFI layout compatibility
+    - complete register access-unit/alignment validation
+    - complete target-specific memory/address-space representation integration
+    - validate explicit target layout contracts
+  - id: tooling.layout
+    status: planned
+    remaining:
+    - expose canonical SizeOf/AlignOf/StrideOf/FieldOffset from shared layout facts
+    - show target dependence and stability
+    - provide recursive/explicit-layout mentor diagnostics
+    - ensure compiler/LSP/sec analyse parity

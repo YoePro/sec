@@ -1,0 +1,198 @@
+module ip
+
+// =====================================================================
+// IPv4
+// =====================================================================
+
+// Nested register for IPv4 flags.
+type Ipv4Flags register[3] msb-first {
+    Reserved: bit,
+    DontFragment: bit,
+    MoreFragments: bit,
+}
+
+// Nested register for IPv4 addresses.
+type Ipv4Address register[32] msb-first big-endian {
+    A: bit[8],
+    B: bit[8],
+    C: bit[8],
+    D: bit[8],
+}
+
+// Fixed-width wire layout for IPv4 header.
+// msb-first maps fields correctly within bytes.
+// big-endian aligns with network byte order.
+// Total size: 20 bytes (160 bits).
+type Ipv4WireHeader register[160] msb-first big-endian {
+    Version: bit[4],
+    Ihl: bit[4],
+    Dscp: bit[6],
+    Ecn: IpEcn,
+    TotalLength: bit[16],
+    Identification: bit[16],
+    Flags: Ipv4Flags,
+    FragmentOffset: bit[13],
+    TimeToLive: bit[8],
+    Protocol: IpProtocol,
+    HeaderChecksum: bit[16],
+    SourceIp: Ipv4Address,
+    DestinationIp: Ipv4Address,
+}
+
+impl Ipv4WireHeader {
+    init(buffer: ref byte[]) NetError {
+        if buffer.len < 20 {
+            return Err(NetError.BufferTooSmall)
+        }
+
+        // Explicit byte-to-register decoding implementation goes here,
+        // mapping network byte order (big-endian) into the register fields.
+    }
+}
+
+impl Ipv4Address {
+    /**
+     * The IPv4 unspecified address, 0.0.0.0.
+     */
+    static let Unspecified: Ipv4Address := Ipv4Address(0x00000000)
+
+    /**
+     * The conventional IPv4 loopback address, 127.0.0.1.
+     *
+     * Other addresses in 127.0.0.0/8 are also loopback addresses and are
+     * recognized by IsLoopback.
+     */
+    static let Loopback: Ipv4Address := Ipv4Address(0x7F000001)
+
+    init(a: byte, b: byte, c: byte, d: byte) {
+        self.A = a
+        self.B = b
+        self.C = c
+        self.D = d
+    }
+
+    static fn Parse(text: string) Result[Ipv4Address, AddressError] {
+        if text.ByteLen == 0 {
+            return Err(AddressError.Empty)
+        }
+
+        let mut octets: byte[4]
+        let mut count: uint := 0
+
+        for part in text.Split(".") {
+            if count >= 4 {
+                return Err(AddressError.InvalidIpv4)
+            }
+
+            octets[count] = try _ParseIpv4Octet(part)
+            count += 1
+        }
+
+        if count != 4 {
+            return Err(AddressError.InvalidIpv4)
+        }
+
+        return Ok(new Ipv4Address(
+            octets[0],
+            octets[1],
+            octets[2],
+            octets[3],
+        ))
+    }
+
+    fn ToString() string {
+        return byte(self.A).ToString(byte.ByteStringFormat.Decimal)
+        + "."
+        + byte(self.B).ToString(byte.ByteStringFormat.Decimal)
+        + "."
+        + byte(self.C).ToString(byte.ByteStringFormat.Decimal)
+        + "."
+        + byte(self.D).ToString(byte.ByteStringFormat.Decimal)
+    }
+
+    property Bytes: byte[4] {
+        get {
+            return [
+                byte(self.A),
+                byte(self.B),
+                byte(self.C),
+                byte(self.D),
+            ]
+        }
+    }
+
+    property IsUnspecified: bool {
+        get {
+            return byte(self.A) == 0 &&
+            byte(self.B) == 0 &&
+            byte(self.C) == 0 &&
+            byte(self.D) == 0
+        }
+    }
+
+    property IsLoopback: bool {
+        get {
+            return byte(self.A) == 127
+        }
+    }
+
+    property IsMulticast: bool {
+        get {
+            return byte(self.A) in byte(224)..byte(239)
+        }
+    }
+
+    property IsLinkLocal: bool {
+        get {
+            return byte(self.A) == 169 &&
+            byte(self.B) == 254
+        }
+    }
+
+    property IsPrivate: bool {
+        get {
+            if byte(self.A) == 10 {
+                return true
+            }
+
+            if byte(self.A) == 172 &&
+            byte(self.B) in byte(16)..byte(31) {
+                return true
+            }
+
+            return byte(self.A) == 192 &&
+            byte(self.B) == 168
+        }
+    }
+
+    fn _ParseIpv4Octet(text: string) Result[byte, AddressError] {
+        if text.ByteLen == 0 {
+            return Err(AddressError.InvalidIpv4)
+        }
+
+        let mut value: byte := 0
+        let mut index: uint := 0
+
+        while index < text.ByteLen {
+            let current := text.ByteAt(index)
+
+            if current not in byte('0')..byte('9') {
+                return Err(AddressError.InvalidIpv4)
+            }
+
+            let digit := current - byte('0')
+
+            // Check the range before performing the arithmetic so the byte
+            // value cannot overflow while parsing.
+            if value > 25 ||
+            (value == 25 && digit > 5) {
+                return Err(AddressError.InvalidIpv4)
+            }
+
+            value = value * 10 + digit
+            index += 1
+        }
+
+        return Ok(value)
+    }
+}

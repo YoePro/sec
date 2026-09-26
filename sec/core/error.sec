@@ -44,8 +44,8 @@ enum MathError error {
     NotFinite,
 }
 
-enum StringError error {
-    InvalidUtf8,
+type StringError union error {
+    InvalidUtf8(uint),
     InvalidCodePoint,
     AllocationFailed,
     OutOfBounds,

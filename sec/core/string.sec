@@ -246,7 +246,7 @@ impl string {
             if first in 0xC2..0xDF {
                 if index + 1 >= value.Len ||
                 !_IsUtf8Continuation(value[index + 1]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 2
@@ -261,7 +261,7 @@ impl string {
                 if index + 2 >= value.Len ||
                 !(value[index + 1] in 0xA0..0xBF) ||
                 !_IsUtf8Continuation(value[index + 2]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 3
@@ -273,7 +273,7 @@ impl string {
                 if index + 2 >= value.Len ||
                 !_IsUtf8Continuation(value[index + 1]) ||
                 !_IsUtf8Continuation(value[index + 2]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 3
@@ -286,7 +286,7 @@ impl string {
                 if index + 2 >= value.Len ||
                 !(value[index + 1] in 0x80..0x9F) ||
                 !_IsUtf8Continuation(value[index + 2]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 3
@@ -302,7 +302,7 @@ impl string {
                 !(value[index + 1] in 0x90..0xBF) ||
                 !_IsUtf8Continuation(value[index + 2]) ||
                 !_IsUtf8Continuation(value[index + 3]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 4
@@ -315,7 +315,7 @@ impl string {
                 !_IsUtf8Continuation(value[index + 1]) ||
                 !_IsUtf8Continuation(value[index + 2]) ||
                 !_IsUtf8Continuation(value[index + 3]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 4
@@ -331,7 +331,7 @@ impl string {
                 !(value[index + 1] in 0x80..0x8F) ||
                 !_IsUtf8Continuation(value[index + 2]) ||
                 !_IsUtf8Continuation(value[index + 3]) {
-                    return Err(StringError.InvalidUtf8)
+                    return Err(StringError.InvalidUtf8(index))
                 }
 
                 index += 4
@@ -340,7 +340,7 @@ impl string {
 
             // Continuation bytes used as leading bytes, C0/C1, and
             // F5..FF cannot begin a valid UTF-8 sequence.
-            return Err(StringError.InvalidUtf8)
+            return Err(StringError.InvalidUtf8(index))
         }
 
         return Ok(value.ToString())

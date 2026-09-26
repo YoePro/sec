@@ -1044,7 +1044,7 @@ Possible commands:
 
 ```
 sec check shop --language sv
-sec explain S3101 --language en
+sec diagnostics S3101 --language en
 ```
 
 The project manifest may recommend a language, but it must not prevent individual developers from selecting another language.
@@ -1083,13 +1083,13 @@ help:
     remove the statement or move it before the return
 ```
 
-Diagnostic explanation command
-------------------------------
+Diagnostic detail command
+-------------------------
 
 The compiler should provide:
 
 ```
-sec explain S3001
+sec diagnostics S3001
 ```
 
 The explanation may contain:
@@ -1527,7 +1527,7 @@ Documentation generation
 
 The diagnostic registry should generate or feed:
 
-* `sec explain`
+* `sec diagnostics <ID>`
 * online or packaged diagnostic documentation
 * LSP code metadata
 * compiler test fixtures
@@ -1537,6 +1537,12 @@ The diagnostic registry should generate or feed:
 =============================================================================================================================================================================================
 Testing
 =======
+
+Shared compiler-test harness behavior, including diagnostic-set assertions,
+source markers, recovery execution, matrix execution, cross-interface checks,
+machine-applicable-fix execution, and evidence traceability, is defined by
+`rules/compiler/compiler_testing.md`. This rulebook remains the owner of
+diagnostic identity, structure, severity, localization, help, and fixes.
 
 Diagnostic tests should primarily assert:
 
@@ -1664,7 +1670,7 @@ Implement:
 * locale selection
 * catalog argument validation
 * English fallback
-* localized `sec explain`
+* localized `sec diagnostics <ID>`
 
 Phase 6 - Mentor analysis
 -------------------------
@@ -1839,7 +1845,7 @@ Not yet complete:
 * full migration of every compiler/build diagnostic to registered IDs
 * structured localized messages
 * translation catalogs
-* `sec explain`
+* `sec diagnostics <ID>`
 * complete dead-code analysis
 * complete unused-declaration analysis
 * configurable advisory categories and presets
@@ -1875,7 +1881,7 @@ Normative summary
 17. Notes, help and fixes belong to a primary diagnostic and normally have no separate ID.
 18. Diagnostic messages are structured data rendered through localized catalogs.
 19. English is the canonical fallback language.
-20. `sec explain <ID>` should provide an extended explanation.
+20. `sec diagnostics <ID>` should provide an extended explanation.
 21. Diagnostic tests should assert IDs and locations rather than exact English wording.
 22. Register `_`, match discard patterns and underscore visibility prefixes are separate language constructs.
 23. Underscore-prefixed identifiers do not suppress unused analysis.

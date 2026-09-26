@@ -1,0 +1,25 @@
+module core
+
+enum FormatAlignment {
+    Default
+    Left
+    Center
+    Right
+}
+
+enum FormatSign {
+    Default
+    Always
+    Space
+}
+
+type FormatSpec struct {
+    Fill: rune,
+    Alignment: FormatAlignment,
+    Sign: FormatSign,
+    Alternate: bool,
+    ZeroPad: bool,
+    Width: Option[uint],
+    Precision: Option[uint],
+    Presentation: Option[rune],
+}

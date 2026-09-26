@@ -95,7 +95,7 @@ fragments:
   - path: stdlib.yaml
     owns: standard-library implementation and catalog status
   - path: testing.yaml
-    owns: language testing infrastructure and test-tooling status
+    owns: language and compiler testing infrastructure, conformance evidence, and test-tooling status
   - path: tooling.yaml
     owns: shared tooling infrastructure and cross-tooling coordination
   - path: tooling_lsp.yaml

@@ -1,6 +1,6 @@
 schema_version: 1
 area: testing
-purpose: Language testing infrastructure and test-tooling status.
+purpose: Language and compiler testing infrastructure, conformance evidence, and test-tooling status.
 integrations:
   - id: tooling.language-testing
     area: language-testing-and-tooling
@@ -89,6 +89,7 @@ integrations:
         testing signatures, and equality operation facts and diagnostics;
         `go test ./...` passes
       - formatter projects valid top-level test-name strings onto exact CST roles, canonicalizes only their horizontal block-header trivia in the shared CST pass, uses ordinary block and testing-call formatting, preserves the exact test-name token including spacing and escapes, remains idempotent, and does not rewrite ordinary identifiers, calls, functions, or strings named test
+      - rulebook inventory and directory documentation distinguish the written source-language testing contract from rules/compiler/compiler_testing.md and its compiler-verification infrastructure
     remaining:
       - require TestCompilationPlan context in addition to the implemented
         *_test.sec filename check, complete remaining declaration diagnostics,
@@ -134,9 +135,8 @@ integrations:
         remove the obsolete source-visible std/... standard-library import prefix
         and preserve direct logical imports such as `import "io"` and
         `import "net/http"`
-      - update language-rulebook-status.md and rules/README.md for the new written
-        source-level testing rulebook while keeping compiler_testing.md as a
-        separate planned compiler-verification document
+    corrections_applied:
+      - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     deferred:
       - benchmark source syntax and sec benchmark semantics
       - fuzz source syntax and sec fuzz semantics
@@ -152,3 +152,250 @@ integrations:
         result: passed; canonical header/body/call formatting, exact name preservation, contextual test identifier behavior, and idempotence are covered
       - command: go test ./internal/cst ./internal/formatter -run 'ApplyProgramRolesMarksOnlyTopLevelTestDeclarationNames|TopLevelTestDeclaration' -count=1
         result: passed on 2026-09-25 with parser-owned CST role scoping, exact test-name preservation, ordinary identifier/call/string separation, canonical header trivia, and idempotence
+
+  - id: testing.compiler-verification-v1
+    area: compiler-testing-and-conformance
+    status: partial
+    integrated: null
+    document_revision: "1.0"
+    repository_baseline: main-reviewed-2026-09-26
+    summary: >-
+      Implements the canonical Sec 0.1 compiler-verification model: complementary
+      unit, stage-boundary and end-to-end evidence; registered structured diagnostic
+      conformance; Semantic IR as the primary semantic checkpoint; negative verifier
+      testing; invariant-oriented lowering and backend/artifact verification;
+      executable and differential conformance; required fuzzing and mutation testing;
+      deterministic isolated tests; contract-driven target/optimization/debug matrices;
+      regression provenance and corpus lifecycle; and three-layer debug-information
+      conformance. Compiler tests are evidence for canonical feature rulebooks and do
+      not become a second language specification.
+    rules:
+      - rules/compiler/compiler_testing.md
+      - rules/tooling/testing.md
+      - rules/tooling/diagnostics.txt
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/debug_information.md
+      - rules/compiler/monomorphization.md
+      - rules/compiler/linking.md
+      - rules/mlir/sec_mlir.md
+      - rules/platform/target_profiles.md
+      - rules/platform/abi.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/diagnostics/diagnostics.go
+      - internal/parser/parser.go
+      - internal/sema/errors.go
+      - cmd/compiler/diagnostic_catalog.go
+      - cmd/lsp/main.go
+    tests:
+      - cmd/compiler/diagnostic_catalog_test.go
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - cmd/compiler/main_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - id: testing.compiler-verification-v1.host-test-foundation
+        description: >-
+          Repository host-language tests already exercise parser, semantic analyzer,
+          compiler CLI and LSP implementation code; these are useful local and
+          integration foundations but are not by themselves the complete canonical
+          compiler-verification harness.
+      - id: testing.compiler-verification-v1.diagnostic-registry
+        description: >-
+          A central diagnostic registry exists with stable ID, symbolic name, family,
+          default severity, mandatory classification and retired state; registered
+          definitions are the existing canonical identity surface consumed by tests.
+      - id: testing.compiler-verification-v1.diagnostic-catalog
+        description: >-
+          `sec diagnostics` and `sec diagnostics --json` expose the registered catalog;
+          catalog tests verify definition-field preservation, schema reflection and
+          registry/catalog consistency for the currently modeled structures.
+      - id: testing.compiler-verification-v1.parser-recovery-foundation
+        description: >-
+          Parser diagnostics and recovery already expose structured compatibility
+          information including diagnostic IDs, primary tokens, expected/unexpected
+          tokens, recovery context and recovery episodes; bounded/deduplicated recovery
+          behavior is represented in the current parser implementation.
+      - id: testing.compiler-verification-v1.lsp-diagnostic-identity
+        description: >-
+          LSP semantic diagnostics already expose the compiler diagnostic ID as the LSP
+          diagnostic code, providing an existing cross-interface identity foundation.
+      - id: testing.compiler-verification-v1.semantic-ir-verifier-foundation
+        description: >-
+          Existing compiler governance records a Semantic IR and dedicated verifier as
+          an implemented compiler-pipeline foundation. The new rulebook requires this
+          foundation to gain systematic positive, negative, fuzz and mutation evidence.
+    partial:
+      - id: testing.compiler-verification-v1.structured-diagnostics-migration
+        description: >-
+          Diagnostic conformance is only partially migrated: many compiler paths still
+          use legacy/raw diagnostic forms, and the current catalog explicitly reports
+          incomplete coverage. Full conformance requires every emitted primary
+          diagnostic to use the canonical registry/occurrence model.
+      - id: testing.compiler-verification-v1.stage-local-coverage
+        description: >-
+          Parser, Sema and compiler tests exist, but there is not yet one canonical
+          evidence model tying every normative compiler obligation to stage-local and
+          downstream tests with sufficient-evidence auditing.
+      - id: testing.compiler-verification-v1.regression-practice
+        description: >-
+          The repository contains regression-style tests, but the stable identity,
+          failure-predicate provenance, obligation linkage, reduction workflow and
+          retirement traceability required by this rulebook are not yet implemented as
+          a unified compiler-testing contract.
+      - id: testing.compiler-verification-v1.target-matrix-foundation
+        description: >-
+          Compiler and linking governance already call for cross-compilation,
+          multi-Variant and deterministic tests, but contract-driven matrix expansion,
+          per-cell evidence states and inspectable selection plans are not yet a
+          canonical shared harness facility.
+      - id: testing.compiler-verification-v1.debug-test-foundation
+        description: >-
+          debug_information.md defines the required structural, physical-format and
+          debugger-integration evidence, but the common debugger-driving and normalized
+          Sec-observation harness required here is not yet implemented.
+    unimplemented:
+      - id: testing.compiler-verification-v1.canonical-harness
+        description: >-
+          Implement a shared compiler-test harness model with stable case identity,
+          independent fixture/oracle representation, exact/required/forbidden
+          assertions, independent case selection, failure artifacts and fail-closed
+          metadata validation.
+      - id: testing.compiler-verification-v1.obligation-evidence-graph
+        description: >-
+          Implement machine-readable traceability from canonical feature/integration
+          obligations to sufficient tests and required concrete matrix executions.
+      - id: testing.compiler-verification-v1.semantic-ir-assertions
+        description: >-
+          Add structured Semantic IR assertions for ownership, Place identity,
+          availability, cleanup, effects, specialization identity and provenance rather
+          than relying only on implementation text dumps.
+      - id: testing.compiler-verification-v1.negative-verifier-suite
+        description: >-
+          Add deliberately invalid Semantic IR/Sec MLIR/verifier fixtures and ensure
+          verifier failures are controlled and invariant-specific.
+      - id: testing.compiler-verification-v1.verifier-fuzzing
+        description: >-
+          Add structure-aware verifier fuzzing, including mutation of otherwise-valid IR
+          to violate one invariant at a time.
+      - id: testing.compiler-verification-v1.compiler-fuzzing
+        description: >-
+          Add required arbitrary-source robustness fuzzing and structure-aware source or
+          compiler-path fuzzing with bounded resource controls, replayable concrete
+          inputs and ordinary regression promotion.
+      - id: testing.compiler-verification-v1.generated-metamorphic-testing
+        description: >-
+          Add verified program generators and explicit invariant-backed metamorphic
+          transformations for deeper semantic/differential compiler testing.
+      - id: testing.compiler-verification-v1.fault-injection
+        description: >-
+          Add verified deterministic fault injection for allocation, process, IPC, I/O,
+          resource and other failure paths whose rollback/cleanup semantics cannot be
+          exercised reliably from ambient host failures.
+      - id: testing.compiler-verification-v1.contract-matrix-engine
+        description: >-
+          Add deterministic inspectable contract-driven matrix expansion over relevant
+          Target, Variant, ABI, optimization, debug, implementation-path and capability
+          classes without requiring a full Cartesian product.
+      - id: testing.compiler-verification-v1.path-enforcement
+        description: >-
+          Add test metadata capable of requiring a canonical lowering/backend path and
+          forbidding fallback so legacy success cannot certify an unused replacement
+          path.
+      - id: testing.compiler-verification-v1.plan-isolation
+        description: >-
+          Add multi-Variant and cross-compilation tests that verify target-plan, artifact,
+          diagnostic and relevant cache isolation and detect compiler-host leakage.
+      - id: testing.compiler-verification-v1.test-isolation
+        description: >-
+          Add canonical per-test temporary/output isolation, explicit resource locks,
+          sharding semantics, randomized-order/repeat modes and reproducible seed/input
+          capture.
+      - id: testing.compiler-verification-v1.flake-classification
+        description: >-
+          Add canonical intermittent-failure classification where retry may diagnose but
+          never convert an observed failure into an ordinary pass; keep quarantine
+          distinct from skip and from passing evidence.
+      - id: testing.compiler-verification-v1.harness-self-tests
+        description: >-
+          Add direct fail-closed self-tests for expectation parsing, matrix selection,
+          marker resolution, outcome classification, timeouts, artifact comparison,
+          skip/quarantine handling and other pass/fail machinery.
+      - id: testing.compiler-verification-v1.mutation-testing
+        description: >-
+          Add required mutation or equivalent deliberate implementation-fault testing
+          for soundness-critical ownership, borrowing, types/generics, effects, cleanup,
+          verifier, atomics, ABI/layout, target-capability and transactional logic.
+      - id: testing.compiler-verification-v1.survivor-review
+        description: >-
+          Track killed, survived, equivalent, unbuildable, timeout and infrastructure
+          mutation outcomes and require explicit review of non-equivalent survivors.
+      - id: testing.compiler-verification-v1.regression-provenance
+        description: >-
+          Add stable regression provenance, failure-predicate preservation, practical
+          reduction, pre-fix failure evidence where possible and traceable retirement.
+      - id: testing.compiler-verification-v1.metadata-schema
+        description: >-
+          Define strict persistent compiler-test metadata schema/version behavior once a
+          cross-version harness format is introduced; unknown fields/versions must fail
+          closed rather than weaken old expectations.
+      - id: testing.compiler-verification-v1.corpus-roles
+        description: >-
+          Separate curated conformance, curated regression, generated/property, fuzz
+          exploration and external corpus roles with reproducible promotion of failures.
+      - id: testing.compiler-verification-v1.external-provenance
+        description: >-
+          Record or constrain material LLVM, linker, debugger, emulator, hardware/runtime
+          provider and external-corpus versions; model intentional version variation as
+          an explicit matrix dimension.
+      - id: testing.compiler-verification-v1.debugger-harness
+        description: >-
+          Implement normalized debugger-driving tests for LineTables and Full, optimized
+          variable availability, generic/logical frame identities, observational safety,
+          artifact/source correlation and negative debug capabilities.
+      - id: testing.compiler-verification-v1.debug-semantic-equivalence
+        description: >-
+          Add representative execution comparison across None, LineTables and Full with
+          relevant optimization classes to prove debug configuration does not change Sec
+          program semantics.
+      - id: testing.compiler-verification-v1.incremental-differential-hook
+        description: >-
+          Reserve the generic cold-versus-incremental differential/matrix mechanism;
+          concrete invalidation and cache-reuse semantics remain owned by the future
+          incremental_compilation.md rulebook.
+      - id: testing.compiler-verification-v1.diagnostic-detail-command
+        description: >-
+          Implement and test canonical `sec diagnostics <ID>` detailed lookup consistent
+          with the registry and list/JSON catalog for both human and machine-assisted
+          investigation.
+    identified_bugs:
+      - id: testing.compiler-verification-v1.bug.diagnostic-prefix-drift
+        severity: medium
+        description: >-
+          rules/tooling/diagnostics.txt allocates lexical/tokenization diagnostics under
+          the P1xxx range, but internal/diagnostics currently publishes lexer diagnostics
+          as L1001-L1020. Stable published IDs must not be casually renumbered, so the
+          diagnostics owner must explicitly reconcile the written allocation policy with
+          the existing registry before claiming complete diagnostic conformance.
+        evidence:
+          - rules/tooling/diagnostics.txt
+          - internal/diagnostics/diagnostics.go
+        owner: errors_diagnostics
+    excluded:
+      - source-language fuzz declarations or sec fuzz command semantics
+      - source-level mutation-testing APIs
+      - a mandatory host programming language or unit-test framework
+      - one mandatory fuzzing engine or debugger
+      - one universal compiler-test metadata file format before such a format is needed
+      - global correctness thresholds expressed only as test count, line coverage or mutation score
+      - duplication of feature-specific semantic implementation backlogs
+      - ordinary CI execution-history storage in governance
+    corrections_applied:
+      - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
+    governance_reconciliation:
+      - testing.compiler-verification-v1 is merged beside tooling.language-testing without transferring source-language test semantics
+      - governance/index.yaml assigns testing.yaml ownership of compiler-testing infrastructure and conformance evidence
+      - feature-specific evidence gaps remain in their existing semantic-owner fragments and are cross-linked rather than duplicated here
+      - compiler.debug-information-v1 treats this integration as the active owner of shared debugger-driving and harness infrastructure
+      - incremental cache/invalidation semantics remain deferred to incremental_compilation.md while generic differential-test hooks are owned here

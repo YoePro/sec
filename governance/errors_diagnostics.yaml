@@ -33,7 +33,9 @@ integrations:
       - CLI prints the stable code and help; LSP publishes the same Sema code and help
     remaining:
       - route other proven-unreachable statement paths, including non-literal compile-time condition proofs, through the same canonical S3001 diagnostic where their flow proof exists
-      - implement the general sec explain S3001 command, localization, and machine-readable emitted-diagnostic output
+      - implement the canonical sec diagnostics S3001 detailed lookup, localization, and machine-readable emitted-diagnostic output
+    corrections_applied:
+      - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     verification:
       - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler -run 'Test(UnreachableStatementsInsideWhileBody|SwitchCaseReportsUnreachableAfterReturn|InfiniteForWithContinueMakesFollowingReturnUnreachable|CancelOutsideCancellableContext|AssertFalseRejectsFollowingCodeButUnprovenAssertFallsThrough|PrintSemaErrorIncludesStableIDAndDescription|RegistryIsValid|KnownDiagnosticSeverities)' -count=1
         result: passed

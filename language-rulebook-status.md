@@ -320,7 +320,7 @@ The remaining details to close are:
 | `declarations/static.md` | **Written** | Explicit static is required for type-owned impl bindings, including immutable bindings. Implementation is tracked by frontend.static-declarations-members. |
 | `control-flow/discard.md` | **Written** | Canonical revision 2.0 explicit and implicit discard, must-use/discardability, reinitialization, lifecycle-handle, and deterministic destruction semantics. The implemented frontend slice and remaining lowering, Place, diagnostics, path-sensitive, and aggregate-temporary work are tracked by `frontend.discard-v2` and `frontend.discard-aggregate-temporary-ownership` in `governance/control_flow.yaml`. |
 | `memory/storage.md` | **Written** | Canonical revision 2.0 storage origin, backing relation, reclamation authority, address stability, regions, invalidation domains, epochs, pin/protection state, memory spaces, placement, concurrency, Semantic IR, lowering, and diagnostics. Implementation progress is tracked by the six `*.storage` entries in `implementation-status.yaml`. |
-| `memory/layout.md` | **Written** | Canonical revision 2.0 semantic/native/explicit layout, size, alignment, stride, padding, aggregate and union representation, completeness, validity, target plans, ABI/register integration, Semantic IR, lowering, and tooling. Implementation progress is tracked by the six `*.layout` entries in `implementation-status.yaml`. |
+| `memory/layout.md` | **Written** | Canonical revision 2.0 semantic/native/explicit layout, size, alignment, stride, padding, aggregate and union representation, completeness, validity, target plans, ABI/register integration, Semantic IR, lowering, and tooling. Implementation progress is tracked by `analysis.layout` in `governance/analysis.yaml` and the other five `*.layout` entries in `governance/memory.yaml`. |
 
 `storage_allocation.txt` from the old checklist is replaced by the clearer
 canonical rulebook:
@@ -572,12 +572,12 @@ multiple target outputs
 
 | Rulebook | Status | Notes |
 |---|---|---|
-| `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; LSP exposes parser/sema codes. Proven statements after a block terminator now carry mandatory S3001 with explanatory help in CLI and LSP, tracked by `diagnostics.unreachable-statement-s3001` in `governance/errors_diagnostics.yaml`. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
+| `tooling/diagnostics.txt` | **Written — sync required** | Central registry and `sec diagnostics [--json]` expose all registered definitions plus complete definition/parser/sema/token field schemas; `sec diagnostics <ID>` is the canonical detailed lookup but remains unimplemented. LSP exposes parser/sema codes. Proven statements after a block terminator now carry mandatory S3001 with explanatory help in CLI and LSP, tracked by `diagnostics.unreachable-statement-s3001` in `governance/errors_diagnostics.yaml`. Full ID migration, localization and machine-readable emitted-diagnostic output remain. |
 | `tooling/formatter.md` | **Written** | Revision 2.0 defines canonical, project-configured formatting with stable paragraph IDs, `format_version = 1`, lossless error-tolerant syntax requirements, complete Sec surface layout, malformed-region preservation, and an opt-in grammar-aware Language Corrections layer. The shared CLI/LSP formatter, explicit-file check/stdin modes, lexer-backed CST foundation, delimiter handling, and selected spacing/alignment behavior exist; the full layout/configuration/correction/conformance contract remains partial under `tooling.formatter-v2` in `governance/formatting.yaml`. |
 | `tooling/testing.md` | **Written** | Canonical source-level `test`, `*_test.sec`, `sec test`, compiler-known `testing.*`, subtests, integration tests, `TestCompilationPlan`, execution-provider, structured-result, LSP and editor-integration semantics. Sema validates `ExpectEqual`/`RequireEqual` with canonical equality rules (S1042-S1043) and `Pass`/`Fail`/`Skip` signatures (S1044); terminal flow, execution, and lowering remain open. Implementation progress is tracked by `tooling.language-testing`. |
 | `compiler_diagnostics.md` | **Covered** | Compiler diagnostic policy remains canonical in `tooling/diagnostics.txt`; avoid duplication. |
 | `compiler/debug_information.md` | **Written** | Canonical Sec 0.1 debug-information model: None/LineTables/Full, source step points, truthful optimized values, ownership/lifetime availability, concrete generic identities, logical task/thread/process debug views, split artifacts/source correlation, target-neutral lowering, and compiler conformance. Implementation is tracked by `compiler.debug-information-v1` in `governance/compiler.yaml`. |
-| `compiler_testing.md` | **Planned** | Compiler unit, integration, invalid, regression, lowering, and backend tests. |
+| `compiler/compiler_testing.md` | **Written** | Canonical compiler-verification model covering compiler test classes, structured diagnostic and recovery verification, Semantic IR and lowering checks, backend/artifact and executable conformance, fuzzing and mutation testing, deterministic isolation and contract-driven matrices, regression/corpus provenance, and debug-information conformance infrastructure. Implementation progress is tracked by `testing.compiler-verification-v1` in `governance/testing.yaml`. |
 | `incremental_compilation.md` | **Planned** | Dependency invalidation, generic specialization caches, and target-aware rebuilds. |
 | `tooling/lsp.md` | **Living** | Canonical language-server architecture and feature rulebook; static and instance bindings are distinct, and impl static-removal advice is withdrawn. Nested member completion uses the active cursor and recoverable same-module declarations. Shared bidirectional source-position mapping now covers diagnostics, hover, navigation, references, highlights, call hierarchy, document symbols, edits, and semantic tokens using protocol UTF-16 coordinates, compiler scalar columns, multiline tokens, and LF/CRLF/CR normalization. Diagnostic refreshes are coalesced per module with obsolete-result rejection; in-flight analysis cancellation and cross-feature caching remain pending. Implementation remains partial as detailed in governance. |
 
@@ -602,6 +602,7 @@ concurrency/channels.md
 compiler/compiler.md
 compiler/compiler_analysis.md
 compiler/compiler_pipeline.md
+compiler/compiler_testing.md
 compiler/compiler_known_members.md
 compiler/debug_information.md
 compiler/linking.md
@@ -721,7 +722,6 @@ The following rulebooks are currently expected before Sec 0.1 can be considered
 fully design-closed, unless a later decision explicitly merges one into another.
 
 ```text
-compiler_testing.md
 incremental_compilation.md
 ```
 

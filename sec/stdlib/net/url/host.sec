@@ -1,26 +1,167 @@
+/*
+ * Sec Standard Library - net/url - Host syntax
+ *
+ * File:        stdlib/net/url/host.sec
+ * Module:      url
+ * Revision:    1
+ * Updated:     2026-09-15
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * RFC 3986 host parsing and canonical serialization for registered names,
+ * IPv4 address literals, IPv6 address literals, and IPvFuture literals.
+ *
+ * Standards:
+ * - RFC 3986 section 3.2.2
+ *     https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
+ * - RFC 5952
+ *     https://www.rfc-editor.org/rfc/rfc5952
+ * - RFC 9844
+ *     https://www.rfc-editor.org/rfc/rfc9844
+ *
+ * Rulebook:
+ * stdlib/net/url/std-net-url.md
+ */
 module url
 
-/*
-* Sec Standard Library - net/url - Host syntax
-*
-* File:        stdlib/net/url/host.sec
-* Module:      url
-* Revision:    1
-* Updated:     2026-09-15
-* Author:      Jonas Engström
-*
-* Purpose:
-*   RFC 3986 host parsing and canonical serialization for registered names,
-*   IPv4 address literals, IPv6 address literals, and IPvFuture literals.
-*
-* Standards:
-*   - RFC 3986 section 3.2.2
-*     https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
-*   - RFC 5952
-*     https://www.rfc-editor.org/rfc/rfc5952
-*   - RFC 9844
-*     https://www.rfc-editor.org/rfc/rfc9844
-*
-* Rulebook:
-*   stdlib/net/url/std-net-url.md
-*/
+import "net/ip"
+
+enum HostKind {
+    // An RFC 3986 registered-name, including the valid empty host.
+    RegisteredName,
+
+    // An RFC 3986 dotted-decimal IPv4 address.
+    IPv4,
+
+    // An RFC 3986 IP-literal containing an IPv6 address.
+    IPv6,
+
+    // An RFC 3986 IPvFuture IP-literal.
+    IPvFuture,
+}
+
+type Host struct {
+    _value: string,
+    _kind: HostKind,
+}
+
+impl Host {
+    /**
+     * Parses one RFC 3986 host component.
+     *
+     * Parameters:
+     * - value: Serialized host component, including brackets for IP-literals.
+     *
+     * Returns:
+     * A validated Host in canonical textual form.
+     *
+     * Errors:
+     * - ParseError.InvalidHost: Host syntax is invalid.
+     * - ParseError.InvalidPercentEncoding: A registered-name escape is malformed.
+     *
+     * Standards:
+     * - RFC 3986 section 3.2.2.
+     * - RFC 5952 for serialized IPv6 text.
+     */
+    static fn Parse(value: string) Result[Host, ParseError] {
+        if value.ByteLen == 0 {
+            return Ok(Host {
+                _value: "",
+                _kind: HostKind.RegisteredName,
+            })
+        }
+
+        if value.ByteAt(0) == byte('[') {
+            return _ParseIPLiteral(value)
+        }
+
+        let mut index: uint := 0
+
+        while index < value.ByteLen {
+            let current := value.ByteAt(index)
+
+            if current == byte('[') ||
+            current == byte(']') {
+                return Err(ParseError.InvalidHost(index))
+            }
+
+            index += 1
+        }
+
+        if _IsIPv4(value) {
+            return Ok(Host {
+                _value: value,
+                _kind: HostKind.IPv4,
+            })
+        }
+
+        if _IsLegacyIPv4(value) {
+            return Err(ParseError.InvalidHost(0))
+        }
+
+        return _ParseRegisteredName(value)
+    }
+
+    /** Returns the parsed host category. */
+    property Kind: HostKind {
+        get {
+            return _kind
+        }
+    }
+
+    /** Returns the canonical host value without IPv6/IPvFuture square brackets. */
+    property Value: string {
+        get {
+            return _value
+        }
+    }
+
+    /** Returns true when this is the RFC-valid empty registered-name host. */
+    property IsEmpty: bool {
+        get {
+            return _kind == HostKind.RegisteredName &&
+            _value.ByteLen == 0
+        }
+    }
+
+    /** Returns true for IPv4 or IPv6 host literals. */
+    property IsIP: bool {
+        get {
+            return _kind == HostKind.IPv4 || _kind == HostKind.IPv6
+        }
+    }
+
+    /** Returns true for a registered-name host. */
+    property IsRegisteredName: bool {
+        get {
+            return _kind == HostKind.RegisteredName
+        }
+    }
+
+    /**
+     * Serializes the host component.
+     *
+     * Returns:
+     * Registered names and IPv4 addresses directly; IPv6 and IPvFuture inside
+     * square brackets.
+     */
+    fn ToString() string {
+        match _kind {
+            HostKind.IPv6 => {
+                return "[" + _value + "]"
+            }
+
+            HostKind.IPvFuture => {
+                return "[" + _value + "]"
+            }
+
+            HostKind.IPv4 => {
+                return _value
+            }
+
+            HostKind.RegisteredName => {
+                return _value
+            }
+        }
+    }
+}

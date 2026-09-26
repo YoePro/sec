@@ -477,7 +477,7 @@ impl Ipv4Address {
     static fn Parse(text: string) Result[Ipv4Address, AddressError]
 
     fn ToString() string
-    fn Bytes() byte[4]
+    property Bytes: byte[4] { get { ... } }
 
     property IsUnspecified: bool { get { ... } }
     property IsLoopback: bool { get { ... } }

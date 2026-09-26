@@ -960,7 +960,7 @@ impl Host {
      *   Registered names and IPv4 addresses directly; IPv6 and IPvFuture inside
      *   square brackets.
      */
-    fn String() string
+    fn ToString() string
 }
 ```
 

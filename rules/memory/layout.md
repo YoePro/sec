@@ -6,6 +6,7 @@
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/layout.md`
+- Implementation governance: `governance/memory.yaml`
 - Replaces: previous revision of `rules/memory/layout.md`
 - Repository baseline reviewed: `814a584` (latest publicly verifiable `main`; current `main` contents reviewed 2026-09-02)
 

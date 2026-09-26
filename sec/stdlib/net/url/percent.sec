@@ -153,12 +153,20 @@ fn PercentDecode(value: string) Result[string, PercentError] {
     let bytes := try PercentDecodeBytes(value)
 
     let decoded := try string.FromByteArray(bytes) {
-        Err(StringError.InvalidUtf8(offset)) => {
-            return Err(PercentError.InvalidUtf8(offset))
+        Err(StringError.InvalidUtf8(index)) => {
+            return Err(PercentError.InvalidUtf8(index))
         }
 
-        Err(StringError.AllocationFailed(error)) => {
-            return Err(PercentError.Allocation(error))
+        Err(StringError.AllocationFailed) => {
+            return Err(PercentError.Allocation)
+        }
+
+        Err(StringError.InvalidCodePoint) => {
+            unreachable
+        }
+
+        Err(StringError.OutOfBounds) => {
+            unreachable
         }
     }
 

@@ -70,6 +70,7 @@ integrations:
       - rules/memory/layout.md
       - rules/platform/hardware-register-access.md
       - rules/tooling/lsp.md
+      - rules/compiler/compiler_testing.md
     implemented: []
     existing_foundations:
       - Semantic IR already preserves canonical source provenance and semantic identities required by debug lowering.
@@ -131,11 +132,12 @@ integrations:
       - complete serialization of Semantic IR or the compiler semantic database into Full debug artifacts
     corrections_applied:
       - rules/corrections/applied/debug-information-cross-rulebook-correction-20260923.md
+      - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     governance_reconciliation:
       - keep governance/index.yaml unchanged because compiler.yaml already owns compiler pipeline, linking, initialization, and artifacts
       - cross-link compiler.backend-architecture and compiler.linking to debug-provenance and final-artifact obligations without duplicating their existing work
       - leave target/platform capability ownership in the existing CompilationPlan/target governance model; debug-information consumes resolved target facts
-      - make compiler_testing.md own the harness and debugger-driving infrastructure when that rulebook is written
+      - testing.compiler-verification-v1 in governance/testing.yaml actively owns the shared compiler-test harness and debugger-driving infrastructure; this integration retains feature-specific debug-information evidence obligations
       - make incremental_compilation.md own cache invalidation and reuse rules for debug/backend artifact state when that rulebook is written
   - id: compiler.linking
     area: compiler-linking-and-artifacts

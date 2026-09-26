@@ -4712,7 +4712,7 @@ func TestFocusedRecoveryDiagnosticMetadata(t *testing.T) {
 		expected   lexer.TokenType
 		unexpected lexer.TokenType
 	}{
-		{input: "? damaged", id: diagnostics.ParserUnexpectedToken, unexpected: lexer.QUESTION},
+		{input: "? damaged", id: diagnostics.ParserReservedSyntax, unexpected: lexer.QUESTION},
 		{input: "else {}", id: diagnostics.ParserMisplacedKeyword, unexpected: lexer.ELSE},
 		{input: "type Broken struct (", id: diagnostics.ParserMissingToken, expected: lexer.LBRACE, unexpected: lexer.LPAREN},
 	}
@@ -4733,6 +4733,35 @@ func TestFocusedRecoveryDiagnosticMetadata(t *testing.T) {
 		if test.expected != "" && (len(got.Expected) != 1 || got.Expected[0] != test.expected) {
 			t.Fatalf("%q expected tokens = %v, want %s", test.input, got.Expected, test.expected)
 		}
+	}
+}
+
+func TestReservedQuestionMarkHasFocusedDiagnosticAndInvalidExpression(t *testing.T) {
+	input := `
+module main
+
+fn Example() void {
+	let value := ?
+	discard value
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	if len(p.Diagnostics()) != 1 {
+		t.Fatalf("diagnostics = %+v, want one focused question-mark diagnostic", p.Diagnostics())
+	}
+	diagnostic := p.Diagnostics()[0]
+	if diagnostic.ID != diagnostics.ParserReservedSyntax || diagnostic.Message != reservedQuestionMarkMessage {
+		t.Fatalf("question-mark diagnostic = %+v", diagnostic)
+	}
+	if diagnostic.Unexpected == nil || diagnostic.Unexpected.Type != lexer.QUESTION {
+		t.Fatalf("unexpected token = %+v, want QUESTION", diagnostic.Unexpected)
+	}
+	fn := program.Statements[1].(*ast.FunctionDeclaration)
+	let := fn.Body.Statements[0].(*ast.LetStatement)
+	invalid, ok := let.Value.(*ast.InvalidExpression)
+	if !ok || invalid.Recovery == nil || invalid.Recovery.DiagnosticID != diagnostics.ParserReservedSyntax {
+		t.Fatalf("reserved question mark = %#v, want retained InvalidExpression", let.Value)
 	}
 }
 

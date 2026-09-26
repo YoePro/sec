@@ -148,6 +148,7 @@ integrations:
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-16"
+    revised: "2026-09-26"
     document_revision: "2.0"
     repository_baseline: "56be75d"
     replaces: rules/control-flow/defer.txt
@@ -306,7 +307,7 @@ integrations:
     area: frontend-control-flow
     status: partial
     integrated: "2026-08-16"
-    reviewed: "2026-09-22"
+    reviewed: "2026-09-26"
     document_revision: "2.0"
     repository_baseline: "0f92cf4"
     replaces: rules/control-flow/flowcontrol_if.txt
@@ -316,8 +317,10 @@ integrations:
       ordinary logical/comparison/membership expressions, source-ordered
       branch evaluation, lexical branch scopes, definite-assignment merging,
       terminating branches, comparison-chain rejection, and proven
-      unreachable statements. State-test/FFI boundaries and the complete
-      revision-2.0 regression matrix still require synchronization.
+      unreachable statements. Sema now publishes immutable true/false path
+      execution and continuation facts for return checking and later analyses.
+      State-test/FFI boundaries and the complete revision-2.0 regression matrix
+      still require synchronization.
     rules:
       - rules/control-flow/flowcontrol_if.md
       - rules/foundations/grammar.md
@@ -330,12 +333,14 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_control_flow.go
+      - internal/sema/analyzer_if_flow.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_if_flow_test.go
       - internal/sema/unreachable_branch_test.go
       - internal/formatter/formatter_test.go
       - internal/codegen/mlir/generator_test.go
@@ -354,6 +359,8 @@ integrations:
       - payload and structural pattern binding excluded from if conditions
       - comparison chaining rejected with a dedicated diagnostic
       - branch continuation and termination reflected in flow-state merging
+      - immutable ResolvedIfFlow facts expose true and false path execution, explicit-else presence, implicit no-branch paths, and continuation without reconstructing condition syntax
+      - function and lambda return validation consume ResolvedIfFlow, including constant conditions whose impossible path must not create a missing-return error
       - literal-unreachable branches routed through the canonical unreachable-code error policy
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
     remaining:
@@ -385,6 +392,8 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'IfConditionMustBeBool|IfBranchesCanSatisfyFunctionReturn|ComparisonChainingIsRejected|IfBranch|DefiniteAssignment' -count=1
         result: passed
+      - command: go test ./internal/sema -run 'ResolvedIfFlow|IfBranchesCanSatisfyFunctionReturn|IfConditionMustBeBool' -count=1
+        result: passed on 2026-09-26; immutable path execution and continuation facts, implicit false paths, and constant-condition return validation are covered
       - command: go test ./internal/formatter -run If -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
 
@@ -517,7 +526,8 @@ integrations:
       and Sema support ordered value, range, relational, and comma-separated
       alternatives, default and explicit fallthrough validation, independent
       case scopes, continuing-path assignment merges, termination analysis,
-      and substantial compile-time duplicate and coverage diagnostics. LLVM
+      compiler-owned ResolvedSwitchFlow coverage facts, and substantial
+      compile-time duplicate and coverage diagnostics. LLVM
       covers the currently supported expression families, while MLIR covers
       integer and bool subject switches; broader lowering, cleanup edges, and
       the complete statement-only and loop-control boundary matrix remain.
@@ -534,12 +544,16 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_switch_coverage.go
+      - internal/sema/analyzer_switch_flow.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_switch_flow_test.go
+      - internal/sema/switch_coverage_test.go
       - internal/sema/destruction_test.go
       - internal/codegen/mlir/generator_test.go
       - internal/codegen/llvm/generator_test.go
@@ -551,14 +565,15 @@ integrations:
       - unique final default validation
       - explicit fallthrough syntax, direct-case placement, final-statement, and successor validation
       - subject and case compatibility plus bool-only subjectless case checking
-      - independent case scopes with partial definite-assignment merging; fallthrough destination-state propagation remains incomplete
-      - switch termination analysis for represented direct cases; canonical fallthrough-chain flow remains partial
-      - exactly-once subject inference and lazy backend case evaluation; frontend case-test runtime-state effects remain eager
+      - independent case scopes with continuing-path definite-assignment merging and fallthrough destination-state propagation
+      - ordinary function and lambda termination analysis consume compiler-owned resolved exhaustiveness and explicit fallthrough flow
+      - exactly-once subject inference with lazy source-ordered frontend case-test state and backend case evaluation
       - compile-time duplicate integer, bool, and direct string-literal case diagnostics
       - compile-time integer range overlap and value-covered-by-range diagnostics
       - basic relational reachability diagnostics with partial overlap retained
       - enum non-exhaustiveness warning without default and bool-domain coverage
       - enum cases normalize to integer/string underlying value classes and complete closed-enum coverage participates in continuation and return analysis
+      - immutable ResolvedSwitchFlow facts expose subject type, exhaustiveness, unmatched continuation, source clause order, item counts, ordinary continuation, and explicit fallthrough without AST reconstruction
       - unreachable statements inside case bodies routed through the canonical error policy
       - LLVM lowering for the currently supported subject, subjectless, range, relational, and fallthrough subset
       - MLIR lowering for integer and bool subject switches with value alternatives
@@ -566,9 +581,9 @@ integrations:
     remaining:
       - add focused Sema and lowering tests proving switch creates no break or continue target and nested switch control resolves only to an enclosing loop
       - add dedicated parser and Sema diagnostics for switch value use, case where guards, and structural or payload-binding patterns
-      - analyze lazy case tests and explicit fallthrough with path-specific runtime state instead of committing skipped-case effects or dropping fallthrough state
+      - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
-      - preserve independent case scopes and emit correct ownership, destruction, cleanup, and control-flow edges across fallthrough
+      - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
       - lower subjectless switch through MLIR
       - lower range and relational switch cases through MLIR
       - lower explicit fallthrough through MLIR
@@ -1277,3 +1292,91 @@ integrations:
     - duplicate alias arm remains rejected
     - nested exhaustive match can terminate an outer match arm
     - ResolvedMatchPlan exhaustiveness agrees with function-return analysis
+  - id: frontend.switch-cfg-and-enum-coverage
+    area: frontend-control-flow
+    status: partial
+    audited: '2026-08-20'
+    revised: '2026-09-26'
+    repository_baseline: c515862
+    document_revision: '2.0'
+    document_created: '2026-08-16'
+    document_last_updated: '2026-08-16'
+    summary: Supplements frontend.switch-statements-v2 with path-sensitive case evaluation, fallthrough flow, and
+      enum value-class coverage. The four defects identified by correction24 now have frontend implementations,
+      including stable enum-alias duplicate diagnostics with previous-case provenance. A durable cross-layer
+      ResolvedSwitchPlan and fully split comma-alternative CFG remain incomplete.
+    rules:
+    - rules/control-flow/flowcontrol_switch.md
+    - rules/control-flow/flowcontrol_if.md
+    - rules/declarations/enums.md
+    - rules/memory/ownership.md
+    - rules/memory/borrowing.md
+    - rules/compiler/semantic_ir.md
+    code:
+    - internal/sema/analyzer.go
+    - internal/sema/analyzer_switch_coverage.go
+    - internal/sema/analyzer_switch_flow.go
+    - internal/codegen/mlir/generator.go
+    - internal/codegen/llvm/statements.go
+    tests:
+    - internal/sema/analyzer_test.go
+    - internal/sema/analyzer_switch_flow_test.go
+    - internal/sema/switch_coverage_test.go
+    - internal/sema/copy_move_test.go
+    - internal/sema/destruction_test.go
+    - internal/codegen/mlir/generator_test.go
+    - internal/codegen/llvm/generator_test.go
+    - testdata/switch_valid.sec
+    - testdata/switch_invalid.sec
+    implemented:
+    - switch subject expression is inferred once
+    - subject and subjectless switch syntax and source order are preserved
+    - value, range, relational, and comma-separated alternatives are represented
+    - direct fallthrough placement/final/successor validation
+    - independent lexical symbol scopes for case bodies
+    - compile-time integer/bool/direct-string duplicate checks
+    - integer range overlap and value-covered-by-range diagnostics
+    - bool true+false coverage removes the unmatched path
+    - backend subsets contain ordered/lazy switch control-flow lowering
+    - case-test effects follow the source-order unmatched path instead of being committed before every body
+    - fallthrough state is merged into the destination body while destination tests remain on the direct-selection path
+    - enum case identity and warnings use canonical numeric value classes
+    - duplicate enum-alias cases emit stable S1015 diagnostics that identify the earlier equivalent value-class case
+    - complete closed-enum coverage removes the unmatched path and participates in return analysis
+    - immutable ResolvedSwitchFlow facts retain resolved subject type, exhaustive versus unmatched continuation, source-ordered clause summaries, and explicit fallthrough; ordinary function and lambda return analysis consume recorded exhaustiveness instead of rebuilding enum coverage from AST spellings
+    partial:
+    - comma-separated alternatives retain conservative aggregate frontend state rather than an explicit per-alternative
+      resolved CFG edge
+    - a durable frontend ResolvedSwitchFlow exists, but the full cross-layer ResolvedSwitchPlan and per-alternative CFG are not yet published to Semantic IR
+    remaining:
+    - build a canonical path-sensitive resolved switch CFG
+    - preserve source-order and comma-alternative short-circuit state
+    - make definite assignment, ownership, resources, borrows, termination, call/effect reachability, Semantic IR,
+      diagnostics, and lowering consume the same resolved switch plan
+    - complete the remaining lazy-case, fallthrough-state, enum-exhaustiveness, and open-bit-domain regression matrix
+    bug_reference:
+    - correction24.md
+    governance_reconciliation:
+    - 'correction24 is applied in the frontend: lazy case-test state, fallthrough entry state, canonical enum value
+      classes, and closed-enum unmatched-path removal are implemented without claiming a durable cross-layer CFG.'
+    - 'Keep integer/bool/direct-string duplicate and integer-range coverage as implemented; enum alias/value-class
+      duplicates additionally retain stable diagnostic identity and earlier-case provenance.'
+    - Existing remaining backend, cleanup, unit, diagnostics, formatter, LSP, and loop-control work remains unchanged.
+    required_tests:
+    - skipped later consuming case call leaves source available
+    - skipped later case call does not register reachable effect
+    - subjectless comma alternatives short-circuit frontend state
+    - move in fallthrough source remains moved after destination continuation
+    - destination body merges direct and fallthrough ownership state
+    - assignment/resource/arena/borrow state propagates across fallthrough
+    - destination tests are skipped on fallthrough edge
+    - enum numeric aliases are duplicate switch cases
+    - enum warning reasons by unique runtime value class
+    - complete closed-enum switch removes unmatched path
+    - complete closed-enum all-returning switch satisfies function return analysis
+    - open bit-backed declared members alone remain non-exhaustive
+    verification:
+    - command: go test ./internal/sema -run 'Switch(EnumAliasDuplicate|WarnsAboutMissingEnumValues|ConstantCoverage|BoolSwitch)' -count=1
+      result: passed on 2026-09-26 with canonical enum value-class warnings and S1015 duplicate-alias provenance
+    - command: go test ./internal/sema -run 'ResolvedSwitchFlow|SwitchFallthroughIntoReturningCase|BoolSwitchCanBeExhaustive|SwitchEnumAliasDuplicate' -count=1
+      result: passed on 2026-09-26 with immutable flow facts, function and lambda closed-enum exhaustiveness reuse, explicit fallthrough retention, and unmatched-path preservation

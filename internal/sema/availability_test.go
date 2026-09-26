@@ -19,13 +19,11 @@ func TestAvailabilityTestsResolveStaticOwnedAndMovedPlaces(t *testing.T) {
 @noCopy
 type Resource struct { Value: int }
 fn Owned(resource: Resource) int {
-    if resource is available { return resource.Value }
-    return 0
+    if resource is available { return resource.Value } else { return 0 }
 }
 fn Moved(resource: Resource) int {
     let moved :<- resource
-    if resource is not available { return moved.Value }
-    return 0
+    if resource is not available { return moved.Value } else { return 0 }
 }
 `
 	p := parser.New(lexer.New(source))
@@ -117,8 +115,7 @@ type Resource struct { Value: int }
 type Pair struct { First: Resource, Second: int }
 fn Check(pair: Pair) int {
     let first :<- pair.First
-    if pair is not available { return pair.Second }
-    return 0
+    if pair is not available { return pair.Second } else { return 0 }
 }
 `)
 	if len(errors) != 0 {

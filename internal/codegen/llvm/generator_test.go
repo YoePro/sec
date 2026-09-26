@@ -51,7 +51,7 @@ func TestGenerateMinimalMainWithIf(t *testing.T) {
 module main
 
 fn main() int {
-	if true {
+	if 1 == 1 {
 		return 0
 	}
 
@@ -70,7 +70,8 @@ target triple = "` + hostTargetTriple() + `"
 
 define i32 @main() {
 entry:
-  br i1 true, label %if.then.0, label %if.end.1
+  %t0 = icmp eq i32 1, 1
+  br i1 %t0, label %if.then.0, label %if.end.1
 
 if.then.0:
   ret i32 0

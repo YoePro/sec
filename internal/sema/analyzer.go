@@ -50,6 +50,8 @@ type Analyzer struct {
 	resolvedConstructions      map[*ast.NewExpression]ResolvedConstruction
 	resolvedOperators          map[ast.Expression]ResolvedOperator
 	resolvedLogicalFlows       map[*ast.InfixExpression]ResolvedLogicalFlow
+	resolvedIfFlows            map[*ast.IfStatement]ResolvedIfFlow
+	resolvedSwitchFlows        map[*ast.SwitchStatement]ResolvedSwitchFlow
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
 	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
 	resolvedTries              map[*ast.TryExpression]ResolvedTry
@@ -277,6 +279,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}
+	a.resolvedIfFlows = map[*ast.IfStatement]ResolvedIfFlow{}
+	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
@@ -1327,6 +1331,12 @@ func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter,
 	}
 	a.genericTypes = current
 	a.genericTypeDefinitions = currentDefinitions
+	for _, param := range parameters {
+		if param == nil || param.Name == nil {
+			continue
+		}
+		a.genericTypes[param.Name.Value] = a.constrainedGenericParameterType(param)
+	}
 	defer func() {
 		a.genericTypes = previous
 		a.genericTypeDefinitions = previousDefinitions
@@ -2808,6 +2818,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		if !elseReachable {
 			elseBranch.continues = false
 		}
+		a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, elseBranch)
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
 		a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, elseBranch)
 		a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, elseBranch)
@@ -2831,6 +2842,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		fallthroughBranch = a.refinedAvailabilityFallthrough(fallthroughBranch, *availabilityTest, availabilityTest.Negated)
 		fallthroughBranch.continues = elseReachable
 	}
+	a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, fallthroughBranch)
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
 	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, fallthroughBranch)
@@ -3728,6 +3740,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	}
 
 	branches := make([]branchAnalysis, 0, len(clauses)+1)
+	clauseFlows := make([]ResolvedSwitchClauseFlow, 0, len(clauses))
 	var fallthroughEntry *branchAnalysis
 	for i, clause := range clauses {
 		if clause == nil {
@@ -3744,6 +3757,13 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		}
 		branch := a.analyzeSwitchCaseBody(clause.Body)
 		branches = append(branches, branch)
+		clauseFlows = append(clauseFlows, ResolvedSwitchClauseFlow{
+			SourceIndex:  i,
+			Default:      clause.Default,
+			ItemCount:    len(clause.Items),
+			FallsThrough: branch.fallsThrough,
+			Continues:    branch.continues,
+		})
 		a.applyBranchAnalysisState(directEntry)
 		if branch.fallsThrough {
 			copy := branch
@@ -3757,7 +3777,9 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		a.warnIncompleteEnumSwitch(stmt, tracker)
 	}
 
-	if stmt.Default == nil && !tracker.isExhaustive() {
+	exhaustive := stmt.Default != nil || tracker.isExhaustive()
+	a.recordResolvedSwitchFlow(stmt, subjectType, hasSubject, exhaustive, clauseFlows)
+	if !exhaustive {
 		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(before, branches...)
@@ -4104,379 +4126,6 @@ func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject boo
 			a.checkSwitchRelationalCoverage(item, tracker)
 		}
 	}
-}
-
-type switchCoverageTracker struct {
-	subjectType  Type
-	values       map[string]lexer.Token
-	ranges       []switchConstRange
-	boolValues   map[bool]lexer.Token
-	stringValues map[string]lexer.Token
-	// enumValues is keyed by canonical integer/string value class, not declaration name.
-	enumValues map[string]lexer.Token
-}
-
-type switchConstRange struct {
-	min          *big.Int
-	minExclusive bool
-	max          *big.Int
-	maxExclusive bool
-	token        lexer.Token
-	relational   bool
-}
-
-func newSwitchCoverageTracker() *switchCoverageTracker {
-	return &switchCoverageTracker{
-		values:       map[string]lexer.Token{},
-		boolValues:   map[bool]lexer.Token{},
-		stringValues: map[string]lexer.Token{},
-		enumValues:   map[string]lexer.Token{},
-	}
-}
-
-func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType Type) {
-	if !isOrderedSwitchType(subjectType) {
-		a.addErrorAtToken(item.Token, "switch range requires ordered subject type")
-		return
-	}
-	if item.Range == nil {
-		return
-	}
-	if item.Range.Start != nil {
-		startType, _ := a.inferExpression(item.Range.Start)
-		if startType.Kind != InvalidType && !canRangeBoundType(subjectType, startType, item.Range.Start) {
-			a.addErrorAtToken(expressionToken(item.Range.Start), "switch range must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(startType))
-		}
-	}
-	if item.Range.End != nil {
-		endType, _ := a.inferExpression(item.Range.End)
-		if endType.Kind != InvalidType && !canRangeBoundType(subjectType, endType, item.Range.End) {
-			a.addErrorAtToken(expressionToken(item.Range.End), "switch range must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(endType))
-		}
-	}
-}
-
-// checkSwitchValueCoverage rejects duplicate bool, string, integer, and
-// nominal enum value classes while retaining declared enum aliases.
-//
-// Rules:
-//   - rules/control-flow/flowcontrol_switch.md — compile-time case coverage
-//   - rules/declarations/enums.md — "switch"
-func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switchCoverageTracker) {
-	if tracker == nil {
-		return
-	}
-	if literal, ok := expr.(*ast.BooleanLiteral); ok && tracker.subjectType.Kind == BoolType {
-		if _, exists := tracker.boolValues[literal.Value]; exists {
-			a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %t", literal.Value)
-			return
-		}
-		tracker.boolValues[literal.Value] = expressionToken(expr)
-		return
-	}
-	if literal, ok := expr.(*ast.StringLiteral); ok && tracker.subjectType.Kind == StringType {
-		if _, exists := tracker.stringValues[literal.Value]; exists {
-			a.addErrorAtTokenWithMetadata(
-				expressionToken(expr),
-				diagnostics.DuplicateSwitchCase,
-				"Remove the duplicate case or combine its body with the first case for this string value.",
-				"duplicate switch case value %q",
-				literal.Value,
-			)
-			return
-		}
-		tracker.stringValues[literal.Value] = expressionToken(expr)
-		return
-	}
-	if _, key, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {
-		if _, exists := tracker.enumValues[key]; exists {
-			a.addErrorAtToken(expressionToken(expr), "duplicate switch case enum underlying value")
-			return
-		}
-		tracker.enumValues[key] = expressionToken(expr)
-		return
-	}
-	value, ok := constantIntegerValue(expr)
-	if !ok {
-		return
-	}
-	key := value.String()
-	if _, exists := tracker.values[key]; exists {
-		a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %s", key)
-		return
-	}
-	for _, previous := range tracker.ranges {
-		if previous.contains(value) {
-			a.addErrorAtToken(expressionToken(expr), "switch case value %s is already covered by previous case", key)
-			return
-		}
-	}
-	tracker.values[key] = expressionToken(expr)
-}
-
-// switchEnumCaseVariant resolves a type-qualified enum member to its canonical
-// integer/string value-class key for switch coverage.
-//
-// Rules:
-//   - rules/declarations/enums.md — "Value aliases"
-//   - rules/declarations/enums.md — "switch"
-func (a *Analyzer) switchEnumCaseVariant(expr ast.Expression, subjectType Type) (string, string, bool) {
-	if subjectType.Kind != EnumType {
-		return "", "", false
-	}
-	member, ok := expr.(*ast.MemberExpression)
-	if !ok || member.Property == nil {
-		return "", "", false
-	}
-	typeName, ok := typePathFromExpression(member.Object)
-	if !ok {
-		return "", "", false
-	}
-	typeName = a.resolveTypeName(typeName)
-	typ, ok := a.types[typeName]
-	if !ok || typ.Kind != EnumType || !sameConcreteType(subjectType, typ) {
-		return "", "", false
-	}
-	value, ok := typ.EnumConsts[member.Property.Value]
-	key, ok := enumValueClassKey(value)
-	if !ok {
-		return "", "", false
-	}
-	return member.Property.Value, key, true
-}
-
-func (a *Analyzer) warnIncompleteEnumSwitch(stmt *ast.SwitchStatement, tracker *switchCoverageTracker) {
-	if stmt == nil || tracker == nil || tracker.subjectType.Kind != EnumType {
-		return
-	}
-	if tracker.subjectType.BitWidth > 0 {
-		return
-	}
-	missing := []string{}
-	seenValues := map[string]bool{}
-	for _, name := range tracker.subjectType.EnumValues {
-		value, ok := tracker.subjectType.EnumConsts[name]
-		if !ok {
-			continue
-		}
-		key, ok := enumValueClassKey(value)
-		if !ok || seenValues[key] {
-			continue
-		}
-		seenValues[key] = true
-		if _, covered := tracker.enumValues[key]; !covered {
-			missing = append(missing, name)
-		}
-	}
-	if len(missing) == 0 {
-		return
-	}
-	a.addWarningAtTokenWithMetadata(
-		expressionToken(stmt.Subject),
-		diagnostics.IncompleteEnumSwitch,
-		"Handle the missing values, add default, or use match when exhaustive variant handling is required.",
-		"switch over %s omits known values: %s",
-		typeDisplayName(tracker.subjectType),
-		strings.Join(missing, ", "),
-	)
-}
-
-func (t *switchCoverageTracker) isExhaustive() bool {
-	if t == nil {
-		return false
-	}
-	if t.subjectType.Kind == BoolType {
-		return len(t.boolValues) == 2
-	}
-	if t.subjectType.Kind != EnumType || t.subjectType.BitWidth > 0 {
-		return false
-	}
-	classes := map[string]bool{}
-	for _, value := range t.subjectType.EnumConsts {
-		if key, ok := enumValueClassKey(value); ok {
-			classes[key] = true
-		}
-	}
-	return len(classes) > 0 && len(t.enumValues) == len(classes)
-}
-
-func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *switchCoverageTracker) {
-	if tracker == nil || expr == nil {
-		return
-	}
-	current, ok := switchConstRangeFromExpression(expr)
-	if !ok {
-		return
-	}
-	for _, previous := range tracker.ranges {
-		if previous.relational && !current.coveredBy(previous) {
-			continue
-		}
-		if current.overlaps(previous) {
-			a.addErrorAtToken(expr.Token, "%s", switchCoverageOverlapMessage(current, previous))
-			return
-		}
-	}
-	for key := range tracker.values {
-		value, ok := new(big.Int).SetString(key, 10)
-		if ok && current.contains(value) {
-			a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
-			return
-		}
-	}
-	tracker.ranges = append(tracker.ranges, current)
-}
-
-func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase, tracker *switchCoverageTracker) {
-	if tracker == nil || item == nil {
-		return
-	}
-	current, ok := switchConstRangeFromRelationalCase(item)
-	if !ok {
-		return
-	}
-	for _, previous := range tracker.ranges {
-		if previous.relational {
-			if current.coveredBy(previous) {
-				a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
-				return
-			}
-			continue
-		}
-		if current.overlaps(previous) {
-			a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
-			return
-		}
-	}
-	tracker.ranges = append(tracker.ranges, current)
-}
-
-func switchCoverageOverlapMessage(current switchConstRange, previous switchConstRange) string {
-	if current.relational || previous.relational {
-		return "unreachable switch case; previous case already covers this condition"
-	}
-	return "switch case range overlaps previous case"
-}
-
-func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange, bool) {
-	out := switchConstRange{token: expr.Token, maxExclusive: expr.Exclusive}
-	if expr.Start != nil {
-		value, ok := constantIntegerValue(expr.Start)
-		if !ok {
-			return switchConstRange{}, false
-		}
-		out.min = value
-	}
-	if expr.End != nil {
-		value, ok := constantIntegerValue(expr.End)
-		if !ok {
-			return switchConstRange{}, false
-		}
-		out.max = value
-	}
-	out.normalizeBounds()
-	return out, true
-}
-
-func switchConstRangeFromRelationalCase(item *ast.SwitchRelationalCase) (switchConstRange, bool) {
-	value, ok := constantIntegerValue(item.Value)
-	if !ok {
-		return switchConstRange{}, false
-	}
-	out := switchConstRange{token: item.Token, relational: true}
-	switch item.Operator {
-	case "<":
-		out.max = value
-		out.maxExclusive = true
-	case "<=":
-		out.max = value
-	case ">":
-		out.min = value
-		out.minExclusive = true
-	case ">=":
-		out.min = value
-	default:
-		return switchConstRange{}, false
-	}
-	return out, true
-}
-
-func (r switchConstRange) contains(value *big.Int) bool {
-	if r.min != nil {
-		cmp := value.Cmp(r.min)
-		if cmp < 0 || (cmp == 0 && r.minExclusive) {
-			return false
-		}
-	}
-	if r.max != nil {
-		cmp := value.Cmp(r.max)
-		if cmp > 0 || (cmp == 0 && r.maxExclusive) {
-			return false
-		}
-	}
-	return true
-}
-
-func (r switchConstRange) overlaps(other switchConstRange) bool {
-	if r.max != nil && other.min != nil {
-		cmp := r.max.Cmp(other.min)
-		if cmp < 0 || (cmp == 0 && (r.maxExclusive || other.minExclusive)) {
-			return false
-		}
-	}
-	if other.max != nil && r.min != nil {
-		cmp := other.max.Cmp(r.min)
-		if cmp < 0 || (cmp == 0 && (other.maxExclusive || r.minExclusive)) {
-			return false
-		}
-	}
-	return true
-}
-
-func (r *switchConstRange) normalizeBounds() {
-	if r == nil || r.min == nil || r.max == nil || r.min.Cmp(r.max) <= 0 {
-		return
-	}
-	r.min, r.max = r.max, r.min
-	r.minExclusive, r.maxExclusive = r.maxExclusive, r.minExclusive
-}
-
-func (r switchConstRange) coveredBy(other switchConstRange) bool {
-	return lowerBoundCovers(other, r) && upperBoundCovers(other, r)
-}
-
-func lowerBoundCovers(outer switchConstRange, inner switchConstRange) bool {
-	if outer.min == nil {
-		return true
-	}
-	if inner.min == nil {
-		return false
-	}
-	cmp := outer.min.Cmp(inner.min)
-	if cmp < 0 {
-		return true
-	}
-	if cmp > 0 {
-		return false
-	}
-	return !outer.minExclusive || inner.minExclusive
-}
-
-func upperBoundCovers(outer switchConstRange, inner switchConstRange) bool {
-	if outer.max == nil {
-		return true
-	}
-	if inner.max == nil {
-		return false
-	}
-	cmp := outer.max.Cmp(inner.max)
-	if cmp > 0 {
-		return true
-	}
-	if cmp < 0 {
-		return false
-	}
-	return !outer.maxExclusive || inner.maxExclusive
 }
 
 func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool) {
@@ -5883,6 +5532,10 @@ func statementDefinitelyReturns(stmt ast.Statement) bool {
 
 func (a *Analyzer) statementDefinitelyReturns(stmt ast.Statement) bool {
 	switch stmt := stmt.(type) {
+	case *ast.IfStatement:
+		if flow, ok := a.resolvedIfFlows[stmt]; ok {
+			return !flow.TruePathContinues && !flow.FalsePathContinues
+		}
 	case *ast.MatchStatement:
 		return a.matchStatementDefinitelyReturns(stmt)
 	case *ast.SwitchStatement:
@@ -5895,28 +5548,10 @@ func (a *Analyzer) switchStatementDefinitelyReturns(stmt *ast.SwitchStatement) b
 	if stmt == nil {
 		return false
 	}
-	exhaustive := stmt.Default != nil || switchCoversBoolLiterals(stmt)
-	if !exhaustive && stmt.Subject != nil {
-		if subjectType, ok := a.expressionTypes[stmt.Subject]; ok && subjectType.Kind == EnumType && subjectType.BitWidth == 0 {
-			tracker := newSwitchCoverageTracker()
-			tracker.subjectType = subjectType
-			for _, clause := range stmt.Cases {
-				if clause == nil {
-					continue
-				}
-				for _, item := range clause.Items {
-					valueCase, ok := item.(*ast.SwitchValueCase)
-					if !ok {
-						continue
-					}
-					_, value, ok := a.switchEnumCaseVariant(valueCase.Value, subjectType)
-					if ok {
-						tracker.enumValues[value] = expressionToken(valueCase.Value)
-					}
-				}
-			}
-			exhaustive = tracker.isExhaustive()
-		}
+	flow, resolved := a.resolvedSwitchFlows[stmt]
+	exhaustive := resolved && flow.Exhaustive
+	if !resolved {
+		exhaustive = stmt.Default != nil || switchCoversBoolLiterals(stmt)
 	}
 	if !exhaustive {
 		return false
@@ -8483,13 +8118,14 @@ func (a *Analyzer) analyzeInterfaceDeclaration(stmt *ast.InterfaceDeclaration) {
 
 func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaration) {
 	iface := Type{
-		Name:              stmt.Name.Value,
-		Module:            a.currentModule,
-		Kind:              InterfaceType,
-		Named:             true,
-		Declared:          true,
-		Underlying:        "interface",
-		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+		Name:               stmt.Name.Value,
+		Module:             a.currentModule,
+		Kind:               InterfaceType,
+		Named:              true,
+		Declared:           true,
+		Underlying:         "interface",
+		GenericParameters:  genericParameterNameValues(stmt.GenericParameters),
+		GenericConstraints: a.resolvedGenericParameterConstraints(stmt.GenericParameters),
 	}
 
 	iface.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
@@ -8967,6 +8603,7 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 		ExplicitlyNonCopyable: noCopy,
 		Underlying:            "struct",
 		GenericParameters:     genericParameterNameValues(stmt.GenericParameters),
+		GenericConstraints:    a.resolvedGenericParameterConstraints(stmt.GenericParameters),
 	}
 	if noCopy {
 		typ.NoCopyPolicyOrigin = name
@@ -9281,9 +8918,10 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 		ExplicitlyNonCopyable: noCopy,
 		// rules/errors/errorhandling.md section 3.2: the marker changes
 		// error assignability, never the union's ordinary payload semantics.
-		ErrorAssignable:   stmt.ErrorType,
-		Underlying:        "union",
-		GenericParameters: genericParameterNameValues(stmt.GenericParameters),
+		ErrorAssignable:    stmt.ErrorType,
+		Underlying:         "union",
+		GenericParameters:  genericParameterNameValues(stmt.GenericParameters),
+		GenericConstraints: a.resolvedGenericParameterConstraints(stmt.GenericParameters),
 	}
 	if noCopy {
 		typ.NoCopyPolicyOrigin = name
@@ -9507,6 +9145,7 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		ErrorAssignable:       enum.ErrorType,
 		Underlying:            underlying.Name,
 		GenericParameters:     genericParameterNameValues(enum.GenericParameters),
+		GenericConstraints:    a.resolvedGenericParameterConstraints(enum.GenericParameters),
 		EnumConsts:            map[string]EnumValue{},
 	}
 	if underlying.MinInteger != nil {
@@ -12421,6 +12060,9 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		typ.UnitSemantics = semantics
 	}
 	if len(typ.GenericParameters) > 0 && (typ.Declared || typ.Kind == StructType || typ.Kind == UnionType || typ.Kind == EnumType || typ.Kind == InterfaceType) {
+		if !a.validateGenericTypeConstraintArguments(ref.Token, typ) {
+			return Type{Kind: InvalidType}, false
+		}
 		typ = a.instantiateGenericType(typ)
 	}
 	return typ, true
@@ -12718,6 +12360,11 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	out.InterfaceMethods = make([]Function, 0, len(memberTemplate.InterfaceMethods))
 	out.InterfaceProperties = make([]InterfaceProperty, 0, len(memberTemplate.InterfaceProperties))
 	out.InterfaceEvents = make([]InterfaceEvent, 0, len(memberTemplate.InterfaceEvents))
+	out.GenericConstraints = make([]GenericConstraint, 0, len(typ.GenericConstraints))
+	for _, constraint := range typ.GenericConstraints {
+		constraint.Interface = substituteGenericType(constraint.Interface, substitution)
+		out.GenericConstraints = append(out.GenericConstraints, constraint)
+	}
 	out.GenericParameters = nil
 	recursive := false
 	for _, field := range memberTemplate.Fields {
@@ -13948,7 +13595,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 
 	a.analyzeBlockStatements(expr.Body)
 
-	if !blockDefinitelyReturns(expr.Body) && returnType.Kind != VoidType {
+	if !a.blockDefinitelyReturns(expr.Body) && returnType.Kind != VoidType {
 		a.addErrorAtToken(expr.Token, "lambda must return %s", typeDisplayName(returnType))
 	}
 
@@ -16005,6 +15652,14 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 	}
 	if !ok || len(functions) == 0 {
+		if constraintFunctions, receiver, constraintOK := a.constrainedGenericMethodCall(expr); constraintOK {
+			functions = constraintFunctions
+			methodReceiver = receiver
+			isMethodCall = true
+			ok = true
+		}
+	}
+	if !ok || len(functions) == 0 {
 		if methodName, methodOK := a.inheritedCoreMethodCallName(expr); methodOK {
 			if methodFunctions := a.functions[methodName]; len(methodFunctions) > 0 {
 				methodReceiver, isMethodCall = a.methodCallReceiver(expr)
@@ -17919,6 +17574,9 @@ func (a *Analyzer) inferGenericUnionVariantInstance(template Type, variant Union
 
 	concrete := template
 	concrete.TypeArgs = typeArgs
+	if !a.validateGenericTypeConstraintArguments(expr.Token, concrete) {
+		return Type{}, false
+	}
 	return a.instantiateGenericType(concrete), true
 }
 

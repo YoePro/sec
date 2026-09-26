@@ -147,6 +147,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.LPAREN:
 		left = p.parseGroupedExpression()
 
+	case lexer.QUESTION:
+		return p.parseReservedQuestionMarkExpression()
+
 	default:
 		if p.curToken.Type == lexer.ILLEGAL {
 			if diagnostic, ok := p.lexerDiagnosticForToken(p.curToken); ok {

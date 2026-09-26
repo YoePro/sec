@@ -122,6 +122,7 @@ type Type struct {
 	// CallableShared for compatibility with pre-capability semantic facts.
 	FunctionCapability      CallableCapability
 	GenericParameters       []string
+	GenericConstraints      []GenericConstraint
 	Fields                  []StructField
 	RegisterWidth           int64
 	RegisterAllocationOrder string

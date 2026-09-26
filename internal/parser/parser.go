@@ -413,6 +413,10 @@ func (p *Parser) parseStatement() ast.Statement {
 	case lexer.SEMICOLON:
 		return p.parseSemicolonStatement()
 
+	case lexer.QUESTION:
+		p.diagnoseReservedQuestionMark()
+		return nil
+
 	case lexer.AT:
 		if p.recoveryContext == RecoveryContextTopLevel && p.knownAttributeSetEndsAtEOF() {
 			return p.parseUnattachedAttributeSet()

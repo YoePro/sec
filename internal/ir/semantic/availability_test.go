@@ -12,8 +12,7 @@ import "testing"
 func TestStaticAvailabilityTestLowersWithoutOwnershipState(t *testing.T) {
 	module, err := analyzedModule(t, `module main
 fn Check(value: int) int {
-  if value is available { return value }
-  return 0
+  if value is available { return value } else { return 0 }
 }
 `, 14)
 	if err != nil {

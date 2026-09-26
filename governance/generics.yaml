@@ -6,16 +6,17 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-09-25"
+    revised: "2026-09-26"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
       monomorphization. Generic structs, functions, unions, enums, interfaces, impl
       scopes, inference, substitution, nominal instance caching, and basic
       constraint declaration validation have substantial frontend support;
-      ordered multi-constraint conjunctions and explicit generic-function
-      conformance checks now have frontend support; method-level generics,
-      complete specialization identity, and
+      ordered multi-constraint conjunctions, explicit generic function and
+      concrete generic-type conformance checks, and constraint-guaranteed
+      instance method lookup in generic bodies now have frontend support;
+      method-level generics, complete specialization identity, and
       concrete-only backend lowering remain incomplete.
     rules:
       - rules/declarations/generics.md
@@ -43,6 +44,8 @@ integrations:
       - internal/parser/generic_parameter_recovery_test.go
       - internal/cst/roles_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/generic_constraint_operations_test.go
+      - internal/sema/generic_type_constraints_test.go
       - internal/sema/copy_move_test.go
       - internal/formatter/formatter_test.go
       - cmd/compiler/main_test.go
@@ -74,6 +77,8 @@ integrations:
       - generic function constraint satisfaction requires valid explicit conformance rather than structural member matching, including concrete generic-interface identity and inherited interface guarantees
       - generic parameters preserve ordered interface-constraint conjunctions joined by &, parser recovery retains the valid prefix and later parameters after a missing conjunct, and declaration analysis diagnoses every unknown or non-interface member independently
       - generic function templates retain every resolved conjunct in source order and require all of them for both explicit and inferred concrete substitution; the resulting failure is published through ordinary compiler and LSP diagnostics
+      - generic struct, named-type, union, enum, and interface templates retain every resolved constraint in source order and require valid explicit conformance for every concrete type argument before specialization; partial conjunction satisfaction and structural similarity are insufficient
+      - generic function and declaration bodies may call instance methods guaranteed by one or more interface constraints; duplicate equivalent requirements are composed once, unconstrained parameters gain no structural members, and mutable receiver requirements remain enforced by ordinary call analysis
       - parser-owned concrete conjunction tokens project onto lossless CST roles, allowing canonical ` & ` formatter spacing while preserving ordinary bitwise expressions, recovered missing constraints, exact source ownership, and idempotence
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
       - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
@@ -83,13 +88,13 @@ integrations:
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
       - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
       - complete generic interface inheritance validation across modules and canonical cross-module specialization identity beyond the implemented local concrete requirement substitution
-      - extend the implemented explicit-conformance check from single-constraint generic functions to generic types, unions, enums, interfaces, impl scopes, and future method-level generics
-      - retain and recheck ordered constraint sets on non-callable generic type, union, enum, interface, and impl templates in the same way now implemented for generic functions
-      - ensure generic templates use only operations guaranteed by their declared constraints
+      - extend explicit-conformance checks to generic impl scopes and future method-level generics; concrete struct, named-type, union, enum, and interface substitutions are now checked
+      - retain and recheck ordered constraint sets on generic impl templates in the same way now implemented for generic functions and concrete generic type declarations
+      - extend constraint-guaranteed generic-body operations beyond implemented instance method calls to interface properties, events, static requirements, operators, ownership capabilities, defaultability, and copyability
       - complete generic primary and impl extends member composition for every substituted member category
       - specialize static storage independently for every concrete generic instantiation
       - complete generic-union layout, match, ownership, destruction, Semantic IR, and backend lowering after substitution
-      - complete generic-enum constraint revalidation, representation-dependent substitution, match and switch provenance, Semantic IR identity, deterministic symbols, Sec MLIR, ABI, FFI, and backend lowering
+      - complete generic-enum representation-dependent substitution, match and switch provenance, Semantic IR identity, deterministic symbols, Sec MLIR, ABI, FFI, and backend lowering
       - implement the canonical InstantiationGraph termination model, distinguishing finite canonical cycles, recursive by-value layout, proven distinct-key non-convergence, and compiler resource limits; current recursive-storage diagnostics cover only represented subsets
       - assign deterministic cross-module symbol identities to concrete types, functions, methods, and static storage
       - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
@@ -115,6 +120,10 @@ integrations:
         result: passed on 2026-09-25 with ordered AST preservation, focused parser recovery, independent declaration diagnostics, all-conjunct explicit and inferred substitution checks, and LSP publication
       - command: go test ./internal/parser ./internal/cst ./internal/formatter ./cmd/lsp -run 'MultipleGenericConstraints|ApplyProgramRoles|GenericConstraint' -count=1
         result: passed on 2026-09-25 with concrete conjunction-token retention, CST role projection, malformed-syntax protection, canonical spacing, bitwise-expression preservation, formatter idempotence, and the shared LSP path
+      - command: go test ./internal/sema -run 'Generic(Type|Function).*Constraint|MultipleGenericConstraint' -count=1
+        result: passed on 2026-09-26 with ordered constraint retention and explicit-conformance enforcement for concrete generic struct, named-type, union, interface, and enum substitutions
+      - command: go test ./internal/sema -run 'Generic|Generics' -count=1
+        result: passed on 2026-09-26 with constraint-guaranteed instance method lookup in generic bodies, multiple-constraint composition, unconstrained-member rejection, and mutable receiver enforcement
 
   - id: compiler.generics-lowering
     area: compiler-semantic-ir-and-mlir

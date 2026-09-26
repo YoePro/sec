@@ -27,6 +27,7 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 	typ.Underlying = baseType.Name
 	typ.Contracts = append([]Contract(nil), baseType.Contracts...)
 	typ.GenericParameters = genericParameterNameValues(stmt.GenericParameters)
+	typ.GenericConstraints = a.resolvedGenericParameterConstraints(stmt.GenericParameters)
 
 	if stmt.BaseType != nil && stmt.BaseType.Unit != "" {
 		typ.Unit = stmt.BaseType.Unit

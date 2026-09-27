@@ -22,7 +22,6 @@ integrations:
       - rules/concurrency/tasks.md
       - rules/concurrency/cancellation.md
       - rules/concurrency/blocking.md
-      - rules/concurrency/structured_concurrency.md
       - rules/concurrency/scheduling.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/concurrency/mutex.md

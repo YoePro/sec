@@ -998,16 +998,17 @@ func (p *Parser) parseAssertStatement() ast.Statement {
 	return stmt
 }
 
-// parsePanicStatement parses the canonical Sec 0.1 statement form
-// `panic "message"`. The payload is static diagnostic metadata rather than an
-// arbitrary expression, and call-like panic(...) spelling is rejected.
+// parsePanicStatement parses the canonical Sec 0.1 statement forms `panic`
+// and `panic "message"`. A present payload is static diagnostic metadata
+// rather than an arbitrary expression, and call-like panic(...) spelling is
+// rejected.
 //
 // Rules:
 //   - rules/errors/panic.md — § 17 "Explicit panic"
 func (p *Parser) parsePanicStatement() ast.Statement {
 	stmt := &ast.PanicStatement{Token: p.curToken}
 	if p.peekToken.Type == lexer.LPAREN {
-		p.addError("function-like panic(...) is not valid; write panic \"message\" at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.addError("function-like panic(...) is not valid; write panic or panic \"message\" at %d:%d", p.curToken.Line, p.curToken.Column)
 		p.nextToken()
 		if p.peekToken.Type == lexer.STRING {
 			p.nextToken()
@@ -1019,17 +1020,23 @@ func (p *Parser) parsePanicStatement() ast.Statement {
 		return stmt
 	}
 
-	if p.peekToken.Type != lexer.STRING || p.peekToken.Line != p.curToken.Line {
-		p.addError("panic message must be a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		if p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
-			p.nextToken()
-			p.parseExpression(LOWEST)
-		}
+	if p.peekToken.Type == lexer.STRING && p.peekToken.Line == p.curToken.Line {
+		p.nextToken()
+		stmt.Message = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
 		return stmt
 	}
 
-	p.nextToken()
-	stmt.Message = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
+	if p.peekToken.Line > p.curToken.Line || p.peekToken.Type == lexer.RBRACE ||
+		p.peekToken.Type == lexer.EOF || p.peekToken.Type == lexer.SEMICOLON ||
+		p.peekToken.Type == lexer.COMMENT {
+		return stmt
+	}
+
+	p.addError("panic message, when present, must be a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+	if p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		p.parseExpression(LOWEST)
+	}
 	return stmt
 }
 
@@ -2241,6 +2248,7 @@ func (p *Parser) parseImportStatement() ast.Statement {
 		return nil
 	}
 
+	stmt.PathToken = p.curToken
 	stmt.Path = trimStringQuotes(p.curToken.Lexeme)
 	p.validateImportPath(stmt.Path, p.curToken)
 
@@ -2276,6 +2284,7 @@ func (p *Parser) parseImportGroup() []ast.Statement {
 			p.addError("expected import path or alias, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
 			return imports
 		}
+		stmt.PathToken = p.curToken
 		stmt.Path = trimStringQuotes(p.curToken.Lexeme)
 		p.validateImportPath(stmt.Path, p.curToken)
 		imports = append(imports, stmt)

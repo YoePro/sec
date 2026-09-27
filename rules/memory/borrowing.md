@@ -932,6 +932,18 @@ conflicting outstanding borrow
 
 **§ 35.8(3)** Borrow-safe code requiring no runtime temporal check lowers without runtime borrow metadata.
 
+### § 35.9 Thread-local provenance
+
+**§ 35.9(1)** `ThreadLocal[T].Borrow()` and `BorrowMut()` create borrows tied
+to the current TLS key and physical-thread attachment generation.
+
+**§ 35.9(2)** Such borrows cannot remain live across a task suspension or
+escape that may change physical thread. They may survive a physical-thread
+wait only when the same attachment generation is proven to resume.
+
+**§ 35.9(3)** `ThreadLocal[T].Replace(...)` conflicts with every live borrow
+of the same per-thread slot according to the ordinary shared/exclusive rules.
+
 ---
 
 ## § 36 Implementation boundaries and exclusions

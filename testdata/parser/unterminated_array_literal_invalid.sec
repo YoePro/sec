@@ -1,0 +1,6 @@
+module parser_unterminated_array_literal
+
+fn Values() int[] {
+    return [
+        10,
+        20

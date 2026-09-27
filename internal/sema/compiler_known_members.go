@@ -144,6 +144,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			},
 		)
 	}
+	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
 	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},
@@ -222,6 +223,50 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	}
 	members = append(members, compilerKnownCancellationMembers(sequence)...)
 	return members
+}
+
+// compilerKnownThreadLocalMembers exposes the canonical v2 access surface.
+// Runtime initialization, thread-bound provenance, and conflicting-borrow
+// enforcement remain separate semantic/lowering responsibilities; this catalog
+// owns the exact source-visible member identities and their concrete result
+// types for Sema and LSP.
+//
+// Rules:
+//   - rules/concurrency/thread_local.md — §4 "Exact ThreadLocal[T] declaration"
+//   - rules/concurrency/thread_local.md — §§15–17 "Borrow, BorrowMut, and Replace"
+//   - rules/concurrency/thread_local.md — §64 "Completion and navigation"
+func compilerKnownThreadLocalMembers(typ Type) []CompilerKnownMember {
+	if typ.Name != "ThreadLocal" || len(typ.TypeArgs) != 1 {
+		return nil
+	}
+	payload := typ.TypeArgs[0]
+	payloadName := typeDisplayName(payload)
+	return []CompilerKnownMember{
+		{
+			ID:            "CKM-THREADLOCAL-BORROW",
+			Name:          "Borrow",
+			Kind:          CompilerKnownMethod,
+			Result:        compilerKnownSharedReference(payload),
+			Signature:     "fn Borrow() ref " + payloadName,
+			Documentation: "Borrows the current physical thread's lazily initialized value.",
+		},
+		{
+			ID:            "CKM-THREADLOCAL-BORROW-MUT",
+			Name:          "BorrowMut",
+			Kind:          CompilerKnownMethod,
+			Result:        compilerKnownMutableReference(payload),
+			Signature:     "fn BorrowMut() ref mut " + payloadName,
+			Documentation: "Mutably borrows the current physical thread's lazily initialized value.",
+		},
+		{
+			ID:            "CKM-THREADLOCAL-REPLACE",
+			Name:          "Replace",
+			Kind:          CompilerKnownMethod,
+			Result:        payload,
+			Signature:     "fn Replace(value: " + payloadName + ") " + payloadName,
+			Documentation: "Replaces the current physical thread's value and returns the previous value.",
+		},
+	}
 }
 
 // compilerKnownCancellationMembers exposes the symmetric cooperative
@@ -573,6 +618,10 @@ func compilerKnownOption(value Type) Type {
 //   - rules/errors/errorhandling.md — §6.2 "Non-consuming borrowed projections"
 func compilerKnownSharedReference(value Type) Type {
 	return Type{Name: referenceTypeName(value, false), Kind: ReferenceType, Element: &value}
+}
+
+func compilerKnownMutableReference(value Type) Type {
+	return Type{Name: referenceTypeName(value, true), Kind: ReferenceType, Element: &value, ReferenceMutable: true}
 }
 
 func compilerKnownResult(value Type, err Type) Type {

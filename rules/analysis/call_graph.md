@@ -3127,7 +3127,6 @@ await.md
 tasks.md
 threads.md
 processes.md
-structured_concurrency.md
 concurrency.md
 concurrency_memory_model.md
 functions.md

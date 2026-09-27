@@ -116,7 +116,54 @@ func TestDiagnosticCatalogTextAndJSONOutput(t *testing.T) {
 }
 
 func TestDiagnosticCatalogRejectsUnknownArguments(t *testing.T) {
-	if err := runDiagnosticCatalogCommand([]string{"--yaml"}, &bytes.Buffer{}); err == nil {
-		t.Fatal("expected unknown diagnostics argument to fail")
+	if err := runDiagnosticCatalogCommand([]string{"--yaml"}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "unknown argument") {
+		t.Fatalf("unknown diagnostics argument error = %v", err)
+	}
+}
+
+// Detail lookup must expose the same registry-owned identity fields as the
+// complete catalog without introducing a second diagnostic data source.
+//
+// Rules:
+//   - rules/tooling/diagnostics.txt — "Diagnostic detail command"
+//   - rules/compiler/compiler_testing.md — §11(5)–(8)
+func TestDiagnosticCatalogDetailMatchesRegisteredDefinition(t *testing.T) {
+	definition, ok := diagnostics.Lookup(diagnostics.UnreachableStatement)
+	if !ok {
+		t.Fatal("S3001 is not registered")
+	}
+
+	var output bytes.Buffer
+	if err := runDiagnosticCatalogCommand([]string{definition.ID}, &output); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			t.Fatalf("invalid detail line %q", line)
+		}
+		got[fields[0]] = fields[1]
+	}
+	want := map[string]string{
+		"DIAGNOSTIC":       definition.ID,
+		"NAME":             definition.Name,
+		"FAMILY":           definition.Family,
+		"DEFAULT_SEVERITY": string(definition.DefaultSeverity),
+		"MANDATORY":        "true",
+		"CONFIGURABLE":     "false",
+		"STATUS":           "active",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("detail fields = %#v, want %#v", got, want)
+	}
+}
+
+func TestDiagnosticCatalogDetailRejectsUnknownIDAndExtraArguments(t *testing.T) {
+	if err := runDiagnosticCatalogCommand([]string{"S9999"}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "unknown diagnostic ID") {
+		t.Fatalf("unknown ID error = %v", err)
+	}
+	if err := runDiagnosticCatalogCommand([]string{diagnostics.UnreachableStatement, "--json"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected mixed detail and JSON arguments to fail")
 	}
 }

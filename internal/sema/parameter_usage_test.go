@@ -337,6 +337,62 @@ fn Inspect(values: ref int[]) int {
 	}
 }
 
+// TestParameterUsageExcludesSemaProvenUnreachableIfPaths verifies that demand
+// consumes compiler-owned reachability facts rather than treating every AST
+// branch as executable. Availability queries are used here because Sema can
+// prove both positive and negative conditions without introducing an
+// unreachable-code diagnostic.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Unreachable paths"
+//   - rules/control-flow/flowcontrol_if.md — §27 "Sema and flow-analysis requirements"
+func TestParameterUsageExcludesSemaProvenUnreachableIfPaths(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Positive(value: int, unreachable: int) int {
+    if value is available {
+        return value
+    } else {
+        return unreachable
+    }
+}
+
+fn Negative(value: int, unreachable: int) int {
+    if value is not available {
+        return unreachable
+    } else {
+        return value
+    }
+}
+
+fn Dynamic(flag: bool, left: int, right: int) int {
+    if flag {
+        return left
+    } else {
+        return right
+    }
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	analysis := analyzer.ParameterUsageAnalysis()
+	for _, name := range []string{"Positive", "Negative"} {
+		unreachable := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analysis, name), "unreachable")
+		if unreachable.Demand.Access != ParameterAccessUnused || len(unreachable.Uses) != 0 {
+			t.Fatalf("%s unreachable demand = %#v, uses = %#v", name, unreachable.Demand, unreachable.Uses)
+		}
+	}
+
+	dynamic := parameterUsageSummaryNamed(t, analysis, "Dynamic")
+	for _, name := range []string{"flag", "left", "right"} {
+		parameter := parameterUsageParameterNamed(t, dynamic, name)
+		if parameter.Demand.Access != ParameterAccessRead {
+			t.Fatalf("dynamic %s demand = %#v", name, parameter.Demand)
+		}
+	}
+}
+
 func parameterUsageSummaryNamed(t *testing.T, analysis *ParameterUsageAnalysis, name string) ParameterUsageCallableSummary {
 	t.Helper()
 	for _, summary := range analysis.Summaries() {

@@ -2,6 +2,47 @@ schema_version: 1
 area: tooling-lsp
 purpose: Language-server behavior, protocol integration, and editor actions.
 integrations:
+  - id: tooling.lsp-import-resolution
+    area: tooling
+    status: partial
+    integrated: "2026-09-27"
+    summary: >-
+      Resolves canonical source imports for LSP analysis through standard-library,
+      platform, and project roots so imported qualified declarations reach Sema
+      and do not produce false unknown-type or unknown-member diagnostics.
+    rules:
+      - rules/projects/modules.md
+      - rules/tooling/lsp.md
+      - rules/foundations/grammar.md
+    code:
+      - cmd/lsp/main.go
+      - cmd/lsp/import_resolution.go
+      - cmd/lsp/diagnostics_batch.go
+      - internal/ast/ast.go
+      - internal/diagnostics/diagnostics.go
+      - internal/parser/parser.go
+      - internal/lsp/server/module_sources.go
+    tests:
+      - cmd/lsp/main_test.go
+      - cmd/lsp/diagnostics_batch_test.go
+      - internal/diagnostics/diagnostics_test.go
+    implemented:
+      - canonical logical paths are validated before editor-side filesystem discovery
+      - arbitrary existing standard-library file modules and directory modules resolve under sec/stdlib before project fallback
+      - directory modules load their complete deterministic sorted .sec source set
+      - existing platform, project-root, grouped-import, alias, qualifier-rewrite, overlay, and transitive-import behavior remains shared by diagnostics and navigation features
+      - focused coverage proves that import "net/url" supplies url.URL to Sema without false LSP diagnostics
+      - unresolved canonical imports emit mandatory S1051 modules.unresolved-import with the original spelling, exact string-literal range, and actionable import-root help
+      - individual and coalesced module diagnostics publish the same S1051 occurrence to the owning document; malformed non-canonical paths retain their parser diagnostic without a duplicate S1051
+    remaining:
+      - move import resolution into the shared compiler workspace and consume one CompilationPlan-aware canonical module graph
+      - enforce canonical destination module identity, duplicate/self-import rules, cycles, internal access, source selection, and dependency invalidation through the shared resolver
+    verification:
+      - command: go test ./cmd/lsp -run 'TestAnalyzeLoadsNestedStandardLibraryImport|TestAnalyzeLoadsFmtPackageAndTransitiveImports|TestAnalyzeLoadsUnicodePackage|TestAnalyzeGroupedPackageImportsAndShortNames|TestLSPSourceIncludePathsLoadsIOPackageFiles|TestLSPSourceIncludePathsLoadsProjectImportsFromSecProjectRoot' -count=1
+        result: passed on 2026-09-27; nested stdlib, existing stdlib, platform, grouped, transitive, and project-root imports remain resolved without false diagnostics
+      - command: go test ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
+        result: passed on 2026-09-27; S1051 registry identity, exact import-path range, malformed-path separation, individual diagnostics, and batched publication are covered
+
   - id: tooling.lsp-same-module-analysis
     area: tooling
     status: implemented

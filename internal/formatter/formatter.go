@@ -692,8 +692,9 @@ func formatAssert(line string) string {
 	return formatted
 }
 
-// formatPanic emits exactly one space between the statement keyword and its
-// static string-literal payload without rewriting invalid call-like spelling.
+// formatPanic emits exactly one space between the statement keyword and an
+// optional static string-literal payload without rewriting invalid call-like
+// spelling.
 //
 // Rules:
 //   - rules/errors/panic.md — § 17 "Explicit panic"

@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-09-16
-- Document revision: 2.2
+- Last updated: 2026-09-27
+- Document revision: 2.3
 - Sec language version: 0.1
 - Canonical path: `rules/errors/panic.md`
 - Implementation governance: `governance/errors.yaml`
@@ -515,12 +515,21 @@ unreachable
 **§ 17(1)** Canonical Sec 0.1 explicit-panic syntax is:
 
 ```sec
+panic
 panic "message"
 ```
 
-**§ 17(2)** `panic` is a statement keyword, not an ordinary callable. Function-like `panic("message")` spelling is invalid.
+Equivalently:
 
-**§ 17(3)** The payload must be one ordinary string literal. It is static diagnostic metadata, not an arbitrary runtime expression; interpolated and dynamically computed messages are invalid in Sec 0.1.
+```text
+panic ["message"]
+```
+
+where `[...]` denotes an optional grammar element and is not part of Sec source syntax.
+
+**§ 17(2)** The grammar is `panic_statement := "panic" [ string_literal ]`. `panic` is a statement keyword, not an ordinary callable. Function-like `panic("message")` spelling is invalid.
+
+**§ 17(3)** The panic message is optional. When present, it must be one ordinary string literal. It is static diagnostic metadata, not an arbitrary runtime expression; interpolated and dynamically computed messages are invalid in Sec 0.1. Omitting it changes no explicit-panic semantics and only omits the optional diagnostic message metadata.
 
 **§ 17(4)** Explicit panic terminates the current panic domain, never returns to the failed stack, is visible in effect analysis, violates unresolved `@noPanic`, and supports an allocation-free minimum representation.
 
@@ -792,7 +801,7 @@ assert condition, "message"
 
 **§ 31(10)** The minimum panic path is allocation-free and does not require a general Sec runtime.
 
-**§ 31(11)** Explicit panic is written `panic "message"`; call syntax and dynamic messages are invalid in Sec 0.1.
+**§ 31(11)** Explicit panic is written `panic` or `panic "message"`; call syntax and dynamic messages are invalid in Sec 0.1.
 
 **§ 31(12)** Panic cleanup occurs only where the selected canonical panic policy guarantees it; no rule may silently invent exception unwinding.
 

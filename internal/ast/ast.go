@@ -88,8 +88,8 @@ func (as *AssertStatement) TokenLiteral() string {
 	return as.Token.Lexeme
 }
 
-// PanicStatement represents an explicit, non-returning panic with static
-// diagnostic metadata.
+// PanicStatement represents an explicit, non-returning panic with optional
+// static diagnostic metadata.
 //
 // Rules:
 //   - rules/errors/panic.md — § 17 "Explicit panic"
@@ -809,6 +809,7 @@ func (ms *ModuleStatement) TokenLiteral() string {
 type ImportStatement struct {
 	Token      lexer.Token
 	AliasToken lexer.Token
+	PathToken  lexer.Token
 	Alias      string
 	Path       string
 }

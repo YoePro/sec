@@ -1042,15 +1042,19 @@ panic
 assert
 ```
 
-Canonical explicit panic is a statement with one ordinary string literal:
+Canonical explicit panic is a statement with an optional ordinary string
+literal:
 
 ```sec
+panic
 panic "message"
 ```
 
 `panic` is not an ordinary callable, so `panic("message")` is invalid. The
 parser retains a dedicated panic statement and semantic analysis treats it as
-non-returning and panic-capable. Assertion syntax is defined by `panic.md`.
+non-returning and panic-capable in both forms. When present, the message must
+be an ordinary string literal; dynamic and interpolated messages are invalid.
+Assertion syntax is defined by `panic.md`.
 
 `require` is not globally reserved. Any grammar that assigns it a
 contract-specific role must resolve it contextually and leave ordinary

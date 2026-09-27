@@ -140,7 +140,7 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: sec <lex|token> <file.sec>")
-	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json]")
+	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json|<ID>]")
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec fmt [--check] <file.sec>...")

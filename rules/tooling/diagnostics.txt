@@ -1845,7 +1845,6 @@ Not yet complete:
 * full migration of every compiler/build diagnostic to registered IDs
 * structured localized messages
 * translation catalogs
-* `sec diagnostics <ID>`
 * complete dead-code analysis
 * complete unused-declaration analysis
 * configurable advisory categories and presets

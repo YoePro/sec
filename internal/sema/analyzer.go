@@ -2690,13 +2690,14 @@ func (a *Analyzer) recordConditionFact(condition ast.Expression, kind ResolvedCo
 }
 
 // analyzePanicStatement records the explicit non-returning panic effect. The
-// parser has already restricted its payload to static string metadata.
+// parser has already restricted any optional payload to static string
+// metadata.
 //
 // Rules:
 //   - rules/errors/panic.md — § 17 "Explicit panic"
 //   - rules/errors/panic.md — § 21 "@noPanic"
 func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
-	if stmt == nil || stmt.Message == nil || a.summaryPass || !a.callGraphPathReachable {
+	if stmt == nil || a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
 	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicExplicit, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonExplicitPanic}})
@@ -14314,10 +14315,12 @@ func (a *Analyzer) refinementProvesArrayIndex(array, index ast.Expression, index
 		conditionLower, conditionUpper := a.conditionBoundsArrayIndex(refinement.fact.Condition, array, index, length)
 		proof := ArrayIndexProofOther
 		switch refinement.fact.Kind {
-		case ConditionFactBranchTrue:
+		case ConditionFactBranchTrue, ConditionFactLogicalRHSTrue:
 			proof = ArrayIndexProofBranch
 		case ConditionFactAssertionSuccess:
 			proof = ArrayIndexProofAssertion
+		case ConditionFactLogicalRHSFalse:
+			continue
 		}
 		if conditionLower && !lower {
 			lower = true
@@ -15622,10 +15625,6 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	name := callExpressionName(expr)
-	if name == "" {
-		return a.inferFunctionValueCall(expr, Type{Kind: InvalidType})
-	}
-
 	functions, ok := a.functions[name]
 	methodReceiver := methodReceiverInfo{}
 	isMethodCall := false
@@ -15673,6 +15672,17 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 	}
 	if !ok || len(functions) == 0 {
+		// A computed receiver such as byte(value) has no syntactic callee path,
+		// but ordinary method lookup above can still resolve it from its semantic
+		// type. Only treat the callee as a function value after those method
+		// candidates have been exhausted.
+		//
+		// Rules:
+		//   - rules/compiler/compiler_known_members.md — "Lookup order"
+		//   - rules/compiler/compiler_known_members.md — "Built-in type member lookup"
+		if name == "" {
+			return a.inferFunctionValueCall(expr, Type{Kind: InvalidType})
+		}
 		if symbol, exists := a.symbols[name]; exists && symbol.Type.Kind == FunctionType {
 			// rules/declarations/lambda-functions.md: retain the callable value's
 			// resolved capability on the callee expression so LSP and later
@@ -16176,6 +16186,11 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 	switch member.Name {
 	case "Ok", "Err":
 		return a.inferConsumingResultProjection(expr, memberExpr, receiverType, lookupType, member)
+	case "Borrow", "BorrowMut", "Replace":
+		if lookupType.Name == "ThreadLocal" {
+			return a.inferThreadLocalCall(expr, lookupType, member)
+		}
+		return Type{}, expressionValue{}, false
 	case "ToString":
 		maxArguments := 0
 		if isNumericType(lookupType) {
@@ -20354,6 +20369,9 @@ func (a *Analyzer) validateCompileTimeIntegerArithmetic(expr *ast.InfixExpressio
 	divisionOverflow := (expr.Operator == "/" || expr.Operator == "%") &&
 		representation.Kind == IntType && left.Cmp(representation.MinInteger) == 0 && right.Cmp(big.NewInt(-1)) == 0
 	if !divisionOverflow && value.Cmp(representation.MinInteger) >= 0 && value.Cmp(representation.MaxInteger) <= 0 {
+		return true
+	}
+	if a.refinementProvesIntegerArithmeticInRange(expr, resultType) {
 		return true
 	}
 	a.addErrorAtTokenWithMetadata(

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"sec/internal/diagnostics"
 	lspserver "sec/internal/lsp/server"
 )
 
@@ -96,6 +97,20 @@ func TestDiagnosticBatchKeepsForeignModuleSeparate(t *testing.T) {
 	encoded, _ := json.Marshal(results[snapshots[1].URI])
 	if !bytes.Contains(encoded, []byte("unknown type OnlyA")) {
 		t.Fatalf("foreign module leaked: %s", encoded)
+	}
+}
+
+func TestDiagnosticBatchPublishesUnresolvedImportAtOwningDocument(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sec", "stdlib"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "app", "main.sec")
+	text := "module main\n\nimport \"missing/module\"\n"
+	snapshot := lspserver.Snapshot{URI: uriFromPath(path), Version: 1, Text: text}
+	results := analyzeDiagnosticBatch([]lspserver.Snapshot{snapshot}, sourceOverlay{path: text})
+	if len(results[snapshot.URI]) != 1 || results[snapshot.URI][0].Code != diagnostics.UnresolvedImport {
+		t.Fatalf("batch unresolved import diagnostics = %+v", results[snapshot.URI])
 	}
 }
 

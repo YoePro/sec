@@ -938,6 +938,79 @@ func TestLSPSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T
 	}
 }
 
+// Standard-library logical imports must resolve through sec/stdlib before
+// project fallback so their qualified declarations reach Sema diagnostics.
+//
+// Rules:
+//   - rules/projects/modules.md — § 8 "Import roots"
+//   - rules/projects/modules.md — § 9 "Import resolution"
+//   - rules/tooling/lsp.md — "Project and source integration"
+func TestAnalyzeLoadsNestedStandardLibraryImport(t *testing.T) {
+	dir := t.TempDir()
+	stdlibModule := filepath.Join(dir, "sec", "stdlib", "net", "url")
+	if err := os.MkdirAll(stdlibModule, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stdlibModule, "url.sec"), []byte("module url\n\ntype URL string\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(dir, "app", "main.sec")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := `module main
+
+import "net/url"
+
+fn Identity(value: url.URL) url.URL {
+	return value
+}
+`
+	reported := analyze(uriFromPath(sourcePath), source)
+	if len(reported) != 0 {
+		t.Fatalf("nested stdlib import produced false diagnostics: %+v", reported)
+	}
+
+	paths := sourceIncludePaths("net/url", sourcePath)
+	if len(paths) != 1 || paths[0] != filepath.Join(stdlibModule, "url.sec") {
+		t.Fatalf("net/url paths = %#v, want stdlib module source", paths)
+	}
+}
+
+func TestAnalyzeReportsStructuredUnresolvedImport(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sec", "stdlib"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(dir, "app", "main.sec")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := "module main\n\nimport \"missing/module\"\n"
+	reported := analyze(uriFromPath(sourcePath), source)
+	if len(reported) != 1 {
+		t.Fatalf("unresolved import diagnostics = %+v, want one", reported)
+	}
+	got := reported[0]
+	wantStart := offsetPosition(source, strings.Index(source, "\"missing/module\""))
+	if got.Code != diagnostics.UnresolvedImport || got.Severity != 1 ||
+		got.Range.Start != wantStart || got.Range.End.Character-wantStart.Character != len("\"missing/module\"") ||
+		!strings.Contains(got.Message, `unresolved import "missing/module"`) ||
+		!strings.Contains(got.Message, "help: Verify the canonical import path") {
+		t.Fatalf("unresolved import diagnostic = %+v", got)
+	}
+}
+
+func TestAnalyzeDoesNotMisclassifyMalformedImportAsUnresolved(t *testing.T) {
+	source := "module main\n\nimport \"../invalid\"\n"
+	for _, reported := range analyze("file:///tmp/sec-lsp-invalid-import/main.sec", source) {
+		if reported.Code == diagnostics.UnresolvedImport {
+			t.Fatalf("malformed import also produced unresolved-import diagnostic: %+v", reported)
+		}
+	}
+}
+
 func TestLSPSourceIncludePathsLoadsIOPackageFiles(t *testing.T) {
 	paths := sourceIncludePaths("io", "")
 	wants := map[string]bool{
@@ -3423,6 +3496,33 @@ func TestCancellationRequestCompletionAndHover(t *testing.T) {
 			!strings.Contains(hover.Contents.Value, "without consuming") {
 			t.Fatalf("%s RequestCancel hover = %+v, %v", typeName, hover, ok)
 		}
+	}
+}
+
+// TestThreadLocalV2CompletionAndHover verifies that tooling projects Sema's
+// exact compiler-known TLS access surface with concrete generic substitution.
+//
+// Rules:
+//   - rules/concurrency/thread_local.md — §§63–64 "LSP hover and completion"
+//   - rules/tooling/lsp.md — "Thread-local v2 integration"
+func TestThreadLocalV2CompletionAndHover(t *testing.T) {
+	source := "module main\n\nfn Use(local: ThreadLocal[int]) void {\n\tlocal.\n}\n"
+	items := completeSource("", source, strings.Index(source, "local.")+len("local."))
+	assertCompletionLabels(t, items, []string{"Borrow", "BorrowMut", "Replace"})
+	for _, removed := range []string{"Value", "value", "Take", "Get", "Set"} {
+		for _, item := range items {
+			if item.Label == removed {
+				t.Fatalf("completion includes removed ThreadLocal member %s", removed)
+			}
+		}
+	}
+
+	hoverSource := "module main\n\nfn Use(local: ThreadLocal[int]) void {\n\tlet value: ref mut int := local.BorrowMut()\n}\n"
+	hoverOffset := strings.Index(hoverSource, "BorrowMut") + 2
+	hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "fn BorrowMut() ref mut int") ||
+		!strings.Contains(hover.Contents.Value, "CKM-THREADLOCAL-BORROW-MUT") {
+		t.Fatalf("ThreadLocal.BorrowMut hover = %+v, %v", hover, ok)
 	}
 }
 

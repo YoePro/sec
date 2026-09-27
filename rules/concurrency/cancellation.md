@@ -9,7 +9,7 @@
 - **Implementation governance:** `governance/concurrency_cancellation.yaml`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `0f5027d`
-- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/mutex.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/await.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/blocking.md`, `rules/concurrency/scheduling.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/control-flow/defer.md`, `rules/compiler/semantic_ir.md`, `rules/platform/ffi.md`, `rules/platform/interrupts.md`, `rules/tooling/lsp.md`
+- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/mutex.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/await.md`, `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/blocking.md`, `rules/concurrency/scheduling.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/control-flow/defer.md`, `rules/compiler/semantic_ir.md`, `rules/platform/ffi.md`, `rules/platform/interrupts.md`, `rules/tooling/lsp.md`
 
 ---
 
@@ -290,6 +290,16 @@ impl Task {
 § 10(4) A backend must not fabricate a task context merely because code executes on a worker thread that is capable of running tasks.
 
 § 10(5) The returned `TaskContext` follows the logical task across permitted worker migration.
+
+### `Task.Yield()` cancellation point
+
+§ 10(6) `Task.Yield()` requires the same real logical task context as `Task.Current()`.
+It is a current-task cancellation point participating in the canonical
+first-commit race: cancellation winning prevents return to the following source
+statement, while normal yield winning keeps the task runnable and later returns
+`void`. `Thread.Yield()` is a physical scheduler hint and is not a cancellation
+point. Neither operation creates a memory-synchronization edge. Exact scheduling
+and migration semantics are owned by `scheduling.md`.
 
 ---
 

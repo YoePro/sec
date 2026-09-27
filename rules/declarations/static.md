@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-09-07
+- **Last updated:** 2026-09-27
 - **Document revision:** 2.2
 - **Language version:** Sec 0.1
 - **Supersedes:** document revision 1.0
@@ -114,7 +114,11 @@ The static local:
 
 Function-local static storage is not thread-local storage.
 
-Sec 0.1 defines no thread-local static syntax.
+Sec 0.1 defines no thread-local static syntax. A module-level declaration such
+as `static let Counter := ThreadLocal[int](0)` instead owns a stable TLS key and
+its initializer description in static storage. It does not eagerly construct
+one `int` per physical thread; `thread_local.md` owns lazy per-thread value
+initialization.
 
 ## 5. References to static storage
 

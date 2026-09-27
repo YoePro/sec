@@ -668,9 +668,7 @@ func (b *parameterUsageBuilder) walkStatement(statement ast.Statement) {
 	case *ast.ReturnStatement:
 		b.walkExpression(statement.Value)
 	case *ast.IfStatement:
-		b.walkExpression(statement.Condition)
-		b.walkBlock(statement.Consequence)
-		b.walkBlock(statement.Alternative)
+		b.walkIfStatement(statement)
 	case *ast.SwitchStatement:
 		b.walkExpression(statement.Subject)
 		for _, item := range statement.Cases {

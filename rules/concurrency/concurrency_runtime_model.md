@@ -11,8 +11,9 @@ Implemented:
   `ThreadStatus`, `ThreadSpawnError`, `ThreadStartError`,
   plus legacy `ThreadSchedulingError` and `ThreadTerminationError` identities
   pending removal from the portable thread surface;
-- compiler-known `ThreadContextError` exists for the separately owned
-  foreign-thread attachment API in `thread_local.md`;
+- a legacy compiler-known `ThreadContextError` identity remains implementation
+  debt, but is not part of the portable API; `thread_local.md` instead owns
+  exact `ThreadAttachment` and `ThreadAttachError` identities;
 - compiler-known `ThreadLocal[T]` key type exists;
 - unresolved task and thread handles are tracked conservatively at local scope
   exit;
@@ -324,11 +325,20 @@ It may register readiness with:
 
 The runtime must unregister losing operations without committing them.
 
+`Task.Yield()` is a logical task scheduling and current-task cancellation point;
+it keeps the task runnable after normal commit and must not be reduced to a
+physical-thread yield when that would lose logical semantics. Runtime machinery
+used internally for ordinary `main` does not create a source-visible root
+`TaskContext`.
+
 ---
 
 ## Physical thread blocking
 
 Physical thread waits use native park, wait or block operations.
+
+`Thread.Yield()` is only a physical scheduler hint. It is not a task
+suspension, cancellation point, or memory-synchronization operation.
 
 A task runtime may use a native blocking adapter only when:
 
@@ -503,9 +513,18 @@ The platform adapter must establish a `ThreadContext` before code uses:
 - Sec panic tracking;
 - runtime-managed blocking integration.
 
-Attachment may be automatic in generated FFI wrappers when safe.
+Attachment may be automatic in generated FFI wrappers when safe. Such a wrapper
+destroys only an attachment it created and reuses an already-active attachment
+for nested callbacks.
 
-Manual attachment, if exposed, is fallible and uses `ThreadContextError`.
+Manual attachment uses:
+
+```sec
+Thread.AttachCurrent() Result[ThreadAttachment, ThreadAttachError]
+```
+
+Main and Sec-created threads are already attached. User TLS factories remain
+lazy and do not run merely because an attachment is established.
 
 ---
 
@@ -577,6 +596,8 @@ enum ThreadSpawnError error {
     StackAllocationFailed
     InvalidConfiguration
     PermissionDenied
+    // Required TLS runtime/target infrastructure failed before callable
+    // execution commit; this is not lazy user-factory failure.
     ThreadLocalInitializationFailed
     NativeFailure
 }
@@ -597,8 +618,7 @@ enum ThreadStartError error {
     NativeFailure
 }
 
-enum ThreadContextError error {
-    NotAttached
+enum ThreadAttachError error {
     AlreadyAttached
     ResourceUnavailable
     NativeFailure
@@ -685,7 +705,6 @@ scheduling.md
 blocking.md
 transferability.md
 cancellation.md
-structured_concurrency.md
 channels.md
 select.md
 mutex.md

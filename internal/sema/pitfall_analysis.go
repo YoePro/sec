@@ -15,10 +15,13 @@ import (
 type PitfallRuleID string
 
 const (
-	PitfallInclusiveLengthIndex     PitfallRuleID = "pitfall.bounds.inclusive-length-index"
-	PitfallDirectIndexAtLength      PitfallRuleID = "pitfall.bounds.direct-index-at-length"
-	PitfallBooleanLiteralComparison PitfallRuleID = "pitfall.boolean.redundant-literal-comparison"
+	PitfallInclusiveLengthIndex       PitfallRuleID = "pitfall.bounds.inclusive-length-index"
+	PitfallDirectIndexAtLength        PitfallRuleID = "pitfall.bounds.direct-index-at-length"
+	PitfallBooleanLiteralComparison   PitfallRuleID = "pitfall.boolean.redundant-literal-comparison"
 	PitfallExplicitSelfMethodArgument PitfallRuleID = "pitfall.api.explicit-self-method-argument"
+	PitfallIneffectiveLengthGuard     PitfallRuleID = "pitfall.bounds.ineffective-length-guard"
+	PitfallUpperNeighborIndex         PitfallRuleID = "pitfall.bounds.upper-neighbor-index"
+	PitfallLowerNeighborIndex         PitfallRuleID = "pitfall.bounds.lower-neighbor-index"
 )
 
 type PitfallFamily string
@@ -144,6 +147,21 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		ID: PitfallExplicitSelfMethodArgument, Family: PitfallAPIUsage,
 		RequiredFacts: []string{"resolved-calls", "receiver-semantics", "argument-bindings"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallIneffectiveLengthGuard, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "control-flow", "bounds"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallUpperNeighborIndex, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "bounds"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallLowerNeighborIndex, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "bounds"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
 	},
 }
 
@@ -334,6 +352,7 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 	case *ast.ReturnStatement:
 		b.walkExpression(statement.Value)
 	case *ast.IfStatement:
+		b.inspectIneffectiveUpperBoundsGuard(statement)
 		b.walkExpression(statement.Condition)
 		b.walkBlock(statement.Consequence)
 		b.walkBlock(statement.Alternative)
@@ -352,6 +371,7 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 		}
 	case *ast.ForStatement:
 		b.inspectInclusiveLengthLoop(statement)
+		b.inspectNeighborIndexes(statement)
 		b.walkExpression(statement.Iterable)
 		b.walkExpression(statement.Step)
 		b.walkBlock(statement.Body)
@@ -371,6 +391,7 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 	if block == nil {
 		return
 	}
+	b.inspectIneffectiveRejectionGuards(block)
 	for _, statement := range block.Statements {
 		b.walkStatement(statement)
 	}

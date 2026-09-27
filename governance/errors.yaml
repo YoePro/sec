@@ -274,13 +274,16 @@ integrations:
   - id: frontend.panic
     area: panic-assert-unreachable-frontend
     status: partial
-    document_revision: "2.2"
-    reviewed: "2026-09-17"
+    document_revision: "2.3"
+    reviewed: "2026-09-27"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
       - rules/errors/runtime_checks.md
       - rules/foundations/attributes.md
+      - rules/foundations/grammar.md
+    corrections_applied:
+      - rules/corrections/applied/correction_panic-20260927.md
     evidence:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -298,9 +301,13 @@ integrations:
       - internal/ir/semantic/builder.go
       - cmd/lsp/main_test.go
       - internal/parser/unreachable_statement_test.go
+      - internal/parser/panic_statement_test.go
       - internal/sema/unreachable_effect_test.go
+      - internal/sema/panic_test.go
       - internal/formatter/formatter_test.go
       - testdata/parser/checked_unreachable_valid.sec
+      - testdata/parser/panic_statements_valid.sec
+      - testdata/parser/panic_statements_invalid.sec
       - testdata/sema/checked_unreachable_valid.sec
       - testdata/sema/checked_unreachable_invalid.sec
       - testdata/sema/panic_info_valid.sec
@@ -313,9 +320,10 @@ integrations:
       - focused parser and semantic tests cover accepted forms and the locked syntax/type diagnostics
       - reachable assertions with unproven conditions record a direct MayPanic assertion effect; literal true and statically unreachable branches contribute no assertion effect
       - literal-false assertions are non-returning frontend control-flow paths, satisfy non-void return-path checks, and make following statements unreachable; unproven assertions may continue
-      - panic is a hard lexer keyword and the parser retains canonical panic string-literal statements in a dedicated AST node
+      - panic is a hard lexer keyword and the parser retains both canonical forms, panic and panic "message", in a dedicated AST node with optional static message metadata
       - explicit panic is non-returning in frontend control-flow analysis and records a direct may-panic-explicit effect for @noPanic verification
-      - the shared formatter preserves canonical panic statement spacing idempotently
+      - bare and message-bearing explicit panic record the same stable ExplicitPanic reason and may-panic-explicit effect
+      - the shared formatter preserves bare panic and canonical panic statement spacing idempotently
       - checked unreachable is recognized in its canonical payload-free statement context with a dedicated AST node while remaining an ordinary identifier outside that context, matching the canonical keyword inventory; formatter coverage is idempotent
       - reachable checked unreachable terminates the block, satisfies non-void return-path analysis, and records a direct may-panic-unreachable effect; statically unreachable occurrences contribute no effect
       - compiler-known nominal PanicID has the fixed uint32 representation, and compiler-known PanicInfo exposes exactly ID, File, Line, Column, and Function through one canonical Sema type also used by TaskOutcome.Panicked and LSP member completion
@@ -349,7 +357,7 @@ integrations:
       - reachable unreachable records MayPanic
       - PanicID is nominal uint32 and PanicInfo exposes exactly the five canonical fields through Sema and LSP
       - resolved assertion facts preserve AssertionFailed, static message presence/text, source provenance, enclosing function, and proof state
-      - explicit panic parses, rejects function-call and dynamic-message spelling, terminates control flow, and violates @noPanic
+      - bare and message-bearing explicit panic parse, reject function-call and dynamic-message spelling, terminate control flow, and violate @noPanic
     verification:
       - command: go test ./internal/sema -run 'AssertFalse' -count=1
         result: passed; literal-false assertions satisfy non-void return paths and diagnose following code as unreachable while unproven assertions still need a return
@@ -365,12 +373,14 @@ integrations:
         result: passed on 2026-09-24; registry stability plus assertion, explicit panic, checked unreachable, and bounds reason-ID propagation are covered
       - command: go test ./internal/sema -run 'CheckedIntegerEffectsCarryCanonicalPanicReasonSets|ArithmeticEffects' -count=1
         result: passed on 2026-09-24; exact checked-integer reason sets and existing panic-effect behavior agree
+      - command: go test ./internal/parser ./internal/formatter ./internal/sema -run Panic -count=1
+        result: passed on 2026-09-27; bare and message-bearing panic parse and format canonically, both terminate control flow, both retain ExplicitPanic effect identity, and invalid call-like or dynamic-message forms remain rejected
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
     status: partial
-    document_revision: "2.2"
-    reviewed: "2026-09-17"
+    document_revision: "2.3"
+    reviewed: "2026-09-27"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -381,7 +391,7 @@ integrations:
       - deterministic transitive synchronous cause paths exist for the implemented checked-arithmetic and fixed-array-bounds verticals
       - handled or propagated arithmetic and fixed-array bounds try removes only its own resolved panic path while preserving nested operand-call panic effects
       - argument-free @noPanic on functions and methods verifies the currently modeled direct and transitive arithmetic/bounds effects with cause locations
-      - explicit panic records a direct may-panic-explicit effect and participates in existing transitive @noPanic cause paths
+      - bare and message-bearing explicit panic record the same direct may-panic-explicit effect and participate in existing transitive @noPanic cause paths
       - unproven assertion records a direct may-panic-assertion effect and participates in existing transitive @noPanic cause paths; literal true contributes no assertion effect
       - reachable checked unreachable records a direct may-panic-unreachable effect in the shared call graph, participates in @noPanic verification with source provenance, and is suppressed on statically impossible paths
       - effect sites for assertion failure, explicit panic, checked unreachable, and ordinary bounds failure retain exact diagnostics-registry PanicIDs alongside their effect kinds and source provenance

@@ -27,7 +27,6 @@ integrations:
       - rules/concurrency/blocking.md
       - rules/concurrency/mutex.md
       - rules/concurrency/concurrency_memory_model.md
-      - rules/concurrency/structured_concurrency.md
       - rules/compiler/semantic_ir.md
       - rules/platform/target_profiles.md
       - rules/tooling/lsp.md

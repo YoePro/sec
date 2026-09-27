@@ -844,11 +844,11 @@ func TestFormatAssertStatements(t *testing.T) {
 	}
 }
 
-// rules/errors/panic.md § 17 defines panic as a keyword statement followed by
-// one ordinary string literal.
+// rules/errors/panic.md § 17 defines panic as a keyword statement with an
+// optional ordinary string literal.
 func TestFormatPanicStatement(t *testing.T) {
-	input := "fn Fail() void {\npanic   \"failure\"\n}\n"
-	want := "fn Fail() void {\n    panic \"failure\"\n}\n"
+	input := "fn Fail() void {\npanic   \"failure\"\n}\nfn Bare() void {\npanic\n}\n"
+	want := "fn Fail() void {\n    panic \"failure\"\n}\nfn Bare() void {\n    panic\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
 		t.Fatalf("wrong panic formatting:\n%s\nwant:\n%s", got, want)

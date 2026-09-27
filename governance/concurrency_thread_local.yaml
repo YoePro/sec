@@ -1,4 +1,152 @@
 schema_version: 1
 area: concurrency-thread-local
-purpose: Thread-local declarations, access, and lifetime.
-integrations: []
+purpose: Thread-local declarations, access, initialization, attachment, and lifetime.
+integrations:
+  - id: concurrency.thread-local-v2
+    area: concurrency
+    feature: physical-thread-local-storage
+    status: partial
+    reviewed: "2026-09-26"
+    synchronized: "2026-09-27"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-26
+    summary: >-
+      Canonical Sec 0.1 physical thread-local storage model with static
+      ThreadLocal[T] keys, explicit Borrow/BorrowMut/Replace access, lazy
+      deterministic per-thread initialization, always-initialized successful
+      slots, thread-bound borrow provenance, reverse successful-initialization
+      destruction, owned foreign-thread attachment through ThreadAttachment,
+      exact ThreadAttachError, FFI callback integration, target capacity,
+      Semantic IR, lowering, and tooling requirements.
+    rules:
+      - rules/concurrency/thread_local.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/memory/lifetime_analysis.md
+      - rules/declarations/static.md
+      - rules/declarations/functions.md
+      - rules/declarations/properties.md
+      - rules/declarations/impl.md
+      - rules/platform/ffi.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/tooling/lsp.md
+      - language-rulebook-status.md
+    normative:
+      - "ThreadLocal[T] is @noCopy and identifies one independent lazily initialized T per attached physical thread."
+      - "Portable ThreadLocal[T] keys are static; local automatic TLS keys are not Sec 0.1."
+      - "ThreadLocal[T] has no Value/value property and no general Take operation."
+      - "The exact access API is Borrow() ref T, BorrowMut() ref mut T, and Replace(value: T) T."
+      - "After successful first initialization, a TLS slot remains initialized for the attachment lifetime."
+      - "init(initial: T) is available only for concrete implicitly copyable T; Sec 0.1 defines no Copy interface solely for this restriction."
+      - "init(factory: fn() T) supports copyable or move-only T and runs exactly once per physical-thread attachment on first access."
+      - "User factories are never eagerly executed at thread creation, attachment, start, or program startup."
+      - "A first-access factory has no separate typed TLS error channel and contributes its ordinary inferred effects."
+      - "Same-key recursive first initialization is invalid; static cases are diagnosed and dynamic cases use canonical runtime-check failure."
+      - "A failed/panicking factory is not retried in the same physical-thread attachment."
+      - "TLS borrows carry physical-thread-generation provenance and cannot cross unproven task migration/suspension."
+      - "Physical-thread blocking alone does not invalidate a TLS borrow when physical identity is proven stable."
+      - "ThreadAttachError is exactly AlreadyAttached, ResourceUnavailable, NativeFailure."
+      - "Thread.AttachCurrent() returns Result[ThreadAttachment, ThreadAttachError]."
+      - "ThreadAttachment is @noCopy, owns only the Sec attachment, is confined to the same physical thread, and detaches through lifecycle free."
+      - "ThreadAttachment destruction destroys initialized TLS values in reverse successful first-initialization order before ending attachment."
+      - "Main and Sec-created threads are already attached; AttachCurrent returns AlreadyAttached there."
+      - "Generated FFI callback wrappers may auto-attach only when needed and detach only attachments they created."
+      - "ThreadContextError is not part of the Sec 0.1 portable TLS API."
+      - "ThreadSpawnError.ThreadLocalInitializationFailed describes required runtime/target TLS infrastructure failure, not a user factory failure."
+      - "Ordinary ThreadLocal[T] access is forbidden in ISR context."
+      - "Concrete Semantic IR opcode names remain owned by semantic_ir.md."
+      - "Documentation comments for public variants/members precede the declaration they document."
+    implemented:
+      - "current frontend has a compiler-known ThreadLocal[T] identity"
+      - "current frontend validates ThreadLocal generic arity"
+      - "current frontend classifies ThreadLocal[T] as non-copyable"
+      - "compiler-known ThreadLocal[T] exposes exactly Borrow, BorrowMut, and Replace as its TLS-specific instance methods; removed Value/value/Take/Get/Set operations are not registered"
+      - "Sema resolves Borrow() to ref T, BorrowMut() to ref mut T, and Replace(value: T) to T with exact arity and argument-type validation"
+      - "Replace applies ordinary call-site ownership transfer rules, including explicit <- for reusable move-only sources"
+      - "LSP completion and hover consume the shared compiler-known ThreadLocal member identities and concrete substituted signatures"
+      - "legacy compiler-known ThreadContextError identity exists and must be migrated/removed from the portable TLS surface"
+    remaining:
+      - "implement ThreadLocal slot borrow provenance, Borrow/BorrowMut exclusivity, and Replace conflict analysis"
+      - "implement static-key-only ThreadLocal declaration validation"
+      - "implement copyability-gated initial-value constructor"
+      - "implement factory initializer ownership and first-access execution"
+      - "implement deterministic lazy initialization rather than target-chosen eager/lazy user initialization"
+      - "implement per-thread initialization state including initializing/initialized/failed internal states"
+      - "implement same-key recursive-initialization diagnostics/runtime checks"
+      - "implement no-retry behavior after a failed factory attempt on one attachment"
+      - "remove source-level move-out/uninitialized TLS slot analysis"
+      - "implement thread-bound reference provenance and suspension/migration diagnostics"
+      - "implement Replace ownership transfer while retaining the original TLS destruction-order registration"
+      - "implement exact ThreadAttachError"
+      - "replace legacy AttachCurrent Result[ThreadContext, ThreadContextError] with Result[ThreadAttachment, ThreadAttachError]"
+      - "implement ThreadAttachment same-physical-thread confinement and lifecycle free"
+      - "implement reattachment generation identity"
+      - "implement generated FFI callback auto-attachment nesting/ownership"
+      - "synchronize ThreadSpawnError.ThreadLocalInitializationFailed to infrastructure-only semantics"
+      - "implement reverse successful first-initialization TLS destruction on all guaranteed cleanup paths"
+      - "implement detached-thread TLS metadata retention until terminal cleanup"
+      - "implement target TLS key/byte/alignment/destructor/attachment capacity validation"
+      - "implement initializer effect propagation on potentially first access"
+      - "implement TLS-specific Semantic IR facts without treating the legacy opcode list as normative"
+      - "implement target-specific lowering/backends"
+      - "complete LSP constructor/navigation support, TLS provenance diagnostics, ThreadAttachError, and ThreadAttachment tooling"
+    required_tests:
+      - "ThreadLocal[T] exact generic arity and noCopy identity"
+      - "local automatic ThreadLocal key is rejected"
+      - "copyable initial-value constructor succeeds for copyable T"
+      - "initial-value constructor rejects move-only/non-copyable T"
+      - "factory constructor supports move-only T"
+      - "Value/value member is rejected"
+      - "Borrow/BorrowMut/Replace exact result types"
+      - "first access initializes exactly once per attached physical thread"
+      - "factory is not run eagerly at thread creation/attachment"
+      - "Replace preserves initialized slot and returns old ownership"
+      - "same-key recursive initialization is rejected/trapped"
+      - "different-key nested initialization records correct destruction order"
+      - "factory failure does not register T destruction and is not retried"
+      - "different physical threads receive distinct T instances"
+      - "TLS borrow cannot cross await/Task.Yield/waiting select by default"
+      - "physical-thread blocking preserves TLS borrow when identity is stable"
+      - "ThreadAttachError variants are exact"
+      - "AttachCurrent returns AlreadyAttached on main/Sec-created thread"
+      - "ThreadAttachment cannot cross physical-thread/migrating-task boundary"
+      - "ThreadAttachment destruction performs reverse TLS cleanup and detach"
+      - "reattachment creates fresh TLS generation"
+      - "nested FFI callback does not detach an attachment it did not create"
+      - "ThreadSpawnError.ThreadLocalInitializationFailed is infrastructure-only"
+      - "ISR TLS access is rejected"
+      - "target TLS capacity overflow is diagnosed"
+      - "LSP exposes Borrow/BorrowMut/Replace and no Value/value"
+      - "Semantic IR rejects duplicate initialization/factory/destruction and cross-thread borrow provenance"
+    governance_reconciliation:
+      - "concurrency_thread_local.yaml owns ThreadLocal[T], ThreadAttachError, ThreadAttachment, TLS first-access initialization and per-thread cleanup"
+      - "concurrency_thread.yaml remains owner of ThreadContext, ThreadID, physical thread lifecycle and ThreadSpawnError"
+      - "FFI governance remains owner of ABI/callback mechanics while this fragment owns attachment/TLS requirements for foreign physical threads"
+      - "borrowing/lifetime governance remains owner of general borrow validity while this fragment owns thread-bound TLS provenance"
+      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
+      - "implementation status belongs in this split governance fragment rather than root implementation-status.yaml"
+    identified_bugs:
+      - id: concurrency.thread-local-v2.legacy-value-property
+        severity: high
+        description: "Legacy thread_local.md specifies .value as context-dependent T/ref/mutable/move access, conflicting with the canonical property and ownership model."
+      - id: concurrency.thread-local-v2.legacy-thread-context-error
+        severity: high
+        description: "Legacy TLS attachment returns ThreadContext and ThreadContextError even though ThreadContext is now non-owning and threads-v2 removed ThreadContextError from the portable API."
+      - id: concurrency.thread-local-v2.nondeterministic-user-init
+        severity: high
+        description: "Legacy rules allow user TLS factory execution at either attachment or first access depending on target, making observable initializer effects target-dependent."
+      - id: concurrency.thread-local-v2.user-init-spawn-conflation
+        severity: medium
+        description: "Legacy text conflates user TLS factory failure with ThreadSpawnError.ThreadLocalInitializationFailed; v2 restricts that spawn error to TLS runtime infrastructure setup."
+    corrections_applied:
+      - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md

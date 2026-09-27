@@ -13,7 +13,7 @@ func TestPitfallRuleRegistryIsStableAndDefensive(t *testing.T) {
 	if len(rules) < 2 {
 		t.Fatalf("rules = %v, want initial bounds registry", rules)
 	}
-	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument {
+	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument || rules[4].ID != PitfallIneffectiveLengthGuard || rules[5].ID != PitfallUpperNeighborIndex || rules[6].ID != PitfallLowerNeighborIndex {
 		t.Fatalf("unexpected rule order: %v", rules)
 	}
 	if rules[0].MinimumDepth != AnalysisInteractive || rules[0].DefaultConfidence != PitfallConfidenceProven {
@@ -76,6 +76,123 @@ fn Direct(values: ref int[]) int {
 	}
 	if finding.OwningRule != "bounds" || len(finding.EvidenceFor) != 2 || len(finding.Actions) != 1 {
 		t.Fatalf("incomplete structured finding: %+v", finding)
+	}
+}
+
+// Inclusive acceptance and strict-greater rejection both leave index == Len
+// reachable. The analysis correlates resolved binding and collection identity,
+// while strict guards and mismatched subjects remain negative cases.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Ineffective upper bounds guard"
+//   - rules/analysis/pitfall_analysis.md — "Ineffective rejection guard"
+//   - rules/analysis/pitfall_analysis.md — "Required control-flow tests"
+func TestPitfallAnalysisFindsIneffectiveLengthGuards(t *testing.T) {
+	tests := []struct {
+		name      string
+		condition string
+		access    string
+		rejection bool
+		finding   bool
+	}{
+		{name: "inclusive upper guard", condition: "index <= values.Len", access: "values[index]", finding: true},
+		{name: "reversed inclusive upper guard", condition: "values.Len >= index", access: "values[index]", finding: true},
+		{name: "strict upper guard", condition: "index < values.Len", access: "values[index]"},
+		{name: "wrong upper collection", condition: "index <= other.Len", access: "values[index]"},
+		{name: "wrong upper binding", condition: "otherIndex <= values.Len", access: "values[index]"},
+		{name: "strict greater rejection", condition: "index > values.Len", access: "values[index]", rejection: true, finding: true},
+		{name: "reversed strict rejection", condition: "values.Len < index", access: "values[index]", rejection: true, finding: true},
+		{name: "safe rejection", condition: "index >= values.Len", access: "values[index]", rejection: true},
+		{name: "wrong rejection collection", condition: "index > other.Len", access: "values[index]", rejection: true},
+		{name: "wrong rejection binding", condition: "otherIndex > values.Len", access: "values[index]", rejection: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := fmt.Sprintf("if %s { return %s }\n    return 0", test.condition, test.access)
+			if test.rejection {
+				body = fmt.Sprintf("if %s { return 0 }\n    return %s", test.condition, test.access)
+			}
+			analyzer, errors := analyzeSourceWithAnalyzer(t, fmt.Sprintf(`module main
+fn Access(values: ref int[], other: ref int[], index: uint, otherIndex: uint) int {
+    %s
+}
+`, body))
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			findings := analyzer.PitfallAnalysis().Findings()
+			if !test.finding {
+				if len(findings) != 0 {
+					t.Fatalf("safe or unrelated guard produced findings: %+v", findings)
+				}
+				return
+			}
+			if len(findings) != 1 || findings[0].Rule != PitfallIneffectiveLengthGuard {
+				t.Fatalf("findings = %+v, want one ineffective-length-guard finding", findings)
+			}
+			finding := findings[0]
+			if finding.Classification != PitfallProvenInvalid || finding.Confidence != PitfallConfidenceProven || finding.OwningRule != "bounds" || len(finding.EvidenceFor) != 2 || len(finding.Actions) != 1 {
+				t.Fatalf("incomplete structured finding: %+v", finding)
+			}
+		})
+	}
+}
+
+// Neighbor checks use the normalized zero-based half-open domain and resolved
+// identities. Starting predecessor traversal at one, shortening the upper
+// domain, guarding the access, or indexing another collection are safe
+// counterexamples for this initial high-confidence slice.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Upper neighbor access"
+//   - rules/analysis/pitfall_analysis.md — "Lower neighbor access"
+//   - rules/analysis/pitfall_analysis.md — "Guards participate in pitfall reasoning"
+func TestPitfallAnalysisFindsUnsafeNeighborIndexes(t *testing.T) {
+	tests := []struct {
+		name  string
+		start string
+		end   string
+		body  string
+		rule  PitfallRuleID
+	}{
+		{name: "upper neighbor", start: "uint(0)", end: "values.Len", body: "let neighbor := values[i + 1]", rule: PitfallUpperNeighborIndex},
+		{name: "reversed upper neighbor", start: "uint(0)", end: "values.Len", body: "let neighbor := values[1 + i]", rule: PitfallUpperNeighborIndex},
+		{name: "lower neighbor", start: "uint(0)", end: "values.Len", body: "let neighbor := values[i - 1]", rule: PitfallLowerNeighborIndex},
+		{name: "shortened upper domain", start: "uint(0)", end: "values.Len - 1", body: "let neighbor := values[i + 1]"},
+		{name: "predecessor starts at one", start: "uint(1)", end: "values.Len", body: "let neighbor := values[i - 1]"},
+		{name: "different collection", start: "uint(0)", end: "values.Len", body: "let neighbor := other[i + 1]"},
+		{name: "different binding", start: "uint(0)", end: "values.Len", body: "let neighbor := values[otherIndex + 1]"},
+		{name: "guarded upper neighbor", start: "uint(0)", end: "values.Len", body: "if i + 1 < values.Len { let neighbor := values[i + 1] }"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer, errors := analyzeSourceWithAnalyzer(t, fmt.Sprintf(`module main
+fn Visit(values: ref int[], other: ref int[], otherIndex: uint) void {
+    for i in %s..<%s {
+        %s
+    }
+}
+`, test.start, test.end, test.body))
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			findings := analyzer.PitfallAnalysis().Findings()
+			if test.rule == "" {
+				if len(findings) != 0 {
+					t.Fatalf("safe or unrelated neighbor traversal produced findings: %+v", findings)
+				}
+				return
+			}
+			if len(findings) != 1 || findings[0].Rule != test.rule {
+				t.Fatalf("findings = %+v, want one %s finding", findings, test.rule)
+			}
+			finding := findings[0]
+			if finding.Classification != PitfallProvenInvalid || finding.Confidence != PitfallConfidenceProven || finding.OwningRule != "bounds" || len(finding.EvidenceFor) != 2 || len(finding.Actions) != 1 {
+				t.Fatalf("incomplete neighbor finding: %+v", finding)
+			}
+		})
 	}
 }
 
@@ -194,15 +311,16 @@ fn Visit(values: ref int[], other: ref int[]) void {
 				t.Fatalf("analysis errors: %v", errors)
 			}
 			results := analyzer.PitfallAnalysis().Results()
-			if len(results) != 1 || results[0].Rule != PitfallInclusiveLengthIndex {
+			inclusive, found := pitfallResultForRule(results, PitfallInclusiveLengthIndex)
+			if !found {
 				t.Fatalf("results = %+v, want one inclusive-length result", results)
 			}
 			if test.suppressed {
-				if results[0].State != PitfallStateSuppressed || results[0].Suppression == nil {
-					t.Fatalf("safe endpoint exit was not recognized: %+v", results[0])
+				if inclusive.State != PitfallStateSuppressed || inclusive.Suppression == nil {
+					t.Fatalf("safe endpoint exit was not recognized: %+v", inclusive)
 				}
-			} else if results[0].State != PitfallStateFinding {
-				t.Fatalf("ineffective endpoint guard hid finding: %+v", results[0])
+			} else if inclusive.State != PitfallStateFinding {
+				t.Fatalf("ineffective endpoint guard hid finding: %+v", inclusive)
 			}
 		})
 	}
@@ -282,18 +400,28 @@ fn Visit(values: ref int[], stop: bool) void {
 				t.Fatalf("analysis errors: %v", errors)
 			}
 			results := analyzer.PitfallAnalysis().Results()
-			if len(results) != 1 || results[0].Rule != PitfallInclusiveLengthIndex {
+			inclusive, found := pitfallResultForRule(results, PitfallInclusiveLengthIndex)
+			if !found {
 				t.Fatalf("results = %+v, want one inclusive-length result", results)
 			}
 			want := PitfallStateFinding
 			if test.suppressed {
 				want = PitfallStateSuppressed
 			}
-			if results[0].State != want {
-				t.Fatalf("guard result = %+v, want %s", results[0], want)
+			if inclusive.State != want {
+				t.Fatalf("guard result = %+v, want %s", inclusive, want)
 			}
 		})
 	}
+}
+
+func pitfallResultForRule(results []PitfallFinding, rule PitfallRuleID) (PitfallFinding, bool) {
+	for _, result := range results {
+		if result.Rule == rule {
+			return result, true
+		}
+	}
+	return PitfallFinding{}, false
 }
 
 // Rules: rules/analysis/pitfall_analysis.md — "Reachability" and "Guards

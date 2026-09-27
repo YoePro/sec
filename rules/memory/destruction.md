@@ -1237,6 +1237,12 @@ Semantic IR and Sec MLIR must carry resolved destruction semantics rather than l
 
 **§ 38(3)** Implementation status, known gaps, migration actions, and required verification commands belong in `implementation-status-destruction.yaml`, not in this normative rulebook.
 
+**§ 38(4)** Successfully initialized values belonging to one physical-thread
+attachment are destroyed exactly once in reverse successful
+first-initialization order. A never-accessed key has no per-thread value to
+destroy, and `ThreadLocal[T].Replace(...)` retains the key's original cleanup
+position while transferring ownership of the replaced value to the caller.
+
 ## § 39 Test-invocation termination
 
 **§ 39(1)** Controlled test termination through `testing.Pass`, `testing.Fail`, `testing.Skip`, failed `testing.Require`/`RequireEqual`, or unexpected `Err` propagation must destroy every still-owned value in the current invocation according to the ordinary cleanup plan.

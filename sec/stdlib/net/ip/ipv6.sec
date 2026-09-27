@@ -1,0 +1,583 @@
+module ip
+
+type Ipv6Address register[128] msb-first big-endian {
+    Segment0: bit[16],
+    Segment1: bit[16],
+    Segment2: bit[16],
+    Segment3: bit[16],
+    Segment4: bit[16],
+    Segment5: bit[16],
+    Segment6: bit[16],
+    Segment7: bit[16],
+}
+
+type Ipv6WireHeader register[320] msb-first big-endian {
+    Version: bit[4],
+    Dscp: bit[6],
+    Ecn: IpEcn,
+    FlowLabel: bit[20],
+    PayloadLength: bit[16],
+    NextHeader: IpProtocol,
+    HopLimit: bit[8],
+    SourceIp: Ipv6Address,
+    DestinationIp: Ipv6Address,
+}
+
+impl Ipv6Address {
+    /**
+     * Constructs an IPv6 address from eight 16-bit segments.
+     *
+     * Parameters:
+     * - segment0: The most-significant 16-bit segment.
+     * - segment1: The second 16-bit segment.
+     * - segment2: The third 16-bit segment.
+     * - segment3: The fourth 16-bit segment.
+     * - segment4: The fifth 16-bit segment.
+     * - segment5: The sixth 16-bit segment.
+     * - segment6: The seventh 16-bit segment.
+     * - segment7: The least-significant 16-bit segment.
+     *
+     * Standards:
+     * - RFC 4291 section 2.2.
+     */
+    init(
+        segment0: uint16,
+        segment1: uint16,
+        segment2: uint16,
+        segment3: uint16,
+        segment4: uint16,
+        segment5: uint16,
+        segment6: uint16,
+        segment7: uint16
+    ) {
+        // TODO: Implement net/ip/ipv6.init
+    }
+
+    /**
+     * Parses an IPv6 address from text.
+     *
+     * Description:
+     * - Accepts the full eight-segment hexadecimal representation.
+     * - Accepts one "::" zero-compression sequence.
+     * - Accepts uppercase and lowercase hexadecimal digits.
+     * - Accepts leading zeroes within hexadecimal segments.
+     * - Accepts an IPv4 dotted-decimal suffix as defined by RFC 4291.
+     * - Does not accept surrounding square brackets.
+     * - Does not accept zone or interface identifiers.
+     *
+     * Parameters:
+     * - text: IPv6 address text without surrounding square brackets.
+     *
+     * Returns:
+     * - The parsed IPv6 address.
+     *
+     * Errors:
+     * - AddressError.Empty: The input string is empty.
+     * - AddressError.InvalidIpv6: The input is not a valid IPv6 address.
+     *
+     * Standards:
+     * - RFC 4291 section 2.2.
+     */
+    static fn Parse(text: string) Result[Ipv6Address, AddressError] {
+        if text.IsEmpty {
+            return Err(AddressError.Empty)
+        }
+
+        let mut sides: string[2] := ["", ""]
+        let mut sideCount: uint := 0
+
+        for side in text.Split("::") {
+            if sideCount >= 2 {
+                return Err(AddressError.InvalidIpv6)
+            }
+
+            sides[sideCount] = side
+            sideCount += 1
+        }
+
+        if sideCount == 0 {
+            return Err(AddressError.InvalidIpv6)
+        }
+
+        let hasCompression := sideCount == 2
+
+        let mut left: uint16[8] := [
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ]
+
+        let leftCount := try _ParseIpv6Side(
+            sides[0],
+            left,
+            !hasCompression,
+        )
+
+        if !hasCompression {
+            if leftCount != 8 {
+                return Err(AddressError.InvalidIpv6)
+            }
+
+            return Ok(new Ipv6Address(
+                left[0],
+                left[1],
+                left[2],
+                left[3],
+                left[4],
+                left[5],
+                left[6],
+                left[7],
+            ))
+        }
+
+        let mut right: uint16[8] := [
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ]
+
+        let rightCount := try _ParseIpv6Side(
+            sides[1],
+            right,
+            true,
+        )
+
+        // "::" must represent at least one 16-bit zero segment.
+        if leftCount + rightCount >= 8 {
+            return Err(AddressError.InvalidIpv6)
+        }
+
+        let mut segments: uint16[8] := [
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ]
+
+        let mut index: uint := 0
+
+        while index < leftCount {
+            segments[index] = left[index]
+            index += 1
+        }
+
+        index = 0
+
+        while index < rightCount {
+            segments[8 - rightCount + index] = right[index]
+            index += 1
+        }
+
+        return Ok(new Ipv6Address(
+            segments[0],
+            segments[1],
+            segments[2],
+            segments[3],
+            segments[4],
+            segments[5],
+            segments[6],
+            segments[7],
+        ))
+    }
+
+    /**
+     * Returns the canonical textual representation of the IPv6 address.
+     *
+     * Description:
+     * - Suppresses leading zeroes within each 16-bit segment.
+     * - Uses lowercase hexadecimal digits.
+     * - Compresses the longest run of two or more zero segments using "::".
+     * - Uses the leftmost run when multiple longest runs have equal length.
+     * - Never compresses a single zero segment.
+     *
+     * Returns:
+     * - The canonical IPv6 address text.
+     *
+     * Standards:
+     * - RFC 4291 section 2.2.
+     * - RFC 5952 section 4.
+     */
+    fn ToString() string {
+        let segments: uint16[8] := [
+            uint16(self.Segment0),
+            uint16(self.Segment1),
+            uint16(self.Segment2),
+            uint16(self.Segment3),
+            uint16(self.Segment4),
+            uint16(self.Segment5),
+            uint16(self.Segment6),
+            uint16(self.Segment7),
+        ]
+
+        let mut bestStart: uint := 8
+        let mut bestLength: uint := 0
+        let mut index: uint := 0
+
+        while index < 8 {
+            if segments[index] != 0 {
+                index += 1
+                continue
+            }
+
+            let start := index
+
+            while index < 8 &&
+            segments[index] == 0 {
+                index += 1
+            }
+
+            let length := index - start
+
+            if length >= 2 &&
+            length > bestLength {
+                bestStart = start
+                bestLength = length
+            }
+        }
+
+        let mut result := ""
+        index = 0
+
+        while index < 8 {
+            if index == bestStart {
+                result += "::"
+                index += bestLength
+                continue
+            }
+
+            if !result.IsEmpty &&
+            !result.EndsWith(":") {
+                result += ":"
+            }
+
+            result += _Ipv6SegmentToString(segments[index])
+            index += 1
+        }
+
+        return result
+    }
+
+    /**
+     * Returns the 16-byte network representation of the IPv6 address.
+     *
+     * Returns:
+     * - The address bytes in network byte order, most-significant byte first.
+     */
+    property Bytes: byte[16] {
+        get {
+            return [
+                byte(uint16(self.Segment0) >> 8),
+                byte(uint16(self.Segment0) & 0xff),
+
+                byte(uint16(self.Segment1) >> 8),
+                byte(uint16(self.Segment1) & 0xff),
+
+                byte(uint16(self.Segment2) >> 8),
+                byte(uint16(self.Segment2) & 0xff),
+
+                byte(uint16(self.Segment3) >> 8),
+                byte(uint16(self.Segment3) & 0xff),
+
+                byte(uint16(self.Segment4) >> 8),
+                byte(uint16(self.Segment4) & 0xff),
+
+                byte(uint16(self.Segment5) >> 8),
+                byte(uint16(self.Segment5) & 0xff),
+
+                byte(uint16(self.Segment6) >> 8),
+                byte(uint16(self.Segment6) & 0xff),
+
+                byte(uint16(self.Segment7) >> 8),
+                byte(uint16(self.Segment7) & 0xff),
+            ]
+        }
+    }
+
+    /**
+     * Reports whether the address is the unspecified IPv6 address "::".
+     *
+     * Returns:
+     * - true for ::; otherwise false.
+     *
+     * Standards:
+     * - RFC 4291 section 2.5.2.
+     */
+    property IsUnspecified: bool {
+        get {
+            return uint16(self.Segment0) == 0 &&
+            uint16(self.Segment1) == 0 &&
+            uint16(self.Segment2) == 0 &&
+            uint16(self.Segment3) == 0 &&
+            uint16(self.Segment4) == 0 &&
+            uint16(self.Segment5) == 0 &&
+            uint16(self.Segment6) == 0 &&
+            uint16(self.Segment7) == 0
+        }
+    }
+
+    /**
+     * Reports whether the address is the IPv6 loopback address "::1".
+     *
+     * Returns:
+     * - true for ::1; otherwise false.
+     *
+     * Standards:
+     * - RFC 4291 section 2.5.3.
+     */
+    property IsLoopback: bool {
+        get {
+            return uint16(self.Segment0) == 0 &&
+            uint16(self.Segment1) == 0 &&
+            uint16(self.Segment2) == 0 &&
+            uint16(self.Segment3) == 0 &&
+            uint16(self.Segment4) == 0 &&
+            uint16(self.Segment5) == 0 &&
+            uint16(self.Segment6) == 0 &&
+            uint16(self.Segment7) == 1
+        }
+    }
+
+    /**
+     * Reports whether the address belongs to the IPv6 multicast prefix ff00::/8.
+     *
+     * Returns:
+     * - true for an IPv6 multicast address; otherwise false.
+     *
+     * Standards:
+     * - RFC 4291 section 2.7.
+     */
+    property IsMulticast: bool {
+        get {
+            let first := uint16(self.Segment0)
+
+            return first in 0xff00..0xffff
+        }
+    }
+
+    /**
+     * Reports whether the address belongs to the IPv6 link-local unicast
+     * prefix fe80::/10.
+     *
+     * Returns:
+     * - true for an IPv6 link-local unicast address; otherwise false.
+     *
+     * Standards:
+     * - RFC 4291 section 2.5.6.
+     */
+    property IsLinkLocal: bool {
+        get {
+            let first := uint16(self.Segment0)
+
+            return first in 0xfe80..0xfebf
+        }
+    }
+
+    /**
+     * Reports whether the address belongs to the IPv6 unique-local
+     * prefix fc00::/7.
+     *
+     * Returns:
+     * - true for an IPv6 unique-local address; otherwise false.
+     *
+     * Standards:
+     * - RFC 4193.
+     */
+    property IsUniqueLocal: bool {
+        get {
+            let first := uint16(self.Segment0)
+
+            return first in 0xfc00..0xfdff
+        }
+    }
+
+    /**
+     * The IPv6 unspecified address "::".
+     *
+     * Standards:
+     * - RFC 4291 section 2.5.2.
+     */
+    static let Unspecified: Ipv6Address := Ipv6Address(0)
+
+    /**
+     * The IPv6 loopback address "::1".
+     *
+     * Standards:
+     * - RFC 4291 section 2.5.3.
+     */
+    static let Loopback: Ipv6Address := Ipv6Address(1)
+
+    /**
+     * Converts one hexadecimal character to its numeric value.
+     *
+     * Parameters:
+     * - value: The hexadecimal character to decode.
+     *
+     * Returns:
+     * - A value in the range 0..15.
+     *
+     * Errors:
+     * - AddressError.InvalidIpv6: The character is not hexadecimal.
+     */
+    fn _Ipv6HexDigitValue(value: char) Result[byte, AddressError] {
+        if !value.IsHexDigit {
+            return Err(AddressError.InvalidIpv6)
+        }
+
+        if value.IsDigit {
+            return Ok(byte(int(value) - 48))
+        }
+
+        return Ok(byte(int(value.ToUpper()) - 55))
+    }
+
+    /**
+     * Formats one 16-bit IPv6 segment using canonical lowercase hexadecimal text.
+     *
+     * Parameters:
+     * - value: The segment value to format.
+     *
+     * Returns:
+     * - Between one and four hexadecimal digits without leading zeroes.
+     *
+     * Standards:
+     * - RFC 5952 sections 4.1 and 4.3.
+     */
+    fn _Ipv6SegmentToString(value: uint16) string {
+        if value == 0 {
+            return "0"
+        }
+
+        let digits: byte[4] := [
+            byte((value >> 12) & 0x0f),
+            byte((value >> 8) & 0x0f),
+            byte((value >> 4) & 0x0f),
+            byte(value & 0x0f),
+        ]
+
+        let mut result := ""
+        let mut started := false
+
+        for digit in digits {
+            if !started && digit == 0 {
+                continue
+            }
+
+            result += digit.ToString(byte.ByteStringFormat.Hexadecimal)
+            started = true
+        }
+
+        return result
+    }
+
+    /**
+     * Parses one colon-separated side of an IPv6 address.
+     *
+     * Description:
+     * - Parses ordinary hexadecimal IPv6 segments.
+     * - May parse an IPv4 dotted-decimal suffix when allowIpv4 is true.
+     * - An IPv4 suffix occupies the final two 16-bit IPv6 segments.
+     * - Empty segments are invalid here because "::" compression is handled
+     * by Ipv6Address.Parse before calling this helper.
+     *
+     * Parameters:
+     * - text: One side of an IPv6 address, excluding the "::" separator.
+     * - segments: Storage receiving parsed 16-bit segments from index zero.
+     * - allowIpv4: Whether the final component may use IPv4 dotted-decimal syntax.
+     *
+     * Returns:
+     * - The number of 16-bit segments written to segments.
+     *
+     * Errors:
+     * - AddressError.InvalidIpv6: The side contains invalid IPv6 syntax,
+     * too many segments, or an invalid IPv4 suffix.
+     *
+     * Standards:
+     * - RFC 4291 section 2.2.
+     */
+    fn _ParseIpv6Side(text: string, segments: ref mut uint16[8], allowIpv4: bool) Result[uint, AddressError] {
+        if text.IsEmpty {
+            return Ok(0)
+        }
+
+        let mut count: uint := 0
+        let mut parsedIpv4 := false
+
+        for part in text.Split(":") {
+            if parsedIpv4 ||
+            part.IsEmpty {
+                return Err(AddressError.InvalidIpv6)
+            }
+
+            if part.Contains(".") {
+                if !allowIpv4 ||
+                count > 6 {
+                    return Err(AddressError.InvalidIpv6)
+                }
+
+                let ipv4 := try Ipv4Address.Parse(part) {
+                    Err(_) => return Err(AddressError.InvalidIpv6)
+                }
+
+                let bytes := ipv4.Bytes
+
+                segments[count] =
+                (uint16(bytes[0]) << 8) |
+                uint16(bytes[1])
+
+                segments[count + 1] =
+                (uint16(bytes[2]) << 8) |
+                uint16(bytes[3])
+
+                count += 2
+                parsedIpv4 = true
+                continue
+            }
+
+            if count >= 8 {
+                return Err(AddressError.InvalidIpv6)
+            }
+
+            segments[count] = try _ParseIpv6Segment(part)
+            count += 1
+        }
+
+        return Ok(count)
+    }
+
+    /**
+     * Parses one hexadecimal IPv6 segment.
+     *
+     * Description:
+     * - Accepts between one and four hexadecimal digits.
+     * - Accepts uppercase and lowercase hexadecimal digits.
+     * - Leading zeroes are permitted.
+     *
+     * Parameters:
+     * - text: The hexadecimal segment text without ':' separators.
+     *
+     * Returns:
+     * - The decoded 16-bit segment value.
+     *
+     * Errors:
+     * - AddressError.InvalidIpv6: The segment is empty, longer than four
+     * hexadecimal digits, or contains a non-hexadecimal character.
+     *
+     * Standards:
+     * - RFC 4291 section 2.2.
+     */
+    fn _ParseIpv6Segment(text: string) Result[uint16, AddressError] {
+        if text.Len == 0 ||
+        text.Len > 4 {
+            return Err(AddressError.InvalidIpv6)
+        }
+
+        let mut value: uint16 := 0
+        let mut index: uint := 0
+
+        while index < text.Len {
+            let digit := try _Ipv6HexDigitValue(text.CharAt(index))
+
+            value = value * 16 + uint16(digit)
+            index += 1
+        }
+
+        return Ok(value)
+    }
+
+}

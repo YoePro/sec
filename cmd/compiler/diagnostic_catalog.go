@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"sec/internal/diagnostics"
@@ -92,24 +93,58 @@ var diagnosticTokenFields = []diagnosticCatalogField{
 	{Name: "Column", Type: "int", Required: true, Description: "One-based source column."},
 }
 
+// runDiagnosticCatalogCommand exposes the canonical registry as either the
+// complete stable catalog or one exact diagnostic definition. Detail lookup
+// never invents prose outside the registry-owned definition.
+//
+// Rules:
+//   - rules/tooling/diagnostics.txt — "Diagnostic detail command"
+//   - rules/compiler/compiler_testing.md — §11(1)–(8) "Diagnostic registry and catalog conformance"
 func runDiagnosticCatalogCommand(args []string, output io.Writer) error {
-	jsonOutput := false
-	for _, arg := range args {
-		switch arg {
-		case "--json":
-			jsonOutput = true
-		default:
-			return fmt.Errorf("unknown argument %q; expected --json", arg)
+	switch len(args) {
+	case 0:
+		return writeDiagnosticCatalogText(output, buildDiagnosticCatalog())
+	case 1:
+		if args[0] != "--json" {
+			if strings.HasPrefix(args[0], "-") {
+				return fmt.Errorf("unknown argument %q; expected --json or one diagnostic ID", args[0])
+			}
+			return writeDiagnosticDefinitionDetail(output, args[0])
 		}
-	}
-
-	catalog := buildDiagnosticCatalog()
-	if jsonOutput {
+		catalog := buildDiagnosticCatalog()
 		encoder := json.NewEncoder(output)
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(catalog)
+	default:
+		return fmt.Errorf("invalid diagnostics arguments; expected no arguments, --json, or one diagnostic ID")
 	}
-	return writeDiagnosticCatalogText(output, catalog)
+}
+
+// writeDiagnosticDefinitionDetail renders one registry definition using the
+// same fields exported by the complete text and JSON catalogs.
+//
+// Rules:
+//   - rules/tooling/diagnostics.txt — "Diagnostic detail command"
+//   - rules/compiler/compiler_testing.md — §11(5)–(8)
+func writeDiagnosticDefinitionDetail(output io.Writer, id string) error {
+	definition, ok := diagnostics.Lookup(id)
+	if !ok {
+		return fmt.Errorf("unknown diagnostic ID %q", id)
+	}
+
+	status := "active"
+	if definition.Retired {
+		status = "retired"
+	}
+	w := tabwriter.NewWriter(output, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "DIAGNOSTIC\t%s\n", definition.ID)
+	fmt.Fprintf(w, "NAME\t%s\n", definition.Name)
+	fmt.Fprintf(w, "FAMILY\t%s\n", definition.Family)
+	fmt.Fprintf(w, "DEFAULT_SEVERITY\t%s\n", definition.DefaultSeverity)
+	fmt.Fprintf(w, "MANDATORY\t%t\n", definition.Mandatory)
+	fmt.Fprintf(w, "CONFIGURABLE\t%t\n", !definition.Mandatory)
+	fmt.Fprintf(w, "STATUS\t%s\n", status)
+	return w.Flush()
 }
 
 func buildDiagnosticCatalog() diagnosticCatalog {

@@ -4108,7 +4108,12 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	if parseResult.Fatal {
 		return diagnostics
 	}
-	prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
+	importErrors := prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
+	for _, err := range importErrors {
+		if diagnosticBelongsToSource(err, path) {
+			diagnostics = append(diagnostics, semaDiagnostic(err, 1, text))
+		}
+	}
 
 	analyzer := newLSPAnalyzer(uri)
 	for _, err := range analyzer.Analyze(program) {
@@ -4172,13 +4177,13 @@ func normalizedSourcePath(path string) string {
 	return lspserver.NormalizeSourcePath(path)
 }
 
-func prepareProgramForLSP(program *ast.Program, sourceFile string, overlay sourceOverlay) {
+func prepareProgramForLSP(program *ast.Program, sourceFile string, overlay sourceOverlay) []sema.Error {
 	if program == nil || sourceFile == "" {
-		return
+		return nil
 	}
 	lspserver.AssembleModule(program, sourceFile, overlay)
 	resolveCoreSources(program, sourceFile, overlay)
-	resolveSourceImports(program, map[string]bool{}, sourceFile, overlay)
+	return resolveSourceImports(program, map[string]bool{}, sourceFile, overlay)
 }
 
 func diagnosticBelongsToSource(err sema.Error, sourceFile string) bool {
@@ -4339,19 +4344,29 @@ func lspStatementTokenForSource(stmt ast.Statement) (lexer.Token, bool) {
 	}
 }
 
-func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string, overlays ...sourceOverlay) {
+func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile string, overlays ...sourceOverlay) []sema.Error {
 	overlay := firstSourceOverlay(overlays)
+	issues := []sema.Error{}
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok || importStmt == nil {
 			continue
 		}
+		if !canonicalLSPImportPath(importStmt.Path) {
+			continue
+		}
 		sourcePaths := sourceIncludePaths(importStmt.Path, sourceFile)
+		if len(sourcePaths) == 0 {
+			issues = append(issues, unresolvedImportError(importStmt))
+			continue
+		}
 		importedStatements := []ast.Statement{}
 		module := ""
+		resolved := false
 		for _, sourcePath := range sourcePaths {
 			if seen[sourcePath] {
 				if imported, parsed := parseSourceInclude(sourcePath, overlay); parsed {
+					resolved = true
 					rewriteImportQualifier(program, importQualifier(importStmt), programModulePath(imported))
 				}
 				continue
@@ -4362,11 +4377,16 @@ func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile
 			if !ok {
 				continue
 			}
-			resolveSourceImports(imported, seen, sourcePath, overlay)
+			resolved = true
+			issues = append(issues, resolveSourceImports(imported, seen, sourcePath, overlay)...)
 			if module == "" {
 				module = programModulePath(imported)
 			}
 			importedStatements = append(importedStatements, imported.Statements...)
+		}
+		if !resolved {
+			issues = append(issues, unresolvedImportError(importStmt))
+			continue
 		}
 		if module == "" || len(importedStatements) == 0 {
 			continue
@@ -4376,9 +4396,13 @@ func resolveSourceImports(program *ast.Program, seen map[string]bool, sourceFile
 		qualifyImportedModule(imported, module)
 		program.Statements = append(program.Statements, imported.Statements...)
 	}
+	return issues
 }
 
 func sourceIncludePaths(path string, sourceFile string) []string {
+	if !canonicalLSPImportPath(path) {
+		return nil
+	}
 	root := findSecSourceRoot(sourceFile)
 	if strings.HasPrefix(path, "platform/") {
 		trimmed := strings.Trim(strings.TrimSuffix(path, ".sec"), "/")
@@ -4391,6 +4415,9 @@ func sourceIncludePaths(path string, sourceFile string) []string {
 			sort.Strings(matches)
 			return matches
 		}
+	}
+	if paths, ok := lspStandardLibraryIncludePaths(root, path); ok {
+		return paths
 	}
 	relative, ok := sourceIncludePath(path)
 	if ok {

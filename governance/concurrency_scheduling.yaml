@@ -1,4 +1,145 @@
 schema_version: 1
 area: concurrency-scheduling
-purpose: Scheduling policy, execution contexts, and scheduling guarantees.
-integrations: []
+purpose: Task and physical-thread scheduling semantics, yield, migration, priority, affinity, and scheduler integration.
+integrations:
+  - id: concurrency.scheduling-v2
+    area: concurrency
+    feature: scheduling-and-yield
+    status: partial
+    reviewed: "2026-09-27"
+    synchronized: "2026-09-27"
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-27
+    summary: >-
+      Canonical Sec 0.1 scheduling model distinguishing logical task scheduling
+      from physical thread scheduling. Task.Yield() is a logical scheduling and
+      current-task cancellation point. Thread.Yield() is only a physical
+      scheduler hint and is not a cancellation point. Program entry always has
+      physical ThreadContext but never receives an implicit root TaskContext.
+      Task migration, native preemption, TLS provenance, priority, affinity,
+      target scheduling capabilities, analysis, IR, lowering, and tooling are
+      specified without imposing one scheduler algorithm.
+    rules:
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/thread_local.md
+      - rules/concurrency/await.md
+      - rules/concurrency/select.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/concurrency/concurrency_runtime_model.md
+      - rules/analysis/deadlock_analysis.md
+      - rules/compiler/semantic_ir.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+      - rules/tooling/lsp.md
+      - language-rulebook-status.md
+    normative:
+      - "Task and Thread are distinct execution kinds even when one backend representation resembles the other."
+      - "Task.Yield() has exact surface static fn Yield() void and is valid only in a real logical task context."
+      - "Task.Yield() is both a task scheduling point and a current-task cancellation point."
+      - "If cancellation commits before Task.Yield normal commit, the operation does not return to the following source statement."
+      - "Thread.Yield() has exact surface static fn Yield() void, is a physical scheduler hint, and is not a cancellation point."
+      - "Neither yield operation creates a memory synchronization edge."
+      - "A task may migrate across scheduling points when no live semantic restriction forbids migration."
+      - "Native/backend preemption is not automatically a source-level task migration point."
+      - "A backend must preserve physical-thread identity while a live execution-affine value requires it."
+      - "ThreadLocal borrows may not cross migratable Task.Yield by default."
+      - "Program entry/main always has an attached physical ThreadContext."
+      - "Program entry/main does not implicitly have TaskContext."
+      - "Task.Current() and Task.Yield() are invalid in ordinary main unless execution has explicitly entered a real task context."
+      - "Backend use of task-runtime machinery to implement main is not source-visible task identity."
+      - "Sec 0.1 provides no portable task affinity or task priority API."
+      - "Portable ThreadPriority and CpuSet are owned by threads.md and remain creation-time ThreadConfig concerns."
+      - "Sec 0.1 defines no portable runtime Thread.SetPriority/SetAffinity and no portable ThreadSchedulingError."
+      - "Scheduler fairness is not guaranteed unless the selected target/profile declares a stronger guarantee."
+      - "Scheduler policy must not override source-order select priority."
+      - "Concrete Semantic IR opcode names remain owned by semantic_ir.md."
+    implemented:
+      - "legacy scheduling.md already distinguishes logical tasks from physical threads"
+      - "legacy frontend has compiler-known ThreadPriority identity"
+      - "task migration is already represented conceptually by tasks.md"
+      - "Thread.Yield and Task.Yield have legacy documented but incomplete implementation status"
+      - "canonical scheduling.md revision 2.0 replaces the legacy unnumbered scheduling book"
+      - "tasks, threads, cancellation, blocking, select, concurrency memory/runtime model, Semantic IR, and LSP rulebooks are synchronized to the scheduling-v2 distinctions"
+      - "retired structured_concurrency.md is no longer an active scheduling dependency"
+    remaining:
+      - "implement exact Task.Yield source-visible compiler-known surface"
+      - "implement Task.Yield current-task-context validation"
+      - "implement Task.Yield cancellation-point first-commit behavior"
+      - "implement exact Thread.Yield source-visible compiler-known surface"
+      - "ensure Thread.Yield does not observe/commit cancellation implicitly"
+      - "remove target-dependent implicit root-task semantics from main/program entry"
+      - "reject Task.Current and Task.Yield in ordinary main"
+      - "model scheduling point versus cancellation point as separate semantic facts"
+      - "model task migration permission/restriction explicitly"
+      - "preserve execution-affine/TLS physical-thread provenance through scheduler lowering"
+      - "prevent backend preemption/migration from violating validated thread-bound borrow facts"
+      - "synchronize ThreadPriority/CpuSet/ThreadConfig rules with threads-v2"
+      - "remove/internalize stale portable ThreadSchedulingError identity"
+      - "complete CompilationPlan scheduling capability declarations"
+      - "complete physical worker blocking versus logical task suspension analysis"
+      - "complete starvation/cooperative-progress diagnostics"
+      - "complete scheduling Semantic IR facts without treating legacy opcode names as normative"
+      - "complete target-specific Task.Yield/Thread.Yield lowering"
+      - "update LSP hover/completion/navigation and execution-context diagnostics"
+    required_tests:
+      - "Task.Yield exact signature"
+      - "Task.Yield accepted inside real task context"
+      - "Task.Yield rejected outside task context"
+      - "Task.Yield is a cancellation point"
+      - "pending cancellation winning Task.Yield prevents return to following statement"
+      - "normal Task.Yield remains runnable and later returns void"
+      - "Task.Yield creates no synchronization edge"
+      - "Thread.Yield exact signature"
+      - "Thread.Yield is not a cancellation point"
+      - "Thread.Yield creates no synchronization edge"
+      - "Thread.Yield rejected in ISR"
+      - "main has ThreadContext"
+      - "main has no implicit TaskContext"
+      - "Task.Current rejected in ordinary main"
+      - "backend task machinery for main does not expose TaskContext"
+      - "task migration preserves TaskContext and may change ThreadContext"
+      - "TLS borrow cannot cross Task.Yield by default"
+      - "backend native preemption preserves live physical-thread-bound provenance"
+      - "physical-thread blocking preserves same-thread TLS borrow where identity is stable"
+      - "no portable task affinity"
+      - "ThreadPriority/CpuSet configuration remains exact"
+      - "no implicit Preferred conversion"
+      - "unsupported Required priority/affinity target validation"
+      - "no portable ThreadSchedulingError"
+      - "select source-order priority wins independently of scheduler notification order"
+      - "cooperative no-scheduling-point loop diagnostic on applicable profile"
+      - "Semantic IR distinguishes logical Task.Yield from physical Thread.Yield"
+      - "LSP documents cancellation distinction"
+    governance_reconciliation:
+      - "concurrency_scheduling.yaml owns general scheduling-point, migration, yield, fairness and target scheduler integration semantics"
+      - "concurrency_task.yaml owns Task[T]/TaskContext lifecycle and task result semantics"
+      - "concurrency_thread.yaml owns Thread[T]/ThreadContext, ThreadPriority, CpuSet and thread configuration"
+      - "concurrency_thread_local.yaml owns physical-thread-bound TLS provenance"
+      - "concurrency_cancellation.yaml owns general cancellation request/commit semantics"
+      - "concurrency_select.yaml owns source-order select readiness/commit"
+      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
+      - "implementation status belongs in this split governance fragment rather than root implementation-status.yaml"
+    identified_bugs:
+      - id: concurrency.scheduling-v2.implicit-main-task
+        severity: high
+        description: "Legacy scheduling.md allows program entry to have or not have TaskContext depending on target profile, making Task.Current/Task.Yield source validity target-dependent."
+      - id: concurrency.scheduling-v2.task-yield-cancellation-unspecified
+        severity: high
+        description: "Legacy scheduling.md describes Task.Yield but does not define whether pending current-task cancellation may commit there."
+      - id: concurrency.scheduling-v2.yield-cancellation-conflation
+        severity: medium
+        description: "Legacy text does not precisely distinguish logical Task.Yield cancellation semantics from physical Thread.Yield."
+      - id: concurrency.scheduling-v2.legacy-ir-opcode-list
+        severity: medium
+        description: "Legacy scheduling.md gives a concrete opcode list as if owned by the scheduling book rather than semantic_ir.md."
+      - id: concurrency.scheduling-v2.stale-thread-scheduling-error
+        severity: medium
+        description: "Legacy compiler-known ThreadSchedulingError identity remains despite no portable Sec 0.1 operation owning such an error."
+    corrections_applied:
+      - rules/corrections/applied/scheduling-v2-cross-rulebook-correction-20260927.md

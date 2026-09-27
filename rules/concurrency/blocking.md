@@ -28,6 +28,11 @@ register readiness.
 
 In physical thread context, a wait parks or blocks the current physical thread.
 
+Parking or blocking a physical thread does not by itself invalidate a
+thread-local borrow when execution resumes on the same physical-thread
+attachment generation. Logical task suspension remains different because the
+task may resume on another physical thread.
+
 Busy waiting repeatedly polls without parking or suspension.
 
 Busy waiting is not the default lowering for a Sec blocking operation.
@@ -173,6 +178,11 @@ The mutex's ownership and memory-order semantics are identical.
 
 A runtime must not substitute a task-local lock when the mutex may cross a thread
 boundary.
+
+Logical task suspension, physical executor-worker blocking, and direct
+physical-thread parking are distinct scheduling facts. Task-context operations
+use logical suspension where the selected target supports it; this must not
+fabricate `TaskContext` for ordinary `main` or physical-thread-only code.
 
 ---
 

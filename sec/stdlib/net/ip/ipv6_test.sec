@@ -1,0 +1,88 @@
+module ip
+
+test "Ipv6Address parses unspecified address" {
+    match Ipv6Address.Parse("::") {
+        Ok(address) => {
+            assert address.IsUnspecified
+            assert !address.IsLoopback
+            assert address.ToString() == "::"
+        }
+
+        Err(_) => {
+            assert false, "expected :: to parse as an IPv6 address"
+        }
+    }
+}
+
+test "Ipv6Address parses loopback address" {
+    match Ipv6Address.Parse("::1") {
+        Ok(address) => {
+            assert !address.IsUnspecified
+            assert address.IsLoopback
+            assert address.ToString() == "::1"
+        }
+
+        Err(_) => {
+            assert false, "expected ::1 to parse as an IPv6 address"
+        }
+    }
+}
+
+test "Ipv6Address canonicalizes hexadecimal text" {
+    match Ipv6Address.Parse("2001:0DB8:0000:0000:0000:0000:0002:0001") {
+        Ok(address) => {
+            assert address.ToString() == "2001:db8::2:1"
+        }
+
+        Err(_) => {
+            assert false, "expected valid IPv6 address to parse"
+        }
+    }
+}
+
+test "Ipv6Address compresses leftmost longest zero run" {
+    match Ipv6Address.Parse("2001:db8:0:0:1:0:0:1") {
+        Ok(address) => {
+            assert address.ToString() == "2001:db8::1:0:0:1"
+        }
+
+        Err(_) => {
+            assert false, "expected valid IPv6 address to parse"
+        }
+    }
+}
+
+test "Ipv6Address exposes bytes in network byte order" {
+    match Ipv6Address.Parse("2001:db8::1") {
+        Ok(address) => {
+            let bytes := address.Bytes
+
+            assert bytes[0] == 0x20
+            assert bytes[1] == 0x01
+            assert bytes[2] == 0x0d
+            assert bytes[3] == 0xb8
+
+            assert bytes[14] == 0x00
+            assert bytes[15] == 0x01
+        }
+
+        Err(_) => {
+            assert false, "expected valid IPv6 address to parse"
+        }
+    }
+}
+
+test "Ipv6Address rejects multiple compression sequences" {
+    match Ipv6Address.Parse("2001::db8::1") {
+        Ok(_) => {
+            assert false, "expected IPv6 address with multiple :: sequences to be rejected"
+        }
+
+        Err(error) where error == AddressError.InvalidIpv6 => {
+        }
+
+        Err(_) => {
+            assert false, "expected AddressError.InvalidIpv6"
+        }
+    }
+}

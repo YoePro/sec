@@ -35,12 +35,18 @@ module main
 fn Fail() int {
 	panic "failure"
 }
+
+fn FailWithoutMessage() int {
+	panic
+}
 `)
 	assertSemaErrors(t, validErrors, nil)
-	summary := analyzer.CallGraph().EffectSummary(callGraphNodeIDByName(t, analyzer.CallGraph(), "Fail"))
-	if len(summary.DirectEffects) != 1 || len(summary.DirectEffects[0].PanicReasonIDs) != 1 ||
-		summary.DirectEffects[0].PanicReasonIDs[0] != diagnostics.PanicReasonExplicitPanic {
-		t.Fatalf("explicit panic effects = %+v", summary.DirectEffects)
+	for _, name := range []string{"Fail", "FailWithoutMessage"} {
+		summary := analyzer.CallGraph().EffectSummary(callGraphNodeIDByName(t, analyzer.CallGraph(), name))
+		if len(summary.DirectEffects) != 1 || len(summary.DirectEffects[0].PanicReasonIDs) != 1 ||
+			summary.DirectEffects[0].PanicReasonIDs[0] != diagnostics.PanicReasonExplicitPanic {
+			t.Fatalf("%s explicit panic effects = %+v", name, summary.DirectEffects)
+		}
 	}
 
 	errors := analyzeSourceRaw(t, `
@@ -48,7 +54,7 @@ module main
 
 @noPanic
 fn Fail() void {
-	panic "failure"
+	panic
 }
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function Fail does not satisfy @noPanic") ||

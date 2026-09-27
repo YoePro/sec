@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
@@ -59,4 +60,80 @@ fn Evaluate(left: bool, right: bool) void {
 	if _, ok := analyzer.ResolvedLogicalFlowOf(&ast.InfixExpression{}); ok || len(analyzer.resolvedLogicalFlows) != before {
 		t.Fatal("unknown logical-flow query inferred or inserted a fact")
 	}
+}
+
+// The RHS of && executes only where the LHS is true. A dominating positive
+// uint comparison therefore makes subtraction by one valid on that edge.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Short-circuit evaluation"
+//   - rules/foundations/operators.md — "Integer arithmetic"
+func TestLogicalAndPositiveUintGuardSuppressesFalseUnderflow(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+fn HasPrevious() bool {
+	let mut index: uint := 0
+	while index < 4 {
+		if index > 0 && index - 1 == 0 {
+			return true
+		}
+		index += 1
+	}
+	return false
+}
+`)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLogicalIntegerRefinementRequiresASelectedSufficientGuard(t *testing.T) {
+	tests := []struct {
+		name  string
+		guard string
+	}{
+		{name: "lower bound too small", guard: "index > 0 && index - 2 == 0"},
+		{name: "or selects false edge", guard: "index > 0 || index - 1 == 0"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			errors := analyzeSourceRaw(t, `
+module main
+
+fn Check() bool {
+	let index: uint := 0
+	return `+test.guard+`
+}
+`)
+			if len(errors) != 1 || errors[0].ID != diagnostics.OperatorIntegerOverflow {
+				t.Fatalf("errors = %+v, want one %s", errors, diagnostics.OperatorIntegerOverflow)
+			}
+		})
+	}
+}
+
+func TestLogicalAndReversedPositiveUintGuardSuppressesFalseUnderflow(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+fn Check() bool {
+	let index: uint := 0
+	return 0 < index && index - 1 == 0
+}
+`)
+	assertSemaErrors(t, errors, nil)
+}
+
+func TestLogicalSelectedFalseEdgeRefinesUintSubtraction(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+fn CheckPrevious(index: uint) bool {
+	return index < 1 || index - 1 == 0
+}
+
+fn CheckTwoPrevious(index: uint) bool {
+	return index > 0 && (index == 1 || index - 2 == 0)
+}
+`)
+	assertSemaErrors(t, errors, nil)
 }

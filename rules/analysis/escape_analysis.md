@@ -1292,6 +1292,13 @@ required lifetime.
 
 Owned value transfer remains separate from borrowed dependency retention.
 
+A borrow produced by `ThreadLocal[T].Borrow()` or `BorrowMut()` additionally
+depends on the TLS key and current physical-thread attachment generation. It
+must not escape to another thread, a migratable task, wider static/heap
+storage, a returned context without the same-thread proof, or detached
+execution. An independently owned value derived from TLS follows its ordinary
+escape rules and does not retain TLS provenance merely because of its origin.
+
 ---
 
 # Interprocedural composition

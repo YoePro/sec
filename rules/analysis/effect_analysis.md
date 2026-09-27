@@ -2893,6 +2893,21 @@ obligations of its actual contract.
 
 ---
 
+# Thread-local first-access effects
+
+A potentially first `ThreadLocal[T].Borrow()`, `BorrowMut()`, or `Replace()`
+access contributes the selected initializer's effects. The copyable-template
+form contributes only ordinary implicit-copy behavior; a factory-backed key
+contributes the factory's inferred allocation, blocking, cancellation, panic,
+I/O, and other effects.
+
+The attached-thread-context requirement propagates through the same call graph
+as other inferred requirements. Analysis may remove factory effects only after
+proving that the key is already initialized for the current physical-thread
+attachment generation on every reaching path.
+
+---
+
 # Appendix B — Canonical effect table
 
 | Internal effect | Meaning | Forbidden by |

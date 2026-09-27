@@ -49,11 +49,23 @@ impl Host {
     /**
      * Parses one RFC 3986 host component.
      *
+     * Description:
+     * - Accepts an empty registered-name host.
+     * - Accepts bracketed IPv6 and IPvFuture literals.
+     * - Accepts strict RFC 3986 IPv4 dotted-decimal syntax.
+     * - Rejects legacy IPv4 spellings instead of treating them as registered names.
+     * - Accepts registered names containing unreserved characters,
+     * sub-delimiters, and valid percent escapes.
+     * - Canonicalizes registered-name ASCII letters to lowercase.
+     * - Decodes percent escapes for unreserved characters.
+     * - Preserves reserved percent escapes using uppercase hexadecimal digits.
+     * - Does not perform DNS resolution.
+     *
      * Parameters:
      * - value: Serialized host component, including brackets for IP-literals.
      *
      * Returns:
-     * A validated Host in canonical textual form.
+     * - A validated Host in canonical textual form.
      *
      * Errors:
      * - ParseError.InvalidHost: Host syntax is invalid.
@@ -64,42 +76,181 @@ impl Host {
      * - RFC 5952 for serialized IPv6 text.
      */
     static fn Parse(value: string) Result[Host, ParseError] {
-        if value.ByteLen == 0 {
+        if value.IsEmpty {
             return Ok(Host {
                 _value: "",
                 _kind: HostKind.RegisteredName,
             })
         }
 
-        if value.ByteAt(0) == byte('[') {
-            return _ParseIPLiteral(value)
+        // IP-literal = "[" ( IPv6address / IPvFuture ) "]"
+        if value.CharAt(0) == '[' {
+            return _ParseIpLiteral(value)
         }
 
+        // First try ordinary IPv4 parsing. net/ip accepts some representations
+        // that RFC 3986 does not, so the canonical spelling must also match.
+        match ip.Ipv4Address.Parse(value) {
+            Ok(address) => {
+                let canonical := address.ToString()
+
+                if canonical != value {
+                    return Err(ParseError.InvalidHost(0))
+                }
+
+                return Ok(Host {
+                    _value: canonical,
+                    _kind: HostKind.IPv4,
+                })
+            }
+
+            Err(_) => {
+                // Probably not an IPv4
+            }
+        }
+
+        // Numeric dotted input that failed strict IPv4 parsing must not fall
+        // through and become a registered name. This rejects shortened,
+        // one-integer, octal-like, and otherwise malformed numeric IPv4 forms.
+        let mut numericOnly := true
+        let mut hasDigit := false
         let mut index: uint := 0
 
-        while index < value.ByteLen {
-            let current := value.ByteAt(index)
+        while index < value.Len {
+            let current := value.CharAt(index)
 
-            if current == byte('[') ||
-            current == byte(']') {
-                return Err(ParseError.InvalidHost(index))
+            if current.IsDigit {
+                hasDigit = true
+                index += 1
+                continue
+            }
+
+            if current == '.' {
+                index += 1
+                continue
+            }
+
+            numericOnly = false
+            break
+        }
+
+        if numericOnly && hasDigit {
+            return Err(ParseError.InvalidHost(0))
+        }
+
+        // Reject hexadecimal legacy IPv4 forms such as:
+        //
+        // 0x7f000001
+        // 0x7f.0.0.1
+        // 127.0x0.0.1
+        let mut legacyHexLike := true
+        let mut hasHexPrefix := false
+        index = 0
+
+        while index < value.Len {
+            let current := value.CharAt(index)
+
+            if current == '.' {
+                index += 1
+                continue
+            }
+
+            if current == 'x' || current == 'X' {
+                if index > 0 && value.CharAt(index - 1) == '0' &&
+                (index == 1 ||
+                    value.CharAt(index - 2) == '.') {
+                    hasHexPrefix = true
+                    index += 1
+                    continue
+                }
+            }
+
+            if !current.IsHexDigit {
+                legacyHexLike = false
+                break
             }
 
             index += 1
         }
 
-        if _IsIPv4(value) {
-            return Ok(Host {
-                _value: value,
-                _kind: HostKind.IPv4,
-            })
-        }
-
-        if _IsLegacyIPv4(value) {
+        if legacyHexLike && hasHexPrefix {
             return Err(ParseError.InvalidHost(0))
         }
 
-        return _ParseRegisteredName(value)
+        // What remains must be an RFC 3986 registered-name.
+        //
+        // reg-name = *( unreserved / pct-encoded / sub-delims )
+        let mut canonical := ""
+        index = 0
+
+        while index < value.Len {
+            let current := value.CharAt(index)
+
+            if current != '%' {
+                if !current.IsAscii {
+                    return Err(ParseError.InvalidHost(index))
+                }
+
+                let currentByte := byte(current)
+
+                if !_IsUnreserved(currentByte) &&
+                !_IsSubDelimiter(currentByte) {
+                    return Err(ParseError.InvalidHost(index))
+                }
+
+                canonical += current.ToLower()
+                index += 1
+                continue
+            }
+
+            if value.Len - index < 3 {
+                return Err(ParseError.InvalidPercentEncoding(index))
+            }
+
+            let highChar := value.CharAt(index + 1)
+            let lowChar := value.CharAt(index + 2)
+
+            if !highChar.IsHexDigit ||
+            !lowChar.IsHexDigit {
+                return Err(ParseError.InvalidPercentEncoding(index))
+            }
+
+            let high := match _HexDigitValue(byte(highChar)) {
+                Some(digit) => digit
+                None => return Err(ParseError.InvalidPercentEncoding(index))
+            }
+
+            let low := match _HexDigitValue(byte(lowChar)) {
+                Some(digit) => digit
+                None => return Err(ParseError.InvalidPercentEncoding(index))
+            }
+
+            let decoded := byte(
+                uint(high) * 16 +
+                uint(low)
+            )
+
+            // RFC 3986 normalization permits percent-encoded unreserved
+            // characters to become their literal representation.
+            if _IsUnreserved(decoded) {
+                canonical += char(decoded).ToLower()
+                index += 3
+                continue
+            }
+
+            // Reserved bytes remain escaped, but hexadecimal digits are
+            // canonicalized to uppercase.
+            canonical += '%'
+            canonical += char(_UpperHexDigit(high))
+            canonical += char(_UpperHexDigit(low))
+
+            index += 3
+        }
+
+        return Ok(Host {
+            _value: canonical,
+            _kind: HostKind.RegisteredName,
+        })
     }
 
     /** Returns the parsed host category. */
@@ -161,6 +312,117 @@ impl Host {
 
             HostKind.RegisteredName => {
                 return _value
+            }
+        }
+    }
+
+    /**
+     * Validates one RFC 3986 IPvFuture literal without surrounding brackets.
+     *
+     * Parameters:
+     * - value: The IPvFuture text beginning with "v" or "V".
+     *
+     * Returns:
+     * - true when value matches the IPvFuture grammar; otherwise false.
+     *
+     * Standards:
+     * - RFC 3986 section 3.2.2.
+     */
+    fn _IsIpvFuture(value: string) bool {
+        if value.Len < 4 {
+            return false
+        }
+
+        if value.CharAt(0) != 'v' && value.CharAt(0) != 'V' {
+            return false
+        }
+
+        let mut index: uint := 1
+        let mut versionDigits: uint := 0
+
+        while index < value.Len && value.CharAt(index).IsHexDigit {
+            versionDigits += 1
+            index += 1
+        }
+
+        if versionDigits == 0 || index >= value.Len || value.CharAt(index) != '.' {
+            return false
+        }
+
+        index += 1
+
+        if index >= value.Len {
+            return false
+        }
+
+        while index < value.Len {
+            let current := value.CharAt(index)
+
+            if current != ':' && !_IsUnreserved(byte(current)) && !_IsSubDelimiter(byte(current)) {
+                return false
+            }
+
+            index += 1
+        }
+
+        return true
+    }
+
+    /**
+     * Parses one bracketed RFC 3986 IP-literal host.
+     *
+     * Parameters:
+     * - value: The complete host spelling including surrounding square brackets.
+     *
+     * Returns:
+     * - A validated IPv6 or IPvFuture Host without brackets in its stored value.
+     *
+     * Errors:
+     * - ParseError.InvalidHost: The brackets or enclosed IP-literal are invalid.
+     *
+     * Standards:
+     * - RFC 3986 section 3.2.2.
+     * - RFC 4291 section 2.2.
+     * - RFC 5952.
+     */
+    fn _ParseIpLiteral(value: string) Result[Host, ParseError] {
+        if value.Len < 2 || value.CharAt(0) != '[' || value.CharAt(value.Len - 1) != ']' {
+            return Err(ParseError.InvalidHost(0))
+        }
+
+        let mut literal := ""
+        let mut index: uint := 1
+
+        while index < value.Len - 1 {
+            literal += value.CharAt(index)
+            index += 1
+        }
+
+        if literal.IsEmpty {
+            return Err(ParseError.InvalidHost(1))
+        }
+
+        if literal.CharAt(0) == 'v' || literal.CharAt(0) == 'V' {
+            if !_IsIpvFuture(literal) {
+                return Err(ParseError.InvalidHost(1))
+            }
+
+            return Ok(Host{
+                _value: literal,
+                _kind: HostKind.IPvFuture,
+            })
+        }
+
+        match ip.Ipv6Address.Parse(literal) {
+            Ok(address) => {
+                return Ok(Host{
+                    _value: address.ToString(),
+                    _kind: HostKind.IPv6,
+                })
+            }
+
+            Err(_) => {
+                return Err(ParseError.InvalidHost(1))
             }
         }
     }

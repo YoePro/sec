@@ -9,7 +9,7 @@
 - **Implementation governance:** `governance/concurrency_model.yaml`
 - **Replaces:** Earlier unversioned revision at the same canonical path
 - **Repository baseline reviewed:** `777beb8`
-- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`
+- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/mutex.md`, `rules/concurrency/atomics.md`, `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/declarations/static.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`
 
 ---
 
@@ -587,7 +587,10 @@ when mutex semantics are appropriate.
 
 § 19(9) Structured concurrency must not rely on garbage collection to eventually resolve abandoned execution handles.
 
-§ 19(10) Detailed scope forms and child-propagation semantics are owned by `structured_concurrency.md`.
+§ 19(10) Sec 0.1 requires no separate structured-concurrency rulebook. This
+section and `tasks.md` own parent-child lifecycle; `await.md` owns consuming
+await and caller-cancellation cleanup; `cancellation.md` owns propagation; and
+the ownership/destruction rulebooks own deterministic cleanup.
 
 ---
 
@@ -1307,7 +1310,9 @@ when mutex semantics are appropriate.
 
 § 47(9) `scheduling.md` owns task scheduling semantics.
 
-§ 47(10) `structured_concurrency.md` owns structured parent-child scope semantics.
+§ 47(10) Structured parent-child scope semantics are covered by this rulebook,
+`tasks.md`, `await.md`, `cancellation.md`, and the ownership/destruction
+rulebooks.
 
 § 47(11) `concurrency_runtime_model.md` owns the common runtime contract and compiler-known runtime-facing concurrency types not otherwise owned by specialized rulebooks.
 

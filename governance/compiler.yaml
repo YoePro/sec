@@ -284,7 +284,6 @@ integrations:
       - rules/declarations/static.md
       - rules/memory/destruction.md
       - rules/concurrency/concurrency.md
-      - rules/concurrency/structured_concurrency.md
       - rules/platform/platform_model.md
       - rules/platform/target_profiles.md
       - rules/platform/interrupts.md

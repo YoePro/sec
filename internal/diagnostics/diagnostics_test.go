@@ -36,6 +36,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		GenericParameterShadowsType:         SeverityError,
 		ParameterShadowsType:                SeverityError,
 		UnresolvedGenericExtern:             SeverityError,
+		UnresolvedImport:                    SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
 		IncompatibleUnitConversion:          SeverityError,

@@ -9,7 +9,7 @@
 - **Replaces:** Earlier legacy revision at the same canonical path
 - **Repository baseline reviewed:** `main-reviewed-2026-09-16`
 - **Implementation governance:** `governance/concurrency_await.yaml`
-- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/spawn.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/mutex.md`, `rules/concurrency/select.md`, `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
+- **Related rulebooks:** `rules/concurrency/tasks.md`, `rules/concurrency/spawn.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/concurrency.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/mutex.md`, `rules/concurrency/select.md`, `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
 
 ---
 
@@ -604,7 +604,7 @@ let outcome := await worker
 
 ## § 26. Resumption
 
-**Governance tags:** `concurrency.await-v2`, `concurrency.scheduling-v1`
+**Governance tags:** `concurrency.await-v2`, `concurrency.scheduling-v2`
 
 § 26(1) Await resumption may occur on a different permitted physical worker/thread than the one that entered await.
 

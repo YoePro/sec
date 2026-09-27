@@ -82,6 +82,9 @@ integrations:
       - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
       - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
       - ordinary statement-terminator semicolons emit focused P2012 parser.reserved-syntax diagnostics, retain exact InvalidStatement recovery nodes, and preserve following same-line top-level and block statements; C-style for headers retain their specialized diagnostic
+      - typed struct literals that reach EOF without a closing brace retain completed fields plus their enclosing return/function AST, emit a virtual missing-'}' recovery event, and remain parser errors that block code generation
+      - array literals that reach EOF without a closing bracket retain completed elements plus their enclosing return/function AST, emit a virtual missing-']' recovery event, and remain parser errors that block code generation
+      - comma-delimited empty call arguments are retained as position-preserving InvalidExpression nodes while later arguments, the enclosing call, and following declarations survive
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -134,6 +137,12 @@ integrations:
       - testdata/parser/missing_register_width_invalid.sec
       - internal/parser/register_field_width_recovery_test.go
       - testdata/parser/missing_register_field_width_invalid.sec
+      - internal/parser/unterminated_struct_literal_recovery_test.go
+      - testdata/parser/unterminated_struct_literal_invalid.sec
+      - internal/parser/unterminated_array_literal_recovery_test.go
+      - testdata/parser/unterminated_array_literal_invalid.sec
+      - internal/parser/call_argument_recovery_test.go
+      - testdata/parser/missing_call_argument_invalid.sec
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -193,13 +202,25 @@ integrations:
         result: passed; an empty register width retains invalid expression metadata, the complete field body, a later valid register declaration, and the following function
       - command: go test ./internal/parser -run TestMissingRegisterFieldWidthRetainsFieldsAndDeclarations -count=1
         result: passed; an empty bit-field width retains invalid expression metadata, the current and later fields, a later register declaration, and the following function
+      - command: go test ./internal/parser -run TestUnterminatedStructLiteralRetainsFieldsAndEnclosingFunction -count=1
+        result: passed; EOF retains both fields and the enclosing return/function while recording a virtual closing brace and preserving the parser error
+      - command: go run ./cmd/compiler parse testdata/parser/unterminated_struct_literal_invalid.sec
+        result: rejected with the missing literal brace and unterminated function diagnostics; parser errors remain batch-visible
+      - command: go test ./internal/parser -run TestUnterminatedArrayLiteralRetainsElementsAndEnclosingFunction -count=1
+        result: passed; EOF retains both elements and the enclosing return/function while recording a virtual closing bracket and preserving the parser error
+      - command: go run ./cmd/compiler parse testdata/parser/unterminated_array_literal_invalid.sec
+        result: rejected with the missing literal bracket and unterminated function diagnostics; parser errors remain batch-visible
+      - command: go test ./internal/parser -run TestMissingCallArgumentRetainsPositionAndFollowingDeclarations -count=1
+        result: passed; the empty middle position is retained as InvalidExpression while the third argument, call, return, and following function survive
+      - command: go run ./cmd/compiler parse testdata/parser/missing_call_argument_invalid.sec
+        result: rejected with a focused missing-argument parser diagnostic; the recovered AST remains unavailable to code generation
 
     remaining:
       - invalid type retention in remaining specialized failure paths beyond explicit generic calls and lifecycle new expressions
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, and try handlers
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, and typed struct/array literals at EOF
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
   - id: frontend.increment-decrement-aliases
@@ -303,7 +324,7 @@ integrations:
       - the continuing language role of compact '=' type/variant syntax is unresolved by a dedicated modern rulebook
       - grammar.md still contains a 2026-08-01 implementation-status snapshot that is partly stale relative to later rulebooks and current governance
     remaining:
-      - migrate the remaining grammar implementation-status material into implementation-status.yaml
+      - migrate the remaining grammar implementation-status material into relevant governance-ledger (parser.yaml)
       - reconcile or remove stale grammar status statements that conflict with later rulebooks, including the old dotted-module claim
       - reconcile stale 'require' contextual-identifier text with the later lexical_structure.md rule that reserves require globally
       - define and enforce one policy for legacy compatibility forms: reject, emit a focused migration diagnostic, or formatter-normalize where the owning rule explicitly permits normalization

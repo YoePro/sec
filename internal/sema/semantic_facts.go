@@ -254,15 +254,19 @@ type ResolvedConditionFactKind string
 const (
 	ConditionFactBranchTrue       ResolvedConditionFactKind = "branch-true"
 	ConditionFactAssertionSuccess ResolvedConditionFactKind = "assertion-success"
+	ConditionFactLogicalRHSTrue   ResolvedConditionFactKind = "logical-rhs-true"
+	ConditionFactLogicalRHSFalse  ResolvedConditionFactKind = "logical-rhs-false"
 )
 
 // ResolvedConditionFact is the shared compiler-owned truth fact introduced by
-// either a successful assertion or entry into an if true branch. Consumers
-// use the kind for provenance while interpreting the condition identically.
+// a successful assertion, entry into an if true branch, or the selected true
+// edge of &&, or the selected false edge of ||. Consumers use the kind both
+// for provenance and for the truth value of the condition.
 //
 // Rules:
 //   - rules/errors/panic.md — § 15.6 "Assertion refinement"
 //   - rules/control-flow/flowcontrol_if.md — § 27 "Sema and flow-analysis requirements"
+//   - rules/foundations/operators.md — "Short-circuit evaluation"
 type ResolvedConditionFact struct {
 	Kind      ResolvedConditionFactKind
 	Condition ast.Expression

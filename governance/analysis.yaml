@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-09-24"
+    updated: "2026-09-27"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
@@ -31,6 +31,8 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/pitfall_analysis.go
+      - internal/sema/pitfall_bounds_guards.go
+      - internal/sema/pitfall_neighbor_bounds.go
     tests:
       - internal/sema/pitfall_analysis_test.go
     implemented:
@@ -53,12 +55,13 @@ integrations:
       - negative coverage preventing boolean-intent inference from integers other than 0 and 1
       - API-usage finding for self.Method(self) when Sema resolves an instance method and self is both its implicit receiver and a direct explicit argument; ordinary functions, static methods, other receivers, unresolved calls, and indirect self expressions remain excluded
       - pitfall suppression coverage derives its evaluation-count expectation from the canonical rule registry, so adding an unrelated registered rule does not break the guarded inclusive-endpoint regression test
+      - ineffective <= Len acceptance and > Len rejection guards correlate the same resolved index binding, compiler-known Len receiver, and indexed collection; reversed operands are normalized while strict-safe guards, wrong collections, and wrong bindings remain negative cases
+      - upper i+1 and lower i-1 neighbor checks cover the canonical zero-based half-open 0..<Len domain using resolved loop-binding and collection identity, compiler-known Len, normalized 1+i, and Sema constant facts; shortened upper domains, predecessor traversal starting at one, guarded access, and identity mismatches are excluded
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
       - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break, continue, or return in the endpoint branch
-      - implement upper-neighbor and lower-neighbor offset checks across normalized iteration domains
-      - implement ineffective <= len and > len rejection-guard correlation
+      - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
       - implement final-element access reasoning that consumes non-empty proofs
       - implement high-confidence skipped-first-element advisory with predecessor, prior-element-handling, explicit-contract, and other suppression evidence
       - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
@@ -90,7 +93,7 @@ integrations:
       - command: go test ./internal/sema ./cmd/lsp -count=1
         result: passed
       - command: go test ./...
-        result: all packages passed except cmd/compiler, which still fails on six unrelated try requires Result expression errors in sec/core/string.sec
+        result: all packages passed except cmd/compiler on 2026-09-27, which fails on thirteen unrelated missing StringError.InvalidUtf8 payload errors in sec/core/utf8.sec
       - command: go test ./internal/sema -run TestPitfall
         result: passed
       - command: go test ./internal/sema -run 'TestPitfall|TestEqualityRequiresCompatibleTypes'
@@ -103,17 +106,26 @@ integrations:
         result: passed after the endpoint-continue pitfall analysis update
       - command: go test ./internal/sema -run '^TestPitfallAnalysisSuppressesGuardedInclusiveEndpoint$' -count=1
         result: passed on 2026-09-24 with register-driven evaluation coverage and the inclusive-length rule suppressed exactly once
+      - command: go test ./internal/sema -run 'TestPitfallAnalysisFindsIneffectiveLengthGuards|TestPitfallRuleRegistryIsStableAndDefensive' -count=1
+        result: passed on 2026-09-27 with inclusive acceptance, strict-greater rejection, reversed operands, strict-safe guards, wrong collections, wrong bindings, and stable registry coverage
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-09-27 after integrating the ineffective-length-guard rule with the complete frontend analysis suite
+      - command: go test ./internal/sema -run 'TestPitfallAnalysisFindsUnsafeNeighborIndexes|TestPitfallRuleRegistryIsStableAndDefensive' -count=1
+        result: passed on 2026-09-27 with i+1, 1+i, i-1, shortened-domain, start-at-one, guarded-access, collection-identity, binding-identity, and registry coverage
+      - command: go test ./internal/sema -run TestPitfallAnalysis -count=1
+        result: passed on 2026-09-27 after integrating upper/lower neighbor findings with the complete pitfall-analysis suite
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-09-23"
+    revised: "2026-09-27"
     summary: >-
       Implements immutable post-Sema ParameterDemand summaries from resolved
       bindings, canonical Places, calls, escape facts, and interprocedural fixed
       points. A2001 large-value advice now runs only after exact demand proves a
       shared borrow preserves every modeled critical capability; size remains
-      recommendation cost evidence rather than semantic proof.
+      recommendation cost evidence rather than semantic proof. Compiler-owned
+      if-flow facts exclude branches that Sema proved never execute.
     rules:
       - rules/analysis/parameter_usage_analysis.md
       - rules/memory/ownership.md
@@ -132,6 +144,7 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/parameter_usage.go
+      - internal/sema/parameter_usage_flow.go
       - internal/sema/escape_analysis.go
       - internal/sema/semantic_snapshot.go
     tests:
@@ -156,8 +169,9 @@ integrations:
       - A2001 is emitted after demand convergence only for exact call-only, non-mutating, value-identity, representation-neutral BorrowSufficient parameters
       - explicit reference and consuming declaration contracts block the shared-reference advisory
       - large-value size estimation is recommendation evidence and does not mutate semantic demand
+      - Sema-proven never-executed if paths are excluded from parameter demand while conditions and all conditionally reachable paths remain represented
     remaining:
-      - complete structural collection mutation, explicit copy, retention, whole-value, unreachable-path, and implicit unqualified receiver-member demand
+      - complete structural collection mutation, explicit copy, retention, whole-value, non-if unreachable-path, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls
       - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
       - add fixed-array exact-extent and contiguous-sequence demand where semantic operations prove those requirements
@@ -171,6 +185,10 @@ integrations:
       - integrate parameter usage into default sec analyse --all behavior and support explicit parameter-usage-only analysis selection
       - add narrowing, projection-widening recursion, FFI, recommendation-policy, shadowing, and false-positive regression tests
     verification:
+      - command: go test ./internal/sema -run TestParameterUsageExcludesSemaProvenUnreachableIfPaths -count=1
+        result: passed on 2026-09-27 with statically true, statically false, and dynamic if-path demand coverage
+      - command: go test ./internal/sema -count=1
+        result: passed on 2026-09-27 after integrating Sema-owned if reachability with the complete frontend analysis suite
       - command: go test ./internal/sema -run 'TestParameterUsage|TestLarge(ValueAdvisory|ByValue)' -count=1
         result: passed; demand summaries, positive guarded advice, and ownership-consuming no-advisory behavior are covered
       - command: go test ./... -count=1

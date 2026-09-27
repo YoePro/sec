@@ -1146,7 +1146,7 @@ integrations:
     area: frontend-expression-control-flow
     status: partial
     audited: '2026-08-19'
-    revised: '2026-09-24'
+    revised: '2026-09-27'
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_if.md
     document_revision: '2.0'
@@ -1164,6 +1164,7 @@ integrations:
     - rules/compiler/semantic_ir.md
     code:
     - internal/sema/analyzer.go
+    - internal/sema/analyzer_integer_refinement.go
     - internal/sema/analyzer_logical.go
     - internal/sema/call_graph.go
     - internal/sema/semantic_facts.go
@@ -1191,6 +1192,8 @@ integrations:
     - ResolvedLogicalFlow records whether the RHS is never, always, or conditionally executed
     - ResolvedLogicalFlow records the selected left-value edge and short-circuit result for later consumers
     - left and right operands are each inferred once in source order by the dedicated logical flow path
+    - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
+    - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining errors for insufficient guards
     partial:
     - literal reachability helpers recognize only BooleanLiteral syntax rather than a general compiler-proven constant-bool
       fact

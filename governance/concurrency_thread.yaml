@@ -7,6 +7,7 @@ integrations:
     feature: physical-thread-lifecycle
     status: partial
     reviewed: "2026-09-24"
+    synchronized: "2026-09-27"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-24
     summary: >-
@@ -25,7 +26,6 @@ integrations:
       - rules/concurrency/cancellation.md
       - rules/concurrency/blocking.md
       - rules/concurrency/scheduling.md
-      - rules/concurrency/structured_concurrency.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/concurrency/thread_local.md
       - rules/concurrency/mutex.md
@@ -62,6 +62,8 @@ integrations:
       - "ThreadObserver[T] is copyable, non-owning, metadata-only, and has no Wait()/primitive select operation in Sec 0.1."
       - "RequestCancel is cooperative, idempotent, non-consuming, and does not resolve lifecycle ownership."
       - "Thread.Current() returns ThreadContext for the physical/native execution identity; CancelRequested is a bool observation and not selectable."
+      - "Thread.AttachCurrent() is owned by thread-local-v2 and returns Result[ThreadAttachment, ThreadAttachError] without exposing ThreadContextError."
+      - "ThreadSpawnError.ThreadLocalInitializationFailed covers pre-commit TLS runtime/target infrastructure failure, not lazy user factory failure."
       - "ThreadPlatform is target-resolved; every thread-capable target must provide a complete concrete declaration with native ID metadata."
       - "Portable safe Sec defines no general hard-kill Thread[T] method."
       - "ThreadSchedulingError and ThreadContextError are not retained as portable Sec 0.1 APIs without a canonical public operation."
@@ -96,7 +98,7 @@ integrations:
       - "implement RequestCancel and Thread.Current/ThreadContext exact physical-thread semantics"
       - "implement Thread.Yield physical scheduling hint"
       - "provide target-resolved complete ThreadPlatform declarations for every supported thread target"
-      - "remove stale portable ThreadSchedulingError and ThreadTerminationError identities; retain ThreadContextError only for the separately owned thread-local attachment API"
+      - "remove stale portable ThreadSchedulingError, ThreadTerminationError, and ThreadContextError identities; attachment uses the separately owned ThreadAttachError"
       - "remove the legacy universal worker.platform.Terminate() implementation assumption from the portable thread API"
       - "complete thread spawn/join memory-model integration"
       - "complete thread data-race/deadlock/starvation analysis"
@@ -143,3 +145,4 @@ integrations:
       - "implementation status belongs in this split governance fragment rather than root implementation-status.yaml"
     corrections_applied:
       - rules/corrections/applied/threads-v2-cross-rulebook-correction-20260924.md
+      - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md

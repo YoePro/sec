@@ -908,7 +908,8 @@ fn Increment(counter: ref Atomic[uint64]) void {
 
 § 41(4) Plain sleep does not publish ordinary memory by itself.
 
-§ 41(5) Plain scheduler yield does not publish ordinary memory by itself.
+§ 41(5) Neither logical `Task.Yield()` nor physical `Thread.Yield()` publishes
+ordinary memory or creates a synchronization edge by itself.
 
 § 41(6) A context switch is not a source-level memory barrier unless a canonical primitive gives it such semantics.
 

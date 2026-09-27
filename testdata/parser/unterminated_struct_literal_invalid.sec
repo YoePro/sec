@@ -1,0 +1,11 @@
+module parser_unterminated_struct_literal
+
+type Point struct {
+    x: int,
+    y: int,
+}
+
+fn Build() Point {
+    return Point {
+        x: 10
+        y: 20

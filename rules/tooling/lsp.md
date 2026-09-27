@@ -506,9 +506,11 @@ Implemented:
 - grouped imports;
 - platform import resolution;
 - loading all `.sec` files in a module directory;
-- several current stdlib module mappings;
+- canonical stdlib file and directory-module resolution under `sec/stdlib`;
 - short import qualifier rewriting;
-- transitive source imports.
+- transitive source imports;
+- mandatory `S1051` diagnostics for unresolved canonical imports at the exact
+  source path, including actionable import-root guidance.
 
 ### VS Code extension
 
@@ -539,6 +541,7 @@ Implemented tests cover, among other areas:
 - project-root imports;
 - platform imports;
 - grouped imports;
+- unresolved canonical imports in individual and batched diagnostics;
 - completion;
 - member completion;
 - expected return types;
@@ -3873,6 +3876,30 @@ from `ThreadPlatform` resolves to the selected target's concrete declaration.
 Hover distinguishes configuration preference from requirement, reports
 explicit-storage borrow lifetime, and shows terminal `Value`, `Panic`, or
 `Termination` availability only for the matching joined status.
+
+## Scheduling v2 integration
+
+Hover for `Task.Yield()` identifies a logical task scheduling point, a
+current-task cancellation point, and the absence of a synchronization edge.
+Hover for `Thread.Yield()` identifies a physical scheduler hint that is neither
+cancellation-aware nor synchronizing. Completion and diagnostics use the real
+execution context: ordinary `main` has attached `ThreadContext` but no implicit
+`TaskContext`. Tooling does not expose portable `ThreadSchedulingError`,
+`Thread.SetPriority`, or `Thread.SetAffinity` surfaces.
+
+## Thread-local v2 integration
+
+Hover, completion, and navigation consume the exact identities from
+`rules/concurrency/thread_local.md`. `ThreadLocal[T]` exposes both constructors
+and exactly `Borrow`, `BorrowMut`, and `Replace`; tooling does not suggest the
+removed `Value`, `value`, `Take`, `Get`, or `Set` surfaces.
+
+Tooling exposes `ThreadAttachError` with exactly `AlreadyAttached`,
+`ResourceUnavailable`, and `NativeFailure`, and exposes the owned
+`ThreadAttachment` with its `Context` property and lifecycle-destruction
+semantics. Navigation from `ThreadAttachment.Context` resolves to canonical
+`ThreadContext`. Diagnostics retain the TLS key, borrow creation, and invalid
+suspension/escape locations where available.
 
 ## Debug-information source-coordinate integration
 

@@ -981,6 +981,14 @@ func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
 	return generic
 }
 
+// parseArrayLiteral retains completed array elements when EOF provides a safe
+// synchronization boundary. The missing bracket is still emitted as a
+// structured virtual-token repair, so recovery helps tooling without making
+// the incomplete literal valid source.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Array-literal recovery"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseArrayLiteral() ast.Expression {
 	lit := &ast.ArrayLiteral{Token: p.curToken}
 
@@ -1010,6 +1018,11 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 			}
 		case lexer.RBRACKET:
 			p.nextToken()
+			return lit
+		case lexer.EOF:
+			// The failed expectation records a virtual ] at EOF while the
+			// retained literal keeps all elements parsed before that boundary.
+			p.expectPeek(lexer.RBRACKET)
 			return lit
 		default:
 			p.addError("expected ',' or ']' after array literal element at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -1102,6 +1115,13 @@ func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 	return expr
 }
 
+// parseCallArguments retains comma-delimited empty positions as explicit
+// InvalidExpression nodes. Consuming the comma guarantees progress while the
+// placeholder preserves positional information for diagnostics and tooling.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Argument-list recovery"
+//   - rules/compiler/parser_recovery.md — "Progress"
 func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 	args := []ast.Expression{}
 
@@ -1111,6 +1131,18 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 	}
 
 	for {
+		if p.peekToken.Type == lexer.COMMA {
+			missing := p.peekToken
+			message := fmt.Sprintf("missing argument expression at %d:%d", missing.Line, missing.Column)
+			p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, missing, nil, &missing, "%s", message)
+			args = append(args, p.invalidExpression(missing, message, compilerdiagnostics.ParserInvalidExpression))
+			p.nextToken() // consume the empty position's separator
+			if p.peekToken.Type == lexer.RPAREN {
+				p.nextToken()
+				return args, true
+			}
+			continue
+		}
 		p.nextToken()
 		var arg ast.Expression
 		if p.curToken.Type == lexer.UNDERSCORE {
@@ -1349,6 +1381,15 @@ func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expressio
 	return p.parseStructLiteralWithType(ref)
 }
 
+// parseStructLiteralWithType parses a typed struct literal and retains its
+// completed fields when EOF supplies a reliable recovery boundary. The
+// missing closing brace remains a structured parser error and virtual-token
+// recovery event, so batch compilation stays blocked while tooling keeps the
+// partial expression and its enclosing declarations.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Struct literal recovery"
+//   - rules/compiler/parser_recovery.md — "Missing closing brace"
 func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expression {
 	lit := &ast.StructLiteral{
 		Token: ref.Token,
@@ -1406,6 +1447,10 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 			if p.peekToken.Type == lexer.RBRACE {
 				break
 			}
+		case lexer.EOF:
+			// Let the loop terminate at its EOF guard. expectPeek below
+			// records the virtual closing brace at the reliable boundary.
+			continue
 		case lexer.IDENT:
 			// Multiline struct literals may separate fields by line layout
 			// without commas. Newlines are trivia to the lexer, so the next
@@ -1425,6 +1470,9 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 	}
 
 	if !p.expectPeek(lexer.RBRACE) {
+		if p.peekToken.Type == lexer.EOF {
+			return lit
+		}
 		return nil
 	}
 

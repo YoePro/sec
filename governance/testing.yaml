@@ -211,6 +211,12 @@ integrations:
           `sec diagnostics` and `sec diagnostics --json` expose the registered catalog;
           catalog tests verify definition-field preservation, schema reflection and
           registry/catalog consistency for the currently modeled structures.
+      - id: testing.compiler-verification-v1.diagnostic-detail-command
+        description: >-
+          `sec diagnostics <ID>` resolves one exact registered definition and renders
+          its stable ID, symbolic name, family, default severity, mandatory/configurable
+          state and active/retired status from the same registry used by the complete
+          text and JSON catalogs; unknown IDs and mixed argument forms fail explicitly.
       - id: testing.compiler-verification-v1.parser-recovery-foundation
         description: >-
           Parser diagnostics and recovery already expose structured compatibility
@@ -364,11 +370,6 @@ integrations:
           Reserve the generic cold-versus-incremental differential/matrix mechanism;
           concrete invalidation and cache-reuse semantics remain owned by the future
           incremental_compilation.md rulebook.
-      - id: testing.compiler-verification-v1.diagnostic-detail-command
-        description: >-
-          Implement and test canonical `sec diagnostics <ID>` detailed lookup consistent
-          with the registry and list/JSON catalog for both human and machine-assisted
-          investigation.
     identified_bugs:
       - id: testing.compiler-verification-v1.bug.diagnostic-prefix-drift
         severity: medium
@@ -399,3 +400,6 @@ integrations:
       - feature-specific evidence gaps remain in their existing semantic-owner fragments and are cross-linked rather than duplicated here
       - compiler.debug-information-v1 treats this integration as the active owner of shared debugger-driving and harness infrastructure
       - incremental cache/invalidation semantics remain deferred to incremental_compilation.md while generic differential-test hooks are owned here
+    verification:
+      - command: go test ./cmd/compiler -run DiagnosticCatalog -count=1
+        result: passed on 2026-09-27; complete text/JSON catalog consistency, per-ID registry detail, unknown-ID rejection, and argument-shape rejection are covered

@@ -9,7 +9,7 @@
 - **Replaces:** Earlier legacy revision at the same canonical path
 - **Repository baseline reviewed:** `main-reviewed-2026-09-23`
 - **Implementation governance:** `governance/concurrency_select.yaml`
-- **Related rulebooks:** `rules/concurrency/channels.md`, `rules/concurrency/await.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/mutex.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/structured_concurrency.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
+- **Related rulebooks:** `rules/concurrency/channels.md`, `rules/concurrency/await.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/mutex.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/concurrency.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
 
 ---
 
@@ -919,6 +919,9 @@ mutex guard state remains active across select
 
 § 48(4) Deadlock/starvation analysis must preserve source-order priority and execution-kind lifecycle dependencies.
 
+§ 48(5) Scheduler or native notification order must not override canonical
+source-order branch priority when more than one branch is ready.
+
 ---
 
 ## § 49. Memory synchronization
@@ -937,7 +940,7 @@ mutex guard state remains active across select
 
 ## § 50. Task and thread execution contexts
 
-**Governance tags:** `concurrency.select-v2`, `concurrency.scheduling-v1`
+**Governance tags:** `concurrency.select-v2`, `concurrency.scheduling-v2`
 
 § 50(1) `select` may execute in a logical task or physical thread when every candidate operation is valid in that context.
 

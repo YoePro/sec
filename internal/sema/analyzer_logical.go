@@ -66,7 +66,14 @@ func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Ty
 	if shortCircuits {
 		a.callGraphPathReachable = false
 	}
+	refinementCount := len(a.activeConditionFacts)
+	if expr.Operator == "&&" && !shortCircuits {
+		a.recordConditionFact(expr.Left, ConditionFactLogicalRHSTrue, expr.Token)
+	} else if expr.Operator == "||" && !shortCircuits {
+		a.recordConditionFact(expr.Left, ConditionFactLogicalRHSFalse, expr.Token)
+	}
 	rightType, _ := a.inferExpression(expr.Right)
+	a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
 	a.callGraphPathReachable = previousReachable
 
 	if shortCircuits {

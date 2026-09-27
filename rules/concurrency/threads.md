@@ -9,7 +9,7 @@
 - **Replaces:** Earlier legacy revision at the same canonical path
 - **Repository baseline reviewed:** `main-reviewed-2026-09-24`
 - **Implementation governance:** `governance/concurrency_thread.yaml`
-- **Related rulebooks:** `rules/concurrency/concurrency.md`, `rules/concurrency/spawn.md`, `rules/concurrency/tasks.md`, `rules/concurrency/await.md`, `rules/concurrency/select.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/mutex.md`, `rules/errors/panic.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/compiler/semantic_ir.md`, `rules/platform/platform_model.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
+- **Related rulebooks:** `rules/concurrency/concurrency.md`, `rules/concurrency/spawn.md`, `rules/concurrency/tasks.md`, `rules/concurrency/await.md`, `rules/concurrency/select.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/blocking.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/thread_local.md`, `rules/concurrency/mutex.md`, `rules/errors/panic.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/compiler/semantic_ir.md`, `rules/platform/platform_model.md`, `rules/platform/target_profiles.md`, `rules/tooling/lsp.md`
 
 ---
 
@@ -522,8 +522,9 @@ enum ThreadSpawnError error {
     // The native environment denied creation under the requested settings.
     PermissionDenied
 
-    // Required thread-local initialization failed before callable execution
-    // was committed.
+    // Required runtime/target TLS infrastructure could not be established
+    // before callable execution was committed. This does not represent a
+    // lazy user ThreadLocal[T] factory failure.
     ThreadLocalInitializationFailed
 
     // A target/runtime creation failure occurred and is not represented
@@ -1214,6 +1215,7 @@ property Platform: ThreadPlatform
 impl Thread {
     static fn Current() ThreadContext
     static fn Yield() void
+    static fn AttachCurrent() Result[ThreadAttachment, ThreadAttachError]
 }
 ```
 
@@ -1223,26 +1225,44 @@ impl Thread {
 
 § 49(4) A backend must not fabricate a `ThreadContext` from `Task.Current()` identity.
 
+§ 49(5) `Thread.AttachCurrent()` is the foreign-current-thread attachment
+operation owned by `thread_local.md`; it returns an owned `ThreadAttachment`
+or exact `ThreadAttachError` and does not reintroduce `ThreadContextError`.
+
+§ 49(6) Main and Sec-created threads are attached already, so calling
+`AttachCurrent()` there returns `ThreadAttachError.AlreadyAttached`.
+
 ---
 
 ## § 50. `Thread.Yield()`
 
-**Governance tags:** `concurrency.thread-v2`, `concurrency.scheduling-v1`
+**Governance tags:** `concurrency.thread-v2`, `concurrency.scheduling-v2`
 
-§ 50(1) `Thread.Yield()` requests that the native scheduler give another runnable physical thread an opportunity to execute.
+§ 50(1) The exact portable surface is:
 
-§ 50(2) It is a scheduling hint.
+```sec
+impl Thread {
+    static fn Yield() void
+}
+```
 
-§ 50(3) It guarantees none of:
+§ 50(2) `Thread.Yield()` requests that the native scheduler give another runnable physical thread an opportunity to execute.
+
+§ 50(3) It is a scheduling hint.
+
+§ 50(4) It guarantees none of:
 
 - fairness;
 - that another thread runs;
 - a physical context switch;
 - memory synchronization.
 
-§ 50(4) `Thread.Yield()` is invalid in ISR context.
+§ 50(5) `Thread.Yield()` is invalid in ISR context.
 
-§ 50(5) `Task.Yield()` remains a separate logical-task operation.
+§ 50(6) `Task.Yield()` remains a separate logical-task operation.
+
+§ 50(7) `Thread.Yield()` is not a Sec cancellation point, does not inspect
+`CancelRequested`, and creates no memory-synchronization edge.
 
 ---
 
@@ -1254,15 +1274,20 @@ impl Thread {
 
 § 51(2) A migratable task therefore must not assume physical thread-local identity remains stable across task suspension/resumption.
 
-§ 51(3) Thread-local initialization failure during native creation uses:
+§ 51(3) Failure to establish required runtime/target TLS infrastructure during
+native creation uses:
 
 ```sec
 ThreadSpawnError.ThreadLocalInitializationFailed
 ```
 
-where that initialization is required before creation commit.
+where that infrastructure is required before creation commit. It does not
+represent execution or failure of a lazy user `ThreadLocal[T]` factory.
 
 § 51(4) Detailed thread-local declaration semantics remain owned by `thread_local.md`.
+
+§ 51(5) Main and Sec-created threads establish an attached context but retain
+lazy first-access initialization for user TLS values.
 
 ---
 

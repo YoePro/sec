@@ -49,9 +49,9 @@ func analyzeDiagnosticBatch(snapshots []lspserver.Snapshot, overlay sourceOverla
 		docs := groups[key]
 		sort.Slice(docs, func(i, j int) bool { return docs[i].snapshot.URI < docs[j].snapshot.URI })
 		first := docs[0]
-		prepareProgramForLSP(first.program, pathFromURI(first.snapshot.URI), overlay)
+		importErrors := prepareProgramForLSP(first.program, pathFromURI(first.snapshot.URI), overlay)
 		analyzer := newLSPAnalyzer(first.snapshot.URI)
-		errors := analyzer.Analyze(first.program)
+		errors := append(importErrors, analyzer.Analyze(first.program)...)
 		for _, doc := range docs {
 			path := pathFromURI(doc.snapshot.URI)
 			for _, err := range errors {

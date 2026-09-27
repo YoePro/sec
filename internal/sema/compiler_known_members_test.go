@@ -149,6 +149,10 @@ fn Format(value: byte) string {
 fn Default(value: byte) string {
 	return value.ToString()
 }
+
+fn Converted(value: char) string {
+	return byte(value).ToString(byte.ByteStringFormat.Decimal)
+}
 `
 	parsed := parser.New(lexer.NewWithFile(input, sourceFile)).Parse()
 	if parsed.HasErrors {

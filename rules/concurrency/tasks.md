@@ -9,7 +9,7 @@
 - **Implementation governance:** `governance/concurrency_task.yaml`
 - **Replaces:** `rules/concurrency/tasks.txt`
 - **Repository baseline reviewed:** `777beb8`
-- **Related rulebooks:** `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/structured_concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/threads.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/control-flow/discard.md`
+- **Related rulebooks:** `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_runtime_model.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/threads.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/compiler/semantic_ir.md`, `rules/platform/target_profiles.md`, `rules/control-flow/discard.md`
 
 ---
 
@@ -283,7 +283,10 @@ let second :<- first
 
 § 8(4) A task may migrate between physical workers when the selected scheduler permits migration.
 
-§ 8(5) Structured lifetime requirements, child completion requirements, and propagation policies are governed by `structured_concurrency.md`.
+§ 8(5) Structured lifetime and child-completion requirements are governed by
+`concurrency.md` together with this rulebook. Await commit/caller-cancellation
+cleanup belongs to `await.md`, cancellation propagation to `cancellation.md`,
+and deterministic cleanup to the ownership/destruction rulebooks.
 
 § 8(6) This rulebook does not imply that detaching a task preserves structured parent-child ownership.
 
@@ -710,6 +713,21 @@ across permitted worker migration. It owns no `Task[T]` lifecycle or result
 capability. `Task.Current()` requires a current logical task and is never
 synthesized merely from a physical worker thread.
 
+§ 19(10) The exact portable scheduling surface is:
+
+```sec
+impl Task {
+    static fn Yield() void
+}
+```
+
+§ 19(11) `Task.Yield()` requires a real logical task context, is a logical scheduling
+point and current-task cancellation point, returns `void` only after normal
+yield/resumption, and creates no memory-synchronization edge. Ordinary program
+entry has no implicit root `TaskContext`; backend use of task machinery for
+`main` does not make `Task.Current()` or `Task.Yield()` valid there. Exact
+commit, migration, and target semantics are owned by `scheduling.md`.
+
 ---
 
 ## § 20. Panic and task failure boundaries
@@ -1087,7 +1105,9 @@ task execution failed with TaskError
 
 § 32(5) `scheduling.md` owns scheduling policy and scheduler-visible execution behavior.
 
-§ 32(6) `structured_concurrency.md` owns structured parent-child lifecycle rules.
+§ 32(6) `concurrency.md` and this rulebook own structured parent-child
+lifecycle; `await.md`, `cancellation.md`, and the ownership/destruction
+rulebooks own their respective commit, propagation, and cleanup details.
 
 § 32(7) `concurrency_memory_model.md` owns memory-order and synchronization semantics.
 

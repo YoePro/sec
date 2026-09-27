@@ -952,6 +952,8 @@ integrations:
       - rules/tooling/lsp.md
     code:
       - cmd/compiler/module_sources.go
+      - internal/ast/ast.go
+      - internal/diagnostics/diagnostics.go
       - internal/modules/model.go
       - internal/modules/graph.go
       - internal/modules/instance_graph.go
@@ -988,6 +990,7 @@ integrations:
       - immutable defensive ModuleDependencyFacts snapshots for initialization consumers, retaining plan, module, source-selection, and import-edge facts without defining runtime initialization or deinitialization order
       - deterministic same-directory LSP module assembly with editor overlays and shared declaration analysis
       - partial project, std, and platform source import discovery with deterministic source-file ordering
+      - mandatory S1051 modules.unresolved-import diagnostics preserve the unresolved canonical spelling and exact import-path source range in individual and batched LSP analysis
     remaining:
       - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
       - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
@@ -1007,7 +1010,7 @@ integrations:
       - invalidate importer resolution only as permitted by semantic surface changes, with conservative fallback when equivalence is unproven
       - add dependency-driven SourceFile to ModuleInstance to ModuleSurface incremental invalidation
       - share the complete canonical resolver between command-line compilation and LSP completion, navigation, rename, and diagnostics
-      - add structured diagnostics for inconsistent module declarations, unresolved imports, illegal internal access, duplicate imports, qualifier collisions, cycles, and inaccessible public signatures
+      - add the remaining structured diagnostics for inconsistent module declarations, illegal internal access, duplicate imports, qualifier collisions, cycles, and inaccessible public signatures
       - preserve original import spelling, resolved identity, local qualifier, source location, access cause, and CompilationPlan in diagnostic facts
       - add multi-module integration tests for same-name modules, file-local bindings, roots, case sensitivity, internal access, graph shapes, Variants, surfaces, invalidation, and scheduling determinism
     excluded:

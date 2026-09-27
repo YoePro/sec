@@ -809,6 +809,10 @@ ISR analysis consumes the resolved rule and checks requirements such as
 
 TLS availability and runtime reentrancy are separate dimensions.
 
+Portable Sec 0.1 resolves ordinary `ThreadLocal[T]` access as invalid in ISR
+context. `Borrow`, `BorrowMut`, `Replace`, and `Thread.AttachCurrent()` are
+therefore rejected rather than borrowing the interrupted thread's TLS state.
+
 ---
 
 ## 21. Runtime reentrancy and interrupt safety

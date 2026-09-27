@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-16
-- **Last updated:** 2026-08-16
+- **Last updated:** 2026-09-27
 - **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/ffi.md`
@@ -734,6 +734,14 @@ This is callback interoperation, not general Sec-to-C symbol export.
 No user-selected exported C symbol is created by `C::callback`.
 
 When a C API provides an explicit userdata/context pointer, that pointer is the canonical state-transport mechanism for Sec 0.1 callbacks.
+
+A generated callback wrapper that enters on an unattached foreign physical
+thread may establish a Sec `ThreadAttachment` when the selected target/runtime
+supports it and the callback requires attached execution. The wrapper owns and
+destroys only an attachment it created. A nested callback on an already
+attached thread reuses that attachment and must not detach it on return. User
+`ThreadLocal[T]` factories remain lazy and are not executed merely by callback
+attachment.
 
 ## 26. C variadic functions
 

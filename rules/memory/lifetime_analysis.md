@@ -586,6 +586,12 @@ capture(ref mut value)
 
 **§ 19.3(2)** Such a reference must not cross to another execution context unless a specialized rulebook proves that the storage identity and access remain valid there.
 
+**§ 19.3(3)** A reference returned by `ThreadLocal[T].Borrow()` or
+`BorrowMut()` carries the TLS key and physical-thread attachment generation in
+its provenance. It must not cross task suspension, escape, or transfer where
+that physical identity is unproven; ordinary physical-thread blocking alone
+does not end it when the generation remains stable.
+
 ---
 
 ## § 20 Fixed-address external storage

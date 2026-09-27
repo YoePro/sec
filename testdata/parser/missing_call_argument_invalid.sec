@@ -1,0 +1,13 @@
+module parser_missing_call_argument
+
+fn Sum(first: int, second: int, third: int) int {
+    return first + second + third
+}
+
+fn Use() int {
+    return Sum(10, , 30)
+}
+
+fn Following() int {
+    return 40
+}

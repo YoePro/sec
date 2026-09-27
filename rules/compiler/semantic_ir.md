@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-09-24
+- Last updated: 2026-09-27
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -1924,6 +1924,9 @@ than once, terminal payload access without the matching joined terminal status,
 premature explicit-storage borrow release, and observer acquisition of owning
 lifecycle or terminal-payload authority.
 
+§ 78(6) `Thread.Yield()` remains a physical scheduler hint distinct from task
+scheduling, cancellation observation, and memory synchronization.
+
 ---
 
 ## § 79 Transfer boundaries
@@ -2009,17 +2012,38 @@ select itself adds no generic synchronization edge.
 
 § 81(4) Detached execution remains an explicit escape/transferability boundary.
 
+§ 81(5) `Task.Yield()` preserves logical execution kind, real task-context
+availability, scheduling-point identity, migration permission/restriction, and
+the first-commit state between normal yield and current-task cancellation. It
+creates no memory-synchronization edge.
+
+§ 81(6) Semantic IR must not manufacture a root task context for ordinary
+program entry merely because lowering uses executor machinery.
+
 ---
 
 ## § 82 Thread-local storage
 
-§ 82(1) Thread-local storage retains one physical-thread domain identity.
+§ 82(1) Thread-local storage retains its key identity, concrete value type,
+initializer kind/value or callable identity, initializer effects, and one
+physical-thread attachment-generation identity.
 
 § 82(2) Task migration does not move thread-local storage identity.
 
-§ 82(3) References into thread-local storage carry affinity dependency.
+§ 82(3) References into thread-local storage carry key, generation, lifetime,
+and shared-versus-mutable provenance.
 
 § 82(4) Semantic IR must not treat thread-local as ordinary process-global static storage.
+
+§ 82(5) Semantic IR preserves lazy first access, initialization-in-progress and
+failed state, successful initialization-order registration, `Replace`
+ownership exchange, exact-once destruction, and foreign attachment ownership.
+
+§ 82(6) Verification rejects duplicate initialization or destruction,
+conflicting TLS borrows, cross-generation references, a user factory executing
+twice for one key/generation, and `ThreadAttachment` cleanup on another
+physical thread. Concrete operation names remain owned by this rulebook rather
+than the source-language TLS rulebook.
 
 ---
 

@@ -988,10 +988,11 @@ rules/tooling/lsp.md
 rules/tooling/testing.md
 ```
 
-`rules/compiler/initialization.md`, future linking, dependency/package, and
-incremental-compilation rules consume the module identities and surfaces defined
-here and must not redefine their source-level meaning. The ModuleGraph is not a
-runtime initialization graph.
+`rules/compiler/initialization.md`, `rules/compiler/linking.md`,
+`rules/compiler/incremental_compilation.md`, and future dependency/package
+rules consume the module identities and surfaces defined here and must not
+redefine their source-level meaning. The ModuleGraph is not a runtime
+initialization graph.
 
 Public source-accessible functions may execute across modules during semantic
 CTE. Compatible `ModuleSurface`/separate-compilation metadata may retain

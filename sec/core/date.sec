@@ -6,13 +6,6 @@ type date struct {
 
 impl date {
     // int32
-    init(year: int, month: int, day: int) {
-        /*
-         *         self._year = year
-         *         self._month = month
-         *         self._day = day
-         */
-    }
 
     enum Format {
         YYYYMMDD,           // 2006-01-02
@@ -36,6 +29,53 @@ impl date {
         week: int,
     }
 
+    init(epochDays: int32) {
+        self._epochDays = epochDays
+    }
+
+    init(year: int, month: int, day: int) DateError {
+        if month not in 1..12 {
+            return Err(DateError.OutOfRange)
+        }
+
+        let daysInMonth := _daysInMonth(year, month)
+        if day not in 1..daysInMonth {
+            return Err(DateError.InvalidDate)
+        }
+
+        // Convert civil date to days since 1970-01-01 (Unix epoch)
+        // Algorithm based on Howard Hinnant's date algorithms
+        let mut y := year
+        let mut m := month
+        let d := day
+
+        // Shift so March is month 0 (makes leap day handling easier)
+        if m <= 2 {
+            y = y - 1
+        }
+        m = (m + 9) % 12
+
+        let mut era: int
+        if y >= 0 {
+            era = y / 400
+        } else {
+            era = (y - 399) / 400
+        }
+
+        let yoe := y - era * 400                                  // [0, 399]
+        let doy := (153 * m + 2) / 5 + d - 1                      // [0, 365]
+        let doe := yoe * 365 + yoe / 4 - yoe / 100 + doy          // [0, 146096]
+
+        let epochDays := era * 146097 + doe - 719468
+
+        // Check that the result fits in int32
+        if epochDays < -2147483648 || epochDays > 2147483647 {
+            return Err(DateError.OutOfRange)
+        }
+
+        self._epochDays = int32(epochDays)
+    }
+
     fn ToString(format: Format) string {
         return ""
     }
@@ -50,23 +90,23 @@ impl date {
 
     fn FromYMD(year: int, month: int, day: int) Result[date, DateError] {
         // TODO: validera + räkna om till epochDays
-        let days := /* beräkning */
+        // let days := /* beräkning */
         return Ok(date { _epochDays: days })
     }
 
-    property Year: int {           // 1–9999
+    static property Year: int {           // 1–9999
         get {
             return 0
         }
     }
 
-    property Month: int {          // 1–12
+    static property Month: int {          // 1–12
         get {
             return 0
         }
     }
 
-    property Day: int {            // 1–31
+    static property Day: int {            // 1–31
         get {
             return 0
         }
@@ -97,14 +137,37 @@ impl date {
         }
     }
 
-    fn AddDays(n: int) date {
-        return new date{ year: 0, month: 0, day: 0 }
-    }
-    fn AddMonths(n: int) date {
-        return new date{ year: 0, month: 0, day: 0 }
-    }
-    fn AddYears(n: int) date {
-        return new date{ year: 0, month: 0, day: 0 }
-    }
+    // fn AddDays(n: int) date {
+    // return new date{ year: 0, month: 0, day: 0 }
+    // }
+    // fn AddMonths(n: int) date {
+    // return new date{ year: 0, month: 0, day: 0 }
+    // }
+    // fn AddYears(n: int) date {
+    // return new date{ year: 0, month: 0, day: 0 }
+    // }
 
+}
+
+// Helper (can live in the same module)
+fn _daysInMonth(year: int, month: int) int {
+    switch month {
+        case 1, 3, 5, 7, 8, 10, 12:
+            return 31
+        case 4, 6, 9, 11:
+            return 30
+        case 2:
+            let isLeap := isLeapYear(year)
+            if isLeap {
+                return 29
+            } else {
+                return 28
+            }
+        default:
+            return 0 // Invalid month
+    }
+}
+
+fn _isLeapYear(year: int) bool {
+    return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0)
 }

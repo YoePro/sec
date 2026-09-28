@@ -2530,7 +2530,9 @@ panic/check operations
 
 ## § 105 Incremental compilation
 
-§ 105(1) Semantic IR structure should support future/current incremental compilation.
+§ 105(1) Semantic IR structure supports the canonical incremental-compilation
+contract in `rules/compiler/incremental_compilation.md` without transferring
+Semantic IR meaning or verifier ownership to that rulebook.
 
 § 105(2) Potential cache boundaries include:
 

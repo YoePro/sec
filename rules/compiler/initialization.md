@@ -841,7 +841,8 @@ does not require downstream invalidation solely for initialization reasons.
 A change that alters the contract invalidates dependent lowering and linking
 artifacts.
 
-Detailed cache architecture belongs to `incremental_compilation.md`.
+Detailed cache architecture belongs to
+`rules/compiler/incremental_compilation.md`.
 
 ## 45. Required test families
 

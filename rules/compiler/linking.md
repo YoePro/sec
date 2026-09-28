@@ -1031,7 +1031,8 @@ OutputArtifactKind
 reproducibility settings
 ```
 
-Detailed cache architecture belongs to `incremental_compilation.md`.
+Detailed cache architecture and reuse validity belong to
+`rules/compiler/incremental_compilation.md`.
 
 ---
 

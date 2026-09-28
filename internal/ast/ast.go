@@ -1224,11 +1224,12 @@ func (fs *FallthroughStatement) TokenLiteral() string {
 }
 
 type ForStatement struct {
-	Token    lexer.Token
-	Bindings []ForBinding
-	Iterable Expression
-	Step     Expression
-	Body     *BlockStatement
+	Token     lexer.Token
+	Bindings  []ForBinding
+	Iterable  Expression
+	StepToken lexer.Token
+	Step      Expression
+	Body      *BlockStatement
 }
 
 func (fs *ForStatement) statementNode() {}
@@ -2177,11 +2178,12 @@ func (ie *IndexExpression) String() string {
 }
 
 type SliceExpression struct {
-	Token     lexer.Token
-	Left      Expression
-	Start     Expression
-	End       Expression
-	Exclusive bool
+	Token      lexer.Token
+	Left       Expression
+	RangeToken lexer.Token
+	Start      Expression
+	End        Expression
+	Exclusive  bool
 }
 
 func (se *SliceExpression) expressionNode() {}

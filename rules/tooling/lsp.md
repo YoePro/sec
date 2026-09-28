@@ -3286,7 +3286,7 @@ semantic_ir.md
 projects.txt
 modules.md
 parser_recovery.md
-incremental_compilation.md
+compiler/incremental_compilation.md
 compiler_testing.md
 ownership.md
 copy_move.md

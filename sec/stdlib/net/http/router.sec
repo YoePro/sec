@@ -1,24 +1,24 @@
 module http
 
 /*
-* Sec Standard Library - net/http - Small HTTP routing convenience layer
-*
-* File:        stdlib/net/http/router.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Small HTTP routing convenience layer.
-*
-* Standards:
-*   - RFC 9110
-*     https://www.rfc-editor.org/rfc/rfc9110
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - Small HTTP routing convenience layer
+ *
+ * File:        stdlib/net/http/router.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Small HTTP routing convenience layer.
+ *
+ * Standards:
+ * - RFC 9110
+ *     https://www.rfc-editor.org/rfc/rfc9110
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 enum RouterError error {
     InvalidPattern,
@@ -27,7 +27,7 @@ enum RouterError error {
 }
 
 type RouteParam struct {
-    Name: string,
+    Name:  string,
     Value: string,
 }
 

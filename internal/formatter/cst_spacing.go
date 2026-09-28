@@ -33,6 +33,7 @@ type formatterReplacement struct {
 //   - rules/tooling/formatter.md — §18 "Control flow"
 //   - rules/tooling/formatter.md — §20 "Patterns and destructuring"
 //   - rules/tooling/formatter.md — §16(14–17) "attributes"
+//   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
 func formatCSTRoles(text string) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
 	document := cst.Build(text, "")
@@ -283,6 +284,32 @@ func formatCSTRoles(text string) string {
 				text:  " {",
 			})
 			continue
+		case element.HasRole(cst.RangeOperator):
+			for start > 0 && isHorizontalFormatterByte(text[start-1]) {
+				start--
+			}
+			for end < len(text) && isHorizontalFormatterByte(text[end]) {
+				end++
+			}
+			replacements = append(replacements, formatterReplacement{
+				start: start,
+				end:   end,
+				text:  element.Text,
+			})
+			continue
+		case element.HasRole(cst.RangeStepKeyword):
+			for start > 0 && isHorizontalFormatterByte(text[start-1]) {
+				start--
+			}
+			for end < len(text) && isHorizontalFormatterByte(text[end]) {
+				end++
+			}
+			replacements = append(replacements, formatterReplacement{
+				start: start,
+				end:   end,
+				text:  " step ",
+			})
+			continue
 		case element.HasRole(cst.AttributedDeclarationStart):
 			if elementIndex < 2 || document.Elements[elementIndex-1].Kind != cst.Whitespace ||
 				!document.Elements[elementIndex-2].HasRole(cst.AttachedAttributeEnd) {
@@ -316,6 +343,7 @@ func formatCSTRoles(text string) string {
 			text:  replacementText,
 		})
 	}
+	replacements = append(replacements, structFieldAlignmentReplacements(document)...)
 
 	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
 	for _, replacement := range replacements {

@@ -1045,3 +1045,68 @@ func TestFormatLineCommentsUsesOnlyLexerCommentTokens(t *testing.T) {
 		t.Fatalf("line-comment token scoping failed:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// Parser-owned CST roles keep range and slice operators compact and give the
+// contextual for-range step keyword exactly one surrounding space.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §17(12) compact slicing
+//   - rules/tooling/formatter.md — §23(5–8) ranges and step
+func TestFormatRangesAndStepFromCST(t *testing.T) {
+	input := "fn Visit(values: int[], step: int) void {\nfor index in 0  ..<  values.Len    step    2 {\nlet window := values[index  ..  index + 2]\nlet ordinary := step\n}\n}\n"
+	want := "fn Visit(values: int[], step: int) void {\n    for index in 0..<values.Len step 2 {\n        let window := values[index..index + 2]\n        let ordinary := step\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST range formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST range formatting is not idempotent:\n%s", again)
+	}
+}
+
+// Struct field types align from parser-owned CST anchors. Comments and blank
+// lines split groups, and excessive padding disables alignment for the whole
+// candidate group.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §9(5) struct-field alignment
+//   - rules/tooling/formatter.md — §9(8–10) boundaries and padding limit
+func TestFormatAlignsStructFieldTypesFromCST(t *testing.T) {
+	input := "type Endpoint struct {\nHost:       string,\nPort:uint16,\nTimeout: Duration,\n\n// separate group\nID:uint,\nDisplayName:string,\n}\n"
+	want := "type Endpoint struct {\n    Host:    string,\n    Port:    uint16,\n    Timeout: Duration,\n\n    // separate group\n    ID:          uint,\n    DisplayName: string,\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST struct-field alignment:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST struct-field alignment is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatDropsStructFieldAlignmentBeyondPaddingLimit(t *testing.T) {
+	input := "type Wide struct {\nA: int,\nExtremelyLongFieldName: string,\n}\n"
+	want := "type Wide struct {\n    A: int,\n    ExtremelyLongFieldName: string,\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("excessive struct-field alignment was not dropped:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatAlignsStructFieldTagsAsSecondaryAnchors(t *testing.T) {
+	input := "type Endpoint struct {\nHost:string    `json:\"host\"`,\nTimeout:Duration `json:\"timeout\"`,\n}\n"
+	want := "type Endpoint struct {\n    Host:    string   `json:\"host\"`,\n    Timeout: Duration `json:\"timeout\"`,\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong CST struct-field tag alignment:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("CST struct-field tag alignment is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatDropsOnlyStructFieldTagColumnBeyondPaddingLimit(t *testing.T) {
+	input := "type Tagged struct {\nShort: int                 `wire:\"short\"`,\nLong: ExtremelyLongTypeName `wire:\"long\"`,\n}\n"
+	want := "type Tagged struct {\n    Short: int `wire:\"short\"`,\n    Long:  ExtremelyLongTypeName `wire:\"long\"`,\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("excessive secondary tag alignment did not fall back locally:\n%s\nwant:\n%s", got, want)
+	}
+}

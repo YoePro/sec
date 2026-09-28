@@ -1358,6 +1358,7 @@ func (p *Parser) parseForStatement() ast.Statement {
 
 	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "step" {
 		p.nextToken()
+		stmt.StepToken = p.curToken
 		if p.peekToken.Type == lexer.LBRACE || p.peekToken.Type == lexer.EOF {
 			p.addError("for range step requires an expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			p.skipMalformedForHeader(stmt)

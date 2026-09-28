@@ -1821,7 +1821,8 @@ optimization/debug policy where output-relevant.
 
 § 90(2) Reuse is based on semantic dependency invalidation, not timestamp alone.
 
-§ 90(3) The detailed algorithm is owned by the future/current incremental-compilation rulebook.
+§ 90(3) Detailed dependency, validity, invalidation, publication, and reuse rules
+are owned by `rules/compiler/incremental_compilation.md`.
 
 § 90(4) Incremental reuse must never bypass required verification.
 

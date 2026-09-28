@@ -88,6 +88,47 @@ fn Sum(values: ref int[]) int {
 	}
 }
 
+// Direct by-value use observes the complete semantic value, while a projected
+// element access requires only its independently derived random-access shape.
+// Whole-value demand remains separate from ownership and identity demand.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Whole-value operations"
+//   - rules/analysis/parameter_usage_analysis.md — "Returning a parameter by value"
+func TestParameterUsageDistinguishesWholeValueFromProjectedAccess(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Mirror(values: int[4]) int[4] {
+    return values
+}
+
+fn First(values: int[4]) int {
+    return values[0]
+}
+
+fn Borrow(values: ref int[4]) ref int[4] {
+    return values
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	mirror := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "Mirror"), "values")
+	if !hasParameterShape(mirror.Demand.Shapes, ParameterShapeWholeValue) {
+		t.Fatalf("direct value demand = %#v, want whole-value", mirror.Demand)
+	}
+
+	first := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "First"), "values")
+	if hasParameterShape(first.Demand.Shapes, ParameterShapeWholeValue) || !hasParameterShape(first.Demand.Shapes, ParameterShapeRandomAccess) {
+		t.Fatalf("projected value demand = %#v, want random access without whole-value", first.Demand)
+	}
+
+	borrow := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "Borrow"), "values")
+	if hasParameterShape(borrow.Demand.Shapes, ParameterShapeWholeValue) {
+		t.Fatalf("returned reference demand = %#v, must not imply whole-value observation", borrow.Demand)
+	}
+}
+
 func TestParameterUsageConsumesReturnedEscapeSummary(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

@@ -1,23 +1,23 @@
 module http
 /*
-* Sec Standard Library - net/http - HTTP error and result types
-*
-* File:        stdlib/net/http/results.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   HTTP error and result types.
-*
-* Standards:
-*   - RFC 9110
-*     https://www.rfc-editor.org/rfc/rfc9110
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - HTTP error and result types
+ *
+ * File:        stdlib/net/http/results.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * HTTP error and result types.
+ *
+ * Standards:
+ * - RFC 9110
+ *     https://www.rfc-editor.org/rfc/rfc9110
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 enum HeaderError error {
     InvalidName,
@@ -115,9 +115,11 @@ enum CacheError error {
     AllocationFailed,
 }
 
-/** CookieError reports cookie validation and serialization errors.
-// NotImplemented is temporary dogfooding scaffolding and must be removed once
-// the corresponding operation exists. */
+/**
+ * CookieError reports cookie validation and serialization errors.
+ * // NotImplemented is temporary dogfooding scaffolding and must be removed once
+ * // the corresponding operation exists.
+ */
 enum CookieError error {
     InvalidName,
     InvalidValue,

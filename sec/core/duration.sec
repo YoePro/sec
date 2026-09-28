@@ -6,23 +6,77 @@ type duration struct {
 
 impl duration {
     // int64
-    property TotalNanoseconds: int64
 
-    property Years: int64
-    property Months: int64
-    property Weeks: int64
-    property Days: int64
-    property Hours: int64
-    property Minutes: int64
-    property Seconds: int64
-    property Milliseconds: int64
-    property Microseconds: int64
-    property Nanoseconds: int64
+    // property Years: int64
+    // property Months: int64
+    property Weeks: int64 {
+        get {
+            return self._nanoseconds / 604800000000000
+        }
+    }
+
+    property Days: int64 {
+        get {
+            return self._nanoseconds / 86400000000000
+        }
+    }
+
+    property Hours: int64 {
+        get {
+            return self._nanoseconds / 3600000000000
+        }
+    }
+
+    property Minutes: int64 {
+        get {
+            return self._nanoseconds / 60000000000
+        }
+    }
+
+    property Seconds: int64 {
+        get {
+            return self._nanoseconds / 1000000000
+        }
+    }
+
+    property Milliseconds: int64 {
+        get {
+            return self._nanoseconds / 1000000
+        }
+    }
+
+    property Microseconds: int64 {
+        get {
+            return self._nanoseconds / 1000
+        }
+    }
+
+    property Nanoseconds: int64 {
+        get {
+            return self._nanoseconds
+        }
+    }
 
     fn ToString() string {
         return ""
     }
 
-    fn Abs() duration
-    fn Negate() duration
+    fn Abs() duration {
+        if self._nanoseconds < 0 {
+            return duration { _nanoseconds: -self._nanoseconds }
+        }
+        return self
+    }
+
+    fn Negate() duration {
+        return duration { _nanoseconds: -self._nanoseconds }
+    }
+
+    fn FromNanoseconds(ns: int64) duration {
+        return duration { _nanoseconds: ns }
+    }
+
+    fn FromSeconds(s: int64) duration {
+        return duration { _nanoseconds: s * 1000000000 }
+    }
 }

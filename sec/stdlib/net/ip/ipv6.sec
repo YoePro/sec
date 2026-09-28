@@ -48,7 +48,7 @@ impl Ipv6Address {
         segment4: uint16,
         segment5: uint16,
         segment6: uint16,
-        segment7: uint16
+        segment7: uint16,
     ) {
         // TODO: Implement net/ip/ipv6.init
     }

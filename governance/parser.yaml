@@ -87,6 +87,7 @@ integrations:
       - comma-delimited empty call arguments are retained as position-preserving InvalidExpression nodes while later arguments, the enclosing call, and following declarations survive
       - grouped expressions that reach EOF without a closing parenthesis retain their completed inner expression plus the enclosing return/function AST and record a virtual missing-')' recovery event
       - call argument lists that reach EOF without a closing parenthesis retain the call, every completed argument, and the enclosing return/function AST, including EOF directly after the opener or a separator, while recording a virtual missing-')' recovery event
+      - index and slice postfix expressions that reach EOF without a closing bracket retain their base and completed index or bounds plus the enclosing return/function AST; an empty index position is retained as InvalidExpression and every path records a virtual missing-']' recovery event
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -149,6 +150,9 @@ integrations:
       - testdata/parser/unterminated_grouped_expression_invalid.sec
       - internal/parser/unterminated_call_recovery_test.go
       - testdata/parser/unterminated_call_invalid.sec
+      - internal/parser/unterminated_index_slice_recovery_test.go
+      - testdata/parser/unterminated_index_invalid.sec
+      - testdata/parser/unterminated_slice_invalid.sec
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -226,13 +230,19 @@ integrations:
         result: passed on 2026-09-28; EOF after a call opener, separator, or completed argument retains the call and available arguments with a virtual closing parenthesis, while ordinary missing-argument recovery remains unchanged
       - command: go run ./cmd/compiler parse testdata/parser/unterminated_call_invalid.sec
         result: rejected with the missing call parenthesis and unterminated function diagnostics; parser errors remain batch-visible and block compilation
+      - command: go test ./internal/parser -run 'TestUnterminated(Index|EmptyIndex|Slice)' -count=1
+        result: passed on 2026-09-28; EOF retains completed index and exclusive-slice expressions, represents an empty index position as InvalidExpression, and records a virtual closing bracket
+      - command: go run ./cmd/compiler parse testdata/parser/unterminated_index_invalid.sec
+        result: rejected on 2026-09-28 with missing-bracket and unterminated-function diagnostics; parser errors remain batch-visible and block compilation
+      - command: go run ./cmd/compiler parse testdata/parser/unterminated_slice_invalid.sec
+        result: rejected on 2026-09-28 with missing-bracket and unterminated-function diagnostics; parser errors remain batch-visible and block compilation
 
     remaining:
       - invalid type retention in remaining specialized failure paths beyond explicit generic calls and lifecycle new expressions
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, and call argument lists at EOF
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists, and index/slice postfix expressions at EOF
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
   - id: frontend.increment-decrement-aliases

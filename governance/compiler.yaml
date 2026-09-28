@@ -133,12 +133,185 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/debug-information-cross-rulebook-correction-20260923.md
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
+      - rules/corrections/applied/incremental-compilation-cross-rulebook-correction-20260928.md
     governance_reconciliation:
       - keep governance/index.yaml unchanged because compiler.yaml already owns compiler pipeline, linking, initialization, and artifacts
       - cross-link compiler.backend-architecture and compiler.linking to debug-provenance and final-artifact obligations without duplicating their existing work
       - leave target/platform capability ownership in the existing CompilationPlan/target governance model; debug-information consumes resolved target facts
       - testing.compiler-verification-v1 in governance/testing.yaml actively owns the shared compiler-test harness and debugger-driving infrastructure; this integration retains feature-specific debug-information evidence obligations
-      - make incremental_compilation.md own cache invalidation and reuse rules for debug/backend artifact state when that rulebook is written
+      - rules/compiler/incremental_compilation.md and compiler.incremental-compilation-v1 own cache invalidation and reuse rules for debug/backend artifact state
+  - id: compiler.incremental-compilation-v1
+    area: compiler-incremental-compilation-and-cache-validity
+    status: planned
+    integrated: null
+    document_revision: "1.0"
+    repository_baseline: main-reviewed-2026-09-27
+    summary: >-
+      Implements the canonical Sec 0.1 incremental-compilation correctness model:
+      logically consistent snapshots, dependency/fingerprint validity, fail-closed
+      reuse, set-valued and negative invalidation, transactional publication,
+      persistent/shared cache integrity, ModuleSurface-aware downstream invalidation,
+      source/provenance separation, plan-specific lowering and artifact reuse,
+      history independence, and cold-versus-incremental conformance. Incremental
+      state is compiler acceleration state and never becomes Sec source semantics.
+    rules:
+      - rules/compiler/incremental_compilation.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/compiler/compiler_analysis.md
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/monomorphization.md
+      - rules/compiler/linking.md
+      - rules/compiler/debug_information.md
+      - rules/compiler/compiler_testing.md
+      - rules/projects/modules.md
+      - rules/tooling/lsp.md
+      - rules/platform/abi.md
+      - rules/platform/target_profiles.md
+    implemented: []
+    partial: []
+    existing_foundations:
+      - id: compiler.incremental-compilation-v1.foundation.pipeline-cache-boundaries
+        description: >-
+          compiler_pipeline.md already defines cacheable pipeline boundaries,
+          dependency-complete cache keys, semantic rather than timestamp invalidation,
+          required verification on reuse, plan-sensitive invalidation, and deterministic
+          parallel cache behavior.
+      - id: compiler.incremental-compilation-v1.foundation.analysis-invalidation
+        description: >-
+          compiler_analysis.md already defines compiler-owned invalidation domains,
+          dependency graphs, semantic invalidation, snapshot consistency, deterministic
+          cache keys, and fixed-point analysis contracts consumed by this integration.
+      - id: compiler.incremental-compilation-v1.foundation.module-surfaces
+        description: >-
+          projects/modules.md already defines ModuleIdentity, ModuleInstance,
+          deterministic ModuleSurface fingerprints, importer-visible surface invalidation,
+          and conservative fail-closed incremental module processing.
+      - id: compiler.incremental-compilation-v1.foundation.generic-fingerprints
+        description: >-
+          monomorphization.md already distinguishes canonical InstantiationKey identity
+          from cache validity, defines generic cache layers, semantic/provenance
+          fingerprints, and dependency-sensitive specialization invalidation.
+      - id: compiler.incremental-compilation-v1.foundation.link-cache-identity
+        description: >-
+          linking.md already requires link reuse identity to include LinkPlan,
+          LinkEnvironment, toolchain, input artifacts, native dependencies, LTO,
+          output kind, and reproducibility inputs.
+      - id: compiler.incremental-compilation-v1.foundation.debug-artifact-identity
+        description: >-
+          debug_information.md already separates debug configuration from program
+          semantics and requires debug-related physical settings to participate in
+          backend/artifact/link cache identities.
+      - id: compiler.incremental-compilation-v1.foundation.testing-hook
+        description: >-
+          testing.compiler-verification-v1 already reserves generic cold-versus-incremental
+          differential and matrix infrastructure; this rulebook now supplies the concrete
+          incremental invariants that hook must verify.
+    unimplemented:
+      - id: compiler.incremental-compilation-v1.snapshot-generations
+        description: >-
+          Implement canonical logical snapshot/generation tracking and fail-closed
+          publication so obsolete work cannot overwrite current compilation state.
+      - id: compiler.incremental-compilation-v1.dependency-query-model
+        description: >-
+          Implement compiler-wide dependency/query-result tracking capable of representing
+          direct/transitive semantic dependencies across frontend, analysis, CTE,
+          specialization, realization, debug, and artifact layers.
+      - id: compiler.incremental-compilation-v1.negative-set-dependencies
+        description: >-
+          Implement dependency identities for candidate/member/conformance/import sets and
+          absence results so additions and removals invalidate prior positive or negative
+          answers correctly.
+      - id: compiler.incremental-compilation-v1.domain-fingerprints
+        description: >-
+          Implement deterministic domain-specific semantic, provenance, layout,
+          realization, debug, and artifact fingerprints with explicit compatibility
+          versioning and no dependence on worker/map/cache discovery order.
+      - id: compiler.incremental-compilation-v1.reuse-validation
+        description: >-
+          Implement fail-closed cache candidate validation using all relevant dependency,
+          schema, semantic-rule, CompilationPlan, verifier, and toolchain contracts.
+      - id: compiler.incremental-compilation-v1.fixed-point-incremental
+        description: >-
+          Integrate cyclic/fixed-point analyses with incremental invalidation so prior
+          results may be seeds only where sound and removed facts cannot become permanent
+          stale state.
+      - id: compiler.incremental-compilation-v1.concurrent-publication
+        description: >-
+          Implement logically atomic reusable-result publication, in-flight sharing where
+          useful, cancellation/supersession handling, and generation protection against
+          stale late completion.
+      - id: compiler.incremental-compilation-v1.persistent-cache-format
+        description: >-
+          Define and implement persistent artifact-kind/schema identities, payload/metadata
+          integrity, crash-safe commit behavior, verifier-contract handling, and safe
+          concurrent reader/writer/eviction behavior if persistent caching is enabled.
+      - id: compiler.incremental-compilation-v1.shared-cache-trust
+        description: >-
+          Define trust, authenticity/integrity, producer compatibility, and consumer
+          validation for shared or remote cache use before that capability is claimed.
+      - id: compiler.incremental-compilation-v1.module-surface-integration
+        description: >-
+          Wire canonical ModuleSurface and domain-specific exported summaries into
+          dependency-driven downstream invalidation, including file addition/removal,
+          public candidate sets, exported generic templates, and analysis summaries.
+      - id: compiler.incremental-compilation-v1.source-syntax-provenance
+        description: >-
+          Implement safe incremental source/syntax reuse with parser-context validity,
+          fail-closed semantic identity remapping, and separate current-snapshot provenance
+          updates for diagnostics, LSP, documentation, and debug information.
+      - id: compiler.incremental-compilation-v1.plan-isolation
+        description: >-
+          Enforce target/Variant/TestCompilationPlan isolation so target-independent work
+          may be shared only when compatible and no layout, ABI, target, CTE, or test-view
+          state can leak between plans.
+      - id: compiler.incremental-compilation-v1.lowering-artifact-reuse
+        description: >-
+          Integrate verified Semantic IR, Sec MLIR/lower IR, backend/object, generic
+          realization, debug, and link artifact reuse with layer-specific transformation,
+          plan, ABI/layout, optimizer, verifier, and toolchain compatibility.
+      - id: compiler.incremental-compilation-v1.reachability-roots
+        description: >-
+          Make current semantic demand and LinkPlan roots authoritative so cached artifacts
+          never create reachability and removed helpers, symbols, tests, specializations,
+          or debug metadata cannot survive as ghost output.
+      - id: compiler.incremental-compilation-v1.transactional-final-output
+        description: >-
+          Ensure incremental object/link candidates are fully generated and verified before
+          replacing previously successful published outputs.
+      - id: compiler.incremental-compilation-v1.history-independence
+        description: >-
+          Verify and enforce convergence to the same canonical result across different edit
+          sequences, invalid intermediate states, reverts, cache warmth, restarts, worker
+          schedules, and supported local/shared reuse paths.
+      - id: compiler.incremental-compilation-v1.inspection
+        description: >-
+          Provide stable compiler inspection metadata for reuse/recompute decisions,
+          dependency/fingerprint domains, invalidation causes, snapshot/plan identity,
+          persistent-cache provenance, verification, and rejection reasons.
+      - id: compiler.incremental-compilation-v1.stateful-conformance
+        description: >-
+          Implement feature-specific edit-sequence, wrong-cache, plan-isolation,
+          persistent-restart, race, stateful fuzz/property, and mutation-test evidence using
+          the shared testing.compiler-verification-v1 infrastructure.
+    excluded:
+      - a source-visible Sec cache or fingerprint API
+      - one mandatory query-engine implementation
+      - one mandatory cache directory, database, or serialization format
+      - content-addressed storage as a language requirement
+      - a mandatory compiler daemon
+      - mandatory remote or distributed caching
+      - mandatory cross-machine cache reuse
+      - mandatory incremental linking
+      - maximal or minimal invalidation precision
+      - cache-hit percentages or build-time thresholds as semantic correctness gates
+    corrections_applied:
+      - rules/corrections/applied/incremental-compilation-cross-rulebook-correction-20260928.md
+    governance_reconciliation:
+      - compiler.incremental-compilation-v1 is merged into the existing governance/compiler.yaml fragment; no new governance fragment is introduced
+      - canonical semantic ownership for ModuleSurface, generic identity, Semantic IR, ABI/layout, debug information, and LinkPlan remains in the existing rulebooks and integrations
+      - generic differential, fuzzing, mutation, matrix, fault-injection, and regression infrastructure remains under testing.compiler-verification-v1
+      - debug-information and compiler-testing handoffs point to rules/compiler/incremental_compilation.md
+      - language-rulebook-status.md records compiler/incremental_compilation.md as Written and removes the planned closure entry
   - id: compiler.linking
     area: compiler-linking-and-artifacts
     status: partial

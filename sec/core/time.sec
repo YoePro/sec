@@ -4,12 +4,43 @@ type time struct {
     _nanosecondsSinceMidnight: uint64,
 }
 
+unit h uint physical
+
+type HourOfDay uint<h> range 0..23
+
 impl time {
 
     enum Format {
         HHMM,          // 15:04
         HHMMSS,        // 15:04:05
         HHMMSSNano,    // 15:04:05.999999999
+    }
+
+    // Internt / lågnivå
+    init(nanosecondsSinceMidnight: uint64) TimeError {
+        if nanosecondsSinceMidnight >= 86400000000000 {
+            return Err(TimeError.OutOfRange)
+        }
+        self._nanosecondsSinceMidnight = nanosecondsSinceMidnight
+    }
+
+    // Vanlig konstruktion
+    init(hour: int, minute: int, second: int) TimeError {
+        if hour not in 0..23 || minute not in 0..59 || second not in 0..59 {
+            return Err(TimeError.OutOfRange)
+        }
+
+        let ns := uint64(hour) * 3600000000000 +  uint64(minute) * 60000000000 + uint64(second) * 1000000000
+        self._nanosecondsSinceMidnight = ns
+    }
+
+    init(hour: int, minute: int, second: int, nanosecond: int) TimeError {
+        if hour not in 0..23 || minute not in 0..59 || second not in 0..59 || nanosecond not in 0..999999999 {
+            return Err(TimeError.OutOfRange)
+        }
+
+        let ns := uint64(hour) * 3600000000000 +  uint64(minute) * 60000000000 + uint64(second) * 1000000000 + uint64(nanosecond)
+        self._nanosecondsSinceMidnight = ns
     }
 
     static property Now: time {
@@ -19,25 +50,25 @@ impl time {
         }
     }
 
-    property Hour: int {
+    static property Hour: int {
         get {
             return 0
         }
     }
 
-    property Minute: int {
+    static property Minute: int {
         get {
             return 0
         }
     }
 
-    property Second: int {
+    static property Second: int {
         get {
             return 0
         }
     }
 
-    property Nanosecond: int {
+    static property Nanosecond: int {
         get {
             return 0
         }
@@ -63,8 +94,8 @@ impl time {
         return Ok(time { _nanosecondsSinceMidnight: 0 })
     }
 
-    fn FromHMSNano(hour: int, minute: int, second: int, nano: int) Result[time, TimeError] {
-        // ...
-    }
+    // fn FromHMSNano(hour: int, minute: int, second: int, nano: int) Result[time, TimeError] {
+    // // ...
+    // }
 
 }

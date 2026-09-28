@@ -1031,6 +1031,15 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 	}
 }
 
+// parseIndexOrSliceExpression retains a completed or explicitly invalid index
+// when EOF is the unambiguous boundary for a missing closing bracket. The
+// parser error and virtual closer remain authoritative, so the partial node is
+// tooling input and never turns malformed source into valid compilation input.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Index and slice recovery"
+//   - rules/compiler/parser_recovery.md — "Postfix expression"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseIndexOrSliceExpression(left ast.Expression) ast.Expression {
 	token := p.curToken
 
@@ -1048,6 +1057,16 @@ func (p *Parser) parseIndexOrSliceExpression(left ast.Expression) ast.Expression
 		p.nextToken()
 		return nil
 	}
+	if p.peekToken.Type == lexer.EOF {
+		// At EOF both the required index position and the closing bracket are
+		// absent. Retain an explicit invalid child, but use the missing bracket
+		// as the single primary recovery diagnostic for this episode.
+		end := p.peekToken
+		p.expectPeek(lexer.RBRACKET)
+		message := fmt.Sprintf("missing index expression before end of file at %d:%d", end.Line, end.Column)
+		invalid := p.invalidExpression(end, message, compilerdiagnostics.ParserInvalidExpression)
+		return &ast.IndexExpression{Token: token, Left: left, Index: invalid}
+	}
 
 	p.nextToken()
 	start := p.parseExpression(LOWEST)
@@ -1060,18 +1079,27 @@ func (p *Parser) parseIndexOrSliceExpression(left ast.Expression) ast.Expression
 		return p.parseSliceExpressionAfterRange(left, token, start)
 	}
 
-	if !p.expectPeek(lexer.RBRACKET) {
+	if !p.expectPeek(lexer.RBRACKET) && p.peekToken.Type != lexer.EOF {
 		return nil
 	}
 	return &ast.IndexExpression{Token: token, Left: left, Index: start}
 }
 
+// parseSliceExpressionAfterRange preserves the available slice bounds when a
+// missing closing bracket is repaired at EOF. Open-ended bounds remain valid
+// slice syntax; only the absent delimiter is recovered.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Index and slice recovery"
+//   - rules/compiler/parser_recovery.md — "Postfix expression"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseSliceExpressionAfterRange(left ast.Expression, token lexer.Token, start ast.Expression) ast.Expression {
 	expr := &ast.SliceExpression{
-		Token:     token,
-		Left:      left,
-		Start:     start,
-		Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE,
+		Token:      token,
+		Left:       left,
+		RangeToken: p.curToken,
+		Start:      start,
+		Exclusive:  p.curToken.Type == lexer.RANGE_EXCLUSIVE,
 	}
 	if p.isExpressionStart(p.peekToken.Type) {
 		p.nextToken()
@@ -1080,7 +1108,7 @@ func (p *Parser) parseSliceExpressionAfterRange(left ast.Expression, token lexer
 			return nil
 		}
 	}
-	if !p.expectPeek(lexer.RBRACKET) {
+	if !p.expectPeek(lexer.RBRACKET) && p.peekToken.Type != lexer.EOF {
 		return nil
 	}
 	return expr

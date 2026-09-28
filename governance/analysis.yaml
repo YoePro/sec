@@ -172,8 +172,9 @@ integrations:
       - Sema-proven never-executed if paths are excluded from parameter demand while conditions and all conditionally reachable paths remain represented
       - statements after return, panic, checked unreachable, loop control, and other proven block terminators do not contribute parameter demand
       - compiler-owned if continuation facts suppress following-block demand when every semantically reachable branch terminates
+      - direct by-value parameter uses contribute WholeValue shape demand, while projected field/index access and direct reference flow retain their narrower independent shape and identity facts
     remaining:
-      - complete structural collection mutation, explicit copy, retention, whole-value, and implicit unqualified receiver-member demand
+      - complete structural collection mutation, explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls
       - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
       - add fixed-array exact-extent and contiguous-sequence demand where semantic operations prove those requirements
@@ -197,6 +198,8 @@ integrations:
         result: passed; demand summaries, positive guarded advice, and ownership-consuming no-advisory behavior are covered
       - command: go test ./... -count=1
         result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
+      - command: go test ./internal/sema -run 'TestParameterUsage(DistinguishesWholeValueFromProjectedAccess|DerivesIndexAndIterationShape|ConsumesReturnedEscapeSummary)' -count=1
+        result: passed on 2026-09-28 with direct by-value WholeValue demand, projected random-access separation, and returned-reference exclusion
 
   - id: analysis.call-graph
     area: frontend-analysis-and-tooling

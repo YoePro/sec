@@ -252,6 +252,68 @@ func TestApplyProgramRolesMarksOnlyDeclarationGroupSeparators(t *testing.T) {
 	}
 }
 
+// Range punctuation and contextual step receive formatting roles only after
+// the parser has established their range, slice, and for-header meanings.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §23(5–8) ranges and step
+func TestApplyProgramRolesMarksRangeAndStepTokens(t *testing.T) {
+	source := "fn Visit(values: int[], step: int) void {\n    for index in 0 ..< values.Len step 2 {\n        let window := values[index .. index + 2]\n        let ordinary := step\n    }\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "ranges.sec")
+	document.ApplyProgramRoles(program)
+
+	var rangeOperators, stepKeywords, ordinaryStepIdentifiers int
+	for _, element := range document.Elements {
+		if element.HasRole(RangeOperator) {
+			rangeOperators++
+		}
+		if element.Token.Type == lexer.IDENT && element.Token.Lexeme == "step" {
+			if element.HasRole(RangeStepKeyword) {
+				stepKeywords++
+			} else {
+				ordinaryStepIdentifiers++
+			}
+		}
+	}
+	if rangeOperators != 2 || stepKeywords != 1 || ordinaryStepIdentifiers != 2 {
+		t.Fatalf("range operators = %d, step keywords = %d, ordinary step identifiers = %d; elements = %+v", rangeOperators, stepKeywords, ordinaryStepIdentifiers, document.Elements)
+	}
+}
+
+// Struct-field alignment anchors come only from complete parser-owned fields;
+// the same colon and type tokens in local declarations remain unclassified.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §9(1–2) syntactic alignment anchors
+//   - rules/tooling/formatter.md — §9(5) struct-field alignment
+func TestApplyProgramRolesMarksStructFieldAlignmentAnchors(t *testing.T) {
+	source := "type Endpoint struct {\n    Host: string `json:\"host\"`,\n    Timeout: Duration `json:\"timeout\"`,\n}\n\nfn Local() void {\n    let value: string := \"\"\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "struct_fields.sec")
+	document.ApplyProgramRoles(program)
+
+	var fieldColons, fieldTypes, fieldTags, ordinaryColons int
+	for _, element := range document.Elements {
+		if element.Token.Type == lexer.COLON {
+			if element.HasRole(StructFieldColon) {
+				fieldColons++
+			} else {
+				ordinaryColons++
+			}
+		}
+		if element.HasRole(StructFieldTypeStart) {
+			fieldTypes++
+		}
+		if element.HasRole(StructFieldTag) {
+			fieldTags++
+		}
+	}
+	if fieldColons != 2 || fieldTypes != 2 || fieldTags != 2 || ordinaryColons != 1 {
+		t.Fatalf("field colons = %d, field types = %d, field tags = %d, ordinary colons = %d; elements = %+v", fieldColons, fieldTypes, fieldTags, ordinaryColons, document.Elements)
+	}
+}
+
 func TestApplyProgramRolesMarksMatchFormattingTokens(t *testing.T) {
 	source := "fn Test(value: Shape, ready: bool) int {\n    return match value {\n        Shape.Circle (ref mut circle)where ready=>1\n        Rectangle{width : w,height:ref h}=>2\n    }\n}\n"
 	program := parser.New(lexer.New(source)).ParseProgram()

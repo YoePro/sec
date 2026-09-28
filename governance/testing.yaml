@@ -367,9 +367,12 @@ integrations:
           program semantics.
       - id: testing.compiler-verification-v1.incremental-differential-hook
         description: >-
-          Reserve the generic cold-versus-incremental differential/matrix mechanism;
-          concrete invalidation and cache-reuse semantics remain owned by the future
-          incremental_compilation.md rulebook.
+          Own the generic cold-versus-incremental differential, matrix, fuzzing,
+          mutation, fault-injection, race, and regression infrastructure. Concrete
+          dependency, invalidation, cache-validity, publication, history-independence,
+          and feature-specific evidence obligations are owned by
+          rules/compiler/incremental_compilation.md and
+          compiler.incremental-compilation-v1.
     identified_bugs:
       - id: testing.compiler-verification-v1.bug.diagnostic-prefix-drift
         severity: medium
@@ -394,12 +397,13 @@ integrations:
       - ordinary CI execution-history storage in governance
     corrections_applied:
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
+      - rules/corrections/applied/incremental-compilation-cross-rulebook-correction-20260928.md
     governance_reconciliation:
       - testing.compiler-verification-v1 is merged beside tooling.language-testing without transferring source-language test semantics
       - governance/index.yaml assigns testing.yaml ownership of compiler-testing infrastructure and conformance evidence
       - feature-specific evidence gaps remain in their existing semantic-owner fragments and are cross-linked rather than duplicated here
       - compiler.debug-information-v1 treats this integration as the active owner of shared debugger-driving and harness infrastructure
-      - incremental cache/invalidation semantics remain deferred to incremental_compilation.md while generic differential-test hooks are owned here
+      - rules/compiler/incremental_compilation.md and compiler.incremental-compilation-v1 own concrete incremental semantics and feature-specific evidence obligations while generic differential-test infrastructure remains owned here
     verification:
       - command: go test ./cmd/compiler -run DiagnosticCatalog -count=1
         result: passed on 2026-09-27; complete text/JSON catalog consistency, per-ID registry detail, unknown-ID rejection, and argument-shape rejection are covered

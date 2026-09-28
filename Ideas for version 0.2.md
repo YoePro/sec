@@ -94,16 +94,14 @@ B)
 ```
 the where should be used to further qualify a match - not being the primary branch-selector.
 
-## Better practice analysis (pitfall analysis)
+## Required ?
+Should we implement [required] ?
+Evaluate
 
-We should inform that 
-```sec
-v = v + 1
-``` 
-is not the best way - this should be 
-```sec
-v += 1
-```
+## Formatting
+
+Should we allow thousand separators?
+example: 10_000 or 100_000_000
 
 ## Copy move
 While it is very important to be stringent when it comes to moving and copying we should NOT become square minded and demand semantic byrocracy 

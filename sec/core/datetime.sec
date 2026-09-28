@@ -1,7 +1,7 @@
 module core
 
 type datetime struct {
-    _epochDays: int32,
+    _epochDays:                int32,
     _nanosecondsSinceMidnight: uint64,
 }
 
@@ -17,6 +17,17 @@ impl datetime {
         RFC2822,        // Mon, 02 Jan 2006 15:04:05 Z07:00
         ISO8601,        // 2006-01-02T15:04:05Z
         RFC7231,        // Mon, 02 Jan 2006 15:04:05 GMT
+        HTTP,           // Mon, 02 Jan 2006 15:04:05 GMT
+    }
+
+    init(epochDays: int32, nanosOfDay: uint64) {
+        self._epochDays = epochDays
+        self._nanosecondsSinceMidnight = nanosOfDay
+    }
+
+    init(d: date, t: time) {
+        self._epochDays = d._epochDays
+        self._nanosecondsSinceMidnight = t._nanosecondsSinceMidnight
     }
 
     fn ToString(format: Format) string {
@@ -36,6 +47,9 @@ impl datetime {
                 return self._formatiso8601
             }
             RFC7231 => {
+                return self._format7231
+            }
+            HTTP => {
                 return self._format7231
             }
         }
@@ -76,61 +90,61 @@ impl datetime {
         }
     }
 
-    property Year: int {
+    static property Year: int {
         get {
             return 0
         }
     }
 
-    property Month: int {
+    static property Month: int {
         get {
             return 0
         }
     }
 
-    property Day: int {
+    static property Day: int {
         get {
             return 0
         }
     }
 
-    property Hour: int {
+    static property Hour: int {
         get {
             return 0
         }
     }
 
-    property Minute: int {
+    static property Minute: int {
         get {
             return 0
         }
     }
 
-    property Second: int {
+    static property Second: int {
         get {
             return 0
         }
     }
 
-    property Nanosecond: int {
+    static property Nanosecond: int {
         get {
             return 0
         }
     }
 
-    property Weekday: date.Weekdays {
+    static property Weekday: date.Weekdays {
         get {
             return date.Weekdays.Sunday
         }
     }
 
-    property DayOfYear: int {
+    static property DayOfYear: int {
         get {
             return 0
         }
     }
 
-    property ISOWeek: date.ISOWeeks {
+    static property ISOWeek: date.ISOWeeks {
         get {
             return date.ISOWeeks{ year: 0, week: 0 }
         }
@@ -142,13 +156,13 @@ impl datetime {
         }
     }
 
-    property Date: date {
+    static property Date: date {
         get {
             return new date{ year: 0, month: 0, day: 0 }
         }
     }
 
-    property Time: time {
+    static property Time: time {
         get {
             return new time{}
         }

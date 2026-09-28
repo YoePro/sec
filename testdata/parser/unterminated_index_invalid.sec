@@ -1,0 +1,4 @@
+module main
+
+fn Value(values: int[]) int {
+    return values[1

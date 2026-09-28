@@ -1248,6 +1248,11 @@ func resolvedToken(analyzer *Analyzer, id BindingID) lexer.Token {
 
 func (b *parameterUsageBuilder) addShapeForAccess(expression ast.Expression) {
 	switch expression := expression.(type) {
+	case *ast.Identifier:
+		parameter, _, rooted := b.parameterPlace(expression)
+		if rooted && !parameter.DeclaredRef && parameter.DeclaredType.Kind != ReferenceType {
+			b.addShape(expression, ParameterShapeWholeValue, 0)
+		}
 	case *ast.IndexExpression:
 		minimum := int64(0)
 		if value, ok := constantIntegerValue(expression.Index); ok && value.IsInt64() && value.Int64() >= 0 {

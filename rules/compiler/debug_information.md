@@ -8,7 +8,7 @@
 - **Replaces:** Planned debug-information entry; no earlier canonical rulebook
 - **Repository baseline reviewed:** `main-reviewed-2026-09-23`
 - **Implementation governance:** `governance/compiler.yaml` (`compiler.debug-information-v1`)
-- **Related rulebooks:** `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/monomorphization.md`, `rules/compiler/compiler.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`, `rules/platform/target_profiles.md`, `rules/platform/abi.md`, `rules/concurrency/tasks.md`, `rules/concurrency/await.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/errors/panic.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/memory/memory_model.md`, `rules/memory/storage.md`, `rules/memory/layout.md`, `rules/tooling/lsp.md`, `rules/compiler/compiler_testing.md`, `rules/incremental_compilation.md`
+- **Related rulebooks:** `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/monomorphization.md`, `rules/compiler/compiler.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`, `rules/platform/target_profiles.md`, `rules/platform/abi.md`, `rules/concurrency/tasks.md`, `rules/concurrency/await.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/errors/panic.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/memory/memory_model.md`, `rules/memory/storage.md`, `rules/memory/layout.md`, `rules/tooling/lsp.md`, `rules/compiler/compiler_testing.md`, `rules/compiler/incremental_compilation.md`
 
 ---
 ## § 1. Purpose and authority
@@ -1361,7 +1361,7 @@ supported debugger/integration tests
 
 § 87(3) Changing `None` to `Full` does not by itself change canonical type, generic, ownership, or source-program semantics.
 
-§ 87(4) Detailed invalidation and reuse policy belongs to `rules/incremental_compilation.md`.
+§ 87(4) Detailed invalidation and reuse policy belongs to `rules/compiler/incremental_compilation.md`.
 
 ---
 ## § 88. Diagnostics

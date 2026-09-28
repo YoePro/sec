@@ -28,6 +28,7 @@ integrations:
       - internal/formatter/corrections.go
       - internal/formatter/block_comments.go
       - internal/formatter/line_comments.go
+      - internal/formatter/struct_field_alignment.go
     tests:
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
@@ -60,6 +61,8 @@ integrations:
       - normalize the post-delimiter margin of lexer-owned line-comment tokens to `// text` or canonical empty `//` without reflowing comment prose or touching comment-like text in literals and block comments
       - project parser-attached argument-free attribute endings and their declaration starts into CST roles, placing `@noCopy` and `@noPanic` on their own immediately attached lines without attribute-name-specific formatter scanning
       - project matching closing delimiters for parser-valid function, method, initializer, and lambda parameter lists and add the grammar-permitted trailing comma when such a list is multiline
+      - retain parser-owned range, slice-range, and contextual for-step tokens as CST roles and normalize only their horizontal trivia, keeping range operators compact and step surrounded by one space without rewriting ordinary step identifiers
+      - project complete struct-field colon, type-start, and tag anchors into CST roles; align contiguous field type columns structurally, then align tags as a secondary column, splitting at comments, blank lines, multiline fields, and declaration boundaries while independently dropping a primary or secondary candidate that exceeds the default sixteen-space padding limit
     remaining:
       - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
       - attach parser missing-token and skipped-token recovery nodes to the concrete syntax model
@@ -273,6 +276,7 @@ integrations:
       - internal/formatter/corrections.go
       - internal/formatter/block_comments.go
       - internal/formatter/line_comments.go
+      - internal/formatter/struct_field_alignment.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
     tests:
@@ -414,6 +418,20 @@ integrations:
         parameter lists now project their matching closing delimiter into the
         CST. Multiline lists receive the required trailing comma while
         single-line and recovered invalid lists remain outside this rewrite.
+      - >-
+        Parser-confirmed range expressions, slice ranges, and contextual
+        for-range step keywords now retain their exact tokens as CST roles.
+        The shared spacing pass emits compact `start..end` and `start..<end`
+        operators plus one-space `step`, while ordinary identifiers named
+        `step` remain unchanged.
+      - >-
+        Complete parser-confirmed struct fields now project their colon,
+        declared-type start, and optional raw tag as CST alignment anchors.
+        Contiguous homogeneous groups align the primary type column and then
+        the secondary tag column under §9; comments and blank lines split
+        groups, and a column requiring more than the default sixteen spaces
+        of padding is dropped without discarding an already valid primary
+        column.
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
@@ -751,3 +769,7 @@ integrations:
         result: passed on 2026-09-25 for parser-owned CST formatting roles, malformed-constraint preservation, ordinary identifier/operator separation, statement-only alias selection, invalid-expression preservation, unit-impl, test-header, and ownership-availability block scoping, exact test-name preservation, idempotent output, and the shared LSP path
       - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'Malformed' -count=1
         result: passed on 2026-09-25 with byte-exact lexical-error, unmatched-closer, and incomplete-delimiter preservation, shared LSP behavior, and non-conforming sec fmt --check reporting without file mutation
+      - command: go test ./internal/cst ./internal/formatter ./internal/parser -run 'TestApplyProgramRolesMarksRangeAndStepTokens|TestFormatRangesAndStepFromCST|TestParseForRangeStep' -count=1
+        result: passed on 2026-09-28 with parser-owned range, slice, and contextual step roles, ordinary step-identifier separation, compact canonical spacing, and formatter idempotence
+      - command: go test ./internal/cst ./internal/formatter -run 'StructField' -count=1
+        result: passed on 2026-09-28 with parser-owned colon, type, and tag anchors, comment and blank-line group boundaries, canonical primary and secondary columns, independent padding-limit fallbacks, and idempotence

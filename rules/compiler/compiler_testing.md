@@ -9,7 +9,7 @@
 - **Replaces:** Planned compiler-testing entry; no earlier canonical rulebook
 - **Repository baseline reviewed:** `main-reviewed-2026-09-26`
 - **Implementation governance:** `governance/testing.yaml` (`testing.compiler-verification-v1`)
-- **Related rulebooks:** `rules/tooling/testing.md`, `rules/tooling/diagnostics.txt`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/debug_information.md`, `rules/compiler/monomorphization.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`, `rules/platform/target_profiles.md`, `rules/platform/abi.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/tooling/lsp.md`, `rules/incremental_compilation.md`
+- **Related rulebooks:** `rules/tooling/testing.md`, `rules/tooling/diagnostics.txt`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/debug_information.md`, `rules/compiler/monomorphization.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`, `rules/platform/target_profiles.md`, `rules/platform/abi.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/tooling/lsp.md`, `rules/compiler/incremental_compilation.md`
 
 ---
 
@@ -582,7 +582,7 @@ Forbid
 § 27(2) Relevant dimensions include, as applicable:
 - optimization classes;
 - debug-information levels;
-- cold versus incremental compilation once the incremental contract exists;
+- cold versus incremental compilation under the canonical incremental contract;
 - compatible target realizations.
 
 § 27(3) Differential testing compares canonical observable behavior, not incidental binary identity unless reproducibility or artifact identity is itself the contract.
@@ -1693,11 +1693,11 @@ which tracks source-language test semantics and `sec test`.
 
 § 87(1) This rulebook owns general test machinery capable of comparing cold and incremental compilation.
 
-§ 87(2) `rules/incremental_compilation.md` owns incremental compiler semantics, including dependency tracking, invalidation, cache identity, legal reuse, stale-state prevention, and target/generic specialization separation.
+§ 87(2) `rules/compiler/incremental_compilation.md` owns incremental compiler semantics, including dependency tracking, invalidation, cache identity, legal reuse, stale-state prevention, and target/generic specialization separation.
 
 § 87(3) Incremental compiler-testing obligations are derived from that owning contract rather than guessed or duplicated here.
 
-§ 87(4) Until the incremental rulebook defines an incremental obligation, this rulebook does not invent cache or invalidation semantics merely to create tests.
+§ 87(4) This rulebook consumes the feature-specific obligations defined by the canonical incremental rulebook and does not invent or duplicate cache or invalidation semantics merely to create tests.
 
 ---
 

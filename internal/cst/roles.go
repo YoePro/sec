@@ -74,6 +74,16 @@ const (
 	// AttributedDeclarationStart marks the first real token of the declaration
 	// owned by an attached attribute set.
 	AttributedDeclarationStart Role = "attributed-declaration-start"
+	// RangeOperator marks .. or ..< in a parser-confirmed range or slice.
+	RangeOperator Role = "range-operator"
+	// RangeStepKeyword marks contextual step in a parser-confirmed for range.
+	RangeStepKeyword Role = "range-step-keyword"
+	// StructFieldColon marks the real colon in a parser-confirmed struct field.
+	StructFieldColon Role = "struct-field-colon"
+	// StructFieldTypeStart marks the first real token of its declared type.
+	StructFieldTypeStart Role = "struct-field-type-start"
+	// StructFieldTag marks a parser-confirmed raw struct-field tag token.
+	StructFieldTag Role = "struct-field-tag"
 )
 
 // HasRole reports whether this concrete element carries a grammatical role.
@@ -102,6 +112,8 @@ func (e Element) HasRole(role Role) bool {
 //   - rules/memory/ownership.md — §21 "is available and is not available"
 //   - rules/tooling/formatter.md — §18 "Control flow"
 //   - rules/tooling/formatter.md — §20 "Patterns and destructuring"
+//   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
+//   - rules/tooling/formatter.md — §9(5–10) structural field alignment
 //   - rules/tooling/formatter.md — §16(14–17) "attributes"
 //   - rules/tooling/formatter.md — §27(17–19) parenthesis corrections
 func (d *Document) ApplyProgramRoles(program *ast.Program) {
@@ -320,6 +332,26 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			if node.Subject != nil && node.SubjectOpen.Type == lexer.LPAREN && node.SubjectClose.Type == lexer.RPAREN {
 				mark(node.SubjectOpen, RedundantControlConditionDelimiter)
 				mark(node.SubjectClose, RedundantControlConditionDelimiter)
+			}
+		case *ast.RangeExpression:
+			if node.Token.Type == lexer.RANGE || node.Token.Type == lexer.RANGE_EXCLUSIVE {
+				mark(node.Token, RangeOperator)
+			}
+		case *ast.SliceExpression:
+			if node.RangeToken.Type == lexer.RANGE || node.RangeToken.Type == lexer.RANGE_EXCLUSIVE {
+				mark(node.RangeToken, RangeOperator)
+			}
+		case *ast.ForStatement:
+			if node.Step != nil && node.StepToken.Type == lexer.IDENT && node.StepToken.Lexeme == "step" {
+				mark(node.StepToken, RangeStepKeyword)
+			}
+		case *ast.StructField:
+			if node.Type != nil && !node.Type.Invalid {
+				markPreviousToken(node.Type.Token, lexer.COLON, StructFieldColon)
+				mark(node.Type.Token, StructFieldTypeStart)
+				if node.TagToken.Type == lexer.RAW_STRING {
+					mark(node.TagToken, StructFieldTag)
+				}
 			}
 		}
 	})

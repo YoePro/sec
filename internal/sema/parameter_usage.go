@@ -621,15 +621,6 @@ func parameterHasWholePlaceUse(parameter *ParameterUsageParameterSummary) bool {
 	return false
 }
 
-func (b *parameterUsageBuilder) walkBlock(block *ast.BlockStatement) {
-	if block == nil {
-		return
-	}
-	for _, statement := range block.Statements {
-		b.walkStatement(statement)
-	}
-}
-
 func (b *parameterUsageBuilder) walkStatement(statement ast.Statement) {
 	if parameterUsageNodeIsNil(statement) {
 		return

@@ -1,5 +1,110 @@
 module core
 
+type date struct {
+    _epochDays: int32,
+}
+
 impl date {
+    // int32
+    init(year: int, month: int, day: int) {
+        /*
+         *         self._year = year
+         *         self._month = month
+         *         self._day = day
+         */
+    }
+
+    enum Format {
+        YYYYMMDD,           // 2006-01-02
+        DDMMYYYY,           // 02-01-2006
+        MMDDYYYY,           // 01-02-2006
+        YYYYMMDDCompact,    // 20060102
+    }
+
+    enum Weekdays {
+        Sunday = 0,
+        Monday = 1,
+        Tuesday = 2,
+        Wednesday = 3,
+        Thursday = 4,
+        Friday = 5,
+        Saturday = 6,
+    }
+
+    type ISOWeeks struct {
+        year: int,
+        week: int,
+    }
+
+    fn ToString(format: Format) string {
+        return ""
+    }
+
+    fn ToString(layout: string) string {
+        return ""
+    }
+
+    fn FromEpochDays(days: int32) date {
+        return date { _epochDays: days }
+    }
+
+    fn FromYMD(year: int, month: int, day: int) Result[date, DateError] {
+        // TODO: validera + räkna om till epochDays
+        let days := /* beräkning */
+        return Ok(date { _epochDays: days })
+    }
+
+    property Year: int {           // 1–9999
+        get {
+            return 0
+        }
+    }
+
+    property Month: int {          // 1–12
+        get {
+            return 0
+        }
+    }
+
+    property Day: int {            // 1–31
+        get {
+            return 0
+        }
+    }
+
+    property DayOfYear: int {
+        get {
+            return 0
+        }
+    }
+
+    property Weekday: Weekdays {    // enum
+        get {
+            return Weekdays.Sunday
+        }
+    }
+
+    property ISOWeek: ISOWeeks {
+        get {
+            return ISOWeeks{ year: 0, week: 0 }
+        }
+    }
+
+    static property Today: date {
+        get {
+            let now: datetime := _now
+            return date { _epochDays: now._epochDays }
+        }
+    }
+
+    fn AddDays(n: int) date {
+        return new date{ year: 0, month: 0, day: 0 }
+    }
+    fn AddMonths(n: int) date {
+        return new date{ year: 0, month: 0, day: 0 }
+    }
+    fn AddYears(n: int) date {
+        return new date{ year: 0, month: 0, day: 0 }
+    }
 
 }

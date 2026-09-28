@@ -1,12 +1,205 @@
 module core
 
+type datetime struct {
+    _epochDays: int32,
+    _nanosecondsSinceMidnight: uint64,
+}
+
 enum DateTimeFormats {
     HTTP_RFC_7231
 }
 
 impl datetime {
+    // { days: int32, nanosOfDay: uint64 }
+    enum Format {
+        RFC3339,        // 2006-01-02T15:04:05Z07:00
+        RFC3339Nano,    // 2006-01-02T15:04:05.999999999Z07:00
+        RFC2822,        // Mon, 02 Jan 2006 15:04:05 Z07:00
+        ISO8601,        // 2006-01-02T15:04:05Z
+        RFC7231,        // Mon, 02 Jan 2006 15:04:05 GMT
+    }
 
-    fn ToString() string {
+    fn ToString(format: Format) string {
+        match format {
+            RFC3339 => {
+                return self._format3339
+            }
+
+            RFC3339Nano => {
+                return self._format3339Nano
+            }
+
+            RFC2822 => {
+                return self._format2822
+            }
+            ISO8601 => {
+                return self._formatiso8601
+            }
+            RFC7231 => {
+                return self._format7231
+            }
+        }
+    }
+
+    fn ToString(layout: string) string {
+        // TODO: parse layout och bygg sträng
         return ""
     }
+
+    property _format3339: string {
+        get {
+            return ""
+        }
+    }
+
+    property _format3339Nano: string {
+        get {
+            return ""
+        }
+    }
+
+    property _format2822: string {
+        get {
+            return ""
+        }
+    }
+
+    property _formatiso8601: string {
+        get {
+            return ""
+        }
+    }
+
+    property _format7231: string {
+        get {
+            return ""
+        }
+    }
+
+    property Year: int {
+        get {
+            return 0
+        }
+    }
+
+    property Month: int {
+        get {
+            return 0
+        }
+    }
+
+    property Day: int {
+        get {
+            return 0
+        }
+    }
+
+    property Hour: int {
+        get {
+            return 0
+        }
+    }
+
+    property Minute: int {
+        get {
+            return 0
+        }
+    }
+
+    property Second: int {
+        get {
+            return 0
+        }
+    }
+
+    property Nanosecond: int {
+        get {
+            return 0
+        }
+    }
+
+    property Weekday: date.Weekdays {
+        get {
+            return date.Weekdays.Sunday
+        }
+    }
+
+    property DayOfYear: int {
+        get {
+            return 0
+        }
+    }
+
+    property ISOWeek: date.ISOWeeks {
+        get {
+            return date.ISOWeeks{ year: 0, week: 0 }
+        }
+    }
+
+    static property Now: datetime {
+        get {
+            return _now
+        }
+    }
+
+    property Date: date {
+        get {
+            return new date{ year: 0, month: 0, day: 0 }
+        }
+    }
+
+    property Time: time {
+        get {
+            return new time{}
+        }
+    }
+
+    fn AddDays(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn AddMonths(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn AddYears(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn AddHours(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn AddMinutes(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn AddSeconds(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn SubtractDays(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn SubtractMonths(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn SubtractYears(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn SubtractHours(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn SubtractMinutes(n: int) datetime {
+        return new datetime{}
+    }
+
+    fn SubtractSeconds(n: int) datetime {
+        return new datetime{}
+    }
+
 }

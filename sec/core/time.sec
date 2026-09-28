@@ -1,5 +1,70 @@
 module core
 
+type time struct {
+    _nanosecondsSinceMidnight: uint64,
+}
+
 impl time {
+
+    enum Format {
+        HHMM,          // 15:04
+        HHMMSS,        // 15:04:05
+        HHMMSSNano,    // 15:04:05.999999999
+    }
+
+    static property Now: time {
+        get {
+            let now: datetime := _now
+            return time { _nanosecondsSinceMidnight: now._nanosecondsSinceMidnight }
+        }
+    }
+
+    property Hour: int {
+        get {
+            return 0
+        }
+    }
+
+    property Minute: int {
+        get {
+            return 0
+        }
+    }
+
+    property Second: int {
+        get {
+            return 0
+        }
+    }
+
+    property Nanosecond: int {
+        get {
+            return 0
+        }
+    }
+
+    fn ToString(format: datetime.Format) string {
+        return ""
+    }
+
+    fn ToString(layout: string) string {
+        return ""
+    }
+
+    fn FromNanosecondsSinceMidnight(ns: uint64) Result[time, TimeError] {
+        if ns >= 86_400_000_000_000 {
+            return Err(TimeError.OutOfRange)
+        }
+        return Ok(time { _nanosecondsSinceMidnight: ns })
+    }
+
+    fn FromHMS(hour: int, minute: int, second: int) Result[time, TimeError] {
+        // TODO: validera 0–23, 0–59, 0–59 + räkna om till ns
+        return Ok(time { _nanosecondsSinceMidnight: 0 })
+    }
+
+    fn FromHMSNano(hour: int, minute: int, second: int, nano: int) Result[time, TimeError] {
+        // ...
+    }
 
 }

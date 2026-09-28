@@ -232,6 +232,43 @@ func TestFormatPlacesNoCopyAttributeOnOwnLine(t *testing.T) {
 	}
 }
 
+// Attribute-to-declaration layout is parser-owned and formatted from concrete
+// tokens rather than from an attribute-name-specific line rewrite.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §16(14) attributes occupy their own line
+//   - rules/tooling/formatter.md — §16(17) attributes attach without a blank line
+func TestFormatPlacesNoPanicAttributeImmediatelyBeforeDeclaration(t *testing.T) {
+	tests := map[string]struct {
+		input string
+		want  string
+	}{
+		"same line": {
+			input: "@noPanic   fn Safe() void {\n}\n",
+			want:  "@noPanic\nfn Safe() void {\n}\n",
+		},
+		"blank line": {
+			input: "@noPanic\n\nfn Safe() void {\n}\n",
+			want:  "@noPanic\nfn Safe() void {\n}\n",
+		},
+		"method indentation": {
+			input: "impl Worker {\n@noPanic fn Run() void {\n}\n}\n",
+			want:  "impl Worker {\n    @noPanic\n    fn Run() void {\n    }\n}\n",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := Format(Source{Text: test.input}, Options{}).Text
+			if got != test.want {
+				t.Fatalf("wrong attached attribute formatting:\n%s\nwant:\n%s", got, test.want)
+			}
+			if second := Format(Source{Text: got}, Options{}).Text; second != got {
+				t.Fatalf("attached attribute formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, second)
+			}
+		})
+	}
+}
+
 func TestFormatRemovesInitialByteOrderMark(t *testing.T) {
 	got := Format(Source{Text: "\uFEFFmodule main\n"}, Options{}).Text
 	if got != "module main\n" {
@@ -274,6 +311,43 @@ func TestFormatCallableParameterListOpenersFromCST(t *testing.T) {
 	}
 	if again := Format(Source{Text: got}, Options{}).Text; again != got {
 		t.Fatalf("CST callable parameter-list formatting is not idempotent:\n%s", again)
+	}
+}
+
+// Multiline callable parameter lists use the canonical trailing comma while
+// single-line signatures remain governed by their separate compact rule.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §11(2) multiline trailing commas
+//   - rules/tooling/formatter.md — §16(2) multiline parameter lists
+func TestFormatAddsTrailingCommaToMultilineCallableParameters(t *testing.T) {
+	tests := map[string]struct {
+		input string
+		want  string
+	}{
+		"function": {
+			input: "fn Connect(\nhost: string,\nport: uint16\n) void {\n}\n",
+			want:  "fn Connect(\n    host: string,\n    port: uint16,\n) void {\n}\n",
+		},
+		"initializer": {
+			input: "impl Buffer {\ninit(\nsize: uint\n) AllocationError {\n}\n}\n",
+			want:  "impl Buffer {\n    init(\n        size: uint,\n    ) AllocationError {\n    }\n}\n",
+		},
+		"lambda": {
+			input: "fn Build() void {\nlet transform := fn(\nvalue: int\n) int {\nreturn value\n}\n}\n",
+			want:  "fn Build() void {\n    let transform := fn(\n        value: int,\n    ) int {\n        return value\n    }\n}\n",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := Format(Source{Text: test.input}, Options{}).Text
+			if got != test.want {
+				t.Fatalf("wrong multiline parameter formatting:\n%s\nwant:\n%s", got, test.want)
+			}
+			if second := Format(Source{Text: got}, Options{}).Text; second != got {
+				t.Fatalf("multiline parameter formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, second)
+			}
+		})
 	}
 }
 

@@ -117,7 +117,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-18"
-    revised: "2026-09-21"
+    revised: "2026-09-28"
     summary: >-
       Tracks the compiler-owned, allocation-free default resolver required by
       default_values.md and its synchronized type, contract, aggregate, and
@@ -136,6 +136,7 @@ integrations:
       - rules/tooling/diagnostics.txt
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
+      - rules/corrections/applied/temporal-now-correction-20260928.md
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -167,6 +168,7 @@ integrations:
       - S1010 rejection of omitted non-defaultable struct fields
       - safe references and slices remain non-defaultable and no origin-free safe slice is synthesized
       - unions, Result, Option, functions, interfaces, and intrinsic resource types remain non-defaultable unless an owning rule defines a semantic default
+      - date, time, datetime, and duration are explicitly non-defaultable; default initialization never performs a wall-clock read
       - LSP hover and completion display resolved default value and source from the Sema-owned resolver
       - LSP hover abbreviates large fixed-array defaults as a bounded preview such as [0, ...] without materializing or rendering every element
       - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
@@ -318,35 +320,90 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
+    revised: "2026-09-28"
     summary: >-
       Registers date, time, datetime, and duration as compiler-known lowercase
-      opaque type identities requiring no import, without inventing temporal
-      representation, operations, conversions, or defaults.
+      identities requiring no import. Revision 1.1 gives trusted core a fixed,
+      private backing representation and defines the UTC wall-clock boundary:
+      public static Now/Today properties are defined to use a private core-only
+      _now intrinsic. The representation and frontend intrinsic contract are
+      implemented; capability resolution, executable IR, and lowering remain.
     rules:
       - rules/types/types.md
+      - rules/types/temporal.md
+      - rules/library/core-library.md
+      - rules/foundations/names_scopes_visibility.md
       - rules/foundations/lexical_structure.md
       - rules/types/default_values.md
+      - rules/corrections/applied/temporal-now-correction-20260928.md
     code:
       - internal/sema/types.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_temporal.go
+      - internal/sema/call_graph.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/place.go
+      - internal/sema/static.go
       - cmd/lsp/main.go
       - vscode/syntaxes/sec.tmLanguage.json
+      - sec/core/duration.sec
+      - sec/core/date.sec
+      - sec/core/time.sec
+      - sec/core/datetime.sec
     tests:
       - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_temporal_test.go
       - cmd/lsp/main_test.go
     implemented:
       - intrinsic type-name resolution for date, time, datetime, and duration
       - declaration and function-signature use without imports
       - trusted core sources may attach ordinary implementations to all four temporal builtins while user modules remain rejected by the provenance-gated builtin allowlist
-      - LSP completion and TextMate type classification
+      - trusted core may refine each fallback temporal identity with a module-internal backing struct while preserving intrinsic identity and non-defaultability
+      - the four maintained sec/core sources declare the exact phase-1 backing representation required by temporal.md
+      - module-internal temporal backing fields are rejected in member access and struct literals outside their declaring module
+      - LSP type completion and TextMate classification recognize all four intrinsic temporal identities
+      - LSP member completion resolves the trusted core backing declaration and offers its private fields only while editing module core
+      - _now has one stable compiler-known value identity with exact datetime result, UTCWallClock requirement metadata, and MayUseNondeterministicInput effect metadata
+      - each loader-proven core _now expression records a stable Sema fact and a distinct direct nondeterministic-input effect, while ordinary source and source declarations using the reserved identity are rejected
+      - _now remains absent from ordinary LSP completion and static initializers reject it as runtime nondeterministic input
+      - datetime.Now, date.Today, and time.Now are static trusted-core properties; each evaluation uses exactly one _now read and date/time project the canonical backing fields from that read
       - no implicit numeric or string initialization
       - no inferred zero, epoch, empty, or backend-derived default
     remaining:
-      - write and synchronize the dedicated temporal rulebook
-      - decide calendar, timezone, arithmetic, literal, formatting, parsing, representation, and defaultability semantics
-      - implement temporal operations only after those decisions are canonical
+      - enforce the clock restriction in every SemanticCompileTimeRequiredContext beyond the implemented static-initializer boundary as those contexts acquire a shared frontend model
+      - define calendar, timezone, arithmetic, literal, formatting, parsing, and serialization semantics beyond the phase-1 representation and UTC wall-clock properties
+      - add the compiler-known Instant identity, copyability, arithmetic, comparison, and deadline contracts without allowing conversion between monotonic and wall-clock values
+      - resolve UTCWallClock and future monotonic-clock capabilities through CompilationPlan; reject unavailable clock reads instead of silently using compiler-host time
+      - represent _now as an explicit Semantic IR operation or stable intrinsic identity, preserve distinct reads and nondeterministic-input effects through optimization, and lower only through selected target hooks or runtime services
     verification:
       - command: go test ./internal/sema ./cmd/lsp
         result: passed
+      - command: go test ./internal/sema -run 'TestTrustedCoreOwnsTemporalRepresentationDeclarations|TestUnderscoreVisibilityAcrossModules|TestDoubleUnderscoreIsVisibleInExactModule' -count=1
+        result: passed on 2026-09-28
+      - command: go test ./cmd/lsp -run 'TestCompletionScopesTemporalBackingFieldsToCore|TestCompletionIncludesIntrinsicTypesInTypePosition|TestCompletionReturnsStructMembers' -count=1
+        result: passed on 2026-09-28
+      - command: go test ./internal/sema -run 'Test(CompilerKnownNow|TemporalCoreProperties)' -count=1
+        result: passed on 2026-09-28
+
+  - id: frontend.temporal-duration
+    area: timeout-conversion
+    status: partial
+    normative:
+    - duration is the canonical timeout parameter type.
+    - Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced.
+    - Time-unit quantities may materialize as duration at compatible call boundaries under canonical temporal/unit rules.
+    remaining:
+    - Define/verify compiler-known conversion from time-dimension unit quantity to duration.
+    - Avoid mutex-specific hard-coded unit spellings.
+  - id: frontend.temporal-instant
+    area: monotonic-deadline-type
+    status: planned
+    normative:
+    - Instant is a source-visible compiler-known copyable monotonic point-in-time type.
+    - Instant is not wall-clock/calendar time.
+    remaining:
+    - Add canonical core Instant declaration/identity.
+    - Define general monotonic clock acquisition/arithmetic in the owning temporal rulebook.
   - id: frontend.wide-numeric-language-types
     area: frontend-and-lowering
     status: partial

@@ -31,6 +31,9 @@ const (
 	// CallableParameterListOpen marks the real opening parenthesis of a parsed
 	// function, lambda, or initializer parameter list.
 	CallableParameterListOpen Role = "callable-parameter-list-open"
+	// CallableParameterListClose marks the matching real closing parenthesis of
+	// a complete parsed callable parameter list.
+	CallableParameterListClose Role = "callable-parameter-list-close"
 	// DeclarationGroupSeparator marks a comma that separates two declarators
 	// belonging to one parser-confirmed declaration group.
 	DeclarationGroupSeparator Role = "declaration-group-separator"
@@ -65,6 +68,12 @@ const (
 	// AvailabilityBlockOpen marks the real opening brace owned by an if whose
 	// condition is a compiler-known ownership availability query.
 	AvailabilityBlockOpen Role = "availability-block-open"
+	// AttachedAttributeEnd marks the final real token of an argument-free
+	// attribute that the parser attached to a declaration.
+	AttachedAttributeEnd Role = "attached-attribute-end"
+	// AttributedDeclarationStart marks the first real token of the declaration
+	// owned by an attached attribute set.
+	AttributedDeclarationStart Role = "attributed-declaration-start"
 )
 
 // HasRole reports whether this concrete element carries a grammatical role.
@@ -93,6 +102,7 @@ func (e Element) HasRole(role Role) bool {
 //   - rules/memory/ownership.md — §21 "is available and is not available"
 //   - rules/tooling/formatter.md — §18 "Control flow"
 //   - rules/tooling/formatter.md — §20 "Patterns and destructuring"
+//   - rules/tooling/formatter.md — §16(14–17) "attributes"
 //   - rules/tooling/formatter.md — §27(17–19) parenthesis corrections
 func (d *Document) ApplyProgramRoles(program *ast.Program) {
 	if d == nil || program == nil {
@@ -121,6 +131,19 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		for _, group := range d.Groups {
 			if group.Open == elementIndex && group.Close >= 0 {
 				d.Elements[group.Close].Roles = appendUniqueRole(d.Elements[group.Close].Roles, role)
+				return
+			}
+		}
+	}
+	markGroupPair := func(token lexer.Token, openRole, closeRole Role) {
+		elementIndex, ok := indexes[keyForToken(token)]
+		if !ok {
+			return
+		}
+		d.Elements[elementIndex].Roles = appendUniqueRole(d.Elements[elementIndex].Roles, openRole)
+		for _, group := range d.Groups {
+			if group.Open == elementIndex && group.Close >= 0 {
+				d.Elements[group.Close].Roles = appendUniqueRole(d.Elements[group.Close].Roles, closeRole)
 				return
 			}
 		}
@@ -160,6 +183,26 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			}
 			return
 		}
+	}
+	markAttachedAttributes := func(attributes []*ast.Attribute, declaration lexer.Token) {
+		if len(attributes) == 0 || declaration.Type == lexer.EOF {
+			return
+		}
+		last := attributes[len(attributes)-1]
+		if last == nil || last.Name == nil || len(last.Arguments) != 0 {
+			return
+		}
+		mark(last.Name.Token, AttachedAttributeEnd)
+		mark(declaration, AttributedDeclarationStart)
+	}
+	markCallableParameters := func(open lexer.Token, parameters []*ast.Parameter) {
+		mark(open, CallableParameterListOpen)
+		for _, parameter := range parameters {
+			if parameter == nil || parameter.Type == nil || parameter.Type.Invalid {
+				return
+			}
+		}
+		markGroupPair(open, CallableParameterListOpen, CallableParameterListClose)
 	}
 
 	unitNames := map[string]bool{}
@@ -221,11 +264,16 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				markGroup(node.Token, UnitExpressionCompactToken)
 			}
 		case *ast.FunctionDeclaration:
-			mark(node.ParameterOpen, CallableParameterListOpen)
+			markCallableParameters(node.ParameterOpen, node.Parameters)
+			markAttachedAttributes(node.Attributes, node.Token)
+		case *ast.TypeDeclStatement:
+			markAttachedAttributes(node.Attributes, node.Token)
+		case *ast.EnumDeclaration:
+			markAttachedAttributes(node.Attributes, node.Token)
 		case *ast.LambdaExpression:
-			mark(node.ParameterOpen, CallableParameterListOpen)
+			markCallableParameters(node.ParameterOpen, node.Parameters)
 		case *ast.InitDeclaration:
-			mark(node.ParameterOpen, CallableParameterListOpen)
+			markCallableParameters(node.ParameterOpen, node.Parameters)
 		case *ast.LetGroupStatement:
 			for _, declaration := range node.Lets[1:] {
 				if declaration != nil && declaration.Name != nil {

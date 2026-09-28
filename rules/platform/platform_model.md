@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-09-24
-- **Document revision:** 1
+- **Last updated:** 2026-09-28
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/platform_model.md`
 - **Implementation governance:** `governance/platform.yaml`
@@ -673,6 +673,24 @@ another platform.
 An implementation may use an internal `Unresolved` state while constructing a plan,
 but required facts must not remain unresolved in a valid frozen CompilationPlan.
 
+### 14.1 `UTCWallClock`
+
+`UTCWallClock` is the canonical capability stating that the selected target and
+active `CompilationPlan` can provide the non-fallible UTC wall-clock operation
+required by the private core `_now` intrinsic.
+
+A reachable `_now` read requires `UTCWallClock` to be both `Supported` and
+`Enabled`. `Unsupported`, `Disabled`, and an unresolved required capability are
+CompilationPlan or compile-time errors under the capability-state rules above.
+
+Merely including the trusted core temporal declarations does not require this
+capability. It becomes a program requirement only when reachable code uses
+`_now`. A target without `UTCWallClock` may still use `date`, `time`,
+`datetime`, and `duration` as ordinary values.
+
+The compiler must never substitute its host clock when the selected target
+cannot satisfy `UTCWallClock`.
+
 ---
 
 ## 15. Compiler support versus platform semantics
@@ -1230,6 +1248,8 @@ Unknown optional fact
 Unknown required fact
 source requiring disabled capability
 source requiring unsupported capability
+reachable `_now` requiring `UTCWallClock` Supported + Enabled
+unreachable core wall-clock declarations imposing no capability requirement
 ```
 
 ### 29.4 Memory, runtime, and execution

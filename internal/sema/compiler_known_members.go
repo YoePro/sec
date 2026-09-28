@@ -35,6 +35,61 @@ type CompilerKnownFunction struct {
 	OwnerFile  string
 }
 
+// CompilerKnownValue describes a compiler-owned value expression whose
+// semantics cannot be supplied by an ordinary source declaration.
+type CompilerKnownValue struct {
+	ID                 string
+	Name               string
+	Result             Type
+	Internal           bool
+	Effects            []EffectKind
+	RequiredCapability string
+}
+
+// CompilerKnownValues is the canonical catalog for compiler-owned value
+// intrinsics. Values in this catalog are not installed as ordinary symbols;
+// Sema applies their authority and visibility rules at each use site.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Private core UTC wall-clock intrinsic"
+//   - rules/types/temporal.md — §3 "UTC wall-clock access"
+func CompilerKnownValues() []CompilerKnownValue {
+	return []CompilerKnownValue{
+		{
+			ID:                 "CKV-TEMPORAL-NOW",
+			Name:               "_now",
+			Result:             builtinTypes()["datetime"],
+			Internal:           true,
+			Effects:            []EffectKind{EffectMayUseNondeterministicInput},
+			RequiredCapability: "UTCWallClock",
+		},
+	}
+}
+
+// compilerKnownValue resolves the stable registry entry for a compiler-owned
+// value spelling without exposing it through ordinary symbols.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Private core UTC wall-clock intrinsic"
+func compilerKnownValue(name string) (CompilerKnownValue, bool) {
+	for _, value := range CompilerKnownValues() {
+		if value.Name == name {
+			return value, true
+		}
+	}
+	return CompilerKnownValue{}, false
+}
+
+// isCompilerKnownValueName reserves compiler-owned value identities against
+// conflicting source declarations.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Private core UTC wall-clock intrinsic"
+func isCompilerKnownValueName(name string) bool {
+	_, ok := compilerKnownValue(name)
+	return ok
+}
+
 // CompilerKnownFunctions is the canonical catalog used to reserve and expose
 // compiler-owned global functions. Their detailed contextual validation stays
 // in Sema, while LSP observes the same registered Function values.
@@ -84,7 +139,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	boolType := builtinTypes()["bool"]
 	stringType := builtinTypes()["string"]
 
-	members = append(members, compilerKnownShapedFactMembers(typ)...)
+	members = append(members, compilerKnownShapedFactMembers(typ, false)...)
 
 	if compilerKnownPointerReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true})
@@ -293,7 +348,7 @@ func compilerKnownCancellationMembers(typ Type) []CompilerKnownMember {
 }
 
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
-	members := compilerKnownShapedFactMembers(typ)
+	members := compilerKnownShapedFactMembers(typ, true)
 	if compilerKnownSizedType(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinTypes()["uint"]})
 	}
@@ -328,19 +383,23 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	return members
 }
 
-// compilerKnownShapedFactMembers exposes the read-only Rank and Len facts that
-// are completely determined by a shaped receiver's static type. Keeping these
-// entries in the canonical registry makes Sema and LSP consume one identity.
+// compilerKnownShapedFactMembers exposes the read-only Rank, Shape, and Len
+// facts that are completely determined by a shaped receiver's static type.
+// Keeping these entries in the canonical registry makes Sema and LSP consume
+// one identity.
 //
-// Runtime-shaped tensor Len and tensor_view Len are deliberately absent until
-// their runtime shape semantics exist; tensor_view Rank remains type-known.
+// Runtime-shaped tensor and tensor_view Shape/Len are deliberately absent
+// until their runtime shape semantics exist; tensor_view Rank remains
+// type-known.
 //
 // Rules:
 //   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
 //   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
 //   - rules/collections/shaped-types.md — § 5.1 "Type-level access"
+//   - rules/collections/shaped-types.md — §§ 6–6.1 "Strides"
+//   - rules/collections/shaped-types.md — § 8 "Contiguity"
 //   - rules/corrections/applied/compiler_known_members-shaped-correction-20260813.md — "Required read-only shaped properties" and "Type-level properties"
-func compilerKnownShapedFactMembers(typ Type) []CompilerKnownMember {
+func compilerKnownShapedFactMembers(typ Type, static bool) []CompilerKnownMember {
 	typ = dereferenceType(typ)
 	rank, length, shaped := compilerKnownStaticShapedFacts(typ)
 	if !shaped {
@@ -357,6 +416,36 @@ func compilerKnownShapedFactMembers(typ Type) []CompilerKnownMember {
 		Documentation: "Compile-time-known shaped rank: " + rank + ".",
 	}}
 	if length != "" {
+		shapeType := builtinTypes()["Shape"]
+		shapeType.ConstArgs = []int64{int64(len(typ.ConstArgs))}
+		members = append(members, CompilerKnownMember{
+			ID:            "CKM-SHAPED-SHAPE",
+			Name:          "Shape",
+			Kind:          CompilerKnownProperty,
+			Result:        shapeType,
+			Signature:     "property Shape: " + typeDisplayName(shapeType),
+			Documentation: "Compile-time-known shaped extents: " + shapedStaticShape(typ) + ".",
+		})
+		if !static {
+			stridesType := builtinTypes()["Strides"]
+			stridesType.ConstArgs = []int64{int64(len(typ.ConstArgs))}
+			members = append(members, CompilerKnownMember{
+				ID:            "CKM-SHAPED-STRIDES",
+				Name:          "Strides",
+				Kind:          CompilerKnownProperty,
+				Result:        stridesType,
+				Signature:     "property Strides: " + typeDisplayName(stridesType),
+				Documentation: "Compile-time-known canonical dense row-major element strides: " + shapedStaticDenseStrides(typ) + ".",
+			})
+			members = append(members, CompilerKnownMember{
+				ID:            "CKM-SHAPED-IS-CONTIGUOUS",
+				Name:          "IsContiguous",
+				Kind:          CompilerKnownProperty,
+				Result:        builtinTypes()["bool"],
+				Signature:     "property IsContiguous: bool",
+				Documentation: "Compile-time-known true for a canonical dense owning shaped value.",
+			})
+		}
 		members = append(members, CompilerKnownMember{
 			ID:            "CKM-SHAPED-LEN",
 			Name:          "Len",
@@ -367,6 +456,36 @@ func compilerKnownShapedFactMembers(typ Type) []CompilerKnownMember {
 		})
 	}
 	return members
+}
+
+// shapedStaticDenseStrides derives canonical row-major element strides using
+// arbitrary precision so tooling never observes host-integer overflow.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 6 "Strides"
+//   - rules/collections/shaped-types.md — § 6.1 "Canonical dense row-major strides"
+func shapedStaticDenseStrides(typ Type) string {
+	strides := make([]string, len(typ.ConstArgs))
+	stride := big.NewInt(1)
+	for index := len(typ.ConstArgs) - 1; index >= 0; index-- {
+		strides[index] = stride.String()
+		stride.Mul(stride, big.NewInt(typ.ConstArgs[index]))
+	}
+	return "[" + strings.Join(strides, ", ") + "]"
+}
+
+// shapedStaticShape renders the exact ordered extents encoded by a statically
+// shaped owning type for compiler-owned tooling facts.
+//
+// Rules:
+//   - rules/collections/shaped-types.md — § 3.1–3.3 "Shaped type families"
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
+func shapedStaticShape(typ Type) string {
+	extents := make([]string, 0, len(typ.ConstArgs))
+	for _, extent := range typ.ConstArgs {
+		extents = append(extents, strconv.FormatInt(extent, 10))
+	}
+	return "[" + strings.Join(extents, ", ") + "]"
 }
 
 // compilerKnownStaticShapedFacts derives only facts fully encoded by the

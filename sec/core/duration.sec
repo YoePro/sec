@@ -1,5 +1,28 @@
 module core
 
-impl duration {
+type duration struct {
+    _nanoseconds: int64,
+}
 
+impl duration {
+    // int64
+    property TotalNanoseconds: int64
+
+    property Years: int64
+    property Months: int64
+    property Weeks: int64
+    property Days: int64
+    property Hours: int64
+    property Minutes: int64
+    property Seconds: int64
+    property Milliseconds: int64
+    property Microseconds: int64
+    property Nanoseconds: int64
+
+    fn ToString() string {
+        return ""
+    }
+
+    fn Abs() duration
+    fn Negate() duration
 }

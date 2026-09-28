@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-24"
+    revised: "2026-09-28"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -38,6 +38,7 @@ integrations:
       - internal/parser/expression.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_result_projection.go
+      - internal/sema/analyzer_try_option.go
       - internal/sema/compiler_known_members.go
       - internal/sema/types.go
       - internal/diagnostics/diagnostics.go
@@ -52,6 +53,7 @@ integrations:
       - internal/sema/try_err_discard_test.go
       - internal/sema/match_err_discard_test.go
       - internal/sema/return_try_result_test.go
+      - internal/sema/try_expression_positions_test.go
       - internal/sema/option_if_binding_test.go
       - internal/ir/semantic/package11_test.go
       - internal/ir/semantic/package10_test.go
@@ -111,6 +113,7 @@ integrations:
       - "result-borrowed-projections frontend: Compiler-known read-only Result.OkRef and Result.ErrRef properties return Option[ref T/E] without consuming the Result. Sema preserves receiver provenance through the Option, rejects escape from a local Result, accepts borrowed Result receivers, and keeps a shared borrow active so conflicting receiver mutation is diagnosed."
       - "result-err-none-tests: Consuming Result.Ok()/Err() projections compose with the parser's non-binding Option state tests. Sema accepts both projection is None and projection is not None through the ordinary exhaustive typed Option-match path while retaining projection ownership effects."
       - "result-projection-ownership-diagnostics: Use after consuming Result.Ok()/Err() is diagnosed from compiler-owned place state, identifies the consumed value and projection, carries the projection source location as related context, explains that the value is unavailable, and recommends OkRef/ErrRef for non-consuming inspection or ending use of the Result."
+      - "try-option-propagation frontend: Naked try over Option[T] resolves Some(T) to T and propagates None only through a compatible enclosing Option[T] return channel. Sema publishes a dedicated resolved Option-propagation fact, rejects Result/Option cross-channel conversion and incompatible Option specializations, and supports ordinary nested expression positions without treating assignment as an expression."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
@@ -118,7 +121,7 @@ integrations:
       - "result-projection-semantic-ir-lowering: Add explicit consuming and borrowed Result projection facts/operations to Semantic IR and maintained lowering, including retained-payload transfer, exactly-once destruction of an active forgotten payload, and borrowed projection provenance."
       - "result-projection-discardability: Extend the current conservative non-discardable alternate-payload rejection with path-sensitive proof that the forgotten state is unreachable."
       - "try-language-defined-short-circuit: Generalize try from a surface Result-only rule to compiler-known short-circuit/fallible expressions with a resolved success type and alternate/failure state, including Result, Option, checked arithmetic, indexing, constrained conversions, fallible new, and fallible assignment where defined by their owning rulebooks."
-      - "try-option: Support try over Option[T]: Some(T) is implicit success, None is the alternate state, local None handlers may recover with T, and naked None propagation is valid only through a compatible enclosing Option return. Do not introduce implicit Option/Result conversion."
+      - "try-option-local-handlers: Complete try over Option[T] with local None handlers that may recover with T, partial-handler propagation, recovery-value validation, ownership, Semantic IR, and lowering. Naked compatible None propagation and Option/Result cross-channel rejection are implemented in the frontend."
       - "try-failure-set: Represent multiple possible failures of one protected expression as compiler-internal failure facts without creating an anonymous source error union or automatic domain-error wrapper. Err(_) may handle a heterogeneous failure set."
       - "try-heterogeneous-binding: Allow Err(name) catch-all binding only when the protected construct already provides one compiler-resolved binding type, such as one concrete error type or an explicitly declared error channel. Do not infer error solely to make an otherwise heterogeneous local binding possible."
       - "try-partial-handlers: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
@@ -220,6 +223,8 @@ integrations:
         result: passed on 2026-09-21 with stable S1049, Result/assignment Ok rejection, Option Some rejection, LSP mentor output, failure-only resolved plans, and implicit-success Semantic IR
       - command: go test ./internal/parser ./internal/sema -run 'TryAssignment' -count=1
         result: passed; naked and handled assignments retain statement boundaries, validate compatible Result propagation including concrete-error widening to error, reject invalid channels, and publish resolved facts
+      - command: go test ./internal/sema -run 'Test(NakedOptionTryPropagatesOnlyThroughCompatibleOption|TryExpressionWorksInCallArgumentsAndParentheses|OptionTryRejectsExplicitSomeHandler)' -count=1
+        result: passed on 2026-09-28; naked Option try unwraps Some, propagates None only through a compatible Option return, rejects cross-channel or incompatible propagation, and coexists with general nested Result try positions and the existing forbidden-Some-handler diagnostic
 
   - id: frontend.bodyless-try-assignment
     area: frontend-analysis
@@ -275,7 +280,7 @@ integrations:
     area: panic-assert-unreachable-frontend
     status: partial
     document_revision: "2.3"
-    reviewed: "2026-09-27"
+    reviewed: "2026-09-28"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -296,6 +301,7 @@ integrations:
       - internal/sema/panic_info_test.go
       - internal/sema/assertion_facts_test.go
       - internal/sema/panic_reason_effect_test.go
+      - internal/sema/explicit_panic_facts_test.go
       - internal/diagnostics/panic_reasons_test.go
       - internal/sema/semantic_facts_test.go
       - internal/ir/semantic/builder.go
@@ -323,6 +329,7 @@ integrations:
       - panic is a hard lexer keyword and the parser retains both canonical forms, panic and panic "message", in a dedicated AST node with optional static message metadata
       - explicit panic is non-returning in frontend control-flow analysis and records a direct may-panic-explicit effect for @noPanic verification
       - bare and message-bearing explicit panic record the same stable ExplicitPanic reason and may-panic-explicit effect
+      - every canonical explicit panic statement publishes an immutable ResolvedExplicitPanic fact with the stable ExplicitPanic reason ID, optional static message, and exact file, line, column, and enclosing-function provenance
       - the shared formatter preserves bare panic and canonical panic statement spacing idempotently
       - checked unreachable is recognized in its canonical payload-free statement context with a dedicated AST node while remaining an ordinary identifier outside that context, matching the canonical keyword inventory; formatter coverage is idempotent
       - reachable checked unreachable terminates the block, satisfies non-void return-path analysis, and records a direct may-panic-unreachable effect; statically unreachable occurrences contribute no effect
@@ -375,6 +382,8 @@ integrations:
         result: passed on 2026-09-24; exact checked-integer reason sets and existing panic-effect behavior agree
       - command: go test ./internal/parser ./internal/formatter ./internal/sema -run Panic -count=1
         result: passed on 2026-09-27; bare and message-bearing panic parse and format canonically, both terminate control flow, both retain ExplicitPanic effect identity, and invalid call-like or dynamic-message forms remain rejected
+      - command: go test ./internal/sema -run 'TestResolvedExplicitPanicFactsPreserveCanonicalMetadata|TestExplicitPanicTerminatesAndRecordsEffect' -count=1
+        result: passed on 2026-09-28 with stable reason identity, optional-message distinction, exact source/function provenance, immutable lookup, and unchanged reachable effect behavior
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
@@ -435,6 +444,7 @@ integrations:
       - typed arithmetic failure reasons and panic-related effect metadata exist in the maintained checked-arithmetic Semantic IR and Sec MLIR vertical
       - fixed-array ordinary failure is represented by terminating fail.bounds with fixed-array-index provenance while fallible bounds flow remains typed IndexError
     remaining:
+      - consume ResolvedExplicitPanic directly instead of reconstructing reason, message, or provenance from AST spelling
       - add canonical assertion check representation with AssertionFailed reason and static message or ID metadata
       - add checked-unreachable representation that remains defined until proven or lowered through panic endpoint
       - represent canonical panic reason, source provenance, and relevant execution-domain facts

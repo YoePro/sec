@@ -1053,6 +1053,23 @@ func TestSemaDiagnosticIncludesCodeAndHelp(t *testing.T) {
 	}
 }
 
+func TestConstantIntegerOverflowReachesLSPAsWarning(t *testing.T) {
+	items := analyze("file:///tmp/sec-lsp-overflow-warning/main.sec", `module main
+
+fn Value() int8 {
+	return int8(127) + int8(1)
+}
+`)
+	if len(items) != 1 {
+		t.Fatalf("diagnostics = %+v, want one S1023 warning", items)
+	}
+	item := items[0]
+	if item.Code != diagnostics.OperatorIntegerOverflow || item.Severity != 2 ||
+		!strings.Contains(item.Message, "may overflow") || !strings.Contains(item.Message, "checked runtime semantics") {
+		t.Fatalf("incomplete S1023 LSP warning: %+v", item)
+	}
+}
+
 func TestUnreachableStatementDiagnosticReachesLSP(t *testing.T) {
 	items := analyze("", "module main\nfn Value() int {\n    return 1\n    let unused := 2\n}\n")
 	for _, item := range items {
@@ -2504,6 +2521,18 @@ func TestCompletionExcludesCompilerInternalFunctions(t *testing.T) {
 	}
 }
 
+// `_now` is a compiler-owned value expression, not an ordinary global symbol.
+// User-source completion must therefore never disclose it.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Private core UTC wall-clock intrinsic"
+//   - rules/types/temporal.md — §3 "UTC wall-clock access"
+func TestCompletionExcludesPrivateTemporalNowIntrinsic(t *testing.T) {
+	source := "module main\n\nfn Use() void {\n\t_n\n}\n"
+	items := completeSource("", source, strings.Index(source, "_n")+len("_n"))
+	assertNoCompletionLabel(t, items, "_now")
+}
+
 func TestHoverUsesDocCommentAboveFunction(t *testing.T) {
 	source := `module main
 
@@ -3438,6 +3467,70 @@ impl Holder implements Iterator[int] {}
 	assertCompletionLabels(t, items, []string{"Iterator"})
 }
 
+// rules/types/temporal.md §2: LSP loads the trusted core representation for
+// temporal values, but its private backing fields remain visible only inside
+// module core.
+func TestCompletionScopesTemporalBackingFieldsToCore(t *testing.T) {
+	root := t.TempDir()
+	coreDir := filepath.Join(root, "sec", "core")
+	if err := os.MkdirAll(filepath.Join(root, "sec", "stdlib"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(coreDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	declarations := `module core
+
+type duration struct { _nanoseconds: int64, }
+type date struct { _epochDays: int32, }
+type time struct { _nanosecondsSinceMidnight: uint64, }
+type datetime struct {
+	_epochDays: int32,
+	_nanosecondsSinceMidnight: uint64,
+}
+`
+	if err := os.WriteFile(filepath.Join(coreDir, "temporal.sec"), []byte(declarations), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		typeName string
+		fields   []string
+	}{
+		{"duration", []string{"_nanoseconds"}},
+		{"date", []string{"_epochDays"}},
+		{"time", []string{"_nanosecondsSinceMidnight"}},
+		{"datetime", []string{"_epochDays", "_nanosecondsSinceMidnight"}},
+	}
+	fieldTypes := map[string]string{
+		"_nanoseconds":              "int64",
+		"_epochDays":                "int32",
+		"_nanosecondsSinceMidnight": "uint64",
+	}
+	for _, test := range tests {
+		t.Run(test.typeName, func(t *testing.T) {
+			coreSource := fmt.Sprintf("module core\n\nfn Inspect(value: %s) void {\n\tlet observed := value\n\tobserved.\n}\n", test.typeName)
+			corePath := filepath.Join(coreDir, "inspect_"+test.typeName+".sec")
+			coreItems := completeSource(uriFromPath(corePath), coreSource, strings.Index(coreSource, "observed.")+len("observed."))
+			assertCompletionLabels(t, coreItems, test.fields)
+			for _, field := range test.fields {
+				for _, item := range coreItems {
+					if item.Label == field && item.Detail != fieldTypes[field] {
+						t.Fatalf("completion %s detail = %q, want %q", field, item.Detail, fieldTypes[field])
+					}
+				}
+			}
+
+			userSource := fmt.Sprintf("module main\n\nfn Inspect(value: %s) void {\n\tlet observed := value\n\tobserved.\n}\n", test.typeName)
+			userPath := filepath.Join(root, "main_"+test.typeName+".sec")
+			userItems := completeSource(uriFromPath(userPath), userSource, strings.Index(userSource, "observed.")+len("observed."))
+			for _, field := range test.fields {
+				assertNoCompletionLabel(t, userItems, field)
+			}
+		})
+	}
+}
+
 func TestCompletionIncludesRawPtrMembers(t *testing.T) {
 	source := `module main
 
@@ -3558,25 +3651,58 @@ func TestCompletionIncludesCompilerKnownMembers(t *testing.T) {
 	assertCompletionLabels(t, arenaItems, []string{"Alloc", "New", "Ptr", "Release", "Reset", "SizeOf"})
 }
 
-// TestShapedRankAndLenCompletionAndHover verifies that tooling projects the
-// shaped facts resolved by Sema's compiler-known member registry.
+// TestShapedRankShapeAndLenCompletionAndHover verifies that tooling projects
+// the shaped facts resolved by Sema's compiler-known member registry.
 //
 // Rules:
 //   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len"
 //   - rules/collections/shaped-types.md — § 33 "LSP and tooling requirements"
 //   - rules/corrections/applied/compiler_known_members-shaped-correction-20260813.md — "LSP integration"
-func TestShapedRankAndLenCompletionAndHover(t *testing.T) {
+func TestShapedRankShapeAndLenCompletionAndHover(t *testing.T) {
 	source := "module main\n\nfn Inspect(value: matrix[int, 3, 4]) void {\n\tvalue.\n}\n"
 	items := completeSource("", source, strings.Index(source, "value.")+len("value."))
-	assertCompletionLabels(t, items, []string{"Len", "Rank"})
+	assertCompletionLabels(t, items, []string{"IsContiguous", "Len", "Rank", "Shape", "Strides"})
 
-	hoverSource := "module main\n\nfn Inspect(value: matrix[int, 3, 4]) uint {\n\treturn value.Len\n}\n"
-	hoverOffset := strings.LastIndex(hoverSource, "Len") + 1
+	hoverSource := "module main\n\nfn Inspect(value: matrix[int, 3, 4]) Shape[2] {\n\treturn value.Shape\n}\n"
+	hoverOffset := strings.LastIndex(hoverSource, "Shape") + 1
 	hover, ok := hoverForSource("", hoverSource, offsetPosition(hoverSource, hoverOffset))
-	if !ok || !strings.Contains(hover.Contents.Value, "property Len: uint") ||
-		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-LEN") ||
-		!strings.Contains(hover.Contents.Value, "element count: 12") {
-		t.Fatalf("shaped Len hover = %+v, %v", hover, ok)
+	if !ok || !strings.Contains(hover.Contents.Value, "property Shape: Shape[2]") ||
+		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-SHAPE") ||
+		!strings.Contains(hover.Contents.Value, "extents: [3, 4]") {
+		t.Fatalf("shaped Shape hover = %+v, %v", hover, ok)
+	}
+}
+
+// rules/collections/shaped-types.md §§6–6.1 and §33: LSP consumes the
+// compiler-known row-major Strides fact rather than maintaining a tooling-only
+// shaped member table.
+func TestShapedStridesCompletionAndHover(t *testing.T) {
+	source := "module main\n\nfn Inspect(value: tensor[int, 2, 3, 4]) Strides[3] {\n\treturn value.Strides\n}\n"
+	items := completeSource("", source, strings.Index(source, "value.Strides")+len("value."))
+	assertCompletionLabels(t, items, []string{"Strides"})
+
+	hoverOffset := strings.LastIndex(source, "Strides") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "property Strides: Strides[3]") ||
+		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-STRIDES") ||
+		!strings.Contains(hover.Contents.Value, "strides: [12, 4, 1]") {
+		t.Fatalf("shaped Strides hover = %+v, %v", hover, ok)
+	}
+}
+
+// rules/collections/shaped-types.md §§8 and 33: canonical dense owning shaped
+// values expose the registry-owned, compile-time-known contiguity fact.
+func TestShapedIsContiguousCompletionAndHover(t *testing.T) {
+	source := "module main\n\nfn Inspect(value: vector[int, 8]) bool {\n\treturn value.IsContiguous\n}\n"
+	items := completeSource("", source, strings.Index(source, "value.IsContiguous")+len("value."))
+	assertCompletionLabels(t, items, []string{"IsContiguous"})
+
+	hoverOffset := strings.LastIndex(source, "IsContiguous") + 1
+	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
+	if !ok || !strings.Contains(hover.Contents.Value, "property IsContiguous: bool") ||
+		!strings.Contains(hover.Contents.Value, "CKM-SHAPED-IS-CONTIGUOUS") ||
+		!strings.Contains(hover.Contents.Value, "known true") {
+		t.Fatalf("shaped IsContiguous hover = %+v, %v", hover, ok)
 	}
 }
 

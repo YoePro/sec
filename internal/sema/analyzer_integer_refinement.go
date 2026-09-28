@@ -1,10 +1,79 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 )
+
+// validateCompileTimeIntegerArithmetic validates locally constant arithmetic.
+// Division and remainder by zero remain blocking errors. Potential integer
+// overflow emits S1023 as a warning and leaves the accepted expression on the
+// ordinary checked-runtime path.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Checked integer arithmetic"
+//   - rules/foundations/operators.md — "Compile-time overflow"
+func (a *Analyzer) validateCompileTimeIntegerArithmetic(expr *ast.InfixExpression, resultType Type) bool {
+	if expr == nil || !isBuiltinIntegerOperatorType(resultType) {
+		return true
+	}
+	left, leftKnown := a.integerConstantValue(expr.Left)
+	right, rightKnown := a.integerConstantValue(expr.Right)
+	if !leftKnown || !rightKnown {
+		return true
+	}
+	representation, _, ok := a.integerRepresentation(resultType)
+	if !ok || representation.MinInteger == nil || representation.MaxInteger == nil {
+		return true
+	}
+	if (expr.Operator == "/" || expr.Operator == "%") && right.Sign() == 0 {
+		id := diagnostics.OperatorDivisionByZero
+		operation := "division"
+		help := "Use a non-zero divisor or guard the operation before evaluating it."
+		if expr.Operator == "%" {
+			id = diagnostics.OperatorRemainderByZero
+			operation = "remainder"
+			help = "Use a non-zero remainder divisor or guard the operation before evaluating it."
+		}
+		a.addErrorAtTokenWithMetadata(expr.Token, id, help, "constant integer %s by zero", operation)
+		return false
+	}
+	value := new(big.Int)
+	switch expr.Operator {
+	case "+":
+		value.Add(left, right)
+	case "-":
+		value.Sub(left, right)
+	case "*":
+		value.Mul(left, right)
+	case "/":
+		value.Quo(left, right)
+	case "%":
+		value.Rem(left, right)
+	default:
+		return true
+	}
+	divisionOverflow := (expr.Operator == "/" || expr.Operator == "%") &&
+		representation.Kind == IntType && left.Cmp(representation.MinInteger) == 0 && right.Cmp(big.NewInt(-1)) == 0
+	if !divisionOverflow && value.Cmp(representation.MinInteger) >= 0 && value.Cmp(representation.MaxInteger) <= 0 {
+		return true
+	}
+	if a.refinementProvesIntegerArithmeticInRange(expr, resultType) {
+		return true
+	}
+	a.addWarningAtTokenWithMetadata(
+		expr.Token,
+		diagnostics.OperatorIntegerOverflow,
+		fmt.Sprintf("Ensure a dominating condition proves the operation remains within %s..%s, or use a wider integer type. The operation retains checked runtime semantics.", representation.MinInteger, representation.MaxInteger),
+		"integer operation %s may overflow %s",
+		expr.String(),
+		typeDisplayName(resultType),
+	)
+	return true
+}
 
 // refinementProvesIntegerArithmeticInRange handles the narrow arithmetic
 // consequence needed on a selected logical edge. For x - C with C >= 0, a

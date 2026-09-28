@@ -1016,6 +1016,7 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 	p := parser.New(l)
 	parseResult := p.Parse()
 	fileAST := parseResult.Program
+	activeModule := programModulePath(fileAST)
 	var targetExpr ast.Expression
 	if context.Member {
 		targetExpr = findSelectorLHS(fileAST, text, context.DotOffset)
@@ -1041,14 +1042,14 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		}
 		if identifier, ok := targetExpr.(*ast.Identifier); ok {
 			if staticType, exists := analyzer.Types()[identifier.Value]; exists {
-				return memberCompletionItems(staticType, analyzer, context.Prefix, true)
+				return memberCompletionItems(staticType, analyzer, context.Prefix, true, activeModule)
 			}
 		}
 		exprType, ok := analyzer.TypeOf(targetExpr)
 		if !ok {
 			return []completionItem{}
 		}
-		return memberCompletionItems(exprType, analyzer, context.Prefix, false)
+		return memberCompletionItems(exprType, analyzer, context.Prefix, false, activeModule)
 	}
 
 	return globalCompletionItems(text, analyzer, context)
@@ -2906,8 +2907,17 @@ func isContractModifierContext(prefix string) bool {
 //   - rules/compiler/compiler_known_members.md — "Built-in type member lookup"
 //   - rules/compiler/compiler_known_members.md — "Named and related types"
 //   - rules/tooling/lsp.md — "Completion"
-func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix string, static bool) []completionItem {
+func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix string, static bool, accessingModule string) []completionItem {
 	types, functions, symbols := analyzer.Types(), analyzer.Functions(), analyzer.Symbols()
+	// Parameter and local facts may retain the compiler-known opaque fallback
+	// captured before trusted core declarations refine a temporal identity.
+	// Completion must project the analyzed declaration, including its private
+	// backing fields, and leave visibility filtering to Sema below.
+	//
+	// Rules: rules/types/temporal.md — §2, compiler-owned representation
+	if declared, ok := types[exprType.Name]; ok && exprType.Kind == sema.StructType && len(exprType.Fields) == 0 && len(declared.Fields) > 0 {
+		exprType = declared
+	}
 	items := []completionItem{}
 	seen := map[string]bool{}
 	add := func(item completionItem) {
@@ -2943,6 +2953,9 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 	case sema.StructType:
 		if !static {
 			for _, field := range exprType.Fields {
+				if !analyzer.CanAccessStructFieldFromModule(exprType, field.Name, accessingModule) {
+					continue
+				}
 				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
 			}
 		}

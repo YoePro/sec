@@ -1902,20 +1902,6 @@ integrations:
     - Record the active same-element restriction/result-type shortcut as incorrect relative to shaped-types v2.
     - Keep runtime ShapeError, complete scalar algebra, Semantic IR, and lowering work as remaining.
 
-  - id: governance.lexical-shaped-parser-status
-    area: documentation-governance
-    status: implemented
-    audited: '2026-08-20'
-    repository_baseline: c515862
-    summary: Governance now treats built-in collection and shaped type parser integration as implemented. Remaining
-      lexical/tooling work is limited to genuinely unsupported formatter, semantic-token, contextual-classification,
-      and recovery behavior.
-    governance_reconciliation:
-    - remove or narrow the stale built-in collection/shaped parser-integration remaining item
-    - keep contextual x formatter/semantic-token classification as remaining
-    - keep incomplete lexical/tooling classifications that are actually unsupported
-    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
-
   - id: frontend.loop-arena-generation-fixed-point
     area: frontend-control-flow-and-reference-validity
     status: implemented
@@ -3013,22 +2999,3 @@ integrations:
       expectation: Successful task/thread completion wait observes validly published prior effects.
     corrections_applied:
     - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
-  - id: frontend.temporal-duration
-    area: timeout-conversion
-    status: partial
-    normative:
-    - duration is the canonical timeout parameter type.
-    - Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced.
-    - Time-unit quantities may materialize as duration at compatible call boundaries under canonical temporal/unit rules.
-    remaining:
-    - Define/verify compiler-known conversion from time-dimension unit quantity to duration.
-    - Avoid mutex-specific hard-coded unit spellings.
-  - id: frontend.temporal-instant
-    area: monotonic-deadline-type
-    status: planned
-    normative:
-    - Instant is a source-visible compiler-known copyable monotonic point-in-time type.
-    - Instant is not wall-clock/calendar time.
-    remaining:
-    - Add canonical core Instant declaration/identity.
-    - Define general monotonic clock acquisition/arithmetic in the owning temporal rulebook.

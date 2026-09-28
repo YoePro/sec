@@ -50,7 +50,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		OperatorInvalidMembership:           SeverityError,
 		OperatorInvalidConcatOperand:        SeverityError,
 		OperatorInvalidInterpolationValue:   SeverityError,
-		OperatorIntegerOverflow:             SeverityError,
+		OperatorIntegerOverflow:             SeverityWarning,
 		OperatorDivisionByZero:              SeverityError,
 		OperatorRemainderByZero:             SeverityError,
 		RedundantAssociatedStatic:           SeverityInformation,

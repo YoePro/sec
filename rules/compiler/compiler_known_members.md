@@ -690,6 +690,10 @@ ToByteArray:
 Arena.Alloc:
     MayAllocate
     ArenaAllocate
+
+_now:
+    MayUseNondeterministicInput
+    requires UTCWallClock
 ```
 
 ---
@@ -717,6 +721,7 @@ StringToRuneArray
 ByteSequenceToString
 RuneSequenceToString
 CharSequenceToString
+UTCWallClockRead
 Arena operations
 RawPtr operations
 ```
@@ -816,6 +821,38 @@ This helper does not require a compiler-known registry entry or a
 name-specific backend call-emission case merely because its implementation is
 low-level. A compiler-known identity remains permitted only if separate
 semantic or analysis requirements make compiler ownership necessary.
+
+---
+
+# Private core UTC wall-clock intrinsic
+
+The compiler-known identifier `_now` is a privileged core-only value intrinsic
+with semantic result type `datetime`. It is available only while compiling
+loader-proven `sec/core`; it has no public declaration, is not importable, and
+must not appear in ordinary lookup, completion, or public API documentation
+outside trusted core.
+
+Its stable registry contract is:
+
+```text
+canonical name: _now
+availability: loader-proven sec/core only
+result type: datetime
+unsafe: false
+effect: MayUseNondeterministicInput
+required target capability: UTCWallClock
+public visibility: none
+```
+
+Each evaluation performs one UTC wall-clock read. The compiler preserves that
+read as an explicit Semantic IR operation or stable intrinsic identity. It must
+not constant-fold the read, substitute compiler-host time, build time, the Unix
+epoch, or another sentinel, or merge distinct reads through common-subexpression
+elimination.
+
+The intrinsic is invalid in every `SemanticCompileTimeRequiredContext`,
+including static initializers. The public temporal API and projection semantics
+are defined by `rules/types/temporal.md`.
 
 ---
 

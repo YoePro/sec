@@ -210,8 +210,7 @@ impl Host {
             let highChar := value.CharAt(index + 1)
             let lowChar := value.CharAt(index + 2)
 
-            if !highChar.IsHexDigit ||
-            !lowChar.IsHexDigit {
+            if !highChar.IsHexDigit || !lowChar.IsHexDigit {
                 return Err(ParseError.InvalidPercentEncoding(index))
             }
 
@@ -226,8 +225,7 @@ impl Host {
             }
 
             let decoded := byte(
-                uint(high) * 16 +
-                uint(low)
+                uint(high) * 16 + uint(low)
             )
 
             // RFC 3986 normalization permits percent-encoded unreserved

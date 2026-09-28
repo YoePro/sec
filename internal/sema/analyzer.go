@@ -40,6 +40,7 @@ type Analyzer struct {
 	bindingIDs                 map[sourceTokenKey]BindingID
 	bindingFacts               map[sourceTokenKey]ResolvedBinding
 	compilerKnownMemberFacts   map[sourceTokenKey]CompilerKnownMember
+	compilerKnownValueFacts    map[sourceTokenKey]CompilerKnownValue
 	resolvedTestMetadata       map[*ast.TestDeclaration]ResolvedTestMetadata
 	resolvedTests              []ResolvedTestMetadata
 	resolvedCalls              map[*ast.CallExpression]ResolvedCall
@@ -53,6 +54,7 @@ type Analyzer struct {
 	resolvedIfFlows            map[*ast.IfStatement]ResolvedIfFlow
 	resolvedSwitchFlows        map[*ast.SwitchStatement]ResolvedSwitchFlow
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
+	resolvedExplicitPanics     map[*ast.PanicStatement]ResolvedExplicitPanic
 	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
 	resolvedTries              map[*ast.TryExpression]ResolvedTry
 	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
@@ -269,6 +271,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
 	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
+	a.compilerKnownValueFacts = map[sourceTokenKey]CompilerKnownValue{}
 	a.resolvedTestMetadata = map[*ast.TestDeclaration]ResolvedTestMetadata{}
 	a.resolvedTests = nil
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
@@ -282,6 +285,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedIfFlows = map[*ast.IfStatement]ResolvedIfFlow{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
+	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
 	a.resolvedConditionFacts = map[ast.Expression]ResolvedConditionFact{}
 	a.resolvedTries = map[*ast.TryExpression]ResolvedTry{}
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
@@ -1084,7 +1088,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
-			a.validateNominalTypeName(stmt.Name)
+			if !a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+				a.validateNominalTypeName(stmt.Name)
+			}
 			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
 			params := a.genericParameterNames(stmt.GenericParameters)
 			noCopy := hasAttribute(stmt.Attributes, "noCopy")
@@ -1092,7 +1098,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if noCopy {
 				origin = stmt.Name.Value
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, Intrinsic: a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token), GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
 			if stmt.RegisterType != nil {
 				a.registerDeclarations[stmt.Name.Value] = stmt
 			}
@@ -1240,11 +1246,22 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 
 func isCoreBuiltinDeclaration(name string) bool {
 	switch name {
-	case "IndexError", "TaskOutcome", "TaskSpawnError", "TaskError":
+	case "IndexError", "TaskOutcome", "TaskSpawnError", "TaskError",
+		"date", "time", "datetime", "duration":
 		return true
 	default:
 		return false
 	}
+}
+
+// isTrustedCoreBuiltinDeclaration identifies the narrow set of compiler-known
+// types whose fallback identity is refined by a real declaration in loader-
+// proven core source. The source declaration supplies storage/member shape; it
+// never transfers ownership of the language-reserved name to ordinary source.
+//
+// Rules: rules/library/core-library.md; rules/types/temporal.md §2.
+func (a *Analyzer) isTrustedCoreBuiltinDeclaration(name string, token lexer.Token) bool {
+	return isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token)
 }
 
 func (a *Analyzer) rejectUnitNameCollision(name string, token lexer.Token) bool {
@@ -2687,20 +2704,6 @@ func (a *Analyzer) recordConditionFact(condition ast.Expression, kind ResolvedCo
 	a.resolvedConditionFacts[condition] = fact
 	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{fact: fact, epoch: a.arrayIndexMutationEpoch})
 	return fact
-}
-
-// analyzePanicStatement records the explicit non-returning panic effect. The
-// parser has already restricted any optional payload to static string
-// metadata.
-//
-// Rules:
-//   - rules/errors/panic.md — § 17 "Explicit panic"
-//   - rules/errors/panic.md — § 21 "@noPanic"
-func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
-	if stmt == nil || a.summaryPass || !a.callGraphPathReachable {
-		return
-	}
-	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicExplicit, Source: stmt.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonExplicitPanic}})
 }
 
 // analyzeUnreachableStatement records the defined panic effect of a reachable
@@ -4309,7 +4312,7 @@ func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
 }
 
 func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration, name string) {
-	if isCompilerKnownFunctionName(name) {
+	if isCompilerKnownFunctionName(name) || isCompilerKnownValueName(name) {
 		a.addErrorAtToken(fn.Name.Token, "function %s is compiler-known and cannot be declared", name)
 		return
 	}
@@ -8606,6 +8609,13 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 		GenericParameters:     genericParameterNameValues(stmt.GenericParameters),
 		GenericConstraints:    a.resolvedGenericParameterConstraints(stmt.GenericParameters),
 	}
+	// A trusted core declaration supplies the concrete shape of a
+	// compiler-known identity. Preserve its intrinsic status so a backing struct
+	// never accidentally gains user-defined defaults or redeclaration rights.
+	// Rules: rules/library/core-library.md; rules/types/temporal.md §2.
+	if existing, exists := a.types[name]; exists && existing.Intrinsic && stmt != nil && stmt.Name != nil && a.isTrustedCoreBuiltinDeclaration(name, stmt.Name.Token) {
+		typ.Intrinsic = true
+	}
 	if noCopy {
 		typ.NoCopyPolicyOrigin = name
 	}
@@ -12645,6 +12655,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 	case *ast.BooleanLiteral:
 		return Type{Name: "bool", Kind: BoolType}, expressionValue{Display: expr.String()}
 	case *ast.Identifier:
+		if typ, value, handled := a.inferCompilerKnownValue(expr); handled {
+			return typ, value
+		}
 		symbol, ok := a.symbols[expr.Value]
 		if !ok {
 			if functions := a.accessibleFunctions(a.functions[expr.Value]); len(functions) > 0 {
@@ -13249,6 +13262,11 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			planValid = false
 			continue
 		}
+		if !a.canAccessStructField(typ, field.Name.Value) {
+			a.addErrorAtToken(field.Name.Token, "field %s on %s is not accessible from module %s", field.Name.Value, typeDisplayName(typ), moduleDisplayName(a.currentModule))
+			planValid = false
+			continue
+		}
 		if definition, exists := memberDefinitionToken(typ, field.Name.Value); exists {
 			a.bindDefinition(field.Name.Token, definition)
 		}
@@ -13646,6 +13664,10 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	}
 
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
+		if !a.canAccessStructField(objectType, expr.Property.Value) {
+			a.addErrorAtToken(expr.Property.Token, "field %s on %s is not accessible from module %s", expr.Property.Value, typeDisplayName(objectType), moduleDisplayName(a.currentModule))
+			return Type{Kind: InvalidType}, false
+		}
 		for fieldID, field := range objectType.Fields {
 			if field.Name != expr.Property.Value {
 				continue
@@ -14840,6 +14862,23 @@ func lookupStructField(typ Type, name string) (Type, bool) {
 		}
 	}
 	return Type{}, false
+}
+
+func (a *Analyzer) canAccessStructField(typ Type, name string) bool {
+	typ = dereferenceType(typ)
+	return a.canAccessDeclaredName(name, typ.Module)
+}
+
+// CanAccessStructFieldFromModule applies the same visibility rule for a
+// tooling request after analysis has restored its transient module context, so
+// editor suggestions cannot advertise fields that source analysis rejects.
+//
+// Rules:
+//   - rules/foundations/names_scopes_visibility.md — private names
+//   - rules/types/temporal.md — §2, backing-field visibility
+func (a *Analyzer) CanAccessStructFieldFromModule(typ Type, name string, accessingModule string) bool {
+	typ = dereferenceType(typ)
+	return canAccessDeclaredNameFromModule(name, typ.Module, accessingModule)
 }
 
 func lookupRegisterField(typ Type, name string) (Type, bool) {
@@ -18175,20 +18214,24 @@ func (a *Analyzer) accessibleFunctions(functions []Function) []Function {
 }
 
 func (a *Analyzer) canAccessDeclaredName(name string, declarationModule string) bool {
+	return canAccessDeclaredNameFromModule(name, declarationModule, a.currentModule)
+}
+
+func canAccessDeclaredNameFromModule(name string, declarationModule string, accessingModule string) bool {
 	base := visibilityBaseName(name)
 	if !strings.HasPrefix(base, "_") {
 		return true
 	}
-	if declarationModule == "" || a.currentModule == "" {
-		return declarationModule == a.currentModule
+	if declarationModule == "" || accessingModule == "" {
+		return declarationModule == accessingModule
 	}
-	if moduleRoot(a.currentModule) == "io" && moduleRoot(declarationModule) == "platform" {
+	if moduleRoot(accessingModule) == "io" && moduleRoot(declarationModule) == "platform" {
 		return true
 	}
 	if strings.HasPrefix(base, "__") {
-		return a.currentModule == declarationModule
+		return accessingModule == declarationModule
 	}
-	return moduleRoot(a.currentModule) == moduleRoot(declarationModule)
+	return moduleRoot(accessingModule) == moduleRoot(declarationModule)
 }
 
 func visibilityBaseName(name string) string {
@@ -18556,6 +18599,9 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		if plan, exists := a.resolvedArrayIndexPlans[index]; exists {
 			return a.inferBoundsTryExpression(expr, index, plan)
 		}
+	}
+	if valueType.Kind == UnionType && valueType.Name == "Option" && len(valueType.TypeArgs) == 1 && len(expr.Handlers) == 0 {
+		return a.inferNakedOptionTryExpression(expr, valueType)
 	}
 	if valueType.Kind == UnionType && valueType.Name == "Option" && len(valueType.TypeArgs) == 1 && len(expr.Handlers) > 0 {
 		if a.rejectForbiddenOptionTrySuccessHandlers(expr) {
@@ -20326,65 +20372,6 @@ func (a *Analyzer) contextualNumericLiteralType(expr ast.Expression, actual Type
 	return target, true
 }
 
-func (a *Analyzer) validateCompileTimeIntegerArithmetic(expr *ast.InfixExpression, resultType Type) bool {
-	if expr == nil || !isBuiltinIntegerOperatorType(resultType) {
-		return true
-	}
-	left, leftKnown := a.integerConstantValue(expr.Left)
-	right, rightKnown := a.integerConstantValue(expr.Right)
-	if !leftKnown || !rightKnown {
-		return true
-	}
-	representation, _, ok := a.integerRepresentation(resultType)
-	if !ok || representation.MinInteger == nil || representation.MaxInteger == nil {
-		return true
-	}
-	if (expr.Operator == "/" || expr.Operator == "%") && right.Sign() == 0 {
-		id := diagnostics.OperatorDivisionByZero
-		operation := "division"
-		help := "Use a non-zero divisor or guard the operation before evaluating it."
-		if expr.Operator == "%" {
-			id = diagnostics.OperatorRemainderByZero
-			operation = "remainder"
-			help = "Use a non-zero remainder divisor or guard the operation before evaluating it."
-		}
-		a.addErrorAtTokenWithMetadata(expr.Token, id, help, "constant integer %s by zero", operation)
-		return false
-	}
-	value := new(big.Int)
-	switch expr.Operator {
-	case "+":
-		value.Add(left, right)
-	case "-":
-		value.Sub(left, right)
-	case "*":
-		value.Mul(left, right)
-	case "/":
-		value.Quo(left, right)
-	case "%":
-		value.Rem(left, right)
-	default:
-		return true
-	}
-	divisionOverflow := (expr.Operator == "/" || expr.Operator == "%") &&
-		representation.Kind == IntType && left.Cmp(representation.MinInteger) == 0 && right.Cmp(big.NewInt(-1)) == 0
-	if !divisionOverflow && value.Cmp(representation.MinInteger) >= 0 && value.Cmp(representation.MaxInteger) <= 0 {
-		return true
-	}
-	if a.refinementProvesIntegerArithmeticInRange(expr, resultType) {
-		return true
-	}
-	a.addErrorAtTokenWithMetadata(
-		expr.Token,
-		diagnostics.OperatorIntegerOverflow,
-		fmt.Sprintf("Use a wider integer type or restructure the constant expression to remain within %s..%s.", representation.MinInteger, representation.MaxInteger),
-		"constant integer operation %s overflows %s",
-		expr.String(),
-		typeDisplayName(resultType),
-	)
-	return false
-}
-
 func isTextConcatKind(typ Type) bool {
 	switch typ.Kind {
 	case StringType, CharType, RuneType:
@@ -21056,15 +21043,14 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 				if value, known := a.integerConstantValue(expr.Right); known {
 					representation, _, ok := a.integerRepresentation(rightType)
 					if ok && representation.MinInteger != nil && value.Cmp(representation.MinInteger) == 0 {
-						a.addErrorAtTokenWithMetadata(
+						a.addWarningAtTokenWithMetadata(
 							expr.Token,
 							diagnostics.OperatorIntegerOverflow,
-							"Use a wider signed integer type; the minimum value has no positive counterpart in the same type.",
-							"constant negation %s overflows %s",
+							"Ensure a dominating condition excludes the minimum value, or use a wider signed integer type. The operation retains checked runtime semantics.",
+							"integer negation %s may overflow %s",
 							expr.String(),
 							typeDisplayName(rightType),
 						)
-						return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 					}
 				}
 			}
@@ -21280,6 +21266,10 @@ func (a *Analyzer) warnUnitStatus(token lexer.Token, unitName string) {
 }
 
 func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
+	if isCompilerKnownValueName(name) {
+		a.addErrorAtToken(token, "name %s is compiler-known and cannot be declared", name)
+		return false
+	}
 	if previous, exists := a.symbols[name]; exists {
 		if !previous.ImplicitMember {
 			a.appendError(Error{

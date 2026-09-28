@@ -307,6 +307,7 @@ type PanicReason string
 
 const (
 	PanicReasonAssertionFailed PanicReason = "AssertionFailed"
+	PanicReasonExplicitPanic   PanicReason = "ExplicitPanic"
 )
 
 // ResolvedAssertion is the immutable frontend fact for one valid assertion.
@@ -330,6 +331,24 @@ type ResolvedAssertion struct {
 	Refinement ResolvedConditionFact
 }
 
+// ResolvedExplicitPanic is the immutable frontend fact for one canonical
+// panic statement. The optional literal remains static diagnostic metadata;
+// the stable reason ID and portable PanicInfo provenance are independent of it.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13 "Panic information and reason IDs"
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+type ResolvedExplicitPanic struct {
+	Reason     PanicReason
+	ReasonID   diagnostics.PanicReasonID
+	Message    string
+	HasMessage bool
+	File       string
+	Line       int
+	Column     int
+	Function   string
+}
+
 type ResolvedTryKind string
 
 const (
@@ -340,15 +359,18 @@ const (
 	ResolvedTryArithmeticPropagation  ResolvedTryKind = "arithmetic-propagation"
 	ResolvedTryHandledBounds          ResolvedTryKind = "handled-bounds"
 	ResolvedTryBoundsPropagation      ResolvedTryKind = "bounds-propagation"
+	ResolvedTryOptionPropagation      ResolvedTryKind = "option-propagation"
 )
 
-// ResolvedTry records the exact success/error contract selected by Sema.
+// ResolvedTry records the exact success/alternate contract selected by Sema,
+// including either a Result error channel or an Option None propagation path.
 // Lowering consumers must not reconstruct this decision from source syntax.
 type ResolvedTry struct {
 	Kind                ResolvedTryKind
 	SuccessType         Type
 	ErrorType           Type
 	EnclosingResultType Type
+	EnclosingOptionType Type
 }
 
 type ResolvedTryAssignmentKind string
@@ -1355,6 +1377,21 @@ func (a *Analyzer) ResolvedAssertionOf(stmt *ast.AssertStatement) (ResolvedAsser
 		return ResolvedAssertion{}, false
 	}
 	fact, ok := a.resolvedAssertions[stmt]
+	return fact, ok
+}
+
+// ResolvedExplicitPanicOf returns the compiler-owned reason, optional static
+// message, and source provenance for a valid explicit panic statement. Querying
+// unknown syntax performs no inference and does not mutate analyzer state.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13 "Panic information and reason IDs"
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+func (a *Analyzer) ResolvedExplicitPanicOf(stmt *ast.PanicStatement) (ResolvedExplicitPanic, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedExplicitPanic{}, false
+	}
+	fact, ok := a.resolvedExplicitPanics[stmt]
 	return fact, ok
 }
 

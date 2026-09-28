@@ -110,15 +110,6 @@ func format(text string, options Options) string {
 		if indent == 0 && strings.HasPrefix(line, "static let ") {
 			line = strings.TrimPrefix(line, "static ")
 		}
-		// static.md section 6: impl static let is distinct from instance let.
-		if strings.HasPrefix(line, "@noCopy ") {
-			if blank && len(out) > 0 {
-				out = append(out, "")
-				blank = false
-			}
-			out = append(out, strings.Repeat(" ", indent*4)+"@noCopy")
-			line = strings.TrimSpace(strings.TrimPrefix(line, "@noCopy"))
-		}
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)
 			line = normalizeFunc(line)

@@ -96,7 +96,7 @@ func TestLogicalIntegerRefinementRequiresASelectedSufficientGuard(t *testing.T) 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			errors := analyzeSourceRaw(t, `
+			analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main
 
 fn Check() bool {
@@ -104,8 +104,10 @@ fn Check() bool {
 	return `+test.guard+`
 }
 `)
-			if len(errors) != 1 || errors[0].ID != diagnostics.OperatorIntegerOverflow {
-				t.Fatalf("errors = %+v, want one %s", errors, diagnostics.OperatorIntegerOverflow)
+			assertSemaErrors(t, errors, nil)
+			warnings := analyzer.Warnings()
+			if len(warnings) != 1 || warnings[0].ID != diagnostics.OperatorIntegerOverflow || warnings[0].Severity != diagnostics.SeverityWarning {
+				t.Fatalf("warnings = %+v, want one %s warning", warnings, diagnostics.OperatorIntegerOverflow)
 			}
 		})
 	}

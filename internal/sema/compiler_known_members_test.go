@@ -327,8 +327,8 @@ fn Test(values: int[], view: ref mut int[], users: list[int], entries: map[int, 
 	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
 }
 
-// TestCompilerKnownStaticShapedFacts verifies that statically determined Rank
-// and Len facts are properties with uint results for shaped values.
+// TestCompilerKnownStaticShapedFacts verifies that statically determined Rank,
+// Shape, and Len facts have their canonical property result types.
 //
 // Rules:
 //   - rules/collections/shaped-types.md — § 3.1–3.5 "Shaped type families"
@@ -340,10 +340,19 @@ module main
 
 fn Inspect(v: vector[int, 4], m: matrix[int, 3, 4], t: tensor[int, 2, 3, 4], view: ref tensor_view[int, 3]) void {
 	let vectorRank: uint := v.Rank
+	let vectorShape: Shape[1] := v.Shape
+	let vectorStrides: Strides[1] := v.Strides
+	let vectorContiguous: bool := v.IsContiguous
 	let vectorLen: uint := v.Len
 	let matrixRank: uint := m.Rank
+	let matrixShape: Shape[2] := m.Shape
+	let matrixStrides: Strides[2] := m.Strides
+	let matrixContiguous: bool := m.IsContiguous
 	let matrixLen: uint := m.Len
 	let tensorRank: uint := t.Rank
+	let tensorShape: Shape[3] := t.Shape
+	let tensorStrides: Strides[3] := t.Strides
+	let tensorContiguous: bool := t.IsContiguous
 	let tensorLen: uint := t.Len
 	let viewRank: uint := view.Rank
 }
@@ -357,6 +366,29 @@ fn Inspect(v: vector[int, 4], m: matrix[int, 3, 4], t: tensor[int, 2, 3, 4], vie
 		rank, ok := compilerKnownMember(matrix, "Rank", static)
 		if !ok || rank.Kind != CompilerKnownProperty || rank.Result.Kind != UintType || !strings.Contains(rank.Documentation, "2") {
 			t.Fatalf("matrix Rank (static=%v) = %+v, %v", static, rank, ok)
+		}
+		shape, ok := compilerKnownMember(matrix, "Shape", static)
+		if !ok || shape.Kind != CompilerKnownProperty || typeDisplayName(shape.Result) != "Shape[2]" ||
+			shape.Signature != "property Shape: Shape[2]" || !strings.Contains(shape.Documentation, "[3, 4]") {
+			t.Fatalf("matrix Shape (static=%v) = %+v, %v", static, shape, ok)
+		}
+		strides, stridesOK := compilerKnownMember(matrix, "Strides", static)
+		if static {
+			if stridesOK {
+				t.Fatalf("matrix type must not expose instance Strides: %+v", strides)
+			}
+		} else if strides.Kind != CompilerKnownProperty || typeDisplayName(strides.Result) != "Strides[2]" ||
+			strides.Signature != "property Strides: Strides[2]" || !strings.Contains(strides.Documentation, "[4, 1]") {
+			t.Fatalf("matrix Strides = %+v, %v", strides, stridesOK)
+		}
+		contiguous, contiguousOK := compilerKnownMember(matrix, "IsContiguous", static)
+		if static {
+			if contiguousOK {
+				t.Fatalf("matrix type must not expose instance IsContiguous: %+v", contiguous)
+			}
+		} else if contiguous.Kind != CompilerKnownProperty || contiguous.Result.Kind != BoolType ||
+			contiguous.Signature != "property IsContiguous: bool" || !strings.Contains(contiguous.Documentation, "true") {
+			t.Fatalf("matrix IsContiguous = %+v, %v", contiguous, contiguousOK)
 		}
 		length, ok := compilerKnownMember(matrix, "Len", static)
 		if !ok || length.Kind != CompilerKnownProperty || length.Result.Kind != UintType || !strings.Contains(length.Documentation, "12") {
@@ -372,6 +404,9 @@ fn Inspect(v: vector[int, 4], m: matrix[int, 3, 4], t: tensor[int, 2, 3, 4], vie
 	}
 	if _, ok := compilerKnownMember(view, "Len", true); ok {
 		t.Fatal("tensor_view type must not synthesize a runtime Len")
+	}
+	if _, ok := compilerKnownMember(view, "Shape", true); ok {
+		t.Fatal("tensor_view type must not synthesize a runtime Shape")
 	}
 }
 

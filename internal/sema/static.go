@@ -144,6 +144,16 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 				invalid = true
 			}
 		case *ast.Identifier:
+			// A clock read is runtime nondeterministic input, even though it is
+			// spelled as a value rather than a call.
+			//
+			// Rules:
+			//   - rules/types/temporal.md — §3 "UTC wall-clock access"
+			//   - rules/compiler/compiler_known_members.md — "Private core UTC wall-clock intrinsic"
+			if _, known := compilerKnownValue(candidate.Value); known {
+				invalid = true
+				return
+			}
 			// A function-local static initializer cannot capture an invocation's
 			// parameters or automatic locals (static.md, sections 4 and 15).
 			if symbol, ok := a.symbols[candidate.Value]; ok && symbol.Local {

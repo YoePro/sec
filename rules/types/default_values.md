@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-09-01
-- **Document revision:** 1.1
+- **Last updated:** 2026-09-28
+- **Document revision:** 1.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/default_values.md`
 - **Implementation governance:** `governance/types.yaml`
@@ -173,11 +173,13 @@ according to the destination type.
 
 The exact physical bit representation remains target- and type-defined.
 
-The temporal types `date`, `time`, `datetime`, and `duration` are not included
-in this primitive-default table. Their defaultability is intentionally
-undecided until the temporal and default-value rulebooks define it explicitly;
-an implementation must not infer a zero, epoch, empty, or backend-derived
-default for them.
+The temporal types `date`, `time`, `datetime`, and `duration` are
+`NonDefaultable`. Their backing representations do not create implicit
+defaults, and an implementation must not infer a zero, epoch, empty, or
+backend-derived value for them.
+
+`datetime.Now`, `date.Today`, and `time.Now` are operations, not defaults.
+Default initialization must never read a clock.
 
 ---
 

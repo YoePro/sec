@@ -334,6 +334,9 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 			return base, true
 		}
 		if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
+			if !a.canAccessStructField(objectType, expr.Property.Value) {
+				return Place{}, false
+			}
 			base = appendPlaceProjection(base, PlaceProjection{Kind: PlaceField, Name: expr.Property.Value, Token: expr.Property.Token})
 			base.Type = fieldType
 			// Field declarations do not carry independent mutability. Preserve the

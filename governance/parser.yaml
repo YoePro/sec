@@ -6,7 +6,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-09-25"
+    revised: "2026-09-28"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -85,6 +85,8 @@ integrations:
       - typed struct literals that reach EOF without a closing brace retain completed fields plus their enclosing return/function AST, emit a virtual missing-'}' recovery event, and remain parser errors that block code generation
       - array literals that reach EOF without a closing bracket retain completed elements plus their enclosing return/function AST, emit a virtual missing-']' recovery event, and remain parser errors that block code generation
       - comma-delimited empty call arguments are retained as position-preserving InvalidExpression nodes while later arguments, the enclosing call, and following declarations survive
+      - grouped expressions that reach EOF without a closing parenthesis retain their completed inner expression plus the enclosing return/function AST and record a virtual missing-')' recovery event
+      - call argument lists that reach EOF without a closing parenthesis retain the call, every completed argument, and the enclosing return/function AST, including EOF directly after the opener or a separator, while recording a virtual missing-')' recovery event
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -143,6 +145,10 @@ integrations:
       - testdata/parser/unterminated_array_literal_invalid.sec
       - internal/parser/call_argument_recovery_test.go
       - testdata/parser/missing_call_argument_invalid.sec
+      - internal/parser/unterminated_grouped_expression_recovery_test.go
+      - testdata/parser/unterminated_grouped_expression_invalid.sec
+      - internal/parser/unterminated_call_recovery_test.go
+      - testdata/parser/unterminated_call_invalid.sec
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -214,13 +220,19 @@ integrations:
         result: passed; the empty middle position is retained as InvalidExpression while the third argument, call, return, and following function survive
       - command: go run ./cmd/compiler parse testdata/parser/missing_call_argument_invalid.sec
         result: rejected with a focused missing-argument parser diagnostic; the recovered AST remains unavailable to code generation
+      - command: go test ./internal/parser -run TestUnterminatedGroupedExpressionRetainsInnerExpressionAndFunction -count=1
+        result: passed on 2026-09-28; EOF retains the completed grouped addition and enclosing return/function while recording a virtual closing parenthesis and preserving the parser error
+      - command: go test ./internal/parser -run 'Test(UnterminatedCall|MissingCallArgument)' -count=1
+        result: passed on 2026-09-28; EOF after a call opener, separator, or completed argument retains the call and available arguments with a virtual closing parenthesis, while ordinary missing-argument recovery remains unchanged
+      - command: go run ./cmd/compiler parse testdata/parser/unterminated_call_invalid.sec
+        result: rejected with the missing call parenthesis and unterminated function diagnostics; parser errors remain batch-visible and block compilation
 
     remaining:
       - invalid type retention in remaining specialized failure paths beyond explicit generic calls and lifecycle new expressions
       - skipped-range and shared-stack migration for remaining specialized recovery helpers
       - recovery contexts for remaining specialized parsers
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, and typed struct/array literals at EOF
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, and call argument lists at EOF
       - recovery-aware Sema traversal policy for every invalid subtree
       - recovery fuzzing and mutation tests
   - id: frontend.increment-decrement-aliases

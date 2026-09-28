@@ -295,7 +295,7 @@ var registry = map[string]Definition{
 		ID: OperatorInvalidInterpolationValue, Name: "operator.invalid-interpolation-value", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	OperatorIntegerOverflow: {
-		ID: OperatorIntegerOverflow, Name: "operator.constant-integer-overflow", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+		ID: OperatorIntegerOverflow, Name: "operator.constant-integer-overflow", Family: "operators", DefaultSeverity: SeverityWarning, Mandatory: false,
 	},
 	OperatorDivisionByZero: {
 		ID: OperatorDivisionByZero, Name: "operator.constant-division-by-zero", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,

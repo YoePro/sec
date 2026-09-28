@@ -106,18 +106,22 @@ integrations:
     area: compiler-known-types-members-interfaces-platform-identities
     status: partial
     repository_baseline: 998d8d1
-    revised: "2026-09-27"
+    revised: "2026-09-28"
     rules:
       - rules/compiler/compiler_known_members.md
       - rules/compiler/compiler.md
       - rules/compiler/compile_time_evaluation.md
       - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/temporal-now-correction-20260928.md
     code:
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_temporal.go
+      - internal/sema/static.go
       - cmd/lsp/main.go
     tests:
       - internal/sema/compiler_known_members_test.go
+      - internal/sema/analyzer_temporal_test.go
       - cmd/lsp/main_test.go
     implemented:
       - value.SizeOf and TypeName.SizeOf resolve through authoritative read-only compiler-known property entries with uint results
@@ -128,7 +132,10 @@ integrations:
       - trusted core primitive ToString overloads participate in ordinary method resolution before the compiler-known fallback when their arity is used; byte.ToString(byte.ByteStringFormat) accepts its enum argument while byte.ToString() retains the universal fallback
       - ordinary and trusted-core method overload resolution uses the semantic receiver type for computed temporaries, so an explicit byte conversion retains byte.ToString(byte.ByteStringFormat)
       - byte, char, and rune arrays/slices resolve to distinct stable sequence-materialization identities; byte sequence ToString returns string and preserves the represented encoded bytes, while rune sequence materialization retains scalar-to-multibyte encoding semantics
+      - _now is a stable datetime value intrinsic available only to loader-proven core; it is reserved against source declarations, hidden from ordinary completion, rejected in static initialization, and records one MayUseNondeterministicInput effect per evaluated expression
     remaining:
+      - validate _now's UTCWallClock requirement against the frozen CompilationPlan once the target-capability model reaches Sema
+      - preserve _now as an explicit Semantic IR operation and lower it through the selected target/runtime wall-clock service without folding or merging reads
       - carry universal and byte/char/rune sequence ToString identities into explicit Semantic IR operations and maintained lowering, including allocation/effect facts and complete per-type-family fallback formatting semantics
       - audit every compiler-known Sec declaration for complete canonical syntax/owning module and mark compiler-only structures explicitly
       - keep compiler authority distinct from ordinary _/__ source visibility

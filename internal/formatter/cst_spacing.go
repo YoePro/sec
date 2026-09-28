@@ -15,7 +15,7 @@ type formatterReplacement struct {
 	text  string
 }
 
-// formatCSTRoles formats only parser-proven concrete operator roles.
+// formatCSTRoles formats only parser-proven concrete grammatical roles.
 // Identical token spellings in other grammatical positions remain untouched.
 //
 // Rules:
@@ -32,6 +32,7 @@ type formatterReplacement struct {
 //   - rules/memory/ownership.md — §21 "is available and is not available"
 //   - rules/tooling/formatter.md — §18 "Control flow"
 //   - rules/tooling/formatter.md — §20 "Patterns and destructuring"
+//   - rules/tooling/formatter.md — §16(14–17) "attributes"
 func formatCSTRoles(text string) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
 	document := cst.Build(text, "")
@@ -50,7 +51,7 @@ func formatCSTRoles(text string) string {
 		removedHorizontalTrivia[span] = true
 		replacements = append(replacements, formatterReplacement{start: start, end: end})
 	}
-	for _, element := range document.Elements {
+	for elementIndex, element := range document.Elements {
 		replacementText := ""
 		start := element.Span.Start
 		end := element.Span.End
@@ -93,6 +94,36 @@ func formatCSTRoles(text string) string {
 				start: start,
 				end:   end,
 				text:  element.Text,
+			})
+			continue
+		case element.HasRole(cst.CallableParameterListClose):
+			var parameterGroup *cst.DelimiterGroup
+			for groupIndex := range document.Groups {
+				group := &document.Groups[groupIndex]
+				if group.Close == elementIndex && document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) {
+					parameterGroup = group
+					break
+				}
+			}
+			if parameterGroup == nil || !strings.Contains(text[document.Elements[parameterGroup.Open].Span.End:start], "\n") {
+				continue
+			}
+			previous := elementIndex - 1
+			for previous > parameterGroup.Open {
+				kind := document.Elements[previous].Kind
+				if kind != cst.Whitespace && kind != cst.Comment {
+					break
+				}
+				previous--
+			}
+			if previous == parameterGroup.Open || document.Elements[previous].Kind != cst.Token ||
+				document.Elements[previous].Token.Type == lexer.COMMA {
+				continue
+			}
+			replacements = append(replacements, formatterReplacement{
+				start: document.Elements[previous].Span.End,
+				end:   document.Elements[previous].Span.End,
+				text:  ",",
 			})
 			continue
 		case element.HasRole(cst.DeclarationGroupSeparator):
@@ -250,6 +281,23 @@ func formatCSTRoles(text string) string {
 				start: start,
 				end:   end,
 				text:  " {",
+			})
+			continue
+		case element.HasRole(cst.AttributedDeclarationStart):
+			if elementIndex < 2 || document.Elements[elementIndex-1].Kind != cst.Whitespace ||
+				!document.Elements[elementIndex-2].HasRole(cst.AttachedAttributeEnd) {
+				continue
+			}
+			attributeEnd := document.Elements[elementIndex-2]
+			indentStart := strings.LastIndexByte(text[:attributeEnd.Span.Start], '\n') + 1
+			indentEnd := indentStart
+			for indentEnd < attributeEnd.Span.Start && isHorizontalFormatterByte(text[indentEnd]) {
+				indentEnd++
+			}
+			replacements = append(replacements, formatterReplacement{
+				start: attributeEnd.Span.End,
+				end:   start,
+				text:  "\n" + text[indentStart:indentEnd],
 			})
 			continue
 		default:

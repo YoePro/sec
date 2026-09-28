@@ -1118,6 +1118,8 @@ func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 // parseCallArguments retains comma-delimited empty positions as explicit
 // InvalidExpression nodes. Consuming the comma guarantees progress while the
 // placeholder preserves positional information for diagnostics and tooling.
+// At EOF, completed arguments survive behind a virtual closing parenthesis;
+// the missing-token diagnostic still makes the parse unsuccessful.
 //
 // Rules:
 //   - rules/compiler/parser_recovery.md — "Argument-list recovery"
@@ -1129,8 +1131,11 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 		p.nextToken()
 		return args, true
 	}
-
 	for {
+		if p.peekToken.Type == lexer.EOF {
+			p.expectPeek(lexer.RPAREN)
+			return args, true
+		}
 		if p.peekToken.Type == lexer.COMMA {
 			missing := p.peekToken
 			message := fmt.Sprintf("missing argument expression at %d:%d", missing.Line, missing.Column)
@@ -1176,6 +1181,9 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			}
 		case lexer.RPAREN:
 			p.nextToken()
+			return args, true
+		case lexer.EOF:
+			p.expectPeek(lexer.RPAREN)
 			return args, true
 		default:
 			p.addError("expected ',' or ')' after argument at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -1616,6 +1624,14 @@ func (p *Parser) parsePrefixExpression() ast.Expression {
 	return expr
 }
 
+// parseGroupedExpression retains a completed inner expression when EOF is the
+// reliable boundary for a missing closing parenthesis. expectPeek still emits
+// the structured missing-token diagnostic and virtual-token recovery event, so
+// the partial AST remains tooling-only and cannot reach code generation.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Grouped expression"
+//   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseGroupedExpression() ast.Expression {
 	p.nextToken()
 
@@ -1625,6 +1641,9 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	}
 
 	if !p.expectPeek(lexer.RPAREN) {
+		if p.peekToken.Type == lexer.EOF {
+			return expr
+		}
 		return nil
 	}
 

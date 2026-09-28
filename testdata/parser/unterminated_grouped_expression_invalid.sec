@@ -1,0 +1,4 @@
+module main
+
+fn Value() int {
+    return (1 + 2

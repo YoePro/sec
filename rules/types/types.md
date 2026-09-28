@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-09-03
-- **Document revision:** 2.1
+- **Last updated:** 2026-09-28
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
 - **Implementation governance:** `governance/types.yaml`
@@ -682,7 +682,15 @@ Detailed rules for:
 
 belong in the temporal rulebook.
 
-Until those rules are defined, this rulebook establishes the types and their identity but does not invent additional temporal semantics.
+The representation and trusted-core boundary are defined by
+[`temporal.md`](temporal.md). That rulebook establishes the fixed phase-1 value
+representations and the UTC wall-clock properties `datetime.Now`, `date.Today`,
+and `time.Now` through a private core-only `_now` intrinsic. It does not make
+calendar arithmetic, formatting, parsing, local-time conversion, or monotonic
+clock acquisition available.
+
+This rulebook establishes the types and their identity but does not invent
+temporal semantics beyond those owned by `temporal.md`.
 
 ---
 

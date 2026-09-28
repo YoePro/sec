@@ -3,6 +3,8 @@ package sema
 import (
 	"reflect"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 func TestParameterUsageDistinguishesUnusedAndFieldRead(t *testing.T) {
@@ -387,6 +389,65 @@ fn Dynamic(flag: bool, left: int, right: int) int {
 	dynamic := parameterUsageSummaryNamed(t, analysis, "Dynamic")
 	for _, name := range []string{"flag", "left", "right"} {
 		parameter := parameterUsageParameterNamed(t, dynamic, name)
+		if parameter.Demand.Access != ParameterAccessRead {
+			t.Fatalf("dynamic %s demand = %#v", name, parameter.Demand)
+		}
+	}
+}
+
+// Parameter demand is computed only from reachable semantic paths. This also
+// applies after a statement that ends the current block and after an if whose
+// compiler-owned flow fact proves that every reachable branch terminates.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Unreachable paths"
+//   - rules/control-flow/flowcontrol_if.md — §19 "Terminating branches"
+func TestParameterUsageExcludesStatementsAfterTerminatingFlow(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn AfterReturn(live: int, unreachable: int) int {
+	return live
+	return unreachable
+}
+
+fn AfterPanic(unreachable: int) void {
+	panic
+	discard unreachable
+}
+
+fn AfterAvailable(value: int, unreachable: int) int {
+	if value is available {
+		return value
+	}
+	return unreachable
+}
+
+fn Dynamic(flag: bool, left: int, right: int) int {
+	if flag {
+		return left
+	}
+	return right
+}
+`)
+	if len(errors) != 3 {
+		t.Fatalf("errors = %+v, want three unreachable-statement diagnostics", errors)
+	}
+	for index, err := range errors {
+		if err.ID != diagnostics.UnreachableStatement {
+			t.Fatalf("error %d = %+v, want %s", index, err, diagnostics.UnreachableStatement)
+		}
+	}
+
+	analysis := analyzer.ParameterUsageAnalysis()
+	for _, callable := range []string{"AfterReturn", "AfterPanic", "AfterAvailable"} {
+		unreachable := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analysis, callable), "unreachable")
+		if unreachable.Demand.Access != ParameterAccessUnused || len(unreachable.Uses) != 0 {
+			t.Fatalf("%s unreachable demand = %#v, uses = %#v", callable, unreachable.Demand, unreachable.Uses)
+		}
+	}
+	for _, name := range []string{"flag", "left", "right"} {
+		parameter := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analysis, "Dynamic"), name)
 		if parameter.Demand.Access != ParameterAccessRead {
 			t.Fatalf("dynamic %s demand = %#v", name, parameter.Demand)
 		}

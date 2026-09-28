@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-11"
-    revised: "2026-09-21"
+    revised: "2026-09-28"
     summary: >-
       Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
       and MemorySpace independently from ordinary collections. The canonical
@@ -24,12 +24,14 @@ integrations:
         TensorLayout, and MemorySpace support identities without redefining compiler-owned intrinsic semantics
       - rank-one vector values participate in iterable type inference
       - contextual x parsing, multiplicative precedence, and static matrix/matrix and matrix/vector Sema with inner-dimension checks; scalar result algebra is partial
-      - the shared compiler-known member registry exposes read-only uint Rank and Len properties for statically shaped vector,
-        matrix, and tensor values and their type-level inventory; tensor_view exposes only its type-known Rank
-      - Sema, LSP completion, and hover consume those same shaped Rank/Len entries, including useful compile-time rank and total-element-count facts
+      - the shared compiler-known member registry exposes read-only Rank, Shape, and Len properties for statically shaped vector,
+        matrix, and tensor values and their type-level inventory; Shape has the exact Shape[Rank] result and retains ordered static extents for tooling; tensor_view exposes only its type-known Rank
+      - Sema, LSP completion, and hover consume those same shaped Rank/Shape/Len entries, including useful compile-time rank, ordered-extents, and total-element-count facts
+      - statically shaped vector, matrix, and tensor values expose instance Strides with the exact Strides[Rank] result and arbitrary-precision canonical dense row-major element-stride facts shared by Sema and LSP
+      - canonical dense owning vector, matrix, and tensor values expose instance IsContiguous as a compiler-known bool fact fixed to true; Sema and LSP consume the shared registry entry and no type-level property is invented
     remaining:
       - recognize owning runtime-shaped tensor[T, Shape[Rank]] without conflating it with tensor_view
-      - implement Shape, runtime Len where required, Strides, Layout, MemorySpace, IsContiguous, Ptr, and shaped instance SizeOf member semantics
+      - implement runtime Shape, Len, Strides, and IsContiguous where required, plus Layout, MemorySpace, Ptr, and shaped instance SizeOf member semantics
       - implement ShapedStorageRequest composition with StorageRequest and explicit Create request validation
       - implement Reshape as borrowed zero-copy view formation with runtime ShapeError checking where required
       - implement ToShape as consuming zero-copy ownership-preserving shape reinterpretation
@@ -51,9 +53,13 @@ integrations:
       - add formatter, LSP hover/completion, diagnostic, valid/invalid, analysis, and end-to-end shaped test coverage
     verification:
       - command: go test ./internal/sema -run CompilerKnownStaticShapedFacts -count=1
-        result: passed
-      - command: go test ./cmd/lsp -run ShapedRankAndLenCompletionAndHover -count=1
-        result: passed
+        result: passed on 2026-09-28 with exact Shape[Rank] results and ordered static extents
+      - command: go test ./cmd/lsp -run ShapedRankShapeAndLenCompletionAndHover -count=1
+        result: passed on 2026-09-28 with registry-backed Shape completion and hover
+      - command: go test ./cmd/lsp -run ShapedStridesCompletionAndHover -count=1
+        result: passed on 2026-09-28 with exact Strides[Rank] completion, hover, and canonical row-major facts
+      - command: go test ./cmd/lsp -run ShapedIsContiguousCompletionAndHover -count=1
+        result: passed on 2026-09-28 with registry-backed bool completion, hover, and compile-time true documentation
 
   - id: frontend.collections
     area: frontend

@@ -5,6 +5,43 @@ import (
 	"sec/internal/diagnostics"
 )
 
+// analyzePanicStatement records canonical explicit-panic metadata and, on a
+// reachable live path, the matching non-returning panic effect. The parser has
+// already restricted the optional message to one static string literal.
+//
+// Rules:
+//   - rules/errors/panic.md — § 13 "Panic information and reason IDs"
+//   - rules/errors/panic.md — § 17 "Explicit panic"
+//   - rules/errors/panic.md — § 21 "@noPanic"
+func (a *Analyzer) analyzePanicStatement(stmt *ast.PanicStatement) {
+	if stmt == nil {
+		return
+	}
+	message := ""
+	hasMessage := stmt.Message != nil
+	if hasMessage {
+		message = stmt.Message.Value
+	}
+	a.resolvedExplicitPanics[stmt] = ResolvedExplicitPanic{
+		Reason:     PanicReasonExplicitPanic,
+		ReasonID:   diagnostics.PanicReasonExplicitPanic,
+		Message:    message,
+		HasMessage: hasMessage,
+		File:       stmt.Token.File,
+		Line:       stmt.Token.Line,
+		Column:     stmt.Token.Column,
+		Function:   a.currentFunctionName,
+	}
+	if a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{
+		Kind:           EffectMayPanicExplicit,
+		Source:         stmt.Token,
+		PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonExplicitPanic},
+	})
+}
+
 // recordResolvedOperatorEffect publishes the exact set of canonical panic
 // reasons possible for a checked integer operation. It consumes resolved
 // operator meaning and types rather than rediscovering semantics from syntax.

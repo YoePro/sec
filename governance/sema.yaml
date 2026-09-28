@@ -100,7 +100,7 @@ integrations:
     area: frontend-semantic-ir-lowering-and-tooling
     status: partial
     audited: '2026-08-19'
-    revised: '2026-09-26'
+    revised: '2026-09-28'
     repository_baseline: c515862
     document_revision: inferred 2.x
     document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository
@@ -172,7 +172,7 @@ integrations:
     - direct string-concatenation operand matrix for built-in string, char, and rune with S1022 rejection of hidden
       non-text conversion
     - direct string += frontend operand validation
-    - resolved checked-integer operator facts and deterministic compile-time arithmetic failures
+    - resolved checked-integer operator facts, blocking constant division/remainder-by-zero diagnostics, and non-blocking S1023 potential-overflow warnings with checked runtime semantics retained
     - P7 checked-integer Semantic IR and Sec MLIR foundation
     - P8 signedness-correct integer Arith lowering including signed/unsigned comparison, division, remainder, and
       shifts
@@ -253,3 +253,5 @@ integrations:
     verification:
     - command: go test ./internal/parser -run 'ReservedQuestionMark|FocusedRecoveryDiagnosticMetadata|RecoveryPreservesNewlyCentralizedStatementStarts' -count=1
       result: passed on 2026-09-26 with canonical P2012 diagnostics, invalid-expression retention, and statement recovery
+    - command: go test ./internal/diagnostics ./internal/sema -count=1 && go test ./cmd/lsp -run TestConstantIntegerOverflowReachesLSPAsWarning -count=1
+      result: passed on 2026-09-28 with S1023 registered and emitted as a non-blocking warning while constant division and remainder by zero remain errors

@@ -366,6 +366,7 @@ integrations:
   - id: compiler.platform-model
     area: compiler-platform-and-tooling
     status: planned
+    revised: "2026-09-28"
     summary: >-
       Adds the canonical Sec platform registry and resolver, producing immutable
       per-Target/per-Variant CompilationPlans with typed architecture, CPU, Device,
@@ -393,6 +394,7 @@ integrations:
       - rules/analysis/isr_analysis.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.txt
+      - rules/corrections/applied/temporal-now-correction-20260928.md
     governance_reconciliation:
       - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
       - semantic Atomic[T] eligibility is distinct from concrete layout, operation, order, native/emulated, blocking and interrupt-safety capability in the selected CompilationPlan
@@ -417,6 +419,7 @@ integrations:
       - add a resolved LinkEnvironment for object format, entry conventions, startup requirements, relocation/link capabilities, and target libraries while keeping detailed linking semantics in its own rulebook
       - separate platform semantic capabilities from CompilerTargetSupport and toolchain availability so missing compiler emission/link support is not reported as invalid source or missing hardware capability
       - model capability availability as Supported, Unsupported, or Unknown and capability activation separately as Enabled, Disabled, or NotApplicable
+      - add UTCWallClock as a canonical capability and require Supported + Enabled only for reachable private core _now reads, never merely for temporal declarations
       - reject or defer consumers that require Unknown platform facts instead of guessing from the compiler host or another target
       - add deterministic TargetProfile capability/constraint composition without arbitrary registry inheritance or late overwrite semantics
       - add deterministic default selection for omitted ABI, CPU, and other target facts and reject ambiguous defaults

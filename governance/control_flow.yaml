@@ -1146,7 +1146,7 @@ integrations:
     area: frontend-expression-control-flow
     status: partial
     audited: '2026-08-19'
-    revised: '2026-09-27'
+    revised: '2026-09-28'
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_if.md
     document_revision: '2.0'
@@ -1193,7 +1193,7 @@ integrations:
     - ResolvedLogicalFlow records the selected left-value edge and short-circuit result for later consumers
     - left and right operands are each inferred once in source order by the dedicated logical flow path
     - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
-    - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining errors for insufficient guards
+    - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining S1023 warnings for insufficient guards
     partial:
     - literal reachability helpers recognize only BooleanLiteral syntax rather than a general compiler-proven constant-bool
       fact

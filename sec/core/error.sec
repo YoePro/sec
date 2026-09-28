@@ -8,6 +8,16 @@ enum DivisionByZeroError error {
     DivisionByZero,
 }
 
+enum DateError error {
+    InvalidDate,
+    OutOfRange,
+}
+
+enum TimeError error {
+    InvalidTime,
+    OutOfRange,
+}
+
 enum RangeError error {
     InvalidRange,
     StartAfterEnd,

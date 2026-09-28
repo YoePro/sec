@@ -114,13 +114,14 @@ type ArenaCallableSummary struct {
 type EffectKind string
 
 const (
-	EffectMayPanicArithmetic  EffectKind = "may-panic-arithmetic"
-	EffectMayPanicBounds      EffectKind = "may-panic-bounds"
-	EffectMayPanicExplicit    EffectKind = "may-panic-explicit"
-	EffectMayPanicAssertion   EffectKind = "may-panic-assertion"
-	EffectMayPanicUnreachable EffectKind = "may-panic-unreachable"
-	EffectVolatileRead        EffectKind = "volatile-read"
-	EffectVolatileWrite       EffectKind = "volatile-write"
+	EffectMayPanicArithmetic          EffectKind = "may-panic-arithmetic"
+	EffectMayPanicBounds              EffectKind = "may-panic-bounds"
+	EffectMayPanicExplicit            EffectKind = "may-panic-explicit"
+	EffectMayPanicAssertion           EffectKind = "may-panic-assertion"
+	EffectMayPanicUnreachable         EffectKind = "may-panic-unreachable"
+	EffectMayUseNondeterministicInput EffectKind = "may-use-nondeterministic-input"
+	EffectVolatileRead                EffectKind = "volatile-read"
+	EffectVolatileWrite               EffectKind = "volatile-write"
 )
 
 type EffectSite struct {

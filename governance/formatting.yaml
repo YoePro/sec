@@ -6,7 +6,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-16"
-    revised: "2026-09-25"
+    revised: "2026-09-28"
     summary: >-
       Introduces a lexer-backed, byte-lossless concrete-syntax foundation and
       lexical delimiter hierarchy. The formatter remains primarily a bespoke
@@ -58,6 +58,8 @@ integrations:
       - retain complete outer condition-parenthesis tokens on parsed if, while, and switch nodes and project them into an opt-in correction role only when they own the whole condition or subject and the following body is valid
       - format standalone multiline block and documentation comment tokens from the lossless CST into aligned-star form while retaining single-line and inline forms and shielding comment-owned delimiters from structural indentation
       - normalize the post-delimiter margin of lexer-owned line-comment tokens to `// text` or canonical empty `//` without reflowing comment prose or touching comment-like text in literals and block comments
+      - project parser-attached argument-free attribute endings and their declaration starts into CST roles, placing `@noCopy` and `@noPanic` on their own immediately attached lines without attribute-name-specific formatter scanning
+      - project matching closing delimiters for parser-valid function, method, initializer, and lambda parameter lists and add the grammar-permitted trailing comma when such a list is multiline
     remaining:
       - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
       - attach parser missing-token and skipped-token recovery nodes to the concrete syntax model
@@ -235,7 +237,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-09-25"
+    revised: "2026-09-28"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
@@ -401,6 +403,17 @@ integrations:
         incomplete real delimiter groups. The shared result exposes this state
         so sec fmt --check reports format.malformed-source rather than treating
         unchanged uncertain input as canonical; LSP returns the same bytes.
+      - >-
+        Parser-attached argument-free attributes now project their final token
+        and declaration start into CST roles. Ordinary formatting puts
+        `@noCopy` and `@noPanic` on their own immediately attached lines,
+        preserves method indentation, and removes the former `@noCopy`
+        name-specific trimmed-line rewrite.
+      - >-
+        Complete parser-valid function, method, initializer, and lambda
+        parameter lists now project their matching closing delimiter into the
+        CST. Multiline lists receive the required trailing comma while
+        single-line and recovered invalid lists remain outside this rewrite.
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,

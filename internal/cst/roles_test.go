@@ -148,6 +148,32 @@ func TestApplyProgramRolesMarksOnlyAvailabilityConditionBlocks(t *testing.T) {
 	}
 }
 
+// Attached attribute layout is projected only from declarations to which the
+// parser successfully attached a known attribute.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §16(14–17) "attributes"
+func TestApplyProgramRolesMarksAttachedAttributeBoundaries(t *testing.T) {
+	source := "@noCopy type Session struct {}\n\n@noPanic fn Safe() void {\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "attributes.sec")
+	document.ApplyProgramRoles(program)
+
+	var attributeEnds, declarationStarts int
+	for _, element := range document.Elements {
+		if element.HasRole(AttachedAttributeEnd) {
+			attributeEnds++
+		}
+		if element.HasRole(AttributedDeclarationStart) {
+			declarationStarts++
+		}
+	}
+	if attributeEnds != 2 || declarationStarts != 2 {
+		t.Fatalf("attribute ends = %d, declaration starts = %d; elements = %+v", attributeEnds, declarationStarts, document.Elements)
+	}
+}
+
 // Structural unit operators and grouping delimiters receive compact-spacing
 // roles only when the parser has accepted them inside a unit annotation. The
 // same tokens in an ordinary expression retain their ordinary CST identity.
@@ -184,19 +210,23 @@ func TestApplyProgramRolesMarksCallableParameterListOpeners(t *testing.T) {
 	document := Build(source, "callables.sec")
 	document.ApplyProgramRoles(program)
 
-	var parameterLists, otherParentheses int
+	var parameterLists, parameterListClosers, otherParentheses int
 	for _, element := range document.Elements {
-		if element.Token.Type != lexer.LPAREN {
-			continue
-		}
-		if element.HasRole(CallableParameterListOpen) {
-			parameterLists++
-		} else {
-			otherParentheses++
+		switch element.Token.Type {
+		case lexer.LPAREN:
+			if element.HasRole(CallableParameterListOpen) {
+				parameterLists++
+			} else {
+				otherParentheses++
+			}
+		case lexer.RPAREN:
+			if element.HasRole(CallableParameterListClose) {
+				parameterListClosers++
+			}
 		}
 	}
-	if parameterLists != 3 || otherParentheses != 1 {
-		t.Fatalf("parameter lists = %d, other parentheses = %d; elements = %+v", parameterLists, otherParentheses, document.Elements)
+	if parameterLists != 3 || parameterListClosers != 3 || otherParentheses != 1 {
+		t.Fatalf("parameter lists = %d, closers = %d, other parentheses = %d; elements = %+v", parameterLists, parameterListClosers, otherParentheses, document.Elements)
 	}
 }
 

@@ -3495,6 +3495,64 @@ enum TaskError error {
 	})
 }
 
+// rules/types/temporal.md §§1-2: loader-proven core refines the opaque
+// temporal fallback with private storage while preserving the intrinsic type
+// identity and its non-defaultable contract.
+func TestTrustedCoreOwnsTemporalRepresentationDeclarations(t *testing.T) {
+	input := `module core
+
+type date struct { _epochDays: int32, }
+type time struct { _nanosecondsSinceMidnight: uint64, }
+type datetime struct { _epochDays: int32, _nanosecondsSinceMidnight: uint64, }
+type duration struct { _nanoseconds: int64, }
+
+impl date {
+	fn Copy() date { return date { _epochDays: self._epochDays } }
+}
+`
+	const sourceFile = "sec/core/temporal.sec"
+	l := lexer.NewWithFile(input, sourceFile)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	program.SourceProvenance = map[string]ast.SourceProvenance{sourceFile: ast.SourceCore}
+	analyzer := NewAnalyzer()
+	assertSemaErrors(t, analyzer.Analyze(program), nil)
+
+	wantFields := map[string][]struct {
+		name string
+		typ  string
+	}{
+		"date":     {{"_epochDays", "int32"}},
+		"time":     {{"_nanosecondsSinceMidnight", "uint64"}},
+		"datetime": {{"_epochDays", "int32"}, {"_nanosecondsSinceMidnight", "uint64"}},
+		"duration": {{"_nanoseconds", "int64"}},
+	}
+	for _, name := range []string{"date", "time", "datetime", "duration"} {
+		typ := analyzer.Types()[name]
+		if typ.Kind != StructType || !typ.Intrinsic || len(typ.Fields) != len(wantFields[name]) {
+			t.Errorf("%s = %+v, want intrinsic backing struct", name, typ)
+			continue
+		}
+		for index, want := range wantFields[name] {
+			if field := typ.Fields[index]; field.Name != want.name || field.Type.Name != want.typ {
+				t.Errorf("%s field %d = %+v, want %s: %s", name, index, field, want.name, want.typ)
+			}
+		}
+		if IsDefaultable(typ) {
+			t.Errorf("%s must remain non-defaultable after core refinement", name)
+		}
+	}
+
+	date := analyzer.Types()["date"]
+	analyzer.currentModule = "main"
+	if analyzer.canAccessStructField(date, "_epochDays") {
+		t.Fatal("module-external source must not access date backing storage")
+	}
+}
+
 // rules/concurrency/tasks.md §15 and rules/concurrency/await.md §4 freeze the
 // compiler-known task execution error inventory shared by Sema and tooling.
 func TestCompilerKnownTaskErrorHasExactVariants(t *testing.T) {
@@ -12347,7 +12405,7 @@ fn Test(dynamic: int) void {
 	}
 }
 
-func TestCompileTimeCheckedIntegerFailuresDoNotReachSemanticIR(t *testing.T) {
+func TestCompileTimeCheckedIntegerDiagnostics(t *testing.T) {
 	input := `
 module main
 
@@ -12369,23 +12427,35 @@ fn Valid() void {
     let negate := -int8(127)
 }
 `
-	errors := analyzeSourceRaw(t, input)
-	want := []string{
-		diagnostics.OperatorIntegerOverflow,
-		diagnostics.OperatorIntegerOverflow,
-		diagnostics.OperatorIntegerOverflow,
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	wantErrors := []string{
 		diagnostics.OperatorDivisionByZero,
 		diagnostics.OperatorRemainderByZero,
-		diagnostics.OperatorIntegerOverflow,
-		diagnostics.OperatorIntegerOverflow,
-		diagnostics.OperatorIntegerOverflow,
 	}
-	if len(errors) != len(want) {
-		t.Fatalf("errors = %v, want %d", errors, len(want))
+	if len(errors) != len(wantErrors) {
+		t.Fatalf("errors = %v, want %d", errors, len(wantErrors))
 	}
-	for index, id := range want {
+	for index, id := range wantErrors {
 		if errors[index].ID != id || errors[index].Help == "" {
 			t.Errorf("error %d = %#v, want ID %s with help", index, errors[index], id)
+		}
+	}
+
+	warnings := analyzer.Warnings()
+	wantWarnings := []string{
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+		diagnostics.OperatorIntegerOverflow,
+	}
+	if len(warnings) != len(wantWarnings) {
+		t.Fatalf("warnings = %v, want %d", warnings, len(wantWarnings))
+	}
+	for index, id := range wantWarnings {
+		if warnings[index].ID != id || warnings[index].Severity != diagnostics.SeverityWarning || warnings[index].Help == "" {
+			t.Errorf("warning %d = %#v, want warning ID %s with help", index, warnings[index], id)
 		}
 	}
 }

@@ -1176,7 +1176,14 @@ compound forms of these operations
 
 ## Compile-time overflow
 
-When overflow is provable at compile time, compilation fails.
+When the local constant analysis indicates integer overflow, the compiler emits
+the `S1023` warning. The warning does not block compilation because a dominating
+flow proof may establish that the operation is safe even when that proof is not
+available at the expression itself.
+
+The accepted operation retains ordinary checked runtime semantics. Suppressing
+or downgrading the warning must never turn overflow into wrapping or undefined
+behavior.
 
 ## Runtime overflow
 
@@ -3060,7 +3067,9 @@ string literal concatenation
 shift-count validation
 ```
 
-A constant expression that would deterministically fail is a compile-time error.
+A constant expression that would deterministically fail is a compile-time error,
+except for checked integer overflow covered by `S1023`. That case is a warning
+and retains checked runtime failure semantics.
 
 ---
 

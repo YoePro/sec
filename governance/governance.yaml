@@ -58,3 +58,17 @@ integrations:
       - contextualMatrixMultiplyAhead
       - curPrecedence
       - inferMatrixMultiplyExpression
+
+  - id: governance.lexical-shaped-parser-status
+    area: documentation-governance
+    status: implemented
+    audited: '2026-08-20'
+    repository_baseline: c515862
+    summary: Governance now treats built-in collection and shaped type parser integration as implemented. Remaining
+      lexical/tooling work is limited to genuinely unsupported formatter, semantic-token, contextual-classification,
+      and recovery behavior.
+    governance_reconciliation:
+    - remove or narrow the stale built-in collection/shaped parser-integration remaining item
+    - keep contextual x formatter/semantic-token classification as remaining
+    - keep incomplete lexical/tooling classifications that are actually unsupported
+    status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.

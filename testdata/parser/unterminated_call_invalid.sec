@@ -1,0 +1,8 @@
+module main
+
+fn Sum(left: int, right: int) int {
+    return left + right
+}
+
+fn Value() int {
+    return Sum(1, 2

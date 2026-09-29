@@ -61,6 +61,8 @@ integrations:
       - normalize the post-delimiter margin of lexer-owned line-comment tokens to `// text` or canonical empty `//` without reflowing comment prose or touching comment-like text in literals and block comments
       - project parser-attached argument-free attribute endings and their declaration starts into CST roles, placing `@noCopy` and `@noPanic` on their own immediately attached lines without attribute-name-specific formatter scanning
       - project matching closing delimiters for parser-valid function, method, initializer, and lambda parameter lists and add the grammar-permitted trailing comma when such a list is multiline
+      - retain parser-owned explicit lambda-capture delimiters as CST roles and add the grammar-permitted trailing comma when a complete capture list is multiline
+      - project parser-confirmed executable block delimiters into CST roles and expand one-line and empty executable bodies to canonical multiline layout without rewriting aggregate literals or compact empty structural declarations
       - retain parser-owned range, slice-range, and contextual for-step tokens as CST roles and normalize only their horizontal trivia, keeping range operators compact and step surrounded by one space without rewriting ordinary step identifiers
       - project complete struct-field colon, type-start, and tag anchors into CST roles; align contiguous field type columns structurally, then align tags as a secondary column, splitting at comments, blank lines, multiline fields, and declaration boundaries while independently dropping a primary or secondary candidate that exceeds the default sixteen-space padding limit
     remaining:
@@ -418,6 +420,18 @@ integrations:
         parameter lists now project their matching closing delimiter into the
         CST. Multiline lists receive the required trailing comma while
         single-line and recovered invalid lists remain outside this rewrite.
+      - >-
+        Complete parser-valid explicit lambda capture lists now retain their
+        opening delimiter and project the matching pair into CST roles.
+        Multiline capture lists receive the required trailing comma while
+        single-line capture syntax and ordinary parenthesized expressions
+        remain unchanged.
+      - >-
+        Parser-confirmed executable blocks now project their real opening and
+        closing braces into CST roles. One-line function, control-flow, defer,
+        and other executable bodies expand recursively to canonical multiline
+        layout, including empty bodies, while aggregate literals and compact
+        empty structural declarations remain distinct and unchanged.
       - >-
         Parser-confirmed range expressions, slice ranges, and contextual
         for-range step keywords now retain their exact tokens as CST roles.

@@ -4276,8 +4276,11 @@ None => {             }
 }
 `
 	want := `match self.Domain {
-    Some(domain) => { out += "; Domain=" + domain }
-    None => {}
+    Some(domain) => {
+        out += "; Domain=" + domain
+    }
+    None => {
+    }
 }
 `
 

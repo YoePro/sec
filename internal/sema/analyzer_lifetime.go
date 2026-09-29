@@ -160,6 +160,144 @@ func (a *Analyzer) rejectPhysicalStorageMove(place Place, token lexer.Token) boo
 	return true
 }
 
+// checkBorrowCreation resolves explicit ref/ref mut syntax to a reusable Place
+// before availability, addressability, authority, and active-borrow checks.
+// Invocation-lifetime variadic packs and temporary expressions cannot expose
+// independently observable references.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §5.1 "Explicit borrow syntax"
+//   - rules/memory/borrowing.md — §5.2 "Addressable Place requirement"
+//   - rules/declarations/functions.md — §32 variadic pack lifetime
+func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token lexer.Token) bool {
+	if identifier, ok := expr.(*ast.Identifier); ok && a.variadicPackSymbol(identifier.Value) {
+		a.addErrorAtToken(token, "variadic parameter pack cannot expose references")
+		return true
+	}
+	place, ok := a.resolvePlace(expr)
+	if !ok {
+		switch expr.(type) {
+		case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression, *ast.SliceExpression:
+			return false
+		default:
+			a.addErrorAtToken(token, "cannot borrow temporary expression; a reusable place is required")
+			return true
+		}
+	}
+	return a.checkBorrowCreationPlace(place, mutable, token)
+}
+
+// checkBorrowCreationPlace enforces source availability separately from
+// mutable authority and compatibility with active borrows. Available disjoint
+// sub-Places remain borrowable from a partially available aggregate, while a
+// whole, unavailable, uninitialized, or conditionally available Place does not.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §5.3 "Source validity"
+//   - rules/memory/borrowing.md — §6 "Availability and borrowing are separate"
+//   - rules/memory/borrowing.md — §7 "Mutability authority"
+//   - rules/memory/ownership.md — §5 "Availability model"
+func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lexer.Token) bool {
+	if place.AmbiguousProvenance {
+		a.addErrorAtToken(token, "cannot borrow through reference with unknown control-flow provenance")
+		return true
+	}
+	if !place.Addressable {
+		a.addErrorAtToken(token, "cannot borrow non-addressable place %s", place.String())
+		return true
+	}
+	if a.checkPlaceAvailableForBorrow(place, token) {
+		return true
+	}
+	if mutable && !place.Mutable {
+		if len(place.Projections) == 0 {
+			a.addErrorAtToken(token, "cannot create mutable reference to immutable variable %s", place.Root)
+		} else {
+			a.addErrorAtToken(token, "cannot create mutable reference to immutable place %s", place.String())
+		}
+		return true
+	}
+	for _, candidate := range placeOriginAlternatives(place) {
+		if candidate.Root == "" {
+			continue
+		}
+		for _, record := range a.borrows[candidate.Root] {
+			if record.Kind == deferredUse {
+				continue
+			}
+			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
+				continue
+			}
+			if !borrowPlacesOverlap(candidate, record) {
+				continue
+			}
+			if !mutable && record.Kind == sharedBorrow {
+				continue
+			}
+			if mutable {
+				if record.LoopCarried {
+					a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
+					return true
+				}
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s while it is already borrowed", place.String())
+				return true
+			}
+			if record.LoopCarried {
+				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
+				return true
+			}
+			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s while it is mutably borrowed", place.String())
+			return true
+		}
+	}
+	return false
+}
+
+// checkPlaceAvailableForBorrow diagnoses ownership-state failures at borrow
+// creation without treating availability as proof that no conflicting borrow
+// exists. It preserves the earlier ownership operation as diagnostic context.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §5.3(1–3) source validity
+//   - rules/memory/borrowing.md — §6(1–7) availability versus authority
+//   - rules/memory/ownership.md — §5.2–5.6 availability states
+func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) bool {
+	if assigned, tracked := a.assigned[place.Root]; tracked && !assigned {
+		a.addErrorAtToken(token, "cannot borrow uninitialized place %s", place.String())
+		return true
+	}
+	movedAt, movedKey, partial, unavailable := a.unavailablePlace(place)
+	if !unavailable {
+		return false
+	}
+	if partial {
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow partially available place %s; sub-place %s is unavailable", place.String(), movedKey)
+		return true
+	}
+	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow conditionally available place %s; refine it with `%s is available` first", place.String(), place.String())
+		return true
+	}
+	if a.loopBackedgePlaces[movedKey] {
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow place %s because it may be unavailable on a later loop iteration", place.String())
+		return true
+	}
+	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
+	switch reason {
+	case "discarded":
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was discarded here", place.String())
+	case "detached":
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was detached here", place.String())
+	case "released":
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was released here", place.String())
+	case "consumed by call":
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was consumed by call here", place.String())
+	default:
+		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was moved here", place.String())
+	}
+	return true
+}
+
 // markExplicitMoveSource commits one already validated explicit Place move and
 // ends borrows held by a wholly moved non-reference root.
 //

@@ -230,6 +230,64 @@ func TestApplyProgramRolesMarksCallableParameterListOpeners(t *testing.T) {
 	}
 }
 
+// Explicit capture delimiters are parser-owned so formatting can distinguish
+// them from ordinary calls and parenthesized expressions.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §16(12) multiline capture lists
+func TestApplyProgramRolesMarksLambdaCaptureListDelimiters(t *testing.T) {
+	source := "fn Build() void {\n    let closure := capture(\n        first,\n        <-second,\n    ) fn() int {\n        return first + second\n    }\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "lambda_capture.sec")
+	document.ApplyProgramRoles(program)
+
+	var captureOpeners, captureClosers int
+	for _, element := range document.Elements {
+		if element.HasRole(LambdaCaptureListOpen) {
+			captureOpeners++
+		}
+		if element.HasRole(LambdaCaptureListClose) {
+			captureClosers++
+		}
+	}
+	if captureOpeners != 1 || captureClosers != 1 {
+		t.Fatalf("capture openers = %d, closers = %d; elements = %+v", captureOpeners, captureClosers, document.Elements)
+	}
+}
+
+// Executable braces are distinguished from structural declaration and value
+// literal braces before the formatter makes multiline layout decisions.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §8(3–8) brace placement
+func TestApplyProgramRolesMarksOnlyExecutableBlockDelimiters(t *testing.T) {
+	source := "type Pair struct { Left: int, Right: int }\n\nfn Build() Pair { return Pair { Left: 1, Right: 2 } }\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "executable_blocks.sec")
+	document.ApplyProgramRoles(program)
+
+	var executableOpeners, executableClosers, otherOpeners int
+	for _, element := range document.Elements {
+		switch element.Token.Type {
+		case lexer.LBRACE:
+			if element.HasRole(ExecutableBlockOpen) {
+				executableOpeners++
+			} else {
+				otherOpeners++
+			}
+		case lexer.RBRACE:
+			if element.HasRole(ExecutableBlockClose) {
+				executableClosers++
+			}
+		}
+	}
+	if executableOpeners != 1 || executableClosers != 1 || otherOpeners != 2 {
+		t.Fatalf("executable openers = %d, closers = %d, other openers = %d; elements = %+v", executableOpeners, executableClosers, otherOpeners, document.Elements)
+	}
+}
+
 func TestApplyProgramRolesMarksOnlyDeclarationGroupSeparators(t *testing.T) {
 	source := "fn Build() void {\n    let first := Pair(1, 2), second := 3, third := 4\n}\n"
 	program := parser.New(lexer.New(source)).ParseProgram()

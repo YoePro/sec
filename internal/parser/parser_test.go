@@ -3387,8 +3387,8 @@ fn MissingCondition() void {
 		t.Fatalf("wrong function body count. got=%d want=1", len(fn.Body.Statements))
 	}
 	ifStmt := fn.Body.Statements[0].(*ast.IfStatement)
-	if ifStmt.Condition != nil {
-		t.Fatalf("condition should be nil after recovery, got=%T", ifStmt.Condition)
+	if invalid, ok := ifStmt.Condition.(*ast.InvalidExpression); !ok || invalid.Recovery == nil {
+		t.Fatalf("condition should be an InvalidExpression after recovery, got=%#v", ifStmt.Condition)
 	}
 }
 
@@ -4674,6 +4674,10 @@ fn Test() void {
 	fn := program.Statements[0].(*ast.FunctionDeclaration)
 	if len(fn.Body.Statements) != 2 {
 		t.Fatalf("parser should recover after invalid while. got=%d statements", len(fn.Body.Statements))
+	}
+	whileStmt := fn.Body.Statements[0].(*ast.WhileStatement)
+	if invalid, ok := whileStmt.Condition.(*ast.InvalidExpression); !ok || invalid.Recovery == nil {
+		t.Fatalf("condition should be an InvalidExpression after recovery, got=%#v", whileStmt.Condition)
 	}
 }
 

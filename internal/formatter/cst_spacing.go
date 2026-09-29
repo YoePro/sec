@@ -33,6 +33,7 @@ type formatterReplacement struct {
 //   - rules/tooling/formatter.md — §18 "Control flow"
 //   - rules/tooling/formatter.md — §20 "Patterns and destructuring"
 //   - rules/tooling/formatter.md — §16(14–17) "attributes"
+//   - rules/tooling/formatter.md — §16(12) "multiline capture lists"
 //   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
 func formatCSTRoles(text string) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
@@ -97,11 +98,13 @@ func formatCSTRoles(text string) string {
 				text:  element.Text,
 			})
 			continue
-		case element.HasRole(cst.CallableParameterListClose):
+		case element.HasRole(cst.CallableParameterListClose) || element.HasRole(cst.LambdaCaptureListClose):
 			var parameterGroup *cst.DelimiterGroup
 			for groupIndex := range document.Groups {
 				group := &document.Groups[groupIndex]
-				if group.Close == elementIndex && document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) {
+				if group.Close == elementIndex &&
+					(document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) ||
+						document.Elements[group.Open].HasRole(cst.LambdaCaptureListOpen)) {
 					parameterGroup = group
 					break
 				}

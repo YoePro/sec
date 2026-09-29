@@ -11435,26 +11435,6 @@ func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bo
 	return true
 }
 
-func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token lexer.Token) bool {
-	if identifier, ok := expr.(*ast.Identifier); ok && a.variadicPackSymbol(identifier.Value) {
-		// rules/declarations/functions.md section 32 forbids references into
-		// an invocation-lifetime pack from becoming independently observable.
-		a.addErrorAtToken(token, "variadic parameter pack cannot expose references")
-		return true
-	}
-	place, ok := a.resolvePlace(expr)
-	if !ok {
-		switch expr.(type) {
-		case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression, *ast.SliceExpression:
-			return false
-		default:
-			a.addErrorAtToken(token, "cannot borrow temporary expression; a reusable place is required")
-			return true
-		}
-	}
-	return a.checkBorrowCreationPlace(place, mutable, token)
-}
-
 // variadicPackSymbol identifies a callee-local pack binding for the pack
 // escape restrictions in rules/declarations/functions.md sections 32 and 34.
 func (a *Analyzer) variadicPackSymbol(name string) bool {
@@ -11482,61 +11462,6 @@ func (a *Analyzer) variadicPackElementExpression(expr ast.Expression) bool {
 func variadicPackValue(typ Type) bool {
 	typ = dereferenceType(typ)
 	return typ.Kind == VariadicPackType
-}
-
-func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lexer.Token) bool {
-	if place.AmbiguousProvenance {
-		a.addErrorAtToken(token, "cannot borrow through reference with unknown control-flow provenance")
-		return true
-	}
-	if !place.Addressable {
-		a.addErrorAtToken(token, "cannot borrow non-addressable place %s", place.String())
-		return true
-	}
-	if mutable {
-		if !place.Mutable {
-			if len(place.Projections) == 0 {
-				a.addErrorAtToken(token, "cannot create mutable reference to immutable variable %s", place.Root)
-			} else {
-				a.addErrorAtToken(token, "cannot create mutable reference to immutable place %s", place.String())
-			}
-			return true
-		}
-	}
-	for _, candidate := range placeOriginAlternatives(place) {
-		if candidate.Root == "" {
-			continue
-		}
-		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind == deferredUse {
-				continue
-			}
-			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
-				continue
-			}
-			if !borrowPlacesOverlap(candidate, record) {
-				continue
-			}
-			if !mutable && record.Kind == sharedBorrow {
-				continue
-			}
-			if mutable {
-				if record.LoopCarried {
-					a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s because an overlapping borrow may remain active from a previous loop iteration", place.String())
-					return true
-				}
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create mutable reference to %s while it is already borrowed", place.String())
-				return true
-			}
-			if record.LoopCarried {
-				a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s because an overlapping mutable borrow may remain active from a previous loop iteration", place.String())
-				return true
-			}
-			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot create shared reference to %s while it is mutably borrowed", place.String())
-			return true
-		}
-	}
-	return false
 }
 
 func (a *Analyzer) checkBorrowedRead(name string, token lexer.Token) bool {

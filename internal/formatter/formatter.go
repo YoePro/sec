@@ -165,6 +165,7 @@ func format(text string, options Options) string {
 	// columns and comment text never participates in structural indentation.
 	out = alignDeclarationTrailingComments(out)
 	result := strings.Join(out, "\n")
+	result = formatExecutableBlocks(result)
 	result = formatCSTRoles(result)
 	result = formatCSTBlockComments(result)
 	result = formatCSTLineComments(result)

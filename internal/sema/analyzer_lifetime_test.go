@@ -279,3 +279,112 @@ fn MoveOnlyCaptureIsValid() int {
 		t.Fatalf("move capture diagnostic = %+v", errors[1])
 	}
 }
+
+// Explicit borrow creation requires an initialized, wholly available Place on
+// the current path. A disjoint available sibling remains independently valid.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §5.3 "Source validity"
+//   - rules/memory/borrowing.md — §6(6–7) partial availability
+//   - rules/memory/ownership.md — §5.2–5.6 availability states
+func TestBorrowCreationRejectsUnavailableOwnershipStates(t *testing.T) {
+	tests := map[string]struct {
+		source string
+		want   string
+	}{
+		"uninitialized": {
+			source: `
+type Resource union { Ready(int), Failed }
+fn Check() void {
+	let mut resource: Resource
+	let borrowed := ref resource
+}
+`,
+			want: "cannot borrow uninitialized place resource",
+		},
+		"moved": {
+			source: `
+@noCopy
+type Resource struct { value: int }
+fn Check() void {
+	let resource := Resource { value: 1 }
+	let moved :<- resource
+	let borrowed := ref resource
+	discard moved
+}
+`,
+			want: "cannot borrow unavailable place resource; it was moved here",
+		},
+		"partially available whole": {
+			source: `
+@noCopy
+type Resource struct { value: int }
+type Package struct { payload: Resource, count: int }
+fn Check() void {
+	let package := Package { payload: Resource { value: 1 }, count: 2 }
+	let payload :<- package.payload
+	let whole := ref package
+	let sibling := ref package.count
+	discard payload
+}
+`,
+			want: "cannot borrow partially available place package; sub-place package.payload is unavailable",
+		},
+		"conditionally available": {
+			source: `
+@noCopy
+type Resource struct { value: int }
+fn Check(resource: Resource, consume: bool) void {
+	if consume {
+		let moved :<- resource
+		discard moved
+	}
+	let borrowed := ref resource
+}
+`,
+			want: "cannot borrow conditionally available place resource; refine it with `resource is available` first",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			errors := analyzeSource(t, test.source)
+			if len(errors) != 1 || !strings.Contains(errors[0].Message, test.want) {
+				t.Fatalf("borrow availability diagnostics = %v, want %q", errors, test.want)
+			}
+		})
+	}
+}
+
+// Availability refinement proves ownership only. It enables a borrow on the
+// available branch but does not override an independently active mutable borrow.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §5.3(3) conditional availability
+//   - rules/memory/borrowing.md — §6 "Availability and borrowing are separate"
+//   - rules/memory/ownership.md — §21 availability refinement
+func TestAvailabilityRefinementAllowsBorrowWithoutBypassingBorrowConflict(t *testing.T) {
+	errors := analyzeSource(t, `
+@noCopy
+type Resource struct { value: int }
+fn Refined(resource: Resource, consume: bool) void {
+	if consume {
+		let moved :<- resource
+		discard moved
+	}
+	if resource is available {
+		let borrowed := ref resource
+	}
+}
+fn StillBorrowed() void {
+	let mut resource := Resource { value: 1 }
+	let exclusive := ref mut resource
+	if resource is available {
+		let shared := ref resource
+	}
+}
+`)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot create shared reference to resource while it is mutably borrowed") {
+		t.Fatalf("availability/borrow-authority diagnostics = %v", errors)
+	}
+}

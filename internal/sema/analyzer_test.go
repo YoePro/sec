@@ -12105,7 +12105,7 @@ fn Test() void {
 	Use(ref session)
 }
 `)
-	if len(errors) != 1 || !strings.Contains(errors[0].Message, "use of moved value session") {
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "cannot borrow unavailable place session; it was moved here") {
 		t.Fatalf("aggregate discard errors = %v", errors)
 	}
 }

@@ -2109,8 +2109,8 @@ fn TestExplicit() void {
 	if !strings.Contains(errors[0].Message, "Resource value resource cannot be copied") ||
 		!strings.Contains(errors[1].Message, "Resource value resource cannot be copied") ||
 		!strings.Contains(errors[2].Message, "Resource value resource cannot be copied") ||
-		!strings.Contains(errors[3].Message, "use of moved value resource") ||
-		!strings.Contains(errors[4].Message, "use of moved value resource2") {
+		!strings.Contains(errors[3].Message, "cannot borrow unavailable place resource; it was moved here") ||
+		!strings.Contains(errors[4].Message, "cannot borrow unavailable place resource2; it was moved here") {
 		t.Fatalf("unexpected construction ownership diagnostics: %v", errors)
 	}
 	for _, diagnostic := range errors[:3] {

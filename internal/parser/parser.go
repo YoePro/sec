@@ -1124,41 +1124,50 @@ func (p *Parser) parseMatchStatement() ast.Statement {
 	return &ast.MatchStatement{Token: expr.Token, Match: expr}
 }
 
+// parseIfStatement retains an explicit invalid condition when the consequence
+// block starts immediately after if. The valid consequence and any following
+// else branch remain attached to the recovered statement.
+//
+// Rules:
+//   - rules/foundations/grammar.md — IfStatement
+//   - rules/compiler/parser_recovery.md — "If recovery", "Missing condition"
 func (p *Parser) parseIfStatement() ast.Statement {
 	stmt := &ast.IfStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.LBRACE {
-		p.addError("if statement missing condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		missing := p.peekToken
+		message := fmt.Sprintf("if statement missing condition at %d:%d", missing.Line, missing.Column)
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, missing, nil, &missing, "%s", message)
+		stmt.Condition = p.invalidExpression(missing, message, compilerdiagnostics.ParserInvalidExpression)
 		p.nextToken()
 		stmt.Consequence = p.parseStatementBlock("if body")
-		return stmt
-	}
+	} else {
+		parenthesized := p.peekToken.Type == lexer.LPAREN
+		p.nextToken()
+		if parenthesized {
+			stmt.ConditionOpen = p.curToken
+		}
+		previousStopBeforeBrace := p.stopBeforeBrace
+		p.stopBeforeBrace = true
+		stmt.Condition = p.parseExpression(LOWEST)
+		p.stopBeforeBrace = previousStopBeforeBrace
+		if stmt.Condition == nil {
+			return nil
+		}
+		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
+			stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition)
+		}
+		if parenthesized && p.curToken.Type == lexer.RPAREN {
+			stmt.ConditionClose = p.curToken
+		}
 
-	parenthesized := p.peekToken.Type == lexer.LPAREN
-	p.nextToken()
-	if parenthesized {
-		stmt.ConditionOpen = p.curToken
+		if p.peekToken.Type != lexer.LBRACE {
+			p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return stmt
+		}
+		p.nextToken()
+		stmt.Consequence = p.parseStatementBlock("if body")
 	}
-	previousStopBeforeBrace := p.stopBeforeBrace
-	p.stopBeforeBrace = true
-	stmt.Condition = p.parseExpression(LOWEST)
-	p.stopBeforeBrace = previousStopBeforeBrace
-	if stmt.Condition == nil {
-		return nil
-	}
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
-		stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition)
-	}
-	if parenthesized && p.curToken.Type == lexer.RPAREN {
-		stmt.ConditionClose = p.curToken
-	}
-
-	if p.peekToken.Type != lexer.LBRACE {
-		p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return stmt
-	}
-	p.nextToken()
-	stmt.Consequence = p.parseStatementBlock("if body")
 	if stmt.Consequence == nil {
 		return nil
 	}
@@ -1386,11 +1395,20 @@ func (p *Parser) parseForStatement() ast.Statement {
 	return stmt
 }
 
+// parseWhileStatement retains an explicit invalid condition when the loop body
+// starts immediately after while, preserving the body and its outer boundary.
+//
+// Rules:
+//   - rules/foundations/grammar.md — WhileStatement
+//   - rules/compiler/parser_recovery.md — "While recovery", "Missing condition"
 func (p *Parser) parseWhileStatement() ast.Statement {
 	stmt := &ast.WhileStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.LBRACE {
-		p.addError("while statement missing condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		missing := p.peekToken
+		message := fmt.Sprintf("while statement missing condition at %d:%d", missing.Line, missing.Column)
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, missing, nil, &missing, "%s", message)
+		stmt.Condition = p.invalidExpression(missing, message, compilerdiagnostics.ParserInvalidExpression)
 		p.nextToken()
 		stmt.Body = p.parseStatementBlock("while body")
 		return stmt

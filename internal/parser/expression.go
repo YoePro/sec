@@ -130,7 +130,7 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		left = p.parseMatchExpression()
 
 	case lexer.FN:
-		left = p.parseLambdaExpression(nil)
+		left = p.parseLambdaExpression(nil, lexer.Token{})
 
 	case lexer.CAPTURE:
 		left = p.parseCaptureLambdaExpression()
@@ -358,6 +358,7 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
+	captureOpen := p.curToken
 
 	for p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
 		capture := ast.LambdaCapture{Mode: ast.LambdaCaptureCopy}
@@ -409,11 +410,11 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 		return nil
 	}
 
-	return p.parseLambdaExpression(captures)
+	return p.parseLambdaExpression(captures, captureOpen)
 }
 
-func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture) ast.Expression {
-	expr := &ast.LambdaExpression{Token: p.curToken, Captures: captures}
+func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen lexer.Token) ast.Expression {
+	expr := &ast.LambdaExpression{Token: p.curToken, CaptureOpen: captureOpen, Captures: captures}
 
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil

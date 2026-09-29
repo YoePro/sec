@@ -99,6 +99,8 @@ integrations:
       - malformed member access retains its valid receiver and dot in an InvalidExpression with recovery metadata; a missing name at EOF preserves the enclosing return/function, while repeated dots stop without inventing or nesting a member access and later declarations survive
       - missing prefix and infix operands before reliable delimiters retain their operator and any valid left operand with an explicit InvalidExpression child; the enclosing brace or comma remains unconsumed so later block declarations and list elements survive
       - ordinary and try assignments with a missing source expression retain their target, exact operator and InvalidExpression value; closing block braces remain unconsumed and following functions survive across all assignment parser paths
+      - if and else-if statements with a missing condition retain a brace-anchored InvalidExpression plus their parsed consequence and alternative branches; later statements and declarations survive without nil condition nodes
+      - while statements with a missing condition retain a brace-anchored InvalidExpression and their parsed body; later statements and declarations survive without nil condition nodes
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -178,6 +180,8 @@ integrations:
       - internal/parser/member_access_recovery_test.go
       - internal/parser/expression_operand_recovery_test.go
       - internal/parser/assignment_value_recovery_test.go
+      - internal/parser/if_condition_recovery_test.go
+      - internal/parser/while_condition_recovery_test.go
     verification:
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
@@ -279,6 +283,10 @@ integrations:
         result: passed on 2026-09-29; missing prefix and infix operands retain partial AST nodes, leave brace and comma boundaries to their owners, and preserve following declarations and list elements
       - command: go test ./internal/parser -run TestMissingAssignmentValuesRetainTargetsAndBlockBoundaries -count=1
         result: passed on 2026-09-29; ordinary and try assignments retain targets, operators, invalid values, closing braces, and the following declaration
+      - command: go test ./internal/parser -run 'Test(ParseIfMissingCondition|MissingIfConditionsRetain)' -count=1
+        result: passed on 2026-09-29; missing conditions use explicit invalid AST nodes while consequence, else, nested else-if, later statements, and following declarations survive
+      - command: go test ./internal/parser -run 'Test(ParseWhileRequiresCondition|MissingWhileConditionRetains)' -count=1
+        result: passed on 2026-09-29; a missing while condition uses an explicit invalid AST node while the body, following statement, and next declaration survive
 
     remaining:
       - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, and empty impl-property type positions

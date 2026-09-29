@@ -131,7 +131,7 @@ func TestFormatPreservesLexicalContextSpellings(t *testing.T) {
 		"multipleOf 2",
 		"`wire:\"value\"`",
 		"spawn thread Work()",
-		"_ => {}",
+		"_ => {",
 	} {
 		if !strings.Contains(got, spelling) {
 			t.Fatalf("formatter lost contextual spelling %q:\n%s", spelling, got)
@@ -288,7 +288,7 @@ func TestFormatImplExtension(t *testing.T) {
 // rules/declarations/static.md, sections 3, 6, and 25.
 func TestFormatRemovesOnlyRedundantModuleStatic(t *testing.T) {
 	input := "static let Global: int := 1\n\nimpl Counter {\nstatic let Value: int := 2\nstatic let mut Total: int := 0\nstatic property Current: int {\nget { return Counter.Value }\n}\n}\n\nfn Use() void {\nstatic let Calls: int := 0\n}\n"
-	want := "let Global: int := 1\n\nimpl Counter {\n    static let Value: int := 2\n    static let mut Total: int := 0\n    static property Current: int {\n        get { return Counter.Value }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
+	want := "let Global: int := 1\n\nimpl Counter {\n    static let Value: int := 2\n    static let mut Total: int := 0\n    static property Current: int {\n        get {\n            return Counter.Value\n        }\n    }\n}\n\nfn Use() void {\n    static let Calls: int := 0\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong static formatting:\n%s\nwant:\n%s", got, want)
 	}
@@ -351,6 +351,47 @@ func TestFormatAddsTrailingCommaToMultilineCallableParameters(t *testing.T) {
 	}
 }
 
+// Rules:
+//   - rules/tooling/formatter.md — §11(2) multiline trailing commas
+//   - rules/tooling/formatter.md — §16(12) multiline capture lists
+func TestFormatAddsTrailingCommaToMultilineLambdaCaptures(t *testing.T) {
+	input := "fn Build() void {\nlet closure := capture(\nfirst,\n<-second\n) fn() int {\nreturn first + second\n}\n}\n"
+	want := "fn Build() void {\n    let closure := capture(\n        first,\n        <-second,\n    ) fn() int {\n        return first + second\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong multiline capture formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if second := Format(Source{Text: got}, Options{}).Text; second != got {
+		t.Fatalf("multiline capture formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, second)
+	}
+}
+
+// Ordinary executable blocks are always multiline, including empty bodies;
+// aggregate literals and empty structural declarations are distinct syntax.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §8(3–8) brace placement
+//   - rules/tooling/formatter.md — §15(1–2) structural declarations and literals
+func TestFormatExpandsSingleLineExecutableBlocks(t *testing.T) {
+	input := "type Marker struct {}\n\nfn Run(ready: bool) void { if ready { Start() } else { Stop() } }\n\nfn Cleanup() void { defer { Close() } }\n\nfn Empty() void {}\n"
+	want := "type Marker struct {}\n\nfn Run(ready: bool) void {\n    if ready {\n        Start()\n    } else {\n        Stop()\n    }\n}\n\nfn Cleanup() void {\n    defer {\n        Close()\n    }\n}\n\nfn Empty() void {\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong executable-block formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if second := Format(Source{Text: got}, Options{}).Text; second != got {
+		t.Fatalf("executable-block formatting is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, second)
+	}
+}
+
+func TestFormatLeavesSingleLineAggregateLiteralCompact(t *testing.T) {
+	input := "type Pair struct { Left: int, Right: int }\n\nfn Build() Pair { return Pair { Left: 1, Right: 2 } }\n"
+	want := "type Pair struct { Left: int, Right: int }\n\nfn Build() Pair {\n    return Pair { Left: 1, Right: 2 }\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("aggregate literal was treated as an executable block:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestFormatDeclarationGroupSeparatorsFromCST(t *testing.T) {
 	input := "fn Build() void {\nlet first := Pair(1,2) ,second := 3  ,  third := 4\nfloat: low := 1.0 ,high := 2.0\n}\n"
 	want := "fn Build() void {\n    let first := Pair(1, 2), second := 3, third := 4\n    float: low := 1.0, high := 2.0\n}\n"
@@ -410,8 +451,11 @@ let grouped := (             first + second              )
 `
 	want := `fn Render() void {
     match self.Domain {
-        Some(domain) => { out += "; Domain=" + domain }
-        None => {}
+        Some(domain) => {
+            out += "; Domain=" + domain
+        }
+        None => {
+        }
     }
     let values := [first, Build("(", [second, third])]
     let item := Build(Item { Left: first, Right: second }, third)
@@ -793,7 +837,9 @@ return self.readOne(ILLEGAL)
             Message: $"unexpected byte-order mark at {line}:{column}",
             Primary: token,
         }) {
-            Err(error) => { return }
+            Err(error) => {
+                return
+            }
         }
         return token
     }
@@ -996,7 +1042,7 @@ func TestFormatStandaloneMultilineBlockCommentsFromCST(t *testing.T) {
 
 func TestFormatStandaloneDocumentationBlockCommentRetainsForm(t *testing.T) {
 	input := "/** Summary.\nMore detail. */\nfn Example() void {}\n"
-	want := "/**\n * Summary.\n * More detail.\n */\nfn Example() void {}\n"
+	want := "/**\n * Summary.\n * More detail.\n */\nfn Example() void {\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
 		t.Fatalf("wrong documentation block-comment formatting:\n%s\nwant:\n%s", got, want)

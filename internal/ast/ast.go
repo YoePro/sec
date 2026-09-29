@@ -1026,6 +1026,7 @@ func (p *Parameter) TokenLiteral() string {
 
 type LambdaExpression struct {
 	Token         lexer.Token
+	CaptureOpen   lexer.Token
 	Captures      []LambdaCapture
 	ParameterOpen lexer.Token
 	Parameters    []*Parameter

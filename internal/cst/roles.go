@@ -34,6 +34,17 @@ const (
 	// CallableParameterListClose marks the matching real closing parenthesis of
 	// a complete parsed callable parameter list.
 	CallableParameterListClose Role = "callable-parameter-list-close"
+	// LambdaCaptureListOpen marks the real opening parenthesis of a parsed
+	// explicit lambda capture list.
+	LambdaCaptureListOpen Role = "lambda-capture-list-open"
+	// LambdaCaptureListClose marks the matching real closing parenthesis of a
+	// complete parsed explicit lambda capture list.
+	LambdaCaptureListClose Role = "lambda-capture-list-close"
+	// ExecutableBlockOpen marks the real opening brace of a parser-confirmed
+	// executable block, excluding aggregate literals and structural declarations.
+	ExecutableBlockOpen Role = "executable-block-open"
+	// ExecutableBlockClose marks its matching real closing brace.
+	ExecutableBlockClose Role = "executable-block-close"
 	// DeclarationGroupSeparator marks a comma that separates two declarators
 	// belonging to one parser-confirmed declaration group.
 	DeclarationGroupSeparator Role = "declaration-group-separator"
@@ -115,6 +126,8 @@ func (e Element) HasRole(role Role) bool {
 //   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
 //   - rules/tooling/formatter.md — §9(5–10) structural field alignment
 //   - rules/tooling/formatter.md — §16(14–17) "attributes"
+//   - rules/tooling/formatter.md — §16(12) "multiline capture lists"
+//   - rules/tooling/formatter.md — §8(3–8) "brace placement"
 //   - rules/tooling/formatter.md — §27(17–19) parenthesis corrections
 func (d *Document) ApplyProgramRoles(program *ast.Program) {
 	if d == nil || program == nil {
@@ -283,7 +296,14 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		case *ast.EnumDeclaration:
 			markAttachedAttributes(node.Attributes, node.Token)
 		case *ast.LambdaExpression:
+			if node.CaptureOpen.Type == lexer.LPAREN {
+				markGroupPair(node.CaptureOpen, LambdaCaptureListOpen, LambdaCaptureListClose)
+			}
 			markCallableParameters(node.ParameterOpen, node.Parameters)
+		case *ast.BlockStatement:
+			if node.Token.Type == lexer.LBRACE {
+				markGroupPair(node.Token, ExecutableBlockOpen, ExecutableBlockClose)
+			}
 		case *ast.InitDeclaration:
 			markCallableParameters(node.ParameterOpen, node.Parameters)
 		case *ast.LetGroupStatement:

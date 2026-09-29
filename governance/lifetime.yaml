@@ -574,6 +574,7 @@ integrations:
     status: "partial"
     integrated: "2026-08-28"
     document_revision: "2.0"
+    revised: "2026-09-29"
     repository_baseline: "069c111"
     rules:
       - "rules/memory/borrowing.md"
@@ -606,9 +607,9 @@ integrations:
       - "Match whole-payload ref/ref mut Place borrowing with guard/arm scope, mutability checks, overlapping-borrow validation, and several escape rejections."
       - "Delayed defer root uses that block incompatible move/discard before deferred execution."
       - "Declaration-order-independent direct function/method returned-reference origin summaries and supported transitive call-site origin instantiation."
+      - "Borrow creation now rejects uninitialized, wholly unavailable, partially available whole, and unresolved ConditionallyAvailable Places before registering a borrow; disjoint available sub-Places remain legal, is available branch refinement permits borrowing, and independent active-borrow authority checks still apply."
     remaining:
       - "non-lexical-final-use: make borrow live ranges end at the final proven use/path dependency rather than relying on holder lexical scope where current implementation remains conservative"
-      - "availability-integration: reject borrow creation from ownership-v2 Unavailable and unresolved ConditionallyAvailable Places while allowing control-flow-refined Available sub-Places; keep is available distinct from borrow authority"
       - "complete-holder-graph: model every shared-reference copy, nested aggregate holder, closure capture, returned reference, view/slice, and derived reborrow so borrow end occurs only when all surviving dependencies end"
       - "nested-reborrow-authority: explicitly model parent/child shared and mutable reborrow suspension/restoration, including shared reborrow from ref mut and nested mutable reborrow"
       - "complete-call-borrow-effects: verify multi-argument overlap, method receiver/argument overlap, fallible later-argument preparation, generic/imported/opaque calls, and call-retention summaries"
@@ -622,6 +623,9 @@ integrations:
       - "ffi-retention-contracts: integrate explicit foreign retain/no-retain contracts and conservatively reject safe-borrow assumptions for unknown retained foreign pointers"
       - "concurrency-integration: reuse Place/provenance/borrow facts in send/share/data-race analysis without treating borrow exclusivity as sufficient synchronization"
       - "mentor-diagnostic-completeness: consistently report both borrow origin/holder and conflicting access/move/discard/destruction with path/loop explanation and safe restructuring help"
+    verification:
+      - command: go test ./internal/sema -run 'TestBorrowCreationRejectsUnavailableOwnershipStates|TestAvailabilityRefinementAllowsBorrowWithoutBypassingBorrowConflict' -count=1
+        result: passed on 2026-09-29 with uninitialized, moved, partial, conditional, refined-available, disjoint-sibling, and active-borrow separation coverage
     required_tests:
       - "multiple shared borrows of overlapping Place accepted"
       - "shared plus overlapping mutable borrow rejected"

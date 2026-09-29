@@ -712,6 +712,18 @@ type MultipleOfContract struct {
 
 func (MultipleOfContract) contractNode() {}
 
+// LengthContract is the exact, nonnegative length bound retained for a named
+// string or collection type. Value is arbitrary precision so contract parsing
+// never narrows a source constant to the compiler host's integer width.
+//
+// Rule: rules/types/contracts.md — "String and collection contracts".
+type LengthContract struct {
+	Name  string
+	Value *big.Int
+}
+
+func (LengthContract) contractNode() {}
+
 type MarkerContract struct {
 	Name string
 }

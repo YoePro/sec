@@ -2236,11 +2236,16 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 	}
 	if graph.IsSameStackRecursive(node.ID) {
 		members := graph.SameStackSCC(node.ID)
-		names := make([]string, 0, len(members))
-		for _, member := range members {
-			names = append(names, member.Name)
-		}
-		lines = append(lines, "Same-stack recursion: `"+strings.Join(names, "`, `")+"`")
+		lines = append(lines, callGraphComponentHoverLine("Same-stack recursion", members))
+	}
+	if graph.IsInTaskSpawnCycle(node.ID) {
+		lines = append(lines, callGraphComponentHoverLine("Task-spawn cycle", graph.TaskSpawnSCC(node.ID)))
+	}
+	if graph.IsInThreadStartCycle(node.ID) {
+		lines = append(lines, callGraphComponentHoverLine("Thread-start cycle", graph.ThreadStartSCC(node.ID)))
+	}
+	if graph.IsInProcessLaunchCycle(node.ID) {
+		lines = append(lines, callGraphComponentHoverLine("Process-launch cycle", graph.ProcessLaunchSCC(node.ID)))
 	}
 	spawnCounts := map[sema.CallExecutionRelation]int{}
 	for _, site := range outgoing {
@@ -2287,6 +2292,20 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 		}
 	}
 	return "\n\n" + strings.Join(lines, "\n\n")
+}
+
+// callGraphComponentHoverLine presents one compiler-owned SCC without
+// reconstructing graph relationships in the LSP.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "LSP behavior"
+//   - rules/analysis/call_graph.md — "One canonical graph, multiple analysis views"
+func callGraphComponentHoverLine(label string, members []sema.CallableNode) string {
+	names := make([]string, 0, len(members))
+	for _, member := range members {
+		names = append(names, member.Name)
+	}
+	return label + ": `" + strings.Join(names, "`, `") + "`"
 }
 
 func distinctCallers(sites []sema.CallSite) int {

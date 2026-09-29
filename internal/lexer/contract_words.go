@@ -16,6 +16,9 @@ const (
 
 var contractWords = []string{
 	"multipleOf",
+	"minLen",
+	"maxLen",
+	"exactLen",
 	"notEmpty",
 	"unique",
 	"finite",
@@ -23,8 +26,9 @@ var contractWords = []string{
 	"even",
 }
 
-// ContractWords returns the canonical contract-word inventory in grammar
-// presentation order. The returned slice is independent of lexer state.
+// ContractWords returns the frontend-supported contract-word inventory in
+// grammar presentation order. The returned slice is independent of lexer
+// state.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
@@ -43,7 +47,7 @@ func ContractWords() []string {
 //   - rules/foundations/grammar.md — "Type contracts"
 func ContractWordRoleOf(spelling string) ContractWordRole {
 	switch spelling {
-	case "multipleOf":
+	case "multipleOf", "minLen", "maxLen", "exactLen":
 		return ValueContractWord
 	case "notEmpty", "unique", "finite", "odd", "even":
 		return MarkerContractWord

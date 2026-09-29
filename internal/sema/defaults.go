@@ -34,10 +34,16 @@ func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, b
 		return "", NoDefault, false
 	}
 	if arrayShapeOf(typ) == ArrayShapeDynamic {
+		if !arrayDefaultSatisfiesContracts(typ, new(big.Int)) {
+			return "", NoDefault, false
+		}
 		return "[]", ArrayDefault, true
 	}
 	length, ok := exactFixedArrayLength(typ)
 	if !ok {
+		return "", NoDefault, false
+	}
+	if !arrayDefaultSatisfiesContracts(typ, length) {
 		return "", NoDefault, false
 	}
 	if length.Sign() == 0 {
@@ -221,10 +227,16 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 			return DefaultResolution{Kind: NoDefault}
 		}
 		if arrayShapeOf(typ) == ArrayShapeDynamic {
+			if !arrayDefaultSatisfiesContracts(typ, new(big.Int)) {
+				return DefaultResolution{Kind: NoDefault}
+			}
 			return DefaultResolution{Kind: ArrayDefault}
 		}
 		length, ok := exactFixedArrayLength(typ)
 		if !ok {
+			return DefaultResolution{Kind: NoDefault}
+		}
+		if !arrayDefaultSatisfiesContracts(typ, length) {
 			return DefaultResolution{Kind: NoDefault}
 		}
 		if length.Sign() == 0 {
@@ -272,6 +284,41 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 	default:
 		return DefaultResolution{Kind: NoDefault}
 	}
+}
+
+// arrayDefaultSatisfiesContracts proves that the canonical array default's
+// exact length and repeated element-default shape satisfy every represented
+// collection contract. A fixed default longer than one cannot satisfy unique
+// because every element receives the same semantic default value.
+//
+// Rules:
+//   - rules/types/default_values.md — "Defaults and contracts"
+//   - rules/types/default_values.md — "Arrays" and "Owning dynamic arrays"
+//   - rules/types/contracts.md — "String and collection contracts"
+func arrayDefaultSatisfiesContracts(typ Type, length *big.Int) bool {
+	if length == nil || length.Sign() < 0 {
+		return false
+	}
+	for _, contract := range typ.Contracts {
+		switch contract := contract.(type) {
+		case LengthContract:
+			if !knownLengthSatisfiesContract(length, contract) {
+				return false
+			}
+		case MarkerContract:
+			switch contract.Name {
+			case "notEmpty":
+				if length.Sign() == 0 {
+					return false
+				}
+			case "unique":
+				if length.Cmp(big.NewInt(1)) > 0 {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 func defaultConstantCompatible(typ Type, value DefaultConstant) bool {
@@ -487,6 +534,10 @@ func defaultConstantSatisfies(typ Type, value DefaultConstant) bool {
 	}
 	for _, contract := range typ.Contracts {
 		switch c := contract.(type) {
+		case LengthContract:
+			if value.Kind != StringType || !stringLengthSatisfiesContract(value.String, c) {
+				return false
+			}
 		case MarkerContract:
 			switch c.Name {
 			case "finite":

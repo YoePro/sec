@@ -31,6 +31,7 @@ func TestIdentifierNFCValidation(t *testing.T) {
 		{"_cafe\u0301", "_café", "L1004"},
 		{"q\u0301", "", "L1005"},
 		{"_\u0301", "", "L1005"},
+		{"\u0301leading", "", "L1005"},
 	} {
 		t.Run(test.input, func(t *testing.T) {
 			l := NewWithFile("\n  "+test.input+" next", "identifier.sec")
@@ -660,8 +661,8 @@ func TestContextualKeywordSpellingsRemainIdentifiers(t *testing.T) {
 	}
 }
 
-func TestContractWordInventoryIsCompleteAndContextual(t *testing.T) {
-	want := []string{"multipleOf", "notEmpty", "unique", "finite", "odd", "even"}
+func TestSupportedContractWordInventoryIsContextual(t *testing.T) {
+	want := []string{"multipleOf", "minLen", "maxLen", "exactLen", "notEmpty", "unique", "finite", "odd", "even"}
 	got := ContractWords()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ContractWords() = %v, want %v", got, want)
@@ -675,10 +676,12 @@ func TestContractWordInventoryIsCompleteAndContextual(t *testing.T) {
 			t.Errorf("lookupIdent(%q) = %s, want IDENT", spelling, tokenType)
 		}
 	}
-	if role := ContractWordRoleOf("multipleOf"); role != ValueContractWord {
-		t.Errorf("multipleOf role = %v, want ValueContractWord", role)
+	for _, spelling := range want[:4] {
+		if role := ContractWordRoleOf(spelling); role != ValueContractWord {
+			t.Errorf("%s role = %v, want ValueContractWord", spelling, role)
+		}
 	}
-	for _, spelling := range want[1:] {
+	for _, spelling := range want[4:] {
 		if role := ContractWordRoleOf(spelling); role != MarkerContractWord {
 			t.Errorf("%s role = %v, want MarkerContractWord", spelling, role)
 		}

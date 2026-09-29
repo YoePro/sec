@@ -111,6 +111,7 @@ func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 		typ = a.applyContract(typ, contract)
 	}
 	a.checkContractSetConsistency(typ, contractNode)
+	a.checkLengthContractSetConsistency(typ, contractNode)
 	a.checkMembershipContractValues(typ, contractNode)
 	return typ
 }
@@ -156,13 +157,13 @@ func (a *Analyzer) checkMembershipContractValues(typ Type, contractNode ast.Cont
 func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 	switch contract := contractNode.(type) {
 	case *ast.RangeContract:
-		if !contractAppliesToType("range", typ) {
+		if !a.contractAppliesToType("range", typ) {
 			a.addErrorAtToken(contract.Token, "range contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
 		return applyRangeContract(typ, contract)
 	case *ast.MembershipContract:
-		if !contractAppliesToType("in", typ) {
+		if !a.contractAppliesToType("in", typ) {
 			a.addErrorAtToken(contract.Token, "in contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
@@ -193,7 +194,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		typ.Contracts = append(typ.Contracts, membership)
 		return typ
 	case *ast.MarkerContract:
-		if !contractAppliesToType(contract.Name, typ) {
+		if !a.contractAppliesToType(contract.Name, typ) {
 			a.addErrorAtToken(contract.Token, "%s contract does not apply to %s", contract.Name, contractApplicabilityTypeName(typ))
 			return typ
 		}
@@ -206,6 +207,22 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 				}
 			}
 			typ.Contracts = append(typ.Contracts, multiple)
+			return typ
+		}
+		if isLengthContractName(contract.Name) {
+			value, ok := constantIntegerValue(contract.Value)
+			if !ok {
+				a.addErrorAtToken(expressionToken(contract.Value), "%s contract value must be a compile-time integer", contract.Name)
+				return typ
+			}
+			if value.Sign() < 0 {
+				a.addErrorAtToken(expressionToken(contract.Value), "%s contract value must not be negative", contract.Name)
+				return typ
+			}
+			typ.Contracts = append(typ.Contracts, LengthContract{
+				Name:  contract.Name,
+				Value: new(big.Int).Set(value),
+			})
 			return typ
 		}
 		typ.Contracts = append(typ.Contracts, MarkerContract{Name: contract.Name})
@@ -402,7 +419,7 @@ func firstMultipleAtOrAbove(min *big.Int, step *big.Int) *big.Int {
 	return new(big.Int).Add(min, new(big.Int).Sub(step, remainder))
 }
 
-func contractAppliesToType(name string, typ Type) bool {
+func (a *Analyzer) contractAppliesToType(name string, typ Type) bool {
 	switch name {
 	case "range":
 		return isNumericType(typ)
@@ -412,10 +429,10 @@ func contractAppliesToType(name string, typ Type) bool {
 		return isIntegerType(typ)
 	case "odd", "even":
 		return isIntegerType(typ)
-	case "notEmpty":
-		return typ.Kind == StringType || isCollectionContractType(typ)
+	case "minLen", "maxLen", "exactLen", "notEmpty":
+		return typ.Kind == StringType || a.isCollectionContractType(typ)
 	case "unique":
-		return isCollectionContractType(typ)
+		return a.isCollectionContractType(typ)
 	case "finite":
 		return typ.Kind == FloatType || typ.Kind == DecimalType
 	default:
@@ -432,11 +449,29 @@ func isScalarContractType(typ Type) bool {
 	}
 }
 
-func isCollectionContractType(typ Type) bool {
-	if typ.Kind == ArrayType || typ.Kind == SliceType {
-		return true
+func (a *Analyzer) isCollectionContractType(typ Type) bool {
+	seen := map[string]bool{}
+	for {
+		if typ.Kind == ArrayType || typ.Kind == SliceType || isCompilerKnownCollectionTypeName(typ.Name) {
+			return true
+		}
+		if typ.Underlying == "" || seen[typ.Underlying] {
+			return false
+		}
+		seen[typ.Underlying] = true
+		if isCompilerKnownCollectionTypeName(typ.Underlying) {
+			return true
+		}
+		underlying, ok := a.types[typ.Underlying]
+		if !ok {
+			return false
+		}
+		typ = underlying
 	}
-	switch typ.Name {
+}
+
+func isCompilerKnownCollectionTypeName(name string) bool {
+	switch name {
 	case "Vec", "Set", "Map", "list", "set", "map", "vector", "matrix", "tensor", "tensor_view":
 		return true
 	default:

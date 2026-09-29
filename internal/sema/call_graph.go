@@ -563,12 +563,132 @@ func (g *CallGraph) SameStackSCC(id CallableID) []CallableNode {
 	if g == nil {
 		return nil
 	}
-	for _, component := range g.sameStackComponents() {
+	for _, component := range g.componentsForTargets(g.sameStackTargets) {
 		if component[id] {
 			return g.nodesInOrder(component)
 		}
 	}
 	return nil
+}
+
+// TaskSpawnSCC returns the strongly connected component containing id when
+// only task-spawn execution relationships are followed.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Spawn cycles"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) TaskSpawnSCC(id CallableID) []CallableNode {
+	return g.executionSCC(id, CallExecutionSpawnTask)
+}
+
+// IsInTaskSpawnCycle reports whether id participates in mutual or direct
+// self-spawning through task-spawn relationships.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Spawn cycles"
+func (g *CallGraph) IsInTaskSpawnCycle(id CallableID) bool {
+	return g.isInExecutionCycle(id, CallExecutionSpawnTask)
+}
+
+// ThreadStartSCC returns the strongly connected component containing id when
+// only thread-start execution relationships are followed.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Thread-start cycles"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) ThreadStartSCC(id CallableID) []CallableNode {
+	return g.executionSCC(id, CallExecutionSpawnThread)
+}
+
+// IsInThreadStartCycle reports whether id participates in mutual or direct
+// self-starting through thread-start relationships.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Thread-start cycles"
+func (g *CallGraph) IsInThreadStartCycle(id CallableID) bool {
+	return g.isInExecutionCycle(id, CallExecutionSpawnThread)
+}
+
+// ProcessLaunchSCC returns the strongly connected component containing id when
+// only process-launch execution relationships are followed.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Process-launch cycles"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) ProcessLaunchSCC(id CallableID) []CallableNode {
+	return g.executionSCC(id, CallExecutionSpawnProcess)
+}
+
+// IsInProcessLaunchCycle reports whether id participates in mutual or direct
+// self-launching through process-launch relationships.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Process-launch cycles"
+func (g *CallGraph) IsInProcessLaunchCycle(id CallableID) bool {
+	return g.isInExecutionCycle(id, CallExecutionSpawnProcess)
+}
+
+// CompleteExecutionSCC returns the strongly connected component containing id
+// across every represented execution relationship. It is an analysis and
+// visualization view and must not be used as proof of same-stack recursion.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Complete execution SCC"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) CompleteExecutionSCC(id CallableID) []CallableNode {
+	if g == nil {
+		return nil
+	}
+	for _, component := range g.componentsForTargets(g.completeExecutionTargets) {
+		if component[id] {
+			return g.nodesInOrder(component)
+		}
+	}
+	return nil
+}
+
+// executionSCC selects one execution-boundary relation from the canonical
+// graph and returns the component containing id.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "One canonical graph, multiple analysis views"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) executionSCC(id CallableID, execution CallExecutionRelation) []CallableNode {
+	if g == nil {
+		return nil
+	}
+	targets := func(caller CallableID) []CallableID {
+		return g.targetsForExecution(caller, execution)
+	}
+	for _, component := range g.componentsForTargets(targets) {
+		if component[id] {
+			return g.nodesInOrder(component)
+		}
+	}
+	return nil
+}
+
+// isInExecutionCycle distinguishes a true execution-boundary cycle from the
+// singleton SCC that every acyclic node occupies.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Spawn cycles"
+//   - rules/analysis/call_graph.md — "Thread-start cycles"
+//   - rules/analysis/call_graph.md — "Process-launch cycles"
+func (g *CallGraph) isInExecutionCycle(id CallableID, execution CallExecutionRelation) bool {
+	component := g.executionSCC(id, execution)
+	if len(component) > 1 {
+		return true
+	}
+	if len(component) == 0 {
+		return false
+	}
+	for _, target := range g.targetsForExecution(id, execution) {
+		if target == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *CallGraph) IsSameStackRecursive(id CallableID) bool {
@@ -670,7 +790,13 @@ func (g *CallGraph) synchronousPathTo(start CallableID, predicate func(CallableI
 	return nil
 }
 
-func (g *CallGraph) sameStackComponents() []map[CallableID]bool {
+// componentsForTargets computes deterministic Tarjan components over one
+// execution-specific target view of the canonical call graph.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "One canonical graph, multiple analysis views"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) componentsForTargets(targets func(CallableID) []CallableID) []map[CallableID]bool {
 	index := 0
 	indices := map[CallableID]int{}
 	lowlinks := map[CallableID]int{}
@@ -686,7 +812,7 @@ func (g *CallGraph) sameStackComponents() []map[CallableID]bool {
 		stack = append(stack, id)
 		onStack[id] = true
 
-		for _, target := range g.sameStackTargets(id) {
+		for _, target := range targets(id) {
 			if _, visited := indices[target]; !visited {
 				visit(target)
 				if lowlinks[target] < lowlinks[id] {
@@ -722,11 +848,62 @@ func (g *CallGraph) sameStackComponents() []map[CallableID]bool {
 	return components
 }
 
+// sameStackComponents supplies the canonical same-stack SCC ordering to
+// interprocedural fixed-point consumers.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Recursion"
+//   - rules/analysis/call_graph.md — Appendix A.20 "SCC views"
+func (g *CallGraph) sameStackComponents() []map[CallableID]bool {
+	if g == nil {
+		return nil
+	}
+	return g.componentsForTargets(g.sameStackTargets)
+}
+
+// targetsForExecution returns targets connected by exactly one execution
+// relation for execution-specific analyses.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Execution relations"
+func (g *CallGraph) targetsForExecution(id CallableID, execution CallExecutionRelation) []CallableID {
+	return g.filteredTargets(id, func(site CallSite) bool {
+		return site.Execution == execution
+	})
+}
+
+// completeExecutionTargets returns targets from every currently represented
+// execution relationship without collapsing their metadata in the graph.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "Complete execution SCC"
+func (g *CallGraph) completeExecutionTargets(id CallableID) []CallableID {
+	return g.filteredTargets(id, func(site CallSite) bool {
+		switch site.Execution {
+		case CallExecutionSynchronous, CallExecutionSpawnTask, CallExecutionSpawnThread, CallExecutionSpawnProcess:
+			return true
+		default:
+			return false
+		}
+	})
+}
+
 func (g *CallGraph) sameStackTargets(id CallableID) []CallableID {
+	return g.filteredTargets(id, func(site CallSite) bool {
+		return site.Execution == CallExecutionSynchronous
+	})
+}
+
+// filteredTargets derives one deterministic edge view while preserving the
+// canonical call sites as the sole relationship source.
+//
+// Rules:
+//   - rules/analysis/call_graph.md — "One canonical graph, multiple analysis views"
+func (g *CallGraph) filteredTargets(id CallableID, include func(CallSite) bool) []CallableID {
 	seen := map[CallableID]bool{}
 	var targets []CallableID
 	for _, site := range g.sites {
-		if site.Caller != id || site.Execution != CallExecutionSynchronous {
+		if site.Caller != id || !include(site) {
 			continue
 		}
 		for _, target := range site.Targets {

@@ -1,0 +1,15 @@
+module missing_property_setter_parameter
+
+impl Record {
+    property Value: int {
+        set {
+            discard 1
+        }
+
+        get {
+            return 0
+        }
+    }
+
+    fn Next() void {}
+}

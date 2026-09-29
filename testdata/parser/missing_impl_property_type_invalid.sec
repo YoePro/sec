@@ -1,0 +1,11 @@
+module missing_impl_property_type
+
+impl Record {
+    property Value: {
+        get { return 0 }
+    }
+
+    fn Next() void {}
+}
+
+fn Outside() void {}

@@ -2003,6 +2003,51 @@ type Measurement float finite
 	}
 }
 
+// rules/types/contracts.md — minLen, maxLen, and exactLen are contextual
+// integer-valued contracts, retained in source order by the contract AST.
+func TestParseLengthContracts(t *testing.T) {
+	input := `
+type Label string minLen 2 maxLen 12
+type Code string exactLen 4
+type Values int[] minLen 1 maxLen 8
+`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	tests := []struct {
+		statement int
+		names     []string
+		values    []string
+	}{
+		{statement: 0, names: []string{"minLen", "maxLen"}, values: []string{"2", "12"}},
+		{statement: 1, names: []string{"exactLen"}, values: []string{"4"}},
+		{statement: 2, names: []string{"minLen", "maxLen"}, values: []string{"1", "8"}},
+	}
+	for _, test := range tests {
+		declaration := program.Statements[test.statement].(*ast.TypeDeclStatement)
+		contracts := flattenParserTestContracts(declaration.Contract)
+		if len(contracts) != len(test.names) {
+			t.Fatalf("statement %d contract count = %d, want %d", test.statement, len(contracts), len(test.names))
+		}
+		for index, contract := range contracts {
+			marker, ok := contract.(*ast.MarkerContract)
+			if !ok || marker.Name != test.names[index] || marker.Value == nil || marker.Value.String() != test.values[index] {
+				t.Fatalf("statement %d contract %d = %#v, want %s %s", test.statement, index, contract, test.names[index], test.values[index])
+			}
+		}
+	}
+}
+
+func flattenParserTestContracts(contract ast.Contract) []ast.Contract {
+	if list, ok := contract.(*ast.ContractList); ok {
+		return list.Contracts
+	}
+	return []ast.Contract{contract}
+}
+
 func TestParseLetVariableContract(t *testing.T) {
 	input := `let mut percentage: int range 0..100 := 50`
 
@@ -2281,6 +2326,10 @@ type B struct {
 	if len(program.Statements) != 1 {
 		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
 	}
+	typeDecl := program.Statements[0].(*ast.TypeDeclStatement)
+	if len(typeDecl.StructType.Fields) != 1 || typeDecl.StructType.Fields[0].Name.Value != "y" || typeDecl.StructType.Fields[0].Type.Name != "int" {
+		t.Fatalf("missing-colon recovery did not retain field y: %+v", typeDecl.StructType.Fields)
+	}
 }
 
 func TestParseMalformedStructFieldContinuesAfterComma(t *testing.T) {
@@ -2307,11 +2356,11 @@ type B struct {
 	if !ok {
 		t.Fatalf("statement is not TypeDeclStatement. got=%T", program.Statements[0])
 	}
-	if len(typeDecl.StructType.Fields) != 1 {
-		t.Fatalf("wrong field count. got=%d want=1", len(typeDecl.StructType.Fields))
+	if len(typeDecl.StructType.Fields) != 2 {
+		t.Fatalf("wrong field count. got=%d want=2", len(typeDecl.StructType.Fields))
 	}
-	if typeDecl.StructType.Fields[0].Name.Value != "z" {
-		t.Fatalf("wrong recovered field. got=%q want=z", typeDecl.StructType.Fields[0].Name.Value)
+	if typeDecl.StructType.Fields[0].Name.Value != "y" || typeDecl.StructType.Fields[0].Type.Name != "int" || typeDecl.StructType.Fields[1].Name.Value != "z" {
+		t.Fatalf("wrong recovered fields: %+v", typeDecl.StructType.Fields)
 	}
 }
 

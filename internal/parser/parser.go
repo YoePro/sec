@@ -4247,15 +4247,7 @@ func (p *Parser) parseUnionType() []*ast.UnionVariant {
 
 		if p.peekToken.Type == lexer.LPAREN {
 			p.nextToken()
-			if !p.expectPeekTypeStart() {
-				p.skipBraceBlock()
-				return variants
-			}
-			variant.Payload = p.parseTypeReference()
-			if !p.expectPeek(lexer.RPAREN) {
-				p.skipBraceBlock()
-				return variants
-			}
+			variant.Payload = p.parseUnionVariantPayload(variant.Token)
 		} else if p.peekToken.Type == lexer.LBRACE {
 			p.nextToken()
 			variant.PayloadFields = p.parseStructFields()
@@ -4317,23 +4309,53 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		}
 
 		if p.peekToken.Type != lexer.COLON {
-			p.addError("missing ':' after struct field name %q at %d:%d", field.Name.Value, field.Name.Token.Line, field.Name.Token.Column)
-			if p.skipMalformedStructField() {
-				continue
+			// rules/compiler/parser_recovery.md, "Missing field colon": a
+			// following type start proves the bounded virtual-colon repair.
+			if !isTypeStart(p.peekToken.Type) {
+				p.addError("missing ':' after struct field name %q at %d:%d", field.Name.Value, field.Name.Token.Line, field.Name.Token.Column)
+				if p.skipMalformedStructField() {
+					continue
+				}
+				return fields
 			}
-			return fields
-		}
-
-		p.nextToken()
-		colon := p.curToken
-
-		if p.peekToken.Type == lexer.COMMA || p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF {
-			p.addError("missing type after ':' at %d:%d", colon.Line, colon.Column)
-			return fields
-		}
-
-		if !p.expectPeekTypeStart() {
-			return fields
+			unexpected := p.peekToken
+			p.addDiagnostic(
+				compilerdiagnostics.ParserMissingToken,
+				unexpected,
+				[]lexer.TokenType{lexer.COLON},
+				&unexpected,
+				"missing ':' after struct field name %q at %d:%d",
+				field.Name.Value,
+				field.Name.Token.Line,
+				field.Name.Token.Column,
+			)
+			p.nextToken()
+		} else {
+			p.nextToken()
+			// rules/compiler/parser_recovery.md, "Invalid field type": after the
+			// field and colon commit this grammar alternative, retain an invalid
+			// type node instead of abandoning the field or its later siblings.
+			if !isTypeStart(p.peekToken.Type) {
+				unexpected := p.peekToken
+				p.addDiagnostic(
+					compilerdiagnostics.ParserInvalidTypeReference,
+					unexpected,
+					nil,
+					&unexpected,
+					"expected struct field type, got %q at %d:%d",
+					unexpected.Type,
+					unexpected.Line,
+					unexpected.Column,
+				)
+				field.Type = p.invalidTypeReference(unexpected, "")
+				p.attachDocumentation(documentation, field)
+				fields = append(fields, field)
+				if p.skipMalformedStructField() {
+					continue
+				}
+				return fields
+			}
+			p.nextToken()
 		}
 
 		field.Type = p.parseTypeReference()
@@ -4362,6 +4384,7 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
+			p.endRecoveryEpisode()
 			if p.peekToken.Type == lexer.RBRACE {
 				return fields
 			}
@@ -4370,6 +4393,19 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 		case lexer.RBRACE:
 			return fields
 		default:
+			if p.looksLikeNextStructField() {
+				unexpected := p.peekToken
+				p.addDiagnostic(
+					compilerdiagnostics.ParserMissingToken,
+					unexpected,
+					[]lexer.TokenType{lexer.COMMA},
+					&unexpected,
+					"expected ',' or '}' after struct field at %d:%d",
+					unexpected.Line,
+					unexpected.Column,
+				)
+				continue
+			}
 			p.addError("expected ',' or '}' after struct field at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 				p.nextToken()
@@ -4872,23 +4908,25 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 	p.nextToken()
 
 	if !isTypeStart(p.peekToken.Type) {
-		p.nextToken()
-		p.addError(
+		unexpected := p.peekToken
+		p.addDiagnostic(
+			compilerdiagnostics.ParserInvalidTypeReference,
+			unexpected,
+			nil,
+			&unexpected,
 			"property %s missing type after ':' at %d:%d",
 			property.Name.Value,
-			p.curToken.Line,
-			p.curToken.Column,
+			unexpected.Line,
+			unexpected.Column,
 		)
-		if p.curToken.Type == lexer.LBRACE {
-			p.skipCurrentBlock()
-		}
-		return nil
+		property.Type = p.invalidTypeReference(unexpected, "")
+	} else {
+		p.nextToken()
+		property.Type = p.parseTypeReference()
 	}
-	p.nextToken()
-	property.Type = p.parseTypeReference()
 
 	if !p.expectPeek(lexer.LBRACE) {
-		return nil
+		return property
 	}
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
@@ -4968,6 +5006,12 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 	}
 
 	if property.Getter == nil && property.Setter == nil {
+		if property.Type != nil && property.Type.Invalid {
+			if p.peekToken.Type == lexer.RBRACE {
+				p.nextToken()
+			}
+			return property
+		}
 		p.addError("property %q must have get or set", property.Name.Value)
 		if p.peekToken.Type == lexer.RBRACE {
 			p.nextToken()
@@ -4986,17 +5030,33 @@ func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.Pr
 	setter := &ast.PropertySetter{Token: p.curToken, Fallible: fallible}
 
 	if p.peekToken.Type != lexer.IDENT {
-		p.nextToken()
-		p.addError(
+		unexpected := p.peekToken
+		message := fmt.Sprintf(
 			"setter for %s must declare value parameter at %d:%d",
 			propertyName,
-			p.curToken.Line,
-			p.curToken.Column,
+			unexpected.Line,
+			unexpected.Column,
 		)
-		if p.curToken.Type == lexer.LBRACE {
-			p.skipCurrentBlock()
+		p.addDiagnostic(
+			compilerdiagnostics.ParserUnexpectedToken,
+			unexpected,
+			[]lexer.TokenType{lexer.IDENT},
+			&unexpected,
+			"%s",
+			message,
+		)
+		setter.Invalid = true
+		setter.Recovery = &ast.RecoveryInfo{
+			DiagnosticID: compilerdiagnostics.ParserUnexpectedToken,
+			Message:      message,
+			Start:        unexpected,
+			End:          unexpected,
 		}
-		return nil
+		if p.peekToken.Type == lexer.LBRACE {
+			p.nextToken()
+			setter.Body = p.parseStatementBlock("property setter")
+		}
+		return setter
 	}
 	p.nextToken()
 	setter.Parameter = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
@@ -6528,8 +6588,7 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 	if p.curToken.Type == lexer.MOVE_ASSIGN {
 		stmt.Ownership = ast.OwnershipMove
 	}
-	p.nextToken()
-	stmt.Value = p.parseExpression(LOWEST)
+	stmt.Value = p.parseAssignmentValue(p.curToken, false)
 	if stmt.Value == nil {
 		return nil
 	}
@@ -6580,12 +6639,7 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	if p.curToken.Type == lexer.MOVE_ASSIGN {
 		assignment.Ownership = ast.OwnershipMove
 	}
-	p.nextToken()
-
-	previousStopBeforeBrace = p.stopBeforeBrace
-	p.stopBeforeBrace = true
-	assignment.Value = p.parseExpression(LOWEST)
-	p.stopBeforeBrace = previousStopBeforeBrace
+	assignment.Value = p.parseAssignmentValue(p.curToken, true)
 	if assignment.Value == nil {
 		return nil
 	}
@@ -6620,13 +6674,35 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 	if p.curToken.Type == lexer.MOVE_ASSIGN {
 		stmt.Ownership = ast.OwnershipMove
 	}
-	p.nextToken()
-	stmt.Value = p.parseExpression(LOWEST)
+	stmt.Value = p.parseAssignmentValue(p.curToken, false)
 	if stmt.Value == nil {
 		return nil
 	}
 
 	return stmt
+}
+
+// parseAssignmentValue retains an explicit invalid source expression when a
+// reliable boundary immediately follows an assignment operator. The boundary
+// remains unconsumed for the enclosing block or list parser. Try assignments
+// may additionally stop a valid expression before their handler brace.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Assignment recovery"
+//   - rules/compiler/parser_recovery.md — "Missing right expression"
+//   - rules/compiler/parser_recovery.md — "Expression recovery"
+func (p *Parser) parseAssignmentValue(operator lexer.Token, stopBeforeBrace bool) ast.Expression {
+	if isMissingOperandBoundary(p.peekToken.Type) {
+		return p.missingOperandExpression(operator, p.peekToken)
+	}
+	p.nextToken()
+	previousStopBeforeBrace := p.stopBeforeBrace
+	if stopBeforeBrace {
+		p.stopBeforeBrace = true
+	}
+	value := p.parseExpression(LOWEST)
+	p.stopBeforeBrace = previousStopBeforeBrace
+	return value
 }
 
 // parsePostfixMutationAlias converts a complete statement-only ++ or -- into

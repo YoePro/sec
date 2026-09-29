@@ -149,10 +149,20 @@ type Expression interface {
 	String() string
 }
 
+// InvalidExpression retains malformed expression syntax and any valid prefix
+// needed by recovery-aware tooling without presenting it as semantic input.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Invalid expression"
+//   - rules/compiler/parser_recovery.md — "Postfix expression"
 type InvalidExpression struct {
 	Token    lexer.Token
 	Message  string
 	Recovery *RecoveryInfo
+	// Left and Operator retain a valid prefix of a malformed postfix or infix
+	// expression without treating the incomplete construct as semantic input.
+	Left     Expression
+	Operator lexer.Token
 }
 
 // InvalidPattern is an expression-shaped placeholder used only in grammar
@@ -175,7 +185,15 @@ func (ie *InvalidExpression) TokenLiteral() string {
 	return ie.Token.Lexeme
 }
 
+// String presents a stable recovery rendering while preserving a retained
+// left operand and operator when the malformed expression is postfix-shaped.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Invalid expression"
 func (ie *InvalidExpression) String() string {
+	if ie.Left != nil {
+		return ie.Left.String() + ie.Operator.Lexeme + "<invalid-expression>"
+	}
 	return "<invalid-expression>"
 }
 
@@ -2080,6 +2098,8 @@ type PropertySetter struct {
 	Fallible  bool
 	Parameter *Identifier
 	Body      *BlockStatement
+	Invalid   bool
+	Recovery  *RecoveryInfo
 }
 
 type BlockStatement struct {

@@ -6014,6 +6014,9 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
 		return
 	}
+	if a.checkDeclaredContractExpression(returnType, stmt.Value) {
+		return
+	}
 	a.recordFunctionReturnOrigin(returnType, stmt.Value)
 	if a.checkReturningReferenceToLocal(functionName, returnType, valueType, stmt.Value) {
 		return
@@ -7189,6 +7192,9 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
 			return
 		}
+		if a.checkDeclaredContractExpression(expected, expr.Value) {
+			return
+		}
 		a.recordFunctionReturnOrigin(expected, expr.Value)
 		if a.checkReturningReferenceToLocal(functionName, expected, valueType, expr.Value) {
 			return
@@ -7213,6 +7219,9 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		expected := returnType.TypeArgs[1]
 		if !canInitialize(expected, valueType, expr.Value) {
 			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Err(%s), got Err(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
+			return
+		}
+		if a.checkDeclaredContractExpression(expected, expr.Value) {
 			return
 		}
 		a.recordFunctionReturnOrigin(expected, expr.Value)
@@ -10030,6 +10039,12 @@ func (a *Analyzer) analyzeGetterBody(target Type, property *ast.PropertyDeclarat
 }
 
 func (a *Analyzer) analyzeSetterBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
+	// rules/compiler/parser_recovery.md, "Missing setter parameter" and
+	// "Interaction with Sema": retain the body for tooling but do not invent a
+	// parameter or emit dependent semantic diagnostics beneath an invalid setter.
+	if property.Setter.Invalid {
+		return
+	}
 	if !property.Setter.Fallible && blockReturnsErr(property.Setter.Body) {
 		a.addErrorAtToken(property.Setter.Token, "non-fallible setter %s cannot return Err", property.Name.Value)
 	}
@@ -10322,6 +10337,9 @@ func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.Property
 		if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
 			return Type{Kind: InvalidType}, false
 		}
+		if a.checkStringLiteralContracts(targetType, expr.Value) {
+			return Type{Kind: InvalidType}, false
+		}
 		return targetType, true
 	case *ast.CallExpression:
 		if typ, ok := a.inferPropertyBodyCallAsConversion(target, setter, setterType, expr); ok {
@@ -10432,6 +10450,9 @@ func (a *Analyzer) inferPropertyBodyCallAsConversion(target Type, setter *ast.Pr
 		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Arguments[0]), true
 	}
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, true
+	}
+	if a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, true
 	}
 	return targetType, true
@@ -10637,7 +10658,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.updateReferenceSymbolOrigin(stmt.Name.Value, declaredType)
 	}
 
-	if a.checkIntegerExpressionRange(declaredType, stmt.Value) {
+	if a.checkCompileTimeContractExpression(declaredType, stmt.Value) {
 		return
 	}
 
@@ -10818,6 +10839,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 
 	if a.checkIntegerAssignmentRange(symbol, stmt) {
+		return
+	}
+	if a.checkStringLiteralContracts(symbol.Type, stmt.Value) {
 		return
 	}
 
@@ -11755,7 +11779,7 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		return
 	}
 
-	if a.checkIntegerExpressionRange(targetType, stmt.Value) {
+	if a.checkCompileTimeContractExpression(targetType, stmt.Value) {
 		return
 	}
 
@@ -13147,7 +13171,7 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if valueType.Kind != InvalidType && a.checkIntegerExpressionRange(payloadType, expr.Arguments[0]) {
+		if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
@@ -13284,7 +13308,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			planValid = false
 			continue
 		}
-		if a.checkIntegerExpressionRange(fieldType, field.Value) {
+		if a.checkCompileTimeContractExpression(fieldType, field.Value) {
 			planValid = false
 		}
 		if !a.validateOwningConstructionSource(field.Value) {
@@ -13465,7 +13489,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 		if valueType.Kind != InvalidType {
 			// rules/declarations/unions.md; correction17.md: union payload
 			// fields use the ordinary destination representability check.
-			a.checkIntegerExpressionRange(expectedField.Type, field.Value)
+			a.checkCompileTimeContractExpression(expectedField.Type, field.Value)
 		}
 		if valueType.Kind != InvalidType {
 			a.validateOwningConstructionSource(field.Value)
@@ -13901,12 +13925,22 @@ func (a *Analyzer) inferArrayLiteral(expr *ast.ArrayLiteral) (Type, expressionVa
 	return NewFixedArrayType(firstType, plan.Length), expressionValue{Display: expr.String()}
 }
 
+// inferArrayLiteralWithExpected resolves every source element once, validates
+// the target element/shape, and consumes the resulting exact length proof for
+// any named collection contracts.
+//
+// Rules:
+//   - rules/collections/collections.md — §5.5 "Array literals" and §5.6 "Spread in fixed-array literals"
+//   - rules/types/contracts.md — "String and collection contracts"
 func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expected Type) (Type, expressionValue) {
 	if expected.Kind != ArrayType || expected.Element == nil {
 		return a.inferArrayLiteral(expr)
 	}
 	plan, ok := a.resolveArrayLiteralPlan(expr, *expected.Element)
 	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if a.checkArrayLiteralContracts(expected, expr, plan.Length) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	expectedLength, fixedExpected := exactFixedArrayLength(expected)
@@ -15134,6 +15168,9 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if a.checkStringLiteralContracts(targetType, expr.Value) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
 }
@@ -15854,6 +15891,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				kind = "extern function"
 			}
 			a.addErrorAtToken(expr.Token, "calling unsafe %s %s requires unsafe", kind, name)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if a.checkCompileTimeCallArgumentContracts(best[0].Function, sourceArgs) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues) {
@@ -17585,7 +17625,7 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	if valueType.Kind != InvalidType && a.checkIntegerExpressionRange(payloadType, expr.Arguments[0]) {
+	if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
@@ -17723,6 +17763,9 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 
 	best := bestOverloadMatches(matches)
 	if len(best) == 1 {
+		if a.checkCompileTimeCallArgumentContracts(best[0].Function, args) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
 		a.setCallReferenceOrigin(expr, best[0].Function, args, false)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}, true
@@ -18419,6 +18462,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		return targetType, expressionValue{Display: expr.String()}
 	}
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	if a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -21390,6 +21436,10 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	if (isNominal(target) || isNominal(value)) && target.Name != value.Name {
+		if target.Kind == StringType && value.Kind == StringType {
+			_, literal := expr.(*ast.StringLiteral)
+			return literal
+		}
 		return canUntypedNumericInitializeNominal(target, value, expr)
 	}
 

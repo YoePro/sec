@@ -1,5 +1,18 @@
 # Language Philosophy
 
+- **Status:** Normative
+- **Created:** 2026-08-12
+- **Last updated:** 2026-09-29
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/foundations/language_philosophy.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-09-29`
+- **Implementation governance:** `governance/governance.yaml`
+- **Related rulebooks:** `rules/README.md`, `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/foundations/names_scopes_visibility.md`, `rules/foundations/operators.md`, `rules/foundations/attributes.md`
+
+---
+
 ## Purpose
 
 Sec is designed to be simple to read, simple to write and predictable to reason about.
@@ -19,7 +32,7 @@ The compiler should prove the consequences.
 
 Sec is influenced by many existing programming languages and programming traditions.
 
-These include but is not limited to:
+These include but are not limited to:
 
 * C
 * C++

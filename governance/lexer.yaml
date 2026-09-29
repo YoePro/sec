@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-14"
+    revised: "2026-09-29"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -101,11 +101,11 @@ integrations:
       - one-based line and column tracking
       - identifier starts using underscore, ASCII letters, and Unicode letters
       - Go frontend validates identifier NFC with Unicode-version-matched golang.org/x/text/unicode/norm, rejecting non-NFC spellings with mandatory L1004 and a normalized suggestion while preserving the original lexeme
-      - combining marks are retained in malformed identifier candidates for whole-token diagnostics; NFC candidates containing marks still violate the letter/digit/underscore grammar and receive L1005
+      - combining marks are retained in malformed identifier candidates for whole-token diagnostics, including candidates beginning with a mark; NFC candidates containing marks still violate the letter/digit/underscore grammar and receive L1005 rather than a split L1020 plus identifier
       - NFC diagnostics preserve source positions and snapshot rollback and propagate through parser errors and LSP diagnostics without normalizing literal or comment contents
       - ASCII digits after identifier start
       - canonical hard-keyword lookup is synchronized across the normative lexical inventory, Go lexer, bootstrap lexer, LSP completion vocabulary, and TextMate highlighting; extends is hard while arena, sec, and contextual set remain identifiers
-      - the complete six-word contextual contract inventory is centralized in the lexer with value/marker grammar roles, consumed by the parser and LSP contract completion, mirrored in bootstrap source, and tested to remain IDENT tokens rather than hard keywords
+      - the nine Go-frontend-supported contextual contract spellings are centralized in the lexer with value/marker grammar roles, consumed by the parser and LSP contract completion, and tested to remain IDENT tokens rather than hard keywords
       - the complete seven-name lowercase collection/shaped type inventory is centralized in the lexer with collection/shaped grammar roles and leading type-argument counts, consumed by the parser, mirrored in bootstrap source, and tested to remain IDENT tokens
       - LSP semantic tokens classify lowercase collection/shaped constructors as types only at parser-owned type-reference positions, so ordinary contextual set bindings and uses retain their variable class
       - formatter coverage preserves and normalizes all seven contextual type forms without rewriting an ordinary set identifier; TextMate highlighting requires generic-bracket lookahead for every lowercase contextual constructor instead of coloring the spellings globally
@@ -193,10 +193,12 @@ integrations:
       - parser AST trivia retains every source comment once across speculative lexer rollback and classifies source-ordered leading, trailing, inline, detached, and documentation groups with exact lexical anchors and declaration/statement targets where attached
       - the shared formatter returns parser-owned comment attachments recalculated against canonical output, giving formatter and source-to-source clients stable trivia facts without reconstructing attachment from trimmed lines
       - LSP function and method hover consumes exact parser-owned documentation attachments and preserved comment tokens; it no longer rescans adjacent source or crosses a blank-line detachment boundary
-      - one lexer-owned reserved-declaration-name classifier covers hard keywords, task/thread/process, all six contract words, compiler-known lowercase type names, and bare underscore while explicitly preserving contextual set, x, not, init, arena, and sec
+      - one lexer-owned reserved-declaration-name classifier covers hard keywords, task/thread/process, all nine implemented contract words, compiler-known lowercase type names, and bare underscore while explicitly preserving contextual set, x, not, init, arena, and sec
+      - the bootstrap lexer mirrors all nine canonical contextual contract words, including minLen, maxLen, and exactLen, so its reserved-declaration-name policy matches the Go frontend inventory
       - Sema applies stable mandatory S1028 names.reserved-declaration-name diagnostics across module names, explicit import aliases, variables/constants, functions/methods, parameters, generic parameters, fields, properties, events, enum members, loop/select bindings, assembly output bindings, setter parameters, and match payload bindings; parser-owned underscore discard/register roles and trusted core module provenance are exempt
-      - compiler-known type, enum, interface, and unit redeclarations retain their focused messages while sharing S1028 ownership; the bootstrap lexer mirrors the centralized reservation inventory
+      - compiler-known type, enum, interface, and unit redeclarations retain their focused messages while sharing S1028 ownership
       - LSP source-position integration uses one scalar-to-UTF-16 token-range mapping for diagnostics, hover, navigation, references, highlights, call hierarchy, document symbols, semantic tokens, and edits; incoming protocol positions map UTF-16 back to byte offsets without corrupting lexer scalar columns, multiline tokens remain addressable on continuation lines, and LF, CRLF, and bare CR share physical-line semantics
+      - the Go lexer retains identifier-like candidates containing non-ASCII decimal digits as one ILLEGAL token and emits focused L1005 over the complete original spelling; leading digits, underscore-prefixed candidates, following-token recovery, and scalar columns are covered without changing valid Unicode-letter identifiers
     partial:
       - interpolation allocation/failure policy, Semantic IR plan consumption, and maintained-backend lowering remain incomplete; AST/parser expression parts, source ranges, text escape materialization, semantic traversal, formatting-contract selection, maximal frontend concat planning, ownership checks, and effect propagation are implemented
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
@@ -230,14 +232,20 @@ integrations:
         result: passed; bidirectional UTF-16 mapping, LF/CRLF/CR normalization, astral-scalar token ranges, multiline comment lookup, diagnostics, semantic tokens, and highlights
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/lsp
         result: passed; NFC validity, normalized suggestions, original token positions, rollback, grammar exclusions, parser rejection, and LSP publication
+      - command: go test ./internal/lexer ./cmd/lsp -run 'IdentifierNFC|SourcePositions' -count=1
+        result: passed on 2026-09-29; leading combining-mark candidates remain one L1005 token with exact spelling, scalar position, snapshot rollback, following-token recovery, and LSP-compatible ranges
       - command: go test ./internal/lexer -run TestBytesIsOrdinaryIdentifierWithoutByteStringToken -count=1
         result: passed; relative bytes spellings remain identifiers and no byte-string token category exists
       - command: go test ./cmd/compiler -run TestLexerCLI -count=1
         result: passed; lex and token reject retained-token diagnostics, print stable IDs and positions, preserve unstructured ILLEGAL counting, and deduplicate structured diagnostics throughout enclosing ILLEGAL token spans
       - command: go test ./internal/lexer ./internal/parser ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'MalformedBase|LegacyBase|RegistryIsValid|KnownDiagnostic|LexerCLI' -count=1
         result: passed; maximal base candidates emit L1010/L1011 once, parser, CLI, and LSP preserve them, registry metadata is valid, and legacy suffix mentor diagnostics retain ownership
-      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'ContractWord|ContractModifier|ContractSequence' -count=1 && go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
-        result: passed; the canonical six-word inventory drives parser recognition and LSP completion, remains lexically contextual, returns defensive copies, and is mirrored by parser-valid bootstrap source
+      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'ContractWord|ContractModifier|ContractSequence' -count=1
+        result: passed; the nine-word implemented inventory drives parser recognition and LSP completion, remains lexically contextual, and returns defensive copies
+      - command: go test ./internal/lexer ./internal/parser ./cmd/lsp -run 'NonASCIIDigit|IdentifierNFC|RequiredLexicalErrorCategories' -count=1
+        result: passed on 2026-09-29; non-ASCII digits remain inside one diagnosed identifier candidate, NFC precedence and existing category ownership remain stable, and later tokens recover at scalar-accurate columns
+      - command: bin/sec parse ../bootstrap/internal/lexer/lexer.sec
+        result: passed on 2026-09-29; the bootstrap lexer source accepts the synchronized nine-word contract inventory
       - command: go test ./internal/lexer ./internal/parser ./cmd/compiler ./cmd/lsp -run 'MalformedDecimalCandidate' -count=1
         result: passed; eleven invalid candidates cover separator, suffix, and missing-exponent diagnostics across every decimal shape with maximal tokens, exact diagnostic ownership, CLI rejection, LSP publication, and parser recovery without cascades
       - command: go test ./internal/parser ./internal/ast ./internal/formatter ./cmd/lsp -run 'Documentation|Comment' -count=1

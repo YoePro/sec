@@ -43,7 +43,7 @@ func TestReservedDeclarationNamesAcrossNamespaces(t *testing.T) {
 func TestCanonicalIdentifierLikeReservedSpellingsAreRejected(t *testing.T) {
 	for _, name := range []string{
 		"int", "map", "task", "thread", "process", "even", "finite",
-		"multipleOf", "notEmpty", "odd", "unique",
+		"multipleOf", "minLen", "maxLen", "exactLen", "notEmpty", "odd", "unique",
 	} {
 		t.Run(name, func(t *testing.T) {
 			source := "module main\nlet " + name + " := 1\n"

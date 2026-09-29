@@ -1,0 +1,9 @@
+module invalid_struct_field_types
+
+type Record struct {
+    Empty:,
+    Malformed: @,
+    Valid: int,
+}
+
+fn Outside() void {}

@@ -7,14 +7,14 @@ integrations:
     status: partial
     audited: '2026-08-19'
     revised: '2026-09-21'
-    document_revision: 2-era
+    document_revision: '1.1'
     repository_baseline: c515862
     summary: 'Tracks the canonical Sec 0.1 compiler-known attribute system. Individual verticals exist for #target
       compatibility, @address, @noCopy, and @link_name, but the general attribute parser, attachment-set model, declaration
       selection, verified-effect attributes, interrupt attributes, generic diagnostics, formatter integration, and
-      LSP support are not yet unified. This entry centralizes implementation status that is still embedded in rules/foundations/attributes.md
-      while preserving the more detailed owning governance entries for fixed-address bindings, FFI, copy/move, target/platform
-      resolution, and ISR analysis.'
+      LSP support are not yet unified. This fragment is the sole owner of implementation status for the normative
+      rules/foundations/attributes.md rulebook while preserving the more detailed owning governance entries for fixed-address
+      bindings, FFI, copy/move, target/platform resolution, and ISR analysis.'
     rules:
     - rules/foundations/attributes.md
     - rules/foundations/grammar.md
@@ -77,6 +77,7 @@ integrations:
     - enforce allowed attachment targets, duplicate rules, conflict rules, argument shape, and compile-time argument
       requirements uniformly
     - implement canonical '@target' file and statement forms with os, arch, cpu, device, and board selectors
+    - migrate '#target' compatibility syntax into the same file-selection representation as canonical '@target', with a focused compatibility diagnostic and explicit migration fix rather than a second selection engine
     - implement target-variant overlap detection, no-active-variant handling, and public-shape compatibility checks
     - implement '@when' and typed 'config.<name>' compile-time parameter access with the restricted Sec 0.1 boolean
       expression language
@@ -93,8 +94,6 @@ integrations:
     - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
     - implement LSP completion, hover, effective-guarantee display, excluded-source display, target/config/vector/address
       argument completion, diagnostics, and code actions
-    - migrate the remaining implementation-status material out of rules/foundations/attributes.md into this governance
-      ledger
     cross_references:
     - frontend.fixed-address-bindings
     - frontend.ffi-v2

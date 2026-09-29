@@ -1,0 +1,10 @@
+module invalid_union_payloads
+
+type Choice union {
+    Empty()
+    Malformed(@)
+    MissingClose(string
+    Later(uint)
+}
+
+fn Outside() void {}

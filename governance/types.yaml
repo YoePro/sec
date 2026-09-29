@@ -446,16 +446,16 @@ integrations:
   - id: frontend.type-contracts-v2
     area: frontend-types-analysis-and-lowering
     status: partial
-    updated: '2026-09-22'
-    audited: '2026-09-22'
-    repository_baseline: c515862
+    updated: '2026-09-29'
+    audited: '2026-09-29'
+    repository_baseline: 314233c
     document_revision: inferred 2.0
     document_revision_note: rules/types/contracts.md has no explicit revision metadata. Repository history places
       the canonical rewrite on 2026-08-12 to 2026-08-13, inside the revision-2 rulebook period. Later specialized
       rulebooks take precedence on conflicts.
     summary: Tracks canonical named-type contracts. Integer ranges, ordered primitive membership, odd/even/multipleOf,
-      finite/notEmpty/unique marker parsing, compile-time primitive checks, contract inheritance, and explicit/default
-      integration have substantial frontend support. The full canonical contract inventory, complete compile-time
+      finite/notEmpty/unique marker parsing, minLen/maxLen/exactLen parsing and compile-time consistency, compile-time
+      primitive checks, contract inheritance, and explicit/default integration have substantial frontend support. The full canonical contract inventory, complete compile-time
       equality membership domain, rejection of obsolete storage-site contracts, complete consistency proofs, runtime
       validation, fallible conversion/assignment, collection/string contracts, diagnostics, Semantic IR, lowering,
       and tooling remain partial.
@@ -473,6 +473,8 @@ integrations:
     - internal/ast/ast.go
     - internal/parser/parser.go
     - internal/sema/contracts.go
+    - internal/sema/contract_values.go
+    - internal/sema/length_contracts.go
     - internal/sema/defaults.go
     - internal/sema/analyzer.go
     - internal/diagnostics/diagnostics.go
@@ -486,6 +488,8 @@ integrations:
     - internal/sema/defaults_test.go
     - internal/codegen/mlir/generator_test.go
     - internal/sema/contract_representability_test.go
+    - internal/sema/contract_values_test.go
+    - internal/sema/length_contracts_test.go
     - testdata/contracts/representable_conjunction_valid.sec
     - testdata/contracts/representable_conjunction_invalid.sec
     - testdata/contracts/representable_conjunction_target.sec
@@ -500,6 +504,20 @@ integrations:
     - duplicate membership-value rejection
     - membership values are checked against represented sibling contracts
     - notEmpty, unique, and finite marker-contract parsing and basic applicability checks
+    - minLen, maxLen, and exactLen are contextual integer-valued contracts represented in the parser AST and semantic types
+    - length-contract values require nonnegative arbitrary-precision compile-time integers
+    - length-contract applicability is restricted to strings and supported collection-shaped named types
+    - inherited and local minLen, maxLen, exactLen, and notEmpty constraints participate in one consistency proof
+    - fixed-array extents participate in length-contract consistency without host-width narrowing
+    - explicit string defaults are checked against length contracts in the canonical byte-based string Len unit
+    - compile-time string literals are checked against inherited membership, notEmpty, minLen, maxLen, and exactLen contracts at typed initialization, try assignment, aggregate construction, union payload, explicit conversion, call-argument, and return boundaries
+    - typed array literals are checked against inherited minLen, maxLen, exactLen, and notEmpty contracts from the exact arbitrary-precision compact literal length, including fixed-array spreads without re-evaluating source elements
+    - unique rejects the first source-ordered proven duplicate among direct compile-time array-literal elements using the same semantic equality as membership; spreads and runtime expressions remain opaque
+    - canonical dynamic and fixed-array defaults are admitted only when their exact length satisfies inherited minLen, maxLen, exactLen, and notEmpty contracts
+    - fixed-array defaults longer than one are non-defaultable under unique because every element would receive the same semantic element default; empty and single-element defaults remain valid when all other contracts pass
+    - array default previews consume the same contract decision and cannot advertise an invalid implicit default
+    - constrained named string types accept a direct string literal only through the compile-time contract proof; non-literal base strings do not acquire an implicit nominal conversion
+    - selected function-call arguments and return values share the compile-time contract boundary check, including existing integer range, divisibility, and parity validation
     - contract applicability diagnostics for currently recognized contract families
     - integer literal and supported explicit-conversion contract checks
     - explicit type defaults are checked against represented contracts
@@ -518,7 +536,7 @@ integrations:
     partial:
     - membership is currently restricted by implementation to primitive/scalar/enum compile-time constants rather
       than the full canonical domain of named values with compile-time semantic equality
-    - finite, notEmpty, and unique have parser/applicability representation but not complete runtime validation semantics
+    - finite, notEmpty, unique, minLen, maxLen, and exactLen have frontend representation but not complete runtime validation semantics
     - range bounds are parsed from a narrow numeric-literal form rather than the complete permitted compile-time-constant
       domain
     - explicit-default constant evaluation supports only a subset of the canonical allocation-free compile-time constant
@@ -529,9 +547,9 @@ integrations:
     remaining:
     - add parser and AST support for regex pattern contracts
     - define the canonical regular-expression syntax/engine before runtime regex validation is enabled
-    - add parser and AST support for minLen, maxLen, and exactLen integer-valued contracts
-    - implement string length-contract validation in the same length unit used by canonical string Len semantics
-    - implement supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
+    - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty
+    - implement runtime supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
+    - extend compile-time length/default validation beyond implemented array literals and canonical array defaults to other supported collection literals and aggregate defaults
     - enforce unique using semantic equality on direct elements without recursive uniqueness
     - extend in-list membership to every named type whose values support the required compile-time semantic equality,
       without memory-identity comparison or hidden coercion
@@ -553,12 +571,11 @@ integrations:
     - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
     - The contracts.md embedded status correctly records obsolete variable and field contracts plus incomplete runtime
       validation as known work; those are not new bugs from this audit.
-    - regex, minLen, maxLen, exactLen, and the broader compile-time-equality membership domain remain incomplete;
-      represented integer range/divisibility/parity composition now includes base-type and target-sized representability.
+    - regex and the broader compile-time-equality membership domain remain incomplete; the length-contract family now
+      has frontend parsing, applicability, consistency, fixed-array, and explicit-string-default coverage while runtime validation remains incomplete.
     required_tests:
     - regex contract parses only after regex syntax is canonicalized
     - minLen, maxLen, exactLen, and notEmpty applicability
-    - unique direct-element semantic equality
     - membership values preserve source order
     - membership duplicate detection uses semantic equality
     - membership of every supported compile-time comparable named value family
@@ -580,6 +597,14 @@ integrations:
       result: passed
     - command: go test ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(StorageSiteContract|VariableLevel|StructFieldRangeContract)' -count=1
       result: passed on 2026-09-22 with stable diagnostic registration, variable/field rejection, no hidden contract application, and LSP propagation
+    - command: go test ./internal/lexer ./internal/parser ./internal/sema -count=1
+      result: passed on 2026-09-29 with contextual length-word, AST, applicability, consistency, fixed-array, inherited-contract, and explicit-string-default coverage
+    - command: go test ./internal/sema -count=1
+      result: passed on 2026-09-29 with string literal contract proofs across storage, aggregate, conversion, call, and return boundaries plus integer call/return regression coverage
+    - command: go test ./internal/sema -run 'Test(ArrayLiteralLengthContractsUseExactCompactLength|ArrayLiteralUniqueContractRejectsProvenDirectDuplicates|LengthContract|StringContract)' -count=1
+      result: passed on 2026-09-29 with exact array-literal and spread length proofs, direct-element semantic uniqueness, and existing string and contract-set coverage
+    - command: go test ./internal/sema -run 'Test(ArrayDefaultsRespectLengthNotEmptyAndUniqueContracts|DefaultValue)' -count=1
+      result: passed on 2026-09-29 with contract-valid dynamic/fixed array defaults, repeated-default uniqueness rejection, and preview consistency
   - id: frontend.default-values-inherited-membership
     area: frontend-default-resolution-and-contract-validation
     status: implemented

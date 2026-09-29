@@ -91,7 +91,7 @@ impl date {
     fn FromYMD(year: int, month: int, day: int) Result[date, DateError] {
         // TODO: validera + räkna om till epochDays
         // let days := /* beräkning */
-        return Ok(date { _epochDays: days })
+        return Ok(date { _epochDays: int32(day) })
     }
 
     static property Year: int {           // 1–9999
@@ -147,6 +147,27 @@ impl date {
     // return new date{ year: 0, month: 0, day: 0 }
     // }
 
+    fn _HowardHinnant(year: int, month: int, day: int) int {
+        // Shift so March is month 0 (makes leap day handling easier)
+        if month <= 2 {
+            year = year - 1
+        }
+        month = (month + 9) % 12
+
+        let mut era: int
+        if year >= 0 {
+            era = year / 400
+        } else {
+            era = (year - 399) / 400
+        }
+
+        let yoe := year - era * 400                                  // [0, 399]
+        let doy := (153 * month + 2) / 5 + day - 1                   // [0, 365]
+        let doe := yoe * 365 + yoe / 4 - yoe / 100 + doy             // [0, 146096]
+
+        return era * 146097 + doe - 719468
+    }
+
 }
 
 // Helper (can live in the same module)
@@ -157,8 +178,7 @@ fn _daysInMonth(year: int, month: int) int {
         case 4, 6, 9, 11:
             return 30
         case 2:
-            let isLeap := isLeapYear(year)
-            if isLeap {
+            if _isLeapYear(year) {
                 return 29
             } else {
                 return 28

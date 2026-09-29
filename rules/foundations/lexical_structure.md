@@ -665,7 +665,10 @@ Compiler-known contract spellings are reserved:
 
 ```text
 even
+exactLen
 finite
+maxLen
+minLen
 multipleOf
 notEmpty
 odd

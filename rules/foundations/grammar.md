@@ -101,6 +101,7 @@ Implemented:
 - `range` contracts;
 - `in [...]` contracts;
 - `multipleOf`;
+- `minLen`, `maxLen`, and `exactLen`;
 - `notEmpty`;
 - `unique`;
 - `finite`;
@@ -1607,6 +1608,7 @@ TypeContract
     ::= RangeContract
       | MembershipContract
       | MultipleOfContract
+      | LengthContract
       | MarkerContract
 
 RangeContract
@@ -1621,6 +1623,11 @@ MembershipContract
 
 MultipleOfContract
     ::= Contextual("multipleOf") ConstantExpression
+
+LengthContract
+    ::= Contextual("minLen") ConstantExpression
+      | Contextual("maxLen") ConstantExpression
+      | Contextual("exactLen") ConstantExpression
 
 MarkerContract
     ::= Contextual("notEmpty")
@@ -4425,6 +4432,9 @@ inputs
 outputs
 clobbers
 multipleOf
+minLen
+maxLen
+exactLen
 notEmpty
 unique
 finite

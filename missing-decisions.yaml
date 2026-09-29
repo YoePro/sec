@@ -1,0 +1,78 @@
+schema_version: 1
+updated: "2026-09-29"
+purpose: >-
+  Tracks normative decisions that are missing or insufficiently precise and
+  therefore constrain implementation. Remove an entry only after the owning
+  rulebook records the decision and affected governance has been synchronized.
+
+classification_scale:
+  blocking: The named implementation cannot proceed without inventing language semantics.
+  constraining: Related work can continue, but conformance or migration behavior cannot be completed consistently.
+  localized: The gap blocks a narrow optional feature without destabilizing adjacent language behavior.
+
+decisions:
+  - id: MD-001
+    area: lexer-and-tooling
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+    description: >-
+      Define whether visually confusable identifiers produce a warning, which
+      confusable-data/version source is normative, what comparison scope is
+      used, and which diagnostic suppression rules apply. Identifier identity
+      must remain exact NFC spelling regardless of the decision.
+    classification: localized
+    status: open
+
+  - id: MD-002
+    area: parser-and-types
+    rulebooks:
+      - rules/foundations/grammar.md
+    description: >-
+      Define the continuing Sec 0.1 role of `type Name = ExistingType` and the
+      compact `type Name = First Second` variant form, including whether each
+      is canonical, compatibility-only, migration-only, or rejected syntax.
+    classification: blocking
+    status: open
+
+  - id: MD-003
+    area: parser-formatter-and-diagnostics
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/declarations/struct.md
+      - rules/collections/collections.md
+      - rules/types/contracts.md
+    description: >-
+      Choose one observable policy for legacy compatibility forms such as
+      standalone struct declarations, prefix sequence types, and obsolete
+      inline contracts: rejection, focused migration diagnostics, or safe
+      formatter normalization on a form-by-form basis.
+    classification: constraining
+    status: open
+
+  - id: MD-004
+    area: strings-semantic-ir-and-lowering
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+      - rules/compiler/semantic_ir.md
+    description: >-
+      Define allocation context, materialization strategy, and failure
+      propagation for runtime string concatenation and interpolation so the
+      existing frontend StringConcatPlan can be consumed by Semantic IR and
+      maintained backends without inventing failure semantics.
+    classification: blocking
+    status: open
+
+  - id: MD-005
+    area: interpolated-string-lexing-and-diagnostics
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+      - rules/tooling/diagnostics.txt
+    description: >-
+      Define the mandatory diagnostic identity, primary range, retained token
+      shape, and recovery boundary for an unmatched single `}` in interpolated
+      string text. The syntax requires literal closing braces to be doubled,
+      but currently does not specify whether the offending brace or the whole
+      interpolated-string candidate owns the error, and the Go lexer therefore
+      returns ILLEGAL without a structured lexer diagnostic.
+    classification: localized
+    status: open

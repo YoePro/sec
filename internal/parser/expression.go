@@ -213,6 +213,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		case lexer.DOT:
 			p.nextToken()
 			left = p.parseMemberExpression(left)
+			if _, invalid := left.(*ast.InvalidExpression); invalid {
+				return left
+			}
 
 		case lexer.PLUS,
 			lexer.MINUS,
@@ -1530,6 +1533,15 @@ func typeReferenceFromExpression(expr ast.Expression) (*ast.TypeReference, bool)
 	}
 }
 
+// parseMemberExpression retains the valid receiver in an InvalidExpression
+// when a dot is not followed by a member identifier. The parser does not
+// invent a name and stops this Pratt expression before an adjacent dot can be
+// silently reinterpreted as another member access.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Member-access recovery"
+//   - rules/compiler/parser_recovery.md — "Postfix expression"
+//   - rules/compiler/parser_recovery.md — "Invalid expression"
 func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
 	expr := &ast.MemberExpression{
 		Token:  p.curToken,
@@ -1537,14 +1549,13 @@ func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
 	}
 
 	if p.peekToken.Type != lexer.IDENT && p.peekToken.Type != lexer.UNDERSCORE {
-		p.addError(
-			"expected next token to be %q, got %q at %d:%d",
-			lexer.IDENT,
-			p.peekToken.Type,
-			p.peekToken.Line,
-			p.peekToken.Column,
-		)
-		return nil
+		message := fmt.Sprintf("missing member name after '.' at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, &p.peekToken, "%s", message)
+		invalid := p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
+		invalid.Left = left
+		invalid.Operator = p.curToken
+		invalid.Recovery.End = p.peekToken
+		return invalid
 	}
 	p.nextToken()
 
@@ -1639,10 +1650,21 @@ func (p *Parser) parseBooleanLiteral() ast.Expression {
 	}
 }
 
+// parsePrefixExpression preserves the operator and an explicit invalid right
+// operand when a reliable expression boundary follows immediately. The
+// boundary remains unconsumed for its owning list, block, or arm parser.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Missing prefix operand"
+//   - rules/compiler/parser_recovery.md — "Expression recovery"
 func (p *Parser) parsePrefixExpression() ast.Expression {
 	expr := &ast.PrefixExpression{
 		Token:    p.curToken,
 		Operator: p.curToken.Lexeme,
+	}
+	if isMissingOperandBoundary(p.peekToken.Type) {
+		expr.Right = p.missingOperandExpression(p.curToken, p.peekToken)
+		return expr
 	}
 
 	p.nextToken()
@@ -1678,6 +1700,13 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	return expr
 }
 
+// parseInfixExpression preserves the valid left operand and operator when a
+// reliable expression boundary proves that the right operand is absent. The
+// boundary remains available to the enclosing grammar production.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Missing infix right operand"
+//   - rules/compiler/parser_recovery.md — "Expression recovery"
 func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 	if p.curToken.Type == lexer.LT {
 		if conversion := p.parseUnitConversionExpression(left); conversion != nil {
@@ -1692,12 +1721,57 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 	}
 
 	prec := p.curPrecedence()
+	if isMissingOperandBoundary(p.peekToken.Type) {
+		expr.Right = p.missingOperandExpression(p.curToken, p.peekToken)
+		return expr
+	}
 
 	p.nextToken()
 
 	expr.Right = p.parseExpression(prec)
 
 	return expr
+}
+
+// missingOperandExpression creates the syntax-only placeholder for an absent
+// prefix or infix operand and anchors recovery through the untouched boundary.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Invalid expression"
+//   - rules/compiler/parser_recovery.md — "Missing prefix operand"
+//   - rules/compiler/parser_recovery.md — "Missing infix right operand"
+func (p *Parser) missingOperandExpression(operator lexer.Token, boundary lexer.Token) *ast.InvalidExpression {
+	message := fmt.Sprintf("missing operand after %q at %d:%d", operator.Lexeme, operator.Line, operator.Column)
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, operator, nil, &boundary, "%s", message)
+	invalid := p.invalidExpression(operator, message, compilerdiagnostics.ParserInvalidExpression)
+	invalid.Operator = operator
+	invalid.Recovery.End = boundary
+	return invalid
+}
+
+// isMissingOperandBoundary identifies tokens that cannot begin the missing
+// operand and belong to an enclosing expression, list, block, arm, assignment,
+// or statement production.
+//
+// Rules:
+//   - rules/compiler/parser_recovery.md — "Expression recovery"
+func isMissingOperandBoundary(tokenType lexer.TokenType) bool {
+	switch tokenType {
+	case lexer.COMMA,
+		lexer.RPAREN,
+		lexer.RBRACKET,
+		lexer.RBRACE,
+		lexer.COLON,
+		lexer.ASSIGN,
+		lexer.ARROW,
+		lexer.CASE,
+		lexer.DEFAULT,
+		lexer.SEMICOLON,
+		lexer.EOF:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expression {

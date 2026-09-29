@@ -1,5 +1,12 @@
 # Runtime Checks
 
+- **Status:** Normative
+- **Created:** 2026-08-04
+- **Last updated:** 2026-09-07
+- **Document revision:** 2.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/errors/runtime_checks.md`
+
 ## Status
 
 This document is the canonical runtime-check rulebook for Sec.

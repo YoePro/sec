@@ -230,13 +230,14 @@ integrations:
       - valid module-main program-entry root discovery
       - whole-graph root reachability with literal true and false branch pruning
       - Tarjan same-stack strongly connected components and direct or mutual recursion classification
+      - dedicated Tarjan task-spawn, thread-start, process-launch, and complete-execution SCC views over the canonical graph, including direct-self and mutual-cycle classification without conflating execution-boundary cycles with same-stack recursion
       - task-spawn and thread-start execution relations on the resolved outer spawn call
       - synchronous classification of argument calls evaluated before spawning
       - derived task-entry and thread-entry roots only for reachable spawn sites
       - exclusion of task and thread spawn edges from same-stack recursion
       - standard LSP prepare, incoming, and outgoing call hierarchy
       - preserved dispatch and execution metadata in LSP call-hierarchy items
-      - LSP hover summaries for callers, callees, roots, recursion, and spawn edges
+      - LSP hover summaries for callers, callees, roots, same-stack recursion, spawn edges, and distinct task-spawn and thread-start cycle components
       - source-ordered direct Arena create, allocate, reset, and release event sites
       - synchronous Arena MayAllocate propagation and shortest callable cause paths
       - exclusion of spawned-body allocation from the spawner synchronous summary
@@ -246,7 +247,7 @@ integrations:
       - unknown function-value parameters create no unsound empty-target graph edge while open callable contracts remain unavailable
     verification:
       - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestEscapeAnalysisRecordsCaptureWithoutLambdaReturnLeakage|TestCallGraph' -count=1
-        result: passed; exact indirect targets, distinct lambda callers, capture-creation ownership, and existing call-graph behavior are covered
+        result: passed; exact indirect targets, distinct lambda callers, capture-creation ownership, execution-specific SCC views, and existing call-graph behavior are covered
       - command: go test ./...
         result: passed
       - command: go vet ./...
@@ -260,7 +261,6 @@ integrations:
       - target, initialization, test, benchmark, interrupt, foreign-export, generated, and open-world roots
       - complete semantic path pruning beyond literal boolean branches
       - process, interrupt, callback, await, join, defer, and destruction execution relations
-      - dedicated task-spawn, thread-start, process-launch, and complete-execution SCC views
       - effect domains beyond the initial Arena allocation summary
       - path-aware ordered effect merging and general diagnostic cause paths
       - persistent workspace graph indexing, incremental invalidation, and stale-result suppression

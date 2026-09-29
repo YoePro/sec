@@ -5,8 +5,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"golang.org/x/text/unicode/norm"
-
 	compilerdiagnostics "sec/internal/diagnostics"
 )
 
@@ -312,7 +310,7 @@ func (l *Lexer) NextToken() Token {
 
 	// 2026-08-01: Keep the grammar's bare discard/reserved-field symbol
 	// distinct from ordinary identifiers such as _name and __name.
-	if ch == '_' && !isLetter(l.peekNext()) && !isDigit(l.peekNext()) && !unicode.IsMark(l.peekNext()) {
+	if ch == '_' && !isIdentifierCandidateContinue(l.peekNext()) {
 		return l.readOne(UNDERSCORE)
 	}
 
@@ -324,6 +322,11 @@ func (l *Lexer) NextToken() Token {
 	if isDigit(ch) {
 		lit, typ := l.readNumber()
 		return l.token(typ, lit, line, column)
+	}
+
+	if unicode.IsDigit(ch) || unicode.IsMark(ch) {
+		lit := l.readIdentifier()
+		return l.identifierToken(lit, line, column)
 	}
 
 	if ch == '$' && l.peekNext() == '"' {
@@ -638,49 +641,6 @@ func (l *Lexer) readBlockComment() Token {
 
 		l.advance()
 	}
-}
-
-// readIdentifier retains an entire identifier candidate, including combining
-// marks for diagnostics; identifierToken checks its validity without rewriting it.
-// Rules: rules/foundations/lexical_structure.md — "6.1 Identifier form", "6.2 Unicode normalization".
-// 2026-09-06 10:01 UTC: Stage-0 NFC validation and combining-mark recovery;
-// the corresponding bootstrap readIdentifier documents its pending NFC dependency.
-func (l *Lexer) readIdentifier() string {
-	start := l.pos
-
-	for isLetter(l.peek()) || isDigit(l.peek()) || unicode.IsMark(l.peek()) {
-		l.advance()
-	}
-
-	return string(l.input[start:l.pos])
-}
-
-// identifierToken rejects non-NFC spellings and invalid identifier characters,
-// preserving the source lexeme and suggesting NFC only in the diagnostic.
-// Rules: rules/foundations/lexical_structure.md — "6.1 Identifier form", "6.2 Unicode normalization".
-func (l *Lexer) identifierToken(literal string, line, column int) Token {
-	token := l.token(lookupIdent(literal), literal, line, column)
-	if !norm.NFC.IsNormalString(literal) {
-		token.Type = ILLEGAL
-		l.diagnostics = append(l.diagnostics, Diagnostic{
-			ID:      compilerdiagnostics.LexerNonNFCIdentifier,
-			Message: fmt.Sprintf("identifier %q is not in Unicode NFC; use the NFC spelling %q at %d:%d", literal, norm.NFC.String(literal), line, column),
-			Primary: token,
-		})
-		return token
-	}
-	for _, ch := range literal {
-		if unicode.IsMark(ch) {
-			token.Type = ILLEGAL
-			l.diagnostics = append(l.diagnostics, Diagnostic{
-				ID:      compilerdiagnostics.LexerIdentifierCharacter,
-				Message: fmt.Sprintf("identifier %q contains combining mark U+%04X; identifiers permit letters, ASCII digits, and underscore at %d:%d", literal, ch, line, column),
-				Primary: token,
-			})
-			break
-		}
-	}
-	return token
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.

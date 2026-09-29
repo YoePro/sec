@@ -1,6 +1,19 @@
 # Attributes
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-04
+- **Last updated:** 2026-09-29
+- **Document revision:** 1.1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/foundations/attributes.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-09-29`
+- **Implementation governance:** `governance/attributes.yaml`
+- **Related rulebooks:** `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/compiler/parser_recovery.md`, `rules/compiler/compile_time_evaluation.md`, `rules/declarations/static.md`, `rules/memory/copy_move.md`, `rules/errors/runtime_checks.md`, `rules/errors/panic.md`, `rules/platform/fixed-address-bindings.md`, `rules/platform/interrupts.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/lsp.md`
+
+---
+
+## Purpose and authority
 
 This document is the canonical attribute rulebook for Sec 0.1.
 
@@ -19,8 +32,6 @@ It defines:
 - interrupt-safe functions;
 - duplicate and conflict rules;
 - formatter and LSP behavior;
-- current implementation status;
-- implementation requirements and tests.
 
 Sec 0.1 uses a closed set of compiler-known attributes.
 
@@ -94,7 +105,7 @@ defined conflicts
 defined semantic effect
 defined diagnostics
 defined formatter behavior
-defined implementation status
+defined conformance tests
 ```
 
 ---
@@ -831,17 +842,15 @@ available variants:
 
 ---
 
-# Current `#target` compatibility form
+# `#target` compatibility form
 
-The current compiler implementation recognizes:
+Sec 0.1 permits the temporary file-level compatibility directive:
 
 ```sec
 #target(os: "linux", arch: "amd64")
 ```
 
-as a file-level compiler directive.
-
-The implemented form currently:
+Its behavior is:
 
 ```text
 must appear before code or declarations
@@ -856,8 +865,7 @@ The canonical unified source form defined by this rulebook is:
 @target(...)
 ```
 
-The implementation may temporarily accept `#target(...)` as compatibility
-syntax during migration.
+Compilers may accept `#target(...)` as compatibility syntax during migration.
 
 Compatibility behavior:
 
@@ -1068,9 +1076,6 @@ Canonical:
 @address(0x40021000)
 let mut GPIO: GPIORegisters
 ```
-
-The current parser already recognizes `@address(...)` before a single `let`
-declaration.
 
 ---
 
@@ -2326,155 +2331,6 @@ Final stable IDs belong to the diagnostics registry.
 
 ---
 
-# Current implementation status
-
-## Implemented
-
-### `#target` parser directive
-
-The current parser recognizes file-level:
-
-```sec
-#target(os: "linux", arch: "amd64")
-```
-
-It currently:
-
-```text
-must appear before code or declarations
-accepts os and arch
-requires both
-requires string literal values
-rejects duplicate arguments
-stores OS and architecture in AST
-```
-
-### `@address` parser special case
-
-The current parser recognizes:
-
-```sec
-@address(expression)
-let ...
-```
-
-It currently:
-
-```text
-requires a following let declaration
-rejects grouped let declarations
-stores address expression and token on the LetStatement
-```
-
-### Compilation-plan concepts
-
-The project rulebook already distinguishes:
-
-```text
-OS
-architecture
-ABI
-CPU
-CPU features
-compiler options
-compile-time parameters
-variant-specific source selection
-```
-
-Compile-time parameters are already specified as typed values rather than text
-macros.
-
-### Existing semantic foundations
-
-Other rulebooks already define or require:
-
-```text
-addressed storage implies volatile semantics
-mut controls writes
-noPanic as a transitive verified property
-defer and destructors are noPanic
-noCopy semantics
-ISR call-graph restrictions
-allocation and blocking analysis
-```
-
-### `@noCopy` frontend path
-
-The current frontend implements:
-
-```text
-an Attribute AST node with source tokens
-@noCopy parsing on nominal type and enum declarations
-argument rejection
-duplicate rejection with both source locations
-wrong-target rejection
-explicit non-copyable type classification
-preservation through generic instantiation
-derived non-copyability through aggregate fields
-cause-aware copy diagnostics
-explicit ownership transfer through the existing move rules
-formatter placement on its own line
-LSP semantic-token modifier classification
-```
-
----
-
-# Partly implemented
-
-```text
-target-specific source selection exists conceptually but the canonical @target
-attribute is not generally parsed
-
-absolute-address syntax is parsed but not through a general attribute AST
-
-address validation and full lowering may be incomplete
-
-the `@noCopy` vertical is implemented, but consecutive mixed attribute sets and
-the general attachment engine are not
-
-call-graph analysis foundations exist, but all noAlloc/noPanic/noBlock
-attributes are not fully parsed and verified
-
-ISR rules exist conceptually, but @isr and @interrupt general parsing and target
-knowledge integration are incomplete
-
-compile-time parameters exist in project rules, but canonical config.<name>
-source access and @when selection are not fully implemented
-```
-
----
-
-# Not implemented
-
-Unless newer repository code proves otherwise, the following remain to be
-implemented:
-
-```text
-general attribute parser
-attribute attachment sets
-canonical @target file form
-canonical @target statement form
-os/arch/cpu/device/board selector support
-target-variant overlap analysis
-public shape compatibility across variants
-@when
-config.<name> compile-time parameter access
-@interrupt
-@isr
-@interruptSafe
-@noAlloc
-@noPanic
-@noBlock
-attribute implication graph
-knowledge-pack peripheral constants
-knowledge-pack interrupt vector constants
-generic attribute diagnostics
-general attribute-aware formatter beyond `@noCopy`
-attribute-aware LSP completion
-```
-
----
-
 # Required tests
 
 Create or update:
@@ -2684,283 +2540,6 @@ rules_implementations.txt
 
 ---
 
-# Appendix A — Codex implementation plan
-
-## A.1 Add the rulebook
-
-Add:
-
-```text
-rules/foundations/attributes.md
-```
-
-Update:
-
-```text
-language-rulebook-status.md
-rules/compiler/rules_implementations.txt
-```
-
-Mark the rulebook Written.
-
-Do not mark all attributes implemented.
-
----
-
-## A.2 Add generic attribute AST
-
-Add compiler-neutral syntax representation.
-
-Conceptual:
-
-```go
-type Attribute struct {
-    Token     lexer.Token
-    Name      string
-    Arguments []AttributeArgument
-}
-
-type AttributeArgument struct {
-    Name  string
-    Value ast.Expression
-}
-```
-
-Attach attributes to top-level statements and the compilation unit.
-
----
-
-## A.3 Parse attribute sets
-
-When parser sees `@`:
-
-1. parse one or more consecutive attributes;
-2. preserve comments and source ranges;
-3. identify file-level `@target` when first source-bearing line;
-4. parse the next top-level statement;
-5. attach the complete set;
-6. diagnose unattached attributes.
-
-Replace the `@address`-only parser branch with generic parsing.
-
-Preserve existing behavior through semantic validation.
-
----
-
-## A.4 Migrate `#target`
-
-Continue accepting the current directive temporarily.
-
-Lower it into the same file target-selection representation as `@target`.
-
-Add a compatibility diagnostic and explicit migration fix.
-
-Do not create two independent selection engines.
-
----
-
-## A.5 Implement target selectors
-
-Support:
-
-```text
-os
-arch
-cpu
-device
-board
-```
-
-Require at least one.
-
-Require compile-time values.
-
-Validate through the compilation plan and target database.
-
----
-
-## A.6 File and statement selection
-
-Implement:
-
-```text
-first source-bearing @target
-    file selection
-
-later @target
-    next top-level statement selection
-```
-
-Selection occurs before active symbol-table construction.
-
----
-
-## A.7 Variant analysis
-
-Detect:
-
-```text
-overlap
-no active variant where referenced
-public shape mismatch
-invalid selector combination
-unreachable target variant
-```
-
-Do not use implicit specificity ranking.
-
----
-
-## A.8 Implement compile-time configuration
-
-Expose typed project parameters through:
-
-```sec
-config.name
-```
-
-Implement restricted boolean constant evaluation for `@when`.
-
-Do not expose compiler options as program configuration.
-
----
-
-## A.9 Implement `@address`
-
-Resolve one module-scope `let`.
-
-Validate:
-
-```text
-compile-time address
-alignment
-target pointer width
-address space
-single declaration
-no ordinary initialization
-volatile semantics
-mutability
-```
-
-Integrate target knowledge-pack address constants.
-
----
-
-## A.10 Implement `@noCopy`
-
-Status: implemented for parser/AST, Sema classification and diagnostics,
-generic-instance preservation, formatter line layout, and LSP semantic-token
-classification. Migration into the future general attachment engine remains.
-
-Apply explicit nominal non-copy policy.
-
-Reuse compiler copyability classification.
-
-Improve cause-aware diagnostics.
-
-Do not add user-defined hidden copy bodies.
-
----
-
-## A.11 Implement verified effects
-
-Add parser and semantic support for:
-
-```text
-@noAlloc
-@noPanic
-@noBlock
-@interruptSafe
-@isr
-```
-
-Reuse call graph, stack, allocation, panic, blocking, ownership, and ISR analyses.
-
----
-
-## A.12 Implement `@interrupt`
-
-Resolve the vector through:
-
-```text
-raw compile-time number
-or target knowledge-pack constant
-```
-
-Imply `@isr`.
-
-Validate target ABI and unique active binding.
-
-Generate or contribute to the target vector table.
-
----
-
-## A.13 Attribute implications
-
-Compute effective properties separately from explicit source attributes.
-
-Example:
-
-```text
-explicit @interrupt
-effective @isr
-effective @noPanic
-effective @noAlloc
-effective @noBlock
-```
-
-Diagnostics should distinguish explicit and implied requirements.
-
----
-
-## A.14 Formatter
-
-Format one attribute per line.
-
-Format long named argument lists vertically.
-
-Preserve explicit redundant guarantees.
-
-Do not alter selection semantics.
-
----
-
-## A.15 LSP
-
-Add:
-
-```text
-completion
-hover
-effective guarantee display
-excluded-source display
-target value completion
-configuration completion
-vector and address completion
-call-chain diagnostics
-code actions
-```
-
----
-
-## A.16 Tests and migration
-
-Migrate old `#target` and `@address` tests into the general framework while
-retaining compatibility coverage.
-
-Run:
-
-```text
-go test ./...
-compiler build
-LSP build
-formatter tests
-fixture validation
-target matrix tests
-```
-
----
-
 # Appendix B — Canonical initial attribute table
 
 | Attribute | Category | Initial target | Arguments | Core meaning |
@@ -3035,4 +2614,4 @@ Overlapping active variants are compile errors.
 Public variant shapes must remain compatible.
 
 The attribute set may grow after each new attribute receives complete syntax,
-target, semantic, diagnostic, formatter, and implementation rules.
+target, semantic, diagnostic, formatter, and conformance rules.

@@ -434,7 +434,7 @@
         },
         {
           "name": "storage.modifier.contract.sec",
-          "match": "\\b(?:multipleOf|notEmpty|unique|finite|odd|even)\\b"
+          "match": "\\b(?:multipleOf|minLen|maxLen|exactLen|notEmpty|unique|finite|odd|even)\\b"
         },
         {
           "name": "variable.language.self.sec",

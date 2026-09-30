@@ -3530,7 +3530,7 @@ This document must remain synchronized with:
 grammar.md
 lexical_structure.md
 operators.md
-diagnostics.txt
+diagnostics.md
 lsp.md
 formatter.md
 semantic_ir.md

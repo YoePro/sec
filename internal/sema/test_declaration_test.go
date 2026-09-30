@@ -282,7 +282,7 @@ func TestTestingOperationsResolveInTestContext(t *testing.T) {
 //
 // Rules:
 //   - rules/tooling/testing.md — §§11.3 and 15.1–17.2
-//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+//   - rules/tooling/diagnostics.md — §§12 and 30 "Diagnostic registry" and "Testing requirements"
 func TestTestingOperationDiagnostics(t *testing.T) {
 	t.Run("outside test context", func(t *testing.T) {
 		path := "../../testdata/sema/testing_outside_context_invalid.sec"

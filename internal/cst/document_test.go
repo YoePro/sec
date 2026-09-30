@@ -29,6 +29,10 @@ func TestBuildRetainsEverySourceByteAndLexerToken(t *testing.T) {
 			element.Text != source[element.Span.Start:element.Span.End] {
 			t.Fatalf("non-lossless element after byte %d: %+v", previousEnd, element)
 		}
+		if element.Kind != Whitespace && element.Kind != BOM &&
+			(element.Token.ByteStart != element.Span.Start || element.Token.ByteEnd != element.Span.End) {
+			t.Fatalf("token range and CST span differ: token=%+v span=%+v", element.Token, element.Span)
+		}
 		previousEnd = element.Span.End
 		if element.Kind == Token && element.Token.Type == lexer.RAW_STRING && element.Text == "`a//b`" {
 			foundRaw = true

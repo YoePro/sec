@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -66,7 +65,7 @@ func unresolvedImportError(stmt *ast.ImportStatement) sema.Error {
 	if token.Line == 0 || token.Column == 0 {
 		token = stmt.Token
 	}
-	endColumn := token.Column + utf8.RuneCountInString(token.Lexeme)
+	endLine, endColumn := token.EndPosition()
 	return sema.Error{
 		ID:        diagnostics.UnresolvedImport,
 		Severity:  diagnostics.SeverityError,
@@ -75,7 +74,7 @@ func unresolvedImportError(stmt *ast.ImportStatement) sema.Error {
 		File:      token.File,
 		Line:      token.Line,
 		Column:    token.Column,
-		EndLine:   token.Line,
+		EndLine:   endLine,
 		EndColumn: endColumn,
 	}
 }

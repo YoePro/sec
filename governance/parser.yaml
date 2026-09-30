@@ -14,7 +14,7 @@ integrations:
       - rules/compiler/parser_recovery.md
       - rules/foundations/grammar.md
       - rules/foundations/lexical_structure.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
     code:
       - internal/parser/function_stub.go

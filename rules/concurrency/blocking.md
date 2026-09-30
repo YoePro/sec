@@ -537,6 +537,6 @@ concurrency_memory_model.md
 platform/ffi.md
 compiler_analysis.md
 semantic_ir.md
-diagnostics.txt
+diagnostics.md
 core/errors.sec
 ```

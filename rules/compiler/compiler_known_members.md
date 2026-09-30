@@ -3398,7 +3398,7 @@ compiler_analysis.md
 compiler_pipeline.md
 core-library.md
 default_values.md
-diagnostics.txt
+diagnostics.md
 effect_analysis.md
 platform/ffi.md
 formatting.md

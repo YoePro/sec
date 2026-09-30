@@ -174,6 +174,32 @@ func TestApplyProgramRolesMarksAttachedAttributeBoundaries(t *testing.T) {
 	}
 }
 
+// Explicit enum assignments receive formatter roles only from complete parsed
+// members; implicit members and legacy colon spellings remain outside them.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §15(4) enum assignment alignment
+func TestApplyProgramRolesMarksExplicitEnumAssignments(t *testing.T) {
+	source := "enum Status uint8 {\nA = 1\nLongName = 2\nImplicit\nLegacy: 3\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "enum_assignments.sec")
+	document.ApplyProgramRoles(program)
+
+	assignments := 0
+	for _, element := range document.Elements {
+		if element.HasRole(EnumValueAssignment) {
+			assignments++
+			if element.Token.Type != lexer.ASSIGN {
+				t.Fatalf("enum assignment role attached to %+v", element.Token)
+			}
+		}
+	}
+	if assignments != 2 {
+		t.Fatalf("enum assignment roles = %d, want 2; elements = %+v", assignments, document.Elements)
+	}
+}
+
 // Structural unit operators and grouping delimiters receive compact-spacing
 // roles only when the parser has accepted them inside a unit annotation. The
 // same tokens in an ordinary expression retain their ordinary CST identity.

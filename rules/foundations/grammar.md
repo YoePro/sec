@@ -4867,7 +4867,7 @@ spawn.md
 await.md
 select.md
 cancellation.md
-diagnostics.txt
+diagnostics.md
 parser_recovery.md
 semantic_ir.md
 language-rulebook-status.md

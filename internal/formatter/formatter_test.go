@@ -232,6 +232,33 @@ func TestFormatPlacesNoCopyAttributeOnOwnLine(t *testing.T) {
 	}
 }
 
+// Parser-owned enum assignment anchors align contiguous explicit-value groups
+// while comments, blank lines, and implicit members terminate a group.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §9(8–10) alignment boundaries
+//   - rules/tooling/formatter.md — §15(4) enum explicit-value assignments
+func TestFormatAlignsExplicitEnumValueAssignmentsFromCST(t *testing.T) {
+	input := "enum Status uint8 {\nA=1\nLongName   =   2\nC =3\n// separate\nD=4\nWideName=5\n\nImplicit\nE=6\n}\n"
+	want := "enum Status uint8 {\n    A        = 1\n    LongName = 2\n    C        = 3\n    // separate\n    D        = 4\n    WideName = 5\n\n    Implicit\n    E = 6\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong enum assignment alignment:\n%s\nwant:\n%s", got, want)
+	}
+	if second := Format(Source{Text: got}, Options{}).Text; second != got {
+		t.Fatalf("enum assignment alignment is not idempotent:\nfirst:\n%s\nsecond:\n%s", got, second)
+	}
+}
+
+func TestFormatDropsEnumAlignmentBeyondMaximumPadding(t *testing.T) {
+	input := "enum Status uint8 {\nA       =1\nExceptionallyLongStatusName=2\n}\n"
+	want := "enum Status uint8 {\n    A = 1\n    ExceptionallyLongStatusName = 2\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("enum assignment padding limit failed:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 // Attribute-to-declaration layout is parser-owned and formatted from concrete
 // tokens rather than from an attribute-name-specific line rewrite.
 //

@@ -66,7 +66,7 @@ decisions:
     area: interpolated-string-lexing-and-diagnostics
     rulebooks:
       - rules/foundations/lexical_structure.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
     description: >-
       Define the mandatory diagnostic identity, primary range, retained token
       shape, and recovery boundary for an unmatched single `}` in interpolated

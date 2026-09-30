@@ -3168,6 +3168,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 				p.addWarning("enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			}
 			p.nextToken()
+			value.InitializerToken = p.curToken
 			p.nextToken()
 			value.Initializer = p.parseExpression(LOWEST)
 			if value.Initializer == nil {
@@ -5874,6 +5875,14 @@ func (p *Parser) isContractStart(token lexer.Token) bool {
 	return token.Type == lexer.IDENT && lexer.IsContractWord(token.Lexeme)
 }
 
+// parseMembershipContract retains the complete ordered membership syntax,
+// including an empty list, so Sema can issue the canonical type diagnostic
+// instead of collapsing the declaration into a generic parser failure.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Type contracts", MembershipContract
+//   - rules/types/contracts.md — "Ordered membership"
+//   - rules/types/default_values.md — "Empty in [...] list"
 func (p *Parser) parseMembershipContract() ast.Contract {
 	contract := &ast.MembershipContract{Token: p.curToken}
 	if !p.expectPeek(lexer.LBRACKET) {
@@ -5892,10 +5901,6 @@ func (p *Parser) parseMembershipContract() ast.Contract {
 			p.nextToken()
 			continue
 		}
-	}
-	if len(contract.Values) == 0 {
-		p.addError("membership contract requires at least one value at %d:%d", contract.Token.Line, contract.Token.Column)
-		return nil
 	}
 	if !p.expectPeek(lexer.RBRACKET) {
 		return nil
@@ -7567,25 +7572,14 @@ func isDocumentableDeclaration(node ast.Node) bool {
 	}
 }
 
-// tokenEndLine returns the one-based physical line containing a token's final
-// source scalar, treating CRLF as one line ending.
+// tokenEndLine returns the one-based physical line at a token's exclusive end,
+// using the lexer-owned range and treating CRLF as one line ending.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §2 "Line endings"
 //   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
 func tokenEndLine(token lexer.Token) int {
-	line := token.Line
-	runes := []rune(token.Lexeme)
-	for index, current := range runes {
-		switch current {
-		case '\r':
-			line++
-		case '\n':
-			if index == 0 || runes[index-1] != '\r' {
-				line++
-			}
-		}
-	}
+	line, _ := token.EndPosition()
 	return line
 }
 

@@ -2009,7 +2009,7 @@ attributes.md
 operators.md
 grammar.md
 formatter.md
-diagnostics.txt
+diagnostics.md
 parser_recovery.md
 core-library.md
 stdlib.md

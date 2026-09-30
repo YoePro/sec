@@ -61,3 +61,58 @@ fn InvalidWhole() void {
 		t.Fatalf("whole diagnostic = %q", errors[1].Message)
 	}
 }
+
+// A dereference performed by defer depends on both the referenced Place and
+// the reference value that carries its authority. Ordinary deferred value
+// reads remain late reads and therefore still observe legal later assignment.
+//
+// Rules:
+//   - rules/control-flow/defer.md — §§9–11
+//   - rules/memory/borrowing.md — §21(1), §21(4)–(5)
+func TestDeferRetainsReferenceHolderWithoutFreezingOrdinaryValues(t *testing.T) {
+	source := `module main
+
+type Item struct { value: int }
+
+fn InvalidHolderMove() void {
+	let item := Item { value: 1 }
+	let view := ref item
+	defer {
+		let observed := view.value
+		discard observed
+	}
+	let moved :<- view
+	discard moved
+}
+
+fn InvalidHolderReplacement() void {
+	let first := Item { value: 1 }
+	let second := Item { value: 2 }
+	let mut view := ref first
+	defer {
+		let observed := view.value
+		discard observed
+	}
+	view = ref second
+}
+
+fn ValidLateValueRead() void {
+	let mut value := 1
+	defer {
+		let observed := value
+		discard observed
+	}
+	value = 2
+}
+`
+	errors := analyzeSourceRaw(t, source)
+	if len(errors) != 2 {
+		t.Fatalf("errors = %#v, want move and replacement diagnostics", errors)
+	}
+	if !strings.Contains(errors[0].Message, "cannot move view while it is required by defer") {
+		t.Fatalf("holder move diagnostic = %q", errors[0].Message)
+	}
+	if !strings.Contains(errors[1].Message, "cannot replace view while it is required as a reference holder by defer") {
+		t.Fatalf("holder replacement diagnostic = %q", errors[1].Message)
+	}
+}

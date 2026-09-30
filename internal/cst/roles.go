@@ -95,6 +95,9 @@ const (
 	StructFieldTypeStart Role = "struct-field-type-start"
 	// StructFieldTag marks a parser-confirmed raw struct-field tag token.
 	StructFieldTag Role = "struct-field-tag"
+	// EnumValueAssignment marks the real = token of a complete explicit enum
+	// member initializer.
+	EnumValueAssignment Role = "enum-value-assignment"
 )
 
 // HasRole reports whether this concrete element carries a grammatical role.
@@ -125,6 +128,7 @@ func (e Element) HasRole(role Role) bool {
 //   - rules/tooling/formatter.md — §20 "Patterns and destructuring"
 //   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
 //   - rules/tooling/formatter.md — §9(5–10) structural field alignment
+//   - rules/tooling/formatter.md — §15(4) enum assignment alignment
 //   - rules/tooling/formatter.md — §16(14–17) "attributes"
 //   - rules/tooling/formatter.md — §16(12) "multiline capture lists"
 //   - rules/tooling/formatter.md — §8(3–8) "brace placement"
@@ -372,6 +376,10 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				if node.TagToken.Type == lexer.RAW_STRING {
 					mark(node.TagToken, StructFieldTag)
 				}
+			}
+		case *ast.EnumValue:
+			if !node.Invalid && node.Initializer != nil && node.InitializerToken.Type == lexer.ASSIGN {
+				mark(node.InitializerToken, EnumValueAssignment)
 			}
 		}
 	})

@@ -259,4 +259,4 @@ contract declaration when practical.
 - `operators.md` defines constant-expression operator semantics.
 - `struct.md` requires named constrained field types.
 - `collections.md` defines collection types and `shaped-types.md` defines shaped types.
-- `diagnostics.txt` defines diagnostic structure and stability.
+- `diagnostics.md` defines diagnostic structure and stability.

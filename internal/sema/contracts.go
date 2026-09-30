@@ -168,6 +168,18 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			return typ
 		}
 		membership := MembershipContract{}
+		if len(contract.Values) == 0 {
+			a.addErrorAtTokenWithMetadata(
+				contract.Token,
+				diagnostics.EmptyContractMembership,
+				"add at least one permitted compile-time value to the in-contract",
+				"in-contract for %s must contain at least one value",
+				typeDisplayName(typ),
+			)
+			typ.Contracts = append(typ.Contracts, membership)
+			return typ
+		}
+		membershipTokens := []lexer.Token{}
 		for _, value := range contract.Values {
 			constant, ok := defaultConstantFromExpression(value)
 			if !ok {
@@ -178,18 +190,26 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 				a.addErrorAtToken(expressionToken(value), "membership value %s is incompatible with %s", value.String(), typeDisplayName(typ))
 				continue
 			}
-			duplicate := false
-			for _, previous := range membership.Values {
+			duplicateIndex := -1
+			for index, previous := range membership.Values {
 				if defaultConstantsEqual(constant, previous) {
-					duplicate = true
+					duplicateIndex = index
 					break
 				}
 			}
-			if duplicate {
-				a.addErrorAtToken(expressionToken(value), "duplicate membership value %s", value.String())
+			if duplicateIndex >= 0 {
+				a.addErrorAtTokenWithPreviousMetadata(
+					expressionToken(value),
+					membershipTokens[duplicateIndex],
+					diagnostics.DuplicateContractMembershipValue,
+					"remove the duplicate or replace it with a distinct permitted value",
+					"duplicate membership value %s",
+					value.String(),
+				)
 				continue
 			}
 			membership.Values = append(membership.Values, constant)
+			membershipTokens = append(membershipTokens, expressionToken(value))
 		}
 		typ.Contracts = append(typ.Contracts, membership)
 		return typ

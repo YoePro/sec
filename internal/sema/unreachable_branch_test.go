@@ -12,7 +12,7 @@ import (
 // terminating statement; an empty excluded branch has no statement to report.
 //
 // Rules:
-//   - rules/tooling/diagnostics.txt — "Unreachable branches"
+//   - rules/tooling/diagnostics.md — §21 "Proven unreachable and dead code"
 //   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
 func TestConstantIfBranchesReportCanonicalUnreachableStatement(t *testing.T) {
 	errors := analyzeSource(t, `
@@ -47,7 +47,7 @@ fn Check() void {
 // diagnostic-free.
 //
 // Rules:
-//   - rules/tooling/diagnostics.txt — "Unreachable branches"
+//   - rules/tooling/diagnostics.md — §21 "Proven unreachable and dead code"
 //   - rules/control-flow/flowcontrol_while.md — §19 "Constant conditions"
 func TestConstantFalseWhileReportsCanonicalUnreachableStatement(t *testing.T) {
 	errors := analyzeSource(t, `

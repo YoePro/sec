@@ -3146,7 +3146,7 @@ compiler_analysis.md
 compiler_pipeline.md
 projects.txt
 attributes.md
-diagnostics.txt
+diagnostics.md
 lsp.md
 language-rulebook-status.md
 implementation-status.yaml

@@ -60,6 +60,61 @@ fn SetFirst(pair: ref mut Pair, value: int) void {
 	}
 }
 
+// Compiler-known collection operations that change extent or backing relation
+// require structural capability. Direct element writes remain the narrower
+// element-or-field mutation demand.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Structural mutation"
+//   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations"
+func TestParameterUsageDistinguishesStructuralCollectionMutation(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+fn Mutate(values: int[], users: list[int], entries: map[int, string], members: set[int], elements: ref mut int[]) Result[void, CollectionError] {
+    try values.Append(1)
+    values.Clear()
+    try users.Insert(0, 2)
+    users.RemoveAt(0)
+    entries.Clear()
+    try members.Add(4)
+    elements[0] = 3
+    return Ok()
+}
+
+fn Grow(values: int[]) Result[void, CollectionError] {
+    try values.Append(1)
+    return Ok()
+}
+
+fn Forward(values: int[]) Result[void, CollectionError] {
+    return Grow(<-values)
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	summary := parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "Mutate")
+	for _, name := range []string{"values", "users", "entries", "members"} {
+		parameter := parameterUsageParameterNamed(t, summary, name)
+		if parameter.Demand.Access != ParameterAccessWrite || parameter.Demand.Mutation != ParameterStructuralMutation {
+			t.Fatalf("%s demand = %#v, want structural write", name, parameter.Demand)
+		}
+		if parameter.Demand.Precision != ParameterDemandExact {
+			t.Fatalf("%s precision = %s, want exact", name, parameter.Demand.Precision)
+		}
+	}
+
+	elements := parameterUsageParameterNamed(t, summary, "elements")
+	if elements.Demand.Mutation != ParameterElementOrFieldMutation {
+		t.Fatalf("elements demand = %#v, want element-or-field mutation", elements.Demand)
+	}
+
+	forwarded := parameterUsageParameterNamed(t, parameterUsageSummaryNamed(t, analyzer.ParameterUsageAnalysis(), "Forward"), "values")
+	if forwarded.Demand.Mutation != ParameterStructuralMutation || forwarded.Demand.Precision != ParameterDemandExact {
+		t.Fatalf("forwarded demand = %#v, want exact structural mutation", forwarded.Demand)
+	}
+}
+
 func TestParameterUsageDerivesIndexAndIterationShape(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
 module main

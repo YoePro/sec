@@ -1,0 +1,53 @@
+module ip
+
+type InterfaceIndex uint32
+
+type InterfaceAddress union {
+    V4 {
+        Address:      Ipv4Address,
+        PrefixLength: Ipv4PrefixLength,
+    }
+
+    V6 {
+        Address:      Ipv6Address,
+        PrefixLength: Ipv6PrefixLength,
+    }
+}
+
+type NetworkInterface struct {
+    Index: InterfaceIndex,
+    Name:  string,
+    Mtu:   uint,
+}
+
+impl NetworkInterface {
+    fn AddressesToArray() Result[InterfaceAddress[], NetworkError] {
+        return Err(NetworkError.NotImplemented)
+    }
+}
+
+@noCopy
+type InterfaceIterator struct {
+    // Module-private target representation.
+}
+
+impl InterfaceIterator {
+    fn Next() Result[Option[NetworkInterface], NetworkError] {
+        return Err(NetworkError.NotImplemented)
+    }
+    fn Close() Result[void, NetworkError] {
+        return Err(NetworkError.NotImplemented)
+    }
+}
+
+fn Interfaces() Result[InterfaceIterator, NetworkError] {
+    return Err(NetworkError.NotImplemented)
+}
+
+fn InterfaceByIndex(index: InterfaceIndex) Result[Option[NetworkInterface], NetworkError] {
+    return Err(NetworkError.NotImplemented)
+}
+
+fn InterfaceByName(name: string) Result[Option[NetworkInterface], NetworkError] {
+    return Err(NetworkError.NotImplemented)
+}

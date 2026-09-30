@@ -3278,7 +3278,7 @@ This rulebook requires synchronization with:
 
 ```text
 formatter.md
-diagnostics.txt
+diagnostics.md
 compiler.md
 compiler_pipeline.md
 compiler_analysis.md

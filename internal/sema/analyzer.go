@@ -141,9 +141,10 @@ type Analyzer struct {
 type borrowKind string
 
 const (
-	sharedBorrow  borrowKind = "shared"
-	mutableBorrow borrowKind = "mutable"
-	deferredUse   borrowKind = "deferred-use"
+	sharedBorrow               borrowKind = "shared"
+	mutableBorrow              borrowKind = "mutable"
+	deferredUse                borrowKind = "deferred-use"
+	deferredReferenceHolderUse borrowKind = "deferred-reference-holder-use"
 )
 
 const dynamicArrayLength int64 = -1
@@ -416,7 +417,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 //   - rules/tooling/testing.md — §4.2 "Test declaration location"
 //   - rules/tooling/testing.md — §5.4 "Name requirement"
 //   - rules/tooling/testing.md — §6 "Test identity"
-//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+//   - rules/tooling/diagnostics.md — §§12 and 30 "Diagnostic registry" and "Testing requirements"
 func (a *Analyzer) validateTestDeclarations(program *ast.Program) {
 	seen := map[string]lexer.Token{}
 	a.withProgramModules(program, func(statement ast.Statement) {
@@ -2256,7 +2257,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 // Rules:
 //   - rules/tooling/testing.md — §9.3 "Bare return"
 //   - rules/tooling/testing.md — §9.4 "Return values are forbidden"
-//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+//   - rules/tooling/diagnostics.md — §§12 and 30 "Diagnostic registry" and "Testing requirements"
 func (a *Analyzer) analyzeTestReturnStatement(statement *ast.ReturnStatement) {
 	if statement == nil || statement.Value == nil {
 		return
@@ -2277,7 +2278,7 @@ func (a *Analyzer) analyzeTestReturnStatement(statement *ast.ReturnStatement) {
 // analyzeBlockStatements analyzes a lexical block and reports the first
 // statement that cannot execute after a preceding terminating statement.
 //
-// Rules: rules/tooling/diagnostics.txt — "Unreachable statements" (S3001);
+// Rules: rules/tooling/diagnostics.md — §21(3)–(5) (S3001);
 // rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code".
 func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
 	if block == nil {
@@ -5685,7 +5686,7 @@ func (a *Analyzer) matchPatternInfoNoDiagnostics(pattern ast.Expression, subject
 //
 // Rules:
 //   - rules/errors/panic.md — § 16(2)–(5) "Checked unreachable"
-//   - rules/tooling/diagnostics.txt — "Unreachable statements" (S3001)
+//   - rules/tooling/diagnostics.md — §21(3)–(5) (S3001)
 func (a *Analyzer) statementTerminatesBlock(stmt ast.Statement) bool {
 	switch stmt.(type) {
 	case *ast.BreakStatement, *ast.ContinueStatement:
@@ -10802,6 +10803,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	previousBorrows := map[string][]borrowRecord(nil)
 	referenceRebindCommitted := false
 	if rebindingReference {
+		if place, ok := a.rootPlace(symbol.Name); ok && a.checkDeferredReferenceHolderUsePlace(place, target.Token, "replace") {
+			return
+		}
 		previousBorrows = copyBorrows(a.borrows)
 		a.endBorrowsHeldBy(symbol.Name)
 		defer func() {
@@ -11515,7 +11519,7 @@ func (a *Analyzer) checkBorrowedMutation(name string, token lexer.Token) bool {
 func (a *Analyzer) checkBorrowedMutationPlace(place Place, token lexer.Token) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind == deferredUse {
+			if isDeferredUseKind(record.Kind) {
 				continue
 			}
 			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
@@ -11562,7 +11566,7 @@ func (a *Analyzer) checkBorrowedMovePlaceForAction(place Place, token lexer.Toke
 	}
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind == deferredUse {
+			if isDeferredUseKind(record.Kind) {
 				continue
 			}
 			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
@@ -15345,7 +15349,7 @@ func (a *Analyzer) inferNewExpression(expr *ast.NewExpression, handled bool) (Ty
 //   - rules/tooling/testing.md — §16 "testing.Expect"
 //   - rules/tooling/testing.md — §17 "testing.Require"
 //   - rules/tooling/testing.md — §18 "Equality expectations"
-//   - rules/tooling/diagnostics.txt — "Source-testing diagnostics"
+//   - rules/tooling/diagnostics.md — §§12 and 30 "Diagnostic registry" and "Testing requirements"
 func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member == nil || member.Property == nil {
@@ -15822,6 +15826,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		if !a.validateCallArgumentBorrows(best[0].Function, sourceArgs, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.setDefinitions(callCalleeDefinitionToken(expr), best[0].Function.Token)
@@ -16805,7 +16812,7 @@ func (a *Analyzer) checkArenaInvalidationDependencies(domain, owner string, toke
 func (a *Analyzer) arenaDependencyEscapesImmediateLocal(name, owner string) bool {
 	for _, records := range a.borrows {
 		for _, record := range records {
-			if record.Holder == "$defer" && record.Root == name || record.Holder != "" && record.Holder != name && record.Holder != owner && record.Root == name {
+			if isDeferredUseKind(record.Kind) && record.Root == name || record.Holder != "" && record.Holder != name && record.Holder != owner && record.Root == name {
 				return true
 			}
 		}
@@ -18735,7 +18742,7 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 // Rules:
 //   - rules/errors/errorhandling.md — §§15.1, 17–18 "Success handlers", "Err(_)", and reachability
 //   - rules/control-flow/flowcontrol_match.md — Result error patterns
-//   - rules/tooling/diagnostics.txt — "Error-handling diagnostics"
+//   - rules/tooling/diagnostics.md — §26 "Ownership and error-handling diagnostic quality"
 //   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
 func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) (ResolvedTryPlan, bool) {
 	successType := resultType.TypeArgs[0]
@@ -18847,7 +18854,7 @@ func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, errorType T
 // Rules:
 //   - rules/errors/errorhandling.md — §15.1 "Success handlers are forbidden"
 //   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Try handlers"
-//   - rules/tooling/diagnostics.txt — "Errorhandling revision-2 diagnostic requirements"
+//   - rules/tooling/diagnostics.md — §26 "Ownership and error-handling diagnostic quality"
 func (a *Analyzer) rejectForbiddenOptionTrySuccessHandlers(expr *ast.TryExpression) bool {
 	rejected := false
 	for _, handler := range expr.Handlers {
@@ -19645,7 +19652,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	if info.PayloadMoves && info.PayloadPlace.Root != "" {
 		if !info.PayloadPlace.PartialMoveSafe {
-			a.addErrorAtToken(info.PayloadToken, "union payload move requires independently tracked local union storage")
+			a.reportUnionPayloadMoveStorage(info)
 		} else if _, _, _, unavailable := a.unavailablePlace(info.PayloadPlace); !unavailable && !a.checkBorrowedMovePlace(info.PayloadPlace, info.PayloadToken) {
 			a.markPlaceUnavailable(info.PayloadPlace, info.PayloadToken, "moved")
 		}
@@ -21053,14 +21060,15 @@ func (a *Analyzer) addError(format string, args ...any) {
 }
 
 func (a *Analyzer) addErrorAtToken(token lexer.Token, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
 	err := Error{
 		Severity:  diagnostics.SeverityError,
 		Message:   fmt.Sprintf(format, args...),
 		File:      token.File,
 		Line:      token.Line,
 		Column:    token.Column,
-		EndLine:   token.Line,
-		EndColumn: token.Column + len([]rune(token.Lexeme)),
+		EndLine:   endLine,
+		EndColumn: endColumn,
 	}
 	a.appendError(err)
 }
@@ -21068,14 +21076,15 @@ func (a *Analyzer) addErrorAtToken(token lexer.Token, format string, args ...any
 func (a *Analyzer) addErrorAtExpression(expr ast.Expression, format string, args ...any) {
 	start := expressionStartToken(expr)
 	end := expressionEndToken(expr)
+	endLine, endColumn := end.EndPosition()
 	err := Error{
 		Severity:  diagnostics.SeverityError,
 		Message:   fmt.Sprintf(format, args...),
 		File:      start.File,
 		Line:      start.Line,
 		Column:    start.Column,
-		EndLine:   end.Line,
-		EndColumn: end.Column + len([]rune(end.Lexeme)),
+		EndLine:   endLine,
+		EndColumn: endColumn,
 	}
 	a.appendError(err)
 }
@@ -21104,6 +21113,7 @@ func expressionStartToken(expr ast.Expression) lexer.Token {
 }
 
 func (a *Analyzer) addErrorAtTokenWithID(token lexer.Token, id string, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
 	err := Error{
 		ID:        id,
 		Severity:  diagnostics.SeverityError,
@@ -21111,13 +21121,14 @@ func (a *Analyzer) addErrorAtTokenWithID(token lexer.Token, id string, format st
 		File:      token.File,
 		Line:      token.Line,
 		Column:    token.Column,
-		EndLine:   token.Line,
-		EndColumn: token.Column + len([]rune(token.Lexeme)),
+		EndLine:   endLine,
+		EndColumn: endColumn,
 	}
 	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtTokenWithMetadata(token lexer.Token, id string, help string, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
 	err := Error{
 		ID:        id,
 		Severity:  diagnostics.SeverityError,
@@ -21126,21 +21137,22 @@ func (a *Analyzer) addErrorAtTokenWithMetadata(token lexer.Token, id string, hel
 		File:      token.File,
 		Line:      token.Line,
 		Column:    token.Column,
-		EndLine:   token.Line,
-		EndColumn: token.Column + len([]rune(token.Lexeme)),
+		EndLine:   endLine,
+		EndColumn: endColumn,
 	}
 	a.appendError(err)
 }
 
 func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer.Token, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
 	err := Error{
 		Severity:       diagnostics.SeverityError,
 		Message:        fmt.Sprintf(format, args...),
 		File:           token.File,
 		Line:           token.Line,
 		Column:         token.Column,
-		EndLine:        token.Line,
-		EndColumn:      token.Column + len([]rune(token.Lexeme)),
+		EndLine:        endLine,
+		EndColumn:      endColumn,
 		PreviousFile:   previous.File,
 		PreviousLine:   previous.Line,
 		PreviousColumn: previous.Column,
@@ -21149,6 +21161,7 @@ func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer
 }
 
 func (a *Analyzer) addErrorAtTokenWithPreviousID(token lexer.Token, previous lexer.Token, id string, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
 	err := Error{
 		ID:             id,
 		Severity:       diagnostics.SeverityError,
@@ -21156,8 +21169,8 @@ func (a *Analyzer) addErrorAtTokenWithPreviousID(token lexer.Token, previous lex
 		File:           token.File,
 		Line:           token.Line,
 		Column:         token.Column,
-		EndLine:        token.Line,
-		EndColumn:      token.Column + len([]rune(token.Lexeme)),
+		EndLine:        endLine,
+		EndColumn:      endColumn,
 		PreviousFile:   previous.File,
 		PreviousLine:   previous.Line,
 		PreviousColumn: previous.Column,
@@ -21184,14 +21197,15 @@ func (a *Analyzer) appendError(err Error) {
 }
 
 func (a *Analyzer) addWarningAtToken(token lexer.Token, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
 	a.appendWarning(Error{
 		Severity:  diagnostics.SeverityWarning,
 		Message:   fmt.Sprintf(format, args...),
 		File:      token.File,
 		Line:      token.Line,
 		Column:    token.Column,
-		EndLine:   token.Line,
-		EndColumn: token.Column + len([]rune(token.Lexeme)),
+		EndLine:   endLine,
+		EndColumn: endColumn,
 	})
 }
 
@@ -21200,6 +21214,7 @@ func (a *Analyzer) addWarningAtTokenWithMetadata(token lexer.Token, id string, h
 	if severity == "" {
 		severity = diagnostics.SeverityWarning
 	}
+	endLine, endColumn := token.EndPosition()
 	a.appendWarning(Error{
 		ID:        id,
 		Severity:  severity,
@@ -21208,8 +21223,8 @@ func (a *Analyzer) addWarningAtTokenWithMetadata(token lexer.Token, id string, h
 		File:      token.File,
 		Line:      token.Line,
 		Column:    token.Column,
-		EndLine:   token.Line,
-		EndColumn: token.Column + len([]rune(token.Lexeme)),
+		EndLine:   endLine,
+		EndColumn: endColumn,
 	})
 }
 

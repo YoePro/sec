@@ -427,7 +427,7 @@ and ordinary `testing.*` calls.
 
 ---
 
-## 13. `rules/tooling/diagnostics.txt`
+## 13. `rules/tooling/diagnostics.md`
 
 ### 13.1 Required diagnostic classes
 

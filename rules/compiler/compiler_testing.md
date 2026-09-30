@@ -9,7 +9,7 @@
 - **Replaces:** Planned compiler-testing entry; no earlier canonical rulebook
 - **Repository baseline reviewed:** `main-reviewed-2026-09-26`
 - **Implementation governance:** `governance/testing.yaml` (`testing.compiler-verification-v1`)
-- **Related rulebooks:** `rules/tooling/testing.md`, `rules/tooling/diagnostics.txt`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/debug_information.md`, `rules/compiler/monomorphization.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`, `rules/platform/target_profiles.md`, `rules/platform/abi.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/tooling/lsp.md`, `rules/compiler/incremental_compilation.md`
+- **Related rulebooks:** `rules/tooling/testing.md`, `rules/tooling/diagnostics.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/debug_information.md`, `rules/compiler/monomorphization.md`, `rules/compiler/linking.md`, `rules/mlir/sec_mlir.md`, `rules/platform/target_profiles.md`, `rules/platform/abi.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/destruction.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/processes.md`, `rules/concurrency/ipc.md`, `rules/tooling/lsp.md`, `rules/compiler/incremental_compilation.md`
 
 ---
 
@@ -209,7 +209,7 @@ Regression
 
 **Governance tags:** `testing.compiler-verification-v1`, `errors.diagnostics`
 
-§ 10(1) `rules/tooling/diagnostics.txt` remains the sole canonical owner of:
+§ 10(1) `rules/tooling/diagnostics.md` remains the sole canonical owner of:
 - diagnostic IDs;
 - symbolic names;
 - diagnostic families;

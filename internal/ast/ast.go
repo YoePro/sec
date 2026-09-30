@@ -395,11 +395,12 @@ func (ed *EnumDeclaration) TokenLiteral() string {
 }
 
 type EnumValue struct {
-	Token        lexer.Token
-	Name         *Identifier
-	Default      bool
-	DefaultToken lexer.Token
-	Initializer  Expression
+	Token            lexer.Token
+	Name             *Identifier
+	Default          bool
+	DefaultToken     lexer.Token
+	InitializerToken lexer.Token
+	Initializer      Expression
 	// Invalid marks a recovered enum-member position that has no semantic
 	// member identity but remains in source order for tooling.
 	Invalid  bool

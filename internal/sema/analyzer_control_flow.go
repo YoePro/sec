@@ -12,7 +12,7 @@ import (
 // and ordinary block analysis still runs for independent source diagnostics.
 //
 // Rules:
-//   - rules/tooling/diagnostics.txt — "Unreachable branches"
+//   - rules/tooling/diagnostics.md — §21 "Proven unreachable and dead code"
 //   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
 //   - rules/control-flow/flowcontrol_while.md — §19 "Constant conditions"
 func (a *Analyzer) diagnoseConstantConditionUnreachableBlock(block *ast.BlockStatement, region string) {

@@ -1257,8 +1257,8 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 // printSemaError renders the stable semantic diagnostic ID and actionable help
 // when available, while retaining the existing output for unnumbered errors.
 //
-// Rules: rules/tooling/diagnostics.txt — "Stable diagnostic identifiers" and
-// "Short messages and extended explanations".
+// Rules: rules/tooling/diagnostics.md — §5 "Stable diagnostic IDs" and
+// §17 "Short messages and extended explanations".
 func printSemaError(output io.Writer, diagnostic sema.Error) {
 	if diagnostic.ID != "" {
 		fmt.Fprintf(output, "sema error[%s]: %s\n", diagnostic.ID, diagnostic)
@@ -1586,7 +1586,7 @@ func printParserWarningsForFile(path string, warnings []string) {
 //
 // Rules:
 //   - rules/declarations/static.md — "Diagnostics"
-//   - rules/tooling/diagnostics.txt — diagnostic severity
+//   - rules/tooling/diagnostics.md — §4 "Severity and policy"
 func printSemaWarnings(analyzer *sema.Analyzer) {
 	for _, warning := range analyzer.Warnings() {
 		label := "Warning"

@@ -35,6 +35,7 @@ type formatterReplacement struct {
 //   - rules/tooling/formatter.md — §16(14–17) "attributes"
 //   - rules/tooling/formatter.md — §16(12) "multiline capture lists"
 //   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
+//   - rules/tooling/formatter.md — §15(4) enum assignment alignment
 func formatCSTRoles(text string) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
 	document := cst.Build(text, "")
@@ -347,6 +348,7 @@ func formatCSTRoles(text string) string {
 		})
 	}
 	replacements = append(replacements, structFieldAlignmentReplacements(document)...)
+	replacements = append(replacements, enumValueAlignmentReplacements(document)...)
 
 	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
 	for _, replacement := range replacements {

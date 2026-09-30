@@ -22,6 +22,7 @@ const (
 	PitfallIneffectiveLengthGuard     PitfallRuleID = "pitfall.bounds.ineffective-length-guard"
 	PitfallUpperNeighborIndex         PitfallRuleID = "pitfall.bounds.upper-neighbor-index"
 	PitfallLowerNeighborIndex         PitfallRuleID = "pitfall.bounds.lower-neighbor-index"
+	PitfallFinalElementNeedsNonEmpty  PitfallRuleID = "pitfall.bounds.final-element-needs-nonempty"
 )
 
 type PitfallFamily string
@@ -163,6 +164,11 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "bounds"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
 	},
+	{
+		ID: PitfallFinalElementNeedsNonEmpty, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "constant-values", "control-flow", "bounds"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
 }
 
 // PitfallRules returns a defensive, deterministic snapshot of the canonical
@@ -240,6 +246,7 @@ type pitfallBuilder struct {
 	result                    *PitfallAnalysis
 	counts                    map[PitfallRuleID]*PitfallRuleEvaluation
 	handledBooleanComparisons map[*ast.InfixExpression]bool
+	activeNonEmptyProofs      map[string]lexer.Token
 }
 
 func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnalysis {
@@ -352,10 +359,7 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 	case *ast.ReturnStatement:
 		b.walkExpression(statement.Value)
 	case *ast.IfStatement:
-		b.inspectIneffectiveUpperBoundsGuard(statement)
-		b.walkExpression(statement.Condition)
-		b.walkBlock(statement.Consequence)
-		b.walkBlock(statement.Alternative)
+		b.walkIfStatement(statement)
 	case *ast.SwitchStatement:
 		b.walkExpression(statement.Subject)
 		for _, item := range statement.Cases {
@@ -392,9 +396,33 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 		return
 	}
 	b.inspectIneffectiveRejectionGuards(block)
-	for _, statement := range block.Statements {
+	inheritedProofs := b.activeNonEmptyProofs
+	for index, statement := range block.Statements {
+		b.activeNonEmptyProofs = nil
+		if pitfallStraightLineStatement(statement) && index == 0 {
+			b.activeNonEmptyProofs = clonePitfallNonEmptyProofs(inheritedProofs)
+		}
+		if pitfallStraightLineStatement(statement) && index > 0 {
+			if collection, proof, ok := b.emptyCollectionExitGuard(block.Statements[index-1]); ok {
+				b.activeNonEmptyProofs = map[string]lexer.Token{collection: proof}
+			}
+		}
 		b.walkStatement(statement)
 	}
+	b.activeNonEmptyProofs = inheritedProofs
+}
+
+// clonePitfallNonEmptyProofs keeps branch-local proof state isolated across
+// recursive block traversal.
+func clonePitfallNonEmptyProofs(proofs map[string]lexer.Token) map[string]lexer.Token {
+	if len(proofs) == 0 {
+		return nil
+	}
+	result := make(map[string]lexer.Token, len(proofs))
+	for collection, token := range proofs {
+		result[collection] = token
+	}
+	return result
 }
 
 func (b *pitfallBuilder) walkSwitchCase(item *ast.SwitchCase) {
@@ -420,6 +448,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	}
 	if index, ok := expression.(*ast.IndexExpression); ok {
 		b.inspectDirectIndexAtLength(index)
+		b.inspectFinalElementAccess(index)
 	}
 	if conversion, ok := expression.(*ast.ConversionExpression); ok {
 		b.inspectBooleanConversion(conversion, conversion.Value, conversion.Type != nil && conversion.Type.Name == "bool")

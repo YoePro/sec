@@ -91,6 +91,10 @@ var diagnosticTokenFields = []diagnosticCatalogField{
 	{Name: "File", Type: "string", Required: false, Description: "Source file."},
 	{Name: "Line", Type: "int", Required: true, Description: "One-based source line."},
 	{Name: "Column", Type: "int", Required: true, Description: "One-based source column."},
+	{Name: "EndLine", Type: "int", Required: true, Description: "One-based exclusive final source line."},
+	{Name: "EndColumn", Type: "int", Required: true, Description: "One-based exclusive final Unicode-scalar column."},
+	{Name: "ByteStart", Type: "int", Required: true, Description: "Zero-based inclusive UTF-8 byte offset in the original source."},
+	{Name: "ByteEnd", Type: "int", Required: true, Description: "Zero-based exclusive UTF-8 byte offset in the original source."},
 }
 
 // runDiagnosticCatalogCommand exposes the canonical registry as either the
@@ -98,7 +102,7 @@ var diagnosticTokenFields = []diagnosticCatalogField{
 // never invents prose outside the registry-owned definition.
 //
 // Rules:
-//   - rules/tooling/diagnostics.txt — "Diagnostic detail command"
+//   - rules/tooling/diagnostics.md — §13 "Canonical diagnostic commands"
 //   - rules/compiler/compiler_testing.md — §11(1)–(8) "Diagnostic registry and catalog conformance"
 func runDiagnosticCatalogCommand(args []string, output io.Writer) error {
 	switch len(args) {
@@ -124,7 +128,7 @@ func runDiagnosticCatalogCommand(args []string, output io.Writer) error {
 // same fields exported by the complete text and JSON catalogs.
 //
 // Rules:
-//   - rules/tooling/diagnostics.txt — "Diagnostic detail command"
+//   - rules/tooling/diagnostics.md — §13 "Canonical diagnostic commands"
 //   - rules/compiler/compiler_testing.md — §11(5)–(8)
 func writeDiagnosticDefinitionDetail(output io.Writer, id string) error {
 	definition, ok := diagnostics.Lookup(id)

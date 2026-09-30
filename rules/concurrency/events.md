@@ -623,5 +623,5 @@ static.txt
 channels.md
 concurrency.md
 interrupts.txt
-diagnostics.txt
+diagnostics.md
 ```

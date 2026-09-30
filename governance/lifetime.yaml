@@ -39,7 +39,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/compiler/semantic_ir.md
       - rules/tooling/lsp.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
       - rules/corrections/applied/correction30-20260828.md
       - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
@@ -574,7 +574,7 @@ integrations:
     status: "partial"
     integrated: "2026-08-28"
     document_revision: "2.0"
-    revised: "2026-09-29"
+    revised: "2026-09-30"
     repository_baseline: "069c111"
     rules:
       - "rules/memory/borrowing.md"
@@ -587,12 +587,17 @@ integrations:
       - "rules/control-flow/defer.md"
     code:
       - "internal/sema/analyzer.go"
+      - "internal/sema/analyzer_defer.go"
+      - "internal/sema/analyzer_lifetime.go"
       - "internal/sema/place.go"
       - "internal/sema/types.go"
       - "internal/ast/ast.go"
       - "internal/parser/parser.go"
     tests:
       - "internal/sema/analyzer_test.go"
+      - "internal/sema/analyzer_defer_test.go"
+      - "internal/sema/analyzer_call_borrow_test.go"
+      - "internal/sema/analyzer_lifetime_test.go"
       - "internal/sema/copy_move_test.go"
       - "internal/sema/lifetime_test.go"
       - "internal/parser/parser_test.go"
@@ -605,19 +610,19 @@ integrations:
       - "Disjoint struct fields, distinct constant array indices, normalized static slice intervals, empty ranges, and conservative dynamic-index/symbolic-range overlap."
       - "Branch and loop borrow joins, loop-carried conflict diagnostics, break/continue handling, finite reference-origin alternative sets, and deterministic conservative widening."
       - "Match whole-payload ref/ref mut Place borrowing with guard/arm scope, mutability checks, overlapping-borrow validation, and several escape rejections."
-      - "Delayed defer root uses that block incompatible move/discard before deferred execution."
+      - "Place-sensitive defer dependencies distinguish ordinary late value reads from retained reference-holder authority: overlapping ownership invalidation is rejected, disjoint sibling Places remain usable, reference holders cannot be moved or rebound before deferred dereference, and ordinary later value assignment remains observable by defer."
       - "Declaration-order-independent direct function/method returned-reference origin summaries and supported transitive call-site origin instantiation."
       - "Borrow creation now rejects uninitialized, wholly unavailable, partially available whole, and unresolved ConditionallyAvailable Places before registering a borrow; disjoint available sub-Places remain legal, is available branch refinement permits borrowing, and independent active-borrow authority checks still apply."
+      - "Selected reference parameters now create left-to-right call-bounded Place reservations for direct calls: overlapping mutable/mutable, mutable/shared, and mutable/later-direct-read argument combinations are rejected, existing lexical borrows remain authoritative, and shared/shared or proven-disjoint field arguments remain valid without leaking reservations past the call."
     remaining:
       - "non-lexical-final-use: make borrow live ranges end at the final proven use/path dependency rather than relying on holder lexical scope where current implementation remains conservative"
       - "complete-holder-graph: model every shared-reference copy, nested aggregate holder, closure capture, returned reference, view/slice, and derived reborrow so borrow end occurs only when all surviving dependencies end"
       - "nested-reborrow-authority: explicitly model parent/child shared and mutable reborrow suspension/restoration, including shared reborrow from ref mut and nested mutable reborrow"
-      - "complete-call-borrow-effects: verify multi-argument overlap, method receiver/argument overlap, fallible later-argument preparation, generic/imported/opaque calls, and call-retention summaries"
+      - "complete-call-borrow-effects: extend the implemented direct-call multi-argument reservations to method receiver/argument overlap, fallible later-argument preparation, function-value/imported/opaque calls, and explicit call-retention summaries"
       - "property-effects: replace conservative receiver-wide property overlap only when canonical property/effect summaries prove narrower addressability and storage effects"
       - "symbolic-range-disjointness: extend safe proof for symbolic/runtime index and slice ranges without unsound assumptions"
       - "borrowed-match-destructuring: extend beyond one whole/positional payload binding only after match/unions define supported field-borrow forms; preserve guard-false borrow end and no hidden escape"
       - "closure-borrow-escape: integrate complete lambda/closure escape summaries for capture(ref ...) and capture(ref mut ...), including nested captured references/views and function-value calls"
-      - "defer-place-precision: replace root-only delayed-use tracking with canonical Place-sensitive dependencies and distinguish ordinary future value use from actual retained reference holders"
       - "returned-reference-summary-completeness: persist and consume summary metadata across separate compilation, function values, generic instantiations, imported modules, recursive/mutually recursive SCCs, and opaque call contracts"
       - "storage-invalidation-integration: connect collections, arena reset/release, relocation, replacement, physical-addressing contracts, and reference-model invalidation events to borrow legality"
       - "ffi-retention-contracts: integrate explicit foreign retain/no-retain contracts and conservatively reject safe-borrow assumptions for unknown retained foreign pointers"
@@ -626,6 +631,10 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'TestBorrowCreationRejectsUnavailableOwnershipStates|TestAvailabilityRefinementAllowsBorrowWithoutBypassingBorrowConflict' -count=1
         result: passed on 2026-09-29 with uninitialized, moved, partial, conditional, refined-available, disjoint-sibling, and active-borrow separation coverage
+      - command: go test ./internal/sema -run 'TestDeferDependenciesPreserveDisjointStructPlaces|TestDeferRetainsReferenceHolderWithoutFreezingOrdinaryValues' -count=1
+        result: passed on 2026-09-30 with Place-sensitive overlap, disjoint sibling, retained reference-holder move/rebind, and ordinary late-value assignment coverage
+      - command: go test ./internal/sema -run 'TestCallBoundedArgumentBorrow' -count=1
+        result: passed on 2026-09-30 with mutable/mutable, mutable/shared, mutable/direct-read, existing lexical borrow, shared/shared, disjoint-field, and post-call release coverage
     required_tests:
       - "multiple shared borrows of overlapping Place accepted"
       - "shared plus overlapping mutable borrow rejected"

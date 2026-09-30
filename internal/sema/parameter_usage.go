@@ -791,7 +791,17 @@ func (b *parameterUsageBuilder) walkExpressionChildren(expression ast.Expression
 	}
 }
 
+// walkCall derives local operation demand and records direct-call boundaries
+// for interprocedural fixed-point propagation. Compiler-known collection
+// operations are consumed through their canonical registry contracts first.
+//
+// Rules:
+//   - rules/analysis/parameter_usage_analysis.md — "Calls propagate demand"
+//   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations"
 func (b *parameterUsageBuilder) walkCall(call *ast.CallExpression) {
+	if b.walkCompilerKnownStructuralCollectionCall(call) {
+		return
+	}
 	resolved, ok := b.analyzer.ResolvedCallTarget(call)
 	if ok && isCompilerKnownFunctionName(resolved.Function.Name) {
 		for _, argument := range call.Arguments {

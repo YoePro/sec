@@ -30,7 +30,7 @@ integrations:
       - rules/memory/ownership.md
       - rules/compiler/semantic_ir.md
       - rules/tooling/lsp.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
     code:
       - internal/ast/ast.go

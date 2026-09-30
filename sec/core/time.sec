@@ -59,25 +59,31 @@ impl time {
         }
     }
 
-    static property Hour: int<h> {
+    static property HourOfDay: int<h> {
         get {
-            return 0
+            return int<h>(datetime.Hour)
         }
     }
 
-    static property Minute: int<min> {
+    property Hour: int<h> {
         get {
-            return 0
+            return int<h>(self._nanosecondsSinceMidnight / 3600000000000)
         }
     }
 
-    static property Second: int<s> {
+    property Minute: int<min> {
         get {
-            return 0
+            return int<min>((self._nanosecondsSinceMidnight % 3600000000000) / 60000000000)
         }
     }
 
-    static property Nanosecond: int<ns> {
+    property Second: int<s> {
+        get {
+            return int<s>((self._nanosecondsSinceMidnight % 60000000000) / 1000000000)
+        }
+    }
+
+    static property Millisecond: int<ns> {
         get {
             return 0
         }

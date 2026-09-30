@@ -8,7 +8,7 @@
 - **Repository baseline reviewed:** `814a584`
 - **Canonical path:** `rules/tooling/testing.md`
 - **Replaces:** No canonical rulebook. This rulebook supersedes earlier non-canonical testing sketches where they conflict.
-- **Related rulebooks:** `rules/projects/projects.txt`, `rules/projects/modules.md`, `rules/library/core-library.md`, `rules/errors/errorhandling.md`, `rules/errors/panic.md`, `rules/control-flow/defer.md`, `rules/memory/destruction.md`, `rules/declarations/lambda-functions.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/diagnostics.txt`, `rules/tooling/formatter.md`, `rules/tooling/lsp.md`
+- **Related rulebooks:** `rules/projects/projects.txt`, `rules/projects/modules.md`, `rules/library/core-library.md`, `rules/errors/errorhandling.md`, `rules/errors/panic.md`, `rules/control-flow/defer.md`, `rules/memory/destruction.md`, `rules/declarations/lambda-functions.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/diagnostics.md`, `rules/tooling/formatter.md`, `rules/tooling/lsp.md`
 
 ## 1. Purpose
 
@@ -2514,7 +2514,7 @@ ordinary sec test not requiring a manifest test target
 
 ### 45.8 Diagnostics and formatter
 
-`rules/tooling/diagnostics.txt` and `rules/tooling/formatter.md` must recognize testing syntax and diagnostics.
+`rules/tooling/diagnostics.md` and `rules/tooling/formatter.md` must recognize testing syntax and diagnostics.
 
 ### 45.9 LSP
 

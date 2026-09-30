@@ -1208,7 +1208,7 @@ flowcontrol_match.md
 projects/projects.txt
 projects/modules.md
 compiler/linking.md
-diagnostics.txt
+diagnostics.md
 formatter.md
 semantic_ir.md
 core-library.md

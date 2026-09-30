@@ -1785,7 +1785,7 @@ rules/memory/destruction.md
 rules/foundations/grammar.md
 rules/compiler/compiler_known_members.md
 rules/compiler/semantic_ir.md
-rules/tooling/diagnostics.txt
+rules/tooling/diagnostics.md
 rules/tooling/lsp.md
 ```
 

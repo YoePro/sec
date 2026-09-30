@@ -1,0 +1,21 @@
+module ip
+
+enum Icmpv4Type bit[8] {
+    EchoReply              = 0,
+    DestinationUnreachable = 3,
+    Redirect               = 5,
+    EchoRequest            = 8,
+    TimeExceeded           = 11,
+    ParameterProblem       = 12,
+    // ...current IANA assignments...
+}
+
+enum Icmpv6Type bit[8] {
+    DestinationUnreachable = 1,
+    PacketTooBig           = 2,
+    TimeExceeded           = 3,
+    ParameterProblem       = 4,
+    EchoRequest            = 128,
+    EchoReply              = 129,
+    // ...current IANA assignments...
+}

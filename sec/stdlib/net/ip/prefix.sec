@@ -1,0 +1,134 @@
+module ip
+
+type Ipv4PrefixLength uint8 range 0..32
+type Ipv6PrefixLength uint8 range 0..128
+
+type Ipv4Network struct {
+    _address:      Ipv4Address,
+    _prefixLength: Ipv4PrefixLength,
+}
+
+type Ipv6Network struct {
+    _address:      Ipv6Address,
+    _prefixLength: Ipv6PrefixLength,
+}
+
+type Network union {
+    V4(Ipv4Network),
+    V6(Ipv6Network),
+}
+
+impl Ipv4Network {
+    init(address: Ipv4Address, prefixLength: Ipv4PrefixLength) {
+        self._address = address
+        self._prefixLength = prefixLength
+    }
+
+    static fn Parse(text: string) Result[Ipv4Network, AddressError] {
+        return Err(AddressError.InvalidFormat)
+    }
+
+    property Address: Ipv4Address {
+        get {
+            return self._address
+        }
+    }
+
+    property PrefixLength: Ipv4PrefixLength {
+        get {
+            return self._prefixLength
+        }
+    }
+
+    fn Contains(address: Ipv4Address) bool {
+        return false
+    }
+
+    fn ToString() string {
+        return "" + self.Address.ToString() + "/" + self.PrefixLength.ToString()
+    }
+
+}
+
+impl Ipv6Network {
+    init(address: Ipv6Address, prefixLength: Ipv6PrefixLength) {
+        self._address = address
+        self._prefixLength = prefixLength
+    }
+
+    static fn Parse(text: string) Result[Ipv6Network, AddressError] {
+        return Err(AddressError.InvalidFormat)
+    }
+
+    property Address: Ipv6Address {
+        get {
+            return self._address
+        }
+    }
+    property PrefixLength: Ipv6PrefixLength {
+        get {
+            return self._prefixLength
+        }
+    }
+
+    fn Contains(address: Ipv6Address) bool {
+        return false
+    }
+    fn ToString() string {
+        return "" + self.Address.ToString() + "/" + self.PrefixLength.ToString()
+    }
+}
+
+impl Network {
+    static fn Parse(text: string) Result[Network, AddressError] {
+        return Err(AddressError.InvalidFormat)
+    }
+
+    fn Contains(address: Address) bool {
+        match self {
+            V4(v4) => {
+                match address {
+                    Address.V4(addr) => {
+                        return v4.Contains(addr)
+                    }
+                    Address.V6(_) => {
+                        return false
+                    }
+                }
+            }
+            V6(v6) => {
+                match address {
+                    Address.V4(_) => {
+                        return false
+                    }
+                    Address.V6(addr) => {
+                        return v6.Contains(addr)
+                    }
+                }
+            }
+        }
+    }
+    fn ToString() string {
+        match self {
+            V4(v4) => {
+                return v4.ToString()
+            }
+            V6(v6) => {
+                return v6.ToString()
+            }
+        }
+    }
+
+    property Version: IpVersion {
+        get {
+            match self {
+                V4(_) => {
+                    return IpVersion.V4
+                }
+                V6(_) => {
+                    return IpVersion.V6
+                }
+            }
+        }
+    }
+}

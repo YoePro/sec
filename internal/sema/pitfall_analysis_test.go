@@ -13,7 +13,7 @@ func TestPitfallRuleRegistryIsStableAndDefensive(t *testing.T) {
 	if len(rules) < 2 {
 		t.Fatalf("rules = %v, want initial bounds registry", rules)
 	}
-	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument || rules[4].ID != PitfallIneffectiveLengthGuard || rules[5].ID != PitfallUpperNeighborIndex || rules[6].ID != PitfallLowerNeighborIndex {
+	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument || rules[4].ID != PitfallIneffectiveLengthGuard || rules[5].ID != PitfallUpperNeighborIndex || rules[6].ID != PitfallLowerNeighborIndex || rules[7].ID != PitfallFinalElementNeedsNonEmpty {
 		t.Fatalf("unexpected rule order: %v", rules)
 	}
 	if rules[0].MinimumDepth != AnalysisInteractive || rules[0].DefaultConfidence != PitfallConfidenceProven {
@@ -76,6 +76,158 @@ fn Direct(values: ref int[]) int {
 	}
 	if finding.OwningRule != "bounds" || len(finding.EvidenceFor) != 2 || len(finding.Actions) != 1 {
 		t.Fatalf("incomplete structured finding: %+v", finding)
+	}
+}
+
+// Final-element arithmetic is safe only when the same collection is known to
+// be non-empty. The canonical preceding empty-check suppresses the finding;
+// guards for another collection and non-exiting checks do not.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof"
+//   - rules/analysis/pitfall_analysis.md — "Guards participate in pitfall reasoning"
+//   - rules/analysis/pitfall_analysis.md — "Required bounds and range tests"
+func TestPitfallAnalysisRequiresNonEmptyProofForFinalElement(t *testing.T) {
+	tests := []struct {
+		name       string
+		guard      string
+		access     string
+		wantState  PitfallAnalysisState
+		wantResult bool
+	}{
+		{name: "missing proof", access: "values[values.Len - 1]", wantState: PitfallStateFinding, wantResult: true},
+		{name: "exiting empty guard", guard: "if values.Len == 0 { return 0 }", access: "values[values.Len - 1]", wantState: PitfallStateSuppressed, wantResult: true},
+		{name: "reversed empty guard", guard: "if 0 == values.Len { return 0 }", access: "values[values.Len - 1]", wantState: PitfallStateSuppressed, wantResult: true},
+		{name: "IsEmpty exit guard", guard: "if values.IsEmpty { return 0 }", access: "values[values.Len - 1]", wantState: PitfallStateSuppressed, wantResult: true},
+		{name: "wrong collection guard", guard: "if other.Len == 0 { return 0 }", access: "values[values.Len - 1]", wantState: PitfallStateFinding, wantResult: true},
+		{name: "wrong IsEmpty collection", guard: "if other.IsEmpty { return 0 }", access: "values[values.Len - 1]", wantState: PitfallStateFinding, wantResult: true},
+		{name: "non exiting check", guard: "if values.Len == 0 { let empty := true }", access: "values[values.Len - 1]", wantState: PitfallStateFinding, wantResult: true},
+		{name: "non exiting IsEmpty check", guard: "if values.IsEmpty { let empty := true }", access: "values[values.Len - 1]", wantState: PitfallStateFinding, wantResult: true},
+		{name: "different indexed collection", access: "other[values.Len - 1]"},
+		{name: "different offset", access: "values[values.Len - 2]"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer, errors := analyzeSourceWithAnalyzer(t, fmt.Sprintf(`module main
+fn Last(values: ref int[], other: ref int[]) int {
+    %s
+    return %s
+}
+`, test.guard, test.access))
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			var final *PitfallFinding
+			for _, result := range analyzer.PitfallAnalysis().Results() {
+				if result.Rule == PitfallFinalElementNeedsNonEmpty {
+					candidate := result
+					final = &candidate
+					break
+				}
+			}
+			if !test.wantResult {
+				if final != nil {
+					t.Fatalf("near miss produced final-element result: %+v", *final)
+				}
+				return
+			}
+			if final == nil || final.State != test.wantState {
+				t.Fatalf("final-element result = %+v, want state %s", final, test.wantState)
+			}
+			if final.Classification != PitfallLikelyMistake || final.Confidence != PitfallConfidenceHigh || final.OwningRule != "checked-arithmetic-and-bounds" {
+				t.Fatalf("incomplete final-element result: %+v", *final)
+			}
+			if test.wantState == PitfallStateSuppressed && (final.Suppression == nil || len(final.EvidenceAgainst) != 1) {
+				t.Fatalf("suppressed result lacks proof evidence: %+v", *final)
+			}
+		})
+	}
+
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+fn Last(values: ref int[]) int {
+    if values.Len == 0 {
+        return 0
+    } else {
+        return values[values.Len - 1]
+    }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("else-branch analysis errors: %v", errors)
+	}
+	results := analyzer.PitfallAnalysis().Results()
+	if len(results) != 1 || results[0].Rule != PitfallFinalElementNeedsNonEmpty || results[0].State != PitfallStateSuppressed {
+		t.Fatalf("equality false branch did not retain non-empty proof: %+v", results)
+	}
+
+	analyzer, errors = analyzeSourceWithAnalyzer(t, `module main
+fn Last(values: ref int[]) int {
+    if values.IsEmpty {
+        return 0
+    } else {
+        return values[values.Len - 1]
+    }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("IsEmpty else-branch analysis errors: %v", errors)
+	}
+	results = analyzer.PitfallAnalysis().Results()
+	if len(results) != 1 || results[0].Rule != PitfallFinalElementNeedsNonEmpty || results[0].State != PitfallStateSuppressed {
+		t.Fatalf("IsEmpty false branch did not retain non-empty proof: %+v", results)
+	}
+}
+
+// Direct Len-versus-zero conditions establish a non-empty fact only in the
+// corresponding branch. The fact intentionally expires after that branch's
+// first straight-line statement so a structural mutation cannot leave stale
+// suppression evidence.
+//
+// Rules:
+//   - rules/analysis/pitfall_analysis.md — "Final-element access requires non-empty proof"
+//   - rules/analysis/pitfall_analysis.md — "Guards participate in pitfall reasoning"
+func TestPitfallAnalysisConsumesBranchLocalNonEmptyProof(t *testing.T) {
+	tests := []struct {
+		name      string
+		condition string
+		body      string
+		wantState PitfallAnalysisState
+	}{
+		{name: "greater than zero", condition: "values.Len > 0", body: "return values[values.Len - 1]", wantState: PitfallStateSuppressed},
+		{name: "reversed greater than zero", condition: "0 < values.Len", body: "return values[values.Len - 1]", wantState: PitfallStateSuppressed},
+		{name: "not equal zero", condition: "values.Len != 0", body: "return values[values.Len - 1]", wantState: PitfallStateSuppressed},
+		{name: "negated IsEmpty", condition: "!values.IsEmpty", body: "return values[values.Len - 1]", wantState: PitfallStateSuppressed},
+		{name: "empty branch remains unsafe", condition: "values.IsEmpty", body: "return values[values.Len - 1]", wantState: PitfallStateFinding},
+		{name: "wrong collection", condition: "other.Len > 0", body: "return values[values.Len - 1]", wantState: PitfallStateFinding},
+		{name: "proof expires after statement", condition: "values.Len > 0", body: "let observed := values.Len\n        return values[values.Len - 1]", wantState: PitfallStateFinding},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer, errors := analyzeSourceWithAnalyzer(t, fmt.Sprintf(`module main
+fn Last(values: ref int[], other: ref int[]) int {
+    if %s {
+        %s
+    }
+    return 0
+}
+`, test.condition, test.body))
+			if len(errors) != 0 {
+				t.Fatalf("analysis errors: %v", errors)
+			}
+			var final *PitfallFinding
+			for _, result := range analyzer.PitfallAnalysis().Results() {
+				if result.Rule == PitfallFinalElementNeedsNonEmpty {
+					candidate := result
+					final = &candidate
+					break
+				}
+			}
+			if final == nil || final.State != test.wantState {
+				t.Fatalf("final-element result = %+v, want state %s", final, test.wantState)
+			}
+		})
 	}
 }
 

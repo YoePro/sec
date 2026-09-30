@@ -1,6 +1,10 @@
 schema_version: 1
 area: errors-diagnostics
-purpose: Compiler, lexer, parser, and semantic diagnostic definitions and output.
+purpose: >-
+  Track implementation of the canonical diagnostic registry, structured
+  diagnostic occurrences, diagnostic policy, localization, CLI/LSP identity,
+  machine-readable output, mentor diagnostics, and migration from legacy raw
+  diagnostic text.
 integrations:
   - id: diagnostics.unreachable-statement-s3001
     area: semantic-diagnostics
@@ -9,7 +13,7 @@ integrations:
     audited: '2026-09-22'
     summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block and for the first statement in an if branch or while body excluded by a literal boolean condition, with a source range and actionable explanation shared by CLI and LSP.
     rules:
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/control-flow/flowcontrol_if.md
     code:
       - internal/diagnostics/diagnostics.go
@@ -52,3 +56,310 @@ integrations:
         result: printed S3001 with source position and help; exited with the expected fixture error plus four unrelated try errors in sec/core/string.sec
       - command: go test ./...
         result: all packages passed except cmd/compiler on 2026-09-27, which fails on thirteen unrelated missing StringError.InvalidUtf8 payload errors in sec/core/utf8.sec
+  - id: errors.diagnostics
+    area: errors-diagnostics
+    status: partial
+    integrated: true
+    audited: true
+    revised: 2026-09-30
+    document_revision: "2.0"
+    repository_baseline: main-reviewed-2026-09-30
+    replaces:
+      - rules/tooling/diagnostics.txt
+    canonical_rulebook:
+      - rules/tooling/diagnostics.md
+    summary: >-
+      Revision 2.0 separates stable ID namespace from topic-family metadata,
+      preserves every published and retired ID, adopts the published L lexer
+      namespace, removes obsolete numeric subject-subrange guidance, makes
+      `sec diagnostics <ID>` the canonical detailed lookup, defines the logical
+      definition/occurrence/fix schemas, synchronizes explicit discard, and
+      keeps mutable implementation status in governance.
+    rules:
+      - id: diagnostics.identity
+        paragraphs:
+          - "§ 5"
+          - "§ 6"
+          - "§ 12"
+          - "§ 31"
+        requirement: >-
+          Every emitted primary diagnostic has one registered stable ID and
+          symbolic name; active and retired IDs are never reused.
+      - id: diagnostics.namespaces
+        paragraphs:
+          - "§ 5"
+          - "§ 31"
+        requirement: >-
+          L, P, S, A, B, and F are ID namespaces. Numeric allocation is opaque
+          and does not encode semantic subject.
+      - id: diagnostics.definition-schema
+        paragraphs:
+          - "§ 7"
+          - "§ 12"
+        requirement: >-
+          Registry definitions converge on the canonical logical definition and
+          argument schemas.
+      - id: diagnostics.occurrence-schema
+        paragraphs:
+          - "§ 8"
+          - "§ 9"
+          - "§ 10"
+          - "§ 11"
+          - "§ 14"
+        requirement: >-
+          Emitted diagnostics converge on the canonical structured occurrence,
+          source-location, note/help, and fix model.
+      - id: diagnostics.lookup
+        paragraphs:
+          - "§ 13"
+          - "§ 17"
+        requirement: >-
+          Canonical commands are `sec diagnostics`,
+          `sec diagnostics --json`, and `sec diagnostics <ID>`.
+      - id: diagnostics.policy
+        paragraphs:
+          - "§ 4"
+          - "§ 18"
+          - "§ 19"
+        requirement: >-
+          Mandatory diagnostics remain errors; configurable diagnostics resolve
+          through deterministic rule/category/preset policy. Sec 0.1 defines no
+          source-level suppression syntax.
+      - id: diagnostics.localization
+        paragraphs:
+          - "§ 16"
+          - "§ 17"
+        requirement: >-
+          Message rendering is localization-independent from diagnostic identity,
+          with English as canonical fallback.
+      - id: diagnostics.lsp
+        paragraphs:
+          - "§ 15"
+        requirement: >-
+          LSP source is `sec` and LSP diagnostic code is the canonical stable ID.
+      - id: diagnostics.dead-unused
+        paragraphs:
+          - "§ 21"
+          - "§ 22"
+          - "§ 23"
+          - "§ 24"
+        requirement: >-
+          Reserved dead/unreachable/unused/assignment IDs remain reserved;
+          emission requires the semantic proof required by the owning analysis.
+      - id: diagnostics.unreachable-statement-s3001
+        paragraphs:
+          - "§ 21(3)"
+          - "§ 21(4)"
+          - "§ 21(5)"
+        requirement: >-
+          Proven statements after an unconditional transfer use mandatory
+          S3001 / control-flow.unreachable-statement with explanatory help.
+      - id: diagnostics.discard
+        paragraphs:
+          - "§ 20"
+          - "§ 25"
+        requirement: >-
+          Diagnostic transport follows the canonical discard semantics owned by
+          rules/control-flow/discard.md without redefining discard.
+      - id: diagnostics.mentor
+        paragraphs:
+          - "§ 27"
+        requirement: >-
+          Mentor diagnostics expose evidence and do not claim certainty beyond
+          completed analysis.
+      - id: diagnostics.testing
+        paragraphs:
+          - "§ 28"
+          - "§ 30"
+        requirement: >-
+          Diagnostic output is deterministic and conformance tests assert stable
+          structured identity rather than exact English prose.
+    code:
+      - internal/diagnostics/diagnostics.go
+      - internal/parser/errors.go
+      - internal/parser/recovery.go
+      - internal/sema/errors.go
+      - internal/sema/analyzer_match_ownership.go
+      - cmd/compiler/diagnostic_catalog.go
+      - cmd/compiler/diagnostic_catalog_test.go
+    implemented:
+      - id: diagnostics.registry-core
+        description: >-
+          A central registry exists in internal/diagnostics with stable ID,
+          symbolic name, topic family, default severity, mandatory flag, and
+          retired flag.
+      - id: diagnostics.lexer-ids
+        description: >-
+          Published lexical diagnostics L1001 through L1020 are registered and
+          establish the L namespace.
+      - id: diagnostics.parser-ids
+        description: >-
+          Parser diagnostics P2001 through at least P2020 are registered;
+          P2001 remains the compatibility fallback for unmigrated parser paths.
+      - id: diagnostics.semantic-migration
+        description: >-
+          A growing registered S namespace exists, including S1001 through
+          S1054 definitions in the reviewed registry plus mandatory S3001.
+      - id: diagnostics.s1052-union-payload-move-storage
+        description: >-
+          Invalid move-only payload extraction from union storage that cannot
+          retain an independently tracked partial-move state uses mandatory
+          S1052/ownership.union-payload-move-storage, names the affected payload
+          Place, explains the missing ownership capability, and suggests either
+          matching a local owning union or borrowing the payload.
+      - id: diagnostics.s1053-duplicate-contract-membership-value
+        description: >-
+          Duplicate values in one ordered in-contract use mandatory
+          S1053/types.duplicate-in-contract-value, focus the repeated value,
+          relate it to the first source-ordered occurrence, provide removal or
+          replacement guidance, and retain the same identity through LSP.
+      - id: diagnostics.s1054-empty-contract-membership
+        description: >-
+          Empty ordered in-contracts are retained as AST recovery nodes and use
+          mandatory S1054/types.empty-in-contract from Sema, with a focused
+          range, value-addition guidance, and unchanged identity through LSP.
+      - id: diagnostics.retired-preservation
+        description: >-
+          Retired registry entries remain preserved; reviewed code includes
+          S1020/operator.string-runtime-concat and
+          S1026/associated-values.redundant-static as retired definitions.
+      - id: diagnostics.a2001
+        description: >-
+          A2001/performance.large-value-parameter is registered as configurable
+          Information.
+      - id: diagnostics.s1014
+        description: >-
+          S1014/switch.incomplete-enum-coverage is registered as configurable
+          Warning, proving that S namespace does not itself imply mandatory
+          Error.
+      - id: diagnostics.catalog-list
+        description: >-
+          `sec diagnostics` lists registered definitions in stable ID order.
+      - id: diagnostics.catalog-json
+        description: >-
+          `sec diagnostics --json` exports registry/catalog data and compiler
+          field-schema descriptions.
+      - id: diagnostics.lookup-by-id
+        description: >-
+          `sec diagnostics <ID>` provides registry-backed detail for active and
+          retired known IDs and rejects unknown IDs as ordinary tool errors.
+      - id: diagnostics.catalog-schema-tests
+        description: >-
+          Reflection-backed catalog tests check that exported host structures
+          remain represented by the catalog schema, including lexer-token
+          scalar start/end positions and original UTF-8 byte ranges.
+      - id: diagnostics.parser-structured-transport
+        description: >-
+          Parser diagnostics expose structured ID, primary token, expected/
+          unexpected token, recovery context, and recovery episode data.
+      - id: diagnostics.parser-recovery-cap
+        description: >-
+          Parser diagnostic recovery has deterministic deduplication and a
+          bounded diagnostic cap with P2015 terminal reporting.
+      - id: diagnostics.sema-basic-transport
+        description: >-
+          Semantic diagnostic transport carries severity, optional stable ID,
+          help text and source coordinates.
+      - id: diagnostics.lsp-code
+        description: >-
+          LSP semantic and migrated parser diagnostics expose the stable
+          diagnostic ID as the diagnostic code.
+      - id: diagnostics.s3001
+        description: >-
+          Proven statement-after-terminator diagnostics use mandatory S3001 with
+          explanatory help in CLI and LSP.
+    partial:
+      - id: diagnostics.registry-definition-v2
+        description: >-
+          Current Definition contains ID, Name, Family, DefaultSeverity,
+          Mandatory and Retired. Revision 2.0 also requires explicit namespace,
+          optional policy category, argument schema, message keys and related-ID
+          metadata in the canonical logical definition model.
+      - id: diagnostics.occurrence-unification
+        description: >-
+          Parser and semantic diagnostics still use different host structures.
+          They are migration adapters and do not yet expose one complete
+          canonical occurrence surface.
+      - id: diagnostics.id-migration
+        description: >-
+          Many diagnostics are registered, but raw/unmigrated parser, semantic,
+          compiler and build diagnostics remain.
+      - id: diagnostics.catalog-coverage
+        description: >-
+          Catalog output explicitly reports incomplete coverage while raw
+          diagnostics remain unmigrated.
+      - id: diagnostics.mentor-analysis
+        description: >-
+          A2001 exists, but richer evidence-driven mentor analysis remains
+          incomplete.
+    unimplemented:
+      - id: diagnostics.localized-catalogs
+        description: >-
+          Structured localization catalogs, template validation, locale
+          selection and English fallback rendering are not complete.
+      - id: diagnostics.policy-engine
+        description: >-
+          Complete rule/category/preset policy with project, target,
+          target-variant and CLI precedence is not implemented.
+      - id: diagnostics.emitted-occurrence-json
+        description: >-
+          Machine-readable structured output for emitted diagnostic occurrences
+          is incomplete; catalog JSON is a separate already-implemented surface.
+      - id: diagnostics.complete-dead-analysis
+        description: >-
+          S3002-S3005 and the full proof-aware unreachable/dead-store/pure-result
+          analysis are not complete.
+      - id: diagnostics.complete-unused-analysis
+        description: >-
+          S3101-S3107 complete semantic unused analysis is not implemented.
+      - id: diagnostics.assignment-condition
+        description: >-
+          Reserved S3201 must remain reserved until the canonical
+          assignment-in-condition diagnostic is implemented.
+      - id: diagnostics.complete-fix-schema
+        description: >-
+          Canonical Automatic/ExplicitSafe/Suggestion fixes with ordered
+          TextEdit payloads are not implemented end-to-end.
+    not_planned_for_sec_0_1:
+      - id: diagnostics.source-suppression
+        description: >-
+          Revision 2.0 defines no source-level diagnostic suppression syntax.
+          Implementations must not invent one from the old rulebook.
+      - id: diagnostics.sec-explain
+        description: >-
+          `sec explain` is obsolete; detailed lookup belongs to
+          `sec diagnostics <ID>`.
+    identified_bugs: []
+    required_tests:
+      - Registry rejects duplicate active IDs.
+      - Registry preserves and rejects reuse of retired IDs.
+      - Symbolic names are unique and stable.
+      - Mandatory definitions have Error default severity.
+      - S1014 remains configurable Warning with unchanged identity.
+      - A2001 remains configurable Information with unchanged identity.
+      - L lexer IDs remain stable and listed in catalog order.
+      - "`sec diagnostics` ordering is stable ID order."
+      - "`sec diagnostics --json` contains every registered definition."
+      - "`sec diagnostics <ID>` succeeds for active and retired known IDs."
+      - "`sec diagnostics <ID>` reports an unknown-ID tool error for unknown IDs."
+      - CLI and LSP expose the same diagnostic ID for the same occurrence.
+      - S1052 identifies invalid union-payload extraction storage and provides actionable owning-local and ref/ref-mut alternatives.
+      - S3001 identifies the unreachable statement and explains the terminator.
+      - Parser recovery does not generate unrelated cascades.
+      - Machine-readable occurrence output matches the canonical logical schema once implemented.
+      - Localization changes rendered text without changing ID, severity or semantic arguments.
+      - Attempts to disable or demote mandatory diagnostics are rejected.
+      - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
+    verification:
+      - command: go test ./internal/diagnostics ./internal/parser ./internal/sema -count=1
+        result: passed on 2026-09-30
+      - command: go test ./cmd/compiler -run 'DiagnosticCatalog|KnownDiagnostic|Registry' -count=1
+        result: passed on 2026-09-30; registry, catalog schema, known-ID detail, and unknown-ID behavior remain synchronized
+      - command: go run ./cmd/compiler diagnostics
+        result: passed on 2026-09-30; emitted the registry listing in stable ID order
+      - command: go run ./cmd/compiler diagnostics --json
+        result: passed on 2026-09-30; emitted the machine-readable definition and field-schema catalog
+      - command: "go run ./cmd/compiler diagnostics S3001 && go run ./cmd/compiler diagnostics S1020 && ! go run ./cmd/compiler diagnostics S9999"
+        result: passed on 2026-09-30; active and retired IDs emitted registry-backed detail, while the unknown ID was rejected as an ordinary tool error
+      - command: go test ./internal/diagnostics ./internal/sema ./cmd/compiler -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|UnionPayloadMoveFromUntrackedStorageHasStructuredDiagnostic|DiagnosticCatalog)' -count=1
+        result: passed on 2026-09-30 with registered mandatory S1052 identity, explanatory payload-Place message, actionable ownership/borrow help, and catalog exposure

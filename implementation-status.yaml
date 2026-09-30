@@ -1108,7 +1108,7 @@ integrations:
       - "rules/memory/copy_move.md"
       - "rules/tooling/formatter.md"
       - "rules/tooling/lsp.md"
-      - "rules/tooling/diagnostics.txt"
+      - "rules/tooling/diagnostics.md"
       - "rules/analysis/escape_analysis.md"
     implemented:
       - "Formatter preserves established :<- and <- move operators."
@@ -1202,7 +1202,7 @@ integrations:
     repository_baseline: "069c111"
     rules:
       - "rules/memory/borrowing.md"
-      - "rules/tooling/diagnostics.txt"
+      - "rules/tooling/diagnostics.md"
       - "rules/tooling/lsp.md"
       - "rules/tooling/formatter.md"
     implemented:
@@ -1340,7 +1340,7 @@ integrations:
     repository_baseline: "069c111"
     rules:
       - "rules/memory/destruction.md"
-      - "rules/tooling/diagnostics.txt"
+      - "rules/tooling/diagnostics.md"
       - "rules/tooling/lsp.md"
       - "rules/tooling/formatter.md"
     implemented:
@@ -2146,7 +2146,7 @@ integrations:
     rules:
       - "rules/memory/lifetime_analysis.md"
       - "rules/tooling/lsp.md"
-      - "rules/tooling/diagnostics.txt"
+      - "rules/tooling/diagnostics.md"
     remaining:
       - "expose lifetime origin/dependency/invalidation facts from shared Sema analysis without a second LSP lifetime engine"
       - "mentor diagnostics identify origin, invalidating operation, rejected use, relevant path and practical safe restructuring"
@@ -2590,7 +2590,7 @@ integrations:
     rules:
     - rules/memory/references.md
     - rules/tooling/lsp.md
-    - rules/tooling/diagnostics.txt
+    - rules/tooling/diagnostics.md
     remaining:
     - expose canonical origin, possible-origin set, lifetime/borrow dependency, storage domain and invalidation cause from shared
       Sema facts

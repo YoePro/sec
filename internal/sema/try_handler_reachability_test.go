@@ -14,7 +14,7 @@ import (
 // handler points to its source and the earlier covering handler, or the last
 // arm that completed coverage of a closed enum error.
 // Rules: rules/errors/errorhandling.md — §18 "Handler order and reachability";
-// rules/tooling/diagnostics.txt — "Error-handling diagnostics".
+// rules/tooling/diagnostics.md — §26 "Ownership and error-handling diagnostic quality".
 func TestTryHandlerShadowDiagnostics(t *testing.T) {
 	path := "../../testdata/sema/try_handler_shadow_invalid.sec"
 	source, err := os.ReadFile(path)

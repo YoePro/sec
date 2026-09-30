@@ -534,6 +534,20 @@ enum ClockSource bit[2] {
 	}
 }
 
+// Explicit enum initializer punctuation is retained for CST-driven formatter
+// roles without conflating canonical equals with legacy colon recovery.
+//
+// Rules:
+//   - rules/declarations/enums.md — "Enum members"
+//   - rules/tooling/formatter.md — §15(4) enum assignment alignment
+func TestParseEnumRetainsInitializerTokens(t *testing.T) {
+	program := New(lexer.New("enum Status uint8 {\nReady = 1\nLegacy: 2\n}\n")).ParseProgram()
+	declaration := program.Statements[0].(*ast.EnumDeclaration)
+	if declaration.Values[0].InitializerToken.Type != lexer.ASSIGN || declaration.Values[1].InitializerToken.Type != lexer.COLON {
+		t.Fatalf("initializer tokens = %+v, %+v", declaration.Values[0].InitializerToken, declaration.Values[1].InitializerToken)
+	}
+}
+
 func TestParseSelfKeywordInDiscardStatement(t *testing.T) {
 	input := `
 fn Test() void {

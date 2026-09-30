@@ -2,6 +2,8 @@ package sema
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -222,7 +224,7 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 			continue
 		}
 		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind == deferredUse {
+			if isDeferredUseKind(record.Kind) {
 				continue
 			}
 			if candidate.ReferenceHolder != "" && record.Holder == candidate.ReferenceHolder {
@@ -409,6 +411,132 @@ func (a *Analyzer) validateCallArgumentOwnership(function Function, sourceArgs [
 		valid = false
 	}
 	return valid
+}
+
+// validateCallArgumentBorrows models selected reference parameters as
+// call-bounded reservations spanning the complete invocation. It checks each
+// argument left-to-right against active lexical borrows and earlier argument
+// reservations without committing those temporary reservations to later code.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §15.2 "Call-site borrow creation"
+//   - rules/memory/borrowing.md — §15.3 "Reborrowed arguments"
+//   - rules/memory/borrowing.md — §15.4(1–5) argument order and overlap
+func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
+	reservations := []borrowRecord{}
+	valid := true
+	for sourceIndex, arg := range sourceArgs {
+		parameter, ok := functionParameterForArgument(function, sourceIndex)
+		if !ok {
+			return false
+		}
+		if sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex] {
+			continue
+		}
+
+		mutable, borrowed := callParameterBorrowMode(parameter)
+		if !borrowed {
+			place, reusable := a.resolvePlace(arg)
+			if !reusable {
+				continue
+			}
+			for _, reservation := range reservations {
+				if reservation.Kind != mutableBorrow || !borrowPlacesOverlap(place, reservation) {
+					continue
+				}
+				a.addErrorAtTokenWithPrevious(
+					expressionToken(arg), reservation.Token,
+					"argument %d reads %s while mutable borrow prepared for argument %d remains active",
+					sourceIndex+1, place.String(), callReservationArgumentIndex(reservation),
+				)
+				valid = false
+				break
+			}
+			continue
+		}
+
+		place, reusable := a.callArgumentBorrowPlace(arg)
+		if !reusable {
+			continue
+		}
+		if a.checkBorrowCreationPlace(place, mutable, expressionToken(arg)) {
+			valid = false
+			continue
+		}
+		conflict := false
+		for _, reservation := range reservations {
+			if !borrowPlacesOverlap(place, reservation) || !mutable && reservation.Kind == sharedBorrow {
+				continue
+			}
+			a.addErrorAtTokenWithPrevious(
+				expressionToken(arg), reservation.Token,
+				"argument %d overlaps %s borrow prepared for argument %d",
+				sourceIndex+1, reservation.Kind, callReservationArgumentIndex(reservation),
+			)
+			valid = false
+			conflict = true
+			break
+		}
+		if conflict {
+			continue
+		}
+		kind := sharedBorrow
+		if mutable {
+			kind = mutableBorrow
+		}
+		for _, alternative := range placeOriginAlternatives(place) {
+			reservations = append(reservations, borrowRecord{
+				Root: alternative.Root, Place: alternative, Holder: fmt.Sprintf("$call-argument:%d", sourceIndex+1),
+				Kind: kind, Token: expressionToken(arg),
+			})
+		}
+	}
+	return valid
+}
+
+// callParameterBorrowMode derives the call-bounded authority requested by the
+// selected source-level reference parameter form.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §15.1–15.3 parameter and reborrow modes
+func callParameterBorrowMode(parameter FunctionParameter) (mutable bool, borrowed bool) {
+	if parameter.MutableRef || parameter.Type.Kind == ReferenceType && parameter.Type.ReferenceMutable {
+		return true, true
+	}
+	if parameter.Ref || parameter.Type.Kind == ReferenceType {
+		return false, true
+	}
+	return false, false
+}
+
+// callArgumentBorrowPlace resolves an existing reference argument through its
+// canonical referent provenance and an owned argument directly to its Place.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §12 Place identity and overlap
+//   - rules/memory/borrowing.md — §15.2–15.3 call borrows and reborrows
+func (a *Analyzer) callArgumentBorrowPlace(argument ast.Expression) (Place, bool) {
+	if origin, ok := a.referencePlaceOrigin(argument); ok {
+		return origin, true
+	}
+	return a.resolvePlace(argument)
+}
+
+// callReservationArgumentIndex recovers the earlier source argument index for
+// deterministic overlap diagnostics; it has no runtime representation.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §15.4 argument order and borrow commit
+func callReservationArgumentIndex(record borrowRecord) int {
+	const prefix = "$call-argument:"
+	if !strings.HasPrefix(record.Holder, prefix) {
+		return 0
+	}
+	index, err := strconv.Atoi(strings.TrimPrefix(record.Holder, prefix))
+	if err != nil {
+		return 0
+	}
+	return index
 }
 
 // consumeMethodReceiver records ownership termination for a consuming method

@@ -1124,7 +1124,7 @@ rules/memory/references.md
 rules/memory/destruction.md
 rules/errors/errorhandling.md
 rules/compiler/semantic_ir.md
-rules/tooling/diagnostics.txt
+rules/tooling/diagnostics.md
 rules/tooling/formatter.md
 ```
 

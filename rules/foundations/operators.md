@@ -4140,7 +4140,7 @@ destruction.md
 concurrency_memory_model.md
 semantic_ir.md
 compiler_pipeline.md
-diagnostics.txt
+diagnostics.md
 lsp.md
 language-rulebook-status.md
 rules_implementations.txt

@@ -5550,30 +5550,13 @@ func structuredParserDiagnostic(value parser.Diagnostic, text string) diagnostic
 //   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func diagnosticTokenRange(token lexer.Token, text string) lspRange {
 	start := diagnosticTokenStart(text, token)
-	end := start
-	runes := []rune(token.Lexeme)
-	if len(runes) == 0 {
+	if token.Lexeme == "" {
+		end := start
 		end.Character++
 		return lspRange{Start: start, End: end}
 	}
-	for index, current := range runes {
-		switch current {
-		case '\r':
-			end.Line++
-			end.Character = 0
-			if index+1 < len(runes) && runes[index+1] == '\n' {
-				continue
-			}
-		case '\n':
-			if index > 0 && runes[index-1] == '\r' {
-				continue
-			}
-			end.Line++
-			end.Character = 0
-		default:
-			end.Character += utf16RuneWidth(current)
-		}
-	}
+	endLine, endColumn := token.EndPosition()
+	end := diagnosticTokenStart(text, lexer.Token{Line: endLine, Column: endColumn})
 	return lspRange{Start: start, End: end}
 }
 

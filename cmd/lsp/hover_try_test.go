@@ -81,3 +81,47 @@ fn Use() int {
 		t.Fatalf("local try hover = %+v, %v", hover, ok)
 	}
 }
+
+// Option try hover presents Some as the success path and None as ordinary
+// propagated absence. It must not reuse Result's failure/error vocabulary.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover", try and protected-operand hover
+//   - rules/errors/errorhandling.md — §§ 9, 12.2 and § 37.4
+//   - rules/corrections/applied/lsp-errorhandling-correction-20260824.md — "Try hover"
+func TestTryHoverShowsResolvedOptionPropagationAtKeywordAndOperand(t *testing.T) {
+	source := `module main
+
+fn Find() Option[int] {
+    return None
+}
+
+fn Use() Option[int] {
+    let value := try Find()
+    return Some(value)
+}
+`
+	tryStart := strings.Index(source, "try Find()")
+	for name, offset := range map[string]int{
+		"keyword": tryStart + 1,
+		"operand": tryStart + len("try "),
+	} {
+		t.Run(name, func(t *testing.T) {
+			hover, ok := hoverForSource("", source, offsetPosition(source, offset))
+			contents := hover.Contents.Value
+			if !ok || !strings.Contains(contents, "Protected carrier: `Option[int]`") ||
+				!strings.Contains(contents, "Success value: `int`") ||
+				!strings.Contains(contents, "Success state: `Some(int)`") ||
+				!strings.Contains(contents, "Try expression type: `int`") ||
+				!strings.Contains(contents, "Absence handling: `propagated`") ||
+				!strings.Contains(contents, "Propagated state: `None`") ||
+				!strings.Contains(contents, "Propagation target: `Option[int]`") ||
+				!strings.Contains(contents, "None consumed by: `enclosing function return`") ||
+				strings.Contains(contents, "Failure handling") ||
+				strings.Contains(contents, "Propagated error") ||
+				strings.Contains(contents, "Err consumed") {
+				t.Fatalf("Option try propagation hover = %+v, %v", hover, ok)
+			}
+		})
+	}
+}

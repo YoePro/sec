@@ -125,7 +125,7 @@ func TestDiagnosticCatalogRejectsUnknownArguments(t *testing.T) {
 // complete catalog without introducing a second diagnostic data source.
 //
 // Rules:
-//   - rules/tooling/diagnostics.txt — "Diagnostic detail command"
+//   - rules/tooling/diagnostics.md — §13 "Canonical diagnostic commands"
 //   - rules/compiler/compiler_testing.md — §11(5)–(8)
 func TestDiagnosticCatalogDetailMatchesRegisteredDefinition(t *testing.T) {
 	definition, ok := diagnostics.Lookup(diagnostics.UnreachableStatement)

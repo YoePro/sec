@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-29"
+    revised: "2026-09-30"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -20,7 +20,7 @@ integrations:
       - rules/compiler/compiler_known_members.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/compiler/parser_recovery.md
     code:
       - internal/lexer/escapes.go
@@ -28,6 +28,9 @@ integrations:
       - internal/lexer/contextual_type_names.go
       - internal/lexer/reserved_names.go
       - internal/lexer/lexer.go
+      - internal/lexer/source.go
+      - internal/cst/document.go
+      - cmd/compiler/diagnostic_catalog.go
       - internal/diagnostics/diagnostics.go
       - ../bootstrap/internal/lexer/lexer.sec
       - go.mod
@@ -50,6 +53,8 @@ integrations:
       - internal/lexer/escapes_test.go
       - testdata/lexer/escape_diagnostics_invalid.sec
       - internal/lexer/lexer_test.go
+      - internal/lexer/byte_ranges_test.go
+      - internal/cst/document_test.go
       - internal/lexer/diagnostic_categories_test.go
       - testdata/lexer/byte_string_absent.sec
       - cmd/compiler/lexer_cli_test.go
@@ -98,6 +103,9 @@ integrations:
       - nested interpolation escape diagnostics retain original positions and deduplicate through parser results; CLI rejects lexical errors and LSP highlights escape spans
       - bootstrap lexer source mirrors escape validation and passes parser validation; runtime equivalence remains dependent on bootstrap execution support
       - Unicode-rune input processing
+      - every Go-frontend token and lexer diagnostic carries exact half-open source ranges as both zero-based original UTF-8 bytes and one-based Unicode-scalar start/end positions; invalid bytes, multibyte scalars, LF/CRLF/CR, multiline comments and raw strings, a skipped initial BOM, unexpected later BOMs, EOF, and snapshot replay preserve stable anchors
+      - lexer.Token.EndPosition provides compatible range calculation for manually constructed tokens while parser documentation attachment, Sema diagnostic construction, import diagnostics, and LSP token ranges consume lexer-owned exclusive ends instead of maintaining single-line or component-local length calculations
+      - the lossless CST consumes lexer-owned token byte ranges directly instead of maintaining a second independently reconstructed rune-to-byte map, and the diagnostic catalog exposes scalar and byte range fields as part of the token occurrence schema
       - one-based line and column tracking
       - identifier starts using underscore, ASCII letters, and Unicode letters
       - Go frontend validates identifier NFC with Unicode-version-matched golang.org/x/text/unicode/norm, rejecting non-NFC spellings with mandatory L1004 and a normalized suggestion while preserving the original lexeme
@@ -298,3 +306,9 @@ integrations:
         result: passed; Sec escape materialization, contextual rune shaping, exact Semantic IR scalar constants, and legacy LLVM char/rune emission
       - command: go test ./internal/parser ./internal/formatter -run 'Test(ParserClassifiesAllCommentAttachments|FormatReturnsAttachmentsForCanonicalOutput)' -count=1
         result: passed; source-ordered leading, trailing, detached, and documentation trivia survives parsing and is re-anchored to canonical formatter output
+      - command: go test ./internal/lexer ./internal/cst -count=1 && go test ./cmd/compiler -run 'TestDiagnosticCatalogSchemasContainEveryStructField|TestBuildDiagnosticCatalogContainsEveryRegisteredDefinition' -count=1
+        result: passed on 2026-09-30; token and diagnostic byte ranges preserve original UTF-8 offsets across BOMs, invalid bytes, multibyte scalars, comments, CRLF, EOF, and snapshot replay, CST spans agree with lexer ownership, and the diagnostic schema is synchronized
+      - command: go test ./internal/parser ./internal/diagnostics ./internal/ast ./internal/formatter ./cmd/lsp -count=1
+        result: passed on 2026-09-30; parser, diagnostics, AST, formatter, and LSP remain compatible with lexer-owned byte ranges
+      - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/cst ./internal/diagnostics -count=1 && go test ./cmd/compiler -run 'DiagnosticCatalog|KnownDiagnostic|Registry|LexerCLI' -count=1 && go test ./cmd/lsp -run 'TokenRange|SourcePosition|StructuredParserDiagnostic|UnresolvedImport|MultilineComment' -count=1
+        result: passed on 2026-09-30; lexer-owned exclusive scalar ends cover single-line and multiline tokens, CRLF and bare CR, decoding diagnostics, EOF, and snapshot replay, while parser, Sema, compiler catalog, import diagnostics, CST, and LSP consume compatible ranges

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 type Error struct {
@@ -50,6 +51,30 @@ func (e Error) Error() string {
 	}
 
 	return e.Message
+}
+
+// addErrorAtTokenWithPreviousMetadata emits one registered semantic diagnostic
+// with actionable help and the source location that caused the current source
+// token to be rejected.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — § 2(6)–(8), § 3(4)–(6), and §§ 5–7
+func (a *Analyzer) addErrorAtTokenWithPreviousMetadata(token lexer.Token, previous lexer.Token, id string, help string, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
+	a.appendError(Error{
+		ID:             id,
+		Severity:       diagnostics.SeverityError,
+		Help:           help,
+		Message:        fmt.Sprintf(format, args...),
+		File:           token.File,
+		Line:           token.Line,
+		Column:         token.Column,
+		EndLine:        endLine,
+		EndColumn:      endColumn,
+		PreviousFile:   previous.File,
+		PreviousLine:   previous.Line,
+		PreviousColumn: previous.Column,
+	})
 }
 
 func formatLocation(file string, line int, column int) string {

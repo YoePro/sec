@@ -2,10 +2,16 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-09-07
-- **Document revision:** 2.0
+- **Last updated:** 2026-09-29
+- **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
+- **Replaces:** Earlier unversioned revision at the same canonical path
+- **Repository baseline reviewed:** `main-reviewed-2026-09-29`
+- **Implementation governance:** `governance/errors.yaml`
+- **Related rulebooks:** `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/foundations/operators.md`, `rules/types/contracts.md`, `rules/types/default_values.md`, `rules/memory/ownership.md`, `rules/memory/copy_move.md`, `rules/memory/destruction.md`, `rules/memory/allocation.md`, `rules/memory/unsafe.md`, `rules/platform/ffi.md`, `rules/foundations/attributes.md`, `rules/compiler/semantic_ir.md`
+
+---
 
 ## Status
 
@@ -761,7 +767,7 @@ Runtime values use ordinary branches and Result construction.
 # Contextual `require` contract proposal
 
 `require` is not globally reserved and is not part of the canonical Sec 0.1
-contract grammar in `contracts.md`.
+contract grammar in `rules/types/contracts.md`.
 
 If a future rulebook introduces a named-type predicate form, it may use
 `require` contextually while preserving ordinary identifier uses. Illustrative
@@ -772,7 +778,7 @@ type InvoiceNumber string
     require IsValidInvoiceNumber
 ```
 
-The exact grammar requires an explicit update to `contracts.md` before this form
+The exact grammar requires an explicit update to `rules/types/contracts.md` before this form
 becomes normative.
 
 A require predicate must be:
@@ -1274,140 +1280,11 @@ compiler_pipeline.md
 semantic_ir.md
 formatter.md
 lsp.md
-diagnostics.txt
+diagnostics.md
 build rules
 language-rulebook-status.md
 rules_implementations.txt
 ```
-
----
-
-# Appendix A — Codex implementation plan
-
-## A.1 Add rulebook
-
-Add:
-
-```text
-rules/errors/runtime_checks.md
-```
-
-Update status and implementation trackers.
-
-## A.2 Represent checks
-
-Add explicit check categories in Sema or Semantic IR.
-
-Conceptual:
-
-```go
-type CheckKind int
-
-const (
-    CheckOverflow CheckKind = iota
-    CheckDivision
-    CheckShift
-    CheckBounds
-    CheckSlice
-    CheckConversion
-    CheckContract
-    CheckReferenceGeneration
-    CheckAssertion
-    CheckUnreachable
-)
-```
-
-## A.3 Try-check mode
-
-The expression analyzer carries a check mode such as:
-
-```text
-PanicCapable
-Fallible
-ProvenOnly
-```
-
-`try` applies Fallible mode to language-defined checks in its expression
-subtree.
-
-Function calls retain declared effects.
-
-## A.4 Error compatibility
-
-For naked propagation:
-
-1. resolve produced error type;
-2. resolve enclosing function error type;
-3. test assignability;
-4. propagate only if compatible;
-5. otherwise require local mapping.
-
-Do not infer unions.
-
-## A.5 Proof queries
-
-Implement proof for:
-
-```text
-overflow
-zero divisor
-shift range
-bounds
-slice range
-contract predicate
-reference generation
-```
-
-## A.6 Semantic IR
-
-Represent:
-
-```text
-checked operation
-fallible checked operation
-proven operation
-panic endpoint
-error construction
-```
-
-## A.7 Direct lowering
-
-Prefer:
-
-```text
-target intrinsic
-ordinary compare
-ordinary branch
-local helper
-user handler
-target trap
-```
-
-No general runtime dependency.
-
-## A.8 No-panic effect
-
-Compute transitive status across:
-
-```text
-functions
-methods
-lambdas
-defer bodies
-destructors
-require predicates
-foreign declarations
-```
-
-## A.9 Migration analyzer
-
-Build semantic reports outside the formatter.
-
-Use stable risk IDs.
-
-## A.10 Tests
-
-Add proof, lowering, link-dependency, call-graph, and migration-report tests.
 
 ---
 

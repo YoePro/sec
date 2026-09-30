@@ -72,11 +72,47 @@ impl duration {
         return duration { _nanoseconds: -self._nanoseconds }
     }
 
-    fn FromNanoseconds(ns: int64) duration {
-        return duration { _nanoseconds: ns }
+    fn FromDays(days: int64) duration {
+        return duration { _nanoseconds: days * 86400000000000 }
     }
 
-    fn FromSeconds(s: int64) duration {
-        return duration { _nanoseconds: s * 1000000000 }
+    fn FromHours(hours: int64) duration {
+        return duration { _nanoseconds: hours * 3600000000000 }
     }
+
+    fn FromMinutes(minutes: int64) duration {
+        return duration { _nanoseconds: minutes * 60000000000 }
+    }
+
+    fn FromSeconds(secsonds: int64) duration {
+        return duration { _nanoseconds: secsonds * 1000000000 }
+    }
+
+    fn FromMilliseconds(ms: int64) duration {
+        return duration { _nanoseconds: ms * 1000000 }
+    }
+
+    fn FromMicroseconds(us: int64) duration {
+        return duration { _nanoseconds: us * 1000 }
+    }
+
+    fn FromNanoseconds(nanos: int64) duration {
+        return duration { _nanoseconds: nanos }
+    }
+
+    /*
+     *     fn Parse(s: string) duration {
+     *         // TODO: implement parsing of duration strings
+     *         return duration { _nanoseconds: 0 }
+     *     }
+     *
+     *     fn Since(start: time, end: time) duration {
+     *         return duration { _nanoseconds: end.Nanoseconds - start.Nanoseconds }
+     *     }
+     *
+     *     fn Until(start: time, end: time) duration {
+     *         return duration { _nanoseconds: start.Nanoseconds - end.Nanoseconds }
+     *     }
+     */
+
 }

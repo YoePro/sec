@@ -63,5 +63,5 @@ of compiler-internal lattices or SSA.
 
 ## Cross-reference
 
-`rules/tooling/diagnostics.txt` owns general diagnostic policy;
+`rules/tooling/diagnostics.md` owns general diagnostic policy;
 `rules/memory/ownership.md` revision 2.0 owns the semantic facts.

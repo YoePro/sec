@@ -179,7 +179,7 @@ integrations:
       - rules/memory/raw_pointers.md
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
     implemented:
       - LSP completion exposes represented compiler-known raw-pointer arithmetic members
       - LSP completion and hover expose VolatileRead and VolatileWrite unsafe and effect identity

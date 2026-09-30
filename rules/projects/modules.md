@@ -983,7 +983,7 @@ rules/declarations/properties.md
 rules/compiler/compiler_pipeline.md
 rules/compiler/semantic_ir.md
 rules/platform/platform_model.md
-rules/tooling/diagnostics.txt
+rules/tooling/diagnostics.md
 rules/tooling/lsp.md
 rules/tooling/testing.md
 ```

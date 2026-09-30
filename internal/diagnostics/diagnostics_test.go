@@ -37,6 +37,9 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		ParameterShadowsType:                SeverityError,
 		UnresolvedGenericExtern:             SeverityError,
 		UnresolvedImport:                    SeverityError,
+		UnionPayloadMoveStorage:             SeverityError,
+		DuplicateContractMembershipValue:    SeverityError,
+		EmptyContractMembership:             SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
 		IncompatibleUnitConversion:          SeverityError,
@@ -178,5 +181,25 @@ func TestStorageSiteContractDiagnosticIsRegistered(t *testing.T) {
 	}
 	if definition.Name != "types.storage-site-contract" || definition.Family != "types" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
 		t.Fatalf("storage-site contract diagnostic = %+v", definition)
+	}
+}
+
+func TestDuplicateContractMembershipValueDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(DuplicateContractMembershipValue)
+	if !ok {
+		t.Fatal("missing duplicate contract membership value diagnostic")
+	}
+	if definition.Name != "types.duplicate-in-contract-value" || definition.Family != "types" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("duplicate contract membership value diagnostic = %+v", definition)
+	}
+}
+
+func TestEmptyContractMembershipDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(EmptyContractMembership)
+	if !ok {
+		t.Fatal("missing empty contract membership diagnostic")
+	}
+	if definition.Name != "types.empty-in-contract" || definition.Family != "types" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("empty contract membership diagnostic = %+v", definition)
 	}
 }

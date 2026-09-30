@@ -393,7 +393,7 @@ integrations:
       - rules/analysis/deadlock_analysis.md
       - rules/analysis/isr_analysis.md
       - rules/tooling/lsp.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/corrections/applied/temporal-now-correction-20260928.md
     governance_reconciliation:
       - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.

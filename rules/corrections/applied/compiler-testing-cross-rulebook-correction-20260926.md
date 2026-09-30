@@ -27,7 +27,7 @@
 
 ## § 2. Canonical diagnostic detail command
 
-**Target:** `rules/tooling/diagnostics.txt`
+**Target:** `rules/tooling/diagnostics.md`
 
 § 2(1) The canonical diagnostic catalog and inspection command family is:
 
@@ -77,7 +77,7 @@ sec diagnostics S3101
 
 ## § 3. Diagnostic testing handoff
 
-**Target:** `rules/tooling/diagnostics.txt`
+**Target:** `rules/tooling/diagnostics.md`
 
 § 3(1) The diagnostics rulebook remains canonical for diagnostic identity, structure, localization, severity, help, fixes, and configuration.
 
@@ -96,7 +96,7 @@ sec diagnostics S3101
 
 ## § 4. Diagnostic prefix allocation inconsistency is not resolved here
 
-**Targets:** `rules/tooling/diagnostics.txt`, `internal/diagnostics/diagnostics.go`
+**Targets:** `rules/tooling/diagnostics.md`, `internal/diagnostics/diagnostics.go`
 
 § 4(1) Current canonical text recommends lexical/tokenization allocation in `P1xxx` while the current registry contains published lexer IDs `L1001` through `L1020`.
 
@@ -236,7 +236,7 @@ testing.yaml
 
 ```text
 [x] rules/compiler/compiler_testing.md is installed at its canonical path
-[x] sec diagnostics <ID> is canonical in rules/tooling/diagnostics.txt
+[x] sec diagnostics <ID> is canonical in rules/tooling/diagnostics.md
 [x] source-level fuzz deferral is distinguished from compiler fuzzing
 [x] testing.compiler-verification-v1 is merged into governance/testing.yaml
 [x] governance/index.yaml testing ownership wording is broadened

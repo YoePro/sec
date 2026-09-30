@@ -155,65 +155,65 @@ impl datetime {
             return _now
         }
     }
-
-    static property Date: date {
-        get {
-            return new date{ year: 0, month: 0, day: 0 }
-        }
-    }
-
-    static property Time: time {
-        get {
-            return new time{}
-        }
-    }
-
-    fn AddDays(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn AddMonths(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn AddYears(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn AddHours(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn AddMinutes(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn AddSeconds(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn SubtractDays(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn SubtractMonths(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn SubtractYears(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn SubtractHours(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn SubtractMinutes(n: int) datetime {
-        return new datetime{}
-    }
-
-    fn SubtractSeconds(n: int) datetime {
-        return new datetime{}
-    }
-
+    /*
+     *     static property Date: date {
+     *         get {
+     *             return new date{ year: 0, month: 0, day: 0 }
+     *         }
+     *     }
+     *
+     *     static property Time: time {
+     *         get {
+     *             return new time{}
+     *         }
+     *     }
+     *
+     *     fn AddDays(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn AddMonths(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn AddYears(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn AddHours(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn AddMinutes(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn AddSeconds(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn SubtractDays(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn SubtractMonths(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn SubtractYears(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn SubtractHours(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn SubtractMinutes(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     *
+     *     fn SubtractSeconds(n: int) datetime {
+     *         return new datetime{}
+     *     }
+     */
 }

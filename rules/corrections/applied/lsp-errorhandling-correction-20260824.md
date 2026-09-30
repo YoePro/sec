@@ -82,5 +82,5 @@ when Sema has that control-flow fact.
 
 ```text
 rules/errors/errorhandling.md
-rules/tooling/diagnostics.txt
+rules/tooling/diagnostics.md
 ```

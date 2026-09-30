@@ -1,0 +1,85 @@
+module ip
+
+type Address union {
+    V4(Ipv4Address),
+    V6(Ipv6Address),
+}
+
+impl Address {
+    static fn Parse(text: string) Result[Address, AddressError] {
+        return Err(AddressError.InvalidFormat)
+    }
+
+    fn ToString() string {
+        match self {
+            V4(ref v4) => {
+                return v4.ToString()
+            }
+            V6(ref v6) => {
+                return v6.ToString()
+            }
+        }
+    }
+
+    property Version: IpVersion {
+        get {
+            match self {
+                V4(_) => {
+                    return IpVersion.V4
+                }
+                V6(_) => {
+                    return IpVersion.V6
+                }
+            }
+        }
+    }
+
+    property IsUnspecified: bool {
+        get {
+            match self {
+                V4(ref v4) => {
+                    return v4.IsUnspecified
+                }
+                V6(ref v6) => {
+                    return v6.IsUnspecified
+                }
+            }
+        }
+    }
+    property IsLoopback: bool {
+        get {
+            match self {
+                V4(ref v4) => {
+                    return v4.IsLoopback
+                }
+                V6(ref v6) => {
+                    return v6.IsLoopback
+                }
+            }
+        }
+    }
+    property IsMulticast: bool {
+        get {
+            match self {
+                V4(ref v4) => {
+                    return v4.IsMulticast
+                }
+                V6(ref v6) => {
+                    return v6.IsMulticast
+                }
+            }
+        }
+    }
+    property IsLinkLocal: bool {
+        get {
+            match self {
+                V4(ref v4) => {
+                    return v4.IsLinkLocal
+                }
+                V6(ref v6) => {
+                    return v6.IsLinkLocal
+                }
+            }
+        }
+    }
+}

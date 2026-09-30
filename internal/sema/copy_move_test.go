@@ -1910,6 +1910,53 @@ fn Test() void {
 	assertSemaErrors(t, errors, nil)
 }
 
+// Moving a move-only payload from indexed union storage is invalid because
+// the match cannot leave a tracked partial-move state in storage it does not
+// own. The diagnostic must expose stable identity and actionable alternatives.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — §13 "Whole-payload ownership modes"
+//   - rules/control-flow/flowcontrol_match.md — §14 "Borrowed subjects cannot transfer ownership"
+//   - rules/tooling/diagnostics.md — §2(8)
+func TestUnionPayloadMoveFromUntrackedStorageHasStructuredDiagnostic(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+@noCopy
+type Session struct {
+    value: int,
+}
+
+type Choice union {
+    Some(Session),
+    None,
+}
+
+fn Inspect() void {
+    let choices := [Choice.Some(Session { value: 1 })]
+    match choices[0] {
+        Some(session) => {
+            discard session
+        }
+        None => {}
+    }
+}
+`)
+	if len(errors) != 1 {
+		t.Fatalf("errors = %+v, want one union payload storage diagnostic", errors)
+	}
+	diagnostic := errors[0]
+	if diagnostic.ID != diagnostics.UnionPayloadMoveStorage {
+		t.Fatalf("diagnostic = %+v, want ID %s", diagnostic, diagnostics.UnionPayloadMoveStorage)
+	}
+	if !strings.Contains(diagnostic.Message, "cannot move payload choices[0].<Some>") || !strings.Contains(diagnostic.Message, "not an independently tracked local owner") {
+		t.Fatalf("message = %q, want payload and ownership explanation", diagnostic.Message)
+	}
+	if !strings.Contains(diagnostic.Help, "local owning variable") || !strings.Contains(diagnostic.Help, "`ref`") {
+		t.Fatalf("help = %q, want owning-local and borrow alternatives", diagnostic.Help)
+	}
+}
+
 func TestNestedUnionPayloadMovePreservesDisjointStructField(t *testing.T) {
 	input := `
 module main

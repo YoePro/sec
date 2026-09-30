@@ -81,7 +81,7 @@ Arena behavior out of this document.
 | Effects, reachability, escape, panic, and runtime checks | `rules/analysis/effect_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/escape_analysis.md`, `rules/errors/panic.md`, `rules/errors/runtime_checks.md` |
 | Tasks, threads, structured child lifecycle, cancellation, and concurrency memory semantics | `rules/concurrency/concurrency.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/concurrency/tasks.md`, `rules/concurrency/spawn.md`, `rules/concurrency/await.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md` |
 | FFI, targets, and interrupt restrictions | `rules/platform/ffi.md`, `rules/platform/target_profiles.md`, `rules/analysis/isr_analysis.md` |
-| Diagnostics and language tooling | `rules/tooling/diagnostics.txt`, `rules/tooling/lsp.md` |
+| Diagnostics and language tooling | `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md` |
 
 § 1.1(2) If a referenced rulebook is revised, it must consume ArenaDomain,
 backing, epoch, ownership, dependency, allocation-context, and lifecycle facts

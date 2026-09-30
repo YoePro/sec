@@ -6,7 +6,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-16"
-    revised: "2026-09-28"
+    revised: "2026-09-30"
     summary: >-
       Introduces a lexer-backed, byte-lossless concrete-syntax foundation and
       lexical delimiter hierarchy. The formatter remains primarily a bespoke
@@ -29,6 +29,7 @@ integrations:
       - internal/formatter/block_comments.go
       - internal/formatter/line_comments.go
       - internal/formatter/struct_field_alignment.go
+      - internal/formatter/enum_value_alignment.go
     tests:
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
@@ -65,6 +66,7 @@ integrations:
       - project parser-confirmed executable block delimiters into CST roles and expand one-line and empty executable bodies to canonical multiline layout without rewriting aggregate literals or compact empty structural declarations
       - retain parser-owned range, slice-range, and contextual for-step tokens as CST roles and normalize only their horizontal trivia, keeping range operators compact and step surrounded by one space without rewriting ordinary step identifiers
       - project complete struct-field colon, type-start, and tag anchors into CST roles; align contiguous field type columns structurally, then align tags as a secondary column, splitting at comments, blank lines, multiline fields, and declaration boundaries while independently dropping a primary or secondary candidate that exceeds the default sixteen-space padding limit
+      - retain the exact initializer token on complete enum members and project canonical equals assignments into CST roles; align contiguous explicit-value groups while comments, blank lines, implicit members, declaration boundaries, legacy colon spellings, and excessive padding split or disable alignment
     remaining:
       - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
       - attach parser missing-token and skipped-token recovery nodes to the concrete syntax model
@@ -74,6 +76,8 @@ integrations:
     verification:
       - command: go test ./internal/cst ./internal/formatter -count=1
         result: passed
+      - command: go test ./internal/parser ./internal/cst ./internal/formatter -run 'Enum|FormatAlignsExplicitEnumValueAssignments|ApplyProgramRolesMarksExplicitEnumAssignments' -count=1
+        result: passed on 2026-09-30; parser-owned enum assignment tokens drive CST roles, canonical spacing, group alignment, group boundaries, padding fallback, and idempotence
   - id: tooling.formatter-delimiter-handoff
     area: tooling
     status: implemented
@@ -242,7 +246,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-09-28"
+    revised: "2026-09-30"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
@@ -279,6 +283,7 @@ integrations:
       - internal/formatter/block_comments.go
       - internal/formatter/line_comments.go
       - internal/formatter/struct_field_alignment.go
+      - internal/formatter/enum_value_alignment.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
     tests:
@@ -446,6 +451,13 @@ integrations:
         groups, and a column requiring more than the default sixteen spaces
         of padding is dropped without discarding an already valid primary
         column.
+      - >-
+        Complete explicit enum initializers now retain their exact assignment
+        token and project canonical equals anchors into the CST. Contiguous
+        homogeneous groups align under §15.4 with one-space initializer
+        padding, while comments, blank lines, implicit members, legacy colon
+        spellings, declaration boundaries, and the maximum-padding limit
+        prevent inappropriate alignment.
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
@@ -787,3 +799,5 @@ integrations:
         result: passed on 2026-09-28 with parser-owned range, slice, and contextual step roles, ordinary step-identifier separation, compact canonical spacing, and formatter idempotence
       - command: go test ./internal/cst ./internal/formatter -run 'StructField' -count=1
         result: passed on 2026-09-28 with parser-owned colon, type, and tag anchors, comment and blank-line group boundaries, canonical primary and secondary columns, independent padding-limit fallbacks, and idempotence
+      - command: go test ./internal/parser ./internal/cst ./internal/formatter -count=1 && go test ./cmd/compiler -run 'Fmt|Format' -count=1 && go test ./cmd/lsp -run 'Format|Formatting' -count=1
+        result: passed on 2026-09-30 with parser-owned enum assignment retention, CST role scoping, canonical explicit-value alignment, group and padding boundaries, idempotence, and shared CLI/LSP formatter behavior

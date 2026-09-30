@@ -3,7 +3,6 @@ package lexer
 import (
 	"fmt"
 	"unicode"
-	"unicode/utf8"
 
 	compilerdiagnostics "sec/internal/diagnostics"
 )
@@ -145,133 +144,6 @@ const (
 	MOVE_ASSIGN  TokenType = "MOVE_ASSIGN"  // <-
 	MOVE_DECLARE TokenType = "MOVE_DECLARE" // :<-
 )
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-type Token struct {
-	Type   TokenType
-	Lexeme string
-	File   string
-	Line   int
-	Column int
-}
-
-// Diagnostic is a lexical error discovered while decoding or tokenizing the
-// source. Primary identifies the exact offending source character or byte.
-type Diagnostic struct {
-	ID      string
-	Message string
-	Primary Token
-}
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-type Lexer struct {
-	input       []rune
-	file        string
-	pos         int
-	line        int
-	column      int
-	diagnostics []Diagnostic
-}
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-type State struct {
-	Pos         int
-	Line        int
-	Column      int
-	Diagnostics int
-}
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-func New(input string) *Lexer {
-	return NewWithFile(input, "")
-}
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-func NewWithFile(input string, file string) *Lexer {
-	decoded, diagnostics := decodeSource(input, file)
-	return &Lexer{input: decoded, file: file, line: 1, column: 1, diagnostics: diagnostics}
-}
-
-// 2026-08-10 22:28 CEST: Added strict UTF-8 decoding, initial-BOM removal,
-// unexpected-BOM recovery, and Unicode-whitespace diagnostics.
-// Diagnostics returns the lexical diagnostics discovered so far. Encoding and
-// BOM diagnostics are available immediately; token-context diagnostics appear
-// as NextToken advances.
-func (l *Lexer) Diagnostics() []Diagnostic {
-	result := make([]Diagnostic, len(l.diagnostics))
-	copy(result, l.diagnostics)
-	return result
-}
-
-// decodeSource validates source encoding and establishes diagnostic positions
-// under rules/foundations/lexical_structure.md. correction.md requires the
-// decoder and token cursor to share LF, CRLF, and bare-CR line semantics.
-func decodeSource(input string, file string) ([]rune, []Diagnostic) {
-	decoded := make([]rune, 0, utf8.RuneCountInString(input))
-	diagnostics := []Diagnostic{}
-	line, column := 1, 1
-	first := true
-	previousWasCR := false
-	for len(input) > 0 {
-		r, size := utf8.DecodeRuneInString(input)
-		lexeme := input[:size]
-		if r == utf8.RuneError && size == 1 {
-			diagnostics = append(diagnostics, Diagnostic{
-				ID:      compilerdiagnostics.LexerInvalidUTF8,
-				Message: fmt.Sprintf("invalid UTF-8 byte 0x%02X at %d:%d", input[0], line, column),
-				Primary: Token{Type: ILLEGAL, Lexeme: lexeme, File: file, Line: line, Column: column},
-			})
-			decoded = append(decoded, utf8.RuneError)
-		} else if r == '\uFEFF' {
-			if first {
-				input = input[size:]
-				first = false
-				continue
-			}
-			diagnostics = append(diagnostics, Diagnostic{
-				ID:      compilerdiagnostics.LexerUnexpectedByteOrderMark,
-				Message: fmt.Sprintf("unexpected byte-order mark U+FEFF at %d:%d; it is permitted only at the start of a source file", line, column),
-				Primary: Token{Type: ILLEGAL, Lexeme: lexeme, File: file, Line: line, Column: column},
-			})
-			// Preserve following source columns while allowing tokenization to
-			// recover without producing a second generic parser diagnostic.
-			decoded = append(decoded, ' ')
-		} else {
-			decoded = append(decoded, r)
-		}
-		// rules/foundations/lexical_structure.md, Physical source lines;
-		// correction.md: CRLF is one line ending and bare CR is also a line ending.
-		if r == '\r' {
-			line++
-			column = 1
-		} else if r == '\n' {
-			if !previousWasCR {
-				line++
-			}
-			column = 1
-		} else {
-			column++
-		}
-		previousWasCR = r == '\r'
-		input = input[size:]
-		first = false
-	}
-	return decoded, diagnostics
-}
-
-func (l *Lexer) Snapshot() State {
-	return State{Pos: l.pos, Line: l.line, Column: l.column, Diagnostics: len(l.diagnostics)}
-}
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-func (l *Lexer) Restore(state State) {
-	l.pos = state.Pos
-	l.line = state.Line
-	l.column = state.Column
-	if state.Diagnostics >= 0 && state.Diagnostics <= len(l.diagnostics) {
-		l.diagnostics = l.diagnostics[:state.Diagnostics]
-	}
-}
 
 // NextToken classifies source tokens and records lexical errors without changing
 // their original spelling. Unknown token starts are delegated to
@@ -1218,11 +1090,6 @@ func (l *Lexer) readThree(typ TokenType) Token {
 	l.advance()
 
 	return l.token(typ, string([]rune{first, second, third}), line, column)
-}
-
-// Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
-func (l *Lexer) token(typ TokenType, lexeme string, line int, column int) Token {
-	return Token{Type: typ, Lexeme: lexeme, File: l.file, Line: line, Column: column}
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.

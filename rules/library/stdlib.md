@@ -1320,7 +1320,7 @@ semantic_ir.md
 mlir.txt
 mlir-optimize.txt
 compiler_pipeline.md
-diagnostics.txt
+diagnostics.md
 formatter.md
 compiler_testing.md
 sec/core

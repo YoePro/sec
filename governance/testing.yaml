@@ -28,7 +28,7 @@ integrations:
       - rules/declarations/lambda-functions.md
       - rules/compiler/compiler_pipeline.md
       - rules/compiler/semantic_ir.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     code:
@@ -172,7 +172,7 @@ integrations:
     rules:
       - rules/compiler/compiler_testing.md
       - rules/tooling/testing.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/compiler/compiler_pipeline.md
       - rules/compiler/semantic_ir.md
       - rules/compiler/debug_information.md
@@ -377,13 +377,13 @@ integrations:
       - id: testing.compiler-verification-v1.bug.diagnostic-prefix-drift
         severity: medium
         description: >-
-          rules/tooling/diagnostics.txt allocates lexical/tokenization diagnostics under
+          rules/tooling/diagnostics.md allocates lexical/tokenization diagnostics under
           the P1xxx range, but internal/diagnostics currently publishes lexer diagnostics
           as L1001-L1020. Stable published IDs must not be casually renumbered, so the
           diagnostics owner must explicitly reconcile the written allocation policy with
           the existing registry before claiming complete diagnostic conformance.
         evidence:
-          - rules/tooling/diagnostics.txt
+          - rules/tooling/diagnostics.md
           - internal/diagnostics/diagnostics.go
         owner: errors_diagnostics
     excluded:

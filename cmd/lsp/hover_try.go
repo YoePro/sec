@@ -82,12 +82,14 @@ func tryRootOperandToken(expression ast.Expression, hovered lexer.Token) (lexer.
 }
 
 // tryExpressionHoverContents renders the immutable Sema decision. The
-// distinction between propagation and local handling comes from ResolvedTry;
-// the LSP does not infer it from source syntax or carrier spelling.
+// distinction between Result failure and Option absence, and between
+// propagation and local handling, comes from ResolvedTry; the LSP does not
+// infer it from source syntax or carrier spelling.
 //
 // Rules:
 //   - rules/tooling/lsp.md — "Hover"
-//   - rules/errors/errorhandling.md — §§ 12, 15–16 and § 37.10
+//   - rules/errors/errorhandling.md — §§ 9, 12, 15–16 and §§ 37.4, 37.10
+//   - rules/corrections/applied/lsp-errorhandling-correction-20260824.md — "Try hover"
 func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpression, carrier sema.Type, resolved sema.ResolvedTry) string {
 	lines := []string{"### `try`"}
 	carrierLabel := "Protected operation type"
@@ -101,6 +103,14 @@ func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpr
 	)
 
 	switch resolved.Kind {
+	case sema.ResolvedTryOptionPropagation:
+		lines = append(lines,
+			"Success state: `Some("+lspTypeName(resolved.SuccessType)+")`",
+			"Absence handling: `propagated`",
+			"Propagated state: `None`",
+			"Propagation target: `"+lspTypeName(resolved.EnclosingOptionType)+"`",
+			"None consumed by: `enclosing function return`",
+		)
 	case sema.ResolvedTryHandledResult, sema.ResolvedTryHandledArithmetic, sema.ResolvedTryHandledBounds:
 		lines = append(lines,
 			"Failure handling: `local try handlers`",

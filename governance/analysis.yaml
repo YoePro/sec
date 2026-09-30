@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-09-27"
+    updated: "2026-09-30"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
@@ -32,6 +32,7 @@ integrations:
       - internal/sema/place.go
       - internal/sema/pitfall_analysis.go
       - internal/sema/pitfall_bounds_guards.go
+      - internal/sema/pitfall_final_element.go
       - internal/sema/pitfall_neighbor_bounds.go
     tests:
       - internal/sema/pitfall_analysis_test.go
@@ -57,12 +58,13 @@ integrations:
       - pitfall suppression coverage derives its evaluation-count expectation from the canonical rule registry, so adding an unrelated registered rule does not break the guarded inclusive-endpoint regression test
       - ineffective <= Len acceptance and > Len rejection guards correlate the same resolved index binding, compiler-known Len receiver, and indexed collection; reversed operands are normalized while strict-safe guards, wrong collections, and wrong bindings remain negative cases
       - upper i+1 and lower i-1 neighbor checks cover the canonical zero-based half-open 0..<Len domain using resolved loop-binding and collection identity, compiler-known Len, normalized 1+i, and Sema constant facts; shortened upper domains, predecessor traversal starting at one, guarded access, and identity mismatches are excluded
+      - final-element Len - 1 access is correlated through compiler-known Len and resolved collection identity; adjacent Len == 0 or compiler-known IsEmpty exits and direct Len > 0, 0 < Len, Len != 0, negated IsEmpty, or complementary equality/IsEmpty branch facts supply explicit non-empty suppression evidence, while missing, expired, non-exiting, and wrong-collection proofs remain findings
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
       - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break, continue, or return in the endpoint branch
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
-      - implement final-element access reasoning that consumes non-empty proofs
+      - generalize final-element non-empty proof consumption beyond the implemented adjacent exit and first-statement branch facts to contracts, non-empty types, and mutation-aware dominating control flow
       - implement high-confidence skipped-first-element advisory with predecessor, prior-element-handling, explicit-contract, and other suppression evidence
       - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
       - implement collection bound-source correlation, equal/sufficient-length suppression, and copy/paste evidence
@@ -114,11 +116,15 @@ integrations:
         result: passed on 2026-09-27 with i+1, 1+i, i-1, shortened-domain, start-at-one, guarded-access, collection-identity, binding-identity, and registry coverage
       - command: go test ./internal/sema -run TestPitfallAnalysis -count=1
         result: passed on 2026-09-27 after integrating upper/lower neighbor findings with the complete pitfall-analysis suite
+      - command: go test ./internal/sema -run 'TestPitfallAnalysisRequiresNonEmptyProofForFinalElement|TestPitfallRuleRegistryIsStableAndDefensive' -count=1
+        result: passed on 2026-09-30 with missing-proof detection, canonical empty-exit suppression, reversed comparison, wrong-collection and non-exiting guards, and near-miss offsets
+      - command: go test ./internal/sema -run 'TestPitfallAnalysis(RequiresNonEmptyProofForFinalElement|ConsumesBranchLocalNonEmptyProof)' -count=1
+        result: passed on 2026-09-30 with Len and compiler-known IsEmpty exit, negation, true/false branch, reversed comparison, wrong-collection, non-exiting guard, and deliberately expiring first-statement proof coverage
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-09-28"
+    revised: "2026-09-30"
     summary: >-
       Implements immutable post-Sema ParameterDemand summaries from resolved
       bindings, canonical Places, calls, escape facts, and interprocedural fixed
@@ -144,6 +150,7 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/place.go
       - internal/sema/parameter_usage.go
+      - internal/sema/parameter_usage_collections.go
       - internal/sema/parameter_usage_flow.go
       - internal/sema/escape_analysis.go
       - internal/sema/semantic_snapshot.go
@@ -173,8 +180,9 @@ integrations:
       - statements after return, panic, checked unreachable, loop control, and other proven block terminators do not contribute parameter demand
       - compiler-owned if continuation facts suppress following-block demand when every semantically reachable branch terminates
       - direct by-value parameter uses contribute WholeValue shape demand, while projected field/index access and direct reference flow retain their narrower independent shape and identity facts
+      - compiler-known dynamic-array, list, map, and set operations that add, remove, or clear elements consume canonical member-operation contracts and produce exact StructuralMutation demand on the resolved receiver Place, distinct from ordinary element or field writes
     remaining:
-      - complete structural collection mutation, explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
+      - complete explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls
       - add explicit FFI contract-boundary propagation for retention, ownership, address, contiguity, alignment, pinning, memory space, and representation requirements
       - add fixed-array exact-extent and contiguous-sequence demand where semantic operations prove those requirements
@@ -200,6 +208,8 @@ integrations:
         result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
       - command: go test ./internal/sema -run 'TestParameterUsage(DistinguishesWholeValueFromProjectedAccess|DerivesIndexAndIterationShape|ConsumesReturnedEscapeSummary)' -count=1
         result: passed on 2026-09-28 with direct by-value WholeValue demand, projected random-access separation, and returned-reference exclusion
+      - command: go test ./internal/sema -run 'TestParameterUsage|TestLarge(ValueAdvisory|ByValue)|TestCompilerKnown(CollectionPropertiesAndMethods|LibraryCollectionMethods)' -count=1
+        result: passed on 2026-09-30 with exact structural-mutation demand for compiler-known dynamic arrays, lists, maps, and sets, plus element-mutation separation
 
   - id: analysis.call-graph
     area: frontend-analysis-and-tooling

@@ -5,7 +5,6 @@ package cst
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"sec/internal/lexer"
 )
@@ -72,16 +71,14 @@ func (d Document) Text() string {
 //   - rules/compiler/parser_recovery.md — "Token and trivia retention"
 func Build(source, file string) Document {
 	lex := lexer.NewWithFile(source, file)
-	offsets, hasBOM := runeByteOffsets(source)
 	document := Document{}
 	previousEnd := 0
-	if hasBOM {
+	if strings.HasPrefix(source, "\xef\xbb\xbf") {
 		document.Elements = append(document.Elements, Element{Kind: BOM, Span: Span{0, 3}, Text: source[:3]})
 		previousEnd = 3
 	}
 	for {
 		token := lex.NextToken()
-		endRune := lex.Snapshot().Pos
 		if token.Type == lexer.EOF {
 			document.EOF = token
 			if previousEnd < len(source) {
@@ -89,9 +86,8 @@ func Build(source, file string) Document {
 			}
 			break
 		}
-		startRune := endRune - utf8.RuneCountInString(token.Lexeme)
-		start := offsets[startRune]
-		end := offsets[endRune]
+		start := token.ByteStart
+		end := token.ByteEnd
 		if previousEnd < start {
 			document.appendTrivia(source, previousEnd, start)
 		}
@@ -134,25 +130,4 @@ func (d *Document) appendTrivia(source string, start, end int) {
 		d.Elements = append(d.Elements, Element{Kind: Error, Span: Span{at, at + len(bom)}, Text: source[at : at+len(bom)]})
 		start = at + len(bom)
 	}
-}
-
-// runeByteOffsets maps the lexer's decoded-rune cursor to original byte
-// offsets. An initial BOM is omitted from the cursor but retained as source.
-// Invalid UTF-8 consumes one raw byte per replacement scalar, like the lexer.
-//
-// Rules:
-//   - rules/foundations/lexical_structure.md — §§1.1, 1.3
-func runeByteOffsets(source string) ([]int, bool) {
-	begin := 0
-	hasBOM := strings.HasPrefix(source, "\xef\xbb\xbf")
-	if hasBOM {
-		begin = 3
-	}
-	offsets := []int{begin}
-	for at := begin; at < len(source); {
-		_, size := utf8.DecodeRuneInString(source[at:])
-		at += size
-		offsets = append(offsets, at)
-	}
-	return offsets, hasBOM
 }

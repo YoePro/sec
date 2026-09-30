@@ -21,6 +21,7 @@ enum NetworkError error {
     Closed,
     Unsupported,
     Unknown,
+    NotImplemented,
 }
 
 enum AddressError error {

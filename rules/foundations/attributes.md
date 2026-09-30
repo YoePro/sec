@@ -2533,7 +2533,7 @@ compiler_pipeline.md
 semantic_ir.md
 formatter.md
 lsp.md
-diagnostics.txt
+diagnostics.md
 language-rulebook-status.md
 rules_implementations.txt
 ```

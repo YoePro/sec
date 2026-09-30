@@ -27,7 +27,7 @@ integrations:
       - rules/foundations/operators.md
       - rules/compiler/semantic_ir.md
       - rules/tooling/lsp.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
     code:
       - internal/ast/ast.go
@@ -117,7 +117,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-18"
-    revised: "2026-09-28"
+    revised: "2026-09-30"
     summary: >-
       Tracks the compiler-owned, allocation-free default resolver required by
       default_values.md and its synchronized type, contract, aggregate, and
@@ -133,7 +133,7 @@ integrations:
       - rules/collections/collections.md
       - rules/collections/shaped-types.md
       - rules/foundations/grammar.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
       - rules/corrections/applied/temporal-now-correction-20260928.md
@@ -151,6 +151,7 @@ integrations:
       - internal/sema/defaults_test.go
       - internal/codegen/mlir/generator_test.go
       - cmd/lsp/main_test.go
+      - cmd/lsp/contract_diagnostic_test.go
     implemented:
       - one compiler-owned DefaultValueOf and IsDefaultable resolver shared by Sema, mutable declarations, omitted struct fields, fixed arrays, and LSP default display
       - allocation-free primitive defaults for bool, string, char, rune, integer, unsigned, binary-float, and exact-decimal families
@@ -158,6 +159,8 @@ integrations:
       - exact integer nearest-to-zero range defaults with inclusive and exclusive bounds, multipleOf, even, odd, and ambiguous-tie handling
       - exact inclusive-decimal nearest-to-zero range defaults without binary-float conversion
       - source-ordered in-list defaults with duplicate detection, base-type compatibility, and S1011 cross-contract validation
+      - duplicate in-contract values use mandatory S1053 types.duplicate-in-contract-value with a focused range, the first occurrence as a related location, actionable help, and unchanged identity through LSP
+      - empty in-contract lists are retained by parser recovery and rejected by Sema with mandatory S1054 types.empty-in-contract, a focused range, actionable help, and unchanged identity through LSP
       - explicit type-default parsing and AST retention of the default token, expression, and source range
       - constant folding for the supported primitive expression subset and S1008 invalid-explicit-default validation
       - recursive struct defaultability and complete synthesis of omitted defaultable stored fields
@@ -182,7 +185,7 @@ integrations:
       - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
       - implement exact binary-float range-derived defaults and exact successors for exclusive decimal upper bounds
       - extend explicit-default constant evaluation to the complete permitted compile-time constant subset while rejecting allocation, I/O, volatile, FFI, and fallible runtime operations
-      - add stable diagnostic IDs for types.default-violates-contract, types.default-not-representable, types.ambiguous-implicit-default, types.no-default-value, types.empty-in-contract, types.duplicate-in-contract-value, types.default-cycle, struct.invalid-defaulted-field, and backend.default-left-undefined
+      - add stable diagnostic IDs for types.default-violates-contract, types.default-not-representable, types.ambiguous-implicit-default, types.no-default-value, types.default-cycle, struct.invalid-defaulted-field, and backend.default-left-undefined
       - add related-location metadata for membership failures, range ambiguity and representability failures, explicit defaults, omitted fields, and missing initializers
       - verify formatter preservation and LSP presentation for every explicit and derived default form
       - add LSP code actions that explicitly expand omitted defaults or declare an explicit type default without changing ordinary formatting
@@ -193,6 +196,11 @@ integrations:
       - add default_lists_valid.sec and default_lists_invalid.sec coverage for dynamic and bounded empty literals, non-defaultable element types, AST category, allocation, and backend support
       - add default_arrays_valid.sec and default_arrays_invalid.sec coverage for numeric, struct, zero-length, non-defaultable-element, cleanup, and backend cases
       - verify maintained LLVM and Sec MLIR backends in addition to the legacy MLIR generator
+    verification:
+      - command: go test ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|DuplicateContractMembershipValue)' -count=1
+        result: passed on 2026-09-30 with S1053 registry identity, Sema help and related-location metadata, and LSP transport
+      - command: go test ./internal/parser ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|ParseRetainsEmptyMembershipContract|EmptyContractMembership)' -count=1
+        result: passed on 2026-09-30 with empty-list AST retention plus S1054 Sema and LSP identity
   - id: frontend.types-core
     area: frontend-and-lowering
     status: partial
@@ -448,6 +456,7 @@ integrations:
     status: partial
     updated: '2026-09-29'
     audited: '2026-09-29'
+    revised: '2026-09-30'
     repository_baseline: 314233c
     document_revision: inferred 2.0
     document_revision_note: rules/types/contracts.md has no explicit revision metadata. Repository history places
@@ -468,7 +477,7 @@ integrations:
     - rules/foundations/operators.md
     - rules/foundations/grammar.md
     - rules/errors/errorhandling.md
-    - rules/tooling/diagnostics.txt
+    - rules/tooling/diagnostics.md
     code:
     - internal/ast/ast.go
     - internal/parser/parser.go
@@ -490,6 +499,8 @@ integrations:
     - internal/sema/contract_representability_test.go
     - internal/sema/contract_values_test.go
     - internal/sema/length_contracts_test.go
+    - internal/diagnostics/diagnostics_test.go
+    - cmd/lsp/contract_diagnostic_test.go
     - testdata/contracts/representable_conjunction_valid.sec
     - testdata/contracts/representable_conjunction_invalid.sec
     - testdata/contracts/representable_conjunction_target.sec
@@ -502,6 +513,8 @@ integrations:
     - ordered primitive in-list parsing with non-empty-list rejection
     - primitive membership compatibility checking
     - duplicate membership-value rejection
+    - duplicate membership values are rejected with mandatory S1053 types.duplicate-in-contract-value, actionable removal guidance, and a related location pointing to the first equal entry
+    - empty membership lists are retained as contract AST for recovery and rejected with mandatory S1054 types.empty-in-contract plus actionable help instead of a generic parser diagnostic
     - membership values are checked against represented sibling contracts
     - notEmpty, unique, and finite marker-contract parsing and basic applicability checks
     - minLen, maxLen, and exactLen are contextual integer-valued contracts represented in the parser AST and semantic types
@@ -560,7 +573,7 @@ integrations:
     - preserve contract identity and validation requirements in Semantic IR
     - lower runtime validation and failure paths through the maintained Sec MLIR pipeline
     - audit legacy/direct LLVM behavior so accepted constrained operations cannot silently bypass validation
-    - assign stable diagnostics for inapplicable/unsatisfiable sets, empty/duplicate membership, incompatible values,
+    - assign stable diagnostics for inapplicable/unsatisfiable sets, incompatible membership values,
       sibling-contract violations, invalid defaults, ambiguous defaults, and missing try
     - attach related locations to the offending value/default and relevant contract declaration where practical
     - add formatter and LSP coverage for all canonical contract families
@@ -589,6 +602,10 @@ integrations:
     - constrained assignment outside try rejected
     - constrained assignment inside try leaves destination unchanged on failure
     verification:
+    - command: go test ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|DuplicateContractMembershipValue)' -count=1
+      result: passed on 2026-09-30 with stable registry identity, source-ordered duplicate provenance, focused Sema metadata, and LSP transport
+    - command: go test ./internal/parser ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|ParseRetainsEmptyMembershipContract|EmptyContractMembership)' -count=1
+      result: passed on 2026-09-30 with empty-list AST retention plus S1054 Sema and LSP identity
     - command: go test ./internal/sema -run 'TestIntegerContractRepresent' -count=1
       result: regression tests failed before the fix because impossible fixed-width and 32-bit target-sized types were accepted
     - command: go test ./internal/sema -run 'TestIntegerContractRepresent|Test.*ContractSetConsistency|TestInheritedMembership' -count=1

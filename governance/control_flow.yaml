@@ -31,7 +31,7 @@ integrations:
       - rules/concurrency/spawn.md
       - rules/concurrency/concurrency.md
       - rules/compiler/semantic_ir.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     governance_reconciliation:
@@ -82,7 +82,7 @@ integrations:
       - types.md now defines must-use and discardability as distinct recursive semantic properties
       - destruction.md now defines discard as terminal ownership with deterministic cleanup cancellation
       - semantic_ir.md now specifies canonical DiscardValue provenance and forbids backend inference from unused SSA
-      - diagnostics.txt now specifies discard-related mandatory and advisory diagnostic identities
+      - diagnostics.md now specifies discard-related mandatory and advisory diagnostic identities
       - formatter.md now preserves explicit discard without policy-driven insertion or removal
       - repeated discard of an already unavailable discardable local or tracked field Place is a legal no-op rather than an ordinary use-after-terminal-action read
       - repeated discard preserves compiler-owned operand type and definition facts for shared CLI and LSP consumers and never restores availability
@@ -325,7 +325,7 @@ integrations:
       - rules/control-flow/flowcontrol_if.md
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/errors/errorhandling.md
       - rules/platform/ffi.md
     code:
@@ -420,7 +420,7 @@ integrations:
       - rules/control-flow/flowcontrol_for.md
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/errors/errorhandling.md
     code:
       - internal/ast/ast.go
@@ -538,7 +538,7 @@ integrations:
       - rules/control-flow/flowcontrol_match.md
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/compiler/semantic_ir.md
     code:
       - internal/ast/ast.go
@@ -663,7 +663,7 @@ integrations:
       - rules/memory/destruction.md
       - rules/compiler/semantic_ir.md
       - rules/tooling/formatter.md
-      - rules/tooling/diagnostics.txt
+      - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
       - rules/mlir/packages/sec-mlir-dialect_package12.md
     code:

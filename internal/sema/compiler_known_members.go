@@ -24,6 +24,9 @@ type CompilerKnownMember struct {
 	Documentation string
 	Unsafe        bool
 	Effects       []EffectKind
+	// StructuralMutation is an operation-contract fact consumed by parameter
+	// usage analysis; it is not inferred from the source-level member name.
+	StructuralMutation bool
 }
 
 type CompilerKnownFunction struct {
@@ -133,6 +136,15 @@ func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 	return compilerKnownValueMembers(typ)
 }
 
+// compilerKnownValueMembers builds the canonical registry view for value
+// receivers, including operation-contract facts consumed by semantic analyses.
+// Structural mutation is attached to the registry entry so downstream passes
+// do not recreate member semantics from spellings.
+//
+// Rules:
+//   - rules/compiler/compiler_known_members.md — "Registry"
+//   - rules/compiler/compiler_known_members.md — "Stable member identity"
+//   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations"
 func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members := []CompilerKnownMember{}
 	uintType := builtinTypes()["uint"]
@@ -202,9 +214,9 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
 	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
-			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(*sequence.Element)},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"]), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(*sequence.Element), StructuralMutation: true},
 		)
 	}
 	if compilerKnownMutableSlice(typ) {
@@ -217,11 +229,11 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		element := sequence.TypeArgs[0]
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-LIST-CAPACITY", Name: "Capacity", Kind: CompilerKnownProperty, Result: uintType},
-			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-LIST-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(element)},
-			CompilerKnownMember{ID: "CKM-LIST-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType},
-			CompilerKnownMember{ID: "CKM-LIST-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"]), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"]), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(element), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType, StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
 			CompilerKnownMember{ID: "CKM-LIST-INDEXOF", Name: "IndexOf", Kind: CompilerKnownMethod, Result: compilerKnownOption(uintType)},
 			CompilerKnownMember{ID: "CKM-LIST-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
@@ -231,17 +243,17 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	}
 	if sequence.Name == "map" && len(sequence.TypeArgs) == 2 {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-MAP-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: compilerKnownOption(sequence.TypeArgs[1])},
+			CompilerKnownMember{ID: "CKM-MAP-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: compilerKnownOption(sequence.TypeArgs[1]), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-MAP-CONTAINSKEY", Name: "ContainsKey", Kind: CompilerKnownMethod, Result: boolType},
-			CompilerKnownMember{ID: "CKM-MAP-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-MAP-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
 		)
 	}
 	if sequence.Name == "set" && len(sequence.TypeArgs) == 1 {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-SET-ADD", Name: "Add", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-SET-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType},
+			CompilerKnownMember{ID: "CKM-SET-ADD", Name: "Add", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"]), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-SET-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType, StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-SET-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
-			CompilerKnownMember{ID: "CKM-SET-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-SET-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-SET-UNION", Name: "Union", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
 			CompilerKnownMember{ID: "CKM-SET-INTERSECTION", Name: "Intersection", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
 			CompilerKnownMember{ID: "CKM-SET-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},

@@ -2001,7 +2001,7 @@ parser_recovery.md
 semantic_ir.md
 compiler_pipeline.md
 lsp.md
-diagnostics.txt
+diagnostics.md
 language-rulebook-status.md
 rules_implementations.txt
 ```

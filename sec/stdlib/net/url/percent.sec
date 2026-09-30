@@ -382,10 +382,12 @@ fn _DecodeHexPair(value: string, index: uint) Result[byte, PercentError] {
                 Some(lowValue) => {
                     return Ok(byte(uint(highValue) * 16 + uint(lowValue)))
                 }
-                None => {}
+                None => {
+                }
             }
         }
-        None => {}
+        None => {
+        }
     }
 
     return Err(PercentError.InvalidEscape(index))

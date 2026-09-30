@@ -109,6 +109,10 @@ func (a *Analyzer) recordDeferPlace(place Place, token lexer.Token) {
 	if !a.inDeferBlock || a.deferCaptures == nil || a.suppressPlaceRootRead != 0 || place.Root == "" {
 		return
 	}
+	a.recordDeferReferenceHolder(place.ReferenceHolder, token)
+	for _, alternative := range place.AlternativeOrigins {
+		a.recordDeferReferenceHolder(alternative.ReferenceHolder, token)
+	}
 	outer, ok := a.deferOuterSymbols[place.Root]
 	if !ok || outer.Token != place.RootToken {
 		return
@@ -119,6 +123,36 @@ func (a *Analyzer) recordDeferPlace(place Place, token lexer.Token) {
 	}
 	a.deferCaptures[key] = borrowRecord{
 		Root: place.Root, Place: place, Holder: "$defer", Kind: deferredUse, Token: token,
+	}
+}
+
+// recordDeferReferenceHolder retains the reference value whose authority a
+// deferred dereference depends on, separately from the referenced Place. This
+// prevents moving, discarding, or rebinding the holder before cleanup while
+// still allowing ordinary future value reads to observe later assignments.
+//
+// Rules:
+//   - rules/control-flow/defer.md — §§9–11
+//   - rules/memory/borrowing.md — §21(1), §21(4)–(5)
+func (a *Analyzer) recordDeferReferenceHolder(name string, token lexer.Token) {
+	if name == "" {
+		return
+	}
+	outer, ok := a.deferOuterSymbols[name]
+	if !ok {
+		return
+	}
+	place, ok := a.rootPlace(name)
+	if !ok || place.RootToken != outer.Token {
+		return
+	}
+	key := "$reference-holder:" + name
+	if _, exists := a.deferCaptures[key]; exists {
+		return
+	}
+	a.deferCaptures[key] = borrowRecord{
+		Root: name, Place: place, Holder: "$defer-reference-holder",
+		Kind: deferredReferenceHolderUse, Token: token,
 	}
 }
 
@@ -142,7 +176,7 @@ func (a *Analyzer) recordDeferPlaceExpression(expr ast.Expression) {
 func (a *Analyzer) checkDeferredUsePlace(place Place, token lexer.Token, action string) bool {
 	for _, candidate := range placeOriginAlternatives(place) {
 		for _, record := range a.borrows[candidate.Root] {
-			if record.Kind != deferredUse || !borrowPlacesOverlap(candidate, record) {
+			if !isDeferredUseKind(record.Kind) || !borrowPlacesOverlap(candidate, record) {
 				continue
 			}
 			a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required by defer", action, place.String())
@@ -150,4 +184,31 @@ func (a *Analyzer) checkDeferredUsePlace(place Place, token lexer.Token, action 
 		}
 	}
 	return false
+}
+
+// checkDeferredReferenceHolderUsePlace rejects replacement of a reference
+// value retained by defer without applying that restriction to ordinary future
+// value reads, whose rulebook semantics deliberately observe later assignment.
+//
+// Rules:
+//   - rules/control-flow/defer.md — §9 "Values are read when the defer executes"
+//   - rules/memory/borrowing.md — §21(4) retained reference holders
+func (a *Analyzer) checkDeferredReferenceHolderUsePlace(place Place, token lexer.Token, action string) bool {
+	for _, record := range a.borrows[place.Root] {
+		if record.Kind != deferredReferenceHolderUse || !borrowPlacesOverlap(place, record) {
+			continue
+		}
+		a.addErrorAtTokenWithPrevious(token, record.Token, "cannot %s %s while it is required as a reference holder by defer", action, place.String())
+		return true
+	}
+	return false
+}
+
+// isDeferredUseKind identifies both delayed value dependencies and retained
+// reference-holder dependencies as future defer uses for ownership invalidation.
+//
+// Rules:
+//   - rules/memory/borrowing.md — §21 defer and delayed use
+func isDeferredUseKind(kind borrowKind) bool {
+	return kind == deferredUse || kind == deferredReferenceHolderUse
 }

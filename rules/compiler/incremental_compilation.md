@@ -9,7 +9,7 @@
 - **Repository baseline reviewed:** `main-reviewed-2026-09-27`
 - **Implementation governance:** `governance/compiler.yaml` (`compiler.incremental-compilation-v1`)
 - **Cross-rulebook correction:** `rules/corrections/applied/incremental-compilation-cross-rulebook-correction-20260928.md`
-- **Related rulebooks:** `rules/compiler/compiler_pipeline.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/monomorphization.md`, `rules/compiler/linking.md`, `rules/compiler/debug_information.md`, `rules/compiler/compiler_testing.md`, `rules/projects/modules.md`, `rules/tooling/lsp.md`, `rules/tooling/diagnostics.txt`, `rules/platform/abi.md`, `rules/platform/target_profiles.md`
+- **Related rulebooks:** `rules/compiler/compiler_pipeline.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/monomorphization.md`, `rules/compiler/linking.md`, `rules/compiler/debug_information.md`, `rules/compiler/compiler_testing.md`, `rules/projects/modules.md`, `rules/tooling/lsp.md`, `rules/tooling/diagnostics.md`, `rules/platform/abi.md`, `rules/platform/target_profiles.md`
 
 ---
 ## § 1. Purpose and semantic authority

@@ -6,7 +6,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-09-29"
+    revised: "2026-09-30"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -101,6 +101,7 @@ integrations:
       - ordinary and try assignments with a missing source expression retain their target, exact operator and InvalidExpression value; closing block braces remain unconsumed and following functions survive across all assignment parser paths
       - if and else-if statements with a missing condition retain a brace-anchored InvalidExpression plus their parsed consequence and alternative branches; later statements and declarations survive without nil condition nodes
       - while statements with a missing condition retain a brace-anchored InvalidExpression and their parsed body; later statements and declarations survive without nil condition nodes
+      - an incomplete match expression cannot escape the Pratt dispatcher as a typed-nil semantic node; Sema also treats nil match expressions or subjects as InvalidType, so completion inside an unfinished try match remains available instead of terminating the LSP process
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -182,7 +183,10 @@ integrations:
       - internal/parser/assignment_value_recovery_test.go
       - internal/parser/if_condition_recovery_test.go
       - internal/parser/while_condition_recovery_test.go
+      - cmd/lsp/incomplete_match_test.go
     verification:
+      - command: go test ./cmd/lsp -run TestCompletionSurvivesIncompleteMatchInsideTry -count=1
+        result: passed on 2026-09-30 without panic during completion analysis of a missing match subject inside try
       - command: emit-mlir with -o - over the four select recovery invalid fixtures
         result: all rejected with parser errors before code generation (exit 2)
       - command: go test ./internal/parser -run 'TestUnterminatedSelect|TestMalformedSelect' -count=1 -timeout=5s

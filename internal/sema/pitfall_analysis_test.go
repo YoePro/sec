@@ -13,7 +13,7 @@ func TestPitfallRuleRegistryIsStableAndDefensive(t *testing.T) {
 	if len(rules) < 2 {
 		t.Fatalf("rules = %v, want initial bounds registry", rules)
 	}
-	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument || rules[4].ID != PitfallIneffectiveLengthGuard || rules[5].ID != PitfallUpperNeighborIndex || rules[6].ID != PitfallLowerNeighborIndex || rules[7].ID != PitfallFinalElementNeedsNonEmpty {
+	if rules[0].ID != PitfallInclusiveLengthIndex || rules[1].ID != PitfallDirectIndexAtLength || rules[2].ID != PitfallBooleanLiteralComparison || rules[3].ID != PitfallExplicitSelfMethodArgument || rules[4].ID != PitfallIneffectiveLengthGuard || rules[5].ID != PitfallUpperNeighborIndex || rules[6].ID != PitfallLowerNeighborIndex || rules[7].ID != PitfallFinalElementNeedsNonEmpty || rules[8].ID != PitfallSkippedFirstElement {
 		t.Fatalf("unexpected rule order: %v", rules)
 	}
 	if rules[0].MinimumDepth != AnalysisInteractive || rules[0].DefaultConfidence != PitfallConfidenceProven {

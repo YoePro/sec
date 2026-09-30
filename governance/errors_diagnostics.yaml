@@ -180,6 +180,7 @@ integrations:
       - internal/parser/recovery.go
       - internal/sema/errors.go
       - internal/sema/analyzer_match_ownership.go
+      - internal/sema/analyzer_struct_layout.go
       - cmd/compiler/diagnostic_catalog.go
       - cmd/compiler/diagnostic_catalog_test.go
     implemented:
@@ -199,7 +200,7 @@ integrations:
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1054 definitions in the reviewed registry plus mandatory S3001.
+          S1055 definitions in the reviewed registry plus mandatory S3001.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
           Invalid move-only payload extraction from union storage that cannot
@@ -218,6 +219,12 @@ integrations:
           Empty ordered in-contracts are retained as AST recovery nodes and use
           mandatory S1054/types.empty-in-contract from Sema, with a focused
           range, value-addition guidance, and unchanged identity through LSP.
+      - id: diagnostics.s1055-recursive-struct-layout
+        description: >-
+          Direct, forward mutual, and fixed-array-mediated by-value struct
+          cycles use mandatory S1055/struct.recursive-by-value-layout, focus the
+          field closing the cycle, show the complete resolved field path, and
+          suggest a canonical indirection or dynamic-storage boundary.
       - id: diagnostics.retired-preservation
         description: >-
           Retired registry entries remain preserved; reviewed code includes
@@ -344,6 +351,7 @@ integrations:
       - "`sec diagnostics <ID>` reports an unknown-ID tool error for unknown IDs."
       - CLI and LSP expose the same diagnostic ID for the same occurrence.
       - S1052 identifies invalid union-payload extraction storage and provides actionable owning-local and ref/ref-mut alternatives.
+      - S1055 identifies recursive by-value struct layout, includes the concrete field cycle, and does not reject reference or dynamic-storage recursion.
       - S3001 identifies the unreachable statement and explains the terminator.
       - Parser recovery does not generate unrelated cascades.
       - Machine-readable occurrence output matches the canonical logical schema once implemented.
@@ -363,3 +371,5 @@ integrations:
         result: passed on 2026-09-30; active and retired IDs emitted registry-backed detail, while the unknown ID was rejected as an ordinary tool error
       - command: go test ./internal/diagnostics ./internal/sema ./cmd/compiler -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|UnionPayloadMoveFromUntrackedStorageHasStructuredDiagnostic|DiagnosticCatalog)' -count=1
         result: passed on 2026-09-30 with registered mandatory S1052 identity, explanatory payload-Place message, actionable ownership/borrow help, and catalog exposure
+      - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
+        result: passed on 2026-09-30 with registered mandatory S1055 identity, concrete cycle-path messages, actionable indirection help, and valid recursion boundaries

@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-28"
+    revised: "2026-09-30"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -53,6 +53,7 @@ integrations:
       - internal/sema/try_err_discard_test.go
       - internal/sema/match_err_discard_test.go
       - internal/sema/return_try_result_test.go
+      - internal/sema/result_option_return_test.go
       - internal/sema/try_expression_positions_test.go
       - internal/sema/option_if_binding_test.go
       - internal/ir/semantic/package11_test.go
@@ -99,6 +100,7 @@ integrations:
       - "invalid Result failure channels produce a programmer-facing diagnostic naming the invalid type and the explicit error marker correction"
       - "canonical compiler, stdlib, platform, and test fixtures declare their concrete Result error channels explicitly; raw Linux errno retains its numeric payload in an error union"
       - "direct-result-return: Compatible Result[T,E] expressions may be returned directly as complete Result carriers without unwrapping or reconstruction."
+      - "result-option-success-construction: Ok(expr) analyzes expr with the declared Result success type as contextual type, so payload-less None and Some(value) resolve to the exact Option[T] success specialization both directly and inside terminating match branches instead of becoming a nested Result."
       - "option-direct-return: Compatible Option[T] calls, bound values, and readable property expressions, including carriers with move-only payloads, may be returned directly as complete carriers with ordinary terminal ownership transfer. Property lookup refreshes canonical impl metadata for aggregate payload types resolved before impl registration, and a non-reference getter result does not inherit a branch-scoped receiver borrow. Plain T values are not implicitly wrapped in Some, and incompatible Option specializations remain rejected."
       - "option-none-if-tests: Non-binding if option is None and if option is not None conditions lower in the parser to the existing exhaustive typed Option-match representation, preserving compiler analysis and later LSP completion."
       - "try-handler-shadow-diagnostics: Sema rejects duplicate Err variants, Err arms after an unguarded catch-all, and catch-alls after every variant of a closed enum error has been handled. Stable S1045 points to the earlier covering arm or the last arm completing enum coverage; a partially covered enum retains its catch-all."
@@ -189,6 +191,8 @@ integrations:
       - "an incompatible Option carrier is rejected with expected and actual Option types"
 
     verification:
+      - command: go test ./internal/sema -run TestResultOkContextuallyResolvesOptionConstructors -count=1
+        result: passed on 2026-09-30 for direct None, Some(value), and None in a terminating Option match branch
       - command: go test ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic -run 'OptionIfBinding|ParseIfOptionNone' -count=1
         result: passed; positive binding parsing, negative rejection, Option-only typing, true-branch scope, copy/move ownership facts, formatting, and single-evaluation copy-trivial Semantic IR are covered
       - command: go test ./internal/sema ./internal/ir/semantic -run 'ReturnTry|TestPackage10BuildsCanonicalResultPropagation' -count=1

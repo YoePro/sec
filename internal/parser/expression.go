@@ -127,7 +127,11 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		left = p.parseAwaitExpression()
 
 	case lexer.MATCH:
-		left = p.parseMatchExpression()
+		match := p.parseMatchExpression()
+		if match == nil {
+			return nil
+		}
+		left = match
 
 	case lexer.FN:
 		left = p.parseLambdaExpression(nil, lexer.Token{})

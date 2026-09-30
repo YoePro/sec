@@ -1,7 +1,26 @@
 module ip
 
+// TODO: Requires OS-Specific code.
+
+/**
+ * Identifies one network interface within the selected platform or IP stack.
+ *
+ * Description:
+ * - Zero is representable and may mean an unspecified or default interface
+ * where an API defines that behavior.
+ * - Enumerated concrete interfaces normally have a nonzero index on platforms
+ * with the conventional interface-index model.
+ */
 type InterfaceIndex uint32
 
+/**
+ * Describes one IP address assigned to a network interface.
+ *
+ * Description:
+ * - The address is the actual host/interface address.
+ * - Host bits are preserved and are not cleared as they are for Ipv4Network
+ * or Ipv6Network.
+ */
 type InterfaceAddress union {
     V4 {
         Address:      Ipv4Address,
@@ -14,6 +33,14 @@ type InterfaceAddress union {
     }
 }
 
+/**
+ * Describes one network interface.
+ *
+ * Description:
+ * - Index is the stable platform interface index where one exists.
+ * - Name is the platform interface name.
+ * - Mtu is the current interface MTU in bytes.
+ */
 type NetworkInterface struct {
     Index: InterfaceIndex,
     Name:  string,
@@ -21,8 +48,22 @@ type NetworkInterface struct {
 }
 
 impl NetworkInterface {
+    /**
+     * Returns the IP addresses currently assigned to this interface.
+     *
+     * Returns:
+     * - A newly allocated owning array containing IPv4 and IPv6 interface
+     * addresses with their prefix lengths.
+     *
+     * Errors:
+     * - NetworkError: The interface state could not be queried.
+     *
+     * Ownership:
+     * - The returned array is owned by the caller.
+     */
     fn AddressesToArray() Result[InterfaceAddress[], NetworkError] {
-        return Err(NetworkError.NotImplemented)
+        // TODO: Implement through the target network-interface adapter.
+        return Err(NetworkError.Unsupported)
     }
 }
 
@@ -32,22 +73,129 @@ type InterfaceIterator struct {
 }
 
 impl InterfaceIterator {
+
+    /**
+     * Returns the next network interface.
+     *
+     * Returns:
+     * - Some(interface) when another interface is available.
+     * - None after normal enumeration exhaustion.
+     *
+     * Errors:
+     * - NetworkError: Enumeration failed.
+     */
     fn Next() Result[Option[NetworkInterface], NetworkError] {
-        return Err(NetworkError.NotImplemented)
+        // TODO: Implement through the target network-interface adapter.
+        return Err(NetworkError.Unsupported)
     }
+
+    /**
+     * Releases resources held by this interface enumeration.
+     *
+     * Returns:
+     * - Ok() when the iterator is closed or was already closed.
+     *
+     * Errors:
+     * - NetworkError: The underlying platform resource could not be released.
+     *
+     * Description:
+     * - Close is idempotent.
+     */
     fn Close() Result[void, NetworkError] {
-        return Err(NetworkError.NotImplemented)
+        // TODO: Implement through the target network-interface adapter.
+        return Err(NetworkError.Unsupported)
+    }S
+}
+
+/**
+ * Starts enumeration of the network interfaces available to the process.
+ *
+ * Returns:
+ * - An owning iterator positioned before the first interface.
+ *
+ * Errors:
+ * - NetworkError: Interface enumeration could not be initialized.
+ *
+ * Ownership:
+ * - The returned InterfaceIterator is owned by the caller and is move-only.
+ */
+fn Interfaces() Result[InterfaceIterator, NetworkError] {
+    // TODO: Implement through the target network-interface adapter.
+    return Err(NetworkError.NotImplemented)
+}
+
+/**
+ * Finds a network interface by its interface index.
+ *
+ * Parameters:
+ * - index: The interface index to locate.
+ *
+ * Returns:
+ * - Some(interface) when a matching interface exists.
+ * - None when no interface has that index.
+ *
+ * Errors:
+ * - NetworkError: Interface enumeration failed.
+ */
+fn InterfaceByIndex(index: InterfaceIndex) Result[Option[NetworkInterface], NetworkError] {
+    let mut iterator := try Interfaces()
+
+    for {
+        let next := try iterator.Next()
+        match next {
+            Some(networkInterface) => {
+                if networkInterface.Index == index {
+                    try iterator.Close()
+                    return Ok(Some(networkInterface))
+                }
+            }
+
+            None => {
+                try iterator.Close()
+                return Ok(None)
+            }
+        }
     }
 }
 
-fn Interfaces() Result[InterfaceIterator, NetworkError] {
-    return Err(NetworkError.NotImplemented)
-}
-
-fn InterfaceByIndex(index: InterfaceIndex) Result[Option[NetworkInterface], NetworkError] {
-    return Err(NetworkError.NotImplemented)
-}
-
+/**
+ * Finds a network interface by its platform interface name.
+ *
+ * Parameters:
+ * - name: The exact interface name to locate.
+ *
+ * Returns:
+ * - Some(interface) when a matching interface exists.
+ * - None when no matching interface exists.
+ *
+ * Errors:
+ * - NetworkError: Interface enumeration failed.
+ */
 fn InterfaceByName(name: string) Result[Option[NetworkInterface], NetworkError] {
+    let mut iterator := try Interfaces()
+
+    for {
+        let next := try iterator.Next()
+        match next {
+            Some(networkInterface) => {
+                if networkInterface.Name == name {
+                    try iterator.Close()
+                    return Ok(Some(networkInterface))
+                }
+            }
+
+            None => {
+                try iterator.Close()
+                return Ok(None)
+            }
+        }
+    }
+}
+
+fn _OpenInterfaceIterator() Result[InterfaceIterator, NetworkError] {
+    return Err(NetworkError.NotImplemented)
+}
+
+fn _InterfaceAddressesToArray(index: InterfaceIndex) Result[InterfaceAddress[], NetworkError] {
     return Err(NetworkError.NotImplemented)
 }

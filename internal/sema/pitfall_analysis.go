@@ -23,6 +23,7 @@ const (
 	PitfallUpperNeighborIndex         PitfallRuleID = "pitfall.bounds.upper-neighbor-index"
 	PitfallLowerNeighborIndex         PitfallRuleID = "pitfall.bounds.lower-neighbor-index"
 	PitfallFinalElementNeedsNonEmpty  PitfallRuleID = "pitfall.bounds.final-element-needs-nonempty"
+	PitfallSkippedFirstElement        PitfallRuleID = "pitfall.bounds.skipped-zero"
 )
 
 type PitfallFamily string
@@ -168,6 +169,11 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		ID: PitfallFinalElementNeedsNonEmpty, Family: PitfallBoundsAndRanges,
 		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "constant-values", "control-flow", "bounds"},
 		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallSkippedFirstElement, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "control-flow"},
+		MinimumDepth:  AnalysisStandard, DefaultConfidence: PitfallConfidenceHigh,
 	},
 }
 
@@ -406,6 +412,9 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 			if collection, proof, ok := b.emptyCollectionExitGuard(block.Statements[index-1]); ok {
 				b.activeNonEmptyProofs = map[string]lexer.Token{collection: proof}
 			}
+		}
+		if loop, ok := statement.(*ast.ForStatement); ok {
+			b.inspectSkippedFirstElement(loop, block.Statements[:index])
 		}
 		b.walkStatement(statement)
 	}

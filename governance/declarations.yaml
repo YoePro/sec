@@ -239,6 +239,7 @@ integrations:
       - internal/sema/types.go
       - internal/sema/defaults.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_struct_layout.go
       - internal/sema/place.go
       - internal/sema/semantic_facts.go
     tests:
@@ -246,6 +247,7 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/defaults_test.go
       - internal/sema/copy_move_test.go
+      - internal/sema/struct_layout_cycle_test.go
       - internal/sema/semantic_facts_test.go
       - testdata/union_valid.sec
       - testdata/union_invalid.sec
@@ -1431,9 +1433,10 @@ integrations:
       - defaulted mutable trivial struct storage and nested leaf-to-root field replacement with one root store
       - synthetic struct-like union payload identity and guarded P12 whole-payload binding for the copy-trivial subset
       - recursive target-sized scalar resolution inside preserved struct wrappers while trivial-core storage remains high-level
+      - module-level non-generic struct declarations are validated through a source-independent by-value dependency graph; direct, forward mutual, and fixed-array-mediated recursive layouts emit mandatory S1055 with the concrete field cycle, while reference and owning dynamic-storage boundaries remain valid
     remaining:
       - resolve forward and mutually recursive non-generic struct field graphs completely before field-dependent analysis
-      - diagnose every direct or indirect by-value recursive struct cycle as infinite size
+      - extend the implemented recursive-layout graph through associated struct declarations, by-value named wrappers, and mixed struct/union containment so every remaining indirect cycle is diagnosed before field-dependent analysis
       - lower generic structs across all supported operations
       - extend the implemented schema-9 copy-trivial struct path with later-package move, semantic-copy, borrow, cleanup, and ownership-sensitive spread cases
       - support reference and slice fields consistently across every backend path
@@ -1447,6 +1450,8 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run Struct -count=1
         result: passed
+      - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
+        result: passed on 2026-09-30 with direct, forward mutual, and fixed-array cycles plus reference and dynamic-storage counterexamples
       - command: go test ./internal/ir/semantic -run Package13 -count=1
         result: passed
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin' -count=1

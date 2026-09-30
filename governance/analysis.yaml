@@ -34,8 +34,10 @@ integrations:
       - internal/sema/pitfall_bounds_guards.go
       - internal/sema/pitfall_final_element.go
       - internal/sema/pitfall_neighbor_bounds.go
+      - internal/sema/pitfall_skipped_first.go
     tests:
       - internal/sema/pitfall_analysis_test.go
+      - internal/sema/pitfall_skipped_first_test.go
     implemented:
       - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
       - canonical defensive rule registry with required semantic facts, minimum Interactive/Standard/Deep analysis depth, and default confidence
@@ -59,13 +61,14 @@ integrations:
       - ineffective <= Len acceptance and > Len rejection guards correlate the same resolved index binding, compiler-known Len receiver, and indexed collection; reversed operands are normalized while strict-safe guards, wrong collections, and wrong bindings remain negative cases
       - upper i+1 and lower i-1 neighbor checks cover the canonical zero-based half-open 0..<Len domain using resolved loop-binding and collection identity, compiler-known Len, normalized 1+i, and Sema constant facts; shortened upper domains, predecessor traversal starting at one, guarded access, and identity mismatches are excluded
       - final-element Len - 1 access is correlated through compiler-known Len and resolved collection identity; adjacent Len == 0 or compiler-known IsEmpty exits and direct Len > 0, 0 < Len, Len != 0, negated IsEmpty, or complementary equality/IsEmpty branch facts supply explicit non-empty suppression evidence, while missing, expired, non-exiting, and wrong-collection proofs remain findings
+      - high-confidence skipped-first-element analysis recognizes canonical uint(1)..<collection.Len traversal with direct induction-variable indexing of that same resolved collection; predecessor access and dominating same-block handling of collection[0] produce structured suppressed results, while conditional or wrong-collection handling does not suppress
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
       - generalize endpoint-guard reachability beyond preceding direct comparisons with an unconditional break, continue, or return in the endpoint branch
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
       - generalize final-element non-empty proof consumption beyond the implemented adjacent exit and first-statement branch facts to contracts, non-empty types, and mutation-aware dominating control flow
-      - implement high-confidence skipped-first-element advisory with predecessor, prior-element-handling, explicit-contract, and other suppression evidence
+      - generalize skipped-first-element suppression beyond the implemented predecessor and same-block dominating element-zero facts to explicit suffix-traversal contracts, mutation-aware dominance, and other canonical intent evidence
       - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
       - implement collection bound-source correlation, equal/sufficient-length suppression, and copy/paste evidence
       - implement length-versus-capacity pitfall reasoning without conflating capacity with live element length
@@ -120,6 +123,8 @@ integrations:
         result: passed on 2026-09-30 with missing-proof detection, canonical empty-exit suppression, reversed comparison, wrong-collection and non-exiting guards, and near-miss offsets
       - command: go test ./internal/sema -run 'TestPitfallAnalysis(RequiresNonEmptyProofForFinalElement|ConsumesBranchLocalNonEmptyProof)' -count=1
         result: passed on 2026-09-30 with Len and compiler-known IsEmpty exit, negation, true/false branch, reversed comparison, wrong-collection, non-exiting guard, and deliberately expiring first-statement proof coverage
+      - command: go test ./internal/sema -run 'TestPitfallAnalysisFindsAndSuppressesSkippedFirstElement|TestPitfallRuleRegistryIsStableAndDefensive' -count=1
+        result: passed on 2026-09-30 with direct start-at-one detection, predecessor and dominating element-zero suppression, conditional and wrong-collection counterexamples, zero-based and different-collection near misses, and stable registry coverage
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
     status: partial

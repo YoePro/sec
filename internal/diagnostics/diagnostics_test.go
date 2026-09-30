@@ -40,6 +40,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		UnionPayloadMoveStorage:             SeverityError,
 		DuplicateContractMembershipValue:    SeverityError,
 		EmptyContractMembership:             SeverityError,
+		RecursiveStructLayout:               SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
 		IncompatibleUnitConversion:          SeverityError,
@@ -201,5 +202,15 @@ func TestEmptyContractMembershipDiagnosticIsRegistered(t *testing.T) {
 	}
 	if definition.Name != "types.empty-in-contract" || definition.Family != "types" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
 		t.Fatalf("empty contract membership diagnostic = %+v", definition)
+	}
+}
+
+func TestRecursiveStructLayoutDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(RecursiveStructLayout)
+	if !ok {
+		t.Fatal("missing recursive struct layout diagnostic")
+	}
+	if definition.Name != "struct.recursive-by-value-layout" || definition.Family != "struct" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("recursive struct layout diagnostic = %+v", definition)
 	}
 }

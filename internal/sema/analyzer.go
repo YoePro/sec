@@ -376,6 +376,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
 	a.refreshTypesResolvedThroughNestedImplDeclarations(program)
+	a.validateStructLayoutCycles(program)
 	a.analyzeUnitMetadata(program)
 	a.predeclareModuleStaticStorage(program)
 	a.registerImplDeclarations(program)
@@ -7148,6 +7149,8 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 // marker, but it does not turn an ordinary indexed read into owning extraction.
 //
 // Rules:
+//   - rules/errors/errorhandling.md — §5 "Ok and Err"
+//   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
 //   - rules/memory/copy_move.md — §9 "Return boundaries"
 //   - rules/memory/copy_move.md — §10.3 "Result construction"
 //   - rules/collections/collections.md — §8.5 "Move-only indexed reads"
@@ -7182,7 +7185,10 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 			}
 			return
 		}
-		valueType, _ := a.inferExpression(expr.Value)
+		// The declared Result success type is also the constructor context. This
+		// is required for payload-less generic-union variants such as None, whose
+		// concrete Option[T] specialization cannot be recovered from spelling.
+		valueType, _ := a.inferExpressionWithExpected(expr.Value, expected)
 		if valueType.Kind == InvalidType {
 			return
 		}
@@ -19075,7 +19081,16 @@ func (a *Analyzer) analyzeMatchStatement(stmt *ast.MatchStatement) {
 	a.analyzeMatch(stmt.Match, false)
 }
 
+// inferMatchExpression maps a complete match to its resolved value type while
+// treating parser-recovered typed-nil nodes as invalid editor input.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — match expressions
+//   - rules/compiler/parser_recovery.md — "Invalid node" and tooling continuation
 func (a *Analyzer) inferMatchExpression(expr *ast.MatchExpression) (Type, expressionValue) {
+	if expr == nil {
+		return Type{Kind: InvalidType}, expressionValue{}
+	}
 	typ := a.analyzeMatch(expr, true)
 	return typ, expressionValue{Display: expr.String()}
 }
@@ -19098,7 +19113,17 @@ type matchPatternInfo struct {
 	PayloadToken         lexer.Token
 }
 
+// analyzeMatch validates patterns, exhaustiveness, branch state and an optional
+// common value type. Incomplete recovery nodes produce InvalidType without
+// inventing a match subject or terminating editor analysis.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — patterns, exhaustiveness and value arms
+//   - rules/compiler/parser_recovery.md — "Recovery principles" and "No semantic repair"
 func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Type {
+	if expr == nil || expr.Subject == nil {
+		return Type{Kind: InvalidType}
+	}
 	analysisErrorCount := len(a.errors)
 	subjectType, _ := a.inferExpression(expr.Subject)
 	if subjectType.Kind == InvalidType {

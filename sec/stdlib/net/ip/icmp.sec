@@ -1,21 +1,258 @@
 module ip
 
-enum Icmpv4Type bit[8] {
-    EchoReply              = 0,
-    DestinationUnreachable = 3,
-    Redirect               = 5,
-    EchoRequest            = 8,
-    TimeExceeded           = 11,
-    ParameterProblem       = 12,
-    // ...current IANA assignments...
+/**
+ * Identifies an ICMPv4 message type.
+ *
+ * Description:
+ * - The value is the 8-bit ICMP Type field.
+ * - Values are assigned by IANA.
+ * - Unknown and future values remain representable.
+ *
+ * Standards:
+ * - RFC 792
+ * - IANA ICMP Parameters
+ */
+module ip
+
+/**
+ * Identifies an ICMPv4 message type.
+ *
+ * Description:
+ * - The value is the 8-bit ICMP Type field.
+ * - Values are assigned by IANA.
+ * - Unknown and future values remain representable.
+ *
+ * Standards:
+ * - RFC 792
+ * - IANA ICMP Parameters
+ */
+type Icmpv4Type byte
+
+impl Icmpv4Type {
+    // Echo Reply.
+    static let EchoReply: Icmpv4Type := 0
+
+    // Destination Unreachable.
+    static let DestinationUnreachable: Icmpv4Type := 3
+
+    // Source Quench. Deprecated.
+    static let SourceQuench: Icmpv4Type := 4
+
+    // Redirect.
+    static let Redirect: Icmpv4Type := 5
+
+    // Alternate Host Address. Deprecated.
+    static let AlternateHostAddress: Icmpv4Type := 6
+
+    // Echo Request.
+    static let EchoRequest: Icmpv4Type := 8
+
+    // Router Advertisement.
+    static let RouterAdvertisement: Icmpv4Type := 9
+
+    // Router Solicitation.
+    static let RouterSolicitation: Icmpv4Type := 10
+
+    // Time Exceeded.
+    static let TimeExceeded: Icmpv4Type := 11
+
+    // Parameter Problem.
+    static let ParameterProblem: Icmpv4Type := 12
+
+    // Timestamp Request.
+    static let Timestamp: Icmpv4Type := 13
+
+    // Timestamp Reply.
+    static let TimestampReply: Icmpv4Type := 14
+
+    // Information Request. Deprecated.
+    static let InformationRequest: Icmpv4Type := 15
+
+    // Information Reply. Deprecated.
+    static let InformationReply: Icmpv4Type := 16
+
+    // Address Mask Request. Deprecated.
+    static let AddressMaskRequest: Icmpv4Type := 17
+
+    // Address Mask Reply. Deprecated.
+    static let AddressMaskReply: Icmpv4Type := 18
+
+    // Traceroute. Deprecated.
+    static let Traceroute: Icmpv4Type := 30
+
+    // Datagram Conversion Error. Deprecated.
+    static let DatagramConversionError: Icmpv4Type := 31
+
+    // Mobile Host Redirect. Deprecated.
+    static let MobileHostRedirect: Icmpv4Type := 32
+
+    // IPv6 Where-Are-You. Deprecated.
+    static let IPv6WhereAreYou: Icmpv4Type := 33
+
+    // IPv6 I-Am-Here. Deprecated.
+    static let IPv6IAmHere: Icmpv4Type := 34
+
+    // Mobile Registration Request. Deprecated.
+    static let MobileRegistrationRequest: Icmpv4Type := 35
+
+    // Mobile Registration Reply. Deprecated.
+    static let MobileRegistrationReply: Icmpv4Type := 36
+
+    // Domain Name Request. Deprecated.
+    static let DomainNameRequest: Icmpv4Type := 37
+
+    // Domain Name Reply. Deprecated.
+    static let DomainNameReply: Icmpv4Type := 38
+
+    // SKIP. Deprecated.
+    static let SKIP: Icmpv4Type := 39
+
+    // Photuris.
+    static let Photuris: Icmpv4Type := 40
+
+    // Experimental mobility protocol message.
+    static let ExperimentalMobility: Icmpv4Type := 41
+
+    // Extended Echo Request.
+    static let ExtendedEchoRequest: Icmpv4Type := 42
+
+    // Extended Echo Reply.
+    static let ExtendedEchoReply: Icmpv4Type := 43
+
+    // RFC 3692-style experiment 1.
+    static let Experiment1: Icmpv4Type := 253
+
+    // RFC 3692-style experiment 2.
+    static let Experiment2: Icmpv4Type := 254
 }
 
-enum Icmpv6Type bit[8] {
-    DestinationUnreachable = 1,
-    PacketTooBig           = 2,
-    TimeExceeded           = 3,
-    ParameterProblem       = 4,
-    EchoRequest            = 128,
-    EchoReply              = 129,
-    // ...current IANA assignments...
+/**
+ * Identifies an ICMPv6 message type.
+ *
+ * Description:
+ * - The value is the 8-bit ICMPv6 Type field.
+ * - Values from 0 through 127 identify error messages.
+ * - Values from 128 through 255 identify informational messages.
+ * - Unknown and future values remain representable.
+ *
+ * Standards:
+ * - RFC 4443
+ * - IANA ICMPv6 Parameters
+ */
+type Icmpv6Type byte
+
+impl Icmpv6Type {
+    // Destination Unreachable.
+    static let DestinationUnreachable: Icmpv6Type := 1
+
+    // Packet Too Big.
+    static let PacketTooBig: Icmpv6Type := 2
+
+    // Time Exceeded.
+    static let TimeExceeded: Icmpv6Type := 3
+
+    // Parameter Problem.
+    static let ParameterProblem: Icmpv6Type := 4
+
+    // Echo Request.
+    static let EchoRequest: Icmpv6Type := 128
+
+    // Echo Reply.
+    static let EchoReply: Icmpv6Type := 129
+
+    // Multicast Listener Query.
+    static let MulticastListenerQuery: Icmpv6Type := 130
+
+    // Multicast Listener Report.
+    static let MulticastListenerReport: Icmpv6Type := 131
+
+    // Multicast Listener Done.
+    static let MulticastListenerDone: Icmpv6Type := 132
+
+    // Router Solicitation.
+    static let RouterSolicitation: Icmpv6Type := 133
+
+    // Router Advertisement.
+    static let RouterAdvertisement: Icmpv6Type := 134
+
+    // Neighbor Solicitation.
+    static let NeighborSolicitation: Icmpv6Type := 135
+
+    // Neighbor Advertisement.
+    static let NeighborAdvertisement: Icmpv6Type := 136
+
+    // Redirect Message.
+    static let Redirect: Icmpv6Type := 137
+
+    // Router Renumbering.
+    static let RouterRenumbering: Icmpv6Type := 138
+
+    // ICMP Node Information Query.
+    static let NodeInformationQuery: Icmpv6Type := 139
+
+    // ICMP Node Information Response.
+    static let NodeInformationResponse: Icmpv6Type := 140
+
+    // Inverse Neighbor Discovery Solicitation.
+    static let InverseNeighborDiscoverySolicitation: Icmpv6Type := 141
+
+    // Inverse Neighbor Discovery Advertisement.
+    static let InverseNeighborDiscoveryAdvertisement: Icmpv6Type := 142
+
+    // Version 2 Multicast Listener Report.
+    static let MulticastListenerReportV2: Icmpv6Type := 143
+
+    // Home Agent Address Discovery Request.
+    static let HomeAgentAddressDiscoveryRequest: Icmpv6Type := 144
+
+    // Home Agent Address Discovery Reply.
+    static let HomeAgentAddressDiscoveryReply: Icmpv6Type := 145
+
+    // Mobile Prefix Solicitation.
+    static let MobilePrefixSolicitation: Icmpv6Type := 146
+
+    // Mobile Prefix Advertisement.
+    static let MobilePrefixAdvertisement: Icmpv6Type := 147
+
+    // Certification Path Solicitation.
+    static let CertificationPathSolicitation: Icmpv6Type := 148
+
+    // Certification Path Advertisement.
+    static let CertificationPathAdvertisement: Icmpv6Type := 149
+
+    // Experimental mobility protocol message.
+    static let ExperimentalMobility: Icmpv6Type := 150
+
+    // Multicast Router Advertisement.
+    static let MulticastRouterAdvertisement: Icmpv6Type := 151
+
+    // Multicast Router Solicitation.
+    static let MulticastRouterSolicitation: Icmpv6Type := 152
+
+    // Multicast Router Termination.
+    static let MulticastRouterTermination: Icmpv6Type := 153
+
+    // FMIPv6 message.
+    static let FMIPv6: Icmpv6Type := 154
+
+    // RPL Control Message.
+    static let RPLControl: Icmpv6Type := 155
+
+    // ILNPv6 Locator Update Message.
+    static let ILNPv6LocatorUpdate: Icmpv6Type := 156
+
+    // Duplicate Address Request.
+    static let DuplicateAddressRequest: Icmpv6Type := 157
+
+    // Duplicate Address Confirmation.
+    static let DuplicateAddressConfirmation: Icmpv6Type := 158
+
+    // MPL Control Message.
+    static let MPLControl: Icmpv6Type := 159
+
+    // Extended Echo Request.
+    static let ExtendedEchoRequest: Icmpv6Type := 160
+
+    // Extended Echo Reply.
+    static let ExtendedEchoReply: Icmpv6Type := 161
 }

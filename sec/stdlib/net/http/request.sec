@@ -1,24 +1,24 @@
 module http
 
 /*
-* Sec Standard Library - net/http - Version-independent HTTP request values and server request metadata
-*
-* File:        stdlib/net/http/request.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Version-independent HTTP request values and server request metadata.
-*
-* Standards:
-*   - RFC 9110
-*     https://www.rfc-editor.org/rfc/rfc9110
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - Version-independent HTTP request values and server request metadata
+ *
+ * File:        stdlib/net/http/request.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Version-independent HTTP request values and server request metadata.
+ *
+ * Standards:
+ * - RFC 9110
+ *     https://www.rfc-editor.org/rfc/rfc9110
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 import (
     "net/url"
@@ -39,10 +39,10 @@ type Request struct {
     // Raw request-target as it appeared on the wire.
     //
     // Examples:
-    //   /
-    //   /users/42
-    //   /search?q=sec
-    //   *
+    // /
+    // /users/42
+    // /search?q=sec
+    // *
     //
     // Parsing into path/query components will be provided by Request
     // behavior and/or the future URL support.
@@ -132,7 +132,7 @@ impl Request {
     }
 
     fn SetHeader(
-        Name: string,
+        Name:  string,
         Value: string,
     ) void {
         // TODO:
@@ -189,30 +189,30 @@ impl Request {
     }
 
     /**
-    * Parses and validates an HTTP origin-form request target.
-    *
-    * Description:
-    *   Origin-form consists of an absolute path beginning with '/' followed by
-    *   an optional query component. Percent-encoded octets must contain exactly
-    *   two hexadecimal digits.
-    *
-    *   Fragment identifiers, whitespace, control characters, non-ASCII
-    *   characters, and characters outside the RFC URI path/query grammar are
-    *   rejected.
-    *
-    * Parameters:
-    *   - value: Raw origin-form request target.
-    *
-    * Returns:
-    *   A validated OriginTarget preserving the original encoded representation.
-    *
-    * Errors:
-    *   - MessageError.InvalidTarget: value is not valid HTTP origin-form.
-    *
-    * Standards:
-    *   - RFC 9112 Section 3.2.1
-    *   - RFC 3986 Sections 3.3 and 3.4
-    */
+     * Parses and validates an HTTP origin-form request target.
+     *
+     * Description:
+     * Origin-form consists of an absolute path beginning with '/' followed by
+     * an optional query component. Percent-encoded octets must contain exactly
+     * two hexadecimal digits.
+     *
+     * Fragment identifiers, whitespace, control characters, non-ASCII
+     * characters, and characters outside the RFC URI path/query grammar are
+     * rejected.
+     *
+     * Parameters:
+     * - value: Raw origin-form request target.
+     *
+     * Returns:
+     * A validated OriginTarget preserving the original encoded representation.
+     *
+     * Errors:
+     * - MessageError.InvalidTarget: value is not valid HTTP origin-form.
+     *
+     * Standards:
+     * - RFC 9112 Section 3.2.1
+     * - RFC 3986 Sections 3.3 and 3.4
+     */
     static fn Parse(value: string) Result[OriginTarget, MessageError] {
         if value.ByteLen == 0 {
             return Err(MessageError.InvalidTarget)
@@ -282,8 +282,8 @@ impl Request {
     // -------------------------------------------------------------------------
 
     /**
-    * Returns the validated origin-form request target.
-    */
+     * Returns the validated origin-form request target.
+     */
     fn ToString() string {
         // TODO: Implement http.Request.ToString()
         // return string(self)
@@ -311,14 +311,14 @@ type RequestTarget union {
 }
 
 type ConnectionInfo struct {
-    LocalEndpoint: ip.Endpoint,
+    LocalEndpoint:  ip.Endpoint,
     RemoteEndpoint: ip.Endpoint,
-    Version: Version,
-    Secure: bool,
+    Version:        Version,
+    Secure:         bool,
 }
 
 @noCopy
 type ServerRequest struct {
-    Message: Request,
+    Message:    Request,
     Connection: ConnectionInfo,
 }

@@ -1,31 +1,30 @@
 module http
 
 /*
-*
-* Sec Standard Library - net/http - Structured Fields
-*
-*
-* File: stdlib/net/http/structured_fields.sec
-* Module: http
-* Revision: 1
-* Updated: 2026-09-11
-* Author: Jonas Engström
-*
-* Purpose:
-* Internal parsing and representation support for HTTP Structured Fields.
-*
-* This file provides the shared RFC 9651 parsing machinery used by HTTP
-* fields such as Priority. The Structured Fields implementation is kept
-* private to the http module and does not form part of the public net/http
-* API.
-*
-* Standards:
-*   - RFC 9651
-*     https://www.rfc-editor.org/rfc/rfc9651
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ *
+ * Sec Standard Library - net/http - Structured Fields
+ *
+ * File: stdlib/net/http/structured_fields.sec
+ * Module: http
+ * Revision: 1
+ * Updated: 2026-09-11
+ * Author: Jonas Engström
+ *
+ * Purpose:
+ * Internal parsing and representation support for HTTP Structured Fields.
+ *
+ * This file provides the shared RFC 9651 parsing machinery used by HTTP
+ * fields such as Priority. The Structured Fields implementation is kept
+ * private to the http module and does not form part of the public net/http
+ * API.
+ *
+ * Standards:
+ * - RFC 9651
+ *     https://www.rfc-editor.org/rfc/rfc9651
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 type _StructuredFieldValue union {
     Integer(int64)
@@ -34,7 +33,7 @@ type _StructuredFieldValue union {
 }
 
 type _StructuredFieldMember struct {
-    Name: string,
+    Name:  string,
     Value: _StructuredFieldValue,
 }
 
@@ -43,17 +42,16 @@ type _StructuredFieldDictionary struct {
 }
 
 impl _StructuredFieldDictionary {
-
     /**
-    * Parse parses an RFC 9651 Structured Fields Dictionary.
-    *
-    * Leading and trailing SP are ignored as required by the Structured
-    * Fields parsing algorithm. Internal dictionary whitespace, members,
-    * values, and parameters are parsed by _StructuredFieldParser.
-    *
-    * Returns StructuredFieldError.InvalidSyntax when the complete input
-    * cannot be consumed as a valid Structured Fields Dictionary.
-    */
+     * Parse parses an RFC 9651 Structured Fields Dictionary.
+     *
+     * Leading and trailing SP are ignored as required by the Structured
+     * Fields parsing algorithm. Internal dictionary whitespace, members,
+     * values, and parameters are parsed by _StructuredFieldParser.
+     *
+     * Returns StructuredFieldError.InvalidSyntax when the complete input
+     * cannot be consumed as a valid Structured Fields Dictionary.
+     */
     static fn Parse(value: HeaderValue) Result[_StructuredFieldDictionary, StructuredFieldError] {
         let mut parser := _StructuredFieldParser {
             _input: value.ToString(),
@@ -100,14 +98,14 @@ impl _StructuredFieldDictionary {
     }
 
     /**
-    * Stores one parsed Structured Fields dictionary member.
-    *
-    * If name already exists, its value is replaced in place. Otherwise a new
-    * member is appended. This implements RFC 9651 duplicate-key semantics where
-    * the last occurrence supplies the effective value.
-    *
-    * Allocation failure while appending leaves the dictionary unchanged.
-    */
+     * Stores one parsed Structured Fields dictionary member.
+     *
+     * If name already exists, its value is replaced in place. Otherwise a new
+     * member is appended. This implements RFC 9651 duplicate-key semantics where
+     * the last occurrence supplies the effective value.
+     *
+     * Allocation failure while appending leaves the dictionary unchanged.
+     */
     fn _Set(name: string, value: _StructuredFieldValue) Result[void, StructuredFieldError] {
         let mut index: uint := 0
 
@@ -136,7 +134,7 @@ impl _StructuredFieldDictionary {
 }
 
 type _StructuredFieldParser struct {
-    _input: string,
+    _input:    string,
     _position: uint,
 }
 
@@ -221,11 +219,11 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Returns the character at the current parser position.
-    *
-    * The caller must establish that the parser is not finished before reading
-    * this property.
-    */
+     * Returns the character at the current parser position.
+     *
+     * The caller must establish that the parser is not finished before reading
+     * this property.
+     */
     property _Current: char {
         get {
             return char(self._input.ByteAt(self._position))
@@ -233,13 +231,13 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses one RFC 9651 key from the current parser position.
-    *
-    * A key begins with a lowercase ASCII letter or '*'. Remaining characters
-    * may additionally contain decimal digits, '_', '-', '.', and '*'.
-    *
-    * The parser position is left immediately after the key.
-    */
+     * Parses one RFC 9651 key from the current parser position.
+     *
+     * A key begins with a lowercase ASCII letter or '*'. Remaining characters
+     * may additionally contain decimal digits, '_', '-', '.', and '*'.
+     *
+     * The parser position is left immediately after the key.
+     */
     fn _ParseKey() Result[string, StructuredFieldError] {
         if self._IsFinished {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -268,15 +266,15 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses one Structured Fields dictionary member value.
-    *
-    * A member value is either an Item or an Inner List. Priority currently
-    * retains Integer and Boolean values directly; other valid Structured Field
-    * values are represented as _StructuredFieldValue.Other.
-    *
-    * Parameters are consumed as part of the member syntax even though Priority
-    * does not currently interpret them.
-    */
+     * Parses one Structured Fields dictionary member value.
+     *
+     * A member value is either an Item or an Inner List. Priority currently
+     * retains Integer and Boolean values directly; other valid Structured Field
+     * values are represented as _StructuredFieldValue.Other.
+     *
+     * Parameters are consumed as part of the member syntax even though Priority
+     * does not currently interpret them.
+     */
     fn _ParseMemberValue() Result[_StructuredFieldValue, StructuredFieldError] {
         if self._IsFinished {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -294,12 +292,12 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses and discards Structured Fields parameters.
-    *
-    * Parameters are part of the enclosing Item or Inner List syntax. Priority
-    * does not currently assign semantics to them, but they must still be parsed
-    * correctly so valid extensions remain acceptable.
-    */
+     * Parses and discards Structured Fields parameters.
+     *
+     * Parameters are part of the enclosing Item or Inner List syntax. Priority
+     * does not currently assign semantics to them, but they must still be parsed
+     * correctly so valid extensions remain acceptable.
+     */
     fn _ParseParameters() Result[void, StructuredFieldError] {
         while !self._IsFinished && self._Current == ';' {
             self._position += 1
@@ -324,15 +322,15 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses one RFC 9651 bare item.
-    *
-    * The first character determines the Structured Field value type. The parser
-    * position is left immediately after the bare item.
-    *
-    * Integer and Boolean values are retained because Priority interprets them.
-    * Other valid Structured Field value types are parsed and represented as
-    * _StructuredFieldValue.Other.
-    */
+     * Parses one RFC 9651 bare item.
+     *
+     * The first character determines the Structured Field value type. The parser
+     * position is left immediately after the bare item.
+     *
+     * Integer and Boolean values are retained because Priority interprets them.
+     * Other valid Structured Field value types are parsed and represented as
+     * _StructuredFieldValue.Other.
+     */
     fn _ParseBareItem() Result[_StructuredFieldValue, StructuredFieldError] {
         if self._IsFinished {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -379,16 +377,16 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses one RFC 9651 Inner List.
-    *
-    * Items inside the list are separated by one or more SP characters. Each item
-    * may have its own parameters. Parameters following the closing ')' belong to
-    * the Inner List itself.
-    *
-    * Priority does not currently retain Inner List contents, but the complete
-    * syntax is validated and consumed so unknown dictionary members can be
-    * ignored safely.
-    */
+     * Parses one RFC 9651 Inner List.
+     *
+     * Items inside the list are separated by one or more SP characters. Each item
+     * may have its own parameters. Parameters following the closing ')' belong to
+     * the Inner List itself.
+     *
+     * Priority does not currently retain Inner List contents, but the complete
+     * syntax is validated and consumed so unknown dictionary members can be
+     * ignored safely.
+     */
     fn _ParseInnerList() Result[void, StructuredFieldError] {
         if self._IsFinished || self._Current != '(' {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -423,12 +421,12 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses an RFC 9651 Integer or Decimal.
-    *
-    * Integers are retained as _StructuredFieldValue.Integer. Decimals are
-    * validated and consumed but represented as _StructuredFieldValue.Other
-    * because Priority does not interpret Decimal values.
-    */
+     * Parses an RFC 9651 Integer or Decimal.
+     *
+     * Integers are retained as _StructuredFieldValue.Integer. Decimals are
+     * validated and consumed but represented as _StructuredFieldValue.Other
+     * because Priority does not interpret Decimal values.
+     */
     fn _ParseIntegerOrDecimal() Result[_StructuredFieldValue, StructuredFieldError] {
         if self._IsFinished {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -502,10 +500,10 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses and consumes an RFC 9651 String.
-    *
-    * String contents are not retained by the Priority parser.
-    */
+     * Parses and consumes an RFC 9651 String.
+     *
+     * String contents are not retained by the Priority parser.
+     */
     fn _ParseString() Result[void, StructuredFieldError] {
         if self._IsFinished || self._Current != '"' {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -547,10 +545,10 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses and consumes an RFC 9651 Token.
-    *
-    * Token contents are not retained by the Priority parser.
-    */
+     * Parses and consumes an RFC 9651 Token.
+     *
+     * Token contents are not retained by the Priority parser.
+     */
     fn _ParseToken() Result[void, StructuredFieldError] {
         if self._IsFinished {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -569,11 +567,11 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses and consumes an RFC 9651 Byte Sequence.
-    *
-    * The Base64 payload is validated but not decoded because Priority does not
-    * retain unknown Structured Field values.
-    */
+     * Parses and consumes an RFC 9651 Byte Sequence.
+     *
+     * The Base64 payload is validated but not decoded because Priority does not
+     * retain unknown Structured Field values.
+     */
     fn _ParseByteSequence() Result[void, StructuredFieldError] {
         if self._IsFinished || self._Current != ':' {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -635,10 +633,10 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses an RFC 9651 Boolean.
-    *
-    * "?1" represents true and "?0" represents false.
-    */
+     * Parses an RFC 9651 Boolean.
+     *
+     * "?1" represents true and "?0" represents false.
+     */
     fn _ParseBoolean() Result[_StructuredFieldValue, StructuredFieldError] {
         if self._IsFinished || self._Current != '?' {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -664,11 +662,11 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses and consumes an RFC 9651 Date.
-    *
-    * Dates use the Integer wire representation prefixed by '@'. Decimal values
-    * are not valid dates.
-    */
+     * Parses and consumes an RFC 9651 Date.
+     *
+     * Dates use the Integer wire representation prefixed by '@'. Decimal values
+     * are not valid dates.
+     */
     fn _ParseDate() Result[void, StructuredFieldError] {
         if self._IsFinished || self._Current != '@' {
             return Err(StructuredFieldError.InvalidSyntax)
@@ -690,15 +688,15 @@ impl _StructuredFieldParser {
     }
 
     /**
-    * Parses and consumes the textual representation of an RFC 9651 Display
-    * String.
-    *
-    * Percent escapes are required to use lowercase hexadecimal digits.
-    *
-    * TODO:
-    * Validate the decoded octet sequence as UTF-8 once the canonical Core UTF-8
-    * validation API is available.
-    */
+     * Parses and consumes the textual representation of an RFC 9651 Display
+     * String.
+     *
+     * Percent escapes are required to use lowercase hexadecimal digits.
+     *
+     * TODO:
+     * Validate the decoded octet sequence as UTF-8 once the canonical Core UTF-8
+     * validation API is available.
+     */
     fn _ParseDisplayString() Result[void, StructuredFieldError] {
         if self._IsFinished || self._Current != '%' {
             return Err(StructuredFieldError.InvalidSyntax)

@@ -1,26 +1,26 @@
 module http
 
 /*
-* Sec Standard Library - net/http - HTTP Content-Digest, Repr-Digest, and digest preferences
-*
-* File:        stdlib/net/http/digest.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   HTTP Content-Digest, Repr-Digest, and digest preferences.
-*
-* Standards:
-*   - RFC 9530
-*     https://www.rfc-editor.org/rfc/rfc9530
-*   - RFC 9651
-*     https://www.rfc-editor.org/rfc/rfc9651
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - HTTP Content-Digest, Repr-Digest, and digest preferences
+ *
+ * File:        stdlib/net/http/digest.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * HTTP Content-Digest, Repr-Digest, and digest preferences.
+ *
+ * Standards:
+ * - RFC 9530
+ *     https://www.rfc-editor.org/rfc/rfc9530
+ * - RFC 9651
+ *     https://www.rfc-editor.org/rfc/rfc9651
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 // TODO: IMPLEMENT the Digest file.
 
@@ -34,8 +34,12 @@ impl DigestAlgorithm {
     static let UnixSum: DigestAlgorithm := "unixsum"
     static let UnixCksum: DigestAlgorithm := "unixcksum"
 
-    static fn Parse(value: string) Result[DigestAlgorithm, DigestError] { return Err(DigestError.AllocationFailed) }
-    fn ToString() string { return string(self) }
+    static fn Parse(value: string) Result[DigestAlgorithm, DigestError] {
+        return Err(DigestError.AllocationFailed)
+    }
+    fn ToString() string {
+        return string(self)
+    }
     property IsActive: Option[bool] {
         get {
             return None
@@ -56,16 +60,32 @@ type DigestValue struct {
 type DigestPreference uint8 range 0..10 default 0
 
 type DigestPreferenceValue struct {
-    Algorithm: DigestAlgorithm,
+    Algorithm:  DigestAlgorithm,
     Preference: DigestPreference,
 }
 
-fn ParseContentDigest(value: HeaderValue) Result[DigestValue[], DigestError] { return Err(DigestError.AllocationFailed) }
-fn ParseReprDigest(value: HeaderValue) Result[DigestValue[], DigestError] { return Err(DigestError.AllocationFailed) }
-fn ParseWantContentDigest(value: HeaderValue) Result[DigestPreferenceValue[], DigestError] { return Err(DigestError.AllocationFailed) }
-fn ParseWantReprDigest(value: HeaderValue) Result[DigestPreferenceValue[], DigestError] { return Err(DigestError.AllocationFailed) }
+fn ParseContentDigest(value: HeaderValue) Result[DigestValue[], DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
+fn ParseReprDigest(value: HeaderValue) Result[DigestValue[], DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
+fn ParseWantContentDigest(value: HeaderValue) Result[DigestPreferenceValue[], DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
+fn ParseWantReprDigest(value: HeaderValue) Result[DigestPreferenceValue[], DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
 
-fn SerializeContentDigest(values: ref DigestValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
-fn SerializeReprDigest(values: ref DigestValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
-fn SerializeWantContentDigest(values: ref DigestPreferenceValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
-fn SerializeWantReprDigest(values: ref DigestPreferenceValue[]) Result[HeaderValue, DigestError] { return Err(DigestError.AllocationFailed) }
+fn SerializeContentDigest(values: ref DigestValue[]) Result[HeaderValue, DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
+fn SerializeReprDigest(values: ref DigestValue[]) Result[HeaderValue, DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
+fn SerializeWantContentDigest(values: ref DigestPreferenceValue[]) Result[HeaderValue, DigestError] {
+    return Err(DigestError.AllocationFailed)
+}
+fn SerializeWantReprDigest(values: ref DigestPreferenceValue[]) Result[HeaderValue, DigestError] {
+    return Err(DigestError.AllocationFailed)
+}

@@ -1,24 +1,24 @@
 module http
 
 /*
-* Sec Standard Library - net/http - Owned streaming HTTP message bodies
-*
-* File:        stdlib/net/http/body.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Owned streaming HTTP message bodies.
-*
-* Standards:
-*   - RFC 9110
-*     https://www.rfc-editor.org/rfc/rfc9110
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - Owned streaming HTTP message bodies
+ *
+ * File:        stdlib/net/http/body.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Owned streaming HTTP message bodies.
+ *
+ * Standards:
+ * - RFC 9110
+ *     https://www.rfc-editor.org/rfc/rfc9110
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 @noCopy
 type Body struct {
@@ -26,23 +26,22 @@ type Body struct {
 }
 
 impl Body {
-
     /**
-    * Creates an empty HTTP body.
-    *
-    * An empty Body contains no payload, has a known length of zero, and is
-    * replayable until it is closed.
-    */
+     * Creates an empty HTTP body.
+     *
+     * An empty Body contains no payload, has a known length of zero, and is
+     * replayable until it is closed.
+     */
     init() {
         self._state = _BodyState.Empty
     }
 
     /**
-    * Creates an HTTP body by taking ownership of a byte array.
-    *
-    * The body takes ownership of data without copying its contents. A zero-length
-    * array is normalized to the Empty state.
-    */
+     * Creates an HTTP body by taking ownership of a byte array.
+     *
+     * The body takes ownership of data without copying its contents. A zero-length
+     * array is normalized to the Empty state.
+     */
     init(->data: byte[]) {
         if data.Len == 0 {
             self._state = _BodyState.Empty
@@ -56,14 +55,14 @@ impl Body {
     }
 
     /**
-    * Creates an HTTP body from a UTF-8 string.
-    *
-    * The string contents are copied into an owned byte array using the string's
-    * UTF-8 representation. An empty string is normalized to the Empty state.
-    *
-    * Returns BodyError.Allocation when storage for the body bytes cannot be
-    * allocated.
-    */
+     * Creates an HTTP body from a UTF-8 string.
+     *
+     * The string contents are copied into an owned byte array using the string's
+     * UTF-8 representation. An empty string is normalized to the Empty state.
+     *
+     * Returns BodyError.Allocation when storage for the body bytes cannot be
+     * allocated.
+     */
     init(data: string) BodyError {
         if data.IsEmpty {
             self._state = _BodyState.Empty
@@ -99,21 +98,23 @@ impl Body {
     // - automatic destruction behavior.
 
     /**
-    * Creates an empty HTTP body.
-    *
-    * The returned body has a known length of zero and is replayable until it is
-    * closed.
-    */
-    static fn Empty() Body { return new Body() }
+     * Creates an empty HTTP body.
+     *
+     * The returned body has a known length of zero and is replayable until it is
+     * closed.
+     */
+    static fn Empty() Body {
+        return new Body()
+    }
 
     /**
-    * Reports the known total length of the HTTP body.
-    *
-    * Empty and byte-backed bodies always have a known length. A closed body
-    * preserves the length information that was known before it was closed.
-    *
-    * None is returned for body sources whose total length is unknown.
-    */
+     * Reports the known total length of the HTTP body.
+     *
+     * Empty and byte-backed bodies always have a known length. A closed body
+     * preserves the length information that was known before it was closed.
+     *
+     * None is returned for body sources whose total length is unknown.
+     */
     property Length: Option[uint64] {
         get {
             match self._state {
@@ -133,11 +134,11 @@ impl Body {
     }
 
     /**
-    * Reports whether the HTTP body can be read again from the beginning.
-    *
-    * Empty and byte-backed bodies are replayable while open. A closed body is
-    * never replayable.
-    */
+     * Reports whether the HTTP body can be read again from the beginning.
+     *
+     * Empty and byte-backed bodies are replayable while open. A closed body is
+     * never replayable.
+     */
     property Replayable: bool {
         get {
             match self._state {
@@ -157,10 +158,10 @@ impl Body {
     }
 
     /**
-    * Reports whether the HTTP body has been closed.
-    *
-    * Closed bodies cannot be read or rewound.
-    */
+     * Reports whether the HTTP body has been closed.
+     *
+     * Closed bodies cannot be read or rewound.
+     */
     property IsClosed: bool {
         get {
             match self._state {
@@ -176,16 +177,16 @@ impl Body {
     }
 
     /**
-    * Reads body data into buffer and advances the current read position.
-    *
-    * At most buffer.Len bytes are written. The returned value is the number of
-    * bytes written to buffer.
-    *
-    * Ok(0) is returned when the body has reached end-of-body or when buffer is
-    * empty. A closed body cannot be read.
-    *
-    * Returns BodyError.Closed when the body has already been closed.
-    */
+     * Reads body data into buffer and advances the current read position.
+     *
+     * At most buffer.Len bytes are written. The returned value is the number of
+     * bytes written to buffer.
+     *
+     * Ok(0) is returned when the body has reached end-of-body or when buffer is
+     * empty. A closed body cannot be read.
+     *
+     * Returns BodyError.Closed when the body has already been closed.
+     */
     fn Read(buffer: ref mut byte[]) Result[uint, BodyError] {
         if buffer.Len == 0 {
             return Ok(0)
@@ -227,25 +228,25 @@ impl Body {
     }
 
     /**
-    * Reads all remaining body data into a newly allocated byte array.
-    *
-    * Parameters:
-    *   - limit: Maximum number of bytes that may be returned.
-    *
-    * Returns:
-    *   A newly allocated array containing all bytes from the current read
-    *   position to end-of-body. On success, the body is advanced to EOF.
-    *
-    * Errors:
-    *   - BodyError.Closed: The body has already been closed.
-    *   - BodyError.TooLarge: The remaining body exceeds limit.
-    *   - BodyError.Allocation: Storage for the result could not be allocated.
-    *
-    * Ownership:
-    *   The returned array is owned by the caller. The body retains ownership of
-    *   its underlying source. For byte-backed bodies, failure leaves the current
-    *   read position unchanged.
-    */
+     * Reads all remaining body data into a newly allocated byte array.
+     *
+     * Parameters:
+     * - limit: Maximum number of bytes that may be returned.
+     *
+     * Returns:
+     * A newly allocated array containing all bytes from the current read
+     * position to end-of-body. On success, the body is advanced to EOF.
+     *
+     * Errors:
+     * - BodyError.Closed: The body has already been closed.
+     * - BodyError.TooLarge: The remaining body exceeds limit.
+     * - BodyError.Allocation: Storage for the result could not be allocated.
+     *
+     * Ownership:
+     * The returned array is owned by the caller. The body retains ownership of
+     * its underlying source. For byte-backed bodies, failure leaves the current
+     * read position unchanged.
+     */
     fn ReadAllToArray(limit: uint64) Result[byte[], BodyError] {
         match self._state {
             _BodyState.Empty => {
@@ -284,14 +285,14 @@ impl Body {
     }
 
     /**
-    * Closes the HTTP body and releases its owned resources.
-    *
-    * Close is idempotent. Closing an already closed body succeeds without
-    * changing its state.
-    *
-    * Known length information is preserved after close. Once closed, the body
-    * cannot be read or rewound and is no longer replayable.
-    */
+     * Closes the HTTP body and releases its owned resources.
+     *
+     * Close is idempotent. Closing an already closed body succeeds without
+     * changing its state.
+     *
+     * Known length information is preserved after close. Once closed, the body
+     * cannot be read or rewound and is no longer replayable.
+     */
     fn Close() Result[void, BodyError] {
         if self.IsClosed {
             return Ok()
@@ -307,13 +308,13 @@ impl Body {
     }
 
     /**
-    * Rewinds the HTTP body to the beginning.
-    *
-    * Empty and byte-backed bodies are replayable. Rewinding an empty body is a
-    * no-op. A closed body cannot be rewound.
-    *
-    * Returns BodyError.Closed when the body has already been closed.
-    */
+     * Rewinds the HTTP body to the beginning.
+     *
+     * Empty and byte-backed bodies are replayable. Rewinding an empty body is a
+     * no-op. A closed body cannot be rewound.
+     *
+     * Returns BodyError.Closed when the body has already been closed.
+     */
     fn Rewind() Result[void, BodyError] {
         match self._state {
             _BodyState.Empty => {
@@ -330,7 +331,6 @@ impl Body {
             }
         }
     }
-
 }
 
 // TODO: Create and implement http._BodyState
@@ -349,21 +349,22 @@ type _BodyState union {
     Closed(_BodyClosedState),
 }
 
-/* _BodyState is private and implementation-defined. init() creates an empty,
-* replayable body of known length zero. init(data: <- byte[]) consumes the array
-* without requiring an additional content copy and creates a replayable body.
-* FromString UTF-8 encodes the Sec string and is fallible because it allocates.
-
-* For a non-empty read buffer, Ok(0) means EOF. ReadAllToArray always enforces
-* the supplied maximum and returns BodyError.TooLarge before returning an array
-* larger than limit. Rewind succeeds only when Replayable is true. Close is idempotent
-* and releases the underlying stream/transport ownership. free() must release the
-* resource exactly once even when Close() was not called; destructor cleanup cannot
-* propagate an ordinary Result error.
-
-* Representation rationale
-* Body is a move-only struct because it owns streaming state and potentially
-* a transport/resource lifetime. It is not an enum because the public API does not
-* expose transport-specific body source variants. The private representation may
-* use a union internally.
-*/
+/*
+ * _BodyState is private and implementation-defined. init() creates an empty,
+ * replayable body of known length zero. init(data: <- byte[]) consumes the array
+ * without requiring an additional content copy and creates a replayable body.
+ * FromString UTF-8 encodes the Sec string and is fallible because it allocates.
+ *
+ * For a non-empty read buffer, Ok(0) means EOF. ReadAllToArray always enforces
+ * the supplied maximum and returns BodyError.TooLarge before returning an array
+ * larger than limit. Rewind succeeds only when Replayable is true. Close is idempotent
+ * and releases the underlying stream/transport ownership. free() must release the
+ * resource exactly once even when Close() was not called; destructor cleanup cannot
+ * propagate an ordinary Result error.
+ *
+ * Representation rationale
+ * Body is a move-only struct because it owns streaming state and potentially
+ * a transport/resource lifetime. It is not an enum because the public API does not
+ * expose transport-specific body source variants. The private representation may
+ * use a union internally.
+ */

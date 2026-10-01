@@ -2,16 +2,16 @@
 // File: header.sec
 //
 // Standards:
-//   RFC 9110 - HTTP Semantics
-//   https://www.rfc-editor.org/rfc/rfc9110
+// RFC 9110 - HTTP Semantics
+// https://www.rfc-editor.org/rfc/rfc9110
 //
-//   RFC 9651 - Structured Field Values for HTTP
-//   https://www.rfc-editor.org/rfc/rfc9651
+// RFC 9651 - Structured Field Values for HTTP
+// https://www.rfc-editor.org/rfc/rfc9651
 //
 // Registry:
-//   IANA HTTP Field Name Registry
-//   https://www.iana.org/assignments/http-fields
-//   Registry synchronized: 2026-09-07
+// IANA HTTP Field Name Registry
+// https://www.iana.org/assignments/http-fields
+// Registry synchronized: 2026-09-07
 module http
 
 // One normalized HTTP field name/value occurrence.
@@ -20,7 +20,7 @@ module http
 // stored in lowercase so every lookup follows HTTP's case-insensitive field
 // name semantics. Repeated names represent repeated values in insertion order.
 type _HeaderField struct {
-    Name: HeaderName,
+    Name:  HeaderName,
     Value: HeaderValue,
 }
 
@@ -89,17 +89,17 @@ impl HeaderName {
 
     // TODO: Implement http.HeaderName.Parse()
     /**
-    * Parse validates and canonicalizes an HTTP field name.
-    *
-    * A valid field name is a non-empty RFC 9110 token. ASCII letters are
-    * canonicalized to lowercase so Header can perform direct comparisons while
-    * preserving HTTP's case-insensitive field-name semantics.
-    *
-    * Names containing whitespace, control characters, separators such as ':',
-    * non-ASCII bytes, or HTTP/2 and HTTP/3 pseudo-field syntax are rejected.
-    *
-    * Returns HeaderError.InvalidName when value is not a valid HTTP field name.
-    */
+     * Parse validates and canonicalizes an HTTP field name.
+     *
+     * A valid field name is a non-empty RFC 9110 token. ASCII letters are
+     * canonicalized to lowercase so Header can perform direct comparisons while
+     * preserving HTTP's case-insensitive field-name semantics.
+     *
+     * Names containing whitespace, control characters, separators such as ':',
+     * non-ASCII bytes, or HTTP/2 and HTTP/3 pseudo-field syntax are rejected.
+     *
+     * Returns HeaderError.InvalidName when value is not a valid HTTP field name.
+     */
     static fn Parse(value: string) Result[HeaderName, HeaderError] {
         if value.IsEmpty {
             return Err(HeaderError.InvalidName)
@@ -148,39 +148,40 @@ impl HeaderName {
 type HeaderValue string
 
 impl HeaderValue {
-    /* Sec's HeaderValue uses a reversible one-codepoint-per-octet representation for HTTP
-    * field octets. Accepted scalar values are HTAB, SP, U+0021..U+007E, and U+0080..U+00FF.
-    * CR, LF, NUL, other C0 controls, DEL, and code points above U+00FF are rejected.
-    * On wire encode, each accepted scalar maps to the octet of the same numeric value.
-    * On wire decode, each accepted octet maps back to that scalar.
-    *
-    * This preserves RFC 9110 obs-text as opaque data instead of corrupting it through UTF-8
-    * reinterpretation. Field-specific specifications such as Structured Fields may decode
-    * their own Unicode representation on top of this opaque field layer.
-    *
-    * Representation rationale
-    * HeaderValue remains a nominal string for ergonomic field handling, but its allowed
-    * scalar domain is deliberately byte-preserving. This is preferable to an ordinary
-    * Unicode string contract that could not round-trip all legal HTTP field octets.
-    */
+    /*
+     * Sec's HeaderValue uses a reversible one-codepoint-per-octet representation for HTTP
+     * field octets. Accepted scalar values are HTAB, SP, U+0021..U+007E, and U+0080..U+00FF.
+     * CR, LF, NUL, other C0 controls, DEL, and code points above U+00FF are rejected.
+     * On wire encode, each accepted scalar maps to the octet of the same numeric value.
+     * On wire decode, each accepted octet maps back to that scalar.
+     *
+     * This preserves RFC 9110 obs-text as opaque data instead of corrupting it through UTF-8
+     * reinterpretation. Field-specific specifications such as Structured Fields may decode
+     * their own Unicode representation on top of this opaque field layer.
+     *
+     * Representation rationale
+     * HeaderValue remains a nominal string for ergonomic field handling, but its allowed
+     * scalar domain is deliberately byte-preserving. This is preferable to an ordinary
+     * Unicode string contract that could not round-trip all legal HTTP field octets.
+     */
 
     // TODO: Validate http.HeaderValue.Parse()
     /**
-    * Parse validates an HTTP field value.
-    *
-    * Empty field values are valid. Visible characters, internal SP and HTAB, and
-    * RFC 9110 obs-text bytes are accepted. CR, LF, NUL, DEL, and other control
-    * characters are rejected.
-    *
-    * Leading or trailing SP and HTAB are rejected because they are not part of
-    * the normalized HTTP field value. Transport parsers must remove permitted
-    * framing whitespace before constructing HeaderValue.
-    *
-    * The value is preserved exactly; Parse does not combine, trim, decode, or
-    * otherwise reinterpret field contents.
-    *
-    * Returns HeaderError.InvalidValue when value is not a valid HTTP field value.
-    */
+     * Parse validates an HTTP field value.
+     *
+     * Empty field values are valid. Visible characters, internal SP and HTAB, and
+     * RFC 9110 obs-text bytes are accepted. CR, LF, NUL, DEL, and other control
+     * characters are rejected.
+     *
+     * Leading or trailing SP and HTAB are rejected because they are not part of
+     * the normalized HTTP field value. Transport parsers must remove permitted
+     * framing whitespace before constructing HeaderValue.
+     *
+     * The value is preserved exactly; Parse does not combine, trim, decode, or
+     * otherwise reinterpret field contents.
+     *
+     * Returns HeaderError.InvalidValue when value is not a valid HTTP field value.
+     */
     static fn Parse(value: string) Result[HeaderValue, HeaderError] {
         if value.IsEmpty {
             return Ok(HeaderValue(value))
@@ -228,19 +229,18 @@ type Header struct {
 }
 
 impl Header {
-
     /**
-    * Add appends one HTTP field occurrence.
-    *
-    * Existing occurrences with the same field name are preserved and the new
-    * occurrence is appended after them. Add never combines field values and
-    * never replaces an existing occurrence.
-    *
-    * Field-name matching elsewhere in Header is case-insensitive.
-    *
-    * If the internal collection cannot grow, Add returns
-    * HeaderError.AllocationFailed and the Header remains unchanged.
-    */
+     * Add appends one HTTP field occurrence.
+     *
+     * Existing occurrences with the same field name are preserved and the new
+     * occurrence is appended after them. Add never combines field values and
+     * never replaces an existing occurrence.
+     *
+     * Field-name matching elsewhere in Header is case-insensitive.
+     *
+     * If the internal collection cannot grow, Add returns
+     * HeaderError.AllocationFailed and the Header remains unchanged.
+     */
     fn Add(name: HeaderName, value: HeaderValue) Result[void, HeaderError] {
         try self._fields.Append(_HeaderField {
             Name: name.ToString(),
@@ -250,14 +250,15 @@ impl Header {
             Err(error) => return Err(HeaderError.AllocationFailed)
         }
         return Ok()
-
     }
 
-    /** Add appends Value to the values associated with Name.
-    *
-    * Name matching is case-insensitive. The new value remains after all
-    * previously added values for the same field. HeaderError reports that
-    * the internal collection could not grow; the Header remains unchanged. */
+    /**
+     * Add appends Value to the values associated with Name.
+     *
+     * Name matching is case-insensitive. The new value remains after all
+     * previously added values for the same field. HeaderError reports that
+     * the internal collection could not grow; the Header remains unchanged.
+     */
     fn Add(name: string, value: string) Result[void, HeaderError] {
         let headerName := try HeaderName.Parse(name)
         let headerValue := try HeaderValue.Parse(value)
@@ -273,18 +274,18 @@ impl Header {
     }
 
     /**
-    * Set replaces all HTTP field occurrences with the given name.
-    *
-    * Field-name matching is case-insensitive. If one or more matching
-    * occurrences exist, they are removed and exactly one new occurrence is
-    * inserted at the position of the first removed occurrence. If the field is
-    * not present, the new occurrence is appended.
-    *
-    * Set never combines field values.
-    *
-    * The replacement is transactional. If the internal collection cannot grow,
-    * Set returns HeaderError.AllocationFailed and the Header remains unchanged.
-    */
+     * Set replaces all HTTP field occurrences with the given name.
+     *
+     * Field-name matching is case-insensitive. If one or more matching
+     * occurrences exist, they are removed and exactly one new occurrence is
+     * inserted at the position of the first removed occurrence. If the field is
+     * not present, the new occurrence is appended.
+     *
+     * Set never combines field values.
+     *
+     * The replacement is transactional. If the internal collection cannot grow,
+     * Set returns HeaderError.AllocationFailed and the Header remains unchanged.
+     */
     fn Set(hName: HeaderName, hValue: HeaderValue) Result[void, HeaderError] {
         let newField := _HeaderField {
             Name: hName,
@@ -320,10 +321,12 @@ impl Header {
         return Ok()
     }
 
-    /** Set replaces every value associated with Name with exactly Value.
-    *
-    * Name matching is case-insensitive. The replacement is prepared before it
-    * is committed, so CollectionError leaves the Header unchanged. */
+    /**
+     * Set replaces every value associated with Name with exactly Value.
+     *
+     * Name matching is case-insensitive. The replacement is prepared before it
+     * is committed, so CollectionError leaves the Header unchanged.
+     */
     fn Set(name: string, value: string) Result[void, HeaderError] {
         let headerName := try HeaderName.Parse(name)
         let headerValue := try HeaderValue.Parse(value)
@@ -331,13 +334,13 @@ impl Header {
     }
 
     /**
-    * Get returns the first value associated with name.
-    *
-    * Field-name matching is case-insensitive. Values are examined in field
-    * occurrence order and the first matching value is returned.
-    *
-    * None is returned when no occurrence with the given name exists.
-    */
+     * Get returns the first value associated with name.
+     *
+     * Field-name matching is case-insensitive. Values are examined in field
+     * occurrence order and the first matching value is returned.
+     *
+     * None is returned when no occurrence with the given name exists.
+     */
     fn Get(name: HeaderName) Option[HeaderValue] {
         for field in self._fields {
             if field.Name == name {
@@ -349,15 +352,15 @@ impl Header {
     }
 
     /**
-    * Get returns the first value associated with a string field name.
-    *
-    * The field name is validated and normalized before lookup. Field-name
-    * matching is case-insensitive.
-    *
-    * Ok(Some(value)) is returned for the first matching occurrence.
-    * Ok(None) is returned when the field is not present. Invalid field names are
-    * reported as HeaderError.
-    */
+     * Get returns the first value associated with a string field name.
+     *
+     * The field name is validated and normalized before lookup. Field-name
+     * matching is case-insensitive.
+     *
+     * Ok(Some(value)) is returned for the first matching occurrence.
+     * Ok(None) is returned when the field is not present. Invalid field names are
+     * reported as HeaderError.
+     */
     fn Get(name: string) Result[Option[HeaderValue], HeaderError] {
         let headerName := try HeaderName.Parse(name)
 
@@ -369,11 +372,13 @@ impl Header {
         return Err(HeaderError.TooManyFields)
     }
 
-    /** GetAll returns a new array containing every value associated with Name.
-    *
-    * Values retain their insertion order. A missing field produces an empty
-    * array. CollectionError reports failure while creating the returned copy;
-    * the Header itself is never modified. */
+    /**
+     * GetAll returns a new array containing every value associated with Name.
+     *
+     * Values retain their insertion order. A missing field produces an empty
+     * array. CollectionError reports failure while creating the returned copy;
+     * the Header itself is never modified.
+     */
     fn GetAllToArray(Name: string) Result[string[], HeaderError] {
         let normalized := Header.NormalizeName(Name)
         let mut result: string[]
@@ -394,9 +399,11 @@ impl Header {
         return self.Contains(name.ToString())
     }
 
-    /** Contains reports whether at least one value is associated with Name.
-    *
-    * Name matching is case-insensitive. */
+    /**
+     * Contains reports whether at least one value is associated with Name.
+     *
+     * Name matching is case-insensitive.
+     */
     fn Contains(Name: string) bool {
         let normalized := Header.NormalizeName(Name)
 
@@ -416,11 +423,13 @@ impl Header {
         return true
     }
 
-    /** Remove removes every value associated with Name.
-    *
-    * Removing a missing field succeeds without changing the Header. The
-    * replacement collection is prepared before commit, so CollectionError
-    * leaves the Header unchanged. */
+    /**
+     * Remove removes every value associated with Name.
+     *
+     * Removing a missing field succeeds without changing the Header. The
+     * replacement collection is prepared before commit, so CollectionError
+     * leaves the Header unchanged.
+     */
     fn Remove(Name: string) Result[void, CollectionError] {
         let normalized := Header.NormalizeName(Name)
         let mut replacement := list[_HeaderField] {}
@@ -439,12 +448,18 @@ impl Header {
         self._fields.Clear()
     }
 
-    /** NormalizeName returns the canonical case-insensitive lookup key.
-    *
-    * The original field-name spelling is not retained by Header. */
+    /**
+     * NormalizeName returns the canonical case-insensitive lookup key.
+     *
+     * The original field-name spelling is not retained by Header.
+     */
     static fn NormalizeName(Name: string) string {
         return Name.ToLower()
     }
 
-    property Count: uint { get { return self._fields.Len } }
+    property Count: uint {
+        get {
+            return self._fields.Len
+        }
+    }
 }

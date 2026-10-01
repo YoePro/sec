@@ -85,13 +85,19 @@ impl BasicAuthentication {
     }
 
     // TODO: Implement http.BasicAuthentification.ToAuth()
-    fn ToAuth() Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+    fn ToAuth() Result[Auth, AuthError] {
+        return Err(AuthError.AllocationFailed)
+    }
     // TODO: Implement http.BasicAuthentification.Parse()
-    static fn Parse(auth: ref Auth) Result[BasicAuthentication, AuthError] { return Err(AuthError.AllocationFailed) }
+    static fn Parse(auth: ref Auth) Result[BasicAuthentication, AuthError] {
+        return Err(AuthError.AllocationFailed)
+    }
 }
 
 // TODO: Implement http.BasicAuthorization
-fn BasicAuthorization(username: string, password: string) Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+fn BasicAuthorization(username: string, password: string) Result[Auth, AuthError] {
+    return Err(AuthError.AllocationFailed)
+}
 
 type Auth struct {
     Scheme: AuthScheme,
@@ -110,11 +116,17 @@ impl Auth {
     }
 
     // TODO: Implement http.Auth.Parse
-    static fn Parse(value: HeaderValue) Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+    static fn Parse(value: HeaderValue) Result[Auth, AuthError] {
+        return Err(AuthError.AllocationFailed)
+    }
     // TODO: Implement http.Auth.Validate()
-    fn Validate() Result[void, AuthError] { return Err(AuthError.AllocationFailed) }
+    fn Validate() Result[void, AuthError] {
+        return Err(AuthError.AllocationFailed)
+    }
     // TODO: Implement http.Auth.ToHeaderValue()
-    fn ToHeaderValue() Result[HeaderValue, AuthError] { return Err(AuthError.AllocationFailed) }
+    fn ToHeaderValue() Result[HeaderValue, AuthError] {
+        return Err(AuthError.AllocationFailed)
+    }
     // TODO: Implement http.Auth.HasData
     property HasData: bool {
         get {
@@ -124,9 +136,15 @@ impl Auth {
 }
 
 // TODO: Implement http.ParseAuthChallenges
-fn ParseAuthChallenges(value: HeaderValue) Result[Auth[], AuthError] { return Err(AuthError.AllocationFailed) }
+fn ParseAuthChallenges(value: HeaderValue) Result[Auth[], AuthError] {
+    return Err(AuthError.AllocationFailed)
+}
 
 // TODO: Implement http.BearerAuthorization
-fn BearerAuthorization(token: string) Result[Auth, AuthError] { return Err(AuthError.AllocationFailed) }
+fn BearerAuthorization(token: string) Result[Auth, AuthError] {
+    return Err(AuthError.AllocationFailed)
+}
 // TODO: Implement http.ParseBearerAuthorization
-fn ParseBearerAuthorization(auth: ref Auth) Result[string, AuthError] { return Err(AuthError.AllocationFailed) }
+fn ParseBearerAuthorization(auth: ref Auth) Result[string, AuthError] {
+    return Err(AuthError.AllocationFailed)
+}

@@ -1,24 +1,24 @@
 module http
 
 /*
-* Sec Standard Library - net/http - Cookie and Set-Cookie parsing
-*
-* File:        stdlib/net/http/cookie_parse.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Cookie and Set-Cookie parsing.
-*
-* Standards:
-*   - RFC 10025
-*     https://www.rfc-editor.org/info/rfc10025
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - Cookie and Set-Cookie parsing
+ *
+ * File:        stdlib/net/http/cookie_parse.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Cookie and Set-Cookie parsing.
+ *
+ * Standards:
+ * - RFC 10025
+ *     https://www.rfc-editor.org/info/rfc10025
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 // Cookie parsing.
 //
@@ -31,11 +31,11 @@ module http
 // parsing may require compatibility behavior.
 //
 // Primary specification:
-//     RFC 10025 — HTTP State Management Mechanism
+// RFC 10025 — HTTP State Management Mechanism
 //
 // Sec rulebook:
-//     TODO: create the canonical net/http cookie parsing rulebook before this
-//     API is declared stable.
+// TODO: create the canonical net/http cookie parsing rulebook before this
+// API is declared stable.
 
 // Lazily parses cookie-pairs from one Cookie header value.
 //
@@ -44,7 +44,7 @@ module http
 // Result[Option[Cookie], CookieParseError] may affect the future iterator
 // protocol. Dogfooding should decide this before the API is frozen.
 type CookieHeaderIterator struct {
-    source: string,
+    source:   string,
     position: uint,
     finished: bool,
 }
@@ -62,18 +62,18 @@ impl CookieHeaderIterator {
 
 impl extends Cookie {
     /**
-    * Creates a lazy parser for one HTTP Cookie header value.
-    *
-    * Parsing does not materialize a Cookie[] merely to iterate over the
-    * cookie-pairs. Request-level HTTP code is responsible for handling all
-    * Cookie header fields present on the request.
-    *
-    * Specification:
-    *   - RFC 10025 — Cookie header field
-    *
-    * Sec:
-    *   - TODO: net/http cookie rulebook — Cookie request parsing
-    */
+     * Creates a lazy parser for one HTTP Cookie header value.
+     *
+     * Parsing does not materialize a Cookie[] merely to iterate over the
+     * cookie-pairs. Request-level HTTP code is responsible for handling all
+     * Cookie header fields present on the request.
+     *
+     * Specification:
+     * - RFC 10025 — Cookie header field
+     *
+     * Sec:
+     * - TODO: net/http cookie rulebook — Cookie request parsing
+     */
     static fn ParseHeader(value: string) CookieHeaderIterator {
         return CookieHeaderIterator {
             source: value,
@@ -85,17 +85,17 @@ impl extends Cookie {
 
 impl extends SetCookie {
     /**
-    * Parses one Set-Cookie response header value.
-    *
-    * Unknown extension attributes are preserved so a newer cookie extension
-    * is not silently destroyed by an older stdlib parser.
-    *
-    * Specification:
-    *   - RFC 10025 — Set-Cookie parsing and storage model
-    *
-    * Sec:
-    *   - TODO: net/http cookie rulebook — Set-Cookie parsing
-    */
+     * Parses one Set-Cookie response header value.
+     *
+     * Unknown extension attributes are preserved so a newer cookie extension
+     * is not silently destroyed by an older stdlib parser.
+     *
+     * Specification:
+     * - RFC 10025 — Set-Cookie parsing and storage model
+     *
+     * Sec:
+     * - TODO: net/http cookie rulebook — Set-Cookie parsing
+     */
     static fn Parse(value: string) Result[SetCookie, CookieParseError] {
         // TODO: Implement http.SetCookie.Parse
         return Err(CookieParseError.TooLarge)
@@ -103,10 +103,10 @@ impl extends SetCookie {
 }
 
 // Expected private helpers as the parser grows:
-//     parseCookiePair
-//     parseCookieDate
-//     parseMaxAge
-//     parseSameSite
-//     parseDomain
-//     parsePath
-//     parseExtensionAttribute
+// parseCookiePair
+// parseCookieDate
+// parseMaxAge
+// parseSameSite
+// parseDomain
+// parsePath
+// parseExtensionAttribute

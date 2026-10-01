@@ -50,5 +50,4 @@ impl Router {
     fn HandleAny(pattern: string, ->handler: Handler) Result[void, RouterError] {
         return Err(RouterError.InvalidPattern)
     }
-
 }

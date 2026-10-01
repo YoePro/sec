@@ -1,47 +1,47 @@
 module http
 /*
-* Sec Standard Library - HTTP Status Codes
-*
-* File:        stdlib/net/http/status.sec
-* Module:      http
-* Revision:    1
-* Created:     2026-08-30
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Defines the HTTP Status type and the well-known HTTP status values used
-*   by the Sec standard library.
-*
-*   Status is an open numeric domain represented by:
-*
-*       type Status int range 100..999
-*
-*   Standard and commonly recognized status codes are exposed as
-*   type-associated static values, for example:
-*
-*       http.Status.Ok
-*       http.Status.NotFound
-*       http.Status.InternalServerError
-*
-*   Values not explicitly named by this file may still be represented as
-*   Status values when they fall within the permitted numeric range.
-*
-*   ToString() provides the conventional textual description for known
-*   status codes.
-*
-* References:
-*   - RFC 9110 - HTTP Semantics
-*     https://www.rfc-editor.org/rfc/rfc9110
-*
-*   - IANA HTTP Status Code Registry
-*     https://www.iana.org/assignments/http-status-codes/
-*
-* Notes:
-*   HTTP status 418 is intentionally exposed as Status.Teapot for practical
-*   compatibility and development use, despite its current reserved/unused
-*   status in the IANA registry.
-*/
+ * Sec Standard Library - HTTP Status Codes
+ *
+ * File:        stdlib/net/http/status.sec
+ * Module:      http
+ * Revision:    1
+ * Created:     2026-08-30
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Defines the HTTP Status type and the well-known HTTP status values used
+ * by the Sec standard library.
+ *
+ * Status is an open numeric domain represented by:
+ *
+ *       type Status int range 100..999
+ *
+ * Standard and commonly recognized status codes are exposed as
+ * type-associated static values, for example:
+ *
+ *       http.Status.Ok
+ *       http.Status.NotFound
+ *       http.Status.InternalServerError
+ *
+ * Values not explicitly named by this file may still be represented as
+ * Status values when they fall within the permitted numeric range.
+ *
+ * ToString() provides the conventional textual description for known
+ * status codes.
+ *
+ * References:
+ * - RFC 9110 - HTTP Semantics
+ *     https://www.rfc-editor.org/rfc/rfc9110
+ *
+ * - IANA HTTP Status Code Registry
+ *     https://www.iana.org/assignments/http-status-codes/
+ *
+ * Notes:
+ * HTTP status 418 is intentionally exposed as Status.Teapot for practical
+ * compatibility and development use, despite its current reserved/unused
+ * status in the IANA registry.
+ */
 
 enum StatusClass {
     Informational,
@@ -56,7 +56,6 @@ enum StatusClass {
 type Status int range 100..999 default 500
 
 impl Status {
-
     // Informational
     static let Continue: Status := 100
     static let SwitchingProtocols: Status := 101
@@ -140,10 +139,10 @@ impl Status {
     // None Standard but common
     // Microsoft IIS
     // type IIS struct {
-    //     static let LoginTimeOut: Status := 440
-    //     static let RetryWith: Status := 449
-    //     static let BlockedByWindowsParentalControls: Status := 450
-    //     static let Redirect: Status := 451
+    // static let LoginTimeOut: Status := 440
+    // static let RetryWith: Status := 449
+    // static let BlockedByWindowsParentalControls: Status := 450
+    // static let Redirect: Status := 451
     // }
 
     // TODO: Validate http.Status.ReasonPhrase
@@ -383,5 +382,4 @@ impl Status {
                 return self.ToString()
         }
     }
-
 }

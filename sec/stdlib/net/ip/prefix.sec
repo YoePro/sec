@@ -47,7 +47,6 @@ impl Ipv4Network {
     fn ToString() string {
         return "" + self.Address.ToString() + "/" + self.PrefixLength.ToString()
     }
-
 }
 
 impl Ipv6Network {

@@ -114,5 +114,4 @@ impl duration {
      *         return duration { _nanoseconds: start.Nanoseconds - end.Nanoseconds }
      *     }
      */
-
 }

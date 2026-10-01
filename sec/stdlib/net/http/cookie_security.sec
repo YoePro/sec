@@ -10,15 +10,15 @@ module http
 // or final CookieJar integration.
 //
 // Design goals:
-//     authenticated signed cookies
-//     authenticated encrypted/private cookies
-//     key rotation
-//     explicit failure through Result
-//     no home-grown cryptographic primitives
+// authenticated signed cookies
+// authenticated encrypted/private cookies
+// key rotation
+// explicit failure through Result
+// no home-grown cryptographic primitives
 //
 // Sec rulebook:
-//     TODO: create the canonical net/http cookie-security rulebook before this
-//     API is declared stable.
+// TODO: create the canonical net/http cookie-security rulebook before this
+// API is declared stable.
 
 enum CookieSecurityError error {
     NotImplemented,
@@ -57,8 +57,8 @@ impl SignedCookieCodec {
      * payload in the cookie value is transformed.
      *
      * Sec:
-     *   - TODO: net/http cookie-security rulebook — Signed cookies
-     *   - TODO: canonical crypto rulebook — message authentication
+     * - TODO: net/http cookie-security rulebook — Signed cookies
+     * - TODO: canonical crypto rulebook — message authentication
      */
     fn Encode(cookie: SetCookie, key: ref CookieKey) Result[SetCookie, CookieSecurityError] {
         return Err(CookieSecurityError.NotImplemented)
@@ -71,8 +71,8 @@ impl SignedCookieCodec {
      * as a successful Cookie value.
      *
      * Sec:
-     *   - TODO: net/http cookie-security rulebook — Signed cookies
-     *   - TODO: canonical crypto rulebook — message authentication
+     * - TODO: net/http cookie-security rulebook — Signed cookies
+     * - TODO: canonical crypto rulebook — message authentication
      */
     fn Decode(cookie: Cookie, key: ref CookieKey) Result[Cookie, CookieSecurityError] {
         return Err(CookieSecurityError.NotImplemented)
@@ -87,8 +87,8 @@ impl PrivateCookieCodec {
      * that must remain visible to the user agent.
      *
      * Sec:
-     *   - TODO: net/http cookie-security rulebook — Private cookies
-     *   - TODO: canonical crypto rulebook — authenticated encryption
+     * - TODO: net/http cookie-security rulebook — Private cookies
+     * - TODO: canonical crypto rulebook — authenticated encryption
      */
     fn Encode(cookie: SetCookie, key: ref CookieKey) Result[SetCookie, CookieSecurityError] {
         return Err(CookieSecurityError.NotImplemented)
@@ -101,8 +101,8 @@ impl PrivateCookieCodec {
      * is exposed to the caller.
      *
      * Sec:
-     *   - TODO: net/http cookie-security rulebook — Private cookies
-     *   - TODO: canonical crypto rulebook — authenticated encryption
+     * - TODO: net/http cookie-security rulebook — Private cookies
+     * - TODO: canonical crypto rulebook — authenticated encryption
      */
     fn Decode(cookie: Cookie, key: ref CookieKey) Result[Cookie, CookieSecurityError] {
         return Err(CookieSecurityError.NotImplemented)

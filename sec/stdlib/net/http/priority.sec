@@ -1,31 +1,31 @@
 module http
 
 /*
-* Sec Standard Library - net/http - Extensible HTTP priority values
-*
-* File:        stdlib/net/http/priority.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   Extensible HTTP priority values.
-*
-* Standards:
-*   - RFC 9218
-*     https://www.rfc-editor.org/rfc/rfc9218
-*   - RFC 9651
-*     https://www.rfc-editor.org/rfc/rfc9651
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - Extensible HTTP priority values
+ *
+ * File:        stdlib/net/http/priority.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * Extensible HTTP priority values.
+ *
+ * Standards:
+ * - RFC 9218
+ *     https://www.rfc-editor.org/rfc/rfc9218
+ * - RFC 9651
+ *     https://www.rfc-editor.org/rfc/rfc9651
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 type PriorityUrgency uint8 range 0..7 default 3
 
 type Priority struct {
-    Urgency: Option[PriorityUrgency],
+    Urgency:     Option[PriorityUrgency],
     Incremental: Option[bool],
 }
 
@@ -41,26 +41,26 @@ impl Priority {
     }
 
     /**
-    * Parse parses an HTTP Priority field value.
-    *
-    * The field value is parsed as an RFC 9651 Structured Fields Dictionary.
-    * The registered `u` member is accepted only when it is an integer in the
-    * inclusive range 0..7. The registered `i` member is accepted only when it is
-    * a Boolean.
-    *
-    * Unknown members, members with unexpected types, and out-of-range urgency
-    * values are ignored as required by RFC 9218.
-    *
-    * Absence of `u` or `i` is preserved. Request defaults and response update
-    * semantics are applied by the caller, not by Parse.
-    *
-    * Returns StructuredFieldError only when the Structured Fields Dictionary
-    * itself cannot be parsed.
-    *
-    * References:
-    * - RFC 9218, Section 4
-    * - RFC 9651, Structured Fields Dictionary
-    */
+     * Parse parses an HTTP Priority field value.
+     *
+     * The field value is parsed as an RFC 9651 Structured Fields Dictionary.
+     * The registered `u` member is accepted only when it is an integer in the
+     * inclusive range 0..7. The registered `i` member is accepted only when it is
+     * a Boolean.
+     *
+     * Unknown members, members with unexpected types, and out-of-range urgency
+     * values are ignored as required by RFC 9218.
+     *
+     * Absence of `u` or `i` is preserved. Request defaults and response update
+     * semantics are applied by the caller, not by Parse.
+     *
+     * Returns StructuredFieldError only when the Structured Fields Dictionary
+     * itself cannot be parsed.
+     *
+     * References:
+     * - RFC 9218, Section 4
+     * - RFC 9651, Structured Fields Dictionary
+     */
     static fn Parse(value: HeaderValue) Result[Priority, StructuredFieldError] {
         let dictionary := try _StructuredFieldDictionary.Parse(value)
         let mut priority := new Priority()
@@ -72,7 +72,8 @@ impl Priority {
                 }
             }
 
-            None => {}
+            None => {
+            }
         }
 
         match dictionary.Boolean("i") {
@@ -80,7 +81,8 @@ impl Priority {
                 priority.Incremental = Some(incremental)
             }
 
-            None => {}
+            None => {
+            }
         }
 
         return Ok(priority)
@@ -98,7 +100,8 @@ impl Priority {
                     }
                 }
 
-                None => {}
+                None => {
+                }
             }
 
             match self.Incremental {

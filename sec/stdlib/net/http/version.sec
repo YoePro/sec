@@ -1,28 +1,28 @@
 module http
 
 /*
-* Sec Standard Library - net/http - HTTP protocol-version identity and enabled protocol sets
-*
-* File:        stdlib/net/http/version.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   HTTP protocol-version identity and enabled protocol sets.
-*
-* Standards:
-*   - RFC 9110
-*     https://www.rfc-editor.org/rfc/rfc9110
-*   - RFC 9113
-*     https://www.rfc-editor.org/rfc/rfc9113
-*   - RFC 9114
-*     https://www.rfc-editor.org/rfc/rfc9114
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - HTTP protocol-version identity and enabled protocol sets
+ *
+ * File:        stdlib/net/http/version.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * HTTP protocol-version identity and enabled protocol sets.
+ *
+ * Standards:
+ * - RFC 9110
+ *     https://www.rfc-editor.org/rfc/rfc9110
+ * - RFC 9113
+ *     https://www.rfc-editor.org/rfc/rfc9113
+ * - RFC 9114
+ *     https://www.rfc-editor.org/rfc/rfc9114
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 type VersionNumber struct {
     Major: uint8,
@@ -64,12 +64,11 @@ impl Version {
 
 type Protocols struct {
     Http11: bool,
-    Http2: bool,
-    Http3: bool,
+    Http2:  bool,
+    Http3:  bool,
 }
 
 impl Protocols {
-
     init() {
         self.Http11 = true
         self.Http2 = true

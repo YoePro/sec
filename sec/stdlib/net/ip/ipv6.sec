@@ -579,5 +579,4 @@ impl Ipv6Address {
 
         return Ok(value)
     }
-
 }

@@ -187,7 +187,7 @@ enum IpProtocol bit[8] {
 
 enum IpEcn bit[2] {
     NotEct = 0b00,
-    Ect1 = 0b01,
-    Ect0 = 0b10,
-    Ce = 0b11,
+    Ect1   = 0b01,
+    Ect0   = 0b10,
+    Ce     = 0b11,
 }

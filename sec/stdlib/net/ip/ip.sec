@@ -106,7 +106,6 @@ fn ParseIpPacket(buffer: ref byte[]) Result[IpPacket, NetError] {
         // Register byte decoding is not available without a lowering-backed,
         // endian-aware primitive. Do not invent a runtime-only binary API.
         return Err(NetError.InvalidPacketStructure)
-
     } else if version == 6 {
         let headerBytes: int := 40 // IPv6 header is always 40 bytes
 
@@ -159,7 +158,9 @@ fn TerminateConnection(->stream: TcpStream) void {
 fn NetworkTask() void {
     // TcpStream is @noCopy, so this client cannot be accidentally copied.
     let mut client: TcpStream := try new TcpStream(0x7F000001, 80) {
-        Err(_) => { return }
+        Err(_) => {
+            return
+        }
     }
 
     // Explicitly pass ownership of the client to the terminating function

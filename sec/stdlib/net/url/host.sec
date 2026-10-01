@@ -42,7 +42,7 @@ enum HostKind {
 
 type Host struct {
     _value: string,
-    _kind: HostKind,
+    _kind:  HostKind,
 }
 
 impl Host {

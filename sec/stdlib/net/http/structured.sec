@@ -1,24 +1,24 @@
 module http
 
 /*
-* Sec Standard Library - net/http - HTTP Structured Fields parsing and serialization
-*
-* File:        stdlib/net/http/structured.sec
-* Module:      http
-* Revision:    2
-* Updated:     2026-09-08
-* Author:      Jonas Engström
-*
-* Purpose:
-*   HTTP Structured Fields parsing and serialization.
-*
-* Standards:
-*   - RFC 9651
-*     https://www.rfc-editor.org/rfc/rfc9651
-*
-* Rulebook:
-*   stdlib/net/http/std-net-http.md
-*/
+ * Sec Standard Library - net/http - HTTP Structured Fields parsing and serialization
+ *
+ * File:        stdlib/net/http/structured.sec
+ * Module:      http
+ * Revision:    2
+ * Updated:     2026-09-08
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ * HTTP Structured Fields parsing and serialization.
+ *
+ * Standards:
+ * - RFC 9651
+ *     https://www.rfc-editor.org/rfc/rfc9651
+ *
+ * Rulebook:
+ * stdlib/net/http/std-net-http.md
+ */
 
 type StructuredBareItem union {
     Integer(int64),
@@ -32,7 +32,7 @@ type StructuredBareItem union {
 }
 
 type StructuredParameter struct {
-    Key: string,
+    Key:   string,
     Value: StructuredBareItem,
 }
 
@@ -56,7 +56,7 @@ type StructuredList struct {
 }
 
 type StructuredDictionaryMember struct {
-    Key: string,
+    Key:   string,
     Value: StructuredMember,
 }
 
@@ -65,16 +65,16 @@ type StructuredDictionary struct {
 }
 
 /*
-* Parsing is strict RFC 9651 parsing. Duplicate dictionary keys and duplicate parameter keys are errors rather than
-* silently overwritten. Serialization emits the canonical RFC 9651 representation and preserves list/dictionary member order.
-*
-* Representation rationale
-* StructuredBareItem and StructuredMember are unions because exactly one wire value shape is present.
-* Parameters, items, inner lists, lists, and dictionaries are structs
-* because each value consists of several simultaneously meaningful components.
-* The byte-sequence variant owns its byte array; move/copy behavior of containing values follows
-* Sec aggregate ownership rules.
-*/
+ * Parsing is strict RFC 9651 parsing. Duplicate dictionary keys and duplicate parameter keys are errors rather than
+ * silently overwritten. Serialization emits the canonical RFC 9651 representation and preserves list/dictionary member order.
+ *
+ * Representation rationale
+ * StructuredBareItem and StructuredMember are unions because exactly one wire value shape is present.
+ * Parameters, items, inner lists, lists, and dictionaries are structs
+ * because each value consists of several simultaneously meaningful components.
+ * The byte-sequence variant owns its byte array; move/copy behavior of containing values follows
+ * Sec aggregate ownership rules.
+ */
 
 // TODO: Implement http.ParseStructuredItem()
 fn ParseStructuredItem(value: HeaderValue) Result[StructuredItem, StructuredFieldError] {

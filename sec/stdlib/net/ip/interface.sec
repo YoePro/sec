@@ -73,7 +73,6 @@ type InterfaceIterator struct {
 }
 
 impl InterfaceIterator {
-
     /**
      * Returns the next network interface.
      *

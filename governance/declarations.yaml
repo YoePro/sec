@@ -1392,6 +1392,7 @@ integrations:
       derived value classifications, spread construction, and backend coverage.
     rules:
       - rules/declarations/struct.md
+      - rules/types/types.md
       - rules/types/default_values.md
       - rules/declarations/spread.md
       - rules/memory/copy_move.md
@@ -1404,6 +1405,8 @@ integrations:
       - internal/sema/types.go
       - internal/sema/defaults.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_struct_layout.go
+      - internal/sema/analyzer_struct_resolution.go
       - internal/sema/place.go
       - internal/codegen/mlir/generator.go
     tests:
@@ -1411,6 +1414,8 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/defaults_test.go
       - internal/sema/copy_move_test.go
+      - internal/sema/struct_layout_cycle_test.go
+      - internal/sema/struct_forward_resolution_test.go
       - internal/codegen/mlir/generator_test.go
     implemented:
       - named struct declarations through type Name struct syntax
@@ -1434,9 +1439,10 @@ integrations:
       - synthetic struct-like union payload identity and guarded P12 whole-payload binding for the copy-trivial subset
       - recursive target-sized scalar resolution inside preserved struct wrappers while trivial-core storage remains high-level
       - module-level non-generic struct declarations are validated through a source-independent by-value dependency graph; direct, forward mutual, and fixed-array-mediated recursive layouts emit mandatory S1055 with the concrete field cycle, while reference and owning dynamic-storage boundaries remain valid
+      - acyclic module-level non-generic struct declarations are resolved in semantic dependency order rather than source order, including multi-hop forward field graphs whose complete nested shapes are consumed by member analysis
+      - dependency ordering and S1055 recursive-layout paths traverse non-generic named by-value wrappers around structs, preserving wrapper nominal identity while exposing the complete underlying field shape and rejecting wrapper-mediated infinite-size cycles
     remaining:
-      - resolve forward and mutually recursive non-generic struct field graphs completely before field-dependent analysis
-      - extend the implemented recursive-layout graph through associated struct declarations, by-value named wrappers, and mixed struct/union containment so every remaining indirect cycle is diagnosed before field-dependent analysis
+      - extend dependency-ordered struct resolution and recursive-layout validation through associated declarations, mixed struct/union containment, and finite nominal reference cycles before every field-dependent analysis
       - lower generic structs across all supported operations
       - extend the implemented schema-9 copy-trivial struct path with later-package move, semantic-copy, borrow, cleanup, and ownership-sensitive spread cases
       - support reference and slice fields consistently across every backend path
@@ -1452,6 +1458,10 @@ integrations:
         result: passed
       - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
         result: passed on 2026-09-30 with direct, forward mutual, and fixed-array cycles plus reference and dynamic-storage counterexamples
+      - command: go test ./internal/sema -run 'Test(ForwardStructFieldsResolveInDependencyOrder|ForwardStructResolutionPreservesCycleDiagnostic|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
+        result: passed on 2026-10-01 with reverse-source-order multi-hop member resolution, retained S1055 cycle rejection, and valid indirection boundaries
+      - command: go test ./internal/sema -run 'Test(ForwardNamedStructWrapperResolvesBeforeContainingStruct|ForwardStructFieldsResolveInDependencyOrder|ForwardStructResolutionPreservesCycleDiagnostic|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
+        result: passed on 2026-10-01 with nominal wrapper preservation, complete wrapped member shape, wrapper-mediated S1055 cycle paths, and existing recursion boundaries
       - command: go test ./internal/ir/semantic -run Package13 -count=1
         result: passed
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/lowering/secmlir -run 'Package13|ConfiguredSecMLIRBin' -count=1

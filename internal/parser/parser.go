@@ -5415,6 +5415,8 @@ func (p *Parser) parsePostfixTypeReference(ref *ast.TypeReference) *ast.TypeRefe
 					return p.markInvalidTypeReference(applyTypeSequenceSuffixes(ref, suffixes))
 				}
 			}
+			ref.TypeArgumentOpen = token
+			ref.TypeArgumentClose = p.curToken
 		}
 	}
 
@@ -5500,7 +5502,8 @@ func (p *Parser) parseCollectionShapedTypeReferenceArgs(ref *ast.TypeReference, 
 	if !p.expectPeek(lexer.RBRACKET) {
 		return p.markInvalidTypeReference(ref)
 	}
-	_ = token
+	ref.TypeArgumentOpen = token
+	ref.TypeArgumentClose = p.curToken
 	return ref
 }
 

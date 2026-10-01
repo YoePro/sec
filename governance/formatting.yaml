@@ -6,7 +6,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-16"
-    revised: "2026-09-30"
+    revised: "2026-10-01"
     summary: >-
       Introduces a lexer-backed, byte-lossless concrete-syntax foundation and
       lexical delimiter hierarchy. The formatter remains primarily a bespoke
@@ -29,8 +29,10 @@ integrations:
       - internal/formatter/block_comments.go
       - internal/formatter/line_comments.go
       - internal/formatter/struct_field_alignment.go
+      - internal/formatter/parameter_alignment.go
       - internal/formatter/enum_value_alignment.go
     tests:
+      - internal/parser/parser_test.go
       - internal/cst/document_test.go
       - internal/cst/groups_test.go
       - internal/cst/roles_test.go
@@ -67,6 +69,8 @@ integrations:
       - retain parser-owned range, slice-range, and contextual for-step tokens as CST roles and normalize only their horizontal trivia, keeping range operators compact and step surrounded by one space without rewriting ordinary step identifiers
       - project complete struct-field colon, type-start, and tag anchors into CST roles; align contiguous field type columns structurally, then align tags as a secondary column, splitting at comments, blank lines, multiline fields, and declaration boundaries while independently dropping a primary or secondary candidate that exceeds the default sixteen-space padding limit
       - retain the exact initializer token on complete enum members and project canonical equals assignments into CST roles; align contiguous explicit-value groups while comments, blank lines, implicit members, declaration boundaries, legacy colon spellings, and excessive padding split or disable alignment
+      - project declaration colons and first concrete type tokens for complete callable parameters, including variadic spread starts, into CST roles; align compatible contiguous multiline parameter groups while single-line lists, blank-line boundaries, recovered parameters, and excessive padding remain conservative
+      - retain complete generic type-argument brackets on parser-owned type references and project them into CST roles; add the grammar-permitted trailing comma only to genuinely multiline lists while leaving single-line generics, arrays, indexing, and recovered incomplete syntax untouched
     remaining:
       - add grammar-aware CST nodes and stable parser-owned source ranges above the new lexical delimiter hierarchy without duplicating AST semantics
       - attach parser missing-token and skipped-token recovery nodes to the concrete syntax model
@@ -78,6 +82,10 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/cst ./internal/formatter -run 'Enum|FormatAlignsExplicitEnumValueAssignments|ApplyProgramRolesMarksExplicitEnumAssignments' -count=1
         result: passed on 2026-09-30; parser-owned enum assignment tokens drive CST roles, canonical spacing, group alignment, group boundaries, padding fallback, and idempotence
+      - command: go test ./internal/cst ./internal/formatter -run 'Test(ApplyProgramRolesMarksCallableParameterAlignmentAnchors|FormatAlignsMultilineCallableParametersFromCST|FormatDropsCallableParameterAlignmentBeyondPaddingLimit|FormatCallableParameterBlankLinesSplitAlignmentGroups|FormatAddsTrailingCommaToMultilineCallableParameters)' -count=1
+        result: passed on 2026-10-01; parser-owned parameter anchors drive multiline type-column alignment, variadic starts, blank-line group boundaries, padding fallback, trailing commas, and idempotence
+      - command: go test ./internal/parser ./internal/cst ./internal/formatter -run 'Test(ParseRetainsCompleteGenericTypeArgumentDelimiters|ApplyProgramRolesMarksOnlyTypeArgumentListDelimiters|FormatAddsTrailingCommaToMultilineTypeArguments)' -count=1
+        result: passed on 2026-10-01; parser-owned generic brackets distinguish type arguments from arrays and indexing, drive multiline trailing commas, and preserve single-line and idempotent output
   - id: tooling.formatter-delimiter-handoff
     area: tooling
     status: implemented
@@ -246,7 +254,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-09-30"
+    revised: "2026-10-01"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
@@ -283,6 +291,7 @@ integrations:
       - internal/formatter/block_comments.go
       - internal/formatter/line_comments.go
       - internal/formatter/struct_field_alignment.go
+      - internal/formatter/parameter_alignment.go
       - internal/formatter/enum_value_alignment.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
@@ -458,6 +467,19 @@ integrations:
         padding, while comments, blank lines, implicit members, legacy colon
         spellings, declaration boundaries, and the maximum-padding limit
         prevent inappropriate alignment.
+      - >-
+        Complete callable parameters now project their declaration colon and
+        first concrete type token into CST roles. Compatible contiguous
+        multiline function, method, initializer, and lambda parameter groups
+        align their type column under §16(3), including variadic spread starts,
+        while blank lines and the maximum-padding limit produce deterministic
+        local fallback and single-line parameter lists remain compact.
+      - >-
+        Complete generic type references now retain their exact argument-list
+        brackets as parser-owned CST roles. Deliberately multiline lists gain
+        the required trailing comma under §15(7), while single-line generic
+        lists, sequence types, expression indexing, and recovered incomplete
+        syntax remain outside this rewrite.
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
@@ -801,3 +823,9 @@ integrations:
         result: passed on 2026-09-28 with parser-owned colon, type, and tag anchors, comment and blank-line group boundaries, canonical primary and secondary columns, independent padding-limit fallbacks, and idempotence
       - command: go test ./internal/parser ./internal/cst ./internal/formatter -count=1 && go test ./cmd/compiler -run 'Fmt|Format' -count=1 && go test ./cmd/lsp -run 'Format|Formatting' -count=1
         result: passed on 2026-09-30 with parser-owned enum assignment retention, CST role scoping, canonical explicit-value alignment, group and padding boundaries, idempotence, and shared CLI/LSP formatter behavior
+      - command: go test ./internal/cst ./internal/formatter -run 'Test(ApplyProgramRolesMarksCallableParameterAlignmentAnchors|FormatAlignsMultilineCallableParametersFromCST|FormatDropsCallableParameterAlignmentBeyondPaddingLimit|FormatCallableParameterBlankLinesSplitAlignmentGroups|FormatAddsTrailingCommaToMultilineCallableParameters)' -count=1
+        result: passed on 2026-10-01 with parser-owned ordinary and variadic type anchors, multiline alignment, blank-line boundaries, padding fallback, trailing commas, and idempotence
+      - command: go test ./cmd/compiler -run 'Fmt|Format' -count=1 && go test ./cmd/lsp -count=1
+        result: passed on 2026-10-01 for shared CLI formatting commands and the complete LSP suite; an unfiltered cmd/compiler package run remains blocked by thirteen unrelated StringError.InvalidUtf8 payload errors in sec/core/utf8.sec
+      - command: go test ./internal/... -count=1 && go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Format|Formatting' -count=1
+        result: passed on 2026-10-01 with parser-retained generic delimiters, CST separation from arrays and indexing, canonical multiline trailing commas, formatter idempotence, and shared CLI/LSP formatting behavior

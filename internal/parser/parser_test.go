@@ -5949,6 +5949,30 @@ fn Test() void {
 	}
 }
 
+// Complete generic type references retain their concrete brackets so
+// source-to-source tools do not have to infer them from array or index syntax.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §15(6–8) multiline generic lists
+func TestParseRetainsCompleteGenericTypeArgumentDelimiters(t *testing.T) {
+	input := "fn Use(value: Result[Value, Error], array: Value[4]) void {\n}\n"
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	function := program.Statements[0].(*ast.FunctionDeclaration)
+	generic := function.Parameters[0].Type
+	if generic.TypeArgumentOpen.Type != lexer.LBRACKET || generic.TypeArgumentOpen.Lexeme != "[" ||
+		generic.TypeArgumentClose.Type != lexer.RBRACKET || generic.TypeArgumentClose.Lexeme != "]" {
+		t.Fatalf("generic delimiters were not retained: open=%+v close=%+v", generic.TypeArgumentOpen, generic.TypeArgumentClose)
+	}
+	array := function.Parameters[1].Type
+	if array.TypeArgumentOpen != (lexer.Token{}) || array.TypeArgumentClose != (lexer.Token{}) {
+		t.Fatalf("array brackets were claimed as generic delimiters: open=%+v close=%+v", array.TypeArgumentOpen, array.TypeArgumentClose)
+	}
+}
+
 func TestSetIsContextualAcrossTypeAndIdentifierPositions(t *testing.T) {
 	input := `
 fn UseSet() void {

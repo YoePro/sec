@@ -263,6 +263,8 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 //   - rules/memory/borrowing.md — §5.3(1–3) source validity
 //   - rules/memory/borrowing.md — §6(1–7) availability versus authority
 //   - rules/memory/ownership.md — §5.2–5.6 availability states
+//   - rules/control-flow/discard.md — §§5, 19, 37
+//   - rules/tooling/diagnostics.md — §25
 func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) bool {
 	if assigned, tracked := a.assigned[place.Root]; tracked && !assigned {
 		a.addErrorAtToken(token, "cannot borrow uninitialized place %s", place.String())
@@ -287,7 +289,9 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
 	switch reason {
 	case "discarded":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was discarded here", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterDiscard,
+			"reinitialize a mutable Place before borrowing it, or keep the value until the borrow",
+			"cannot borrow unavailable place %s; it was discarded here", place.String())
 	case "detached":
 		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was detached here", place.String())
 	case "released":

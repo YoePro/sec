@@ -42,6 +42,60 @@ fn Check() void {
 	}
 }
 
+// Folded integer comparisons and boolean operators are compile-time boolean
+// conditions too. They must drive the same S3001 path proof as literal
+// conditions, while a runtime-dependent comparison remains conditional.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — §21 "Proven unreachable and dead code"
+//   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
+//   - rules/control-flow/flowcontrol_while.md — §19 "Constant conditions"
+func TestFoldedBooleanConditionsReportCanonicalUnreachableStatement(t *testing.T) {
+	errors := analyzeSource(t, `
+fn Check(flag: bool, value: int) void {
+	if 1 + 1 == 2 {
+	} else {
+		discard 1
+	}
+	if !(3 < 4) {
+		discard 2
+	}
+	if false && flag {
+		discard 3
+	}
+	if true || flag {
+	} else {
+		discard 6
+	}
+	if true == false {
+		discard 7
+	}
+	while 10 / 2 > 5 {
+		discard 4
+	}
+	let limit := 4
+	if limit <= 4 {
+	} else {
+		discard 5
+	}
+	if value > 0 {
+		discard value
+	}
+}
+`)
+
+	if len(errors) != 7 {
+		t.Fatalf("errors = %v, want seven folded-condition unreachable diagnostics", errors)
+	}
+	for _, diagnostic := range errors {
+		if diagnostic.ID != diagnostics.UnreachableStatement ||
+			diagnostic.Severity != diagnostics.SeverityError ||
+			!strings.Contains(diagnostic.Help, "constant condition") {
+			t.Fatalf("incomplete folded-condition S3001 diagnostic: %+v", diagnostic)
+		}
+	}
+}
+
 // A literal-false while body is a proven-unreachable block. Its first
 // statement uses S3001, while the explicitly permitted empty form remains
 // diagnostic-free.

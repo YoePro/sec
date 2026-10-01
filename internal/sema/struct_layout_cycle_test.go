@@ -45,6 +45,14 @@ type Right struct {
 }`,
 			wantPath: "Node.children -> Node",
 		},
+		{
+			name: "named wrapper mediated",
+			source: `type Node struct {
+    wrapped: Wrapper,
+}
+type Wrapper Node`,
+			wantPath: "Node.wrapped -> Wrapper -> Node",
+		},
 	}
 
 	for _, test := range tests {

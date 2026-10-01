@@ -220,6 +220,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-07"
+    revised: "2026-10-01"
     summary: >-
       Provides the compiler-owned semantic call-graph slice consumed by Sema
       analysis and standard LSP call hierarchy without constructing a second
@@ -229,10 +230,13 @@ integrations:
     code:
       - internal/sema/call_graph.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_control_flow.go
+      - internal/sema/analyzer_while_flow.go
       - cmd/lsp/main.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_closure_test.go
+      - internal/sema/analyzer_while_flow_test.go
       - internal/sema/allocation_test.go
       - cmd/lsp/main_test.go
     implemented:
@@ -244,6 +248,7 @@ integrations:
       - incoming and outgoing call-site queries with source locations
       - valid module-main program-entry root discovery
       - whole-graph root reachability with literal true and false branch pruning
+      - compiler-folded false while bodies remain statically checked but contribute no reachable call edges or panic effects
       - Tarjan same-stack strongly connected components and direct or mutual recursion classification
       - dedicated Tarjan task-spawn, thread-start, process-launch, and complete-execution SCC views over the canonical graph, including direct-self and mutual-cycle classification without conflating execution-boundary cycles with same-stack recursion
       - task-spawn and thread-start execution relations on the resolved outer spawn call
@@ -263,6 +268,8 @@ integrations:
     verification:
       - command: go test ./internal/sema -run 'TestLambdaCapturePreservesCallableDependencies|TestEscapeAnalysisRecordsCaptureWithoutLambdaReturnLeakage|TestCallGraph' -count=1
         result: passed; exact indirect targets, distinct lambda callers, capture-creation ownership, execution-specific SCC views, and existing call-graph behavior are covered
+      - command: go test ./internal/sema -run 'TestFoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects' -count=1
+        result: passed on 2026-10-01; folded-false loop bodies retain S3001 checking without adding dead call edges or MayPanic effects
       - command: go test ./...
         result: passed
       - command: go vet ./...
@@ -274,7 +281,7 @@ integrations:
       - generic-specialization, defer, destructor, and compiler-generated callable nodes plus CompilationPlan-qualified closure nodes
       - joined/open function-value and interface target sets with sound open callable contracts
       - target, initialization, test, benchmark, interrupt, foreign-export, generated, and open-world roots
-      - complete semantic path pruning beyond literal boolean branches
+      - complete semantic path pruning beyond literal branches and the current folded integer/boolean if/while subset
       - process, interrupt, callback, await, join, defer, and destruction execution relations
       - effect domains beyond the initial Arena allocation summary
       - path-aware ordered effect merging and general diagnostic cause paths

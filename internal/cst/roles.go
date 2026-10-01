@@ -34,6 +34,17 @@ const (
 	// CallableParameterListClose marks the matching real closing parenthesis of
 	// a complete parsed callable parameter list.
 	CallableParameterListClose Role = "callable-parameter-list-close"
+	// CallableParameterColon marks the declaration colon of a complete callable
+	// parameter, excluding the colon-free shorthand ref self form.
+	CallableParameterColon Role = "callable-parameter-colon"
+	// CallableParameterTypeStart marks the first concrete type token after the
+	// colon, including a variadic spread marker when present.
+	CallableParameterTypeStart Role = "callable-parameter-type-start"
+	// TypeArgumentListOpen marks the real opening bracket of a complete parsed
+	// generic type-argument list, excluding sequence types and indexing.
+	TypeArgumentListOpen Role = "type-argument-list-open"
+	// TypeArgumentListClose marks the matching real closing bracket.
+	TypeArgumentListClose Role = "type-argument-list-close"
 	// LambdaCaptureListOpen marks the real opening parenthesis of a parsed
 	// explicit lambda capture list.
 	LambdaCaptureListOpen Role = "lambda-capture-list-open"
@@ -227,9 +238,38 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 	markCallableParameters := func(open lexer.Token, parameters []*ast.Parameter) {
 		mark(open, CallableParameterListOpen)
 		for _, parameter := range parameters {
-			if parameter == nil || parameter.Type == nil || parameter.Type.Invalid {
+			if parameter == nil || parameter.Name == nil || parameter.Type == nil || parameter.Type.Invalid {
 				return
 			}
+		}
+		for _, parameter := range parameters {
+			nameIndex, nameOK := indexes[keyForToken(parameter.Name.Token)]
+			typeIndex, typeOK := indexes[keyForToken(parameter.Type.Token)]
+			if !nameOK || !typeOK || typeIndex <= nameIndex {
+				continue
+			}
+			colonIndex := -1
+			for index := nameIndex + 1; index < typeIndex; index++ {
+				if d.Elements[index].Kind == Token && d.Elements[index].Token.Type == lexer.COLON {
+					colonIndex = index
+					break
+				}
+			}
+			if colonIndex < 0 {
+				continue
+			}
+			typeStart := -1
+			for index := colonIndex + 1; index <= typeIndex; index++ {
+				if d.Elements[index].Kind == Token {
+					typeStart = index
+					break
+				}
+			}
+			if typeStart < 0 {
+				continue
+			}
+			d.Elements[colonIndex].Roles = appendUniqueRole(d.Elements[colonIndex].Roles, CallableParameterColon)
+			d.Elements[typeStart].Roles = appendUniqueRole(d.Elements[typeStart].Roles, CallableParameterTypeStart)
 		}
 		markGroupPair(open, CallableParameterListOpen, CallableParameterListClose)
 	}
@@ -263,6 +303,12 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 					continue
 				}
 				mark(operator, GenericConstraintConjunction)
+			}
+		case *ast.TypeReference:
+			if !node.Invalid && (len(node.TypeArgs) > 0 || len(node.ConstArgs) > 0) &&
+				node.TypeArgumentOpen.Type == lexer.LBRACKET && node.TypeArgumentClose.Type == lexer.RBRACKET {
+				mark(node.TypeArgumentOpen, TypeArgumentListOpen)
+				mark(node.TypeArgumentClose, TypeArgumentListClose)
 			}
 		case *ast.InfixExpression:
 			if node.Operator == "x" && node.Left != nil && node.Right != nil {

@@ -11,7 +11,8 @@ integrations:
     status: partial
     integrated: '2026-09-16'
     audited: '2026-09-22'
-    summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block and for the first statement in an if branch or while body excluded by a literal boolean condition, with a source range and actionable explanation shared by CLI and LSP.
+    revised: '2026-10-01'
+    summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block and for the first statement in an if branch or while body excluded by a literal or currently supported folded integer/boolean condition, with a source range and actionable explanation shared by CLI and LSP.
     rules:
       - rules/tooling/diagnostics.md
       - rules/control-flow/flowcontrol_if.md
@@ -34,10 +35,12 @@ integrations:
       - statements after terminating return, break, continue, and other established non-continuing paths retain the error and carry S3001, an exact source range, and actionable help
       - non-empty branches excluded by literal false and literal true conditions report S3001 on their first statement while empty excluded branches remain valid
       - non-empty while bodies excluded by literal false report S3001 on their first statement while the canonical empty form remains valid
+      - folded integer comparisons, boolean equality, negation, and short-circuit boolean operators prove excluded if and while paths through the same S3001 diagnostic and immutable ResolvedIfFlow facts
+      - statements following folded-true while loops without a reachable current-loop break receive S3001 from the shared non-continuation fact
       - CLI prints the stable code and help; LSP publishes the same Sema code and help
       - the canonical sec diagnostics S3001 detail command exposes S3001 identity, family, default severity, mandatory/configurable state, and active status from the central registry
     remaining:
-      - route other proven-unreachable statement paths, including non-literal compile-time condition proofs, through the same canonical S3001 diagnostic where their flow proof exists
+      - route additional proven-unreachable paths beyond the current integer/boolean constant-condition subset through the same canonical S3001 diagnostic where their flow proof exists
       - implement structured localization, richer extended rule explanations, and machine-readable emitted-diagnostic output
     corrections_applied:
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
@@ -50,6 +53,10 @@ integrations:
         result: passed on 2026-09-22 with literal-false, literal-true else, and empty-branch coverage
       - command: go test ./internal/sema -run 'TestConstantFalseWhileReportsCanonicalUnreachableStatement' -count=1
         result: passed on 2026-09-22
+      - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|ResolvedIfFlowRetainsPathExecutionAndTermination)' -count=1
+        result: passed on 2026-10-01 with integer arithmetic/comparison folding, boolean negation and short-circuit proof, known integer bindings, while-body diagnostics, runtime-condition conservatism, and resolved path facts
+      - command: go test ./internal/sema -run 'Test(ResolvedWhileFlowRetainsFoldedConditionAndExitFacts|FoldedTrueWhileControlsReturnAndReachability)' -count=1
+        result: passed on 2026-10-01 with folded loop-condition facts, post-loop S3001, missing-return separation for reachable breaks, and impossible-break exclusion
       - command: go test ./cmd/compiler -run DiagnosticCatalog -count=1
         result: passed on 2026-09-27 with registry-backed S3001 detail and unknown-ID rejection
       - command: go run ./cmd/compiler sema testdata/sema/assert_false_termination_invalid.sec
@@ -61,7 +68,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: 2026-09-30
+    revised: 2026-10-01
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-30
     replaces:
@@ -181,6 +188,10 @@ integrations:
       - internal/sema/errors.go
       - internal/sema/analyzer_match_ownership.go
       - internal/sema/analyzer_struct_layout.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/place.go
+      - internal/sema/discard_diagnostic_test.go
+      - internal/diagnostics/diagnostics_test.go
       - cmd/compiler/diagnostic_catalog.go
       - cmd/compiler/diagnostic_catalog_test.go
     implemented:
@@ -200,7 +211,8 @@ integrations:
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1055 definitions in the reviewed registry plus mandatory S3001.
+          S1055 definitions in the reviewed registry plus mandatory S3001 and
+          S4001.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
           Invalid move-only payload extraction from union storage that cannot
@@ -225,6 +237,11 @@ integrations:
           cycles use mandatory S1055/struct.recursive-by-value-layout, focus the
           field closing the cycle, show the complete resolved field path, and
           suggest a canonical indirection or dynamic-storage boundary.
+      - id: diagnostics.s4001-use-after-discard
+        description: >-
+          Reads and borrows after explicit discard use mandatory
+          S4001/ownership.use-after-discard with actionable help and the
+          discard source location as related evidence.
       - id: diagnostics.retired-preservation
         description: >-
           Retired registry entries remain preserved; reviewed code includes
@@ -353,12 +370,21 @@ integrations:
       - S1052 identifies invalid union-payload extraction storage and provides actionable owning-local and ref/ref-mut alternatives.
       - S1055 identifies recursive by-value struct layout, includes the concrete field cycle, and does not reject reference or dynamic-storage recursion.
       - S3001 identifies the unreachable statement and explains the terminator.
+      - S4001 identifies reads and borrows after discard, keeps the discard source location, and remains mandatory Error.
       - Parser recovery does not generate unrelated cascades.
       - Machine-readable occurrence output matches the canonical logical schema once implemented.
       - Localization changes rendered text without changing ID, severity or semantic arguments.
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test ./internal/sema ./internal/diagnostics -run 'TestUseAfterDiscardHasStableMandatoryDiagnostic|TestRegistryIsValid|TestKnownDiagnosticSeverities|TestDiscardOwnedFieldConsumesItsPlace' -count=1
+        result: passed on 2026-10-01 with S4001 identity, mandatory severity, actionable help, and discard source location
+      - command: go run ./cmd/compiler diagnostics S4001
+        result: passed on 2026-10-01 with active mandatory error identity from the registry
+      - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -count=1
+        result: passed on 2026-10-01 with semantic, registry, and LSP package coverage
+      - command: go test ./cmd/compiler -run 'DiagnosticCatalog|KnownDiagnostic|Registry' -count=1
+        result: passed on 2026-10-01 with registry-backed catalog coverage for S4001
       - command: go test ./internal/diagnostics ./internal/parser ./internal/sema -count=1
         result: passed on 2026-09-30
       - command: go test ./cmd/compiler -run 'DiagnosticCatalog|KnownDiagnostic|Registry' -count=1

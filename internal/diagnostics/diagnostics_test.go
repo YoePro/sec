@@ -41,6 +41,7 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		DuplicateContractMembershipValue:    SeverityError,
 		EmptyContractMembership:             SeverityError,
 		RecursiveStructLayout:               SeverityError,
+		UseAfterDiscard:                     SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
 		IncompatibleUnitConversion:          SeverityError,

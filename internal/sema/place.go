@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -618,6 +619,12 @@ func (a *Analyzer) unavailablePlace(place Place) (lexer.Token, string, bool, boo
 	return lexer.Token{}, "", false, false
 }
 
+// checkPlaceAvailableForRead rejects reads of unavailable Places and retains
+// the terminal action as the related source location.
+//
+// Rules:
+//   - rules/control-flow/discard.md — §§5, 26, 37
+//   - rules/tooling/diagnostics.md — §§7, 25
 func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bool {
 	movedAt, movedKey, partial, unavailable := a.unavailablePlace(place)
 	if !unavailable || partial && a.suppressPlaceRootRead > 0 {
@@ -637,7 +644,9 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 	}
 	switch reason {
 	case "discarded":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was discarded here and is no longer available", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterDiscard,
+			"reinitialize a mutable Place before using it, or keep the value until its last use",
+			"value %s was discarded here and is no longer available", place.String())
 	case "detached":
 		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was detached here and is no longer available", place.String())
 	case "released":

@@ -52,6 +52,7 @@ type Analyzer struct {
 	resolvedOperators          map[ast.Expression]ResolvedOperator
 	resolvedLogicalFlows       map[*ast.InfixExpression]ResolvedLogicalFlow
 	resolvedIfFlows            map[*ast.IfStatement]ResolvedIfFlow
+	resolvedWhileFlows         map[*ast.WhileStatement]ResolvedWhileFlow
 	resolvedSwitchFlows        map[*ast.SwitchStatement]ResolvedSwitchFlow
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
 	resolvedExplicitPanics     map[*ast.PanicStatement]ResolvedExplicitPanic
@@ -284,6 +285,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}
 	a.resolvedIfFlows = map[*ast.IfStatement]ResolvedIfFlow{}
+	a.resolvedWhileFlows = map[*ast.WhileStatement]ResolvedWhileFlow{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedAssertions = map[*ast.AssertStatement]ResolvedAssertion{}
 	a.resolvedExplicitPanics = map[*ast.PanicStatement]ResolvedExplicitPanic{}
@@ -1657,9 +1659,13 @@ func typeReferenceDisplayName(ref *ast.TypeReference) string {
 }
 
 func (a *Analyzer) analyzeTypeDeclarations(program *ast.Program) {
+	resolvedTypes := a.analyzeNonGenericTypeDependencies(program)
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt := stmt.(type) {
 		case *ast.TypeDeclStatement:
+			if resolvedTypes[stmt] {
+				return
+			}
 			a.analyzeTypeDeclaration(stmt)
 		case *ast.UnitDeclStatement:
 			a.analyzeUnitDeclaration(stmt)
@@ -2546,111 +2552,6 @@ func isCloseTrackedResourceName(name string) bool {
 	return name == baseName || name == "io."+baseName
 }
 
-func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
-	if stmt.Value == nil {
-		a.addErrorAtToken(stmt.Token, "discard requires expression")
-		return
-	}
-	if ident, ok := stmt.Value.(*ast.Identifier); ok && ident.Value == "_" {
-		a.addErrorAtToken(ident.Token, "discard requires named value")
-		return
-	}
-	if _, ok := stmt.Value.(*ast.SpawnExpression); ok {
-		typ, _ := a.inferExpression(stmt.Value)
-		if typ.Kind != InvalidType {
-			a.addErrorAtToken(stmt.Token, "cannot discard spawn result because successful creation would abandon %s", typeDisplayName(typ))
-		}
-		return
-	}
-
-	// rules/control-flow/discard.md section 5 and destruction.md section 12:
-	// discard is an ownership-state convergence operation, not an ordinary
-	// read. Resolve an already unavailable Place without calling
-	// inferExpression, which would incorrectly report use-after-move/discard.
-	// Legality and outstanding borrow/defer obligations are still checked
-	// before accepting the no-op or conditionally required destruction.
-	if place, ok := a.resolvePlace(stmt.Value); ok {
-		if a.rejectOrdinaryMethodWholeSelfConsumption(place, expressionToken(stmt.Value)) {
-			return
-		}
-		if _, _, partial, unavailable := a.unavailablePlace(place); unavailable && !partial {
-			if !a.validateExplicitDiscardType(place.Type, expressionToken(stmt.Value)) {
-				return
-			}
-			if a.checkBorrowedMovePlaceForAction(place, expressionToken(stmt.Value), "discard") {
-				return
-			}
-			// Preserve the resolved type and definition facts normally recorded by
-			// expression inference so CLI and LSP consumers observe the same valid
-			// operand even though availability checking is intentionally skipped.
-			a.expressionTypes[stmt.Value] = place.Type
-			if ident, isIdentifier := stmt.Value.(*ast.Identifier); isIdentifier {
-				if symbol, exists := a.symbols[ident.Value]; exists {
-					a.bindDefinition(ident.Token, symbol.Token)
-				}
-			}
-			return
-		}
-	}
-
-	valueType, _ := a.inferExpression(stmt.Value)
-	if valueType.Kind == InvalidType {
-		return
-	}
-	if !a.validateExplicitDiscardType(valueType, expressionToken(stmt.Value)) {
-		return
-	}
-
-	ident, ok := stmt.Value.(*ast.Identifier)
-	if !ok {
-		// rules/control-flow/discard.md, aggregate temporary discard;
-		// correction19.md requires construction-time moves to be committed before
-		// the resulting temporary is destroyed. Calls retain their parameter-mode
-		// ownership handling because markMoveSource deliberately does not descend
-		// into call expressions.
-		a.markMoveSource(stmt.Value)
-		return
-	}
-	symbol, exists := a.symbols[ident.Value]
-	if !exists {
-		return
-	}
-	place, placeOK := a.rootPlace(ident.Value)
-	if placeOK && a.checkBorrowedMovePlaceForAction(place, ident.Token, "discard") {
-		return
-	}
-	a.moved[ident.Value] = ident.Token
-	a.moveReasons[ident.Value] = "discarded"
-	delete(a.constInts, ident.Value)
-	a.endBorrowsHeldBy(ident.Value)
-	if symbol.Type.Kind == ReferenceType {
-		delete(a.localRefContainers, ident.Value)
-	}
-}
-
-// validateExplicitDiscardType implements the type-level part of explicit
-// discard from rules/control-flow/discard.md section 5 and
-// rules/memory/destruction.md section 12. It keeps discardability independent
-// from current availability: an unavailable lifecycle handle does not become
-// discardable merely because consuming it would perform no second destruction.
-func (a *Analyzer) validateExplicitDiscardType(valueType Type, token lexer.Token) bool {
-	if isTaskType(valueType) || isThreadType(valueType) {
-		a.addErrorAtToken(token, "cannot discard unresolved %s; await, join or detach it explicitly", typeDisplayName(valueType))
-		return false
-	}
-	if isDiscardableType(valueType) {
-		return true
-	}
-	a.addErrorAtTokenWithMetadata(
-		token,
-		diagnostics.NonDiscardableValue,
-		"handle the value and resolve every contained task or thread lifecycle",
-		"cannot discard %s because it may contain an unresolved lifecycle handle",
-		typeDisplayName(valueType),
-	)
-	return false
-}
-
 // analyzeAssertStatement enforces exact bool typing and records a panic effect
 // unless the currently implemented proof establishes literal true. Condition
 // evaluation retains its independently inferred effects.
@@ -2765,12 +2666,17 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	var optionBinding matchPatternInfo
 	optionBindingValid := false
 	var availabilityTest *ResolvedAvailabilityTest
+	constantCondition := false
+	constantConditionKnown := false
 	if stmt.OptionBinding != nil {
 		optionBinding, optionBindingValid = a.resolveOptionIfBinding(stmt)
 	} else if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
 			a.addErrorAtToken(expressionToken(stmt.Condition), "if condition must be bool, got %s", typeDisplayName(conditionType))
+		}
+		if conditionType.Kind == BoolType {
+			constantCondition, constantConditionKnown = a.constantBooleanValue(stmt.Condition)
 		}
 		if availabilityExpr, ok := stmt.Condition.(*ast.AvailabilityExpression); ok {
 			if fact, resolved := a.resolvedAvailabilityTests[availabilityExpr]; resolved {
@@ -2788,10 +2694,10 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
 	thenReachable := true
 	elseReachable := true
-	if isBoolLiteral(stmt.Condition, true) {
+	if constantConditionKnown && constantCondition {
 		elseReachable = false
 		a.diagnoseConstantConditionUnreachableBlock(stmt.Alternative, "branch")
-	} else if isBoolLiteral(stmt.Condition, false) {
+	} else if constantConditionKnown {
 		thenReachable = false
 		a.diagnoseConstantConditionUnreachableBlock(stmt.Consequence, "branch")
 	} else if availabilityTest != nil && availabilityTest.StaticallyKnown {
@@ -3121,82 +3027,6 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.assigned = previousAssigned
 	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, false)
-	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
-	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
-	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
-	a.loopDepth = previousLoopDepth
-}
-
-func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
-	if stmt.Condition != nil {
-		conditionType, _ := a.inferExpression(stmt.Condition)
-		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-			a.addErrorAtToken(expressionToken(stmt.Condition), "while condition must be bool, got %s", typeDisplayName(conditionType))
-		}
-		if isBoolLiteral(stmt.Condition, false) {
-			a.diagnoseConstantConditionUnreachableBlock(stmt.Body, "loop body")
-		}
-	}
-
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousLoopDepth := a.loopDepth
-	frame := a.pushLoopBreakFrame()
-
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
-	a.closedResources = copyMoved(previousClosedResources)
-	a.borrows = copyBorrows(previousBorrows)
-	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
-	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
-	a.loopDepth++
-	iterationEntry := a.captureLoopIterationAnalysisState()
-
-	if stmt.Body != nil {
-		a.analyzeBlockStatements(stmt.Body)
-	}
-
-	loopConstInts := a.constInts
-	loopMoved := a.moved
-	loopMoveReasons := a.moveReasons
-	loopClosedResources := a.closedResources
-	loopBorrows := a.borrows
-	loopLocalRefContainers := a.localRefContainers
-	loopArenaGenerations := a.arenaGenerations
-	frameState := a.loopBreakFrames[frame]
-	bodyFallsThrough := a.blockCanFallThrough(stmt.Body)
-	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
-	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, bodyFallsThrough)
-	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
-	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
-	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
-	a.checkLoopBackedgeFixedPoint(stmt.Condition, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
-	breakFrame := a.popLoopBreakFrame(frame)
-	a.symbols = previousSymbols
-	a.constInts = previousConstInts
-	for name, previousValue := range previousConstInts {
-		currentValue, exists := loopConstInts[name]
-		if !exists || currentValue.Cmp(previousValue) != 0 {
-			delete(a.constInts, name)
-		}
-	}
-	if isBoolLiteral(stmt.Condition, true) && len(breakFrame.assignments) > 0 {
-		a.assigned = mergeBreakAssigned(previousAssigned, breakFrame.assignments)
-	} else {
-		a.assigned = previousAssigned
-	}
-	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
-	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, isBoolLiteral(stmt.Condition, true))
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
 	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
@@ -3544,7 +3374,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          blockCanFallThrough(block),
+		continues:          a.blockCanFallThrough(block),
 	}
 }
 
@@ -4085,7 +3915,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          blockCanFallThrough(branch.Body),
+		continues:          a.blockCanFallThrough(branch.Body),
 	}
 }
 
@@ -5546,6 +5376,10 @@ func (a *Analyzer) statementDefinitelyReturns(stmt ast.Statement) bool {
 		return a.matchStatementDefinitelyReturns(stmt)
 	case *ast.SwitchStatement:
 		return a.switchStatementDefinitelyReturns(stmt)
+	case *ast.WhileStatement:
+		if flow, ok := a.resolvedWhileFlows[stmt]; ok {
+			return flow.ConditionKnown && flow.ConditionValue && !flow.HasReachableBreak
+		}
 	}
 	return statementDefinitelyReturns(stmt)
 }
@@ -5741,6 +5575,11 @@ func (a *Analyzer) statementCanFallThrough(stmt ast.Statement) bool {
 			return true
 		}
 		return a.blockCanFallThrough(stmt.Consequence) || a.blockCanFallThrough(stmt.Alternative)
+	case *ast.WhileStatement:
+		if flow, ok := a.resolvedWhileFlows[stmt]; ok {
+			return flow.ContinuesAfterLoop
+		}
+		return statementCanFallThrough(stmt)
 	case *ast.UnsafeStatement:
 		return a.blockCanFallThrough(stmt.Body)
 	default:

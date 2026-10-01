@@ -2,6 +2,7 @@ package sema
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 )
 
@@ -559,4 +560,28 @@ fn Test(condition: bool) Result[void, IOError] {
 	assertSemaErrors(t, errors, []string{
 		"owned file file is still open at scope exit; call file.Close() or return it to transfer ownership at 22:10",
 	})
+}
+
+// TestDiscardOwnedFieldConsumesItsPlace checks that explicit discard consumes a
+// copyable struct field and leaves independent sibling storage available.
+//
+// Rules:
+//   - rules/control-flow/discard.md — §§3, 7, 26, 35
+//   - rules/memory/ownership.md — §23
+func TestDiscardOwnedFieldConsumesItsPlace(t *testing.T) {
+	const source = `module main
+type Pair struct { First: int, Second: int }
+fn Check() int {
+    let pair := Pair { First: 1, Second: 2 }
+    discard pair.First
+    discard pair.First
+    let sibling := pair.Second
+    let invalid := pair.First
+    return sibling
+}
+`
+	errors := analyzeSourceRaw(t, source)
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "pair.First was discarded") {
+		t.Fatalf("field discard diagnostics = %+v", errors)
+	}
 }

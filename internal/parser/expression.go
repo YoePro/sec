@@ -877,6 +877,8 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 			return nil
 		}
 		ref.TypeArgs = typeArgs
+		ref.TypeArgumentOpen = bracketToken
+		ref.TypeArgumentClose = p.curToken
 		p.nextToken()
 		return p.parseStructLiteralWithType(ref)
 	}

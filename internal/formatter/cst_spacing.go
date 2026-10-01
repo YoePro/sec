@@ -99,29 +99,31 @@ func formatCSTRoles(text string) string {
 				text:  element.Text,
 			})
 			continue
-		case element.HasRole(cst.CallableParameterListClose) || element.HasRole(cst.LambdaCaptureListClose):
-			var parameterGroup *cst.DelimiterGroup
+		case element.HasRole(cst.CallableParameterListClose) || element.HasRole(cst.LambdaCaptureListClose) ||
+			element.HasRole(cst.TypeArgumentListClose):
+			var listGroup *cst.DelimiterGroup
 			for groupIndex := range document.Groups {
 				group := &document.Groups[groupIndex]
 				if group.Close == elementIndex &&
 					(document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) ||
-						document.Elements[group.Open].HasRole(cst.LambdaCaptureListOpen)) {
-					parameterGroup = group
+						document.Elements[group.Open].HasRole(cst.LambdaCaptureListOpen) ||
+						document.Elements[group.Open].HasRole(cst.TypeArgumentListOpen)) {
+					listGroup = group
 					break
 				}
 			}
-			if parameterGroup == nil || !strings.Contains(text[document.Elements[parameterGroup.Open].Span.End:start], "\n") {
+			if listGroup == nil || !strings.Contains(text[document.Elements[listGroup.Open].Span.End:start], "\n") {
 				continue
 			}
 			previous := elementIndex - 1
-			for previous > parameterGroup.Open {
+			for previous > listGroup.Open {
 				kind := document.Elements[previous].Kind
 				if kind != cst.Whitespace && kind != cst.Comment {
 					break
 				}
 				previous--
 			}
-			if previous == parameterGroup.Open || document.Elements[previous].Kind != cst.Token ||
+			if previous == listGroup.Open || document.Elements[previous].Kind != cst.Token ||
 				document.Elements[previous].Token.Type == lexer.COMMA {
 				continue
 			}
@@ -348,6 +350,7 @@ func formatCSTRoles(text string) string {
 		})
 	}
 	replacements = append(replacements, structFieldAlignmentReplacements(document)...)
+	replacements = append(replacements, parameterAlignmentReplacements(document)...)
 	replacements = append(replacements, enumValueAlignmentReplacements(document)...)
 
 	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })

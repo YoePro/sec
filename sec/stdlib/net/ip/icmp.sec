@@ -1,5 +1,3 @@
-module ip
-
 /**
  * Identifies an ICMPv4 message type.
  *
@@ -14,18 +12,6 @@ module ip
  */
 module ip
 
-/**
- * Identifies an ICMPv4 message type.
- *
- * Description:
- * - The value is the 8-bit ICMP Type field.
- * - Values are assigned by IANA.
- * - Unknown and future values remain representable.
- *
- * Standards:
- * - RFC 792
- * - IANA ICMP Parameters
- */
 type Icmpv4Type byte
 
 impl Icmpv4Type {

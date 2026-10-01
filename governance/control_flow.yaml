@@ -41,6 +41,8 @@ integrations:
       - internal/lexer/lexer.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_discard.go
+      - internal/sema/analyzer_lifetime.go
       - internal/sema/place.go
       - internal/sema/parameter_usage.go
       - internal/diagnostics/diagnostics.go
@@ -50,6 +52,7 @@ integrations:
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/discard_diagnostic_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
       - internal/sema/concurrency_test.go
@@ -86,11 +89,13 @@ integrations:
       - formatter.md now preserves explicit discard without policy-driven insertion or removal
       - repeated discard of an already unavailable discardable local or tracked field Place is a legal no-op rather than an ordinary use-after-terminal-action read
       - repeated discard preserves compiler-owned operand type and definition facts for shared CLI and LSP consumers and never restores availability
+      - frontend explicit discard marks independently tracked direct struct fields unavailable, including copyable fields, while sibling fields remain available
+      - reads and borrows after explicit discard emit mandatory S4001 ownership.use-after-discard with the discard source location and actionable help
     remaining:
       - implement configurable ownership.implicit-discarded-result advisories with off, info, warning, and error severities while preserving mandatory must-use errors
-      - register stable IDs, symbolic names, structured notes and help, and related locations for implicit discard, unhandled must-use, non-discardable values, use-after-discard, borrow conflicts, useless discard, and redundant void discard
+      - register stable IDs, symbolic names, structured notes and help, and related locations for implicit discard, broader unhandled must-use, borrow conflicts, useless discard, and redundant void discard; complete structured transport for existing non-discardable errors
       - complete path-sensitive active-payload reasoning for wrapper and union discardability without weakening conservative defaults
-      - generalize explicit discard from simple local identifiers to supported Places, including field-sensitive partial discard and exact availability state
+      - extend explicit discard beyond independently tracked direct struct fields to other supported Places and complete field-sensitive partial state
       - separate canonical Availability from moved/discarded/detached reason provenance across joins
       - complete conditional discard convergence with an explicit availability lattice and path-specific destruction responsibility
       - lower explicit and implicit discard through the resolved deterministic destruction plan, cancel consumed cleanup responsibility, prevent double destruction, and register cleanup after legal reinitialization
@@ -308,6 +313,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-26"
+    revised: "2026-10-01"
     document_revision: "2.0"
     repository_baseline: "0f92cf4"
     replaces: rules/control-flow/flowcontrol_if.txt
@@ -362,6 +368,7 @@ integrations:
       - immutable ResolvedIfFlow facts expose true and false path execution, explicit-else presence, implicit no-branch paths, and continuation without reconstructing condition syntax
       - function and lambda return validation consume ResolvedIfFlow, including constant conditions whose impossible path must not create a missing-return error
       - literal-unreachable branches routed through the canonical unreachable-code error policy
+      - compile-time integer comparisons, boolean equality, negation, and short-circuit conjunction/disjunction select reachable paths through the same ResolvedIfFlow and S3001 machinery while runtime-dependent conditions remain conditional
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
     remaining:
       - distinguish permitted non-binding boolean is state tests from forbidden payload binding and destructuring in conditions
@@ -394,6 +401,8 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'ResolvedIfFlow|IfBranchesCanSatisfyFunctionReturn|IfConditionMustBeBool' -count=1
         result: passed on 2026-09-26; immutable path execution and continuation facts, implicit false paths, and constant-condition return validation are covered
+      - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|ResolvedIfFlowRetainsPathExecutionAndTermination)' -count=1
+        result: passed on 2026-10-01; folded integer and boolean conditions drive S3001, exact if-path facts, and non-void return validation while runtime-dependent comparisons remain conditional
       - command: go test ./internal/formatter -run If -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
 
@@ -402,6 +411,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-22"
+    revised: "2026-10-01"
     document_revision: "2.0"
     repository_baseline: "56be75d"
     replaces: rules/control-flow/flowcontrol_while.txt
@@ -427,12 +437,14 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_control_flow.go
+      - internal/sema/analyzer_while_flow.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/analyzer_while_flow_test.go
       - internal/sema/unreachable_branch_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
@@ -457,13 +469,19 @@ integrations:
       - reachable while-true break paths included in continuation and definite-assignment state
       - unreachable statements after break, continue, and return routed through the canonical error policy
       - the first statement in a literal-false while body is routed through canonical S3001 while an empty literal-false body remains valid
+      - integer comparisons and boolean operators proven false by the shared constant-condition evaluator route the first loop-body statement through canonical S3001
+      - immutable ResolvedWhileFlow facts expose known condition value, reachable current-loop break, and post-loop continuation without reconstructing condition syntax
+      - folded-true while loops without a reachable current-loop break are non-continuing for function returns, following-statement reachability, and enclosing if/select branch flow
+      - folded-true loops with reachable breaks retain post-loop continuation and the established break-edge definite-assignment merge
+      - folded-false loop bodies remain statically checked but cannot contribute reachable call-graph edges or panic effects
+      - folded-false loop bodies are analyzed once without a fixed-point replay and leave ownership, resource, borrow, reference-origin, constant, assignment, and Arena-generation state at the exact zero-iteration entry state
       - LLVM and MLIR condition, body, backedge, continue, break, and exit lowering
       - canonical Markdown metadata with implementation governance kept in this ledger
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
       - add dedicated parser diagnostics and tests for loop values and pattern-binding conditions
       - permit non-binding boolean is state tests from owning rulebooks while rejecting payload and structural binding in conditions
-      - diagnose bodies and statements proven unreachable by non-literal constant conditions and other non-continuing flow through the canonical unreachable-code policy
+      - extend non-literal condition proof beyond the current integer-comparison and boolean-operator subset and route other non-continuing flow through the canonical unreachable-code policy
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
       - verify that break and continue inside a switch nested in while target the surrounding loop in Sema, CFG, Semantic IR, and both backends
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
@@ -513,6 +531,8 @@ integrations:
         result: passed on 2026-09-03
       - command: go test ./internal/sema -run 'TestConstantFalseWhileReportsCanonicalUnreachableStatement' -count=1
         result: passed on 2026-09-22 with non-empty and empty literal-false body coverage
+      - command: go test ./internal/sema -run 'Test(FoldedFalseWhileBodyDoesNotCommitRuntimeState|FoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects|FoldedTrueWhileControlsReturnAndReachability|ResolvedWhileFlowRetainsFoldedConditionAndExitFacts)' -count=1
+        result: passed on 2026-10-01; folded loop conditions drive stable flow facts, continuation, S3001, dead-body call/effect exclusion, and exact zero-iteration state preservation for moves and Arena generations
 
   - id: frontend.switch-statements-v2
     area: frontend-control-flow
@@ -1049,8 +1069,10 @@ integrations:
     - switch remains transparent because it creates no Sec break target
     - constant-unreachable if branches do not create false loop exits
     verification:
-    - command: go test ./internal/sema -run 'Test(NestedWhileBreak|NestedForBreak|UnreachableBreakDoesNotExit)' -count=1
-      result: passed
+      - command: go test ./internal/sema -run 'Test(NestedWhileBreak|NestedForBreak|UnreachableBreakDoesNotExit)' -count=1
+        result: passed
+      - command: go test ./internal/sema -run 'Test(ResolvedWhileFlowRetainsFoldedConditionAndExitFacts|FoldedTrueWhileControlsReturnAndReachability|NestedWhileBreakDoesNotExitInfiniteOuterWhile|UnreachableBreakDoesNotExitInfiniteWhile|WhileTrueBreakCarriesDefiniteAssignment)' -count=1
+        result: passed on 2026-10-01; folded true, false, and runtime conditions publish stable flow facts, current-loop break reachability excludes impossible and nested breaks, and return plus enclosing-branch flow consume the same decision
     bug_reference:
     - correction21.md
     governance_reconciliation:
@@ -1146,7 +1168,7 @@ integrations:
     area: frontend-expression-control-flow
     status: partial
     audited: '2026-08-19'
-    revised: '2026-09-28'
+    revised: '2026-10-01'
     repository_baseline: c515862
     primary_document: rules/control-flow/flowcontrol_if.md
     document_revision: '2.0'
@@ -1183,7 +1205,8 @@ integrations:
     - logical bool operand type validation
     - logical expression result type bool
     - maintained backend lowering has left-to-right short-circuit branch structure
-    - if branch bodies use callGraphPathReachable for literal unreachable branches
+    - if branch bodies use callGraphPathReachable for literal and compiler-folded unreachable branches
+    - folded-false while bodies use the same reachability gate while retaining static semantic diagnostics
     - consuming call arguments update caller ownership state when the call is on the analyzed live path
     - false && RHS and true || RHS restore ownership, resource, borrow, reference, and Arena state after static checking
     - proven-skipped RHS calls are excluded from reachable call-graph recording
@@ -1194,11 +1217,8 @@ integrations:
     - left and right operands are each inferred once in source order by the dedicated logical flow path
     - the selected true edge of && and false edge of || publish temporary condition facts while the RHS is analyzed
     - guarded integer subtraction consumes exact lower-bound and excluded-value facts, preventing false constant-overflow diagnostics while retaining S1023 warnings for insufficient guards
-    partial:
-    - literal reachability helpers recognize only BooleanLiteral syntax rather than a general compiler-proven constant-bool
-      fact
     remaining:
-    - apply canonical compile-time bool facts rather than only literal syntax where available
+    - extend canonical compile-time bool proof beyond the current immutable-integer and boolean operator subset
     - consume ResolvedLogicalFlow in Semantic IR and all maintained lowering paths
     - add ownership, resource, arena, call-graph, nested-expression, and cross-context regression coverage
     bug_reference:
@@ -1215,6 +1235,8 @@ integrations:
     verification:
     - command: go test ./internal/sema -run 'TestResolvedLogicalFlowRecordsSelectedRHSEdge|TestLogicalShortCircuitDoesNotCommitImpossibleMove|TestLogicalOperatorsRequireBool' -count=1
       result: passed on 2026-09-24
+    - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|FoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects)' -count=1
+      result: passed on 2026-10-01; compiler-folded if and while paths feed canonical reachability without suppressing static checking
     required_tests:
     - false && consuming-call leaves source available
     - true || consuming-call leaves source available

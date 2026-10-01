@@ -35,6 +35,12 @@ fn FalseElse() int {
     }
 }
 
+fn Folded() int {
+    if 1 + 1 == 2 {
+        return 6
+    }
+}
+
 fn Conditional(flag: bool) int {
     if flag {
         return 3
@@ -80,8 +86,8 @@ fn BuildLambda() void {
 			}
 		}
 	}
-	if len(ifs) != 4 {
-		t.Fatalf("if count = %d, want 4", len(ifs))
+	if len(ifs) != 5 {
+		t.Fatalf("if count = %d, want 5", len(ifs))
 	}
 
 	always, ok := analyzer.ResolvedIfFlowOf(ifs[0])
@@ -94,12 +100,17 @@ fn BuildLambda() void {
 		t.Fatalf("literal-false if flow = %+v, found=%v", falseElse, ok)
 	}
 
-	conditional, ok := analyzer.ResolvedIfFlowOf(ifs[2])
+	folded, ok := analyzer.ResolvedIfFlowOf(ifs[2])
+	if !ok || folded.TruePathExecution != ResolvedIfPathAlways || folded.FalsePathExecution != ResolvedIfPathNever || folded.HasExplicitElse || folded.HasNoBranchPath || folded.TruePathContinues || folded.FalsePathContinues {
+		t.Fatalf("folded-true if flow = %+v, found=%v", folded, ok)
+	}
+
+	conditional, ok := analyzer.ResolvedIfFlowOf(ifs[3])
 	if !ok || conditional.TruePathExecution != ResolvedIfPathConditional || conditional.FalsePathExecution != ResolvedIfPathConditional || !conditional.HasExplicitElse || conditional.HasNoBranchPath || conditional.TruePathContinues || conditional.FalsePathContinues {
 		t.Fatalf("conditional if flow = %+v, found=%v", conditional, ok)
 	}
 
-	partial, ok := analyzer.ResolvedIfFlowOf(ifs[3])
+	partial, ok := analyzer.ResolvedIfFlowOf(ifs[4])
 	if !ok || partial.TruePathExecution != ResolvedIfPathConditional || partial.FalsePathExecution != ResolvedIfPathConditional || partial.HasExplicitElse || !partial.HasNoBranchPath || partial.TruePathContinues || !partial.FalsePathContinues {
 		t.Fatalf("partial if flow = %+v, found=%v", partial, ok)
 	}

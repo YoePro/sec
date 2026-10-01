@@ -509,6 +509,11 @@ type TypeReference struct {
 
 	// TypeArgs is used for generic types such as Vec[T], Map[K,V], Result[T,E].
 	TypeArgs []*TypeReference
+	// TypeArgumentOpen and TypeArgumentClose retain the real delimiters of a
+	// complete generic type-argument list. Source tools use these parser-owned
+	// anchors without confusing generic arguments with arrays or indexing.
+	TypeArgumentOpen  lexer.Token
+	TypeArgumentClose lexer.Token
 
 	// ConstArgs is used for compiler-known mixed type/value constructors such
 	// as list[T, 32], vector[T, 3], Shape[2], and tensor[T, 3, 224, 224].

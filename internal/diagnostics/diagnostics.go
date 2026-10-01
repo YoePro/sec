@@ -119,6 +119,7 @@ const (
 	EmptyContractMembership             = "S1054"
 	RecursiveStructLayout               = "S1055"
 	UnreachableStatement                = "S3001"
+	UseAfterDiscard                     = "S4001"
 	LargeValueParameter                 = "A2001"
 )
 
@@ -138,6 +139,7 @@ var registry = map[string]Definition{
 	DuplicateContractMembershipValue:    {ID: DuplicateContractMembershipValue, Name: "types.duplicate-in-contract-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	EmptyContractMembership:             {ID: EmptyContractMembership, Name: "types.empty-in-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	RecursiveStructLayout:               {ID: RecursiveStructLayout, Name: "struct.recursive-by-value-layout", Family: "struct", DefaultSeverity: SeverityError, Mandatory: true},
+	UseAfterDiscard:                     {ID: UseAfterDiscard, Name: "ownership.use-after-discard", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	LexerUnknownEscape:                  {ID: LexerUnknownEscape, Name: "lexer.unknown-escape", Family: "lexer", DefaultSeverity: SeverityError, Mandatory: true},

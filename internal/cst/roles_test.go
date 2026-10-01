@@ -60,6 +60,33 @@ func TestApplyProgramRolesMarksOnlyContextualMatrixOperators(t *testing.T) {
 	}
 }
 
+// Complete callable parameters expose their declaration colon and first type
+// token without assigning those roles to call arguments or recovered syntax.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §16(2–3) multiline parameter alignment
+func TestApplyProgramRolesMarksCallableParameterAlignmentAnchors(t *testing.T) {
+	source := "fn Send(\n    value : int,\n    values: ...string,\n) void {\n    let item := Pair { value: 1 }\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "parameters.sec")
+	document.ApplyProgramRoles(program)
+
+	var colons int
+	typeStarts := []string{}
+	for _, element := range document.Elements {
+		if element.HasRole(CallableParameterColon) {
+			colons++
+		}
+		if element.HasRole(CallableParameterTypeStart) {
+			typeStarts = append(typeStarts, element.Text)
+		}
+	}
+	if colons != 2 || len(typeStarts) != 2 || typeStarts[0] != "int" || typeStarts[1] != "..." {
+		t.Fatalf("parameter colons = %d, type starts = %v; elements = %+v", colons, typeStarts, document.Elements)
+	}
+}
+
 func TestApplyProgramRolesMarksOnlyValidPostfixMutationAliases(t *testing.T) {
 	source := "fn Update() void {\n    value++\n    value--\n    let old := value++\n}\n"
 	program := parser.New(lexer.New(source)).ParseProgram()
@@ -253,6 +280,40 @@ func TestApplyProgramRolesMarksCallableParameterListOpeners(t *testing.T) {
 	}
 	if parameterLists != 3 || parameterListClosers != 3 || otherParentheses != 1 {
 		t.Fatalf("parameter lists = %d, closers = %d, other parentheses = %d; elements = %+v", parameterLists, parameterListClosers, otherParentheses, document.Elements)
+	}
+}
+
+// Generic argument brackets are parser-owned roles while fixed arrays and
+// expression indexing retain ordinary bracket identity.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation"
+//   - rules/tooling/formatter.md — §15(6–8) multiline generic lists
+func TestApplyProgramRolesMarksOnlyTypeArgumentListDelimiters(t *testing.T) {
+	source := "fn Use(value: Result[Value, Error], array: Value[4]) void {\n    discard array[0]\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "generic_arguments.sec")
+	document.ApplyProgramRoles(program)
+
+	var genericOpeners, genericClosers, otherOpeners, otherClosers int
+	for _, element := range document.Elements {
+		switch element.Token.Type {
+		case lexer.LBRACKET:
+			if element.HasRole(TypeArgumentListOpen) {
+				genericOpeners++
+			} else {
+				otherOpeners++
+			}
+		case lexer.RBRACKET:
+			if element.HasRole(TypeArgumentListClose) {
+				genericClosers++
+			} else {
+				otherClosers++
+			}
+		}
+	}
+	if genericOpeners != 1 || genericClosers != 1 || otherOpeners != 2 || otherClosers != 2 {
+		t.Fatalf("generic brackets = %d/%d, ordinary brackets = %d/%d; elements = %+v", genericOpeners, genericClosers, otherOpeners, otherClosers, document.Elements)
 	}
 }
 

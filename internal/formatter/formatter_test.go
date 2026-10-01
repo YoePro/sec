@@ -378,6 +378,64 @@ func TestFormatAddsTrailingCommaToMultilineCallableParameters(t *testing.T) {
 	}
 }
 
+// A complete multiline generic type-argument list gets its canonical trailing
+// comma from parser-owned brackets. Single-line generics and arrays are not
+// rewritten by this rule.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §11(1–2) trailing commas
+//   - rules/tooling/formatter.md — §15(6–8) multiline generic lists
+func TestFormatAddsTrailingCommaToMultilineTypeArguments(t *testing.T) {
+	input := "fn Use(\nvalue: Result[\nValue,\nError\n],\ncompact: Result[Value, Error],\narray: Value[4]\n) void {\n}\n"
+	want := "fn Use(\n    value: Result[\n        Value,\n        Error,\n    ],\n    compact: Result[Value, Error],\n    array:   Value[4],\n) void {\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong multiline generic argument formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("multiline generic argument formatting is not idempotent:\n%s", again)
+	}
+}
+
+// Compatible multiline callable parameters align their parser-owned type
+// anchors. Blank lines split groups and excessive padding falls back to
+// ordinary one-space declaration formatting.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §9(1–2), §9(8–10)
+//   - rules/tooling/formatter.md — §16(2–3)
+func TestFormatAlignsMultilineCallableParametersFromCST(t *testing.T) {
+	input := "fn Connect(\nhost: string,\ncertificatePath:Path,\nport:uint16,\n) void {\n}\n"
+	want := "fn Connect(\n    host:            string,\n    certificatePath: Path,\n    port:            uint16,\n) void {\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong callable parameter alignment:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("callable parameter alignment is not idempotent:\n%s", again)
+	}
+}
+
+func TestFormatDropsCallableParameterAlignmentBeyondPaddingLimit(t *testing.T) {
+	input := "fn Wide(\na:int,\nextraordinarilyLongParameter: string,\n) void {\n}\n"
+	want := "fn Wide(\n    a: int,\n    extraordinarilyLongParameter: string,\n) void {\n}\n"
+	if got := Format(Source{Text: input}, Options{}).Text; got != want {
+		t.Fatalf("excessive callable parameter alignment was not dropped:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestFormatCallableParameterBlankLinesSplitAlignmentGroups(t *testing.T) {
+	input := "fn Grouped(\na:int,\n\nlongName:string,\nb:bool,\n) void {\n}\n"
+	want := "fn Grouped(\n    a: int,\n\n    longName: string,\n    b:        bool,\n) void {\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("parameter blank line did not split alignment groups:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("blank-split parameter alignment is not idempotent:\n%s", again)
+	}
+}
+
 // Rules:
 //   - rules/tooling/formatter.md — §11(2) multiline trailing commas
 //   - rules/tooling/formatter.md — §16(12) multiline capture lists

@@ -1,0 +1,16 @@
+module main
+
+// switch is a statement in Sec 0.1 and cannot produce a value.
+fn Select(value: int) int {
+    let result := switch value {
+    case 1:
+        10
+    default:
+        20
+    }
+    return result
+}
+
+fn Following() int {
+    return 0
+}

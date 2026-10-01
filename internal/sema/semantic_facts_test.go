@@ -842,7 +842,7 @@ impl Counter {
   }
   property Checked: int {
     get { return self.value }
-    try set next { return Err(PropertyError.Rejected) }
+    try set next PropertyError { return Err(PropertyError.Rejected) }
   }
 }
 fn Update(counter: Counter) void {

@@ -4252,8 +4252,10 @@ func TestFormatSourceUsesCSTGenericConstraintRole(t *testing.T) {
 discard value&mask
 }
 `
+	// The generic constraint & and the bitwise & are formatted through their
+	// own parser roles (constraint conjunction and binary operator).
 	want := `fn Save[T: First & Comparable](value: int, mask: int) void {
-    discard value&mask
+    discard value & mask
 }
 `
 

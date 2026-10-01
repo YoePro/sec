@@ -1,0 +1,31 @@
+module main
+
+// if and while conditions reject payload binding and destructuring; only the
+// positive Option form `if value is Some(binding)` binds.
+
+fn DeclarationShapedIf(current: Option[int]) void {
+    if Some(value) := current {
+        return
+    }
+}
+
+fn DeclarationShapedWhile(current: Option[int]) void {
+    while Some(value) := current {
+        return
+    }
+}
+
+fn ResultPayloadIf(r: Result[int, error]) void {
+    if r is Ok(v) {
+        return
+    }
+}
+
+fn OptionBindingWhile(current: Option[int]) void {
+    while current is Some(v) {
+        return
+    }
+}
+
+fn Following() void {
+}

@@ -36,6 +36,27 @@ fn main() int { return 0 }
 	}
 }
 
+// Reference loop bindings borrow elements in place; the legacy generator must
+// reject them rather than lower them as copies.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §6 "Shared element iteration", §7 "Mutable element iteration"
+func TestLegacyGeneratorRejectsReferenceLoopBindings(t *testing.T) {
+	program := parseTestProgram(t, `module main
+
+fn main() int {
+	let mut values: int[3] := [1, 2, 3]
+	for ref mut value in values {
+	}
+	return 0
+}
+`)
+	_, err := GenerateWithTriple(program, "x86_64-pc-linux-gnu")
+	if err == nil || !strings.Contains(err.Error(), "emit-mlir does not support ref mut loop bindings yet") {
+		t.Fatalf("reference loop binding error = %v", err)
+	}
+}
+
 func TestGenerateMinimalMain(t *testing.T) {
 	input := `
 module main

@@ -41,6 +41,8 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		DuplicateContractMembershipValue:    SeverityError,
 		EmptyContractMembership:             SeverityError,
 		RecursiveStructLayout:               SeverityError,
+		SwitchPatternBinding:                SeverityError,
+		LocalShadowsDeclaration:             SeverityError,
 		UseAfterDiscard:                     SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
@@ -213,5 +215,25 @@ func TestRecursiveStructLayoutDiagnosticIsRegistered(t *testing.T) {
 	}
 	if definition.Name != "struct.recursive-by-value-layout" || definition.Family != "struct" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
 		t.Fatalf("recursive struct layout diagnostic = %+v", definition)
+	}
+}
+
+func TestSwitchPatternBindingDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(SwitchPatternBinding)
+	if !ok {
+		t.Fatal("missing switch pattern binding diagnostic")
+	}
+	if definition.Name != "switch.pattern-binding" || definition.Family != "flow-control" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("switch pattern binding diagnostic = %+v", definition)
+	}
+}
+
+func TestLocalShadowsDeclarationDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(LocalShadowsDeclaration)
+	if !ok {
+		t.Fatal("missing local shadowing diagnostic")
+	}
+	if definition.Name != "names.local-shadows-declaration" || definition.Family != "names" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("local shadowing diagnostic = %+v", definition)
 	}
 }

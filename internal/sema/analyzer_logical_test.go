@@ -17,6 +17,10 @@ fn Evaluate(left: bool, right: bool) void {
 	let skippedAnd := false && right
 	let skippedOr := true || right
 	let required := true && right
+	let foldedSkippedAnd := 3 < 2 && right
+	let foldedSkippedOr := 1 + 1 == 2 || right
+	let foldedRequiredAnd := 4 > 3 && right
+	let foldedRequiredOr := 5 == 6 || right
 }
 `
 	p := parser.New(lexer.NewWithFile(source, "logical-flow.sec"))
@@ -39,6 +43,10 @@ fn Evaluate(left: bool, right: bool) void {
 		LogicalRHSNever,
 		LogicalRHSNever,
 		LogicalRHSAlways,
+		LogicalRHSNever,
+		LogicalRHSNever,
+		LogicalRHSAlways,
+		LogicalRHSAlways,
 	}
 	for index, expression := range expressions {
 		fact, ok := analyzer.ResolvedLogicalFlowOf(expression)
@@ -59,6 +67,48 @@ fn Evaluate(left: bool, right: bool) void {
 	before := len(analyzer.resolvedLogicalFlows)
 	if _, ok := analyzer.ResolvedLogicalFlowOf(&ast.InfixExpression{}); ok || len(analyzer.resolvedLogicalFlows) != before {
 		t.Fatal("unknown logical-flow query inferred or inserted a fact")
+	}
+}
+
+// Compiler-proven left operands select the same short-circuit edge as literal
+// booleans. The skipped RHS remains type-checked but cannot consume ownership,
+// publish a call edge, or violate @noPanic.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Short-circuit evaluation" and "Path-sensitive effects"
+//   - rules/corrections/applied/correction22-20260823.md — §§2 and 4
+func TestFoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `
+module main
+
+@noCopy
+type Token struct { id: int, }
+
+fn Consume(-> token: Token) bool { return true }
+fn Use(value: ref Token) void {}
+fn Dangerous() bool { panic "dead logical RHS" }
+
+fn Ownership() void {
+	let token := Token { id: 1 }
+	let result := 3 < 2 && Consume(<-token)
+	Use(ref token)
+	discard result
+}
+
+@noPanic
+fn Effects() bool {
+	return 2 > 1 || Dangerous()
+}
+`)
+	assertSemaErrors(t, errors, nil)
+
+	graph := analyzer.CallGraph()
+	effectsID := callGraphNodeIDByName(t, graph, "Effects")
+	if outgoing := graph.Outgoing(effectsID); len(outgoing) != 0 {
+		t.Fatalf("Effects outgoing calls = %+v, want no folded-short-circuit RHS edge", outgoing)
+	}
+	if summary := graph.EffectSummary(effectsID); summary.MayPanic || len(summary.DirectEffects) != 0 {
+		t.Fatalf("Effects summary = %+v, want no skipped-RHS panic effect", summary)
 	}
 }
 

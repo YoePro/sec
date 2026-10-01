@@ -1,0 +1,50 @@
+module main
+
+// Binding modes the iterable category or source authority does not provide.
+
+@noCopy
+type Handle struct {
+    id: int,
+}
+
+type Counter struct {
+    count: int,
+}
+
+fn Make() Counter[3] {
+    return [Counter{count: 0}, Counter{count: 1}, Counter{count: 2}]
+}
+
+fn Categories(handles: ref Handle[], text: string, numbers: int[3], s: ref mut set[int], m: ref mut map[string, int]) void {
+    for handle in handles {
+    }
+    for ref i in 0..<3 {
+    }
+    for ref r in text {
+    }
+    for ref index, value in numbers {
+    }
+    for ref mut handle in handles {
+    }
+    for ref mut value in s {
+    }
+    for ref mut key, value in m {
+    }
+}
+
+fn Authority() void {
+    let fixed: Counter[3] := Make()
+    for ref mut counter in fixed {
+        counter.count += 1
+    }
+    for ref counter in Make() {
+    }
+}
+
+fn Escape() ref int {
+    let values: int[3] := [1, 2, 3]
+    for ref value in values {
+        return value
+    }
+    return ref values[0]
+}

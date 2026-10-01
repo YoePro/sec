@@ -154,6 +154,9 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.QUESTION:
 		return p.parseReservedQuestionMarkExpression()
 
+	case lexer.SWITCH, lexer.WHILE:
+		return p.parseStatementInExpressionPosition()
+
 	default:
 		if p.curToken.Type == lexer.ILLEGAL {
 			if diagnostic, ok := p.lexerDiagnosticForToken(p.curToken); ok {
@@ -1357,6 +1360,17 @@ func (p *Parser) parseTryHandler() *ast.TryHandler {
 	}
 	handler.Pattern = pattern
 
+	// rules/errors/errorhandling.md — §19: `Pattern where condition => body`.
+	if p.peekToken.Type == lexer.WHERE {
+		p.nextToken()
+		handler.GuardToken = p.curToken
+		p.nextToken()
+		handler.Guard = p.parseExpression(LOWEST)
+		if handler.Guard == nil {
+			return nil
+		}
+	}
+
 	if p.peekToken.Type != lexer.ARROW {
 		p.addError("expected '=>' after try handler pattern at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return nil
@@ -1367,7 +1381,11 @@ func (p *Parser) parseTryHandler() *ast.TryHandler {
 	switch p.peekToken.Type {
 	case lexer.LBRACE:
 		p.nextToken()
+		// rules/errors/errorhandling.md — §21.1: a handler block may end with a
+		// contextual recovery-value expression.
+		p.allowFinalBlockValue = true
 		handler.BlockBody = p.parseStatementBlock("try handler")
+		p.allowFinalBlockValue = false
 	case lexer.RETURN:
 		p.nextToken()
 		returnStmt := p.parseReturnStatement()

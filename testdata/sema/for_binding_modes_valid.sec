@@ -1,0 +1,43 @@
+module main
+
+// Plain, ref, and ref mut loop bindings over sequential collections, slices,
+// sets, and maps.
+
+@noCopy
+type Handle struct {
+    id: int,
+}
+
+type Counter struct {
+    count: int,
+}
+
+fn Inspect(handle: ref Handle) void {
+}
+
+fn Sequential(handles: ref Handle[], counters: ref mut Counter[]) void {
+    let mut values: Counter[3] := [Counter{count: 0}, Counter{count: 1}, Counter{count: 2}]
+    for ref value in values {
+        let current: int := value.count
+    }
+    for index, ref mut value in values {
+        value.count = index
+    }
+    for _, ref value in values {
+    }
+    for ref handle in handles {
+        Inspect(handle)
+    }
+    for ref mut counter in counters {
+        counter.count += 1
+    }
+}
+
+fn Collections(s: ref set[int], m: ref mut map[string, int]) void {
+    for ref value in s {
+    }
+    for ref key, ref mut value in m {
+    }
+    for _, ref value in m {
+    }
+}

@@ -1,0 +1,37 @@
+module main
+
+// switch does not support variant payload binding or wildcard patterns.
+
+type Number union {
+    Integer(int),
+    Text(string),
+}
+
+fn FromResult(r: Result[int, error]) void {
+    switch r {
+    case Ok(value):
+        return
+    default:
+        return
+    }
+}
+
+fn FromOption(o: Option[int]) void {
+    switch o {
+    case Some(x):
+        return
+    case _:
+        return
+    }
+}
+
+fn FromUnion(n: Number) void {
+    switch n {
+    case Integer(value):
+        return
+    case Number.Text(_):
+        return
+    default:
+        return
+    }
+}

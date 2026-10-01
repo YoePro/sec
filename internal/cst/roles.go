@@ -51,6 +51,22 @@ const (
 	// LambdaCaptureListClose marks the matching real closing parenthesis of a
 	// complete parsed explicit lambda capture list.
 	LambdaCaptureListClose Role = "lambda-capture-list-close"
+	// BinaryOperator marks the operator token of a parsed infix expression.
+	BinaryOperator Role = "binary-operator"
+	// AssignmentOperator marks the operator of an assignment statement and the
+	// initialization operator (:= or :<-) of a let declaration.
+	AssignmentOperator Role = "assignment-operator"
+	// PrefixOperator marks the operator token of a parsed unary prefix
+	// expression, including the <- consuming call-site marker.
+	PrefixOperator Role = "prefix-operator"
+	// DeclarationColon marks the type-annotation colon of a let declaration.
+	DeclarationColon Role = "declaration-colon"
+	// SpacedKeyword marks a statement or control-flow keyword that is followed
+	// by exactly one space when its operand continues on the same line.
+	SpacedKeyword Role = "spaced-keyword"
+	// ControlBodyOpen marks the real opening brace of a switch or match body,
+	// which is not an executable BlockStatement.
+	ControlBodyOpen Role = "control-body-open"
 	// ExecutableBlockOpen marks the real opening brace of a parser-confirmed
 	// executable block, excluding aggregate literals and structural declarations.
 	ExecutableBlockOpen Role = "executable-block-open"
@@ -73,7 +89,8 @@ const (
 	MatchPatternFieldSeparator Role = "match-pattern-field-separator"
 	// MatchPatternFieldColon marks an explicit field-to-binding separator.
 	MatchPatternFieldColon Role = "match-pattern-field-colon"
-	// MatchGuardKeyword marks the contextual where token of a parsed match arm.
+	// MatchGuardKeyword marks the where token of a parsed match arm or try
+	// handler guard.
 	MatchGuardKeyword Role = "match-guard-keyword"
 	// HandlerArrow marks the real => token of a parsed match arm or try handler.
 	HandlerArrow Role = "handler-arrow"
@@ -87,8 +104,9 @@ const (
 	// TestDeclarationName marks the exact string token in a valid top-level
 	// source-test header.
 	TestDeclarationName Role = "test-declaration-name"
-	// AvailabilityBlockOpen marks the real opening brace owned by an if whose
-	// condition is a compiler-known ownership availability query.
+	// AvailabilityBlockOpen marks the real opening brace owned by an if or
+	// while whose condition is a compiler-known state query: an ownership
+	// availability test or a union `is Variant` / `is empty` state test.
 	AvailabilityBlockOpen Role = "availability-block-open"
 	// AttachedAttributeEnd marks the final real token of an argument-free
 	// attribute that the parser attached to a declaration.
@@ -224,6 +242,41 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			return
 		}
 	}
+	// nextTokenAtDepth returns the first token after start, outside any nested
+	// delimiter group, that satisfies accept; it stops at a closer that would
+	// leave the starting nesting level.
+	nextTokenAtDepth := func(start lexer.Token, accept func(lexer.TokenType) bool) int {
+		elementIndex, ok := indexes[keyForToken(start)]
+		if !ok {
+			return -1
+		}
+		depth := 0
+		for index := elementIndex + 1; index < len(d.Elements); index++ {
+			element := d.Elements[index]
+			if element.Kind != Token {
+				continue
+			}
+			typ := element.Token.Type
+			if depth == 0 && accept(typ) {
+				return index
+			}
+			switch typ {
+			case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
+				depth++
+			case lexer.RPAREN, lexer.RBRACKET, lexer.RBRACE:
+				if depth == 0 {
+					return -1
+				}
+				depth--
+			}
+		}
+		return -1
+	}
+	markIndex := func(index int, role Role) {
+		if index >= 0 {
+			d.Elements[index].Roles = appendUniqueRole(d.Elements[index].Roles, role)
+		}
+	}
 	markAttachedAttributes := func(attributes []*ast.Attribute, declaration lexer.Token) {
 		if len(attributes) == 0 || declaration.Type == lexer.EOF {
 			return
@@ -292,7 +345,113 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		}
 	}
 
+	// markSpacingRoles marks the operator, keyword, and body-brace positions
+	// whose same-line horizontal spacing is canonical.
+	//
+	// Rules:
+	//   - rules/tooling/formatter.md — §6(4)–(8) "Indentation and basic whitespace"
+	//   - rules/tooling/formatter.md — §8(1)–(3), §18(1) same-line braces and "} else {"
+	//   - rules/tooling/formatter.md — §21(5) consuming call-site marker attachment
+	markSpacingRoles := func(node any) {
+		switch node := node.(type) {
+		case *ast.InfixExpression:
+			if node.Left != nil && node.Right != nil {
+				mark(node.Token, BinaryOperator)
+				if node.Operator == "not in" {
+					markIndex(nextTokenAtDepth(node.Token, func(typ lexer.TokenType) bool { return typ == lexer.IN }), BinaryOperator)
+				}
+			}
+		case *ast.PrefixExpression:
+			if node.Right != nil {
+				mark(node.Token, PrefixOperator)
+			}
+		case *ast.AssignmentStatement:
+			if node.Target != nil && node.Value != nil && node.PostfixAlias.Type == "" {
+				markIndex(nextTokenAtDepth(node.Token, isAssignmentOperatorToken), AssignmentOperator)
+			}
+		case *ast.LetStatement:
+			if node.Name == nil {
+				break
+			}
+			// Typed declarations such as `float: low := 1.0` start with their
+			// type name, not a let keyword.
+			if node.Token.Type == lexer.LET {
+				mark(node.Token, SpacedKeyword)
+			}
+			if node.Mutable {
+				markIndex(nextTokenAtDepth(node.Token, func(typ lexer.TokenType) bool { return typ == lexer.MUT }), SpacedKeyword)
+			}
+			if node.Type != nil && !node.Type.Invalid {
+				colon := nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool { return true })
+				if colon >= 0 && d.Elements[colon].Token.Type == lexer.COLON {
+					markIndex(colon, DeclarationColon)
+				}
+			}
+			if node.Value != nil && !node.SynthesizedDefault {
+				markIndex(nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool {
+					return typ == lexer.DECLARE || typ == lexer.MOVE_DECLARE
+				}), AssignmentOperator)
+			}
+		case *ast.ReturnStatement:
+			if node.Value != nil {
+				mark(node.Token, SpacedKeyword)
+			}
+		case *ast.PropertySetter:
+			// rules/errors/errorhandling.md §24: `try set value ErrorType`.
+			if node.Parameter != nil && !node.Invalid {
+				mark(node.Token, SpacedKeyword)
+				if node.ErrorType != nil {
+					mark(node.Parameter.Token, SpacedKeyword)
+				}
+			}
+		case *ast.InterfaceProperty:
+			if node.SetterParameter != nil {
+				mark(node.SetToken, SpacedKeyword)
+				if node.SetterErrorType != nil {
+					mark(node.SetterParameter.Token, SpacedKeyword)
+				}
+			}
+		case *ast.IfStatement:
+			mark(node.Token, SpacedKeyword)
+			if node.Alternative != nil && node.Consequence != nil && node.Consequence.Token.Type == lexer.LBRACE {
+				if closeIndex, ok := indexes[keyForToken(node.Consequence.Token)]; ok {
+					for _, group := range d.Groups {
+						if group.Open != closeIndex || group.Close < 0 {
+							continue
+						}
+						for index := group.Close + 1; index < len(d.Elements); index++ {
+							if d.Elements[index].Kind == Token {
+								if d.Elements[index].Token.Type == lexer.ELSE {
+									markIndex(index, SpacedKeyword)
+									d.Elements[index].Roles = appendUniqueRole(d.Elements[index].Roles, BinaryOperator)
+								}
+								break
+							}
+						}
+						break
+					}
+				}
+			}
+		case *ast.WhileStatement:
+			mark(node.Token, SpacedKeyword)
+		case *ast.ForStatement:
+			mark(node.Token, SpacedKeyword)
+			if len(node.Bindings) > 0 && node.Iterable != nil {
+				last := node.Bindings[len(node.Bindings)-1].Token
+				markIndex(nextTokenAtDepth(last, func(typ lexer.TokenType) bool { return typ == lexer.IN }), BinaryOperator)
+			}
+		case *ast.SwitchStatement:
+			mark(node.Token, SpacedKeyword)
+			markIndex(nextTokenAtDepth(node.Token, func(typ lexer.TokenType) bool { return typ == lexer.LBRACE }), ControlBodyOpen)
+		case *ast.MatchExpression:
+			if node.Token.Type == lexer.MATCH {
+				mark(node.Token, SpacedKeyword)
+				markIndex(nextTokenAtDepth(node.Token, func(typ lexer.TokenType) bool { return typ == lexer.LBRACE }), ControlBodyOpen)
+			}
+		}
+	}
 	visitProgramNodes(program, func(node any) {
+		markSpacingRoles(node)
 		switch node := node.(type) {
 		case *ast.GenericParameter:
 			for index, operator := range node.ConstraintOperators {
@@ -323,7 +482,7 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				mark(node.Name.Token, TestDeclarationName)
 			}
 		case *ast.IfStatement:
-			if _, ok := node.Condition.(*ast.AvailabilityExpression); ok &&
+			if isStateQueryCondition(node.Condition) &&
 				node.Consequence != nil && node.Consequence.Token.Type == lexer.LBRACE {
 				mark(node.Consequence.Token, AvailabilityBlockOpen)
 			}
@@ -384,6 +543,9 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			mark(node.WhereToken, MatchGuardKeyword)
 			mark(node.ArrowToken, HandlerArrow)
 		case *ast.TryHandler:
+			if node.Guard != nil {
+				mark(node.GuardToken, MatchGuardKeyword)
+			}
 			mark(node.ArrowToken, HandlerArrow)
 		case *ast.SwitchCase:
 			if node.Body == nil || node.ColonToken.Type != lexer.COLON {
@@ -394,6 +556,9 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				markPreviousToken(switchCaseItemToken(node.Items[index]), lexer.COMMA, SwitchCaseSeparator)
 			}
 		case *ast.WhileStatement:
+			if isStateQueryCondition(node.Condition) && node.Body != nil && node.Body.Token.Type == lexer.LBRACE {
+				mark(node.Body.Token, AvailabilityBlockOpen)
+			}
 			if node.Body != nil && node.ConditionOpen.Type == lexer.LPAREN && node.ConditionClose.Type == lexer.RPAREN {
 				mark(node.ConditionOpen, RedundantControlConditionDelimiter)
 				mark(node.ConditionClose, RedundantControlConditionDelimiter)
@@ -502,4 +667,34 @@ func visitProgramNodes(program *ast.Program, visitNode func(any)) {
 		}
 	}
 	visit(reflect.ValueOf(program))
+}
+
+// isStateQueryCondition reports a condition that ends in a contextual state
+// word, whose following body brace must stay separated from it.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 8(1) braces on the construct header line, § 18 "Control flow"
+//   - rules/declarations/unions.md — §8 "`is` tests for union state and active variant"
+//   - rules/memory/ownership.md — §21 "is available and is not available"
+func isStateQueryCondition(condition ast.Expression) bool {
+	switch condition.(type) {
+	case *ast.AvailabilityExpression, *ast.StateTestExpression:
+		return true
+	}
+	return false
+}
+
+// isAssignmentOperatorToken reports the statement assignment operators.
+//
+// Rules:
+//   - rules/foundations/operators.md — assignment is not part of expression precedence
+func isAssignmentOperatorToken(typ lexer.TokenType) bool {
+	switch typ {
+	case lexer.ASSIGN, lexer.MOVE_ASSIGN, lexer.PLUS_ASSIGN, lexer.MINUS_ASSIGN,
+		lexer.ASTERISK_ASSIGN, lexer.SLASH_ASSIGN, lexer.PERCENT_ASSIGN,
+		lexer.BIT_AND_ASSIGN, lexer.BIT_OR_ASSIGN, lexer.BIT_XOR_ASSIGN,
+		lexer.SHIFT_LEFT_ASSIGN, lexer.SHIFT_RIGHT_ASSIGN:
+		return true
+	}
+	return false
 }

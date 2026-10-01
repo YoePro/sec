@@ -1928,6 +1928,11 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 	if !ok || !plan.Exhaustive || plan.ValueContext != valueContext {
 		return builtValue{}, fb.unsupported("unresolved or non-exhaustive match", expr.Token)
 	}
+	// rules/declarations/unions.md — §7.7, §10: a reachable empty state needs a
+	// runtime initialization flag that Semantic IR does not represent yet.
+	if plan.EmptyStateReachable {
+		return builtValue{}, fb.unsupported("match over a possibly empty union binding", expr.Token)
+	}
 	switch plan.SubjectKind {
 	case sema.MatchSubjectEnum, sema.MatchSubjectUnion, sema.MatchSubjectResult, sema.MatchSubjectOption:
 	default:
@@ -2460,7 +2465,7 @@ func (fb *functionBuilder) buildBoundsTryExpression(expr *ast.TryExpression, res
 	errorValue := fb.result(Operation{Kind: OpEnumConstant, EnumCase: caseID, Location: location(expr.Token)}, errorType)
 	if resolved.Kind == sema.ResolvedTryHandledBounds {
 		plan, ok := fb.owner.analyzer.ResolvedTryPlanOf(expr)
-		if !ok || !plan.Exhaustive {
+		if !ok || !lowerableTryPlan(plan) {
 			return builtValue{}, fb.unsupported("unresolved bounds handlers", expr.Token)
 		}
 		return fb.buildLocalTryHandlers(expr, plan, successBlock, successValue, errorBlock, errorValue)
@@ -2475,9 +2480,29 @@ func (fb *functionBuilder) buildBoundsTryExpression(expr *ast.TryExpression, res
 	return successValue, nil
 }
 
+// lowerableTryPlan reports whether a resolved try handler plan uses only the
+// features Semantic IR represents: exhaustive local handling without where
+// guards or block-final recovery values. Partial handlers with implicit
+// residual propagation, guards, and block values are rejected explicitly
+// rather than lowered with altered semantics.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §16, §19, §21.1, §35 "Semantic IR and lowering requirements"
+func lowerableTryPlan(plan sema.ResolvedTryPlan) bool {
+	if !plan.Exhaustive {
+		return false
+	}
+	for _, handler := range plan.Handlers {
+		if handler.Guarded || handler.BlockValue {
+			return false
+		}
+	}
+	return true
+}
+
 func (fb *functionBuilder) buildHandledResult(expr *ast.TryExpression) (builtValue, error) {
 	plan, ok := fb.owner.analyzer.ResolvedTryPlanOf(expr)
-	if !ok || !plan.Exhaustive {
+	if !ok || !lowerableTryPlan(plan) {
 		return builtValue{}, fb.unsupported("unresolved or non-exhaustive Result handler plan", expr.Token)
 	}
 	resultValue, err := fb.buildExpr(expr.Expression, 0)
@@ -2886,7 +2911,7 @@ func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, 
 	var localError builtValue
 	if localTry != nil {
 		plan, ok := fb.owner.analyzer.ResolvedTryPlanOf(localTry)
-		if !ok || !plan.Exhaustive {
+		if !ok || !lowerableTryPlan(plan) {
 			return builtValue{}, fb.unsupported("unresolved or non-exhaustive arithmetic handler plan", localTry.Token)
 		}
 		errorType, err := fb.owner.internType(plan.ErrorType)

@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-09-30"
+    revised: "2026-10-01"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -39,6 +39,10 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/analyzer_result_projection.go
       - internal/sema/analyzer_try_option.go
+      - internal/sema/analyzer_try_handlers.go
+      - internal/sema/analyzer_fallible_setters.go
+      - internal/cst/roles.go
+      - cmd/lsp/hover_try.go
       - internal/sema/compiler_known_members.go
       - internal/sema/types.go
       - internal/diagnostics/diagnostics.go
@@ -72,6 +76,15 @@ integrations:
       - testdata/parser/obsolete_try_match_wrapper_invalid.sec
       - testdata/parser/try_handler_comment_valid.sec
       - testdata/sema/try_handler_direct_valid.sec
+      - internal/sema/try_handlers_test.go
+      - internal/sema/fallible_setter_test.go
+      - internal/parser/try_handler_test.go
+      - internal/ir/semantic/try_handler_plan_test.go
+      - testdata/sema/try_handlers_partial_valid.sec
+      - testdata/sema/try_handlers_partial_invalid.sec
+      - testdata/sema/try_handler_guard_consume_invalid.sec
+      - testdata/sema/fallible_setter_contract_valid.sec
+      - testdata/sema/fallible_setter_contract_invalid.sec
       - testdata/sema/try_err_discard_non_discardable_invalid.sec
       - testdata/sema/match_err_discard_non_discardable_invalid.sec
     implemented:
@@ -116,6 +129,14 @@ integrations:
       - "result-err-none-tests: Consuming Result.Ok()/Err() projections compose with the parser's non-binding Option state tests. Sema accepts both projection is None and projection is not None through the ordinary exhaustive typed Option-match path while retaining projection ownership effects."
       - "result-projection-ownership-diagnostics: Use after consuming Result.Ok()/Err() is diagnosed from compiler-owned place state, identifies the consumed value and projection, carries the projection source location as related context, explains that the value is unavailable, and recommends OkRef/ErrRef for non-consuming inspection or ending use of the Result."
       - "try-option-propagation frontend: Naked try over Option[T] resolves Some(T) to T and propagates None only through a compatible enclosing Option[T] return channel. Sema publishes a dedicated resolved Option-propagation fact, rejects Result/Option cross-channel conversion and incompatible Option specializations, and supports ordinary nested expression positions without treating assignment as an expression."
+      - "§16 partial handlers: unmatched Result failures propagate through a compatible enclosing Result return; the resolved plan records ResidualPropagates and EnclosingResultType, LSP hover shows the propagation target, and an unpropagatable residual reports a mentor diagnostic naming the unhandled variants and the fix"
+      - "§19 where guards: try handlers parse `Pattern where condition => body`, the guard must be bool and sees the pattern binding, and a guarded handler never covers its pattern for reachability or coverage"
+      - "§20: a guard that consumes a move-only payload binding before selection is rejected"
+      - "§18: reachability and duplicate checks treat guarded handlers as non-covering while an earlier unguarded catch-all or complete variant coverage still makes later handlers unreachable"
+      - "§21.1 block recovery values: a handler block may end with a contextual result-position expression, including literals, that must be assignable to the success type; the parser accepts it only as the final statement of a handler block"
+      - "§24 fallible setters: try set value ErrorType { ... } and interface try set value ErrorType declare the error contract explicitly; the contract must be error or a concrete error type, is never inferred from the body, and an implementation's contract must be assignable to the interface's"
+      - "§24 success model: normal completion and bare return are success, return Err(error) is failure checked against the contract, and return Ok() or any other returned value is rejected"
+      - Semantic IR rejects partial plans, guarded handlers, and block-value handlers explicitly as unsupported instead of lowering them with altered semantics
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
@@ -126,14 +147,12 @@ integrations:
       - "try-option-local-handlers: Complete try over Option[T] with local None handlers that may recover with T, partial-handler propagation, recovery-value validation, ownership, Semantic IR, and lowering. Naked compatible None propagation and Option/Result cross-channel rejection are implemented in the frontend."
       - "try-failure-set: Represent multiple possible failures of one protected expression as compiler-internal failure facts without creating an anonymous source error union or automatic domain-error wrapper. Err(_) may handle a heterogeneous failure set."
       - "try-heterogeneous-binding: Allow Err(name) catch-all binding only when the protected construct already provides one compiler-resolved binding type, such as one concrete error type or an explicitly declared error channel. Do not infer error solely to make an otherwise heterogeneous local binding possible."
-      - "try-partial-handlers: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
+      - "try-partial-handlers-lowering: Lower partial handler plans with implicit residual propagation, including Option None partial handling, through Semantic IR and maintained backends. (Frontend partial Result handling is implemented.) Previously: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
       - "try-handler-order-reachability: Extend the implemented duplicate-variant, catch-all, and complete-enum checks to guarded handlers and other provable pattern subsumption; retain top-to-bottom first-match semantics in resolved plans."
-      - "try-handler-where-guards: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
-      - "try-recovery-values: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
+      - "try-handler-where-guards-lowering: Lower guarded handlers with guard-false continuation and guarded ownership commit through Semantic IR. (Frontend guards and guard-consumption rejection are implemented.) Previously: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
+      - "try-recovery-values-lowering: Lower block-final recovery values and their merges through Semantic IR. (Frontend block-final values are implemented.) Previously: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
       - "try-handler-failure-boundary: The attached handler set covers only failures from the protected expression. Failures originating in guards or handler bodies are outside that try and must use ordinary propagation or an explicit nested try."
       - "try-expression-positions: Ensure try is usable anywhere its resolved success type is valid, including call arguments, boolean conditions, aggregate field initializers, nested/parenthesized expressions, and multiple argument positions. Assignment remains a statement and is not made into an expression."
-      - "property-explicit-setter-error: Change fallible setter syntax to try set value ErrorType { ... } and require the same explicit error type in interface requirements. Do not infer a public setter error contract from its implementation."
-      - "property-setter-success-model: For try set, normal completion is implicit success, bare return is early success, return Err(error) is failure, and return Ok() is invalid. Property getters remain infallible in Sec 0.1."
       - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
       - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, and nested failure boundaries. Backends must not reconstruct these semantics from syntax or unused SSA. Direct Result return-try forwarding already has a dedicated resolved fact and canonical Semantic IR lowering."
       - "errorhandling-lsp-v2: Replace the Result-only try-hover plan with compiler-resolved Result/Option/fallible-operation facts. Show success type, handled and propagated alternate states, concrete versus widened error identity, consuming versus borrowed projections, ownership consequences, and mentor diagnostics without reimplementing Sema in the LSP."
@@ -229,7 +248,8 @@ integrations:
         result: passed; naked and handled assignments retain statement boundaries, validate compatible Result propagation including concrete-error widening to error, reject invalid channels, and publish resolved facts
       - command: go test ./internal/sema -run 'Test(NakedOptionTryPropagatesOnlyThroughCompatibleOption|TryExpressionWorksInCallArgumentsAndParentheses|OptionTryRejectsExplicitSomeHandler)' -count=1
         result: passed on 2026-09-28; naked Option try unwraps Some, propagates None only through a compatible Option return, rejects cross-channel or incompatible propagation, and coexists with general nested Result try positions and the existing forbidden-Some-handler diagnostic
-
+      - command: go test ./internal/parser ./internal/sema ./internal/ir/semantic -run 'Test(TryHandler|TryHandlersPartialGuardsAndBlockValues|TryPlansWithGuardsOrBlockValuesAreRejected|FallibleSetterContract|ParseFallibleSetterErrorContracts)' -count=1
+        result: passed on 2026-10-01; partial handlers, guards, guard consumption, block recovery values, explicit setter contracts, the setter success model, and explicit Semantic IR rejection are covered
   - id: frontend.bodyless-try-assignment
     area: frontend-analysis
     status: partial

@@ -83,8 +83,11 @@ func format(text string, options Options) string {
 		normal = fixRedundantNestedParentheses(normal)
 		normal = fixRedundantControlConditionParentheses(normal)
 	}
+	normal = formatPropertyAccessorLayout(normal)
+	normal = formatCSTTokenSpacing(normal)
 	normal = formatCSTBlockComments(normal)
 	blockCommentLines := standaloneBlockCommentLines(normal)
+	tokenLines := multilineTokenLines(normal)
 	lines := strings.Split(normal, "\n")
 	hadFinal := strings.HasSuffix(normal, "\n")
 	if hadFinal {
@@ -93,9 +96,24 @@ func format(text string, options Options) string {
 	out := make([]string, 0, len(lines))
 	indent := 0
 	blank := false
+	// lastOpensBlock records that the previous emitted code line ends with an
+	// opening brace, so a following blank line would only decorate the block.
+	lastOpensBlock := false
 	branches := []branch{}
 	for lineIndex, line := range lines {
 		commentLine := blockCommentLines[lineIndex+1]
+		multiline, inMultiline := tokenLines[lineIndex]
+		if inMultiline && multiline.continuation {
+			// rules/tooling/formatter.md — §6(8): the continuation of a
+			// multiline string literal is program data and is kept verbatim.
+			out = append(out, line)
+			indent += delimiters(multiline.tail)
+			if indent < 0 {
+				indent = 0
+			}
+			lastOpensBlock = strings.HasSuffix(strings.TrimSpace(codeBeforeTrailingComment(multiline.tail)), "{")
+			continue
+		}
 		line = strings.ReplaceAll(line, "\t", "    ")
 		line = strings.TrimRight(line, " \t")
 		line = strings.TrimSpace(line)
@@ -114,7 +132,9 @@ func format(text string, options Options) string {
 			line = normalizeReversedTypeDeclaration(line)
 			line = normalizeFunc(line)
 		}
-		line = formatPanic(formatAssert(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(line))))
+		if !(inMultiline && multiline.start) {
+			line = formatPanic(formatAssert(formatSingleLineDelimiterSpacing(formatSingleLineCallSpacing(line))))
+		}
 		level := indent
 		if !commentLine {
 			level -= closing(line)
@@ -140,14 +160,24 @@ func format(text string, options Options) string {
 				extra++
 			}
 		}
+		// rules/tooling/formatter.md — §7(2): no empty line immediately inside
+		// an opening or closing brace merely for decoration.
+		if blank && (lastOpensBlock || strings.HasPrefix(line, "}")) {
+			blank = false
+		}
 		if blank && len(out) > 0 {
 			out = append(out, "")
 			blank = false
 		}
 		out = append(out, strings.Repeat(" ", (level+extra)*4)+line)
+		delimiterLine := line
+		if inMultiline && multiline.start {
+			delimiterLine = strings.TrimSpace(multiline.masked)
+		}
+		lastOpensBlock = !commentLine && strings.HasSuffix(strings.TrimSpace(codeBeforeTrailingComment(delimiterLine)), "{")
 		delta := 0
 		if !commentLine {
-			delta = delimiters(line)
+			delta = delimiters(delimiterLine)
 		}
 		indent += delta
 		if indent < 0 {

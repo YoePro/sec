@@ -2527,7 +2527,7 @@ impl Vehicle {
 			return _speed
 		}
 
-		try set value {
+		try set value error {
 			_speed = value
 		}
 	}

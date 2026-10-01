@@ -211,7 +211,7 @@ integrations:
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1055 definitions in the reviewed registry plus mandatory S3001 and
+          S1057 definitions in the reviewed registry plus mandatory S3001 and
           S4001.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
@@ -237,6 +237,18 @@ integrations:
           cycles use mandatory S1055/struct.recursive-by-value-layout, focus the
           field closing the cycle, show the complete resolved field path, and
           suggest a canonical indirection or dynamic-storage boundary.
+      - id: diagnostics.s1056-switch-pattern-binding
+        description: >-
+          Variant payload binding and wildcard items in switch cases use
+          mandatory S1056/switch.pattern-binding, focus the attempted pattern,
+          and direct the programmer to match or default instead of cascading
+          into undefined-name diagnostics.
+      - id: diagnostics.s1057-local-shadows-declaration
+        description: >-
+          Local bindings that hide a visible generic parameter, same-module
+          type, or free function use mandatory
+          S1057/names.local-shadows-declaration with the hidden declaration as
+          related evidence.
       - id: diagnostics.s4001-use-after-discard
         description: >-
           Reads and borrows after explicit discard use mandatory
@@ -369,6 +381,8 @@ integrations:
       - CLI and LSP expose the same diagnostic ID for the same occurrence.
       - S1052 identifies invalid union-payload extraction storage and provides actionable owning-local and ref/ref-mut alternatives.
       - S1055 identifies recursive by-value struct layout, includes the concrete field cycle, and does not reject reference or dynamic-storage recursion.
+      - S1056 identifies switch payload-binding and wildcard patterns with match or default help and suppresses undefined-name cascades.
+      - S1057 identifies the shadowing local and the hidden declaration.
       - S3001 identifies the unreachable statement and explains the terminator.
       - S4001 identifies reads and borrows after discard, keeps the discard source location, and remains mandatory Error.
       - Parser recovery does not generate unrelated cascades.
@@ -377,6 +391,8 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test ./internal/diagnostics ./internal/sema ./cmd/compiler -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|SwitchPatternBindingDiagnosticIsRegistered|SwitchPattern|DiagnosticCatalog)' -count=1
+        result: passed on 2026-10-01 with registered mandatory S1056 identity, match/default help, and catalog exposure; go run ./cmd/compiler diagnostics S1056 emits the active definition
       - command: go test ./internal/sema ./internal/diagnostics -run 'TestUseAfterDiscardHasStableMandatoryDiagnostic|TestRegistryIsValid|TestKnownDiagnosticSeverities|TestDiscardOwnedFieldConsumesItsPlace' -count=1
         result: passed on 2026-10-01 with S4001 identity, mandatory severity, actionable help, and discard source location
       - command: go run ./cmd/compiler diagnostics S4001

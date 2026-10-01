@@ -1,0 +1,35 @@
+module main
+
+// A try handler guard must not consume a move-only payload binding.
+
+@noCopy
+type Handle struct {
+    id: int,
+}
+
+type FileError union error {
+    Broken {
+        Resource: Handle
+    }
+}
+
+fn Open() Result[int, FileError] {
+    return Ok(1)
+}
+
+fn Consume(->error: FileError) bool {
+    return true
+}
+
+fn Inspect(error: ref FileError) bool {
+    return true
+}
+
+fn A() int {
+    let v := try Open() {
+        Err(e) where Consume(<-e) => 1
+        Err(e) where Inspect(ref e) => 2
+        Err(_) => 0
+    }
+    return v
+}

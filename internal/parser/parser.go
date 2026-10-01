@@ -79,6 +79,13 @@ type ParseResult struct {
 type Parser struct {
 	l *lexer.Lexer
 
+	// allowFinalBlockValue is set immediately before parsing a block whose
+	// final statement may be a contextual result-position expression (a try
+	// handler block). parseStatementBlock consumes it so nested blocks do not
+	// inherit it; blockAllowsFinalValue holds it for the current block.
+	allowFinalBlockValue  bool
+	blockAllowsFinalValue bool
+
 	errors            []string
 	warnings          []string
 	diagnostics       []Diagnostic
@@ -455,6 +462,11 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.curToken.Lexeme == "detach" {
 			return p.parseDetachStatement()
 		}
+		if p.peekToken.Type == lexer.COLON {
+			if next := p.tokenAfterPeek(); next == lexer.WHILE || next == lexer.FOR {
+				return p.parseUnsupportedLoopLabel()
+			}
+		}
 		if p.peekToken.Type == lexer.MUT || p.peekToken.Type == lexer.COLON || p.looksLikeTypedVariableDeclaration() {
 			errorsBefore := len(p.errors)
 			if stmt := p.parseTypedVariableDeclaration(); stmt != nil || len(p.errors) > errorsBefore {
@@ -480,6 +492,11 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseCommentStatement()
 
 	default:
+		if p.blockAllowsFinalValue && p.isExpressionStart(p.curToken.Type) {
+			if stmt := p.parseFinalBlockValue(); stmt != nil {
+				return stmt
+			}
+		}
 		unexpected := p.curToken
 		p.addDiagnostic(
 			compilerdiagnostics.ParserUnexpectedToken,
@@ -493,6 +510,30 @@ func (p *Parser) parseStatement() ast.Statement {
 		)
 		return nil
 	}
+}
+
+// parseFinalBlockValue parses a contextual result-position expression that
+// ends a try handler block, such as a literal recovery value. It is accepted
+// only when the expression is immediately followed by the block's closing
+// brace; otherwise the lexer state is restored and the ordinary unexpected
+// token diagnostic applies.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §21.1 "Block handler result position"
+func (p *Parser) parseFinalBlockValue() ast.Statement {
+	curToken, peekToken := p.curToken, p.peekToken
+	lexerState := p.l.Snapshot()
+	errorCount, warningCount := len(p.errors), len(p.warnings)
+	token := p.curToken
+	value := p.parseExpression(LOWEST)
+	if value != nil && p.peekToken.Type == lexer.RBRACE && len(p.errors) == errorCount {
+		return &ast.ExpressionStatement{Token: token, Expression: value}
+	}
+	p.curToken, p.peekToken = curToken, peekToken
+	p.l.Restore(lexerState)
+	p.rollbackErrors(errorCount)
+	p.warnings = p.warnings[:warningCount]
+	return nil
 }
 
 // knownAttributeSetEndsAtEOF recognizes a syntactically complete sequence of
@@ -828,6 +869,15 @@ func (p *Parser) parseLoopControlStatement(continuing bool) ast.Statement {
 		p.nextToken()
 		return &ast.InvalidStatement{Token: token}
 	}
+	// rules/control-flow/flowcontrol_while.md — §26 "No loop expression value":
+	// break and continue do not carry values. The value is consumed so the
+	// loop-control statement itself is retained for flow analysis.
+	if p.peekToken.Line == token.Line && p.peekToken.Type != lexer.RBRACE && p.isExpressionStart(p.peekToken.Type) {
+		value := p.peekToken
+		p.addError("%s does not carry a value in Sec 0.1; assign the value to a variable before the loop exits at %d:%d", token.Lexeme, value.Line, value.Column)
+		p.nextToken()
+		p.parseExpression(LOWEST)
+	}
 	if continuing {
 		return &ast.ContinueStatement{Token: token}
 	}
@@ -868,6 +918,42 @@ func (p *Parser) parseUnsupportedFreeStatement() ast.Statement {
 	}
 	p.skipInvalidImplMember()
 	return stmt
+}
+
+// tokenAfterPeek returns the type of the token following peekToken without
+// consuming input or retaining diagnostics produced while looking ahead.
+func (p *Parser) tokenAfterPeek() lexer.TokenType {
+	curToken := p.curToken
+	peekToken := p.peekToken
+	lexerState := p.l.Snapshot()
+	errorCount := len(p.errors)
+	warningCount := len(p.warnings)
+
+	p.nextToken()
+	next := p.peekToken.Type
+
+	p.curToken = curToken
+	p.peekToken = peekToken
+	p.l.Restore(lexerState)
+	p.rollbackErrors(errorCount)
+	p.warnings = p.warnings[:warningCount]
+	return next
+}
+
+// parseUnsupportedLoopLabel rejects a loop label such as `outer:` before while
+// or for, then parses the labeled loop itself so its body is retained instead
+// of cascading through typed-declaration recovery.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_while.md — §16 "No labeled loop control in Sec 0.1", §27 "Parser requirements"
+//   - rules/control-flow/flowcontrol_for.md — §40 "Unsupported forms"
+//   - rules/compiler/parser_recovery.md — "Bounded damage"
+func (p *Parser) parseUnsupportedLoopLabel() ast.Statement {
+	label := p.curToken
+	p.addError("labeled loops are not supported in Sec 0.1; remove label %s at %d:%d", label.Lexeme, label.Line, label.Column)
+	p.nextToken()
+	p.nextToken()
+	return p.parseStatement()
 }
 
 func (p *Parser) looksLikeTypedVariableDeclaration() bool {
@@ -1155,18 +1241,25 @@ func (p *Parser) parseIfStatement() ast.Statement {
 			return nil
 		}
 		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
-			stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition)
+			stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition, "if")
 		}
 		if parenthesized && p.curToken.Type == lexer.RPAREN {
 			stmt.ConditionClose = p.curToken
 		}
 
-		if p.peekToken.Type != lexer.LBRACE {
+		if p.peekToken.Type == lexer.DECLARE {
+			stmt.Condition = p.recoverConditionBindingDeclaration(stmt.Condition, "if")
+			if p.curToken.Type != lexer.LBRACE {
+				return stmt
+			}
+			stmt.Consequence = p.parseStatementBlock("if body")
+		} else if p.peekToken.Type != lexer.LBRACE {
 			p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return stmt
+		} else {
+			p.nextToken()
+			stmt.Consequence = p.parseStatementBlock("if body")
 		}
-		p.nextToken()
-		stmt.Consequence = p.parseStatementBlock("if body")
 	}
 	if stmt.Consequence == nil {
 		return nil
@@ -1203,16 +1296,21 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	return stmt
 }
 
-// parseContextualIfStateCondition distinguishes ownership availability from
-// the narrow Option state forms without reserving is/not/available globally.
-// Other payload patterns remain match-only syntax.
+// parseContextualIfStateCondition parses the contextual `is` state tests of an
+// if or while condition without reserving is/not/available/empty globally:
+// ownership availability, Option None, non-binding union variant tests, and
+// the union empty-state test. Positive `is Some(binding)` is the sole binding
+// form and is accepted only in if conditions; every other payload pattern is
+// rejected with a focused match-only diagnostic.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §13 "No pattern binding in if"
+//   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests"
+//   - rules/declarations/unions.md — §8.1 "Active variant test", §8.2 "Empty-state test"
 //   - rules/memory/ownership.md — §21 "is available and is not available"
 //   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Option payload binding in if"
 //   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Negative binding is invalid"
-func (p *Parser) parseContextualIfStateCondition(subject ast.Expression) (ast.Expression, *ast.OptionIfBinding) {
+func (p *Parser) parseContextualIfStateCondition(subject ast.Expression, context string) (ast.Expression, *ast.OptionIfBinding) {
 	p.nextToken()
 	isToken := p.curToken
 	negated := false
@@ -1221,7 +1319,7 @@ func (p *Parser) parseContextualIfStateCondition(subject ast.Expression) (ast.Ex
 		negated = true
 	}
 	if p.peekToken.Type != lexer.IDENT {
-		p.addError("Option if test expects None or Some(binding) after is at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.addError("is test expects a union variant, empty, None, Some(binding), or available at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return subject, nil
 	}
 	if p.peekToken.Lexeme == "available" {
@@ -1236,7 +1334,16 @@ func (p *Parser) parseContextualIfStateCondition(subject ast.Expression) (ast.Ex
 		p.nextToken()
 		someToken := p.curToken
 		if p.peekToken.Type != lexer.LPAREN {
-			p.addError("Option Some test requires '(binding)' at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			if negated {
+				p.addError("is not is defined only for None and available; use match at %d:%d", someToken.Line, someToken.Column)
+				return subject, nil
+			}
+			return &ast.StateTestExpression{Token: isToken, Subject: subject, Variant: &ast.Identifier{Token: someToken, Value: someToken.Lexeme}}, nil
+		}
+		if context != "if" {
+			p.reportConditionPatternBinding(someToken, context)
+			p.nextToken()
+			p.skipConditionPatternPayload()
 			return subject, nil
 		}
 		p.nextToken()
@@ -1256,13 +1363,88 @@ func (p *Parser) parseContextualIfStateCondition(subject ast.Expression) (ast.Ex
 			return subject, nil
 		}
 		return subject, &ast.OptionIfBinding{Token: someToken, Subject: subject, Binding: binding}
-	default:
-		operator := "is"
+	case "empty":
+		p.nextToken()
 		if negated {
-			operator = "is not"
+			p.addError("is not is defined only for None and available; use match at %d:%d", p.curToken.Line, p.curToken.Column)
+			return subject, nil
 		}
-		p.addError("Option if test expects None or Some(binding) after %s at %d:%d", operator, p.peekToken.Line, p.peekToken.Column)
-		return subject, nil
+		return &ast.StateTestExpression{Token: isToken, Subject: subject, Empty: true}, nil
+	default:
+		p.nextToken()
+		test := &ast.StateTestExpression{Token: isToken, Subject: subject, Variant: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}}
+		if p.peekToken.Type == lexer.DOT {
+			p.nextToken()
+			if p.peekToken.Type != lexer.IDENT {
+				p.addError("expected variant name after '.' in is test at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return subject, nil
+			}
+			p.nextToken()
+			test.Owner = test.Variant
+			test.Variant = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+		}
+		if p.peekToken.Type == lexer.LPAREN {
+			p.reportConditionPatternBinding(test.Variant.Token, context)
+			p.nextToken()
+			p.skipConditionPatternPayload()
+			return subject, nil
+		}
+		if negated {
+			p.addError("is not is defined only for None and available; use match at %d:%d", test.Variant.Token.Line, test.Variant.Token.Column)
+			return subject, nil
+		}
+		return test, nil
+	}
+}
+
+// recoverConditionBindingDeclaration rejects the declaration-shaped pattern
+// binding `Pattern := value` in an if or while condition. The condition is
+// replaced by an invalid expression so Sema does not report the pattern's
+// names as undefined, and parsing resumes at the body brace.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §13 "No pattern binding in `if`"
+//   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests"
+//   - rules/compiler/parser_recovery.md — "Bounded damage"
+func (p *Parser) recoverConditionBindingDeclaration(condition ast.Expression, context string) ast.Expression {
+	token := expressionToken(condition)
+	if token.Type == "" {
+		token = p.peekToken
+	}
+	p.reportConditionPatternBinding(token, context)
+	message := fmt.Sprintf("pattern binding is not allowed in %s condition; use match", context)
+	invalid := p.invalidExpression(token, message, compilerdiagnostics.ParserInvalidPattern)
+	p.nextToken()
+	p.skipUntilBlockStart()
+	invalid.Recovery.End = p.curToken
+	return invalid
+}
+
+// reportConditionPatternBinding rejects payload binding or destructuring in an
+// if or while condition and directs the programmer to match.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §13 "No pattern binding in `if`", §28 "Required diagnostics"
+//   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests", §30 "Required diagnostics"
+//   - rules/compiler/parser_recovery.md — "Parser diagnostic IDs": P2009 parser.invalid-pattern
+func (p *Parser) reportConditionPatternBinding(token lexer.Token, context string) {
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidPattern, token, nil, &token,
+		"pattern binding is not allowed in %s condition; use match at %d:%d", context, token.Line, token.Column)
+}
+
+// skipConditionPatternPayload consumes the balanced payload list that starts at
+// the current token so the condition can resynchronize at the body brace.
+func (p *Parser) skipConditionPatternPayload() {
+	delimiters := newDelimiterStack()
+	for p.curToken.Type != lexer.EOF {
+		if !delimiters.canConsume(p.curToken.Type) {
+			return
+		}
+		delimiters.consume(p.curToken.Type)
+		if delimiters.empty() {
+			return
+		}
+		p.nextToken()
 	}
 }
 
@@ -1316,7 +1498,16 @@ func (p *Parser) parseForStatement() ast.Statement {
 	}
 
 	p.nextToken()
+	if p.curToken.Type == lexer.CONSUME_ARROW {
+		p.rejectConsumingForHeader(p.curToken)
+		p.nextToken()
+	}
+	errorsBefore := len(p.errors)
 	first, ok := p.parseForBinding()
+	if !ok && len(p.errors) > errorsBefore {
+		p.skipMalformedForHeader(stmt)
+		return stmt
+	}
 	if !ok {
 		p.addError("for loop requires an iterable expression at %d:%d", p.curToken.Line, p.curToken.Column)
 		p.skipMalformedForHeader(stmt)
@@ -1327,7 +1518,12 @@ func (p *Parser) parseForStatement() ast.Statement {
 	for p.peekToken.Type == lexer.COMMA {
 		p.nextToken()
 		p.nextToken()
+		errorsBefore := len(p.errors)
 		next, ok := p.parseForBinding()
+		if !ok && len(p.errors) > errorsBefore {
+			p.skipMalformedForHeader(stmt)
+			return stmt
+		}
 		if !ok {
 			p.addError("expected loop binding after ',' at %d:%d", p.curToken.Line, p.curToken.Column)
 			p.skipMalformedForHeader(stmt)
@@ -1356,6 +1552,10 @@ func (p *Parser) parseForStatement() ast.Statement {
 	}
 
 	p.nextToken()
+	if p.curToken.Type == lexer.MOVE_ASSIGN || p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == "move" && p.isExpressionStart(p.peekToken.Type) && p.peekToken.Type != lexer.LBRACE {
+		p.rejectConsumingForHeader(p.curToken)
+		p.nextToken()
+	}
 	previousStopBeforeBrace := p.stopBeforeBrace
 	p.stopBeforeBrace = true
 	stmt.Iterable = p.parseRangeOrExpression()
@@ -1397,9 +1597,12 @@ func (p *Parser) parseForStatement() ast.Statement {
 
 // parseWhileStatement retains an explicit invalid condition when the loop body
 // starts immediately after while, preserving the body and its outer boundary.
+// Non-binding `is` state tests are accepted in the condition, while payload
+// binding and declaration-shaped patterns are rejected with match guidance.
 //
 // Rules:
 //   - rules/foundations/grammar.md — WhileStatement
+//   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests", §9 "No declarations in the header", §27 "Parser requirements"
 //   - rules/compiler/parser_recovery.md — "While recovery", "Missing condition"
 func (p *Parser) parseWhileStatement() ast.Statement {
 	stmt := &ast.WhileStatement{Token: p.curToken}
@@ -1444,8 +1647,19 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	if stmt.Condition == nil {
 		return nil
 	}
+	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
+		stmt.Condition, _ = p.parseContextualIfStateCondition(stmt.Condition, "while")
+	}
 	if parenthesized && p.curToken.Type == lexer.RPAREN {
 		stmt.ConditionClose = p.curToken
+	}
+
+	if p.peekToken.Type == lexer.DECLARE {
+		stmt.Condition = p.recoverConditionBindingDeclaration(stmt.Condition, "while")
+		if p.curToken.Type == lexer.LBRACE {
+			stmt.Body = p.parseStatementBlock("while body")
+		}
+		return stmt
 	}
 
 	if p.peekToken.Type != lexer.LBRACE {
@@ -1490,15 +1704,50 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 	return stmt
 }
 
+// parseForBinding parses one loop binding position: a name, `ref name`,
+// `ref mut name`, or the discard `_`. A reference mode on `_` is rejected
+// because a discard binds nothing to borrow.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §4 "Loop bindings", §6 "Shared element iteration", §7 "Mutable element iteration", §9 "Discard bindings"
 func (p *Parser) parseForBinding() (ast.ForBinding, bool) {
 	switch p.curToken.Type {
 	case lexer.IDENT:
 		return ast.ForBinding{Token: p.curToken, Name: p.curToken.Lexeme}, true
 	case lexer.UNDERSCORE:
 		return ast.ForBinding{Token: p.curToken, Name: "_", Discard: true}, true
+	case lexer.REF:
+		modeToken := p.curToken
+		mode := ast.ForBindingRef
+		if p.peekToken.Type == lexer.MUT {
+			p.nextToken()
+			mode = ast.ForBindingRefMut
+		}
+		switch p.peekToken.Type {
+		case lexer.IDENT:
+			p.nextToken()
+			return ast.ForBinding{Token: p.curToken, Name: p.curToken.Lexeme, Mode: mode, ModeToken: modeToken}, true
+		case lexer.UNDERSCORE:
+			p.nextToken()
+			p.addError("a discard loop binding takes no %s mode; write _ at %d:%d", mode, modeToken.Line, modeToken.Column)
+			return ast.ForBinding{Token: p.curToken, Name: "_", Discard: true}, true
+		default:
+			p.addError("expected loop binding name after %s at %d:%d", mode, p.peekToken.Line, p.peekToken.Column)
+			return ast.ForBinding{}, false
+		}
 	default:
 		return ast.ForBinding{}, false
 	}
+}
+
+// rejectConsumingForHeader reports the consuming for forms that Sec 0.1 does
+// not define: the `->` binding arrow and a `<-` or `move` iterable source. The
+// rest of the header is then parsed normally so the loop body is retained.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §4 "Loop bindings", §36 "No consuming `for` in Sec 0.1", §40 "Unsupported forms"
+func (p *Parser) rejectConsumingForHeader(token lexer.Token) {
+	p.addError("consuming for iteration is not part of Sec 0.1; iterate with a plain, ref, or ref mut binding and use the collection's explicit owning operation to extract elements at %d:%d", token.Line, token.Column)
 }
 
 func (p *Parser) skipMalformedForHeader(stmt *ast.ForStatement) {
@@ -1574,6 +1823,7 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 			continue
 		}
 
+		start := p.curToken
 		switch {
 		case p.curToken.Type == lexer.CASE:
 			caseClause := p.parseSwitchCaseClause(false, stmt.Subject == nil)
@@ -1597,6 +1847,12 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 			p.skipStatement()
 			p.nextToken()
 		}
+		// A failed clause header must never be retried on the same token.
+		// rules/compiler/parser_recovery.md — "Recovery invariants": "Progress".
+		if p.curToken == start && p.curToken.Type != lexer.EOF {
+			p.nextToken()
+			p.recordSkippedRecovery(start, start, 1, RecoveryProbable)
+		}
 	}
 
 	if p.curToken.Type == lexer.EOF {
@@ -1604,6 +1860,32 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 	}
 
 	return stmt
+}
+
+// parseStatementInExpressionPosition rejects switch or while used where a
+// value is required. The complete statement is skipped as one balanced region
+// so value-shaped bodies do not cascade into statement errors, and an invalid
+// expression keeps the enclosing construct.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_switch.md — §30 "Switch is not an expression"
+//   - rules/control-flow/flowcontrol_switch.md — §40 "Required diagnostics": "switch is a statement and does not produce a value"
+//   - rules/control-flow/flowcontrol_while.md — §26 "No loop expression value"
+//   - rules/compiler/parser_recovery.md — "Parser diagnostic IDs": P2011 parser.misplaced-keyword
+func (p *Parser) parseStatementInExpressionPosition() ast.Expression {
+	start := p.curToken
+	advice := "use match or assign from the switch cases"
+	if start.Type == lexer.WHILE {
+		advice = "use an explicit variable assigned inside the loop"
+	}
+	message := fmt.Sprintf("%s is a statement and does not produce a value; %s at %d:%d", start.Lexeme, advice, start.Line, start.Column)
+	p.addDiagnostic(compilerdiagnostics.ParserMisplacedKeyword, start, nil, &start, "%s", message)
+	invalid := p.invalidExpression(start, message, compilerdiagnostics.ParserMisplacedKeyword)
+	recovery := p.skipUnsupportedConditionalExpression()
+	invalid.Recovery.Start = recovery.Start
+	invalid.Recovery.End = recovery.End
+	invalid.Recovery.Skipped = recovery.Skipped
+	return invalid
 }
 
 // parseSelectStatement preserves ordered branches and their partial bodies at EOF
@@ -1739,6 +2021,10 @@ func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.Sw
 	if isDefault {
 		if p.peekToken.Type != lexer.COLON {
 			p.addError("expected ':' after default at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			// Consume the default keyword before skipping: the clause skipper
+			// stops at DEFAULT, so skipping from it would make no progress.
+			// rules/compiler/parser_recovery.md — "Recovery invariants": "Progress".
+			p.nextToken()
 			p.skipSwitchClause()
 			return clause
 		}
@@ -1769,6 +2055,8 @@ func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.Sw
 			p.nextToken()
 			clause.Body = p.parseSwitchCaseBody()
 			return clause
+		case lexer.WHERE:
+			return p.recoverSwitchCaseGuard(clause)
 		default:
 			if !subjectless && p.peekToken.Type == lexer.OR {
 				p.addError("use ',' between switch case values; '||' creates a boolean expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -1782,7 +2070,51 @@ func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.Sw
 	}
 }
 
+// recoverSwitchCaseGuard rejects a match-style `where` guard after a switch
+// case item. The guard expression is consumed and the clause body is retained
+// so later clauses and statements are parsed normally.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_switch.md — §29 "No switch case guards"
+//   - rules/control-flow/flowcontrol_switch.md — §40 "Required diagnostics": "switch case guards are not part of Sec 0.1"
+//   - rules/compiler/parser_recovery.md — "Parser diagnostic IDs": P2011 parser.misplaced-keyword
+func (p *Parser) recoverSwitchCaseGuard(clause *ast.SwitchCase) *ast.SwitchCase {
+	p.nextToken()
+	where := p.curToken
+	p.addDiagnostic(compilerdiagnostics.ParserMisplacedKeyword, where, nil, &where,
+		"switch case guards are not part of Sec 0.1; use a subjectless switch, if, or match at %d:%d", where.Line, where.Column)
+	if p.peekToken.Type != lexer.COLON {
+		p.nextToken()
+		if p.parseExpression(LOWEST) == nil {
+			p.skipSwitchClause()
+			return clause
+		}
+	}
+	if p.peekToken.Type != lexer.COLON {
+		p.addError("expected ':' after switch case at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.nextToken()
+		p.skipSwitchClause()
+		return clause
+	}
+	p.nextToken()
+	clause.ColonToken = p.curToken
+	p.nextToken()
+	clause.Body = p.parseSwitchCaseBody()
+	return clause
+}
+
+// parseSwitchCaseItem parses one comma-separated switch alternative. A bare
+// `_` is retained as an identifier item so Sema can reject the wildcard
+// pattern with the switch-specific diagnostic.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_switch.md — §7 "Case expressions", §8 "Range cases", §10 "Relational cases"
+//   - rules/control-flow/flowcontrol_switch.md — §28 "No pattern matching", §35 "Parser requirements"
 func (p *Parser) parseSwitchCaseItem(subjectless bool) ast.SwitchCaseItem {
+	if p.curToken.Type == lexer.UNDERSCORE && (p.peekToken.Type == lexer.COLON || p.peekToken.Type == lexer.COMMA) {
+		wildcard := &ast.Identifier{Token: p.curToken, Value: "_"}
+		return &ast.SwitchValueCase{Token: p.curToken, Value: wildcard}
+	}
 	if subjectless {
 		value := p.parseExpression(LOWEST)
 		if value == nil {
@@ -1820,6 +2152,13 @@ func (p *Parser) parseSwitchCaseItem(subjectless bool) ast.SwitchCaseItem {
 	}
 }
 
+// parseSwitchCaseBody parses the statements of one switch clause up to the next
+// clause or the closing brace. A statement that fails to parse is replaced by an
+// invalid-statement placeholder so the partial AST never contains nil nodes.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_switch.md — switch case clauses
+//   - rules/compiler/parser_recovery.md — "Recovery invariants", "Block recovery"
 func (p *Parser) parseSwitchCaseBody() *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.CASE && p.curToken.Type != lexer.DEFAULT {
@@ -1835,15 +2174,19 @@ func (p *Parser) parseSwitchCaseBody() *ast.BlockStatement {
 			}
 		}
 
+		start := p.curToken
+		diagnosticStart := len(p.diagnostics)
 		stmt := p.parseStatement()
-		if stmt != nil {
+		if parsedStatementPresent(stmt) {
 			block.Statements = append(block.Statements, stmt)
 			p.attachDocumentation(documentation, stmt)
+			p.endRecoveryEpisode()
 			p.nextToken()
 			continue
 		}
 
-		p.skipStatement()
+		recovery := p.skipStatement()
+		block.Statements = append(block.Statements, p.invalidStatement(start, diagnosticStart, recovery))
 	}
 	return block
 }
@@ -2983,6 +3326,11 @@ func (p *Parser) parseInterfacePropertySetter(property *ast.InterfaceProperty, f
 	}
 	p.nextToken()
 	property.SetterParameter = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	// rules/errors/errorhandling.md — §24.1: `try set value ErrorType`.
+	if fallible && p.peekToken.Line == p.curToken.Line && p.isTypeNameToken(p.peekToken.Type) {
+		p.nextToken()
+		property.SetterErrorType = p.parseTypeReference()
+	}
 	return true
 }
 
@@ -3475,8 +3823,12 @@ func (p *Parser) parseGenericParameters() []*ast.GenericParameter {
 	for {
 		if p.peekToken.Type != lexer.IDENT {
 			p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			before := p.curToken
 			p.skipGenericParameterList()
-			if p.curToken.Type == lexer.COMMA {
+			// A separator followed by EOF or a foreign closer leaves nothing to
+			// skip; retrying from the same comma would make no progress.
+			// rules/compiler/parser_recovery.md — "Recovery invariants": "Progress".
+			if p.curToken.Type == lexer.COMMA && p.curToken != before {
 				if p.peekToken.Type == lexer.RBRACKET {
 					p.nextToken()
 					return params
@@ -3762,7 +4114,13 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 	previousContext := p.recoveryContext
 	p.recoveryContext = RecoveryContextBlock
-	defer func() { p.recoveryContext = previousContext }()
+	previousAllowsFinal := p.blockAllowsFinalValue
+	p.blockAllowsFinalValue = p.allowFinalBlockValue
+	p.allowFinalBlockValue = false
+	defer func() {
+		p.recoveryContext = previousContext
+		p.blockAllowsFinalValue = previousAllowsFinal
+	}()
 
 	p.nextToken()
 	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
@@ -5079,6 +5437,11 @@ func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.Pr
 	}
 	p.nextToken()
 	setter.Parameter = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+	// rules/errors/errorhandling.md — §24: `try set value ErrorType { ... }`.
+	if fallible && p.peekToken.Type != lexer.LBRACE && p.isTypeNameToken(p.peekToken.Type) {
+		p.nextToken()
+		setter.ErrorType = p.parseTypeReference()
+	}
 
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil

@@ -613,6 +613,15 @@ func (g *Generator) emitFor(stmt *ast.ForStatement) error {
 	if len(stmt.Bindings) == 0 && stmt.Iterable == nil {
 		return g.emitInfiniteFor(stmt)
 	}
+	// rules/control-flow/flowcontrol_for.md — §6–§7: ref and ref mut bindings
+	// borrow the element in place; lowering them as copies would change
+	// observable mutation, so they are rejected until reference iteration is
+	// lowered explicitly.
+	for _, binding := range stmt.Bindings {
+		if binding.Mode != ast.ForBindingValue {
+			return fmt.Errorf("emit-mlir does not support %s loop bindings yet", binding.Mode)
+		}
+	}
 
 	if rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression); ok {
 		if len(stmt.Bindings) != 1 {
@@ -1667,6 +1676,11 @@ func (g *Generator) emitMatch(expr *ast.MatchExpression, targetType string, targ
 		}
 		g.write("  ^%s:\n", testLabels[i])
 		g.blockOpen = true
+		// rules/declarations/unions.md — §10: the empty pattern tests
+		// initialization state and must not reach the identifier catch-all.
+		if arm.Pattern != nil && arm.Pattern.Kind == ast.MatchPatternEmpty {
+			return fmt.Errorf("emit-mlir does not support empty union match patterns yet")
+		}
 		condition, err := g.emitMatchPatternCondition(subject, arm.Pattern.Expression())
 		if err != nil {
 			return err

@@ -416,13 +416,28 @@ type ResolvedTryHandler struct {
 	Flow           ResolvedTryHandlerFlow
 	ResultType     Type
 	SourceIndex    int
+	// Guarded records a `where` condition; a guarded handler never covers its
+	// complete pattern (rules/errors/errorhandling.md §19).
+	Guarded bool
+	// BlockValue records that a handler block produces its recovery value from
+	// its final expression (rules/errors/errorhandling.md §21.1).
+	BlockValue bool
 }
 
+// ResolvedTryPlan is the source-ordered local handler decision of one try.
+// A non-exhaustive plan is partial: ResidualPropagates records that the
+// unmatched failures propagate to EnclosingResultType through normal try
+// propagation.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §16 "Partial handlers and implicit propagation", §18 "Handler order and reachability"
 type ResolvedTryPlan struct {
-	SuccessType Type
-	ErrorType   Type
-	Exhaustive  bool
-	Handlers    []ResolvedTryHandler
+	SuccessType         Type
+	ErrorType           Type
+	Exhaustive          bool
+	ResidualPropagates  bool
+	EnclosingResultType Type
+	Handlers            []ResolvedTryHandler
 }
 
 type ResolvedMatchSubjectKind string
@@ -444,6 +459,9 @@ const (
 	MatchPatternOptionSome   ResolvedMatchPatternKind = "option-some"
 	MatchPatternOptionNone   ResolvedMatchPatternKind = "option-none"
 	MatchPatternCatchAll     ResolvedMatchPatternKind = "catch-all"
+	// MatchPatternEmptyState is the compiler-known `empty` initialization
+	// state of a possibly-empty union binding; it is not a union variant.
+	MatchPatternEmptyState ResolvedMatchPatternKind = "empty-state"
 )
 
 type ResolvedMatchBindingAction string
@@ -485,13 +503,21 @@ type ResolvedMatchArm struct {
 	ResidualAlwaysMatches bool
 }
 
+// ResolvedMatchPlan is the source-order match decision. EmptyStateReachable
+// records that the subject is a union binding that may still be empty, so the
+// plan includes the compiler-known empty state alongside declared variants.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — patterns, exhaustiveness and value arms
+//   - rules/declarations/unions.md — §10 "Matching `empty`"
 type ResolvedMatchPlan struct {
-	SubjectKind  ResolvedMatchSubjectKind
-	SubjectType  Type
-	ValueContext bool
-	ResultType   Type
-	Exhaustive   bool
-	Arms         []ResolvedMatchArm
+	SubjectKind         ResolvedMatchSubjectKind
+	SubjectType         Type
+	ValueContext        bool
+	ResultType          Type
+	Exhaustive          bool
+	EmptyStateReachable bool
+	Arms                []ResolvedMatchArm
 }
 
 type ResolvedEnumCase struct {

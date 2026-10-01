@@ -1,0 +1,24 @@
+module main
+
+// Local bindings must not hide a visible type, function, or generic parameter.
+
+type Packet struct {
+    id: int,
+}
+
+fn Helper() int {
+    return 1
+}
+
+fn ShadowsType() void {
+    let Packet := 10
+}
+
+fn ShadowsFunction(values: int[3]) void {
+    for Helper in values {
+    }
+}
+
+fn ShadowsGeneric[T](value: T) void {
+    let T := 1
+}

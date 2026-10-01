@@ -1,0 +1,45 @@
+module main
+
+// Non-binding union state tests in if and while conditions.
+
+type State union {
+    Idle
+    Running
+}
+
+fn Use(s: State) void {
+}
+
+fn EmptyRefines(flag: bool) void {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    if state is empty {
+        state = State.Running
+    }
+    Use(state)
+}
+
+fn VariantRefines(flag: bool) void {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    if state is Idle {
+        Use(state)
+    }
+}
+
+fn Qualified(s: State, r: Result[int, error], o: Option[int]) bool {
+    if s is State.Running {
+        return true
+    }
+    if r is Ok {
+        return true
+    }
+    while o is Some {
+        return false
+    }
+    return false
+}

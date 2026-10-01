@@ -242,6 +242,8 @@ integrations:
       - internal/sema/analyzer_struct_layout.go
       - internal/sema/place.go
       - internal/sema/semantic_facts.go
+      - internal/sema/analyzer_union_state.go
+      - internal/cst/roles.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -251,6 +253,13 @@ integrations:
       - internal/sema/semantic_facts_test.go
       - testdata/union_valid.sec
       - testdata/union_invalid.sec
+      - internal/parser/control_flow_forms_test.go
+      - internal/sema/union_state_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/sema/union_state_tests_valid.sec
+      - testdata/sema/union_state_tests_invalid.sec
+      - testdata/sema/union_empty_match_valid.sec
+      - testdata/sema/union_empty_match_invalid.sec
     implemented:
       - named closed payload-less, single-payload, struct-like, and mixed union declarations
       - nominal variant namespaces, duplicate and empty-union validation, payload arity checking, and broad payload type compatibility; complete representability and ownership preparation remain partial
@@ -269,10 +278,18 @@ integrations:
       - Place-based payload ownership, copy versus move classification, reinitialization, borrow conflicts, and hidden partial-move rejection for whole payloads
       - recursive payload-derived copyability, trivial destruction, and equality-comparability classification
       - resolved union construction and match facts with stable declaration-order variant indices
+      - non-binding value is Variant, value is Owner.Variant, and value is empty state tests parse as StateTestExpression in if and while conditions; payload variants without parentheses (result is Ok, value is Some) are non-binding tests
+      - Sema types state tests as bool against union variants, Option variants, and the Result Ok/Err variants; it rejects unknown variants, mismatched qualifiers, and non-union subjects, and inspects a possibly-empty local binding without a value read while moved-from bindings remain ownership errors
+      - if statements and while loops refine definite assignment from state tests (the true path of is Variant and the false path of is empty prove a possibly-empty binding initialized; while exits refine only without a reachable break) and publish monotone ResolvedStateTest facts
+      - is empty on a definitely initialized binding is proven false and its branch is reported through the canonical S3001 unreachable diagnostic
+      - the formatter keeps the body brace separated from a trailing state word in if and while conditions
+      - match over a possibly-empty local union binding reads the subject without a value read, accepts the compiler-known empty pattern, requires an unguarded empty arm or _ for exhaustiveness, proves the binding initialized inside every variant arm, rejects duplicate empty arms, and rejects an empty arm on a known-initialized subject as unreachable
+      - ResolvedMatchPlan records EmptyStateReachable and an empty-state arm so termination and return analysis include the empty arm; Semantic IR and both legacy backends reject the empty state explicitly instead of treating it as a catch-all
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
-      - parse and analyze value is Variant and value is empty with definite-assignment and active-variant refinement
-      - parse and analyze the compiler-known empty match pattern and include reachable empty state in exhaustiveness
+      - record active-variant refinement (beyond initialization) for later member and payload analyses
+      - lower StateTestExpression through Semantic IR and maintained backends; Semantic IR currently rejects it as not implemented
+      - warn when an unguarded _ absorbs a reachable empty state without an explicit empty arm (optional tooling policy in §10.4)
       - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
       - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
       - complete layout-aware recursive-storage validation across every finite and infinite indirection form
@@ -286,6 +303,10 @@ integrations:
         result: passed
       - command: go test ./internal/sema -run 'Union|Default|Match.*Payload|StructLiteralOptionFields' -count=1
         result: passed
+      - command: go test ./internal/sema -run 'TestUnionEmptyMatchPattern' -count=1
+        result: passed on 2026-10-01; empty arms, catch-all coverage, per-arm initialization refinement, termination, and missing, impossible, duplicate, and still-empty diagnostics are covered
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'Test(ConditionStateTestsParse|UnionState|FormatUnionStateTests)' -count=1
+        result: passed on 2026-10-01; state tests parse, type, refine definite assignment, diagnose impossible and invalid tests, and format canonically
   - id: frontend.properties
     area: frontend-analysis
     status: partial
@@ -701,7 +722,7 @@ integrations:
     area: frontend-name-resolution
     status: partial
     audited: '2026-08-19'
-    updated: '2026-09-16'
+    updated: '2026-10-01'
     repository_baseline: c515862
     summary: Tracks the consolidated revision-2-era rules for declaration namespaces, lexical and member scopes, shadowing,
       visibility prefixes, name lookup, overload identity, and nominal-type naming. The compiler has substantial module,
@@ -724,6 +745,8 @@ integrations:
     - internal/sema/generic_type_shadowing_test.go
     - internal/sema/nominal_naming_test.go
     - internal/sema/parameter_type_shadowing_test.go
+    - internal/sema/local_shadowing_test.go
+    - testdata/names/local_shadowing_invalid.sec
     - internal/diagnostics/diagnostics_test.go
     - cmd/lsp/generic_naming_test.go
     - testdata/names/generic_capitalization_valid.sec
@@ -752,6 +775,7 @@ integrations:
     - S1027 names.invalid-generic-type-parameter is a mandatory compiler diagnostic with a source range and naming guidance; LSP publishes the same Sema result
     - S1038 names.invalid-nominal-type is a mandatory compiler diagnostic with a source range and naming guidance
     - S1040 names.parameter-shadows-type is a mandatory compiler diagnostic with the previous type declaration location
+    - local variables, loop bindings, pattern bindings, and lambda parameters that hide a visible generic parameter, a same-module source type, or an accessible free function report mandatory S1057 names.local-shadows-declaration with the hidden declaration's location; the binding is still declared to avoid cascades, and unit names are exempt pending MD-007
     partial:
     - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters,
       members, types, generics, imports, aliases, and compiler-provided contextual bindings
@@ -760,8 +784,10 @@ integrations:
     - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed
       across feature-specific code paths
     remaining:
-    - enforce the no-shadowing rule uniformly for locals, parameters, loop and pattern bindings, generic parameters,
-      nested declarations, imports, aliases, visible types, visible values, and directly visible members
+    - enforce the no-shadowing rule for parameters, generic parameters, nested declarations, imports, aliases, imported
+      types, visible values, and directly visible members (locals, loop bindings, and pattern bindings now cover visible
+      generic parameters, same-module types, free functions, and enclosing locals)
+    - decide whether unit symbols share the declaration namespace (MD-007) and apply shadowing accordingly
     - extend parameter shadowing checks beyond same-module source types to all other visible declarations, and prevent compiler-provided contextual bindings such as self and property-setter value parameters from silently replacing them
     - reject generic parameters that shadow imported visible types, visible values, or directly visible members
     - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific

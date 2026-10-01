@@ -1,0 +1,52 @@
+module main
+
+// Fallible setters declare their error contract; success is implicit.
+
+enum SpeedError error {
+    TooLow,
+    TooHigh,
+}
+
+type Car struct {
+    _speed: int,
+}
+
+impl Car {
+    property Speed: int {
+        get {
+            return _speed
+        }
+        try set value SpeedError {
+            if value < 0 {
+                return Err(SpeedError.TooLow)
+            }
+            if value > 300 {
+                return
+            }
+            _speed = value
+        }
+    }
+}
+
+interface Tunable {
+    property Speed: int {
+        try set value SpeedError
+    }
+}
+
+type Kart struct {
+    _speed: int,
+}
+
+impl Kart implements Tunable {
+    property Speed: int {
+        try set value SpeedError {
+            _speed = value
+        }
+    }
+}
+
+fn Drive(car: ref mut Car) Result[void, SpeedError] {
+    try car.Speed = 10
+    return Ok()
+}

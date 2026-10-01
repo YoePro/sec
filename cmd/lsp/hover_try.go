@@ -126,6 +126,11 @@ func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpr
 				fmt.Sprintf("Handler coverage: `%s`", coverage),
 				fmt.Sprintf("Resolved handlers: `%d`", len(plan.Handlers)),
 			)
+			// rules/errors/errorhandling.md — §16: unmatched failures of a
+			// partial handler set propagate through the enclosing return.
+			if plan.ResidualPropagates {
+				lines = append(lines, "Unhandled errors: `propagated to "+lspTypeName(plan.EnclosingResultType)+"`")
+			}
 		}
 	default:
 		lines = append(lines,

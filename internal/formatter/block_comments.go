@@ -99,6 +99,10 @@ func alignedBlockComment(comment, indent string) (string, bool) {
 	}
 	inner := comment[openerLength : len(comment)-2]
 	rawLines := strings.Split(inner, "\n")
+	// Text written on the opener line has no indentation of its own.
+	if len(rawLines) > 0 {
+		rawLines[0] = strings.TrimLeft(rawLines[0], " \t")
+	}
 	for len(rawLines) > 0 && strings.TrimSpace(rawLines[0]) == "" {
 		rawLines = rawLines[1:]
 	}
@@ -106,10 +110,11 @@ func alignedBlockComment(comment, indent string) (string, bool) {
 		rawLines = rawLines[:len(rawLines)-1]
 	}
 
+	base := commentContentBase(rawLines, len(indent))
 	lines := make([]string, 0, len(rawLines))
 	lastBlank := false
 	for _, raw := range rawLines {
-		content := blockCommentLineContent(raw, indent)
+		content := blockCommentLineContent(raw, base)
 		blank := content == ""
 		if blank && lastBlank {
 			continue
@@ -135,20 +140,52 @@ func alignedBlockComment(comment, indent string) (string, bool) {
 	return result.String(), true
 }
 
-func blockCommentLineContent(raw, indent string) string {
-	if indent != "" && strings.HasPrefix(raw, indent) {
-		raw = raw[len(indent):]
-	}
-	trimmedLeft := strings.TrimLeft(raw, " \t")
-	if strings.HasPrefix(trimmedLeft, "*") {
-		trimmedLeft = strings.TrimPrefix(trimmedLeft, "*")
-		trimmedLeft = strings.TrimPrefix(trimmedLeft, " ")
-		if len(trimmedLeft)-len(strings.TrimLeft(trimmedLeft, " \t")) >= 4 {
-			return strings.TrimRight(trimmedLeft, "\r")
+// commentContentBase returns the indentation width that belongs to the comment
+// layout rather than to its text: the smaller of the opener's indentation and
+// the least-indented plain (non-star) content line. An opener moved further
+// right than its body therefore cannot make ordinary lines look preformatted.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §12(12) surrounding indentation, §12(14) preformatted preservation
+func commentContentBase(rawLines []string, openerIndent int) int {
+	base := openerIndent
+	for _, raw := range rawLines {
+		trimmed := strings.TrimLeft(raw, " \t")
+		if strings.TrimSpace(trimmed) == "" || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		if width := len(raw) - len(trimmed); width < base {
+			base = width
 		}
 	}
-	if len(raw)-len(strings.TrimLeft(raw, " \t")) >= 4 {
-		return strings.TrimRight(raw, "\r")
+	return base
+}
+
+// blockCommentLineContent extracts the text of one comment line. A line in the
+// aligned-star form keeps only the text after its star, and is preformatted
+// only when that text is itself indented by at least four columns; a plain
+// line is preformatted when it is indented four or more columns past base.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §12(8) multiline aligned-star form, §12(14) preformatted preservation
+func blockCommentLineContent(raw string, base int) string {
+	raw = strings.TrimRight(raw, "\r")
+	trimmedLeft := strings.TrimLeft(raw, " \t")
+	if strings.HasPrefix(trimmedLeft, "*") {
+		text := strings.TrimPrefix(strings.TrimPrefix(trimmedLeft, "*"), " ")
+		if len(text)-len(strings.TrimLeft(text, " \t")) >= 4 {
+			return text
+		}
+		return strings.TrimSpace(text)
 	}
-	return strings.TrimSpace(trimmedLeft)
+	leading := len(raw) - len(trimmedLeft)
+	if leading > base {
+		raw = raw[base:]
+	} else {
+		raw = trimmedLeft
+	}
+	if len(raw)-len(strings.TrimLeft(raw, " \t")) >= 4 {
+		return raw
+	}
+	return strings.TrimSpace(raw)
 }

@@ -94,7 +94,7 @@ impl Vehicle {
             return _speed
         }
 
-        try set value {
+        try set value PropertyError {
             if value < 0 {
                 return Err(PropertyError.NegativeSpeed)
             }
@@ -104,7 +104,6 @@ impl Vehicle {
             }
 
             _speed = value
-            return Ok()
         }
     }
 }

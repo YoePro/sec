@@ -1,0 +1,31 @@
+module main
+
+// Loop labels, while used as a value, and value-carrying loop control are not
+// part of Sec 0.1.
+
+fn Labeled(running: bool) void {
+    outer:
+    while running {
+        return
+    }
+}
+
+fn LoopValue(running: bool) void {
+    let result := while running {
+    }
+}
+
+fn BreakValue(running: bool) void {
+    while running {
+        break 5
+    }
+}
+
+fn ContinueValue(running: bool) void {
+    while running {
+        continue 1 + 2
+    }
+}
+
+fn Following() void {
+}

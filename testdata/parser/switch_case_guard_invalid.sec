@@ -1,0 +1,15 @@
+module main
+
+// switch cases do not accept match-style where guards.
+fn Handle(value: int, active: bool) int {
+    switch value {
+    case 10..20 where active:
+        return 1
+    default:
+        return 0
+    }
+}
+
+fn Following() int {
+    return 0
+}

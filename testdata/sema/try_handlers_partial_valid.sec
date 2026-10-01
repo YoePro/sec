@@ -1,0 +1,59 @@
+module main
+
+// Partial try handlers, where guards, and block recovery values.
+
+enum IOError error {
+    NotFound,
+    PermissionDenied,
+    Busy,
+}
+
+fn Read() Result[int, IOError] {
+    return Ok(1)
+}
+
+fn Clear() Result[void, IOError] {
+    return Ok()
+}
+
+fn Log(message: string) void {
+}
+
+fn Use(value: int) void {
+}
+
+fn Partial() Result[int, IOError] {
+    let value := try Read() {
+        Err(IOError.NotFound) => 0
+    }
+    return Ok(value)
+}
+
+fn Guarded() int {
+    let value := try Read() {
+        Err(error) where error == IOError.Busy => 1
+        Err(IOError.NotFound) => 2
+        Err(_) => 0
+    }
+    return value
+}
+
+fn BlockValue() int {
+    let value := try Read() {
+        Err(IOError.NotFound) => {
+            Log("using default")
+            5
+        }
+        Err(_) => 0
+    }
+    return value
+}
+
+fn VoidSuccess() Result[void, IOError] {
+    try Clear() {
+        Err(IOError.Busy) => {
+            Log("busy")
+        }
+    }
+    return Ok()
+}

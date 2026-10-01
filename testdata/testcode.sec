@@ -25,7 +25,7 @@ impl Vehicle {
             return _speed
         }
 
-        try set value {
+        try set value IOError {
             if value < 0.0 {
                 return Err(IOError.InvalidValue)
             }

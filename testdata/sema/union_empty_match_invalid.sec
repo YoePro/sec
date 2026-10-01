@@ -1,0 +1,62 @@
+module main
+
+// Missing, impossible, and duplicate empty arms, and use of the binding while
+// it is still empty.
+
+type State union {
+    Idle
+    Running
+}
+
+fn Use(s: State) void {
+}
+
+fn MissingEmpty(flag: bool) string {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    return match state {
+        Idle => "idle"
+        Running => "running"
+    }
+}
+
+fn Initialized(state: State) string {
+    return match state {
+        empty => "empty"
+        Idle => "idle"
+        Running => "running"
+    }
+}
+
+fn Duplicate(flag: bool) void {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    match state {
+        empty => {
+            return
+        }
+        empty => {
+            return
+        }
+        _ => {
+            return
+        }
+    }
+}
+
+fn StillEmpty(flag: bool) void {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    match state {
+        empty => Use(state)
+        _ => {
+            return
+        }
+    }
+}

@@ -49,6 +49,12 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
+	stateTest, hasStateTest := a.whileConditionStateTest(stmt)
+	if hasStateTest {
+		if binding, refined := stateTestRefinement(stateTest, true); refined {
+			a.assigned[binding] = true
+		}
+	}
 	iterationEntry := a.captureLoopIterationAnalysisState()
 	previousCallGraphPathReachable := a.callGraphPathReachable
 	loopBodyReachable := !constantConditionKnown || constantCondition
@@ -105,6 +111,15 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		a.assigned = mergeBreakAssigned(previousAssigned, breakFrame.assignments)
 	} else {
 		a.assigned = previousAssigned
+	}
+	// rules/declarations/unions.md — §8.3: without a reachable break the loop
+	// exits only through its condition becoming false, so a false `is empty`
+	// test proves the binding initialized after the loop.
+	if hasStateTest && !hasReachableBreak {
+		if binding, refined := stateTestRefinement(stateTest, false); refined {
+			a.assigned = copyAssigned(a.assigned)
+			a.assigned[binding] = true
+		}
 	}
 	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, conditionAlwaysTrue)
@@ -217,4 +232,19 @@ func (a *Analyzer) statementHasReachableBreakToCurrentLoop(statement ast.Stateme
 	default:
 		return false
 	}
+}
+
+// whileConditionStateTest returns the resolved union state test that forms a
+// while condition, if any.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests"
+//   - rules/declarations/unions.md — §8.3 "Data-flow refinement"
+func (a *Analyzer) whileConditionStateTest(stmt *ast.WhileStatement) (ResolvedStateTest, bool) {
+	test, ok := stmt.Condition.(*ast.StateTestExpression)
+	if !ok {
+		return ResolvedStateTest{}, false
+	}
+	fact, ok := a.resolvedStateTests[test]
+	return fact, ok
 }

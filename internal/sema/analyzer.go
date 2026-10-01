@@ -12,7 +12,6 @@ import (
 	"sec/internal/diagnostics"
 	"sec/internal/layout"
 	"sec/internal/lexer"
-	"sec/internal/parser"
 )
 
 type Analyzer struct {
@@ -63,6 +62,7 @@ type Analyzer struct {
 	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
 	resolvedOptionIfBindings   map[*ast.IfStatement]ResolvedOptionIfBinding
 	resolvedAvailabilityTests  map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
+	resolvedStateTests         map[*ast.StateTestExpression]ResolvedStateTest
 	resolvedLambdaCaptures     map[*ast.LambdaExpression][]CaptureRecord
 	resolvedCallableIdentities map[ast.Expression]ResolvedCallableIdentity
 	resolvedClosureCreations   map[*ast.LambdaExpression]ClosureCreationSummary
@@ -108,21 +108,29 @@ type Analyzer struct {
 	currentFunctionReturn       Type
 	currentFunctionToken        lexer.Token
 	currentFunctionMetadata     Function
-	currentFunctionSummary      localReferenceOrigin
-	hasCurrentFunctionSummary   bool
-	currentTest                 *ast.TestDeclaration
-	summaryPass                 bool
-	inFunctionBody              bool
-	inLambda                    bool
-	lambdaOuterSymbols          map[string]Symbol
-	inUnsafe                    bool
-	inSwitchCaseBody            bool
-	inDeferBlock                bool
-	deferOuterSymbols           map[string]Symbol
-	deferCaptures               map[string]borrowRecord
-	suppressPlaceRootRead       int
-	loopBackedgePlaces          map[string]bool
-	cancellableDepth            int
+	// fallibleSetterBody marks analysis of a try set body, whose success is
+	// implicit (rules/errors/errorhandling.md §24).
+	fallibleSetterBody bool
+	// interfaceSetterErrorRefs and interfaceSetterErrors hold the declared
+	// fallible-setter error contracts of interface properties, keyed by
+	// Interface.Property; contracts resolve after all error types exist.
+	interfaceSetterErrorRefs  map[string]*ast.TypeReference
+	interfaceSetterErrors     map[string]*Type
+	currentFunctionSummary    localReferenceOrigin
+	hasCurrentFunctionSummary bool
+	currentTest               *ast.TestDeclaration
+	summaryPass               bool
+	inFunctionBody            bool
+	inLambda                  bool
+	lambdaOuterSymbols        map[string]Symbol
+	inUnsafe                  bool
+	inSwitchCaseBody          bool
+	inDeferBlock              bool
+	deferOuterSymbols         map[string]Symbol
+	deferCaptures             map[string]borrowRecord
+	suppressPlaceRootRead     int
+	loopBackedgePlaces        map[string]bool
+	cancellableDepth          int
 	// terminalReturnDepth carries the intrinsically transferring return
 	// context through structural construction. constructionOwnershipDepth is
 	// narrower: it admits explicit <- only while an owning field or payload is
@@ -296,6 +304,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedOptionIfBindings = map[*ast.IfStatement]ResolvedOptionIfBinding{}
 	a.resolvedAvailabilityTests = map[*ast.AvailabilityExpression]ResolvedAvailabilityTest{}
+	a.resolvedStateTests = map[*ast.StateTestExpression]ResolvedStateTest{}
 	a.resolvedLambdaCaptures = map[*ast.LambdaExpression][]CaptureRecord{}
 	a.resolvedCallableIdentities = map[ast.Expression]ResolvedCallableIdentity{}
 	a.resolvedClosureCreations = map[*ast.LambdaExpression]ClosureCreationSummary{}
@@ -2666,6 +2675,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	var optionBinding matchPatternInfo
 	optionBindingValid := false
 	var availabilityTest *ResolvedAvailabilityTest
+	var stateTest *ResolvedStateTest
 	constantCondition := false
 	constantConditionKnown := false
 	if stmt.OptionBinding != nil {
@@ -2681,6 +2691,11 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		if availabilityExpr, ok := stmt.Condition.(*ast.AvailabilityExpression); ok {
 			if fact, resolved := a.resolvedAvailabilityTests[availabilityExpr]; resolved {
 				availabilityTest = &fact
+			}
+		}
+		if stateExpr, ok := stmt.Condition.(*ast.StateTestExpression); ok {
+			if fact, resolved := a.resolvedStateTests[stateExpr]; resolved {
+				stateTest = &fact
 			}
 		}
 	}
@@ -2703,6 +2718,12 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	} else if availabilityTest != nil && availabilityTest.StaticallyKnown {
 		thenReachable = availabilityTest.Value
 		elseReachable = !availabilityTest.Value
+	} else if stateTest != nil && stateTest.StaticallyKnown {
+		thenReachable = stateTest.Value
+		elseReachable = !stateTest.Value
+		if !stateTest.Value {
+			a.diagnoseImpossibleStateTestBlock(stmt.Consequence, stateTest.Binding)
+		}
 	}
 	refinementCount := len(a.activeConditionFacts)
 	if stmt.OptionBinding == nil && stmt.Condition != nil && thenReachable {
@@ -2713,6 +2734,8 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		thenBranch = a.analyzeOptionBindingBranchWithCallGraphReachability(stmt, optionBinding, thenReachable)
 	} else if availabilityTest != nil {
 		thenBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Consequence, *availabilityTest, !availabilityTest.Negated, thenReachable)
+	} else if stateTest != nil {
+		thenBranch = a.analyzeStateTestBranch(stmt.Consequence, *stateTest, true, thenReachable)
 	} else {
 		thenBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Consequence, thenReachable)
 	}
@@ -2724,6 +2747,8 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		var elseBranch branchAnalysis
 		if availabilityTest != nil {
 			elseBranch = a.analyzeAvailabilityBranchWithCallGraphReachability(stmt.Alternative, *availabilityTest, availabilityTest.Negated, elseReachable)
+		} else if stateTest != nil {
+			elseBranch = a.analyzeStateTestBranch(stmt.Alternative, *stateTest, false, elseReachable)
 		} else {
 			elseBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
 		}
@@ -2753,6 +2778,12 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	if availabilityTest != nil {
 		fallthroughBranch = a.refinedAvailabilityFallthrough(fallthroughBranch, *availabilityTest, availabilityTest.Negated)
 		fallthroughBranch.continues = elseReachable
+	}
+	if stateTest != nil {
+		if binding, refined := stateTestRefinement(*stateTest, false); refined {
+			fallthroughBranch.assigned = copyAssigned(fallthroughBranch.assigned)
+			fallthroughBranch.assigned[binding] = true
+		}
 	}
 	a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, fallthroughBranch)
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
@@ -2945,338 +2976,6 @@ func (a *Analyzer) analyzeBranchBlockWithCallGraphReachability(block *ast.BlockS
 		a.callGraphPathReachable = previous
 	}()
 	return a.analyzeBranchBlock(block)
-}
-
-func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousLoopDepth := a.loopDepth
-	frame := a.pushLoopBreakFrame()
-
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
-	a.closedResources = copyMoved(previousClosedResources)
-	a.borrows = copyBorrows(previousBorrows)
-	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
-	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
-	a.loopDepth++
-
-	if len(stmt.Bindings) > 0 || stmt.Iterable != nil {
-		a.analyzeForIterable(stmt)
-	}
-	iterationEntry := a.captureLoopIterationAnalysisState()
-
-	if stmt.Body != nil {
-		a.analyzeBlockStatements(stmt.Body)
-	}
-
-	loopMoved := a.moved
-	loopMoveReasons := a.moveReasons
-	loopClosedResources := a.closedResources
-	loopBorrows := a.borrows
-	loopLocalRefContainers := a.localRefContainers
-	loopArenaGenerations := a.arenaGenerations
-	frameState := a.loopBreakFrames[frame]
-	for _, binding := range stmt.Bindings {
-		if binding.Discard {
-			continue
-		}
-		clearRootPlaceStateMaps(loopMoved, loopMoveReasons, binding.Name)
-		for index := range frameState.moved {
-			clearRootPlaceStateMaps(frameState.moved[index], frameState.moveReasons[index], binding.Name)
-		}
-		for index := range frameState.continueMoved {
-			clearRootPlaceStateMaps(frameState.continueMoved[index], frameState.continueReasons[index], binding.Name)
-		}
-		delete(loopClosedResources, binding.Name)
-		for index := range frameState.closedResources {
-			delete(frameState.closedResources[index], binding.Name)
-		}
-		for index := range frameState.continueClosedResources {
-			delete(frameState.continueClosedResources[index], binding.Name)
-		}
-		clearLoopBindingReferenceState(loopBorrows, loopLocalRefContainers, binding.Name)
-		for index := range frameState.borrows {
-			clearLoopBindingReferenceState(frameState.borrows[index], frameState.localRefContainers[index], binding.Name)
-		}
-		for index := range frameState.continueBorrows {
-			clearLoopBindingReferenceState(frameState.continueBorrows[index], frameState.continueLocalRefContainers[index], binding.Name)
-		}
-	}
-	a.loopBreakFrames[frame] = frameState
-	bodyFallsThrough := a.blockCanFallThrough(stmt.Body)
-	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
-	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, bodyFallsThrough)
-	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
-	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
-	headerArenaGenerations := loopBackedgeArenaGenerationState(iterationEntry.arenaGenerations, loopArenaGenerations, frameState, bodyFallsThrough)
-	a.checkLoopBackedgeFixedPoint(nil, stmt.Body, iterationEntry, headerMoved, headerReasons, headerClosedResources, headerBorrows, headerLocalRefContainers, headerArenaGenerations)
-	breakFrame := a.popLoopBreakFrame(frame)
-	a.symbols = previousSymbols
-	a.constInts = previousConstInts
-	a.assigned = previousAssigned
-	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
-	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, false)
-	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
-	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
-	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.arenaGenerations)
-	a.loopDepth = previousLoopDepth
-}
-
-func (a *Analyzer) analyzeForIterable(stmt *ast.ForStatement) {
-	if stmt.Iterable == nil {
-		a.addErrorAtToken(stmt.Token, "for loop requires an iterable expression")
-		return
-	}
-
-	bindingTypes, ok := a.inferForIterableBindingTypes(stmt)
-	if !ok {
-		return
-	}
-
-	if len(stmt.Bindings) != len(bindingTypes) {
-		if len(stmt.Bindings) > 0 {
-			a.addErrorAtToken(stmt.Bindings[0].Token, "iteration over %s requires %d loop binding(s), got %d", forIterableKind(stmt.Iterable), len(bindingTypes), len(stmt.Bindings))
-		}
-		return
-	}
-
-	for i, binding := range stmt.Bindings {
-		if binding.Discard {
-			continue
-		}
-		if a.defineSymbol(binding.Name, bindingTypes[i], false, binding.Token) {
-			a.assigned[binding.Name] = true
-		}
-	}
-}
-
-func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type, bool) {
-	switch iterable := stmt.Iterable.(type) {
-	case *ast.RangeExpression:
-		bindingType, ok := a.inferForRangeBindingType(iterable, stmt.Step)
-		if !ok {
-			return nil, false
-		}
-		return []Type{bindingType}, true
-	default:
-		if stmt.Step != nil {
-			a.addErrorAtToken(expressionToken(stmt.Step), "for step is only valid for range iteration")
-			return nil, false
-		}
-		iterableType, _ := a.inferExpression(iterable)
-		if iterableType.Kind == InvalidType {
-			return nil, false
-		}
-		if elementType, next, ok := a.compilerKnownIterator(iterableType); ok {
-			if len(stmt.Bindings) != 1 {
-				token := expressionToken(iterable)
-				if len(stmt.Bindings) > 0 {
-					token = stmt.Bindings[0].Token
-				}
-				a.addErrorAtToken(token, "Iterator[%s] iteration requires exactly one loop binding, got %d", typeDisplayName(elementType), len(stmt.Bindings))
-				return nil, false
-			}
-			// Iterator.Next advances compiler-visible state. A fresh owned
-			// temporary may become the loop's hidden local; reusable storage must
-			// already carry mutable authority. No runtime borrow flag is created.
-			if place, reusable := a.resolvePlace(iterable); reusable && place.Addressable {
-				if !place.Mutable {
-					a.addErrorAtToken(expressionToken(iterable), "Iterator[%s] iteration requires a mutable iterator source", typeDisplayName(elementType))
-					return nil, false
-				}
-				if a.checkBorrowedMutationPlace(place, expressionToken(iterable)) {
-					return nil, false
-				}
-			}
-			a.resolvedForIterations[stmt] = ResolvedForIteration{
-				Kind:                    ForIterationCompilerKnownIterator,
-				SourceType:              iterableType,
-				ElementType:             elementType,
-				Next:                    next,
-				RequiresMutableReceiver: true,
-			}
-			return []Type{elementType}, true
-		}
-		if iterableType.Kind == ReferenceType && iterableType.Element != nil &&
-			(iterableType.Element.Kind == ArrayType || iterableType.Element.Kind == SliceType || isForCollectionFamily(*iterableType.Element)) {
-			iterableType = *iterableType.Element
-		}
-		indexType := Type{Name: "int", Kind: IntType}
-		if iterableType.Kind == StringType {
-			// rules/library/core-library.md: string iteration yields the canonical
-			// compiler-known rune type. Reusing the registered type is essential:
-			// same-module impl properties such as Utf8Length and IsWhitespace are
-			// attached there and must remain visible in the loop body.
-			runeType := a.types["rune"]
-			return a.inferSequentialForBindingTypes(stmt, runeType, indexType)
-		}
-		if (iterableType.Kind == ArrayType || iterableType.Kind == SliceType || iterableType.Kind == VariadicPackType) && iterableType.Element != nil {
-			// rules/declarations/functions.md section 30 permits read-only
-			// iteration over native variadic packs with their element type.
-			return a.inferSequentialForBindingTypes(stmt, *iterableType.Element, indexType)
-		}
-		if (iterableType.Name == "Vec" || iterableType.Name == "list") && len(iterableType.TypeArgs) == 1 {
-			return a.inferSequentialForBindingTypes(stmt, iterableType.TypeArgs[0], indexType)
-		}
-		if iterableType.Name == "vector" && len(iterableType.TypeArgs) == 1 && len(iterableType.ConstArgs) == 1 {
-			return a.inferSequentialForBindingTypes(stmt, iterableType.TypeArgs[0], indexType)
-		}
-		if (iterableType.Name == "Set" || iterableType.Name == "set") && len(iterableType.TypeArgs) == 1 {
-			if len(stmt.Bindings) > 1 {
-				a.addErrorAtToken(stmt.Bindings[0].Token, "set iteration supports one loop binding, got %d", len(stmt.Bindings))
-				return nil, false
-			}
-			return []Type{iterableType.TypeArgs[0]}, true
-		}
-		if (iterableType.Name == "Map" || iterableType.Name == "map") && len(iterableType.TypeArgs) == 2 {
-			if len(stmt.Bindings) != 2 {
-				a.addErrorAtToken(stmt.Bindings[0].Token, "map iteration requires key and value bindings, got %d", len(stmt.Bindings))
-				return nil, false
-			}
-			return []Type{iterableType.TypeArgs[0], iterableType.TypeArgs[1]}, true
-		}
-		a.addErrorAtToken(expressionToken(iterable), "type %s is not iterable", typeDisplayName(iterableType))
-		return nil, false
-	}
-}
-
-// compilerKnownIterator resolves only explicit Iterator[T] conformance. The
-// method name Next alone is deliberately insufficient: flowcontrol_for.md
-// section 37 forbids naming-convention discovery, and no interface value or
-// dynamic-dispatch runtime is introduced here.
-func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, bool) {
-	concrete := dereferenceType(source)
-	for _, iface := range concrete.Implements {
-		if iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
-			continue
-		}
-		element := iface.TypeArgs[0]
-		for _, method := range a.functions[concrete.Name+".Next"] {
-			if method.Static || len(explicitInterfaceComparableParameters(method.Parameters)) != 0 {
-				continue
-			}
-			if method.ReturnType.Name != "Option" || len(method.ReturnType.TypeArgs) != 1 || !sameConcreteType(method.ReturnType.TypeArgs[0], element) {
-				continue
-			}
-			method.CompilerKnownID = "CKM-ITERATOR-NEXT"
-			return element, method, true
-		}
-		// Preserve useful loop binding inference while ordinary interface
-		// conformance emits the canonical missing/signature diagnostic.
-		required := Function{Name: "Next", ImplTarget: concrete.Name, CompilerKnownID: "CKM-ITERATOR-NEXT", ReceiverMutable: true, ReturnType: Type{Name: "Option", Kind: UnionType, TypeArgs: []Type{element}}}
-		return element, required, true
-	}
-	return Type{}, Function{}, false
-}
-
-func (a *Analyzer) inferSequentialForBindingTypes(stmt *ast.ForStatement, valueType Type, indexType Type) ([]Type, bool) {
-	if len(stmt.Bindings) > 2 {
-		a.addErrorAtToken(stmt.Bindings[0].Token, "sequential iteration supports one or two loop bindings, got %d", len(stmt.Bindings))
-		return nil, false
-	}
-	if len(stmt.Bindings) == 2 {
-		return []Type{indexType, valueType}, true
-	}
-	return []Type{valueType}, true
-}
-
-func isForCollectionFamily(typ Type) bool {
-	switch typ.Name {
-	case "Vec", "Set", "Map", "list", "set", "map", "vector":
-		return true
-	default:
-		return false
-	}
-}
-
-func forIterableKind(expr ast.Expression) string {
-	if _, ok := expr.(*ast.RangeExpression); ok {
-		return "range"
-	}
-	return "iterable"
-}
-
-func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.Expression) (Type, bool) {
-	if expr.Start == nil || expr.End == nil {
-		a.addErrorAtToken(expr.Token, "range used in for loop must be finite")
-		return Type{Kind: InvalidType}, false
-	}
-
-	startType, _ := a.inferExpression(expr.Start)
-	endType, _ := a.inferExpression(expr.End)
-	if startType.Kind == InvalidType || endType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, false
-	}
-
-	if !sameConcreteType(startType, endType) {
-		a.addErrorAtToken(expr.Token, "cannot create range with bounds %s and %s", typeDisplayName(startType), typeDisplayName(endType))
-		return Type{Kind: InvalidType}, false
-	}
-
-	if step != nil {
-		stepType, _ := a.inferExpression(step)
-		if stepType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, false
-		}
-		if !canInitialize(startType, stepType, step) {
-			a.addErrorAtToken(expressionToken(step), "for range step must be %s, got %s", typeDisplayName(startType), typeDisplayName(stepType))
-			return Type{Kind: InvalidType}, false
-		}
-		if value, ok := a.integerConstantValue(step); ok && value.Sign() == 0 {
-			a.addErrorAtToken(expressionToken(step), "for range step must not be zero")
-			return Type{Kind: InvalidType}, false
-		}
-		if startValue, startOK := a.integerConstantValue(expr.Start); startOK {
-			if endValue, endOK := a.integerConstantValue(expr.End); endOK {
-				if stepValue, stepOK := a.integerConstantValue(step); stepOK {
-					if startValue.Cmp(endValue) < 0 && stepValue.Sign() < 0 {
-						a.addErrorAtToken(expressionToken(step), "for ascending range step must be positive")
-						return Type{Kind: InvalidType}, false
-					}
-					if startValue.Cmp(endValue) > 0 && stepValue.Sign() > 0 {
-						a.addErrorAtToken(expressionToken(step), "for descending range step must be negative")
-						return Type{Kind: InvalidType}, false
-					}
-				}
-			}
-		}
-		if value, ok := decimalLiteralValue(step); ok && value.Int64 == 0 {
-			a.addErrorAtToken(expressionToken(step), "for range step must not be zero")
-			return Type{Kind: InvalidType}, false
-		}
-		if startValue, startOK := decimalLiteralValue(expr.Start); startOK {
-			if endValue, endOK := decimalLiteralValue(expr.End); endOK {
-				if stepValue, stepOK := decimalLiteralValue(step); stepOK {
-					if startValue.Int64 < endValue.Int64 && stepValue.Int64 < 0 {
-						a.addErrorAtToken(expressionToken(step), "for ascending range step must be positive")
-						return Type{Kind: InvalidType}, false
-					}
-					if startValue.Int64 > endValue.Int64 && stepValue.Int64 > 0 {
-						a.addErrorAtToken(expressionToken(step), "for descending range step must be negative")
-						return Type{Kind: InvalidType}, false
-					}
-				}
-			}
-		}
-	}
-
-	if !isNumericType(startType) || !isNumericType(endType) {
-		a.addErrorAtToken(expr.Token, "type %s is not iterable", typeDisplayName(startType))
-		return Type{Kind: InvalidType}, false
-	}
-
-	return startType, true
 }
 
 type branchAnalysis struct {
@@ -3542,99 +3241,6 @@ func mergeContinuingArenaGenerations(before map[string]int, branches ...branchAn
 		}
 	}
 	return merged
-}
-
-func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
-	before := copyAssigned(a.assigned)
-	beforeMoved := copyMoved(a.moved)
-	beforeMoveReasons := copyMoveReasons(a.moveReasons)
-	beforeClosedResources := copyMoved(a.closedResources)
-	beforeBorrows := copyBorrows(a.borrows)
-	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
-	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
-	if stmt.DefaultNotFinalToken.Type != "" {
-		a.addErrorAtToken(stmt.DefaultNotFinalToken, "default must be the final switch clause")
-	}
-	for _, token := range stmt.DuplicateDefaultTokens {
-		a.addErrorAtToken(token, "switch may contain only one default clause")
-	}
-
-	var subjectType Type
-	hasSubject := stmt.Subject != nil
-	if hasSubject {
-		subjectType, _ = a.inferExpression(stmt.Subject)
-		if subjectType.Kind == VoidType {
-			a.addErrorAtToken(expressionToken(stmt.Subject), "switch subject cannot be void")
-		}
-	}
-
-	tracker := newSwitchCoverageTracker()
-	tracker.subjectType = subjectType
-	clauses := append([]*ast.SwitchCase{}, stmt.Cases...)
-	if stmt.Default != nil {
-		clauses = append(clauses, stmt.Default)
-	}
-
-	branches := make([]branchAnalysis, 0, len(clauses)+1)
-	clauseFlows := make([]ResolvedSwitchClauseFlow, 0, len(clauses))
-	var fallthroughEntry *branchAnalysis
-	for i, clause := range clauses {
-		if clause == nil {
-			continue
-		}
-		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
-		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
-		// rules/control-flow/flowcontrol_switch.md; correction24.md: the
-		// direct case-test path and a preceding fallthrough edge meet at the
-		// destination body. Fallthrough bypasses this clause's test expressions.
-		directEntry := a.currentBranchAnalysisState()
-		if fallthroughEntry != nil {
-			a.applySwitchEntryMerge(directEntry, *fallthroughEntry)
-		}
-		branch := a.analyzeSwitchCaseBody(clause.Body)
-		branches = append(branches, branch)
-		clauseFlows = append(clauseFlows, ResolvedSwitchClauseFlow{
-			SourceIndex:  i,
-			Default:      clause.Default,
-			ItemCount:    len(clause.Items),
-			FallsThrough: branch.fallsThrough,
-			Continues:    branch.continues,
-		})
-		a.applyBranchAnalysisState(directEntry)
-		if branch.fallsThrough {
-			copy := branch
-			copy.continues = true
-			fallthroughEntry = &copy
-		} else {
-			fallthroughEntry = nil
-		}
-	}
-	if stmt.Default == nil {
-		a.warnIncompleteEnumSwitch(stmt, tracker)
-	}
-
-	exhaustive := stmt.Default != nil || tracker.isExhaustive()
-	a.recordResolvedSwitchFlow(stmt, subjectType, hasSubject, exhaustive, clauseFlows)
-	if !exhaustive {
-		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
-	}
-	a.assigned = mergeContinuingAssigned(before, branches...)
-	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
-	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
-	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
-	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
-	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
-}
-
-func (a *Analyzer) applySwitchEntryMerge(direct, fallthroughEntry branchAnalysis) {
-	direct.continues = true
-	fallthroughEntry.continues = true
-	a.assigned = mergeContinuingAssigned(direct.assigned, direct, fallthroughEntry)
-	a.moved, a.moveReasons = mergeContinuingMoveState(direct.moved, direct.moveReasons, direct, fallthroughEntry)
-	a.closedResources = mergeContinuingClosedResources(direct.closedResources, direct, fallthroughEntry)
-	a.borrows = mergeContinuingBorrows(direct.borrows, direct, fallthroughEntry)
-	a.localRefContainers = mergeContinuingLocalRefContainers(direct.localRefContainers, direct, fallthroughEntry)
-	a.arenaGenerations = mergeContinuingArenaGenerations(direct.arenaGenerations, direct, fallthroughEntry)
 }
 
 func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
@@ -3916,129 +3522,6 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
 		continues:          a.blockCanFallThrough(branch.Body),
-	}
-}
-
-func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, tracker *switchCoverageTracker) {
-	if clause.Default {
-		return
-	}
-
-	for _, item := range clause.Items {
-		switch item := item.(type) {
-		case *ast.SwitchValueCase:
-			valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
-			if valueType.Kind == InvalidType {
-				continue
-			}
-			if hasSubject {
-				if !canCompareEquality(subjectType, valueType) {
-					a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
-				}
-				a.checkSwitchValueCoverage(item.Value, tracker)
-			} else if valueType.Kind != BoolType {
-				a.addErrorAtToken(expressionToken(item.Value), "subjectless switch case must be bool, got %s", typeDisplayName(valueType))
-			}
-		case *ast.SwitchRangeCase:
-			if !hasSubject {
-				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got range")
-				continue
-			}
-			a.analyzeSwitchRangeCase(item, subjectType)
-			a.checkSwitchRangeCoverage(item.Range, tracker)
-		case *ast.SwitchRelationalCase:
-			if !hasSubject {
-				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got relational case")
-				continue
-			}
-			if !isOrderedSwitchType(subjectType) {
-				a.addErrorAtToken(item.Token, "relational switch case requires ordered subject type")
-				continue
-			}
-			valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
-			if valueType.Kind != InvalidType && !canCompareEquality(subjectType, valueType) {
-				a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
-			}
-			a.checkSwitchRelationalCoverage(item, tracker)
-		}
-	}
-}
-
-func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool) {
-	if clause == nil || clause.Body == nil {
-		return
-	}
-	fallthroughIndex := -1
-	for i, stmt := range clause.Body.Statements {
-		if _, ok := stmt.(*ast.FallthroughStatement); ok {
-			fallthroughIndex = i
-		}
-	}
-	if fallthroughIndex == -1 {
-		return
-	}
-	if clause.Default || isFinal {
-		a.addErrorAtToken(clause.Body.Statements[fallthroughIndex].(*ast.FallthroughStatement).Token, "fallthrough is not allowed in the final switch case")
-	}
-	for i := fallthroughIndex + 1; i < len(clause.Body.Statements); i++ {
-		if _, ok := clause.Body.Statements[i].(*ast.CommentStatement); ok {
-			continue
-		}
-		a.addErrorAtToken(clause.Body.Statements[fallthroughIndex].(*ast.FallthroughStatement).Token, "fallthrough must be the final statement in a switch case")
-		return
-	}
-}
-
-func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalysis {
-	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), continues: true}
-	}
-
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
-	previousClosedResources := a.closedResources
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousInSwitchCaseBody := a.inSwitchCaseBody
-	a.symbols = copySymbols(previousSymbols)
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
-	a.closedResources = copyMoved(previousClosedResources)
-	a.borrows = copyBorrows(previousBorrows)
-	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
-	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
-	a.inSwitchCaseBody = true
-	defer func() {
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
-		a.closedResources = previousClosedResources
-		a.borrows = previousBorrows
-		a.localRefContainers = previousLocalRefContainers
-		a.arenaGenerations = previousArenaGenerations
-		a.inSwitchCaseBody = previousInSwitchCaseBody
-	}()
-
-	hasFallthrough := blockEndsWithFallthrough(block)
-	a.analyzeBlockStatements(block)
-	return branchAnalysis{
-		assigned:           copyAssigned(a.assigned),
-		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
-		closedResources:    copyMoved(a.closedResources),
-		borrows:            copyBorrows(a.borrows),
-		localRefContainers: copyLocalRefContainers(a.localRefContainers),
-		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
-		continues:          a.blockCanFallThrough(block) && !hasFallthrough,
-		fallsThrough:       hasFallthrough,
 	}
 }
 
@@ -5384,40 +4867,6 @@ func (a *Analyzer) statementDefinitelyReturns(stmt ast.Statement) bool {
 	return statementDefinitelyReturns(stmt)
 }
 
-func (a *Analyzer) switchStatementDefinitelyReturns(stmt *ast.SwitchStatement) bool {
-	if stmt == nil {
-		return false
-	}
-	flow, resolved := a.resolvedSwitchFlows[stmt]
-	exhaustive := resolved && flow.Exhaustive
-	if !resolved {
-		exhaustive = stmt.Default != nil || switchCoversBoolLiterals(stmt)
-	}
-	if !exhaustive {
-		return false
-	}
-
-	nextTerminates := stmt.Default == nil
-	if stmt.Default != nil {
-		nextTerminates = a.blockDefinitelyReturns(stmt.Default.Body)
-		if !nextTerminates {
-			return false
-		}
-	}
-	for index := len(stmt.Cases) - 1; index >= 0; index-- {
-		clause := stmt.Cases[index]
-		if clause == nil {
-			return false
-		}
-		terminates := a.blockDefinitelyReturns(clause.Body) || blockEndsWithFallthrough(clause.Body) && nextTerminates
-		if !terminates {
-			return false
-		}
-		nextTerminates = true
-	}
-	return true
-}
-
 func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) bool {
 	if stmt == nil || stmt.Match == nil {
 		return false
@@ -5795,6 +5244,10 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 			return
 		}
 		a.addErrorAtToken(expressionToken(stmt.Value), "initializer cannot return a success value; complete the init body to construct self or return Err(error)")
+		return
+	}
+	if a.fallibleSetterBody && functionName != "lambda" {
+		a.analyzeFallibleSetterReturn(functionName, returnType, stmt)
 		return
 	}
 	if stmt.Value == nil {
@@ -8056,6 +7509,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			RequiresSet:    property.RequiresSet,
 			SetterFallible: property.SetterFallible,
 		})
+		a.recordInterfaceSetterContract(stmt.Name.Value, property)
 	}
 	seenEvents := map[string]lexer.Token{}
 	for _, event := range stmt.Events {
@@ -9376,10 +8830,8 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		}
 
 		var errorType *Type
-		if property.Setter != nil && property.Setter.Fallible {
-			if inferred, ok := a.inferPropertySetterErrorType(target, property, propertyType); ok {
-				errorType = &inferred
-			}
+		if property.Setter != nil && property.Setter.Fallible && !property.Setter.Invalid {
+			errorType = a.resolveSetterErrorContract(property.Setter.ErrorType, property.Setter.Token, property.Name.Value)
 		}
 
 		target.Properties = append(target.Properties, Property{
@@ -9597,6 +9049,7 @@ func (a *Analyzer) validateUnitConversionDimensions(targetName string, fn *ast.F
 }
 
 func (a *Analyzer) validateInterfaceConformance() {
+	a.resolveInterfaceSetterContracts()
 	names := make([]string, 0, len(a.types))
 	for name := range a.types {
 		names = append(names, name)
@@ -9664,6 +9117,9 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 				requiredKind, actualKind = "fallible", "infallible"
 			}
 			a.addErrorAtToken(required.Token, "type %s property %s must provide %s setter for interface %s, got %s setter", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
+		} else if contract := a.interfaceSetterErrors[iface.Name+"."+required.Name]; required.RequiresSet && required.SetterFallible && !setterErrorContractSatisfied(property, contract) {
+			a.addErrorAtToken(required.Token, "type %s property %s setter error %s does not satisfy %s required by interface %s",
+				typ.Name, required.Name, typeDisplayName(*property.Error), typeDisplayName(*contract), iface.Name)
 		}
 	}
 
@@ -9763,6 +9219,9 @@ func (a *Analyzer) typeSatisfiesInterfaceRequirements(typ Type, iface Type) bool
 			return false
 		}
 		if required.RequiresSet && (!property.HasSetter || property.Fallible != required.SetterFallible) {
+			return false
+		}
+		if required.RequiresSet && required.SetterFallible && !setterErrorContractSatisfied(property, a.interfaceSetterErrors[iface.Name+"."+required.Name]) {
 			return false
 		}
 	}
@@ -9896,15 +9355,16 @@ func (a *Analyzer) analyzeSetterBody(target Type, property *ast.PropertyDeclarat
 	}
 	returnType := Type{Name: "void", Kind: VoidType}
 	if property.Setter.Fallible {
-		errorType := Type{Kind: InvalidType}
-		if registered, ok := lookupProperty(target, property.Name.Value); ok && registered.Error != nil {
-			errorType = *registered.Error
-		} else if inferred, ok := a.inferPropertySetterErrorType(target, property, propertyType); ok {
-			errorType = inferred
+		// rules/errors/errorhandling.md — §24: the declared contract is the
+		// only source of the setter error type; it is never inferred.
+		registered, ok := lookupProperty(target, property.Name.Value)
+		if !ok || registered.Error == nil {
+			return
 		}
-		if errorType.Kind != InvalidType {
-			returnType = Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{{Name: "void", Kind: VoidType}, errorType}}
-		}
+		returnType = Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{{Name: "void", Kind: VoidType}, *registered.Error}}
+		previous := a.fallibleSetterBody
+		a.fallibleSetterBody = true
+		defer func() { a.fallibleSetterBody = previous }()
 	}
 	a.analyzePropertyAccessorBody(target, property.Name.Value+".set", property.Setter.Body, returnType, true, property.Static, property.Setter.Parameter, propertyType)
 }
@@ -10006,368 +9466,6 @@ func statementReturnsErr(stmt ast.Statement) bool {
 		return blockReturnsErr(stmt.Body)
 	}
 	return false
-}
-
-func (a *Analyzer) inferPropertySetterErrorType(target Type, property *ast.PropertyDeclaration, propertyType Type) (Type, bool) {
-	if property.Setter == nil || property.Setter.Body == nil {
-		return Type{}, false
-	}
-	for _, stmt := range property.Setter.Body.Statements {
-		errExpr := firstErrReturnExpression(stmt)
-		if errExpr == nil || errExpr.Value == nil {
-			continue
-		}
-		valueType, ok := a.inferPropertyBodyExpression(target, property.Setter, propertyType, errExpr.Value)
-		if ok && valueType.Kind != InvalidType {
-			return valueType, true
-		}
-	}
-	return Type{}, false
-}
-
-func firstErrReturnExpression(stmt ast.Statement) *ast.ErrExpression {
-	switch stmt := stmt.(type) {
-	case *ast.ReturnStatement:
-		if stmt.Value == nil {
-			return nil
-		}
-		errExpr, _ := stmt.Value.(*ast.ErrExpression)
-		return errExpr
-	case *ast.IfStatement:
-		if errExpr := firstErrReturnInBlock(stmt.Consequence); errExpr != nil {
-			return errExpr
-		}
-		return firstErrReturnInBlock(stmt.Alternative)
-	case *ast.SwitchStatement:
-		for _, clause := range stmt.Cases {
-			if clause == nil {
-				continue
-			}
-			if errExpr := firstErrReturnInBlock(clause.Body); errExpr != nil {
-				return errExpr
-			}
-		}
-		if stmt.Default != nil {
-			return firstErrReturnInBlock(stmt.Default.Body)
-		}
-	case *ast.SelectStatement:
-		for _, branch := range stmt.Branches {
-			if branch == nil {
-				continue
-			}
-			if errExpr := firstErrReturnInBlock(branch.Body); errExpr != nil {
-				return errExpr
-			}
-		}
-	case *ast.UnsafeStatement:
-		return firstErrReturnInBlock(stmt.Body)
-	}
-	return nil
-}
-
-func firstErrReturnInBlock(block *ast.BlockStatement) *ast.ErrExpression {
-	if block == nil {
-		return nil
-	}
-	for _, stmt := range block.Statements {
-		if errExpr := firstErrReturnExpression(stmt); errExpr != nil {
-			return errExpr
-		}
-	}
-	return nil
-}
-
-func parseBodyExpression(tokens []lexer.Token) ast.Expression {
-	exprTokens := collectBodyExpressionTokens(tokens)
-	if len(exprTokens) == 0 {
-		return nil
-	}
-
-	source := "let value := " + tokensSource(exprTokens)
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) > 0 || len(program.Statements) != 1 {
-		return nil
-	}
-
-	stmt, ok := program.Statements[0].(*ast.LetStatement)
-	if !ok {
-		return nil
-	}
-
-	return stmt.Value
-}
-
-func collectBodyExpressionTokens(tokens []lexer.Token) []lexer.Token {
-	if len(tokens) == 0 {
-		return nil
-	}
-
-	line := tokens[0].Line
-	depth := 0
-	out := []lexer.Token{}
-	for _, token := range tokens {
-		if depth == 0 && token.Line != line {
-			break
-		}
-
-		switch token.Type {
-		case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
-			depth++
-		case lexer.RPAREN, lexer.RBRACKET, lexer.RBRACE:
-			if depth == 0 {
-				return out
-			}
-			depth--
-		case lexer.SEMICOLON, lexer.RETURN:
-			if depth == 0 {
-				return out
-			}
-		}
-
-		out = append(out, token)
-	}
-
-	return out
-}
-
-func tokensSource(tokens []lexer.Token) string {
-	parts := make([]string, 0, len(tokens))
-	for _, token := range tokens {
-		parts = append(parts, token.Lexeme)
-	}
-	return strings.Join(parts, " ")
-}
-
-// inferPropertyBodyExpression performs the restricted early property-body
-// inference required by rules/declarations/properties.md. correction12.md
-// requires this path to enforce the same getter boundary as ordinary reads.
-func (a *Analyzer) inferPropertyBodyExpression(target Type, setter *ast.PropertySetter, setterType Type, expr ast.Expression) (Type, bool) {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		if expr.Value == "self" {
-			return target, true
-		}
-		if setter != nil && setter.Parameter != nil && expr.Value == setter.Parameter.Value {
-			return setterType, true
-		}
-		if fieldType, ok := lookupStructField(target, expr.Value); ok {
-			return fieldType, true
-		}
-		if _, exists := a.lookupResolvedProperty(target, expr.Value); exists {
-			property, readable := a.resolveReadableProperty(target, expr.Value, expr.Token)
-			if !readable {
-				return Type{Kind: InvalidType}, false
-			}
-			a.recordResolvedPropertyRead(expr, target, property)
-			return property.Type, true
-		}
-		if symbol, ok := a.symbols[expr.Value]; ok {
-			return symbol.Type, true
-		}
-		return Type{Kind: InvalidType}, false
-	case *ast.ConversionExpression:
-		targetType, ok := a.resolveType(expr.Type)
-		if !ok {
-			return Type{Kind: InvalidType}, false
-		}
-		valueType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Value)
-		if !ok || valueType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, ok
-		}
-		if !canExplicitConvert(targetType, valueType) {
-			a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
-			return Type{Kind: InvalidType}, false
-		}
-		if !a.validateConstantIntegerConversion(targetType, valueType, expr.Value) {
-			return Type{Kind: InvalidType}, false
-		}
-		if a.checkStringLiteralContracts(targetType, expr.Value) {
-			return Type{Kind: InvalidType}, false
-		}
-		return targetType, true
-	case *ast.CallExpression:
-		if typ, ok := a.inferPropertyBodyCallAsConversion(target, setter, setterType, expr); ok {
-			return typ, typ.Kind != InvalidType
-		}
-		typ, _ := a.inferCallExpression(expr)
-		return typ, typ.Kind != InvalidType
-	case *ast.RuntimeCallExpression:
-		typ, _ := a.inferRuntimeCallExpression(expr)
-		return typ, typ.Kind != InvalidType
-	case *ast.OkExpression, *ast.ErrExpression:
-		return Type{Kind: InvalidType}, false
-	case *ast.TryExpression:
-		typ, _ := a.inferTryExpression(expr)
-		return typ, typ.Kind != InvalidType
-	case *ast.PrefixExpression:
-		rightType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Right)
-		if !ok {
-			return Type{Kind: InvalidType}, false
-		}
-		switch expr.Operator {
-		case "+":
-			if isNumericType(rightType) {
-				return rightType, true
-			}
-		case "-":
-			if rightType.Kind == IntType || rightType.Kind == FloatType || rightType.Kind == DecimalType {
-				return rightType, true
-			}
-		case "!":
-			return Type{Name: "bool", Kind: BoolType}, true
-		}
-		return Type{Kind: InvalidType}, false
-	case *ast.InfixExpression:
-		return a.inferPropertyBodyInfixExpression(target, setter, setterType, expr)
-	case *ast.MemberExpression:
-		if enumType, ok := a.inferEnumValueExpression(expr); ok {
-			return enumType, true
-		}
-		objectType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Object)
-		if !ok || objectType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, ok
-		}
-		if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
-			return fieldType, true
-		}
-		if field, ok := lookupRegisterFieldInfo(objectType, expr.Property.Value); ok {
-			if field.Access == RegisterWriteOnly {
-				a.addErrorAtToken(expr.Property.Token, "register field %s.%s is write-only and cannot be read", typeDisplayName(objectType), expr.Property.Value)
-				return Type{Kind: InvalidType}, false
-			}
-			return field.Type, true
-		}
-		if _, exists := a.lookupResolvedProperty(objectType, expr.Property.Value); exists {
-			property, readable := a.resolveReadableProperty(objectType, expr.Property.Value, expr.Property.Token)
-			if !readable {
-				return Type{Kind: InvalidType}, false
-			}
-			a.recordResolvedPropertyRead(expr, dereferenceType(objectType), property)
-			return property.Type, true
-		}
-		a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
-		return Type{Kind: InvalidType}, false
-	default:
-		typ, _ := a.inferExpression(expr)
-		return typ, typ.Kind != InvalidType
-	}
-}
-
-func (a *Analyzer) inferPropertyBodyCallAsConversion(target Type, setter *ast.PropertySetter, setterType Type, expr *ast.CallExpression) (Type, bool) {
-	name := callExpressionName(expr)
-	if name == "" {
-		return Type{}, false
-	}
-	typeName := a.resolveTypeName(name)
-	if _, exists := a.types[typeName]; !exists {
-		return Type{}, false
-	}
-	targetType, ok := a.resolveType(&ast.TypeReference{Token: expr.Token, Name: name, TypeArgs: expr.GenericArguments})
-	if !ok {
-		return Type{Kind: InvalidType}, true
-	}
-	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Token, "conversion to %s expects 1 argument, got %d", name, len(expr.Arguments))
-		return Type{Kind: InvalidType}, true
-	}
-	valueType, ok := a.inferPropertyBodyExpression(target, setter, setterType, expr.Arguments[0])
-	if !ok || valueType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, true
-	}
-	if !canExplicitConvert(targetType, valueType) {
-		a.addErrorAtToken(expr.Token, "cannot convert %s to %s", typeDisplayName(valueType), typeDisplayName(targetType))
-		return Type{Kind: InvalidType}, true
-	}
-	if hasUnitSemantics(targetType) || hasUnitSemantics(valueType) {
-		if !a.validateExplicitUnitConversion(expr.Token, targetType, valueType) {
-			return Type{Kind: InvalidType}, true
-		}
-	}
-	if targetType.Kind == EnumType {
-		conversionType, valid := a.enumConversionResultType(targetType, valueType, expr.Arguments[0])
-		if !valid {
-			return Type{Kind: InvalidType}, true
-		}
-		return conversionType, true
-	}
-	if targetType.Kind == RegisterType && isIntegerType(valueType) {
-		return a.integerToRegisterConversionResultType(targetType, valueType, expr.Arguments[0]), true
-	}
-	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
-		return Type{Kind: InvalidType}, true
-	}
-	if a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
-		return Type{Kind: InvalidType}, true
-	}
-	return targetType, true
-}
-
-func (a *Analyzer) inferPropertyBodyInfixExpression(target Type, setter *ast.PropertySetter, setterType Type, expr *ast.InfixExpression) (Type, bool) {
-	leftType, leftOK := a.inferPropertyBodyExpression(target, setter, setterType, expr.Left)
-	rightType, rightOK := a.inferPropertyBodyExpression(target, setter, setterType, expr.Right)
-	if !leftOK || !rightOK || leftType.Kind == InvalidType || rightType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, false
-	}
-	if expr.Operator == "x" {
-		typ, _ := a.inferMatrixMultiplyExpression(expr, leftType, rightType)
-		return typ, typ.Kind != InvalidType
-	}
-
-	if isLogicalOperator(expr.Operator) {
-		if leftType.Kind != BoolType || rightType.Kind != BoolType {
-			a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
-			return Type{Kind: InvalidType}, false
-		}
-		return Type{Name: "bool", Kind: BoolType}, true
-	}
-
-	if isComparisonOperator(expr.Operator) {
-		return Type{Name: "bool", Kind: BoolType}, true
-	}
-
-	if leftType.Kind == DecimalType || rightType.Kind == DecimalType {
-		typ, _ := a.inferDecimalInfixExpression(expr, leftType, rightType)
-		return typ, typ.Kind != InvalidType
-	}
-
-	if leftType.Kind == rightType.Kind {
-		return leftType, true
-	}
-
-	if leftType.Kind == UintType && rightType.Kind == IntType {
-		return leftType, true
-	}
-
-	if leftType.Kind == IntType && rightType.Kind == UintType {
-		return rightType, true
-	}
-
-	return Type{Kind: InvalidType}, false
-}
-
-func (a *Analyzer) resolveBodyValueType(target Type, setter *ast.PropertySetter, setterType Type, token lexer.Token) (Type, bool) {
-	if setter != nil && setter.Parameter != nil && token.Type == lexer.IDENT && token.Lexeme == setter.Parameter.Value {
-		return setterType, true
-	}
-
-	if token.Type == lexer.SELF && token.Lexeme == "self" {
-		return target, true
-	}
-
-	if token.Type == lexer.IDENT {
-		for _, field := range target.Fields {
-			if field.Name == token.Lexeme {
-				return field.Type, true
-			}
-		}
-		if property, ok := lookupProperty(target, token.Lexeme); ok {
-			return property.Type, true
-		}
-	}
-
-	return Type{Kind: InvalidType}, false
 }
 
 func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
@@ -12523,6 +11621,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return a.inferPrefixExpression(expr)
 	case *ast.AvailabilityExpression:
 		return a.inferAvailabilityExpression(expr)
+	case *ast.StateTestExpression:
+		return a.inferStateTestExpression(expr)
 	case *ast.InfixExpression:
 		return a.inferInfixExpression(expr)
 	case *ast.ConversionExpression:
@@ -18611,8 +17711,12 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 				"unreachable try handler: an earlier Err catch-all already handles this error")
 			continue
 		}
+		// rules/errors/errorhandling.md — §19: a guarded handler is not assumed
+		// to cover its pattern, so it neither ends reachability nor counts
+		// toward variant coverage.
+		guarded := handler.Guard != nil
 
-		if bindingName != "" {
+		if bindingName != "" && !guarded {
 			errorCatchAllSeen = true
 			errorCatchAllToken = handler.Token
 		}
@@ -18624,14 +17728,14 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 				continue
 			}
 		}
-		if bindingName != "" && errorType.Kind == EnumType && len(errorType.EnumValues) > 0 &&
+		if (bindingName != "" || guarded) && errorType.Kind == EnumType && len(errorType.EnumValues) > 0 &&
 			len(matchedVariants) == len(errorType.EnumValues) {
 			a.addErrorAtTokenWithPreviousID(handler.Token, lastVariantToken,
 				diagnostics.UnreachableTryHandler,
 				"unreachable try handler: earlier Err handlers already cover every variant of %s", typeDisplayName(errorType))
 			continue
 		}
-		if variantName != "" {
+		if variantName != "" && !guarded {
 			matchedVariants[variantName] = handler.Token
 			lastVariantToken = handler.Token
 		}
@@ -18649,25 +17753,72 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 			payloadDiscard = true
 		}
 		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, resolvedBindingName)
-		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex})
+		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType
+		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue})
 	}
 
 	if errorCatchAllSeen {
 		plan.Exhaustive = true
 		return plan, len(a.errors) == errorsBefore
 	}
-
-	if errorType.Kind == EnumType {
-		if len(matchedVariants) < len(errorType.EnumValues) {
-			a.addErrorAtToken(expr.Token, "non-exhaustive try handlers for %s", typeDisplayName(errorType))
-		} else {
-			plan.Exhaustive = true
-		}
+	if errorType.Kind == EnumType && len(errorType.EnumValues) > 0 && len(matchedVariants) >= len(errorType.EnumValues) {
+		plan.Exhaustive = true
 		return plan, len(a.errors) == errorsBefore
 	}
 
-	a.addErrorAtToken(expr.Token, "non-exhaustive try handlers for %s", typeDisplayName(errorType))
-	return plan, false
+	// rules/errors/errorhandling.md — §16: try handlers are partial; the
+	// unmatched failures continue through normal try propagation.
+	if a.checkTryResidualPropagation(expr, errorType, unhandledTryVariants(errorType, matchedVariants)) {
+		plan.ResidualPropagates = true
+		plan.EnclosingResultType = a.currentFunctionReturn
+	}
+	return plan, len(a.errors) == errorsBefore
+}
+
+// unhandledTryVariants lists the qualified enum error variants that no
+// unguarded handler covers, in declaration order.
+func unhandledTryVariants(errorType Type, matched map[string]lexer.Token) []string {
+	if errorType.Kind != EnumType {
+		return nil
+	}
+	missing := []string{}
+	for _, variant := range errorType.EnumValues {
+		if _, covered := matched[variant]; !covered {
+			missing = append(missing, typeDisplayName(errorType)+"."+variant)
+		}
+	}
+	return missing
+}
+
+// checkTryResidualPropagation validates that the failures left unmatched by
+// partial try handlers can propagate through the enclosing Result return,
+// reporting a mentor diagnostic that names the unhandled failures otherwise.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §12.1 "Result/error propagation", §16 "Partial handlers and implicit propagation"
+//   - rules/errors/errorhandling.md — §30 "Diagnostics must act as a mentor", §32 "Cleanup and defer"
+func (a *Analyzer) checkTryResidualPropagation(expr *ast.TryExpression, errorType Type, missing []string) bool {
+	unhandled := typeDisplayName(errorType) + " errors"
+	if len(missing) > 0 {
+		unhandled = strings.Join(missing, ", ")
+	}
+	switch {
+	case a.inDeferBlock:
+		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled, and they cannot propagate from inside defer; add Err(_) => ... to handle the remaining errors", unhandled)
+		return false
+	case !a.inFunctionBody:
+		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled, and they cannot propagate outside a function; add Err(_) => ... to handle the remaining errors", unhandled)
+		return false
+	case a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2:
+		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... to handle the remaining errors locally or return Result[%s, %s]",
+			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType))
+		return false
+	case !canInitialize(a.currentFunctionReturn.TypeArgs[1], errorType, expr.Expression):
+		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... or map %s to %s",
+			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType), typeDisplayName(a.currentFunctionReturn.TypeArgs[1]))
+		return false
+	}
+	return true
 }
 
 // analyzeTryHandlerPattern resolves the failure-pattern family allowed by a
@@ -18833,9 +17984,19 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		a.constInts = previousConstInts
 	}()
 
+	if handler.Guard != nil {
+		a.analyzeTryHandlerGuard(handler, bindingName)
+	}
+
 	if handler.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, handler.ReturnBody)
 		return TryHandlerReturns
+	}
+
+	if handler.BlockBody != nil && successType.Kind != VoidType {
+		if value, ok := tryHandlerBlockValue(handler.BlockBody); ok {
+			return a.analyzeTryHandlerBlockValue(handler, value, successType)
+		}
 	}
 
 	if handler.BlockBody != nil {
@@ -18950,6 +18111,9 @@ type matchPatternInfo struct {
 	PayloadBorrow        bool
 	PayloadBorrowMutable bool
 	PayloadToken         lexer.Token
+	// InitializesSubject names a possibly-empty union subject binding that
+	// this arm proves initialized (every variant arm of such a match).
+	InitializesSubject string
 }
 
 // analyzeMatch validates patterns, exhaustiveness, branch state and an optional
@@ -18964,7 +18128,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		return Type{Kind: InvalidType}
 	}
 	analysisErrorCount := len(a.errors)
-	subjectType, _ := a.inferExpression(expr.Subject)
+	subjectType, maybeEmptySubject := a.inferMatchSubject(expr.Subject)
 	if subjectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}
 	}
@@ -18997,6 +18161,20 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	beforeArenaGenerations := copyArenaGenerations(a.arenaGenerations)
 	branches := []branchAnalysis{}
 	patternError := false
+	seenEmpty := false
+	addArmResult := func(arm *ast.MatchArm, armType Type) {
+		if !valueContext || armType.Kind == InvalidType {
+			return
+		}
+		if !hasResultType {
+			resultType = armType
+			hasResultType = true
+			return
+		}
+		if !canInitialize(resultType, armType, arm.Body) && !canInitialize(armType, resultType, arm.Body) {
+			a.addErrorAtToken(expressionToken(arm.Body), "match arms must produce compatible types, got %s and %s", typeDisplayName(resultType), typeDisplayName(armType))
+		}
+	}
 
 	for sourceIndex, arm := range expr.Arms {
 		if arm == nil || arm.Pattern == nil {
@@ -19005,8 +18183,13 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			continue
 		}
 		if arm.Pattern.Kind == ast.MatchPatternEmpty {
-			a.addErrorAtToken(arm.Pattern.Token, "compiler-known empty match patterns are not implemented yet")
-			patternError = true
+			if !a.admitEmptyMatchArm(expr, arm, maybeEmptySubject, catchAll, &seenEmpty) {
+				continue
+			}
+			armType, branch := a.analyzeMatchArmBody(arm, matchPatternInfo{})
+			branches = append(branches, branch)
+			plan.Arms = append(plan.Arms, a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, matchPatternInfo{}, armType, valueContext))
+			addArmResult(arm, armType)
 			continue
 		}
 		if arm.Pattern.Kind == ast.MatchPatternFields {
@@ -19018,6 +18201,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if !ok {
 			patternError = true
 			continue
+		}
+		if maybeEmptySubject != "" && info.Kind != "catchall" {
+			info.InitializesSubject = maybeEmptySubject
 		}
 		if info.BindingName != "" && info.PayloadVariant != "" {
 			if subjectPlace, placeOK := a.resolvePlace(expr.Subject); placeOK {
@@ -19087,17 +18273,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			resolvedArm.ResidualAlwaysMatches = true
 		}
 		plan.Arms = append(plan.Arms, resolvedArm)
-		if !valueContext || armType.Kind == InvalidType {
-			continue
-		}
-		if !hasResultType {
-			resultType = armType
-			hasResultType = true
-			continue
-		}
-		if !canInitialize(resultType, armType, arm.Body) && !canInitialize(armType, resultType, arm.Body) {
-			a.addErrorAtToken(expressionToken(arm.Body), "match arms must produce compatible types, got %s and %s", typeDisplayName(resultType), typeDisplayName(armType))
-		}
+		addArmResult(arm, armType)
 	}
 
 	if catchAll && subjectType.Kind == ResultType && !seenKinds["Err"] {
@@ -19107,6 +18283,12 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	if !patternError {
 		exhaustive = a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants, seenEnumValues)
 	}
+	if !patternError && maybeEmptySubject != "" && !seenEmpty && !catchAll {
+		a.addErrorAtToken(expr.Token, "match on %s must handle its possibly empty state; add an empty arm or _", maybeEmptySubject)
+		exhaustive = false
+	}
+	plan.EmptyStateReachable = maybeEmptySubject != ""
+	recordPlan := true
 	if !exhaustive {
 		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
@@ -19130,7 +18312,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 				resultType = Type{Name: "never", Kind: NeverType}
 				plan.ResultType = resultType
 				plan.Exhaustive = true
-				if plan.SubjectKind != "" && len(a.errors) == analysisErrorCount {
+				if recordPlan && plan.SubjectKind != "" && len(a.errors) == analysisErrorCount {
 					a.resolvedMatchPlans[expr] = plan
 				}
 				return resultType
@@ -19144,7 +18326,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		}
 		plan.ResultType = resultType
 		plan.Exhaustive = exhaustive
-		if plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
+		if recordPlan && plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
 			a.resolvedMatchPlans[expr] = plan
 		}
 		return resultType
@@ -19152,7 +18334,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 	plan.ResultType = Type{Name: "void", Kind: VoidType}
 	plan.Exhaustive = exhaustive
-	if plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
+	if recordPlan && plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
 		a.resolvedMatchPlans[expr] = plan
 	}
 	return Type{Name: "void", Kind: VoidType}
@@ -19514,6 +18696,9 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
+	if info.InitializesSubject != "" {
+		a.assigned[info.InitializesSubject] = true
+	}
 	if info.PayloadMoves && info.PayloadPlace.Root != "" {
 		if !info.PayloadPlace.PartialMoveSafe {
 			a.reportUnionPayloadMoveStorage(info)
@@ -19678,6 +18863,8 @@ func (a *Analyzer) resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex in
 		resolved.EnumNumericValue = new(big.Int).Set(info.EnumNumericValue)
 	}
 	switch {
+	case arm.Pattern != nil && arm.Pattern.Kind == ast.MatchPatternEmpty:
+		resolved.PatternKind = MatchPatternEmptyState
 	case info.Kind == "catchall":
 		resolved.PatternKind = MatchPatternCatchAll
 	case subjectType.Kind == EnumType:
@@ -21137,6 +20324,10 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 		}
 	}
 
+	if a.inFunctionBody {
+		a.reportLocalShadowsDeclaration(name, token)
+	}
+
 	storage := StorageOriginInline
 	if !a.inFunctionBody {
 		// rules/declarations/static.md, storage duration; correction15.md makes
@@ -22007,6 +21198,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.InfixExpression:
 		return expr.Token
 	case *ast.AvailabilityExpression:
+		return expr.Token
+	case *ast.StateTestExpression:
 		return expr.Token
 	case *ast.ConversionExpression:
 		return expr.Token

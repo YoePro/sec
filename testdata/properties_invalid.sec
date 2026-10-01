@@ -222,13 +222,12 @@ impl FallibleAssignmentTarget {
             return _speed
         }
 
-        try set value {
+        try set value PropertyError {
             if value < 0 {
                 return Err(PropertyError.InvalidValue)
             }
 
             _speed = value
-            return Ok()
         }
     }
 }
@@ -350,9 +349,8 @@ impl MixedSetterModesTarget {
         }
 
         // ERROR: set and try set are mutually exclusive.
-        try set replacement {
+        try set replacement error {
             _value = replacement
-            return Ok()
         }
     }
 }

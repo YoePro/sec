@@ -104,7 +104,7 @@ impl InterfaceIterator {
     fn Close() Result[void, NetworkError] {
         // TODO: Implement through the target network-interface adapter.
         return Err(NetworkError.Unsupported)
-    }S
+    }
 }
 
 /**

@@ -1,0 +1,74 @@
+module main
+
+// The compiler-known empty pattern over possibly-empty union bindings.
+
+type State union {
+    Idle
+    Running
+}
+
+fn Use(s: State) void {
+}
+
+fn Name(flag: bool) string {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    return match state {
+        empty => "empty"
+        Idle => "idle"
+        Running => "running"
+    }
+}
+
+fn RefinesInVariantArms(flag: bool) void {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    match state {
+        empty => {
+            state = State.Running
+        }
+        Idle => Use(state)
+        Running => Use(state)
+    }
+    Use(state)
+}
+
+fn CatchAllCoversEmpty(flag: bool) int {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    return match state {
+        Idle => 1
+        _ => 0
+    }
+}
+
+fn Terminates(flag: bool) int {
+    let mut state: State
+    if flag {
+        state = State.Idle
+    }
+    match state {
+        empty => {
+            return 0
+        }
+        Idle => {
+            return 1
+        }
+        Running => {
+            return 2
+        }
+    }
+}
+
+fn Initialized(state: State) string {
+    return match state {
+        Idle => "idle"
+        Running => "running"
+    }
+}

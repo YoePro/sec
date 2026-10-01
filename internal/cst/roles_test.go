@@ -560,3 +560,66 @@ func TestApplyProgramRolesDoesNotMarkRecoveredConstraintSeparator(t *testing.T) 
 		}
 	}
 }
+
+// Spacing roles are assigned from parsed grammar: the same - token is a binary
+// operator in one position and a prefix operator in another, the let colon and
+// initialization operator are found inside the declaration, the typed
+// declaration head is not a keyword, and switch/match body braces are marked.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §5 "Required syntax representation", §6 "Indentation and basic whitespace"
+//   - rules/tooling/formatter.md — §18(1) control-flow braces
+func TestApplyProgramRolesMarksSpacingRoles(t *testing.T) {
+	source := "fn F(x: int) int {\n    let y: int := x - -x\n    float: low := 1.0\n    y += 1\n    switch x {\n    }\n    return match x {\n        _ => y\n    }\n}\n"
+	program := parser.New(lexer.New(source)).ParseProgram()
+	document := Build(source, "spacing.sec")
+	document.ApplyProgramRoles(program)
+	if document.Text() != source {
+		t.Fatalf("role annotation changed source: %q", document.Text())
+	}
+	roles := map[string][]Role{}
+	for _, element := range document.Elements {
+		if element.Kind == Token && len(element.Roles) > 0 {
+			key := element.Text + "@" + string(rune('0'+element.Token.Line))
+			roles[key] = append(roles[key], element.Roles...)
+		}
+	}
+	has := func(key string, role Role) bool {
+		for _, candidate := range roles[key] {
+			if candidate == role {
+				return true
+			}
+		}
+		return false
+	}
+	minusBinary, minusPrefix := 0, 0
+	for _, element := range document.Elements {
+		if element.Token.Type == lexer.MINUS {
+			if element.HasRole(BinaryOperator) {
+				minusBinary++
+			}
+			if element.HasRole(PrefixOperator) {
+				minusPrefix++
+			}
+		}
+	}
+	checks := []struct {
+		ok   bool
+		what string
+	}{
+		{minusBinary == 1 && minusPrefix == 1, "one binary and one prefix minus"},
+		{has("let@2", SpacedKeyword), "let keyword"},
+		{has(":@2", DeclarationColon), "let type colon"},
+		{has(":=@2", AssignmentOperator), "let initialization operator"},
+		{!has("float@3", SpacedKeyword), "typed declaration head is not a keyword"},
+		{has(":=@3", AssignmentOperator), "typed declaration initialization operator"},
+		{has("+=@4", AssignmentOperator), "compound assignment operator"},
+		{has("{@5", ControlBodyOpen), "switch body brace"},
+		{has("return@7", SpacedKeyword) && has("match@7", SpacedKeyword) && has("{@7", ControlBodyOpen), "return and match body"},
+	}
+	for _, check := range checks {
+		if !check.ok {
+			t.Fatalf("missing %s; roles = %+v", check.what, roles)
+		}
+	}
+}

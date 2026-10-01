@@ -1,0 +1,40 @@
+module main
+
+// Impossible, unknown, mismatched, non-union, and moved-from state tests.
+
+type State union {
+    Idle
+    Running
+}
+
+fn Impossible(s: State) void {
+    if s is empty {
+        return
+    }
+}
+
+fn UnknownVariant(s: State) void {
+    if s is Stopped {
+        return
+    }
+}
+
+fn WrongOwner(s: State, o: Option[int]) void {
+    if s is Option.Some {
+        return
+    }
+}
+
+fn NotUnion(v: int) void {
+    if v is Idle {
+        return
+    }
+}
+
+fn Moved() void {
+    let mut source := State.Idle
+    let target :<- source
+    if source is empty {
+        return
+    }
+}

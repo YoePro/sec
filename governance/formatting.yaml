@@ -112,6 +112,100 @@ integrations:
         result: passed
       - command: go test ./cmd/lsp -run 'Format|Formatting' -v
         result: passed
+  - id: tooling.formatter-canonical-token-spacing
+    area: tooling
+    status: implemented
+    integrated: "2026-10-01"
+    summary: >-
+      Normalizes the same-line horizontal gap between adjacent tokens from
+      parser-owned CST roles: binary, assignment, and initialization operators,
+      unary prefix operators and the consuming call-site marker, the let type
+      colon, statement and control-flow keywords, and same-line opening braces.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/cst/roles.go
+      - internal/formatter/token_spacing.go
+      - internal/formatter/formatter.go
+    tests:
+      - internal/cst/roles_test.go
+      - internal/formatter/token_spacing_test.go
+      - internal/formatter/formatter_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - "§6(5): infix operators, including not in and the for-header in, have one space on both sides"
+      - "§6(6) and §21(5): unary prefix operators and the <- consuming marker attach to their operand"
+      - "§6(4): a let type-annotation colon binds to its identifier and is followed by one space"
+      - "§6(7): assignment, compound-assignment, :=, and :<- operators have one space on both sides"
+      - let, let mut, return with a value, if, else, while, for, switch, and match keywords are followed by one space
+      - "§8(1)–(3) and §18(1): an executable block, switch body, or match body brace on the header line follows one space, giving canonical } else {"
+      - roles come from the parsed AST (InfixExpression, PrefixExpression, AssignmentStatement, LetStatement, control statements) so identical spellings in other grammatical positions, such as a generic constraint & or a typed declaration head, are not affected
+      - gaps that cross a line break or hold a comment are never changed, and malformed documents are left byte-for-byte unchanged
+      - the pass runs before indentation and alignment so later column alignment observes the canonical token spelling; CLI and LSP share it
+    remaining:
+      - continuation-line indentation for operators split across lines remains owned by formatter-canonical-layout
+      - spacing for remaining unroled positions such as struct-literal braces and ordinary comma lists stays with the existing line-oriented passes until they move to CST roles
+    verification:
+      - command: go test ./internal/cst ./internal/formatter ./cmd/lsp -run 'Test(ApplyProgramRolesMarksSpacingRoles|FormatCanonicalTokenSpacing|FormatTokenSpacingLeaves|FormatGenericConstraintConjunctionsFromCST|FormatDeclarationGroupSeparatorsFromCST|FormatSource)' -count=1
+        result: passed on 2026-10-01
+      - command: format every non-invalid testdata .sec file twice and compare ASTs
+        result: passed on 2026-10-01 with no new idempotence or AST differences; the four pre-existing differences (switch_valid idempotence; units_advanced_valid, lexer/interpolation_balanced_valid, and formatter/check_noncanonical AST changes) are identical at HEAD
+  - id: tooling.formatter-brace-blank-lines
+    area: tooling
+    status: implemented
+    integrated: "2026-10-01"
+    summary: >-
+      Removes decorative empty lines directly inside opening and closing braces
+      and protects multiline string literals from the line-oriented pass.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/formatter.go
+      - internal/formatter/multiline_tokens.go
+    tests:
+      - internal/formatter/token_spacing_test.go
+    implemented:
+      - "§7(2): an empty line immediately after a line ending in an opening brace, or immediately before a line starting with a closing brace, is removed"
+      - "§7(1): existing collapse of repeated empty lines is retained, so ordinary separation between statements keeps one empty line"
+      - "§6(8) and §29: continuation lines of a multiline string or raw-string token are emitted byte-for-byte, keep their blank lines, and do not contribute braces to indentation; the token's start line is re-indented only and its braces are counted with the literal masked"
+      - fixes the previous behavior in which a closing brace inside a multiline raw string was re-indented, changing the string value
+    remaining:
+      - structured/compact optional separation from §7(3)–(13) depends on formatter-project-configuration
+    verification:
+      - command: go test ./internal/formatter -run 'TestFormat(RemovesBlankLinesInsideBraces|PreservesMultilineRawStrings)' -count=1
+        result: passed on 2026-10-01
+      - command: go test ./...
+        result: passed on 2026-10-01
+  - id: tooling.formatter-property-accessor-layout
+    area: tooling
+    status: implemented
+    integrated: "2026-10-01"
+    summary: >-
+      Expands compressed impl property layouts to one accessor per line with
+      the property's closing brace on its own line before line-oriented
+      indentation runs.
+    rules:
+      - rules/tooling/formatter.md
+    code:
+      - internal/formatter/property_layout.go
+      - internal/formatter/formatter.go
+      - internal/formatter/block_comments.go
+    tests:
+      - internal/formatter/comment_property_layout_test.go
+    implemented:
+      - "§16(7): `property X: int { get {` ... `} }`, `} }` endings, and one-line `{ get { return a } }` forms become the canonical property block with each accessor on its own line"
+      - the parser-owned getter block, setter keyword, and property body delimiters locate the break points, so only line breaks are inserted and existing executable-block expansion and indentation handle the rest
+      - "§16(9): a fallible setter keeps try set together on its own line"
+      - fixes indentation drift in which a compressed property shifted the following members and top-level declarations
+      - bodyless interface property requirements such as { get } keep their compact form, and malformed documents are left unchanged
+      - "§12(8), §12(12), §12(14): block comments with an opener indented further than their body no longer repeat `*` on the following lines (see tooling.cst-lexical-foundation progress)"
+    remaining:
+      - properties declared inside nested impl members beyond top-level impl blocks are not yet expanded
+    verification:
+      - command: go test ./internal/formatter -run 'TestFormat(ShiftedBlockCommentOpener|CompressedPropertyAccessors|PropertyRequirementStaysCompact)' -count=1
+        result: passed on 2026-10-01
+      - command: go test ./... and formatting every non-invalid testdata file twice with AST comparison
+        result: passed on 2026-10-01 with only the four pre-existing differences that are identical at HEAD
   - id: tooling.formatter-single-line-call-spacing
     area: tooling
     status: implemented
@@ -411,6 +505,13 @@ integrations:
         comment-contained delimiters from changing executable indentation.
         Single-line and inline block comments remain unchanged; nested
         multiline normalization remains outside this first slice.
+      - >-
+        Block comments whose opener is indented further than their body
+        (2026-10-01) take their layout indentation from the smaller of the
+        opener indentation and the least-indented plain content line. Lines
+        already in aligned-star form always keep only the text after their
+        star, so a shifted opener no longer repeats `*` on the following lines
+        or misclassifies ordinary lines as preformatted.
       - >-
         Lexer-owned line comments now receive the canonical §12 delimiter
         margin: non-empty comments use `// text`, empty comments use `//`, and

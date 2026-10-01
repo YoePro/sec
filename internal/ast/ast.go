@@ -436,6 +436,9 @@ type InterfaceProperty struct {
 	RequiresSet     bool
 	SetterParameter *Identifier
 	SetterFallible  bool
+	// SetterErrorType is the error contract a fallible setter requirement
+	// declares (rules/errors/errorhandling.md §24.1).
+	SetterErrorType *TypeReference
 	SetToken        lexer.Token
 }
 
@@ -1263,10 +1266,28 @@ func (fs *ForStatement) TokenLiteral() string {
 	return fs.Token.Lexeme
 }
 
+// ForBindingMode is the source-written binding mode of one for-loop binding
+// position: a plain by-value binding, a shared `ref` binding, or an exclusive
+// `ref mut` binding.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §4 "Loop bindings"
+type ForBindingMode string
+
+const (
+	ForBindingValue  ForBindingMode = ""
+	ForBindingRef    ForBindingMode = "ref"
+	ForBindingRefMut ForBindingMode = "ref mut"
+)
+
+// ForBinding is one loop binding position. Token is the bound name or `_`;
+// ModeToken is the `ref` keyword when Mode is not ForBindingValue.
 type ForBinding struct {
-	Token   lexer.Token
-	Name    string
-	Discard bool
+	Token     lexer.Token
+	Name      string
+	Discard   bool
+	Mode      ForBindingMode
+	ModeToken lexer.Token
 }
 
 type WhileStatement struct {
@@ -1529,6 +1550,43 @@ func (ie *InfixExpression) String() string {
 	}
 
 	return "(" + left + " " + ie.Operator + " " + right + ")"
+}
+
+// StateTestExpression is the non-binding union state test
+// `value is Variant`, `value is Owner.Variant`, or `value is empty`. It
+// introduces no payload binding; Variant is nil exactly when Empty is set.
+//
+// Rules:
+//   - rules/declarations/unions.md — §8.1 "Active variant test", §8.2 "Empty-state test"
+//   - rules/control-flow/flowcontrol_if.md — §12 "State tests with `is`"
+//   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests"
+type StateTestExpression struct {
+	Token   lexer.Token
+	Subject Expression
+	Owner   *Identifier
+	Variant *Identifier
+	Empty   bool
+}
+
+func (st *StateTestExpression) expressionNode() {}
+
+func (st *StateTestExpression) TokenLiteral() string { return st.Token.Lexeme }
+
+func (st *StateTestExpression) String() string {
+	if st == nil || st.Subject == nil {
+		return ""
+	}
+	if st.Empty {
+		return st.Subject.String() + " is empty"
+	}
+	target := ""
+	if st.Owner != nil {
+		target = st.Owner.Value + "."
+	}
+	if st.Variant != nil {
+		target += st.Variant.Value
+	}
+	return st.Subject.String() + " is " + target
 }
 
 // AvailabilityExpression is the compiler-known ownership-state query
@@ -1795,9 +1853,16 @@ func (te *TryExpression) String() string {
 	return "try " + te.Expression.String()
 }
 
+// TryHandler is one local alternate/failure handler of a try expression.
+// Guard is the optional `where` condition and GuardToken its keyword.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §15 "Local try handlers", §19 "Guards"
 type TryHandler struct {
 	Token      lexer.Token
 	Pattern    Expression
+	GuardToken lexer.Token
+	Guard      Expression
 	ArrowToken lexer.Token
 	Body       Expression
 	ReturnBody *ReturnStatement
@@ -2100,10 +2165,16 @@ func (ed *EventDeclaration) TokenLiteral() string {
 	return ed.Token.Lexeme
 }
 
+// PropertySetter is one set or try set accessor. ErrorType is the explicit
+// error contract written after the value parameter of a fallible setter.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §24 "Fallible property setters"
 type PropertySetter struct {
 	Token     lexer.Token
 	Fallible  bool
 	Parameter *Identifier
+	ErrorType *TypeReference
 	Body      *BlockStatement
 	Invalid   bool
 	Recovery  *RecoveryInfo

@@ -3744,6 +3744,9 @@ func printFor(stmt *ast.ForStatement) {
 		if i > 0 {
 			fmt.Print(", ")
 		}
+		if binding.Mode != ast.ForBindingValue {
+			fmt.Print(string(binding.Mode), " ")
+		}
 		fmt.Print(binding.Name)
 	}
 	if stmt.Iterable != nil {

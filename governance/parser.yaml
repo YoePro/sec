@@ -6,7 +6,7 @@ integrations:
     area: frontend
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-09-30"
+    revised: "2026-10-01"
     summary: >-
       Introduces the canonical ParseResult migration path and retains selected
       malformed syntax and parser repairs as structured recovery data.
@@ -66,6 +66,8 @@ integrations:
       - a struct field followed directly by an unambiguous type start retains its name and parsed type through one P2002 virtual-colon repair; later fields and declarations remain available
       - adjacent struct fields on separate lines receive one P2002 virtual-comma repair only when the next tokens prove an Identifier-colon field start; same-line adjacency remains invalid and is not reinterpreted
       - malformed generic parameter entries recover at top-level commas, list closers, callable/body/implements/default/contract boundaries, retaining completed and later comma-separated parameters plus the enclosing declaration
+      - recovery robustness harness checks termination under a watchdog, panic freedom, lexer progress and range sanity, bounded diagnostics, deterministic diagnostics, and nil-free partial ASTs over repeated malformed tokens, deep and long malformed input, token-boundary truncation of every accepted fixture, the five rulebook mutation families, replayed regression seeds, and a native Go fuzz target
+      - switch clause loops and default clauses without a colon always consume at least one token, generic parameter lists stop when a separator is followed by EOF or a foreign closer, and failed switch-clause statements are retained as invalid statements instead of nil nodes
       - committed function and lambda parameters with an empty type position retain an invalid TypeReference with recovery metadata, resume at comma or closing parenthesis, and preserve later parameters, bodies, enclosing expressions, statements, and declarations
       - ordinary functions and shared interface/extern signature parsing retain an invalid return TypeReference when the mandatory return type is missing; ordinary bodies and later member/declaration siblings remain attached without inferring void
       - interface property requirements retain missing or malformed declared types as invalid TypeReference nodes, recover to a reliable body brace without consuming outer/member boundaries, and preserve accessors plus later interface and top-level siblings
@@ -112,6 +114,7 @@ integrations:
       - testdata/parser/function_stubs_invalid.sec
       - testdata/parser/bodyless_requirements_valid.sec
       - internal/parser/switch_recovery_test.go
+      - internal/parser/recovery_robustness_test.go
       - testdata/parser/unterminated_switch_invalid.sec
       - testdata/parser/unterminated_empty_switch_invalid.sec
       - internal/parser/parser_test.go
@@ -291,6 +294,10 @@ integrations:
         result: passed on 2026-09-29; missing conditions use explicit invalid AST nodes while consequence, else, nested else-if, later statements, and following declarations survive
       - command: go test ./internal/parser -run 'Test(ParseWhileRequiresCondition|MissingWhileConditionRetains)' -count=1
         result: passed on 2026-09-29; a missing while condition uses an explicit invalid AST node while the body, following statement, and next declaration survive
+      - command: go test ./internal/parser -run 'TestParser(Terminates|Recovery)' -count=1
+        result: passed on 2026-10-01; truncation and mutation of every accepted fixture satisfy progress, determinism, bounded-diagnostic, and partial-AST invariants; five regression seeds fail (unbounded memory growth) without the switch and generic-list progress fixes
+      - command: go test ./...
+        result: passed on 2026-10-01
 
     remaining:
       - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, and empty impl-property type positions
@@ -299,7 +306,7 @@ integrations:
       - cross-location causal recovery-episode suppression
       - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists, and index/slice postfix expressions at EOF
       - recovery-aware Sema traversal policy for every invalid subtree
-      - recovery fuzzing and mutation tests
+      - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
   - id: frontend.increment-decrement-aliases
     area: frontend-and-tooling
     status: implemented

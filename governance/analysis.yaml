@@ -249,6 +249,7 @@ integrations:
       - valid module-main program-entry root discovery
       - whole-graph root reachability with literal true and false branch pruning
       - compiler-folded false while bodies remain statically checked but contribute no reachable call edges or panic effects
+      - compiler-folded short-circuit RHS expressions remain statically checked but contribute no reachable call edges or panic effects
       - Tarjan same-stack strongly connected components and direct or mutual recursion classification
       - dedicated Tarjan task-spawn, thread-start, process-launch, and complete-execution SCC views over the canonical graph, including direct-self and mutual-cycle classification without conflating execution-boundary cycles with same-stack recursion
       - task-spawn and thread-start execution relations on the resolved outer spawn call
@@ -270,6 +271,8 @@ integrations:
         result: passed; exact indirect targets, distinct lambda callers, capture-creation ownership, execution-specific SCC views, and existing call-graph behavior are covered
       - command: go test ./internal/sema -run 'TestFoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects' -count=1
         result: passed on 2026-10-01; folded-false loop bodies retain S3001 checking without adding dead call edges or MayPanic effects
+      - command: go test ./internal/sema -run 'TestFoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects' -count=1
+        result: passed on 2026-10-01; folded logical short-circuiting excludes dead RHS calls and panic effects while preserving left-operand behavior
       - command: go test ./...
         result: passed
       - command: go vet ./...

@@ -1014,6 +1014,11 @@ func (g *Generator) emitMatchArmCondition(subject value, arm *ast.MatchArm) (val
 	if arm.Guard != nil {
 		return value{}, fmt.Errorf("emit-llvm match guards are not supported yet")
 	}
+	// rules/declarations/unions.md — §10: the empty pattern tests initialization
+	// state, not a catch-all value; it must not reach the identifier fallback.
+	if arm.Pattern != nil && arm.Pattern.Kind == ast.MatchPatternEmpty {
+		return value{}, fmt.Errorf("emit-llvm does not support empty union match patterns yet")
+	}
 
 	switch pattern := arm.Pattern.Expression().(type) {
 	case *ast.Identifier:

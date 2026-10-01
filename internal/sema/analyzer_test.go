@@ -5130,7 +5130,7 @@ impl Vehicle {
 		get {
 			return _speed
 		}
-		try set value {
+		try set value error {
 			_speed = value
 		}
 	}
@@ -5234,7 +5234,7 @@ enum ConfigError error {
 
 interface FallibleConfig {
 	property Mode: int {
-		try set mode
+		try set mode ConfigError
 	}
 }
 
@@ -5254,7 +5254,7 @@ impl Plain implements FallibleConfig {
 type Fallible struct {}
 impl Fallible implements PlainConfig {
 	property Mode: int {
-		try set mode {
+		try set mode ConfigError {
 			return Err(ConfigError.Invalid)
 		}
 	}
@@ -5329,7 +5329,7 @@ impl Vehicle {
 		get {
 			return _speed
 		}
-		try set value {
+		try set value IOError {
 			return Err(IOError.InvalidValue)
 		}
 	}
@@ -5370,7 +5370,7 @@ impl Vehicle {
 		get {
 			return _speed
 		}
-		try set value {
+		try set value IOError {
 			return Err(IOError.InvalidValue)
 		}
 	}
@@ -5637,7 +5637,7 @@ impl Counter {
 		get {
 			return value
 		}
-		try set next {
+		try set next PropertyError {
 			return Err(PropertyError.Rejected)
 		}
 	}
@@ -5674,7 +5674,7 @@ impl Counter {
 		get {
 			return value
 		}
-		try set next {
+		try set next PropertyError {
 			return Err(PropertyError.Rejected)
 		}
 	}
@@ -6698,7 +6698,9 @@ unit s physical
 
 	expected := []string{
 		"try handler must produce Speed, got Money at 18:17",
-		"non-exhaustive try handlers for IOError at 24:15",
+		// rules/errors/errorhandling.md §16: handlers are partial; the unmatched
+		// variant cannot propagate because the function does not return Result.
+		"try handlers leave IOError.AccessDenied unhandled; they would propagate with return Err, but this function returns Speed; add Err(_) => ... to handle the remaining errors locally or return Result[Speed, IOError] at 24:15",
 	}
 
 	assertSemaErrors(t, errors, expected)

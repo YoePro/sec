@@ -19,7 +19,7 @@ type Vehicle struct { speed: int }
 impl Vehicle {
 	property Speed: int {
 		get { return speed }
-		try set value { return Err(SetterError.Rejected) }
+		try set value SetterError { return Err(SetterError.Rejected) }
 	}
 }
 `

@@ -1,0 +1,50 @@
+module main
+
+// Missing, non-error, and interface-incompatible setter contracts, and invalid returns.
+
+enum SpeedError error {
+    TooLow,
+}
+
+enum OtherError error {
+    Bad,
+}
+
+type Car struct {
+    _speed: int,
+}
+
+interface Tunable {
+    property Speed: int {
+        try set value SpeedError
+    }
+}
+
+impl Car implements Tunable {
+    property Speed: int {
+        try set value OtherError {
+            _speed = value
+        }
+    }
+
+    property Legacy: int {
+        try set value {
+            return Ok()
+        }
+    }
+
+    property Returns: int {
+        try set value SpeedError {
+            if value < 0 {
+                return Ok()
+            }
+            return 5
+        }
+    }
+
+    property NotError: int {
+        try set value int {
+            _speed = value
+        }
+    }
+}

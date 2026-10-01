@@ -1,0 +1,66 @@
+module main
+
+// Unpropagatable residual failures, guard errors, and invalid recovery values.
+
+enum IOError error {
+    NotFound,
+    PermissionDenied,
+    Busy,
+}
+
+fn Read() Result[int, IOError] {
+    return Ok(1)
+}
+
+fn Clear() Result[void, IOError] {
+    return Ok()
+}
+
+fn Log(message: string) void {
+}
+
+fn Use(value: int) void {
+}
+
+fn NotResult() int {
+    let value := try Read() {
+        Err(IOError.NotFound) => 0
+    }
+    return value
+}
+
+enum OtherError error {
+    Failed,
+}
+
+fn WrongChannel() Result[int, OtherError] {
+    let value := try Read() {
+        Err(IOError.NotFound) => 0
+    }
+    return Ok(value)
+}
+
+fn GuardOnly() int {
+    let value := try Read() {
+        Err(error) where error == IOError.Busy => 1
+    }
+    return value
+}
+
+fn NonBoolGuard() int {
+    let value := try Read() {
+        Err(error) where 5 => 1
+        Err(_) => 0
+    }
+    return value
+}
+
+fn WrongBlockValue() int {
+    let value := try Read() {
+        Err(_) => {
+            Log("x")
+            "text"
+        }
+    }
+    return value
+}

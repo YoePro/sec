@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-09-29"
+updated: "2026-10-01"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -76,3 +76,46 @@ decisions:
       returns ILLEGAL without a structured lexer diagnostic.
     classification: localized
     status: open
+
+  - id: MD-006
+    area: parser-sema-and-operators
+    rulebooks:
+      - rules/foundations/operators.md
+      - rules/declarations/unions.md
+      - rules/control-flow/flowcontrol_if.md
+      - rules/control-flow/flowcontrol_while.md
+      - rules/memory/ownership.md
+    description: >-
+      Define the precedence and expression contexts of the contextual `is`
+      state tests (`is Variant`, `is empty`, `is None`, `is Some(binding)`,
+      `is available`). operators.md has no `is` entry in its precedence table,
+      and the if/while/union rulebooks only show whole-condition forms. The
+      parser therefore accepts `is` only as the trailing operator of a
+      complete if or while condition, so `ready && state is Idle` tests the
+      whole `ready && state` operand, and `let b := state is Idle` or
+      `return state is Idle` is not a state test. Decide whether `is` binds
+      tighter than comparison/logical operators, whether it may appear in
+      arbitrary bool expression contexts, and whether `is not Variant` and
+      `!(value is Variant)` are valid.
+    classification: constraining
+    status: open
+
+  - id: MD-007
+    area: names-and-units
+    rulebooks:
+      - rules/foundations/names_scopes_visibility.md
+      - rules/types/units.md
+    description: >-
+      names_scopes_visibility.md §2 lists "units where their rule exposes a
+      declaration name" among the declarations sharing one namespace, but
+      units.md never states which unit declarations expose such a name. The
+      answer decides whether the §8 no-shadowing rule rejects a local named
+      like a unit symbol: sec/core/time.sec declares `unit s` and `unit ns`,
+      while sec/core/string.sec and sec/core/time.sec use locals named `s` and
+      `ns`. Decide whether unit symbols participate in the shared declaration
+      namespace (and therefore in shadowing and duplicate-declaration checks)
+      or live in a separate unit-symbol namespace. The local-shadowing check
+      (S1057) currently exempts unit names.
+    classification: constraining
+    status: open
+

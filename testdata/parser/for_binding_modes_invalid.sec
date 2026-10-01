@@ -1,0 +1,30 @@
+module main
+
+// Consuming for forms and reference modes on a discard are not Sec 0.1 syntax.
+
+fn ConsumingArrow(items: int[3]) void {
+    for -> item in items {
+        return
+    }
+}
+
+fn MoveSource(items: int[3]) void {
+    for item in move items {
+        return
+    }
+}
+
+fn ArrowSource(items: int[3]) void {
+    for item in <-items {
+        return
+    }
+}
+
+fn RefDiscard(items: int[3]) void {
+    for ref _ in items {
+        return
+    }
+}
+
+fn Following() void {
+}

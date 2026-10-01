@@ -40,7 +40,9 @@ func TestFormatContextualMatrixXWithoutRewritingIdentifiers(t *testing.T) {
 //   - rules/tooling/formatter.md — §6 "Horizontal whitespace"
 func TestFormatGenericConstraintConjunctionsFromCST(t *testing.T) {
 	input := "fn Save[T:First&Comparable, U: Printable](value: T, mask: T) void {\nlet masked := value&mask\ndiscard masked\n}\n\ntype Box[T: Item  &  Printable] struct {\nvalue T\n}\n"
-	want := "fn Save[T:First & Comparable, U: Printable](value: T, mask: T) void {\n    let masked := value&mask\n    discard masked\n}\n\ntype Box[T: Item & Printable] struct {\n    value T\n}\n"
+	// The bitwise & is a binary operator and receives §6(5) spacing through its
+	// own role; only the constraint & uses the conjunction role.
+	want := "fn Save[T:First & Comparable, U: Printable](value: T, mask: T) void {\n    let masked := value & mask\n    discard masked\n}\n\ntype Box[T: Item & Printable] struct {\n    value T\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
 		t.Fatalf("wrong generic constraint formatting:\n%s\nwant:\n%s", got, want)
@@ -83,6 +85,24 @@ func TestFormatOwnershipAvailabilityTests(t *testing.T) {
 	}
 	if again := Format(Source{Text: got}, Options{}).Text; again != got {
 		t.Fatalf("availability formatting is not idempotent:\n%s", again)
+	}
+}
+
+// TestFormatUnionStateTests keeps the body brace of an if or while whose
+// condition ends in a union state word separated from that word.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 8(1), § 18 "Control flow"
+//   - rules/declarations/unions.md — §8 "`is` tests for union state and active variant"
+func TestFormatUnionStateTests(t *testing.T) {
+	input := "fn Check(state: State) void {\nif state is Idle{\n}\nwhile state is State.Running{\n}\nif state is empty{\n}\n}\n"
+	want := "fn Check(state: State) void {\n    if state is Idle {\n    }\n    while state is State.Running {\n    }\n    if state is empty {\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("wrong state-test formatting:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("state-test formatting is not idempotent:\n%s", again)
 	}
 }
 

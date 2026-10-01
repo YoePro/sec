@@ -340,6 +340,7 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/analyzer_control_flow.go
       - internal/sema/analyzer_if_flow.go
+      - internal/sema/analyzer_union_state.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
@@ -349,8 +350,12 @@ integrations:
       - internal/sema/analyzer_if_flow_test.go
       - internal/sema/unreachable_branch_test.go
       - internal/formatter/formatter_test.go
+      - internal/parser/control_flow_forms_test.go
+      - internal/sema/union_state_test.go
       - internal/codegen/mlir/generator_test.go
       - testdata/if_invalid.sec
+      - testdata/parser/condition_pattern_binding_invalid.sec
+      - testdata/sema/union_state_tests_valid.sec
       - testdata/basic_types_valid.sec
     implemented:
       - if, else-if, and else syntax with mandatory braces
@@ -363,6 +368,7 @@ integrations:
       - definite-assignment merging over continuing paths
       - assignment and declaration headers excluded from condition expression syntax
       - payload and structural pattern binding excluded from if conditions
+      - non-binding union state tests (is Variant, is Owner.Variant, is empty, and payload variants without parentheses) are accepted and refine definite assignment, while declaration-shaped bindings such as Some(value) := current and payload patterns such as result is Ok(value) report P2009 "pattern binding is not allowed in if condition; use match" without cascades; positive is Some(binding) remains the sole binding form
       - comparison chaining rejected with a dedicated diagnostic
       - branch continuation and termination reflected in flow-state merging
       - immutable ResolvedIfFlow facts expose true and false path execution, explicit-else presence, implicit no-branch paths, and continuation without reconstructing condition syntax
@@ -371,7 +377,7 @@ integrations:
       - compile-time integer comparisons, boolean equality, negation, and short-circuit conjunction/disjunction select reachable paths through the same ResolvedIfFlow and S3001 machinery while runtime-dependent conditions remain conditional
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
     remaining:
-      - distinguish permitted non-binding boolean is state tests from forbidden payload binding and destructuring in conditions
+      - define is state-test composition with && and || and use outside if and while conditions once the owning rulebook decides it (MD-006)
       - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
       - complete focused tests for short-circuit side effects and lazy source-order evaluation across else-if chains
@@ -438,6 +444,9 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/analyzer_control_flow.go
       - internal/sema/analyzer_while_flow.go
+      - internal/sema/analyzer_union_state.go
+      - internal/parser/expression.go
+      - internal/cst/roles.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
@@ -445,6 +454,8 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_while_flow_test.go
+      - internal/sema/switch_semantics_test.go
+      - internal/parser/control_flow_forms_test.go
       - internal/sema/unreachable_branch_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
@@ -453,6 +464,8 @@ integrations:
       - internal/codegen/llvm/generator_test.go
       - testdata/while_valid.sec
       - testdata/while_invalid.sec
+      - testdata/parser/condition_pattern_binding_invalid.sec
+      - testdata/parser/while_unsupported_forms_invalid.sec
     implemented:
       - lexer recognition and AST representation of while statements
       - while condition and mandatory block parsing with missing-condition recovery
@@ -476,14 +489,19 @@ integrations:
       - folded-false loop bodies remain statically checked but cannot contribute reachable call-graph edges or panic effects
       - folded-false loop bodies are analyzed once without a fixed-point replay and leave ownership, resource, borrow, reference-origin, constant, assignment, and Arena-generation state at the exact zero-iteration entry state
       - LLVM and MLIR condition, body, backedge, continue, break, and exit lowering
+      - non-binding union state tests are accepted in while conditions and typed as bool, while declaration-shaped bindings and payload patterns, including is Some(binding), report P2009 "pattern binding is not allowed in while condition; use match"
+      - while in value position reports P2011 "while is a statement and does not produce a value" and skips the loop as one balanced region
+      - value-carrying break and continue report a focused diagnostic and retain the loop-control statement
+      - loop labels such as outer: before while or for report a focused diagnostic and the labeled loop and body are retained instead of cascading through typed-declaration recovery
+      - Sema proves break and continue inside a switch nested in while target the surrounding loop, with the nested break recorded as a reachable loop exit
       - canonical Markdown metadata with implementation governance kept in this ledger
+      - while conditions refine definite assignment from union state tests: the body of while value is Variant sees an initialized binding, and a while value is empty loop without a reachable break leaves the binding initialized; loop backedge re-analysis never weakens the published possibly-empty state-test fact
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
-      - add dedicated parser diagnostics and tests for loop values and pattern-binding conditions
-      - permit non-binding boolean is state tests from owning rulebooks while rejecting payload and structural binding in conditions
+      - apply union state-test refinement on loop exits that pass through reachable break edges
       - extend non-literal condition proof beyond the current integer-comparison and boolean-operator subset and route other non-continuing flow through the canonical unreachable-code policy
       - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
-      - verify that break and continue inside a switch nested in while target the surrounding loop in Sema, CFG, Semantic IR, and both backends
+      - verify that break and continue inside a switch nested in while target the surrounding loop in CFG, Semantic IR, and both backends
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
     excluded:
       - do-while
@@ -519,6 +537,10 @@ integrations:
     verification:
       - command: go test ./internal/parser -run While -count=1
         result: passed
+      - command: go test ./internal/parser ./internal/sema -run 'Test(ConditionPatternBindingReportsFocusedDiagnostics|ConditionStateTestsParse|UnsupportedWhileFormsReportFocusedDiagnostics|SwitchCreatesNoLoopControlTarget|UnionState)' -count=1
+        result: passed on 2026-10-01; state tests, pattern-binding rejection, loop values, value-carrying loop control, loop labels, and nested-switch loop control are covered
+      - command: go test ./internal/sema -run 'TestWhileStateTestRefinesAssignment' -count=1
+        result: passed on 2026-10-01; body and exit refinement from state tests, break-path conservatism, and monotone state-test facts are covered
       - command: go test ./internal/sema -run 'While|BreakAndContinue|ComparisonChaining' -count=1
         result: passed
       - command: go test ./internal/codegen/mlir -run While -count=1
@@ -563,15 +585,24 @@ integrations:
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
+      - internal/parser/expression.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_switch.go
       - internal/sema/analyzer_switch_coverage.go
       - internal/sema/analyzer_switch_flow.go
       - internal/formatter/formatter.go
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/parser/parser_test.go
+      - internal/parser/switch_recovery_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/switch_semantics_test.go
+      - internal/diagnostics/diagnostics_test.go
+      - testdata/parser/switch_expression_invalid.sec
+      - testdata/parser/switch_case_guard_invalid.sec
+      - testdata/sema/switch_pattern_binding_invalid.sec
       - internal/sema/analyzer_switch_flow_test.go
       - internal/sema/switch_coverage_test.go
       - internal/sema/destruction_test.go
@@ -598,9 +629,14 @@ integrations:
       - LLVM lowering for the currently supported subject, subjectless, range, relational, and fallthrough subset
       - MLIR lowering for integer and bool subject switches with value alternatives
       - canonical Markdown metadata with implementation governance kept in this ledger
+      - switch in expression position reports P2011 "switch is a statement and does not produce a value" once and skips the switch as one balanced region while retaining the enclosing construct
+      - a where guard after a case item reports P2011 "switch case guards are not part of Sec 0.1" while retaining the clause items, body, and later clauses
+      - variant payload binding (Ok, Err, Some, bare subject-union variants, and qualified Union.Variant callees with an unbound or underscore payload argument) and bare underscore wildcard items report mandatory S1056/switch.pattern-binding with match or default help instead of undefined-name cascades; constructed values with resolvable arguments remain value cases
+      - break and continue directly inside switch are rejected outside loops and resolve to the enclosing loop inside one, with a nested-switch break recorded as a reachable loop exit
+      - switch statement analysis lives in internal/sema/analyzer_switch.go with per-function rulebook traceability
     remaining:
-      - add focused Sema and lowering tests proving switch creates no break or continue target and nested switch control resolves only to an enclosing loop
-      - add dedicated parser and Sema diagnostics for switch value use, case where guards, and structural or payload-binding patterns
+      - add focused lowering tests proving nested switch break and continue resolve only to an enclosing loop
+      - give struct-shaped variant destructuring in switch case items (for example case Move { x, y }:) a focused pattern diagnostic; it currently produces a parser cascade because the struct-literal value form and shorthand field rules do not yet distinguish it
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
@@ -650,6 +686,8 @@ integrations:
         result: passed
       - command: go test ./internal/codegen/llvm -run Switch -count=1
         result: passed
+      - command: go test ./internal/parser ./internal/sema ./internal/diagnostics -run 'Test(Switch(InExpression|CaseGuard|Wildcard|Pattern|CreatesNo)|SwitchPatternBindingDiagnosticIsRegistered)' -count=1
+        result: passed on 2026-10-01; value use, guards, payload binding, wildcard items, and loop-control targeting produce focused diagnostics without cascades
       - command: go test ./internal/formatter -run Switch -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
 
@@ -706,6 +744,8 @@ integrations:
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/expressions.go
       - internal/codegen/llvm/statements.go
+      - internal/sema/analyzer_union_state.go
+      - internal/ir/semantic/builder.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -720,6 +760,9 @@ integrations:
       - testdata/match_invalid.sec
       - testdata/errorhandling_match_invalid.sec
       - testdata/semantic_ir/match_cfg.sec
+      - internal/sema/union_state_test.go
+      - testdata/sema/union_empty_match_valid.sec
+      - testdata/sema/union_empty_match_invalid.sec
     implemented:
       - AST represents MatchExpression, MatchStatement, and MatchArm
       - parser supports match in statement and expression positions
@@ -764,8 +807,9 @@ integrations:
       - implementation status was removed from the normative match rulebook and migrated here
       - parser and Sema accept Err(_) as an exhaustive Result error-payload discard in match arms and try handlers
       - Sema rejects direct bool match subjects once at the subject with focused guidance to use if and else; LSP reports the same shared diagnostic
+      - the compiler-known empty pattern is analyzed for possibly-empty local union subjects with exhaustiveness, per-arm definite-assignment refinement, duplicate and impossible-arm diagnostics, and an EmptyStateReachable resolved plan with an empty-state arm; moved-from subjects remain ownership errors rather than empty
     remaining:
-      - implement compiler-known empty union patterns and include reachable empty state in definite-assignment, coverage, Semantic IR, MLIR, diagnostics, and LSP facts without treating moved-from as empty
+      - lower the compiler-known empty union pattern and reachable empty state through Semantic IR and MLIR with a runtime initialization flag, and expose empty-state facts through LSP
       - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
       - derive statement-match termination from ResolvedMatchPlan so exhaustive Option, union, enum-alias, open-bit-enum, and nested matches agree with return and reachability analysis
       - implement shallow named-field union destructuring with partial binding, rename, ref and ref mut modes
@@ -893,6 +937,7 @@ integrations:
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_for.go
       - internal/sema/place.go
       - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
@@ -910,6 +955,11 @@ integrations:
       - testdata/for_valid.sec
       - testdata/for_invalid.sec
       - testdata/ir/test_arrays_basic.sec
+      - internal/parser/control_flow_forms_test.go
+      - internal/sema/for_binding_modes_test.go
+      - testdata/parser/for_binding_modes_invalid.sec
+      - testdata/sema/for_binding_modes_valid.sec
+      - testdata/sema/for_binding_modes_invalid.sec
     implemented:
       - infinite for block syntax
       - iterable for binding in expression block syntax
@@ -938,20 +988,25 @@ integrations:
       - StringSplitIterator explicitly implements Iterator[string], enabling direct for iteration over string.Split results in core and HTTP clients
       - LSP analysis recognizes compiler-known Iterator[T] while the defining core string source is the active document, without suppressing unrelated diagnostics in that file
       - canonical grammar, collections, and copy/move documentation synchronized to explicit value, ref, ref-mut, and discard semantics
+      - AST ForBinding records the written binding mode (plain, ref, ref mut) and its mode token; the parser accepts ref name and ref mut name in every binding position and rejects a reference mode on the discard _
+      - consuming for forms (the -> binding arrow, a move word-form source, and a <- source) report a focused diagnostic and the loop header and body are retained
+      - Sema types ref and ref mut loop bindings as ref T and ref mut T carrying the iterable's reference origin, so escape analysis rejects returning a loop reference to local storage
+      - binding-mode validation rejects reference modes on range values, decoded string runes, Iterator[T] results, and the sequential index position, ref mut on set elements and map keys, ref mut through a shared-reference iterable or an immutable iterable place, and reference modes over non-addressable temporary iterables; rejected bindings are still defined so the body does not cascade
+      - ref mut loop bindings use the canonical borrow-creation check, so iterating with ref mut over a collection that is already borrowed is rejected
+      - plain element bindings whose yielded type is move-only or non-copyable are rejected with ref guidance instead of silently moving or borrowing
+      - float and decimal range iteration requires an explicit step, and an unsigned range rejects a compile-time negative step
+      - the legacy MLIR generator rejects reference loop bindings explicitly instead of lowering them as copies
+      - for statement analysis lives in internal/sema/analyzer_for.go with per-function rulebook traceability
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
-      - add binding-mode representation to AST and parse, format, and expose canonical ref name and ref mut name loop bindings through compiler-owned LSP facts
-      - require plain by-value iteration to copy only implicitly copyable yielded types without silently moving or borrowing move-only elements
-      - implement shared element-reference iteration only for stable addressable iterable positions
-      - implement mutable element-reference iteration with mutable authority and exclusive borrow tracking
+      - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
+      - hold the shared or exclusive iterable borrow for the whole loop body so conflicting uses of the iterated collection inside the body are rejected
       - keep a sequential two-binding index as ordinary int or discard and apply reference modes only to its element binding
       - enforce exact map key/value reference modes, including shared keys and values, mutable values with authority, and rejection of mutable key references
       - permit plain-copy or shared-reference set iteration and reject mutable set element references
       - ensure discard bindings introduce no transfer, copy, move, or copyability requirement for the discarded yielded component
-      - reject consuming for-arrow and move-source syntax without adding a consuming iteration mode in Sec 0.1
       - make omitted integer-like range step unconditionally ascending +1 so start greater than end yields zero iterations in Sema, Semantic IR, MLIR, and LLVM
       - require explicit compatible negative steps for descending iteration without synthesizing signed conversion for unsigned ranges
-      - require explicit steps for float and decimal range iteration
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and maintained backends
       - reject structural operations that invalidate active iteration state or element references while preserving legal mutation through iterator-provided ref mut
@@ -1030,6 +1085,8 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run For -count=1
         result: passed
+      - command: go test ./internal/parser ./internal/sema ./internal/codegen/mlir -run 'Test(ForBindingModesAndConsumingForms|ForBindingModesAccepted|ForBindingModeDiagnostics|ForRangeStepRequirements|LegacyGeneratorRejectsReferenceLoopBindings)' -count=1
+        result: passed on 2026-10-01; binding modes, consuming-form rejection, category and authority validation, plain-binding copyability, float/decimal and unsigned step rules, and the legacy MLIR guard are covered
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow
     status: implemented
@@ -1210,6 +1267,8 @@ integrations:
     - consuming call arguments update caller ownership state when the call is on the analyzed live path
     - false && RHS and true || RHS restore ownership, resource, borrow, reference, and Arena state after static checking
     - proven-skipped RHS calls are excluded from reachable call-graph recording
+    - the shared compile-time boolean evaluator classifies folded integer comparisons, boolean equality, negation, conjunction, and disjunction as never- or always-executed RHS paths without re-inferring the left operand
+    - compiler-folded skipped RHS expressions preserve static checking while restoring ownership, resource, borrow, reference-origin, and Arena state and excluding call and panic-effect publication
     - non-constant RHS execution is merged with the short-circuit bypass state
     - successful logical expressions publish a canonical ResolvedLogicalFlow with operand and result types
     - ResolvedLogicalFlow records whether the RHS is never, always, or conditionally executed
@@ -1237,6 +1296,8 @@ integrations:
       result: passed on 2026-09-24
     - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|FoldedFalseWhileBodyDoesNotContributeReachableCallsOrEffects)' -count=1
       result: passed on 2026-10-01; compiler-folded if and while paths feed canonical reachability without suppressing static checking
+    - command: go test ./internal/sema -run 'Test(ResolvedLogicalFlowRecordsSelectedRHSEdge|FoldedLogicalShortCircuitDoesNotCommitRuntimeStateOrEffects|LogicalShortCircuitDoesNotCommitImpossibleMove)' -count=1
+      result: passed on 2026-10-01; literal and folded left operands publish exact RHS execution facts while skipped moves, calls, and panic effects remain outside the continuing path
     required_tests:
     - false && consuming-call leaves source available
     - true || consuming-call leaves source available

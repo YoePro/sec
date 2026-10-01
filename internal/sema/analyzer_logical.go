@@ -41,10 +41,15 @@ func (a *Analyzer) ResolvedLogicalFlowOf(expr *ast.InfixExpression) (ResolvedLog
 	return fact, ok
 }
 
-// inferLogicalExpression implements the short-circuit control-flow rule from
-// rules/control-flow/flowcontrol_if.md and rules/foundations/operators.md.
-// correction22 requires RHS diagnostics to be retained while impossible or
-// conditional execution effects are isolated and merged into the live state.
+// inferLogicalExpression implements left-to-right short-circuit flow and uses
+// the shared compile-time boolean proof to select the RHS execution edge.
+// Impossible RHS diagnostics are retained while runtime state, calls, and
+// effects remain isolated from the continuing path.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §§4–6 "Boolean operators", "Short-circuit evaluation", and evaluation order
+//   - rules/foundations/operators.md — "Short-circuit evaluation" and "Path-sensitive effects"
+//   - rules/corrections/applied/correction22-20260823.md — §§1–5 required logical-flow correction
 func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Type) (Type, expressionValue) {
 	if leftType.Kind != BoolType {
 		a.addErrorAtToken(expr.Token, "operator %s requires bool operands", expr.Operator)
@@ -52,9 +57,9 @@ func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Ty
 	}
 
 	execution := LogicalRHSConditional
-	shortCircuits := isBoolLiteral(expr.Left, expr.Operator == "||")
-	rhsRequired := isBoolLiteral(expr.Left, expr.Operator == "&&") ||
-		isBoolLiteral(expr.Left, false) && expr.Operator == "||"
+	leftValue, leftKnown := a.constantBooleanValue(expr.Left)
+	shortCircuits := leftKnown && (leftValue && expr.Operator == "||" || !leftValue && expr.Operator == "&&")
+	rhsRequired := leftKnown && !shortCircuits
 	if shortCircuits {
 		execution = LogicalRHSNever
 	} else if rhsRequired {

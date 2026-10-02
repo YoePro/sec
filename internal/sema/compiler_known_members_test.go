@@ -2,6 +2,8 @@ package sema
 
 import (
 	"strings"
+
+	"sec/internal/diagnostics"
 	"testing"
 
 	"sec/internal/ast"
@@ -776,4 +778,162 @@ func TestCompilerKnownRegistryCoversCanonicalCollectionSurface(t *testing.T) {
 			t.Fatalf("type SizeOf kind = %q, want property", member.Kind)
 		}
 	}
+}
+
+// A user impl member named SizeOf cannot replace the authoritative
+// compiler-known layout property, whether declared as a method, property, or
+// static member, while the canonical property forms keep resolving.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 23(3), 25(1)–(2), 26
+//   - rules/compiler/compile_time_evaluation.md — § 16 "SizeOf"
+func TestUserSizeOfReplacementIsRejected(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+type Point struct {
+    x: int,
+}
+
+impl Point {
+    property SizeOf: uint {
+        get {
+            return 1
+        }
+    }
+    fn SizeOf() uint {
+        return 2
+    }
+    static property SizeOf: uint {
+        get {
+            return 3
+        }
+    }
+}
+
+fn Use(point: Point) uint {
+    return point.SizeOf + Point.SizeOf
+}
+`)
+	if len(errors) != 3 {
+		t.Fatalf("errors = %v, want three S1070 rejections", errors)
+	}
+	for _, err := range errors {
+		if err.ID != diagnostics.AuthoritativeMemberReplacement || !strings.Contains(err.Message, "authoritative compiler-known property for Point") || err.Help == "" {
+			t.Fatalf("error = %+v, want S1070 with category explanation", err)
+		}
+	}
+	definition, ok := diagnostics.Lookup(diagnostics.AuthoritativeMemberReplacement)
+	if !ok || definition.Name != "members.authoritative-compiler-property" || !definition.Mandatory {
+		t.Fatalf("S1070 definition = %+v", definition)
+	}
+}
+
+// Registry entries carry an explicit semantic-authority category: ToString()
+// is the replaceable fallback, compiler-known properties are authoritative,
+// and compiler-known methods are operations. Authoritative properties are
+// protected only on receivers where they apply.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 6, 7, 11, 22, 23(3)
+func TestCompilerKnownRegistryCategoriesDeterminePolicy(t *testing.T) {
+	intType := builtinTypes()["int"]
+	values := NewDynamicArrayType(intType)
+	cases := []struct {
+		typ      Type
+		name     string
+		static   bool
+		category CompilerKnownMemberCategory
+	}{
+		{values, "ToString", false, CompilerProvidedFallbackMember},
+		{values, "SizeOf", false, AuthoritativeCompilerSemanticProperty},
+		{intType, "SizeOf", true, AuthoritativeCompilerSemanticProperty},
+		{values, "Len", false, AuthoritativeCompilerSemanticProperty},
+	}
+	for _, test := range cases {
+		member, ok := compilerKnownMember(test.typ, test.name, test.static)
+		if !ok || member.Category != test.category {
+			t.Fatalf("%s.%s category = %q (%v), want %q", typeDisplayName(test.typ), test.name, member.Category, ok, test.category)
+		}
+	}
+	if !CompilerProvidedFallbackMember.UserReplacementPermitted() || AuthoritativeCompilerSemanticProperty.UserReplacementPermitted() {
+		t.Fatal("replacement policy does not follow the category")
+	}
+	for _, member := range CompilerKnownMembersForType(values, false) {
+		if member.Category == "" {
+			t.Fatalf("member %s has no category", member.ID)
+		}
+	}
+
+	errors := analyzeSourceRaw(t, `module main
+
+type Bag struct {
+    count: uint,
+}
+
+impl Bag {
+    property Len: uint {
+        get {
+            return self.count
+        }
+    }
+}
+
+type Bytes byte[]
+
+impl Bytes {
+    property Len: uint {
+        get {
+            return 0
+        }
+    }
+}
+`)
+	if len(errors) != 1 || errors[0].ID != diagnostics.AuthoritativeMemberReplacement || !strings.Contains(errors[0].Message, "Len is an authoritative compiler-known property for Bytes") {
+		t.Fatalf("errors = %v, want only the named-array Len replacement rejected", errors)
+	}
+}
+
+// Registry entries carry an explicit semantic-authority category: ToString()
+// is a replaceable fallback, SizeOf an authoritative property, and a
+// compiler-known method an operation. A user member is rejected only where an
+// authoritative property applies, so an ordinary struct may declare Len.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 6, 7, 11, 20, 22, 23(3)
+func TestCompilerKnownRegistryCategoriesDrivePolicy(t *testing.T) {
+	text := builtinTypes()["string"]
+	cases := []struct {
+		typ      Type
+		name     string
+		static   bool
+		category CompilerKnownMemberCategory
+	}{
+		{text, "ToString", false, CompilerProvidedFallbackMember},
+		{text, "SizeOf", false, AuthoritativeCompilerSemanticProperty},
+		{builtinTypes()["int32"], "SizeOf", true, AuthoritativeCompilerSemanticProperty},
+		{text, "Len", false, AuthoritativeCompilerSemanticProperty},
+	}
+	for _, test := range cases {
+		member, ok := compilerKnownMember(test.typ, test.name, test.static)
+		if !ok || member.Category != test.category {
+			t.Fatalf("%s.%s category = %q (%v), want %q", test.typ.Name, test.name, member.Category, ok, test.category)
+		}
+	}
+	if !CompilerProvidedFallbackMember.UserReplacementPermitted() || AuthoritativeCompilerSemanticProperty.UserReplacementPermitted() {
+		t.Fatal("replacement policy does not follow the category")
+	}
+	assertSemaErrors(t, analyzeSourceRaw(t, `module main
+
+type Queue struct {
+    count: int,
+}
+
+impl Queue {
+    property Len: int {
+        get {
+            return self.count
+        }
+    }
+}
+`), nil)
 }

@@ -117,7 +117,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-18"
-    revised: "2026-09-30"
+    revised: "2026-10-02"
     summary: >-
       Tracks the compiler-owned, allocation-free default resolver required by
       default_values.md and its synchronized type, contract, aggregate, and
@@ -142,6 +142,10 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/contracts.go
       - internal/sema/defaults.go
+      - internal/sema/default_diagnostics.go
+      - internal/sema/collection_literals.go
+      - internal/sema/float_defaults.go
+      - internal/parser/expression.go
       - internal/sema/analyzer.go
       - internal/diagnostics/diagnostics.go
       - internal/codegen/mlir/generator.go
@@ -149,6 +153,13 @@ integrations:
     tests:
       - internal/parser/parser_test.go
       - internal/sema/defaults_test.go
+      - internal/sema/default_diagnostics_test.go
+      - internal/sema/collection_literal_test.go
+      - internal/sema/default_fixtures_test.go
+      - testdata/defaults/
+      - internal/parser/collection_literal_test.go
+      - internal/diagnostics/diagnostics_test.go
+      - testdata/sema/default_diagnostics_invalid.sec
       - internal/codegen/mlir/generator_test.go
       - cmd/lsp/main_test.go
       - cmd/lsp/contract_diagnostic_test.go
@@ -175,37 +186,49 @@ integrations:
       - LSP hover and completion display resolved default value and source from the Sema-owned resolver
       - LSP hover abbreviates large fixed-array defaults as a bounded preview such as [0, ...] without materializing or rendering every element
       - legacy MLIR materialization of complete struct and constrained scalar defaults without runtime calls or undefined fields
+      - explicit type defaults are classified in rulebook order: a non-constant default keeps S1008 types.invalid-explicit-default, a default outside the base type keeps mandatory S1060 types.default-not-representable, and a representable default failing a contract keeps mandatory S1059 types.default-violates-contract whose help names the first violated contract in source order
+      - storage sites needing an implicit default distinguish an ambiguous nearest-to-zero tie with mandatory S1061 types.ambiguous-implicit-default naming both equally near values and requesting an explicit default; the type itself stays legal
+      - omitted struct fields whose type has an invalid explicit default report mandatory S1063 struct.invalid-defaulted-field instead of the generic S1010
+      - omitted union payload fields without a default report mandatory S1062 types.no-default-value, or S1061 when the cause is an ambiguous tie
+      - list[T] {} and list[T, Capacity] {} parse as a dedicated ast.CollectionLiteral (not a struct literal), including the capacity constant in expression position; elements inside the braces get one focused parser diagnostic and an invalid retained literal
+      - Sema types empty list literals as their list type, rejects zero capacity and capacity mismatches, and resolves list[T] and list[T, Capacity] as defaultable (CollectionDefault) independently of element defaultability, for mutable declarations, omitted struct fields, and nested aggregates; the default displays as `list[T] {}`
+      - module-local element types inside collection literals are qualified for multi-module analysis in the CLI and LSP; the formatter writes the canonical `list[T] {}` spacing; Semantic IR and the legacy backends reject list values explicitly
+      - the rulebook fixture suite testdata/defaults/default_{values,ranges,in_contract,structs,lists,arrays}_{valid,invalid}.sec covers primitive, range, in-list, struct, list, and array defaults and their failure diagnostics, and pins the resolved default values
+      - float32 and float64 range-derived defaults select the exact nearest representable valid value: the smallest binary value at or above a positive lower bound, or the largest at or below (strictly below when exclusive) a negative upper bound; ties have no implicit default, and named types inherit the width
+      - named array and slice types are presented by their nominal name in diagnostics instead of their structural shape
+      - inherited membership values are revalidated against every newly added derived contract and reported with S1011 instead of being filtered (TestInheritedMembershipRevalidatedAgainstDerivedContracts)
+      - 'omitted owning dynamic-array fields, including inside omitted nested struct fields, receive typed empty defaults: materialized default expressions record their canonical DefaultValueOf types, and contextually typed array literals (including explicit `[]` field values) record their type, so provenance analysis no longer re-infers a context-free empty literal (previously failed with "cannot infer element type of empty array literal")'
     remaining:
-      - revalidate inherited membership-contract values against every newly added derived contract without filtering invalid members
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
-      - add an explicit AST or resolved compiler-known collection-literal category that distinguishes list[T] {} and list[T, Capacity] {} from struct literals
-      - semantically materialize allocation-free empty defaults and explicit literals for list[T] and list[T, Capacity], independently of element defaultability
       - lower synthesized mutable, struct, fixed-array, owning dynamic-array, and list defaults through the maintained Semantic IR and Sec MLIR pipelines
       - track partial aggregate, array, and collection construction cleanup for nontrivial elements and failure paths
       - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
-      - implement exact binary-float range-derived defaults and exact successors for exclusive decimal upper bounds
+      - implement exact successors for exclusive decimal upper bounds, and range-derived defaults for plain float once MD-014 fixes its width
       - extend explicit-default constant evaluation to the complete permitted compile-time constant subset while rejecting allocation, I/O, volatile, FFI, and fallible runtime operations
-      - add stable diagnostic IDs for types.default-violates-contract, types.default-not-representable, types.ambiguous-implicit-default, types.no-default-value, types.default-cycle, struct.invalid-defaulted-field, and backend.default-left-undefined
+      - add stable diagnostic IDs for types.default-cycle (no default cycle can currently form because S1055 rejects by-value recursive layouts) and backend.default-left-undefined (lowering)
       - add related-location metadata for membership failures, range ambiguity and representability failures, explicit defaults, omitted fields, and missing initializers
       - verify formatter preservation and LSP presentation for every explicit and derived default form
       - add LSP code actions that explicitly expand omitted defaults or declare an explicit type default without changing ordinary formatting
-      - add default_values_valid.sec and default_values_invalid.sec coverage for primitive, mutable, immutable, and owning dynamic-array defaults
-      - add default_ranges_valid.sec and default_ranges_invalid.sec coverage for zero, positive, negative, additional-contract, ambiguity, representability, and explicit-override cases
-      - add default_in_contract_valid.sec and default_in_contract_invalid.sec coverage for source order, explicit override, empty and duplicate lists, compatibility, and cross-contract validation
-      - add default_structs_valid.sec and default_structs_invalid.sec coverage for empty, partial, nested, constrained, spread, non-defaultable, and cleanup cases
-      - add default_lists_valid.sec and default_lists_invalid.sec coverage for dynamic and bounded empty literals, non-defaultable element types, AST category, allocation, and backend support
-      - add default_arrays_valid.sec and default_arrays_invalid.sec coverage for numeric, struct, zero-length, non-defaultable-element, cleanup, and backend cases
       - verify maintained LLVM and Sec MLIR backends in addition to the legacy MLIR generator
     verification:
+      - command: go test ./internal/sema -run 'TestDefaultValueFixtureSuite' -count=1
+        result: passed on 2026-10-02 for 12 fixtures
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'Test(ParseEmptyListCollectionLiterals|ParseNonEmptyListLiteralRecovers|EmptyListLiteralsAndListDefaults|EmptyListLiteralCapacityChecks|FormatEmptyListLiterals)' -count=1
+        result: passed on 2026-10-02
+      - command: go test ./internal/sema ./internal/diagnostics -run 'Test(DefaultDiagnosticsUseStableIdentities|UnionPayloadWithoutDefaultUsesNoDefaultValue|ExplicitDefaultNamesFirstViolatedContract|InvalidExplicit|ExplicitDefaultMustBelongToMembership|DefaultAndContractDiagnosticsAreRegistered)' -count=1
+        result: passed on 2026-10-02 with S1059-S1063 identities, ordered explicit-default classification, ambiguous-tie explanations, and registry entries
       - command: go test ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|DuplicateContractMembershipValue)' -count=1
         result: passed on 2026-09-30 with S1053 registry identity, Sema help and related-location metadata, and LSP transport
       - command: go test ./internal/parser ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|ParseRetainsEmptyMembershipContract|EmptyContractMembership)' -count=1
         result: passed on 2026-09-30 with empty-list AST retention plus S1054 Sema and LSP identity
+      - command: "go test ./internal/sema -run 'TestOmittedDynamicArrayFieldsUseTypedEmptyDefaults' -count=1"
+        result: passed on 2026-10-02 with omitted, explicit-empty, nested-omitted, nested-explicit, and reassigned struct literals carrying int[] and list[string] fields
   - id: frontend.types-core
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-09"
     audited: "2026-08-12"
+    revised: "2026-10-02"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types/types.md contract.
@@ -230,6 +253,10 @@ integrations:
       - internal/sema/defaults_test.go
       - internal/codegen/llvm/generator_test.go
       - internal/codegen/mlir/generator_test.go
+      - internal/formatter/declaration_forms_test.go
+      - internal/parser/named_function_type_test.go
+      - testdata/formatter/declaration_forms.sec
+      - testdata/formatter/declaration_forms.expected.sec
     implemented:
       - immutable-by-default let declarations with inferred or explicit types
       - comma-separated let declarations and type-first declaration groups
@@ -255,12 +282,16 @@ integrations:
       - compiler-known type-name reservation with poisoned-declaration suppression so invalid redeclarations cannot replace intrinsic type identity in later analysis passes
       - conformance coverage for the canonical ordinary scalar type inventory and compiler-known collection, shaped, rank-support, result, option, task, thread, and raw-pointer identities
       - type and compile-time integer arity validation for list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and non-generic MemorySpace
+      - named types over any TypeReference parse, including function types such as `type Callback fn(int, int) int` and capability-prefixed `-> fn(...)`; a same-line type start is no longer mistaken for a following function declaration, while a type name followed by a next-line declaration still reports the missing base type
+      - formatter coverage for every types.md declaration form: let (inferred, mut, typed, defaultable without initializer, multiple declarators), type-first single, mutable, multiple, and parenthesized groups, named types with units, contracts, defaults, generics, and function-type bases, struct, register, union error, enum (including colon and bit underlying), unit, interface, impl, single and grouped imports, extern and ordinary function headers, and type references using ref, ref mut, RawPtr, function types, collections, shaped types, Option, Result, and fixed/owning arrays; canonical spacing comes from parser-confirmed CST roles and the golden fixture is a fixed point
+      - "the previous formatter rewrote valid `int mut: a` into `int mut : a`; type-first colons now bind left"
+      - compiler Sema derives target-sized int and uint bounds from the selected ResolvedScalarPlan, and every compile-time integer consumer is audited on 32- and 64-bit plans (frontend.target-sized-integer-semantics)
     remaining:
       - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
-      - derive target-sized int and uint semantic bounds from the selected compilation target instead of fixed 64-bit frontend bounds
+      - LSP analysis still constructs Sema with the default scalar plan instead of the project's selected target plan, so editor diagnostics use 64-bit int/uint bounds on 32-bit projects (compiler analysis uses the selected plan; detail in frontend.target-sized-integer-semantics)
       - remove independent int and uint width guesses from maintained legacy LLVM and MLIR backends or reject unsupported target-sized lowering explicitly
       - complete the nominal identity, assignability, and explicit conversion matrix audit against rules/types/types.md
-      - define the canonical Result error type for runtime-checked scalar conversions such as try rune(codePoint) before implementing their fallible frontend contract
+      - define the canonical Result error type for runtime-checked scalar conversions such as try rune(codePoint) before implementing their fallible frontend contract (MD-012)
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
       - complete fixed-array, owning dynamic-array, borrowed-slice, reference, and defaultability integration under frontend.collections, sema.place-analysis, and frontend.default-values
       - finish Result, Option, Task, Thread, interface, union, register, unit, and other nominal-core representation/lowering audits without deriving source identity from backend layout
@@ -269,8 +300,11 @@ integrations:
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
       - add focused type-diagnostic coverage for expected/actual types, named contracts, generic arguments, dimensions, conversions, and backend-independent incompatibility explanations
-      - formatter coverage for every declaration form
     verification:
+      - command: go test ./internal/formatter ./internal/parser -run 'Test(FormatEveryTypeDeclarationForm|FormatTypeFirstDeclarationColonBindsLeft|TrailingCommentsRealignAfterRoleAlignment|ParseNamedFunctionTypeDeclaration|TypeMissingBaseBeforeNextLineFunction)' -count=1
+        result: passed on 2026-10-02
+      - command: format every accepted testdata and sec/ source twice
+        result: on 2026-10-02 every file is a fixed point except testdata/switch_valid.sec (switch-case return indentation, tracked under tooling.formatter-v2)
       - command: go test ./...
         result: passed
       - command: go test ./internal/lexer ./internal/parser ./cmd/lsp with contextual-set tests and focused internal/sema any/void/intrinsic-type tests
@@ -401,7 +435,7 @@ integrations:
     - Existing sec/core/duration.sec remains the core duration surface; no competing Duration type is introduced.
     - Time-unit quantities may materialize as duration at compatible call boundaries under canonical temporal/unit rules.
     remaining:
-    - Define/verify compiler-known conversion from time-dimension unit quantity to duration.
+    - Define/verify compiler-known conversion from time-dimension unit quantity to duration (blocked on MD-015).
     - Avoid mutex-specific hard-coded unit spellings.
   - id: frontend.temporal-instant
     area: monotonic-deadline-type
@@ -456,7 +490,7 @@ integrations:
     status: partial
     updated: '2026-09-29'
     audited: '2026-09-29'
-    revised: '2026-09-30'
+    revised: '2026-10-02'
     repository_baseline: 314233c
     document_revision: inferred 2.0
     document_revision_note: rules/types/contracts.md has no explicit revision metadata. Repository history places
@@ -481,7 +515,14 @@ integrations:
     code:
     - internal/ast/ast.go
     - internal/parser/parser.go
+    - internal/lexer/contract_words.go
+    - cmd/compiler/main.go
+    - cmd/lsp/main.go
+    - internal/cst/roles.go
+    - internal/formatter/token_spacing.go
+    - internal/formatter/named_type_alignment.go
     - internal/sema/contracts.go
+    - internal/sema/types.go
     - internal/sema/contract_values.go
     - internal/sema/length_contracts.go
     - internal/sema/defaults.go
@@ -504,12 +545,29 @@ integrations:
     - testdata/contracts/representable_conjunction_valid.sec
     - testdata/contracts/representable_conjunction_invalid.sec
     - testdata/contracts/representable_conjunction_target.sec
+    - internal/lexer/lexer_test.go
+    - internal/parser/regex_contract_test.go
+    - internal/sema/regex_contract_test.go
+    - internal/sema/default_diagnostics_test.go
+    - internal/sema/enum_membership.go
+    - testdata/contracts/contract_diagnostic_ids_invalid.sec
+    - internal/parser/range_bound_recovery_test.go
+    - internal/formatter/named_type_contract_test.go
+    - testdata/formatter/contract_families.sec
+    - testdata/parser/range_contract_bound_invalid.sec
+    - cmd/lsp/main_test.go
+    - testdata/contracts/regex_contract_invalid.sec
+    - testdata/parser/regex_contract_recovery_invalid.sec
     implemented:
     - contracts are represented on named semantic types and inherited contracts are copied into derived named types
     - sequential contract syntax is represented as an ordered ContractList
     - integer range contracts with inclusive and exclusive upper bounds
     - integer odd and even marker contracts
-    - integer multipleOf parsing, nonzero-divisor diagnostic, literal validation, and default integration
+    - integer multipleOf parsing, nonzero-divisor diagnostic, literal validation, and default integration; a divisor that is not an established compile-time integer is rejected with S1066 instead of silently dropping the contract
+    - enum-based named types accept ordered enum-member membership (`type Primary Color in [Color.Blue, Color.Red]`) with member-identity equality, duplicate and unknown-member rejection, the first listed member as default, and compile-time proof of member values (`Primary.Green` violates the contract with S1068)
+    - every canonical contract family (range, in, multipleOf, odd, even, minLen, maxLen, exactLen, notEmpty, unique, finite, regex) and the default clause format with one canonical space from parser-confirmed CST roles; contiguous simple named-type groups align base-type and first contract/default anchors within the §9 padding limit, and generic, struct, and union-error headers get single-space separation
+    - LSP hover on a contracted named type lists its resolved contracts, including inherited ones, in source order through sema.ContractDisplays; completion and semantic tokens cover every contract word including regex
+    - same-line non-numeric range bounds (identifiers, grouped or other expressions) get one focused parser diagnostic per bound and are retained as invalid expressions, so no stray module-scope code or swallowed declaration results
     - ordered primitive in-list parsing with non-empty-list rejection
     - primitive membership compatibility checking
     - duplicate membership-value rejection
@@ -532,6 +590,7 @@ integrations:
     - constrained named string types accept a direct string literal only through the compile-time contract proof; non-literal base strings do not acquire an implicit nominal conversion
     - selected function-call arguments and return values share the compile-time contract boundary check, including existing integer range, divisibility, and parity validation
     - contract applicability diagnostics for currently recognized contract families
+    - contract failure families carry mandatory registered identities with help: S1064 types.inapplicable-contract, S1065 types.unsatisfiable-contract-set (integer and length conjunctions), S1066 types.invalid-contract-argument, S1067 types.incompatible-in-contract-value, S1068 types.value-violates-contract (compile-time integer, string, and array-literal proofs), and S1069 types.constrained-assignment-requires-try; invalid explicit defaults use S1059/S1060 owned by frontend.default-values
     - integer literal and supported explicit-conversion contract checks
     - explicit type defaults are checked against represented contracts
     - range, membership, multipleOf, odd, and even participate in the implemented default resolver
@@ -546,6 +605,10 @@ integrations:
     - satisfiable types remain legal even when their implicit default is ambiguous; zero-only and signed-boundary domains are preserved
     - assignment to currently represented constrained storage requires try in implemented paths
     - obsolete variable-level, type-first-storage-level, and ordinary struct-field contracts are rejected by Sema with stable S1050 migration diagnostics and are never applied to storage types
+    - regex pattern contracts parse as `regex ConstantExpression` inside the ordered sequential contract conjunction and are retained as a dedicated ast.RegexContract node; the AST printer, formatter round-trip, LSP contract completion, and LSP semantic-token modifier classification cover the form
+    - the lexer classifies `regex` as PatternContractWord, recognized only in same-line contract position and kept outside the reserved §7.3 contract-word inventory pending MD-009, so ordinary identifiers named regex keep parsing
+    - a missing regex pattern at a line end, EOF, following contract word, or default clause emits one parser diagnostic, retains an InvalidExpression pattern, and preserves the contract list, default clause, and following declarations
+    - Sema restricts regex to string named types, requires a compile-time string pattern, retains the escape-decoded pattern as sema.RegexContract, and rejects the declaration with mandatory S1058 types.regex-contract-unavailable plus help instead of silently dropping the unvalidatable contract (MD-010)
     partial:
     - membership is currently restricted by implementation to primitive/scalar/enum compile-time constants rather
       than the full canonical domain of named values with compile-time semantic equality
@@ -555,28 +618,24 @@ integrations:
     - explicit-default constant evaluation supports only a subset of the canonical allocation-free compile-time constant
       domain
     - parser and AST retain obsolete storage-site contract nodes for recovery and migration tooling before Sema rejects them
-    - contract diagnostics are a mixture of stable IDs and ad-hoc messages
+    - every contract diagnostic now has a stable ID; related locations pointing at the contract declaration are not yet attached because the diagnostic model only carries a duplicate-style previous location
     - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
     remaining:
-    - add parser and AST support for regex pattern contracts
-    - define the canonical regular-expression syntax/engine before runtime regex validation is enabled
+    - canonicalize the regex grammar production and decide whether `regex` is a reserved contract word (MD-009)
+    - define the canonical regular-expression syntax/engine (MD-010), then replace S1058 with compile-time pattern validation, literal/default proofs, and runtime regex validation
     - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty
     - implement runtime supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
     - extend compile-time length/default validation beyond implemented array literals and canonical array defaults to other supported collection literals and aggregate defaults
     - enforce unique using semantic equality on direct elements without recursive uniqueness
-    - extend in-list membership to every named type whose values support the required compile-time semantic equality,
-      without memory-identity comparison or hidden coercion
-    - extend contract-bound and membership constant evaluation to the complete canonical compile-time constant subset
+    - extend in-list membership to further named-value families with compile-time semantic equality beyond primitive scalars and enum members (for example unions without payload) without memory-identity comparison or hidden coercion
+    - extend contract-bound and membership constant evaluation to the complete canonical compile-time constant subset once MD-011 classifies contract argument positions under compile_time_evaluation.md § 8(2)
     - implement runtime validation for explicit conversion into constrained named types
     - implement canonical fallible constrained assignment and compound-assignment behavior through try
-    - define and use the canonical Result error type for failed contract validation
+    - define and use the canonical Result error type for failed contract validation (MD-012)
     - preserve contract identity and validation requirements in Semantic IR
     - lower runtime validation and failure paths through the maintained Sec MLIR pipeline
     - audit legacy/direct LLVM behavior so accepted constrained operations cannot silently bypass validation
-    - assign stable diagnostics for inapplicable/unsatisfiable sets, incompatible membership values,
-      sibling-contract violations, invalid defaults, ambiguous defaults, and missing try
     - attach related locations to the offending value/default and relevant contract declaration where practical
-    - add formatter and LSP coverage for all canonical contract families
     - migrate the remaining implementation-status prose out of contracts.md into implementation-status.yaml
     governance_reconciliation:
     - frontend.default-values remains authoritative for detailed default selection/materialization status and should
@@ -584,10 +643,12 @@ integrations:
     - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
     - The contracts.md embedded status correctly records obsolete variable and field contracts plus incomplete runtime
       validation as known work; those are not new bugs from this audit.
-    - regex and the broader compile-time-equality membership domain remain incomplete; the length-contract family now
+    - regex now has parser, AST, tooling, and Sema applicability support but no validation semantics (MD-009, MD-010); the broader compile-time-equality membership domain remains incomplete; the length-contract family now
       has frontend parsing, applicability, consistency, fixed-array, and explicit-string-default coverage while runtime validation remains incomplete.
     required_tests:
-    - regex contract parses only after regex syntax is canonicalized
+    - regex contract parses in sequential contract order and recovers from a missing pattern
+    - regex on a non-string named type and a non-string pattern are rejected
+    - every regex contract reports S1058 until MD-010 defines regex validation
     - minLen, maxLen, exactLen, and notEmpty applicability
     - membership values preserve source order
     - membership duplicate detection uses semantic equality
@@ -602,6 +663,18 @@ integrations:
     - constrained assignment outside try rejected
     - constrained assignment inside try leaves destination unchanged on failure
     verification:
+    - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/diagnostics ./cmd/lsp -run 'Regex|ContractCompletion' -count=1
+      result: passed on 2026-10-02; regex contract word role, AST retention, missing-pattern recovery, identifier use, S1058, applicability, decoded pattern retention, completion, and semantic tokens
+    - command: go test ./internal/sema ./internal/diagnostics -run 'Test(ContractDiagnosticsUseStableIdentities|DefaultAndContractDiagnosticsAreRegistered)' -count=1
+      result: passed on 2026-10-02 with S1064-S1069 contract identities and help
+    - command: go test ./internal/parser ./internal/sema -run 'Test(NonNumericRangeBoundsRecoverWithFocusedDiagnostic|OpenRangeBoundsRemainValid|MultipleOfRejectsNonConstantDivisor)' -count=1
+      result: passed on 2026-10-02 with focused range-bound recovery and no silently dropped multipleOf contract
+    - command: go test ./internal/formatter ./internal/cst ./cmd/lsp -run 'Test(FormatAllContractFamiliesWithNamedTypeAlignment|FormatNamedTypeGroupBoundariesAndHeaders|HoverShowsResolvedContracts)' -count=1
+      result: passed on 2026-10-02; contract-family formatting golden, group boundaries, header spacing, idempotence, and contract hover
+    - command: format every accepted testdata and sec/ source twice with the new and the pre-change formatter
+      result: on 2026-10-02 only `type` header lines changed; the two non-idempotent files (testdata/switch_valid.sec, sec/platform/linux/arm64/syscall_numbers.sec) are equally non-idempotent before this change and are tracked under tooling.formatter-v2
+    - command: go test ./...
+      result: passed on 2026-10-02
     - command: go test ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|DuplicateContractMembershipValue)' -count=1
       result: passed on 2026-09-30 with stable registry identity, source-ordered duplicate provenance, focused Sema metadata, and LSP transport
     - command: go test ./internal/parser ./internal/diagnostics ./internal/sema ./cmd/lsp -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|ParseRetainsEmptyMembershipContract|EmptyContractMembership)' -count=1
@@ -659,6 +732,7 @@ integrations:
     area: frontend-target-semantics-and-legacy-lowering
     status: partial
     audited: '2026-09-22'
+    revised: '2026-10-02'
     repository_baseline: c515862
     document_revision: inferred 2.x
     document_revision_note: rules/types/types.md has no explicit document-revision metadata. It is the canonical replacement
@@ -688,6 +762,7 @@ integrations:
     - internal/codegen/llvm/generator.go
     - internal/codegen/mlir/generator.go
     tests:
+    - internal/sema/target_sized_consumers_test.go
     - internal/sema/analyzer_test.go
     - internal/sema/target_plan_test.go
     - internal/layout/scalar_plan_test.go
@@ -697,6 +772,9 @@ integrations:
     - internal/codegen/mlir/generator_test.go
     - cmd/compiler/main_test.go
     implemented:
+    - 'frontend audit on 2026-10-02: typed and inferred let, constant arithmetic, shifts, uint, enum underlying values, range, membership, multipleOf, explicit defaults, call arguments, returns, struct and generic fields, array elements, assignment, compound assignment, comparisons, and module statics all reject 3000000000 for int on a 32-bit plan and accept it on a 64-bit plan'
+    - untyped integer literals and literal constant expressions are validated for representability at call-argument, return, and array-element boundaries (previously unchecked even for fixed-width destinations such as int8), and contracted array elements are proven against the element contracts
+    - an inferred let from an untyped integer literal is checked against the target-selected range of its inferred int or uint type
     - canonical language identity of int and uint as distinct signed and unsigned target-sized types
     - fixed-width integer type identities and arbitrary-precision bounds
     - target-aware ResolvedScalarPlan for known 32-bit and 64-bit targets
@@ -711,13 +789,11 @@ integrations:
     - direct LLVM independently maps int to i32 and uint to i64 regardless of selected target
     - legacy AST-to-LLVM-dialect MLIR independently maps int to i32 and uint to i64 regardless of selected target
     remaining:
-    - audit literal shaping, runtime conversion planning, constant arithmetic, shifts, enums, named types, contracts,
-      defaults, constants, and generic substitutions for target-sized bounds
+    - audit runtime conversion planning for target-sized bounds (the compile-time frontend consumers are audited and covered)
     - remove independent target-sized width guesses from legacy direct LLVM
     - remove independent target-sized width guesses from legacy AST-to-LLVM-dialect MLIR
     - make any maintained legacy backend consume canonical target scalar facts or reject unsupported target-sized
       lowering explicitly
-    - extend 32-bit versus 64-bit frontend representability coverage across every integer consumer
     - add cross-layer tests proving frontend acceptance agrees with scalar-layout representability
     bug_reference:
     - correction5.md
@@ -742,6 +818,8 @@ integrations:
     - legacy MLIR int and uint target-width parity or explicit unsupported error
     - Sema and Sec MLIR scalar-layout representability agreement
     verification:
+    - command: go test ./internal/sema -run 'Test(TargetSizedBoundsReachEveryIntegerConsumer|UntypedLiteralsAreShapedAtCallReturnAndElementBoundaries)' -count=1
+      result: passed on 2026-10-02 for 19 consumers on 32- and 64-bit plans plus fixed-width call, return, and element boundaries
     - command: go test ./internal/sema -run 'TestTargetScalarPlan' -count=1
       result: passed on 2026-09-22 with 32-bit rejection and 64-bit acceptance for explicit int and uint constant conversions
   - id: frontend.units-declaration-authority

@@ -198,8 +198,8 @@ func TestInvalidExplicitDefaultIsRejected(t *testing.T) {
 type Port int range 1..65535 default 0
 `)
 	assertSemaErrors(t, errors, []string{"default value 0 is invalid for Port at 3:38"})
-	if errors[0].ID != diagnostics.InvalidExplicitDefault {
-		t.Fatalf("wrong diagnostic ID: %q", errors[0].ID)
+	if errors[0].ID != diagnostics.DefaultViolatesContract || errors[0].Help != "Port requires range 1..65535; choose a value satisfying every type contract" {
+		t.Fatalf("wrong diagnostic: %q help %q", errors[0].ID, errors[0].Help)
 	}
 }
 
@@ -208,8 +208,8 @@ func TestExplicitDefaultMustBelongToMembership(t *testing.T) {
 
 type User string in ["Admin", "User"] default "Guest"
 `)
-	if len(errors) != 1 || errors[0].ID != diagnostics.InvalidExplicitDefault {
-		t.Fatalf("errors = %v, want one invalid explicit default", errors)
+	if len(errors) != 1 || errors[0].ID != diagnostics.DefaultViolatesContract || !strings.HasPrefix(errors[0].Help, `User requires in ["Admin", "User"]`) {
+		t.Fatalf("errors = %v, want one contract-violating explicit default", errors)
 	}
 }
 
@@ -261,8 +261,8 @@ func TestInvalidExplicitDecimalDefaultIsRejected(t *testing.T) {
 
 type PositiveAmount decimal range 0.01..100.00 default 0.00
 `)
-	if len(errors) != 1 || errors[0].ID != diagnostics.InvalidExplicitDefault {
-		t.Fatalf("errors = %v, want one invalid explicit default", errors)
+	if len(errors) != 1 || errors[0].ID != diagnostics.DefaultViolatesContract || !strings.HasPrefix(errors[0].Help, "PositiveAmount requires range 0.01..100.00") {
+		t.Fatalf("errors = %v help %q, want one contract-violating explicit default", errors, errors[0].Help)
 	}
 }
 
@@ -337,4 +337,40 @@ func exactRat(value string) *big.Rat {
 		panic("invalid test rational: " + value)
 	}
 	return exact
+}
+
+// Owning dynamic-array fields default to an empty array whether the field is
+// omitted (materialized default), nested in an omitted struct field, or
+// written as an explicit empty literal; the contextual type is recorded so
+// provenance analysis never re-infers a context-free empty literal.
+//
+// Rules:
+//   - rules/types/default_values.md — collection and aggregate defaults
+//   - rules/declarations/struct.md — §7 "Struct defaults"
+func TestOmittedDynamicArrayFieldsUseTypedEmptyDefaults(t *testing.T) {
+	for _, construction := range []string{
+		"let s := Holder {}",
+		"let s := Holder { items: [] }",
+		"let s := Outer {}",
+		"let s := Outer { holder: Holder {} }",
+		"let mut s := Holder {}\n    s = Holder {}",
+	} {
+		errors := analyzeSourceRaw(t, `module main
+type Holder struct {
+    items: int[],
+    names: list[string],
+}
+type Outer struct {
+    holder: Holder,
+    count: int,
+}
+fn Use() void {
+    `+construction+`
+    discard s
+}
+`)
+		if len(errors) != 0 {
+			t.Fatalf("%q errors = %v, want none", construction, errors)
+		}
+	}
 }

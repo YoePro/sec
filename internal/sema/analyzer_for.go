@@ -1,6 +1,10 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+	"sec/internal/lexer"
+)
 
 // For statement analysis: iterable classification, binding types, range and
 // step validation, and loop-body flow.
@@ -41,9 +45,14 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	}
 	iterationEntry := a.captureLoopIterationAnalysisState()
 
+	activeIterations := len(a.activeCollectionIterations)
+	if active, ok := a.activeCollectionIterationFor(stmt); ok {
+		a.activeCollectionIterations = append(a.activeCollectionIterations, active)
+	}
 	if stmt.Body != nil {
 		a.analyzeBlockStatements(stmt.Body)
 	}
+	a.activeCollectionIterations = a.activeCollectionIterations[:activeIterations]
 
 	loopMoved := a.moved
 	loopMoveReasons := a.moveReasons
@@ -309,7 +318,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 		if iterableType.Kind == InvalidType {
 			return nil, false
 		}
-		if elementType, next, ok := a.compilerKnownIterator(iterableType); ok {
+		if elementType, next, conformance, ok := a.compilerKnownIterator(iterableType); ok {
 			if len(stmt.Bindings) != 1 {
 				token := expressionToken(iterable)
 				if len(stmt.Bindings) > 0 {
@@ -321,6 +330,16 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			// Iterator.Next advances compiler-visible state. A fresh owned
 			// temporary may become the loop's hidden local; reusable storage must
 			// already carry mutable authority. No runtime borrow flag is created.
+			plan := ResolvedForIteration{
+				Kind:                    ForIterationCompilerKnownIterator,
+				SourceType:              iterableType,
+				ElementType:             elementType,
+				Next:                    next,
+				RequiresMutableReceiver: true,
+				Conformance:             conformance,
+				Source:                  ForIteratorFreshTemporary,
+				Binding:                 ForIteratorOwnedValueBinding,
+			}
 			if place, reusable := a.resolvePlace(iterable); reusable && place.Addressable {
 				if !place.Mutable {
 					a.addErrorAtToken(expressionToken(iterable), "Iterator[%s] iteration requires a mutable iterator source", typeDisplayName(elementType))
@@ -329,14 +348,24 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 				if a.checkBorrowedMutationPlace(place, expressionToken(iterable)) {
 					return nil, false
 				}
+				plan.Source = ForIteratorReusableStorage
+				plan.SourcePlace = place
+			} else {
+				plan.DestroysTemporary = !TriviallyDestructible(dereferenceType(iterableType))
 			}
-			a.resolvedForIterations[stmt] = ResolvedForIteration{
-				Kind:                    ForIterationCompilerKnownIterator,
-				SourceType:              iterableType,
-				ElementType:             elementType,
-				Next:                    next,
-				RequiresMutableReceiver: true,
+			if stmt.Bindings[0].Discard {
+				plan.Binding = ForIteratorDiscardBinding
 			}
+			if next.Token.Line > 0 {
+				plan.NextCallable = callableID(next)
+				// Each iteration statically calls the concrete Next target, so
+				// its effects, allocation, and reachability belong to the loop's
+				// callable exactly like an explicit method call.
+				if !a.summaryPass && a.callGraphPathReachable {
+					a.callGraph.addCall(a.currentCallable, next, stmt.Token, CallDispatchStaticMethod, CallExecutionSynchronous)
+				}
+			}
+			a.resolvedForIterations[stmt] = plan
 			return []Type{elementType}, true
 		}
 		if iterableType.Kind == ReferenceType && iterableType.Element != nil &&
@@ -386,7 +415,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 // method name Next alone is deliberately insufficient: flowcontrol_for.md
 // section 37 forbids naming-convention discovery, and no interface value or
 // dynamic-dispatch runtime is introduced here.
-func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, bool) {
+func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, bool) {
 	concrete := dereferenceType(source)
 	for _, iface := range concrete.Implements {
 		if iface.Name != "Iterator" || iface.Kind != InterfaceType || len(iface.TypeArgs) != 1 {
@@ -401,14 +430,14 @@ func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, bool) {
 				continue
 			}
 			method.CompilerKnownID = "CKM-ITERATOR-NEXT"
-			return element, method, true
+			return element, method, iface, true
 		}
 		// Preserve useful loop binding inference while ordinary interface
 		// conformance emits the canonical missing/signature diagnostic.
 		required := Function{Name: "Next", ImplTarget: concrete.Name, CompilerKnownID: "CKM-ITERATOR-NEXT", ReceiverMutable: true, ReturnType: Type{Name: "Option", Kind: UnionType, TypeArgs: []Type{element}}}
-		return element, required, true
+		return element, required, iface, true
 	}
-	return Type{}, Function{}, false
+	return Type{}, Function{}, Type{}, false
 }
 
 // inferSequentialForBindingTypes types the one-binding (element) and
@@ -540,4 +569,105 @@ func (a *Analyzer) inferForRangeBindingType(expr *ast.RangeExpression, step ast.
 	}
 
 	return startType, true
+}
+
+// activeCollectionIteration is one collection whose structure an enclosing
+// for loop depends on while its body executes.
+type activeCollectionIteration struct {
+	place Place
+	token lexer.Token
+}
+
+// activeCollectionIterationFor records the reusable collection storage a loop
+// iterates. Ranges evaluate their bounds once and Iterator[T] loops advance
+// their own iterator state, so neither depends on collection structure here.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §8 "Structural stability during iteration"; §16
+func (a *Analyzer) activeCollectionIterationFor(stmt *ast.ForStatement) (activeCollectionIteration, bool) {
+	if stmt.Iterable == nil {
+		return activeCollectionIteration{}, false
+	}
+	switch category, _, _ := a.forIterationSource(stmt); category {
+	case forCategorySequential, forCategorySet, forCategoryMap:
+	default:
+		return activeCollectionIteration{}, false
+	}
+	place, ok := a.resolvePlace(stmt.Iterable)
+	if !ok || place.Root == "" {
+		return activeCollectionIteration{}, false
+	}
+	return activeCollectionIteration{place: place, token: stmt.Token}, true
+}
+
+// invalidatedCollectionIteration returns the innermost active iteration whose
+// collection structure a mutation of place may change. Mutating the iterated
+// collection itself or any storage enclosing it can change length, backing
+// storage, or element identity; mutating storage inside one element cannot.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §7 and §8; §16
+func (a *Analyzer) invalidatedCollectionIteration(place Place) (activeCollectionIteration, bool) {
+	for index := len(a.activeCollectionIterations) - 1; index >= 0; index-- {
+		active := a.activeCollectionIterations[index]
+		if len(place.Projections) <= len(active.place.Projections) && PlacesOverlap(place, active.place) {
+			return active, true
+		}
+	}
+	return activeCollectionIteration{}, false
+}
+
+// structurallyMutatesIteratedCollection rejects a compiler-known structural
+// collection operation, identified by its registry operation contract rather
+// than by name, on a collection that an enclosing loop is iterating.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §7 "Mutable element access does not grant structural mutation"
+//   - rules/control-flow/flowcontrol_for.md — §8 "Structural stability during iteration"; §41 diagnostics
+//   - rules/compiler/compiler_analysis.md — § 18(2) structural mutation dependencies
+func (a *Analyzer) structurallyMutatesIteratedCollection(receiver ast.Expression, operation string, token lexer.Token) bool {
+	place, ok := a.resolvePlace(receiver)
+	if !ok {
+		return false
+	}
+	active, invalidated := a.invalidatedCollectionIteration(place)
+	if !invalidated {
+		return false
+	}
+	a.addErrorAtTokenWithMetadataAndPrevious(token, active.token, diagnostics.StructuralMutationDuringIteration,
+		"Record the change during the loop and apply it after the loop finishes.",
+		"cannot %s %s while the enclosing for loop iterates %s; structural mutation can invalidate the active iteration",
+		operation, place.String(), active.place.String())
+	return true
+}
+
+// assignmentReplacesIteratedCollection rejects replacing the iterated
+// collection, or storage enclosing it, inside the loop body. Assigning one
+// element is element mutation and remains governed by ordinary rules;
+// rebinding a reference holder does not mutate its referent.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_for.md — §8 "move or replace backing storage"
+func (a *Analyzer) assignmentReplacesIteratedCollection(stmt *ast.AssignmentStatement) bool {
+	if len(a.activeCollectionIterations) == 0 {
+		return false
+	}
+	if identifier, ok := stmt.Target.(*ast.Identifier); ok {
+		if symbol, exists := a.symbols[identifier.Value]; exists && symbol.Type.Kind == ReferenceType {
+			return false
+		}
+	}
+	place, ok := a.resolvePlace(stmt.Target)
+	if !ok {
+		return false
+	}
+	active, invalidated := a.invalidatedCollectionIteration(place)
+	if !invalidated {
+		return false
+	}
+	a.addErrorAtTokenWithMetadataAndPrevious(expressionToken(stmt.Target), active.token, diagnostics.StructuralMutationDuringIteration,
+		"Record the change during the loop and apply it after the loop finishes.",
+		"cannot assign %s while the enclosing for loop iterates %s; replacing the collection can invalidate the active iteration",
+		place.String(), active.place.String())
+	return true
 }

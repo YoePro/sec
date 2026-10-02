@@ -9,3 +9,7 @@ let afterFractionPoint := 1._5
 let exponentLeading := 1e_3
 let exponentTrailing := 1e3_
 let following := 7
+
+/* Expected error: lexer.invalid-digit-separator for every misplaced separator.
+ * Reason: rules/foundations/lexical_structure.md §12.6 permits separators only between valid digits of one numeric component.
+ */

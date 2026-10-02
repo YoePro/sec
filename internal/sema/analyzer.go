@@ -47,6 +47,10 @@ type Analyzer struct {
 	resolvedInterpolationPlans map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
 	stringConcatPlans          map[ast.Expression]StringConcatPlan
 	resolvedForIterations      map[*ast.ForStatement]ResolvedForIteration
+	activeCollectionIterations []activeCollectionIteration
+	// cABIModel is the active target's C ABI data model; empty when the
+	// analyzer has no target plan or the target defines no C ABI.
+	cABIModel                  layout.CABIModel
 	resolvedConstructions      map[*ast.NewExpression]ResolvedConstruction
 	resolvedOperators          map[ast.Expression]ResolvedOperator
 	resolvedLogicalFlows       map[*ast.InfixExpression]ResolvedLogicalFlow
@@ -246,7 +250,18 @@ func (a *Analyzer) SetLegacyASTDefaultMaterialization(enabled bool) {
 // authoritative plan defined by rules/types/types.md and rules/memory/layout.md.
 // correction5.md forbids Sema from guessing widths from architecture strings.
 func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
-	analyzer := NewAnalyzer()
+	return NewAnalyzerWithScalarPlanAndDepth(plan, AnalysisStandard)
+}
+
+// NewAnalyzerWithScalarPlanAndDepth combines the authoritative target scalar
+// plan with an analysis budget. Depth selects resources only; the language and
+// every mandatory proof stay identical at each depth.
+//
+// Rules:
+//   - rules/compiler/compiler_pipeline.md — § 65(2) analysis-only mode uses the same plan/Sema facts
+//   - rules/compiler/compiler_analysis.md — § 62 analysis modes
+func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth AnalysisDepth) *Analyzer {
+	analyzer := NewAnalyzerWithDepth(depth)
 	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {
 		return analyzer
 	}
@@ -254,6 +269,7 @@ func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
 	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
 	analyzer.types["ProcessID"] = processIDType(plan.PointerWidthBits)
 	analyzer.targetUintWidthBits = plan.PointerWidthBits
+	analyzer.registerCFundamentalTypes(plan.CABI)
 	return analyzer
 }
 
@@ -289,6 +305,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
 	a.stringConcatPlans = map[ast.Expression]StringConcatPlan{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
+	a.activeCollectionIterations = nil
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}
@@ -8713,6 +8730,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		}
 	}
 	for _, member := range stmt.Members {
+		if a.rejectAuthoritativeMemberReplacement(stmt.Target.Name, target, member) {
+			continue
+		}
 		if invalid, ok := member.(*ast.InvalidStatement); ok {
 			if invalid.Message != "" {
 				a.addErrorAtToken(invalid.Token, "%s", invalid.Message)
@@ -9483,6 +9503,16 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	} else if stmt.Value != nil {
 		declaredType, _ = a.inferExpression(stmt.Value)
 		ok = declaredType.Kind != InvalidType
+		// rules/types/types.md "Unsuffixed literal inference": an untyped
+		// integer literal without context becomes int (or its suffix family),
+		// whose target-selected range it must fit.
+		if ok && (declaredType.Kind == IntType || declaredType.Kind == UintType) && isUntypedNumericExpression(stmt.Value) {
+			canonical := declaredType
+			if known, exists := a.types[declaredType.Name]; exists && !declaredType.Named {
+				canonical = known
+			}
+			a.checkIntegerExpressionRange(canonical, stmt.Value)
+		}
 	}
 	if ok && stmt.Contract != nil && !inlineContract {
 		a.checkContractLiteralBounds(declaredType, stmt.Contract)
@@ -9502,7 +9532,13 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		stmt.SynthesizedDefault = stmt.Value != nil
 		if stmt.Value == nil {
 			if declaredType.Kind != UnionType {
-				a.addErrorAtTokenWithMetadata(stmt.Name.Token, diagnostics.NoDefaultValue, "provide an explicit initializer", "mutable variable %s of type %s requires an initializer because the type has no default value", stmt.Name.Value, typeDisplayName(declaredType))
+				// rules/types/default_values.md, "Diagnostics": an ambiguous
+				// nearest-to-zero tie keeps types.ambiguous-implicit-default.
+				if id, help, reason, ambiguous := noDefaultDiagnostic(declaredType); ambiguous {
+					a.addErrorAtTokenWithMetadata(stmt.Name.Token, id, "provide an explicit initializer or "+help, "mutable variable %s requires an initializer because %s", stmt.Name.Value, reason)
+				} else {
+					a.addErrorAtTokenWithMetadata(stmt.Name.Token, diagnostics.NoDefaultValue, "provide an explicit initializer", "mutable variable %s of type %s requires an initializer because the type has no default value", stmt.Name.Value, typeDisplayName(declaredType))
+				}
 				ok = false
 			}
 		}
@@ -9692,6 +9728,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	// until the general refinement engine tracks per-binding SSA versions.
 	defer func() { a.arrayIndexMutationEpoch++ }()
 	a.recordDeferPlaceExpression(stmt.Target)
+	if a.assignmentReplacesIteratedCollection(stmt) {
+		return
+	}
 	if member, ok := stmt.Target.(*ast.MemberExpression); ok {
 		a.analyzeMemberAssignmentStatement(stmt, member, allowFallible)
 		return
@@ -9761,7 +9800,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	}
 
 	if hasContracts(symbol.Type) && !allowFallible {
-		a.addErrorAtToken(target.Token, "assigning variable %s requires try because %s has contracts", target.Value, typeDisplayName(symbol.Type))
+		a.addErrorAtTokenWithMetadata(target.Token, diagnostics.ConstrainedAssignmentRequiresTry, "use try assignment with an Err handler", "assigning variable %s requires try because %s has contracts", target.Value, typeDisplayName(symbol.Type))
 		return
 	}
 	if !a.validateMoveAssignmentTarget(stmt) {
@@ -10909,7 +10948,9 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 
 	typ, ok := a.types[name]
 	if !ok {
-		a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
+		if !a.reportUnresolvedForeignType(ref.Name, ref.Token) {
+			a.addErrorAtToken(ref.Token, "unknown type %s", ref.Name)
+		}
 		return Type{Kind: InvalidType}, false
 	}
 	if definition, exists := a.typeDefinitionTokens[name]; exists {
@@ -11695,6 +11736,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return a.inferRefExpression(expr)
 	case *ast.StructLiteral:
 		return a.inferStructLiteral(expr)
+	case *ast.CollectionLiteral:
+		return a.inferCollectionLiteral(expr)
 	default:
 		return Type{Kind: InvalidType}, expressionValue{}
 	}
@@ -11838,7 +11881,12 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 		return typ, expressionValue{Display: expr.String()}
 	}
 	if lit, ok := expr.(*ast.ArrayLiteral); ok {
-		return a.inferArrayLiteralWithExpected(lit, expected)
+		// Record the contextually typed literal like every other inferred
+		// expression; later provenance and ownership passes read this fact
+		// and must not re-infer an empty literal without its context.
+		typ, value := a.inferArrayLiteralWithExpected(lit, expected)
+		a.expressionTypes[expr] = typ
+		return typ, value
 	}
 	if typ, value, ok := a.inferExpectedUnionVariantExpression(expr, expected); ok {
 		a.expressionTypes[expr] = typ
@@ -12208,7 +12256,16 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		}
 		resolution := DefaultValueOf(field.Type)
 		if resolution.Kind == NoDefault {
-			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.MissingNonDefaultableField, "initialize the field explicitly", "field %q in struct %s has no default value and must be initialized", field.Name, typ.Name)
+			// rules/types/default_values.md, "Diagnostics": an omitted field
+			// whose type default is invalid or ambiguous keeps that specific
+			// identity instead of the generic non-defaultable-field diagnostic.
+			if field.Type.InvalidExplicitDefault {
+				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.InvalidDefaultedField, "initialize the field explicitly or correct the explicit default of "+typeDisplayName(field.Type), "omitted field %q in struct %s cannot be default-initialized because the explicit default of %s is invalid", field.Name, typ.Name, typeDisplayName(field.Type))
+			} else if id, help, reason, ambiguous := noDefaultDiagnostic(field.Type); ambiguous {
+				a.addErrorAtTokenWithMetadata(expr.Token, id, "initialize the field explicitly or "+help, "omitted field %q in struct %s must be initialized because %s", field.Name, typ.Name, reason)
+			} else {
+				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.MissingNonDefaultableField, "initialize the field explicitly", "field %q in struct %s has no default value and must be initialized", field.Name, typ.Name)
+			}
 			planValid = false
 			continue
 		}
@@ -12239,11 +12296,44 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			if value == nil {
 				continue
 			}
+			a.recordSynthesizedDefaultTypes(value, field.Type)
 			expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: expr.Token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
 		}
 	}
 
 	return typ, expressionValue{Display: expr.String()}
+}
+
+// recordSynthesizedDefaultTypes records the canonical type of every node in a
+// materialized default expression. The nodes come from DefaultValueOf, so
+// their types are known exactly; recording them keeps later passes from
+// re-inferring a context-free empty literal such as the default of int[].
+//
+// Rules:
+//   - rules/types/default_values.md — canonical default resolution
+//   - rules/mlir/packages/sec-mlir-dialect_package13.md — § 26 legacy default materialization
+func (a *Analyzer) recordSynthesizedDefaultTypes(expr ast.Expression, typ Type) {
+	if expr == nil {
+		return
+	}
+	a.expressionTypes[expr] = typ
+	switch expr := expr.(type) {
+	case *ast.ArrayLiteral:
+		if typ.Element != nil {
+			for _, element := range expr.Elements {
+				a.recordSynthesizedDefaultTypes(element, *typ.Element)
+			}
+		}
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field == nil || field.Name == nil {
+				continue
+			}
+			if fieldType, ok := lookupStructField(typ, field.Name.Value); ok {
+				a.recordSynthesizedDefaultTypes(field.Value, fieldType)
+			}
+		}
+	}
 }
 
 func resolvedStructCopyAction(typ Type) ResolvedStructFieldAction {
@@ -12377,7 +12467,13 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 		resolution := DefaultValueOf(field.Type)
 		value := defaultExpression(resolution, field.Type, token)
 		if value == nil {
-			a.addErrorAtToken(token, "missing payload field %s for %s.%s because %s has no default value", field.Name, typeDisplayName(unionType), variant.Name, typeDisplayName(field.Type))
+			// rules/types/default_values.md, "Diagnostics": types.no-default-value
+			// unless the cause is an ambiguous nearest-to-zero tie.
+			if id, help, reason, ambiguous := noDefaultDiagnostic(field.Type); ambiguous {
+				a.addErrorAtTokenWithMetadata(token, id, "initialize the payload field explicitly or "+help, "missing payload field %s for %s.%s because %s", field.Name, typeDisplayName(unionType), variant.Name, reason)
+			} else {
+				a.addErrorAtTokenWithMetadata(token, diagnostics.TypeNoDefaultValue, "initialize the payload field explicitly", "missing payload field %s for %s.%s because %s has no default value", field.Name, typeDisplayName(unionType), variant.Name, typeDisplayName(field.Type))
+			}
 			continue
 		}
 		expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
@@ -12833,6 +12929,12 @@ func (a *Analyzer) inferArrayLiteralWithExpected(expr *ast.ArrayLiteral, expecte
 		source := arrayLiteralEntryExpression(expr, entry)
 		if !canInitialize(*expected.Element, elementType, source) {
 			a.addErrorAtToken(expressionToken(source), "array element %s must be %s, got %s", new(big.Int).Add(elementIndex, big.NewInt(1)).String(), typeDisplayName(*expected.Element), typeDisplayName(elementType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		// rules/types/types.md "Context shaping" and rules/types/contracts.md
+		// "Initialization and assignment": an element literal is shaped by the
+		// element type, so its representability and contracts are proven here.
+		if entry.Kind != ArrayLiteralSpread && a.checkDeclaredContractExpression(*expected.Element, source) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		elementIndex.Add(elementIndex, entry.Length)
@@ -15136,6 +15238,9 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		}
 	}
 	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
+	if member.StructuralMutation && a.structurallyMutatesIteratedCollection(memberExpr.Object, member.Name, memberExpr.Property.Token) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if lookupType.Kind == RawPtrType || lookupType.Name == "Arena" {
 		return Type{}, expressionValue{}, false
 	}
@@ -15629,8 +15734,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		if !resolved {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if !TriviallyDestructible(elementType) || !IsDefaultable(elementType) {
-			a.addErrorAtToken(expr.GenericArguments[0].Token, "Arena.New requires a defaultable, trivially destructible type, got %s", typeDisplayName(elementType))
+		if !a.validateArenaAllocationElement("New", expr.GenericArguments[0], elementType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, member.Property.Token, true)
@@ -15655,7 +15759,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		elementType, ok := a.resolveType(expr.GenericArguments[0])
-		if !ok {
+		if !ok || !a.validateArenaAllocationElement("Alloc", expr.GenericArguments[0], elementType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		sliceType := Type{
@@ -15726,6 +15830,46 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 	default:
 		return Type{}, expressionValue{}, false
 	}
+}
+
+// validateArenaAllocationElement enforces the safe typed-allocation type
+// requirements shared by Arena.New[T] and Arena.Alloc[T]: sized T, a valid
+// infallible compiler-defined default, and trivial destruction. Each failure
+// is a distinct required error family. An unresolved generic parameter is not
+// rejected here because its layout, default, and destruction facts exist only
+// per instantiation.
+//
+// Rules:
+//   - rules/memory/arena.md — § 19(1)-(4) "Type requirements"
+//   - rules/memory/arena.md — § 20(2) and § 21(2) validate T before allocation
+//   - rules/memory/arena.md — § 120(1) incomplete/unsized T, missing default, non-trivially-destructible T
+//   - rules/memory/layout.md — § 2(7) sized layout before by-value storage
+//   - rules/types/default_values.md — canonical default resolution
+func (a *Analyzer) validateArenaAllocationElement(method string, reference *ast.TypeReference, element Type) bool {
+	token := reference.Token
+	if element.Kind == GenericType {
+		return true
+	}
+	display := typeDisplayName(element)
+	if !compilerKnownSizedType(element) {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.ArenaUnsizedAllocationType,
+			"Allocate a concrete type with complete sized layout.",
+			"Arena.%s requires a sized type with complete layout, got %s", method, display)
+		return false
+	}
+	if !IsDefaultable(element) {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.ArenaAllocationMissingDefault,
+			"Safe Arena allocation fully initializes every value with its compiler-defined default; give the type a valid default.",
+			"Arena.%s requires a type with a valid infallible default, but %s has no default", method, display)
+		return false
+	}
+	if !TriviallyDestructible(element) {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.ArenaNonTrivialDestructionType,
+			"Safe Arena allocation never runs destructors; allocate only trivially destructible types.",
+			"Arena.%s cannot allocate %s because it requires destruction", method, display)
+		return false
+	}
+	return true
 }
 
 // checkArenaInvalidationDependencies enforces the Reset/Release dependency
@@ -17530,6 +17674,7 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		if a.rejectForbiddenOptionTrySuccessHandlers(expr) {
 			return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 		}
+		return a.inferHandledOptionTryExpression(expr, valueType)
 	}
 
 	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
@@ -17754,7 +17899,8 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		}
 		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, resolvedBindingName)
 		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType
-		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue})
+		narrowed := errorType.Kind == ErrorRootType && variantName != ""
+		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue, OpenErrorNarrowing: narrowed})
 	}
 
 	if errorCatchAllSeen {
@@ -17798,7 +17944,7 @@ func unhandledTryVariants(errorType Type, matched map[string]lexer.Token) []stri
 //   - rules/errors/errorhandling.md — §12.1 "Result/error propagation", §16 "Partial handlers and implicit propagation"
 //   - rules/errors/errorhandling.md — §30 "Diagnostics must act as a mentor", §32 "Cleanup and defer"
 func (a *Analyzer) checkTryResidualPropagation(expr *ast.TryExpression, errorType Type, missing []string) bool {
-	unhandled := typeDisplayName(errorType) + " errors"
+	unhandled := "the remaining " + typeDisplayName(errorType) + " failures"
 	if len(missing) > 0 {
 		unhandled = strings.Join(missing, ", ")
 	}
@@ -17928,6 +18074,12 @@ func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, er
 		patternType, ok := a.inferMemberExpression(pattern)
 		if !ok || patternType.Kind == InvalidType {
 			return "", "", "", Type{}, false
+		}
+		// rules/errors/errorhandling.md — §27.2: an open `error` channel keeps
+		// concrete identity, so a concrete error variant narrows it. The key
+		// is qualified because the open domain spans several error types.
+		if errorType.Kind == ErrorRootType && patternType.ErrorAssignable {
+			return "Err", "", typeDisplayName(patternType) + "." + pattern.Property.Value, errorType, true
 		}
 		if !sameConcreteType(patternType, errorType) {
 			a.addErrorAtToken(expressionToken(pattern), "try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
@@ -18205,6 +18357,12 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if maybeEmptySubject != "" && info.Kind != "catchall" {
 			info.InitializesSubject = maybeEmptySubject
 		}
+		// An earlier unguarded Err fallback already handles every error, so a
+		// later concrete narrowing arm can never be selected.
+		if strings.HasPrefix(info.Variant, openErrorNarrowingPrefix) && seenKinds["Err"] {
+			a.addErrorAtToken(arm.Token, "unreachable match arm; an earlier Err fallback already handles every error")
+			continue
+		}
 		if info.BindingName != "" && info.PayloadVariant != "" {
 			if subjectPlace, placeOK := a.resolvePlace(expr.Subject); placeOK {
 				payloadType := info.BindingType
@@ -18259,6 +18417,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 				seenEnumValues[key] = info.EnumCaseName
 			} else if info.Variant != "" {
 				if seenVariants[info.Variant] {
+					if strings.HasPrefix(info.Variant, openErrorNarrowingPrefix) {
+						a.addErrorAtToken(arm.Token, "duplicate match arm for Err(%s)", strings.TrimPrefix(info.Variant, openErrorNarrowingPrefix))
+						continue
+					}
 					a.addErrorAtToken(arm.Token, "duplicate match arm for %s.%s", typeDisplayName(subjectType), info.Variant)
 					continue
 				}
@@ -18317,7 +18479,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 				}
 				return resultType
 			}
-			a.addErrorAtToken(expr.Token, "match expression must produce a value")
+			if !patternError {
+				a.addErrorAtToken(expr.Token, "match expression must produce a value")
+			}
 			return Type{Kind: InvalidType}
 		}
 		if typeCarriesReferenceOrigin(resultType) && resultType.ReferenceOriginMatchScoped {
@@ -18435,6 +18599,9 @@ func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool
 }
 
 func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
+	if a.rejectCarrierFamilyMismatch(pattern, subjectType) {
+		return matchPatternInfo{}, false
+	}
 	switch pattern := pattern.(type) {
 	case *ast.InvalidPattern:
 		return matchPatternInfo{}, false
@@ -18462,6 +18629,9 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		if subjectType.Kind != ResultType || len(subjectType.TypeArgs) != 2 {
 			a.addErrorAtToken(pattern.Token, "Err pattern requires Result subject")
 			return matchPatternInfo{}, false
+		}
+		if member, ok := pattern.Value.(*ast.MemberExpression); ok {
+			return a.analyzeMatchErrorNarrowing(member, subjectType.TypeArgs[1])
 		}
 		return a.analyzeResultPayloadPattern("Err", pattern.Value, pattern.Token, subjectType.TypeArgs[1])
 	case *ast.MemberExpression:
@@ -18865,6 +19035,9 @@ func (a *Analyzer) resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex in
 	switch {
 	case arm.Pattern != nil && arm.Pattern.Kind == ast.MatchPatternEmpty:
 		resolved.PatternKind = MatchPatternEmptyState
+	case strings.HasPrefix(info.Variant, openErrorNarrowingPrefix):
+		resolved.PatternKind = MatchPatternResultErrNarrowed
+		resolved.UnionVariantName = strings.TrimPrefix(info.Variant, openErrorNarrowingPrefix)
 	case info.Kind == "catchall":
 		resolved.PatternKind = MatchPatternCatchAll
 	case subjectType.Kind == EnumType:
@@ -18980,7 +19153,12 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Ok", typeDisplayName(subjectType))
 		}
 		if !seenKinds["Err"] {
-			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Err", typeDisplayName(subjectType))
+			if len(subjectType.TypeArgs) == 2 && subjectType.TypeArgs[1].Kind == ErrorRootType {
+				// rules/errors/errorhandling.md — §27.2: error is an open domain.
+				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: concrete error arms cannot cover the open error domain; add Err(errorValue) or Err(_)", typeDisplayName(subjectType))
+			} else {
+				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Err", typeDisplayName(subjectType))
+			}
 		}
 		return false
 	}
@@ -20211,6 +20389,30 @@ func (a *Analyzer) addErrorAtTokenWithPrevious(token lexer.Token, previous lexer
 	a.appendError(err)
 }
 
+// addErrorAtTokenWithMetadataAndPrevious records a registered diagnostic with
+// help and a related previous location, such as the loop that establishes the
+// violated requirement.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — §8 occurrence schema; §12 related locations
+func (a *Analyzer) addErrorAtTokenWithMetadataAndPrevious(token lexer.Token, previous lexer.Token, id string, help string, format string, args ...any) {
+	endLine, endColumn := token.EndPosition()
+	a.appendError(Error{
+		ID:             id,
+		Severity:       diagnostics.SeverityError,
+		Help:           help,
+		Message:        fmt.Sprintf(format, args...),
+		File:           token.File,
+		Line:           token.Line,
+		Column:         token.Column,
+		EndLine:        endLine,
+		EndColumn:      endColumn,
+		PreviousFile:   previous.File,
+		PreviousLine:   previous.Line,
+		PreviousColumn: previous.Column,
+	})
+}
+
 func (a *Analyzer) addErrorAtTokenWithPreviousID(token lexer.Token, previous lexer.Token, id string, format string, args ...any) {
 	endLine, endColumn := token.EndPosition()
 	err := Error{
@@ -20376,6 +20578,9 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 	if hasUnitSemantics(target) || hasUnitSemantics(value) {
 		return canInitializeUnitQuantity(target, value, expr)
+	}
+	if allowed, foreign := canInitializeForeignCScalar(target, value, isNumericLiteral(expr) || isBooleanLiteral(expr)); foreign {
+		return allowed
 	}
 	// rules/errors/errorhandling.md defines a one-way, error-specific widening
 	// relation. It is not general interface inheritance and never permits
@@ -20896,12 +21101,21 @@ func (a *Analyzer) isExplicitConversionExpression(expr ast.Expression) bool {
 	}
 }
 
+// TypeDisplayName renders a resolved type in source spelling for tooling
+// presentations such as `sec analyse`, keeping one display authority.
+func TypeDisplayName(typ Type) string { return typeDisplayName(typ) }
+
 func typeDisplayName(typ Type) string {
 	if typ.Kind == ReferenceType && typ.Element != nil {
 		if typ.ReferenceMutable {
 			return "ref mut " + typeDisplayName(*typ.Element)
 		}
 		return "ref " + typeDisplayName(*typ.Element)
+	}
+	// rules/types/types.md "Named types": a named array or slice type is
+	// presented by its nominal identity, not its structural representation.
+	if typ.Named && typ.Name != "" && (typ.Kind == ArrayType || typ.Kind == SliceType) {
+		return typ.Name
 	}
 	if typ.Kind == ArrayType && typ.Element != nil {
 		if arrayShapeOf(typ) == ArrayShapeDynamic {
@@ -21232,6 +21446,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.RefExpression:
 		return expr.Token
 	case *ast.StructLiteral:
+		return expr.Token
+	case *ast.CollectionLiteral:
 		return expr.Token
 	case *ast.LambdaExpression:
 		return expr.Token

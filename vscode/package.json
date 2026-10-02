@@ -50,12 +50,23 @@
         "path": "./syntaxes/sec.tmLanguage.json"
       }
     ],
+    "semanticTokenModifiers": [
+      {
+        "id": "modulePrivate",
+        "description": "Sec name with a single leading underscore, visible throughout its declaring module."
+      },
+      {
+        "id": "ownerPrivate",
+        "description": "Sec name with a double leading underscore, private to its declaring owner."
+      }
+    ],
     "semanticTokenScopes": [
       {
         "language": "sec",
         "scopes": {
           "variable": ["variable.other.readwrite.sec"],
-          "variable.readonly": ["variable.other.constant.sec"]
+          "variable.readonly": ["variable.other.constant.sec"],
+          "type.defaultLibrary": ["support.type.primitive.sec"]
         }
       }
     ],

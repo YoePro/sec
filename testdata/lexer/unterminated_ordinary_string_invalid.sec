@@ -2,3 +2,7 @@ module unterminated_ordinary_string_invalid
 
 let broken := "missing closing quote
 let recoveredValue := 7
+
+/* Expected error: lexer.unterminated-ordinary-string, then recovery on the following line.
+ * Reason: rules/foundations/lexical_structure.md §14.1 and §20 end the candidate before the physical line ending.
+ */

@@ -544,8 +544,13 @@ integrations:
     - rules/mlir/sec_mlir_dialect.md
     - rules/mlir/sec_mlir_lowering.md
     implemented:
+    - value.SizeOf and TypeName.SizeOf are the only SizeOf forms; global SizeOf(TypeName) is rejected as an unknown function and is absent from the registry, completion, and tests (TestCompilerKnownCanonicalPropertyAndCollectionRestrictions)
+    - compiler-known registry entries carry an explicit CompilerKnownMemberCategory (CompilerProvidedFallbackMember, AuthoritativeCompilerSemanticProperty, CompilerKnownOperation, PrivilegedCoreMember, OrdinaryUserMember) with UserReplacementPermitted policy; ToString() is the replaceable fallback, compiler-known properties are authoritative, methods are operations
+    - a user impl member that would replace an authoritative compiler-known property applicable to its target (SizeOf on any sized type, Len on a named sequence type, and similar) is rejected with mandatory S1070 members.authoritative-compiler-property and help; exact ToString() replacement and other ToString overloads keep ordinary method resolution, and loader-proven trusted core keeps its privileged implementing members
+    - LSP hover states whether a compiler-known member is a fallback, authoritative property, operation, or privileged core member
+    - language-rulebook-status.md lists compile_time_evaluation.md as Written and narrows the reflection exclusion to general-purpose structural compile-time reflection and declaration metaprogramming
     - parser/Sema infrastructure already recognizes multiple compile-time-required declaration facts such as enum values, fixed sizes/extents, static facts, attributes, and compiler-known layout/member queries
-    - compiler-known SizeOf already resolves target-plan-dependent layout information in value/type/global forms prior to the property-only correction
+    - compiler-known SizeOf resolves target-plan-dependent layout information in the value and type property forms
     - current frontend and semantic analyses already perform constant propagation/folding and static validation in several narrow language paths
     - generic frontend and Semantic IR infrastructure can represent concrete generic identities required by future generic CTE execution
     - module and separate-compilation infrastructure already defines canonical declaration identities and semantic artifacts that can be extended for CTE bodies/dependencies
@@ -585,12 +590,7 @@ integrations:
     - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
     - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
     - ensure required CTE does not depend on optional MLIR/LLVM constant folding
-    - synchronize compiler-known SizeOf to property-only value.SizeOf and TypeName.SizeOf forms
-    - remove canonical global SizeOf(TypeName) from parser/Sema/registry/tooling/tests/docs
-    - synchronize compiler-known ToString fallback/replacement governance through the companion correction
-    - audit every compiler-known Sec declaration for complete canonical declaration and owning module
-    - update language-rulebook-status.md from Planned to Written and remove resolved CTE closure questions
-    - narrow the Sec 0.1 reflection exclusion to general-purpose structural compile-time reflection and declaration metaprogramming
+    - audit every compiler-known Sec declaration for complete canonical declaration and owning module (rulebook A/B choices are MD-016)
     - expose compiler CTE values/provenance/diagnostics through LSP without a separate editor evaluator
     required_tests:
     - plan-time attribute expression accepts permitted plan inputs and rejects ordinary semantic user-function dependency
@@ -658,3 +658,15 @@ integrations:
     corrections_applied:
     - rules/corrections/applied/compile-time-evaluation-cross-rulebook-correction-20260907.md
     - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+    verification:
+    - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -run 'Test(UserSizeOfReplacementIsRejected|CompilerKnownRegistryCategoriesDrivePolicy|CompilerKnownCanonicalPropertyAndCollectionRestrictions|CompilerKnownUniversalToStringAndTextSequences|HoverShowsCompilerKnownMemberCategory)' -count=1
+      result: passed on 2026-10-02 with S1070 rejection, trusted-core exemption, registry categories and replacement policy, ordinary Len on non-sequence types, ToString fallback/replacement, and hover categories
+    - command: go test ./...
+      result: passed on 2026-10-02
+    tests:
+    - internal/sema/compiler_known_members_test.go
+    - cmd/lsp/main_test.go
+    code:
+    - internal/sema/compiler_known_members.go
+    - internal/diagnostics/diagnostics.go
+    - cmd/lsp/main.go

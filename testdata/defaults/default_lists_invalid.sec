@@ -1,0 +1,9 @@
+module main
+
+// rules/types/default_values.md — "List defaults" failure cases.
+fn Build() void {
+    let zero := list[int, 0] {}
+    let mismatch: list[int] := list[int, 4] {}
+    discard zero
+    discard mismatch
+}

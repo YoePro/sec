@@ -47,6 +47,7 @@ type diagnosticCatalog struct {
 	SemanticOccurrenceFields []diagnosticCatalogField      `json:"semantic_occurrence_fields"`
 	ParserOccurrenceFields   []diagnosticCatalogField      `json:"parser_occurrence_fields"`
 	TokenFields              []diagnosticCatalogField      `json:"token_fields"`
+	EmittedOccurrenceFields  []diagnosticCatalogField      `json:"emitted_occurrence_fields"`
 	Definitions              []diagnosticCatalogDefinition `json:"definitions"`
 }
 
@@ -83,6 +84,29 @@ var parserOccurrenceFields = []diagnosticCatalogField{
 	{Name: "Unexpected", Type: "*Token", Required: false, Description: "Unexpected token, when known."},
 	{Name: "Context", Type: "RecoveryContext", Required: true, Description: "Stable parser recovery context containing the occurrence."},
 	{Name: "Episode", Type: "int", Required: true, Description: "Positive recovery episode number within the parse."},
+}
+
+// emittedOccurrenceFields describes the canonical emitted-occurrence document
+// entries written by `--diagnostic-format json`, so the catalog and
+// occurrence surfaces share one identity model.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — §8 "Canonical logical occurrence schema"
+//   - rules/tooling/diagnostics.md — §13(4) exported field schemas
+//   - rules/tooling/diagnostics.md — §14 "Machine-readable emitted occurrences"
+var emittedOccurrenceFields = []diagnosticCatalogField{
+	{Name: "ID", Type: "*string", Required: true, Description: "Registered diagnostic identifier; null only on an unregistered migration-fallback occurrence."},
+	{Name: "Name", Type: "*string", Required: true, Description: "Registered symbolic name for ID; null when unregistered."},
+	{Name: "Unregistered", Type: "bool", Required: true, Description: "True for an unmigrated host or tool diagnostic that has no stable registered identity yet."},
+	{Name: "Severity", Type: "Severity", Required: true, Description: "Effective error, warning, or information classification."},
+	{Name: "Arguments", Type: "map[string]string", Required: true, Description: "Structured arguments named by the registered definition."},
+	{Name: "Primary", Type: "*Location", Required: false, Description: "Primary source span with one-based start and exclusive end; null for project, build, target, or tool diagnostics."},
+	{Name: "Related", Type: "[]RelatedLocation", Required: true, Description: "Ordered related source locations, such as an earlier declaration."},
+	{Name: "Notes", Type: "[]Message", Required: true, Description: "Ordered explanatory notes."},
+	{Name: "Help", Type: "[]Message", Required: true, Description: "Ordered actionable help messages with display text."},
+	{Name: "Fixes", Type: "[]Fix", Required: true, Description: "Ordered structured fixes; empty until the fix schema is implemented."},
+	{Name: "Message", Type: "Message", Required: true, Description: "Primary message key, arguments, and rendered display text."},
+	{Name: "Source", Type: "string", Required: true, Description: "Producing stage: lexer, parser, sema, or the tool error kind."},
 }
 
 var diagnosticTokenFields = []diagnosticCatalogField{
@@ -161,6 +185,7 @@ func buildDiagnosticCatalog() diagnosticCatalog {
 		SemanticOccurrenceFields: append([]diagnosticCatalogField(nil), semanticOccurrenceFields...),
 		ParserOccurrenceFields:   append([]diagnosticCatalogField(nil), parserOccurrenceFields...),
 		TokenFields:              append([]diagnosticCatalogField(nil), diagnosticTokenFields...),
+		EmittedOccurrenceFields:  append([]diagnosticCatalogField(nil), emittedOccurrenceFields...),
 	}
 
 	for _, definition := range diagnostics.All() {

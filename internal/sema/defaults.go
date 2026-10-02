@@ -70,6 +70,8 @@ func DefaultValuePreview(typ Type, maxArrayElements int) (string, DefaultKind, b
 
 func defaultResolutionDisplay(typ Type, resolution DefaultResolution) string {
 	switch resolution.Kind {
+	case CollectionDefault:
+		return typeDisplayName(typ) + " {}"
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
 		return resolution.Value.Lexeme
 	case EnumDefault:
@@ -149,6 +151,11 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 	if typ.ExplicitDefault != nil {
 		return DefaultResolution{Kind: ExplicitTypeDefault, Value: *typ.ExplicitDefault}
 	}
+	// rules/types/default_values.md "List defaults": list[T] and
+	// list[T, Capacity] are defaultable independently of T.
+	if isDefaultableEmptyListType(typ) {
+		return DefaultResolution{Kind: CollectionDefault}
+	}
 	for _, contract := range typ.Contracts {
 		if membership, ok := contract.(MembershipContract); ok {
 			for _, value := range membership.Values {
@@ -178,7 +185,7 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 	case FloatType:
 		zero := DefaultConstant{Kind: typ.Kind, Lexeme: "0.0", Exact: new(big.Rat)}
 		if !defaultConstantSatisfies(typ, zero) {
-			return DefaultResolution{Kind: NoDefault}
+			return binaryFloatRangeDefault(typ)
 		}
 		return scalarDefault(typ, zero)
 	case DecimalType:
@@ -333,6 +340,8 @@ func defaultConstantCompatible(typ Type, value DefaultConstant) bool {
 		return value.Kind == BoolType
 	case CharType, RuneType:
 		return value.Integer != nil || value.Kind == typ.Kind || typ.Kind == RuneType && value.Kind == CharType
+	case EnumType:
+		return value.Kind == EnumType && enumHasMember(typ, value.String)
 	default:
 		return false
 	}
@@ -692,6 +701,15 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token) ast.Expression {
 	switch resolution.Kind {
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
+		if resolution.Value.Kind == EnumType {
+			// rules/types/contracts.md "Ordered membership": an enum member
+			// default is selected through the storage type's own name.
+			return &ast.MemberExpression{
+				Token:    token,
+				Object:   &ast.Identifier{Token: token, Value: typ.Name},
+				Property: &ast.Identifier{Token: token, Value: resolution.Value.String},
+			}
+		}
 		return defaultConstantExpression(resolution.Value, token)
 	case EnumDefault:
 		return &ast.MemberExpression{
@@ -730,6 +748,9 @@ func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token
 			_ = i
 		}
 		return literal
+	case CollectionDefault:
+		// The storage site's expected list type types the synthesized literal.
+		return &ast.CollectionLiteral{Token: token, Open: token, Close: token}
 	case ArrayDefault:
 		literal := &ast.ArrayLiteral{Token: token}
 		if typ.Element != nil {

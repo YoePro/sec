@@ -6,3 +6,7 @@ let negativeFraction := 1.5E-
 let leadingDot := .5e+
 let identifierTail := 1eunknown
 let following := 7
+
+/* Expected error: lexer.missing-exponent-digits over each malformed exponent candidate.
+ * Reason: rules/foundations/lexical_structure.md §12.5 requires at least one decimal digit after the exponent marker and optional sign.
+ */

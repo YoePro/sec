@@ -24,12 +24,14 @@ type TargetDefinition struct {
 	Profile          string
 	PointerWidthBits uint16
 	Endianness       layout.Endianness
-	Status           TargetStatus
-	CanParse         bool
-	CanCheck         bool
-	CanEmitLLVM      bool
-	CanLink          bool
-	CanRun           bool
+	// CABI is the target's C ABI data model (rules/platform/abi.md § 19).
+	CABI        layout.CABIModel
+	Status      TargetStatus
+	CanParse    bool
+	CanCheck    bool
+	CanEmitLLVM bool
+	CanLink     bool
+	CanRun      bool
 }
 
 // Supported platforms
@@ -42,6 +44,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelSysVX8664,
 		Status:           TargetImplemented,
 		CanParse:         true,
 		CanCheck:         true,
@@ -57,6 +60,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCS64,
 		Status:           TargetExperimental,
 		CanParse:         true,
 		CanCheck:         true,
@@ -72,6 +76,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSLinuxHF,
 		Status:           TargetExperimental,
 		CanParse:         true,
 		CanCheck:         true,
@@ -87,6 +92,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSLinuxHF,
 		Status:           TargetExperimental,
 		CanParse:         true,
 		CanCheck:         true,
@@ -102,6 +108,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelDarwinX8664,
 		Status:           TargetExperimental,
 		CanParse:         true,
 		CanCheck:         true,
@@ -117,6 +124,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelDarwinARM64,
 		Status:           TargetExperimental,
 		CanParse:         true,
 		CanCheck:         true,
@@ -132,6 +140,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelWindowsX64,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -147,6 +156,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelWindowsARM64,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -162,6 +172,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelSysVX8664,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -177,6 +188,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCS64,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -192,6 +204,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelSysVX8664,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -207,6 +220,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCS64,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -222,6 +236,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelSysVX8664,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -237,6 +252,7 @@ var targets = []TargetDefinition{
 		Profile:          "hosted",
 		PointerWidthBits: 64,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCS64,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -251,6 +267,7 @@ var targets = []TargetDefinition{
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSBareMetal,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -265,6 +282,7 @@ var targets = []TargetDefinition{
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSBareMetal,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -279,6 +297,7 @@ var targets = []TargetDefinition{
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSBareMetal,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -293,6 +312,7 @@ var targets = []TargetDefinition{
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSBareMetal,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -307,6 +327,7 @@ var targets = []TargetDefinition{
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelRISCVILP32,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -321,6 +342,7 @@ var targets = []TargetDefinition{
 		Profile:          "rtos",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSBareMetal,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -335,6 +357,7 @@ var targets = []TargetDefinition{
 		Profile:          "rtos",
 		PointerWidthBits: 32,
 		Endianness:       layout.LittleEndian,
+		CABI:             layout.CModelAAPCSBareMetal,
 		Status:           TargetPlanned,
 		CanParse:         true,
 		CanCheck:         true,
@@ -434,6 +457,7 @@ func (definition TargetDefinition) scalarPlan() (layout.ResolvedScalarPlan, erro
 		Profile:          definition.Profile,
 		PointerWidthBits: definition.PointerWidthBits,
 		Endianness:       definition.Endianness,
+		CABI:             definition.CABI,
 	}
 	if err := plan.Validate(); err != nil {
 		return layout.ResolvedScalarPlan{}, fmt.Errorf("target %s-%s has no resolved scalar plan: %w", definition.OS, definition.Arch, err)

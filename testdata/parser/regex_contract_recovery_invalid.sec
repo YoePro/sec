@@ -1,0 +1,9 @@
+module main
+
+// A missing regex pattern is retained as an invalid expression at the
+// following contract, default clause, or line end; later declarations survive.
+type First string regex minLen 3
+type Second string regex default "x"
+type Third string regex
+
+fn main() void {}

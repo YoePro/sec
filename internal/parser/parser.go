@@ -2466,6 +2466,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 		return expr.Token
 	case *ast.StructLiteral:
 		return expr.Token
+	case *ast.CollectionLiteral:
+		return expr.Token
 	default:
 		return lexer.Token{}
 	}
@@ -2805,7 +2807,12 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		return stmt
 	}
 
-	if p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) {
+	// rules/foundations/grammar.md, NamedTypeDeclaration: the base is any
+	// TypeReference, including FunctionType (`type Callback fn(int) int`) and
+	// ReferenceType. A type start on the declaration's own line is therefore
+	// the base type even when its keyword can also start a statement.
+	sameLineTypeStart := p.peekToken.Line == p.curToken.Line && isTypeStart(p.peekToken.Type)
+	if p.peekToken.Type == lexer.EOF || p.isStatementStart(p.peekToken.Type) && !sameLineTypeStart {
 		p.addError(
 			"type declaration missing base type after %q at %d:%d",
 			stmt.Name.Value,
@@ -5554,6 +5561,15 @@ func (p *Parser) parseTypeReference() *ast.TypeReference {
 		return p.parseParenthesizedTypeReference()
 	}
 
+	if p.atForeignQualifier() {
+		foreign := p.parseForeignQualifiedName()
+		ref := &ast.TypeReference{Token: foreign.Token, Name: foreign.Name, ForeignSeparators: foreign.Separators}
+		if !foreign.Valid {
+			return p.markInvalidTypeReference(ref)
+		}
+		return p.parsePostfixTypeReference(ref)
+	}
+
 	ref := &ast.TypeReference{
 		Token: p.curToken,
 		Name:  p.curToken.Lexeme,
@@ -6228,6 +6244,8 @@ func (p *Parser) parseCurrentContract() ast.Contract {
 			return p.parseValueContract(p.curToken.Lexeme)
 		case lexer.MarkerContractWord:
 			return &ast.MarkerContract{Token: p.curToken, Name: p.curToken.Lexeme}
+		case lexer.PatternContractWord:
+			return p.parseRegexContract()
 		}
 	}
 	p.addError("unknown contract %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
@@ -6238,7 +6256,47 @@ func (p *Parser) isContractStart(token lexer.Token) bool {
 	if token.Type == lexer.RANGE_KW || token.Type == lexer.IN {
 		return true
 	}
-	return token.Type == lexer.IDENT && lexer.IsContractWord(token.Lexeme)
+	if token.Type != lexer.IDENT {
+		return false
+	}
+	if lexer.ContractWordRoleOf(token.Lexeme) == lexer.PatternContractWord {
+		// `regex` is not a reserved spelling (MD-009), so it may also be an
+		// ordinary identifier starting the next line's statement. It begins a
+		// contract only on the same line as the preceding type or contract.
+		return token.Line == p.curToken.Line
+	}
+	return lexer.IsContractWord(token.Lexeme)
+}
+
+// parseRegexContract parses `regex Pattern`, retaining the pattern as an
+// ordinary constant expression. Whether it is a compile-time string is a Sema
+// decision; the parser does not interpret the regular-expression syntax.
+//
+// Rules:
+//   - rules/types/contracts.md — "String and collection contracts"
+//   - rules/foundations/grammar.md — "Type contracts" (sequential contracts)
+//
+// A pattern missing at the end of the type declaration (end of file, a new
+// line, or a following statement start) is retained as an invalid expression
+// so the declaration and its later siblings survive. A following contract
+// word or `default` is a synchronization point, never a pattern.
+//
+// Recovery: rules/compiler/parser_recovery.md — "Type-contract recovery", "Bounded damage"
+func (p *Parser) parseRegexContract() ast.Contract {
+	contract := &ast.RegexContract{Token: p.curToken}
+	if p.isAtTypeDeclEnd() || p.peekToken.Line > p.curToken.Line || p.isContractStart(p.peekToken) || !p.isExpressionStart(p.peekToken.Type) {
+		unexpected := p.peekToken
+		message := fmt.Sprintf("missing regex contract pattern at %d:%d", unexpected.Line, unexpected.Column)
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, unexpected, nil, &unexpected, "%s", message)
+		contract.Pattern = p.invalidExpression(unexpected, message, compilerdiagnostics.ParserInvalidExpression)
+		return contract
+	}
+	p.nextToken()
+	contract.Pattern = p.parseExpression(LOWEST)
+	if contract.Pattern == nil {
+		return nil
+	}
+	return contract
 }
 
 // parseMembershipContract retains the complete ordered membership syntax,
@@ -6312,6 +6370,9 @@ func (p *Parser) parseRangeContract() ast.Contract {
 	}
 
 	contract.Min = p.parseOptionalRangeBound()
+	if contract.Min == nil {
+		contract.Min = p.parseNonNumericRangeBound("lower")
+	}
 
 	if !p.expectPeekRangeOperator() {
 		return nil
@@ -6328,6 +6389,7 @@ func (p *Parser) parseRangeContract() ast.Contract {
 	}
 
 	if !p.isRangeBoundStart(p.peekToken.Type) {
+		contract.Max = p.parseNonNumericRangeBound("upper")
 		if !p.requireRangeBound(contract) {
 			return nil
 		}
@@ -6367,6 +6429,27 @@ func (p *Parser) parseOptionalRangeBound() ast.Expression {
 	default:
 		return nil
 	}
+}
+
+// parseNonNumericRangeBound diagnoses a same-line range bound that is not a
+// SignedNumericConstant, consumes the offending expression, and retains it as
+// an invalid expression so the contract and following declarations survive
+// without stray module-scope code. It returns nil when no bound is present.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Type contracts", RangeContract (SignedNumericConstant bounds)
+//   - rules/compiler/parser_recovery.md — "Type-contract recovery", "Range contract"
+func (p *Parser) parseNonNumericRangeBound(position string) ast.Expression {
+	next := p.peekToken
+	if next.Line != p.curToken.Line || next.Type == lexer.DEFAULT || p.isContractStart(next) || !p.isExpressionStart(next.Type) {
+		return nil
+	}
+	message := fmt.Sprintf("range contract %s bound must be a signed numeric constant, got %q at %d:%d", position, next.Lexeme, next.Line, next.Column)
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, next, nil, &next, "%s", message)
+	p.nextToken()
+	invalid := p.invalidExpression(next, message, compilerdiagnostics.ParserInvalidExpression)
+	invalid.Left = p.parseExpression(LOWEST)
+	return invalid
 }
 
 func (p *Parser) isRangeBoundStart(t lexer.TokenType) bool {

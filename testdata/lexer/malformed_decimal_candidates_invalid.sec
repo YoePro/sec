@@ -15,3 +15,7 @@ let fractionExponent := 1.5E-following
 let leadingFractionExponent := .5e+absent
 
 let recovery := 7
+
+/* Expected error: one focused numeric diagnostic per maximal malformed decimal candidate.
+ * Reason: rules/foundations/lexical_structure.md §12 and §18 retain the maximal malformed numeric candidate instead of splitting it into several tokens.
+ */

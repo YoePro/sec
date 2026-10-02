@@ -6,3 +6,7 @@ let missingHexDigits := 0xGG
 let invalidBinaryTail := 0b102
 let malformedSeparator := 0x_FF
 let following := 7
+
+/* Expected error: lexer.malformed-base-literal, lexer.invalid-base-digit, and lexer.invalid-digit-separator.
+ * Reason: rules/foundations/lexical_structure.md §12.3 and §12.6 define base prefixes, digits, and separators.
+ */

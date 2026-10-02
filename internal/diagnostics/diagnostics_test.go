@@ -43,6 +43,27 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		RecursiveStructLayout:               SeverityError,
 		SwitchPatternBinding:                SeverityError,
 		LocalShadowsDeclaration:             SeverityError,
+		RegexContractUnavailable:            SeverityError,
+		DefaultViolatesContract:             SeverityError,
+		DefaultNotRepresentable:             SeverityError,
+		AmbiguousImplicitDefault:            SeverityError,
+		TypeNoDefaultValue:                  SeverityError,
+		InvalidDefaultedField:               SeverityError,
+		InapplicableContract:                SeverityError,
+		UnsatisfiableContractSet:            SeverityError,
+		InvalidContractArgument:             SeverityError,
+		IncompatibleMembershipValue:         SeverityError,
+		ValueViolatesContract:               SeverityError,
+		ConstrainedAssignmentRequiresTry:    SeverityError,
+		AuthoritativeMemberReplacement:      SeverityError,
+		RecursiveUnionLayout:                SeverityError,
+		ArenaUnsizedAllocationType:          SeverityError,
+		ArenaAllocationMissingDefault:       SeverityError,
+		ArenaNonTrivialDestructionType:      SeverityError,
+		StructuralMutationDuringIteration:   SeverityError,
+		ForeignUnknownCFundamentalType:      SeverityError,
+		ForeignCABIModelUnavailable:         SeverityError,
+		ForeignUnresolvedCBindingType:       SeverityError,
 		UseAfterDiscard:                     SeverityError,
 		UnreachableStatement:                SeverityError,
 		InterfaceInheritanceCycle:           SeverityError,
@@ -126,6 +147,8 @@ func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
 		ParserInvalidBlockMember,
 		ParserCompatibilitySyntax,
 		ParserInvalidTestDeclaration,
+		ParserMalformedForeignQualification,
+		ParserUnsupportedForeignForm,
 	}
 	for _, id := range ids {
 		definition, ok := Lookup(id)
@@ -235,5 +258,37 @@ func TestLocalShadowsDeclarationDiagnosticIsRegistered(t *testing.T) {
 	}
 	if definition.Name != "names.local-shadows-declaration" || definition.Family != "names" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
 		t.Fatalf("local shadowing diagnostic = %+v", definition)
+	}
+}
+
+func TestRegexContractUnavailableDiagnosticIsRegistered(t *testing.T) {
+	definition, ok := Lookup(RegexContractUnavailable)
+	if !ok {
+		t.Fatal("missing regex contract diagnostic")
+	}
+	if definition.ID != "S1058" || definition.Name != "types.regex-contract-unavailable" || definition.Family != "types" || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+		t.Fatalf("regex contract diagnostic = %+v", definition)
+	}
+}
+
+func TestDefaultAndContractDiagnosticsAreRegistered(t *testing.T) {
+	want := map[string]string{
+		DefaultViolatesContract:          "types.default-violates-contract",
+		DefaultNotRepresentable:          "types.default-not-representable",
+		AmbiguousImplicitDefault:         "types.ambiguous-implicit-default",
+		TypeNoDefaultValue:               "types.no-default-value",
+		InvalidDefaultedField:            "struct.invalid-defaulted-field",
+		InapplicableContract:             "types.inapplicable-contract",
+		UnsatisfiableContractSet:         "types.unsatisfiable-contract-set",
+		InvalidContractArgument:          "types.invalid-contract-argument",
+		IncompatibleMembershipValue:      "types.incompatible-in-contract-value",
+		ValueViolatesContract:            "types.value-violates-contract",
+		ConstrainedAssignmentRequiresTry: "types.constrained-assignment-requires-try",
+	}
+	for id, name := range want {
+		definition, ok := Lookup(id)
+		if !ok || definition.Name != name || !definition.Mandatory || definition.DefaultSeverity != SeverityError {
+			t.Fatalf("%s = %+v, want mandatory error %s", id, definition, name)
+		}
 	}
 }

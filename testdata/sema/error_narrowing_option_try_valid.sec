@@ -1,0 +1,62 @@
+module main
+
+// Option try handlers, open error narrowing in try and match.
+
+enum IOError error {
+    NotFound,
+    Busy,
+}
+
+fn Read() Result[int, error] {
+    return Ok(1)
+}
+
+fn ReadIO() Result[int, IOError] {
+    return Ok(1)
+}
+
+fn Find() Option[int] {
+    return None
+}
+
+fn Use(value: int) void {
+}
+
+fn OptionDefault() int {
+    let value := try Find() {
+        None => 0
+    }
+    return value
+}
+
+fn OptionBlock() int {
+    let value := try Find() {
+        None => {
+            Use(1)
+            7
+        }
+    }
+    return value
+}
+
+fn OptionGuarded(flag: bool) Option[int] {
+    let value := try Find() {
+        None where flag => 0
+    }
+    return Some(value)
+}
+
+fn TryNarrowing() Result[int, error] {
+    let value := try Read() {
+        Err(IOError.NotFound) => 0
+    }
+    return Ok(value)
+}
+
+fn MatchNarrowing() int {
+    return match Read() {
+        Ok(value) => value
+        Err(IOError.NotFound) => 0
+        Err(error) => 1
+    }
+}

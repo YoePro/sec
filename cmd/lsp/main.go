@@ -1484,6 +1484,9 @@ func contextualTokenClassifications(program *ast.Program, source []lexer.Token) 
 	for _, marker := range astMarkerContractsInProgram(program) {
 		setClass(marker.Token, "modifier")
 	}
+	for _, regex := range astRegexContractsInProgram(program) {
+		setClass(regex.Token, "modifier")
+	}
 	for _, field := range astStructFieldsInProgram(program) {
 		if field != nil && len(field.Tags) > 0 {
 			setClass(field.TagToken, "string declaration")
@@ -1504,6 +1507,23 @@ func astMarkerContractsInProgram(program *ast.Program) []*ast.MarkerContract {
 	for _, node := range astNodesInProgram(program) {
 		if marker, ok := node.(*ast.MarkerContract); ok {
 			result = append(result, marker)
+		}
+	}
+	return result
+}
+
+// astRegexContractsInProgram returns parser-established `regex` pattern
+// contracts. Because `regex` is not reserved (MD-009), only this AST role
+// classifies the spelling as a contract word; other uses stay identifiers.
+//
+// Rules:
+//   - rules/types/contracts.md — "Applicability"
+//   - rules/foundations/lexical_structure.md — §23 tooling classification
+func astRegexContractsInProgram(program *ast.Program) []*ast.RegexContract {
+	result := []*ast.RegexContract{}
+	for _, node := range astNodesInProgram(program) {
+		if regex, ok := node.(*ast.RegexContract); ok {
+			result = append(result, regex)
 		}
 	}
 	return result
@@ -2163,7 +2183,20 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 	if member.Documentation != "" {
 		documentation = "\n\n" + member.Documentation
 	}
-	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s", declaration, member.ID, effects, documentation)
+	// rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+	// § 24(4): hover identifies the member's semantic-authority category.
+	category := ""
+	switch member.Category {
+	case sema.CompilerProvidedFallbackMember:
+		category = "\n\nCompiler-provided fallback: an exact user-defined replacement on a user-owned type takes precedence."
+	case sema.AuthoritativeCompilerSemanticProperty:
+		category = "\n\nAuthoritative compiler property: user code cannot replace it."
+	case sema.CompilerKnownOperation:
+		category = "\n\nCompiler-known operation."
+	case sema.PrivilegedCoreMember:
+		category = "\n\nPrivileged core member."
+	}
+	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s%s", declaration, member.ID, category, effects, documentation)
 	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 
@@ -2329,6 +2362,11 @@ func distinctCallees(sites []sema.CallSite) int {
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
 	contents += unitQuantityHoverSuffix(typ)
+	// rules/tooling/lsp.md "Hover" lists contracts; they are resolved Sema
+	// facts, including inherited contracts, never re-parsed from source.
+	if contracts := sema.ContractDisplays(typ); len(contracts) > 0 {
+		contents += "\n\nContracts: `" + strings.Join(contracts, "` `") + "`"
+	}
 	// rules/declarations/lambda-functions.md: callable authority is a resolved
 	// Sema fact. The LSP presents it and never re-parses fn/mut fn/-> fn syntax.
 	if capability, ok := sema.CallableCapabilityFactOf(typ); ok {
@@ -3326,12 +3364,14 @@ var secKeywords = append([]string{
 }, lexer.ContractWords()...)
 
 // contractCompletionWords derives contextual contract completions from the
-// lexer-owned canonical inventory while retaining the two hard contract words.
+// lexer-owned contract-position inventory, including the contextual `regex`
+// pattern contract, while retaining the two hard contract words.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
 //   - rules/foundations/grammar.md — "Type contracts"
-var contractCompletionWords = append([]string{"range", "in"}, lexer.ContractWords()...)
+//   - rules/types/contracts.md — "Applicability"
+var contractCompletionWords = append([]string{"range", "in"}, lexer.ContractStartWords()...)
 
 func typeCompletionKind(typ sema.Type) int {
 	switch typ.Kind {
@@ -5291,6 +5331,12 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 		qualifyLocalTypeReference(expr.Type, module, localTypes)
 		for _, field := range expr.Fields {
 			qualifyLocalTypesInExpression(field.Value, module, localTypes)
+		}
+	case *ast.CollectionLiteral:
+		// rules/collections/collections.md §13.3: the list element type of an
+		// empty collection literal is resolved in the declaring module.
+		if expr.Type != nil {
+			qualifyLocalTypeReference(expr.Type, module, localTypes)
 		}
 	case *ast.ArrayLiteral:
 		for _, element := range expr.Elements {

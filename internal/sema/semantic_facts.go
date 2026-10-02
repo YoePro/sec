@@ -180,7 +180,41 @@ type ResolvedForIteration struct {
 	ElementType             Type
 	Next                    Function
 	RequiresMutableReceiver bool
+	// Conformance is the concrete compiler-known Iterator[T] interface
+	// instance through which the source type participates.
+	Conformance Type
+	// NextCallable is the call-graph identity of the resolved concrete Next
+	// target; its effect, allocation, and reachability facts are queried
+	// through the call graph rather than re-derived. It is empty only when
+	// conformance itself is invalid and Next could not be resolved.
+	NextCallable CallableID
+	// Source distinguishes reusable iterator storage, advanced in place
+	// through mutable authority, from a fresh owned temporary retained as
+	// compiler-generated loop state.
+	Source      ForIteratorSourceKind
+	SourcePlace Place
+	// Binding is the single owned value binding or the discard binding.
+	Binding ForIteratorBindingKind
+	// DestroysTemporary records that the fresh temporary iterator is not
+	// trivially destructible and is destroyed when the loop exits.
+	DestroysTemporary bool
 }
+
+// ForIteratorSourceKind classifies the iterator state used by one loop.
+type ForIteratorSourceKind string
+
+const (
+	ForIteratorReusableStorage ForIteratorSourceKind = "reusable-storage"
+	ForIteratorFreshTemporary  ForIteratorSourceKind = "fresh-temporary"
+)
+
+// ForIteratorBindingKind classifies the single Iterator[T] loop binding.
+type ForIteratorBindingKind string
+
+const (
+	ForIteratorOwnedValueBinding ForIteratorBindingKind = "owned-value"
+	ForIteratorDiscardBinding    ForIteratorBindingKind = "discard"
+)
 
 // CallableCapabilityFact is the compiler-owned editor/lowering view of the
 // invocation authority defined by rules/declarations/lambda-functions.md.
@@ -360,6 +394,9 @@ const (
 	ResolvedTryHandledBounds          ResolvedTryKind = "handled-bounds"
 	ResolvedTryBoundsPropagation      ResolvedTryKind = "bounds-propagation"
 	ResolvedTryOptionPropagation      ResolvedTryKind = "option-propagation"
+	// ResolvedTryHandledOption is a try over Option[T] with local None
+	// handlers (rules/errors/errorhandling.md §15, §16).
+	ResolvedTryHandledOption ResolvedTryKind = "handled-option"
 )
 
 // ResolvedTry records the exact success/alternate contract selected by Sema,
@@ -394,6 +431,8 @@ type ResolvedTryHandlerPatternKind string
 const (
 	TryHandlerErrVariant  ResolvedTryHandlerPatternKind = "err-variant"
 	TryHandlerErrCatchAll ResolvedTryHandlerPatternKind = "err-catch-all"
+	// TryHandlerOptionNone handles the None absence state of an Option try.
+	TryHandlerOptionNone ResolvedTryHandlerPatternKind = "option-none"
 )
 
 type ResolvedTryHandlerFlow string
@@ -422,12 +461,17 @@ type ResolvedTryHandler struct {
 	// BlockValue records that a handler block produces its recovery value from
 	// its final expression (rules/errors/errorhandling.md §21.1).
 	BlockValue bool
+	// OpenErrorNarrowing records a concrete error variant (Variant holds the
+	// qualified Type.Variant) selected from an open `error` channel
+	// (rules/errors/errorhandling.md §27.2).
+	OpenErrorNarrowing bool
 }
 
 // ResolvedTryPlan is the source-ordered local handler decision of one try.
 // A non-exhaustive plan is partial: ResidualPropagates records that the
 // unmatched failures propagate to EnclosingResultType through normal try
-// propagation.
+// propagation; for an Option try that field holds the enclosing Option return
+// through which an unhandled None propagates.
 //
 // Rules:
 //   - rules/errors/errorhandling.md — §16 "Partial handlers and implicit propagation", §18 "Handler order and reachability"
@@ -462,6 +506,9 @@ const (
 	// MatchPatternEmptyState is the compiler-known `empty` initialization
 	// state of a possibly-empty union binding; it is not a union variant.
 	MatchPatternEmptyState ResolvedMatchPatternKind = "empty-state"
+	// MatchPatternResultErrNarrowed selects one concrete error variant from an
+	// open Result[T, error] channel (UnionVariantName holds Type.Variant).
+	MatchPatternResultErrNarrowed ResolvedMatchPatternKind = "result-err-narrowed"
 )
 
 type ResolvedMatchBindingAction string

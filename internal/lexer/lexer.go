@@ -98,10 +98,10 @@ const (
 	// Logical
 	EQ  TokenType = "EQ"  // ==
 	NEQ TokenType = "NEQ" // !=
-	LT  TokenType = "LT"  // >
-	LTE TokenType = "LTE" // >=
-	GT  TokenType = "GT"  // <
-	GTE TokenType = "GTE" // <=
+	LT  TokenType = "LT"  // <
+	LTE TokenType = "LTE" // <=
+	GT  TokenType = "GT"  // >
+	GTE TokenType = "GTE" // >=
 	AND TokenType = "AND" // &&
 	OR  TokenType = "OR"  // ||
 	NOT TokenType = "NOT" // !
@@ -110,7 +110,7 @@ const (
 	BIT_AND            TokenType = "BIT_AND"            // &
 	BIT_OR             TokenType = "BIT_OR"             // |
 	BIT_XOR            TokenType = "BIT_XOR"            // ^
-	BIT_NOT            TokenType = "BIT_NOT"            // !
+	BIT_NOT            TokenType = "BIT_NOT"            // ~
 	SHIFT_LEFT         TokenType = "SHIFT_LEFT"         // <<
 	SHIFT_RIGHT        TokenType = "SHIFT_RIGHT"        // >>
 	BIT_AND_ASSIGN     TokenType = "BIT_AND_ASSIGN"     //
@@ -1004,13 +1004,27 @@ func (l *Lexer) unterminatedInterpolatedStringToken(start int, line int, column 
 // readInterpolationExpression consumes through the matching expression brace.
 // Nested literals/comments use normal Sec tokenization, so their braces do not
 // affect expression depth and lexical diagnostics retain original positions.
+// A nested token that would cross the physical line ending (or reach end of
+// input) is rewound, and the candidate stops before that line ending so
+// tokenization resumes on the following line.
 // Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings".
+//
+// 2026-10-02: Stop an unterminated interpolation expression at the first
+// physical line ending instead of consuming the next line's first token.
 func (l *Lexer) readInterpolationExpression() bool {
 	line := l.line
 	depth := 1
 	for depth > 0 {
+		state := l.Snapshot()
 		token := l.NextToken()
-		if token.Type == EOF || token.Type == ILLEGAL || l.line != line {
+		if token.Type == EOF || l.line != line {
+			l.Restore(state)
+			for !l.atEnd() && !isPhysicalLineEnding(l.peek()) {
+				l.advance()
+			}
+			return false
+		}
+		if token.Type == ILLEGAL {
 			return false
 		}
 		switch token.Type {

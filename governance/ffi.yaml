@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-16"
-    updated: "2026-09-17"
+    updated: "2026-10-02"
     summary: >-
       Tracks the revision-2.0 foreign interface model. Existing frontend and
       lowering support covers imported extern signatures, supported calling
@@ -14,7 +14,8 @@ integrations:
       calls. Ordinary extern calls no longer require unsafe solely because they
       cross a foreign boundary; unsafe extern declarations retain explicit
       caller proof obligations. Call-bounded foreign reference parameters are
-      accepted, while foreign data types, C scalar families, null syntax,
+      accepted, and C:: fundamental scalars resolve through each target's C ABI
+      model, while c:: binding resolution, foreign data types, null syntax,
       callbacks, C varargs, ABI-driven legality and complete Semantic IR remain.
     rules:
       - rules/platform/ffi.md
@@ -37,6 +38,13 @@ integrations:
       - internal/codegen/mlir/generator.go
       - internal/ir/semantic/model.go
       - internal/ir/semantic/builder.go
+      - internal/parser/foreign_types.go
+      - internal/sema/foreign_c_types.go
+      - internal/layout/c_abi.go
+      - internal/layout/scalar_plan.go
+      - cmd/compiler/target.go
+      - internal/cst/roles.go
+      - internal/formatter/token_spacing.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -46,6 +54,11 @@ integrations:
       - internal/codegen/llvm/generator_test.go
       - internal/codegen/mlir/generator_test.go
       - testdata/ir/test_ffi_link_name.sec
+      - internal/parser/foreign_types_test.go
+      - internal/sema/foreign_c_types_test.go
+      - internal/layout/c_abi_test.go
+      - internal/formatter/declaration_forms_test.go
+      - cmd/compiler/analyse_test.go
     implemented:
       - bodyless extern C, system, and Sec function declaration parsing and AST retention
       - parser and defensive Sema rejection of body-bearing extern declarations
@@ -61,9 +74,14 @@ integrations:
       - foreign call kind, ABI, symbol, and unsafe declaration provenance retained through existing Semantic IR
       - fixed-width scalar and RawPtr lowering through maintained LLVM and legacy MLIR paths
       - Sema rejects unresolved generic extern declarations before callable registration with mandatory S1041, preserves later concrete extern declarations, and reports the generic parameter source location
+      - "the parser recognizes C::name and c::namespace::name in type and conversion position from two adjacent colon tokens (MD-020), keeps the whole qualification as one name token with retained separators, reports malformed qualifications as P2021 parser.malformed-foreign-qualification, and reports the not-yet-implemented C::fn, C::flex, and C::callback forms as P2022 parser.unsupported-foreign-form; fields or locals named c or C keep their meaning"
+      - "every registered target carries a validated C ABI model in its CompilationPlan (LP64 SysV/Darwin/BSD, LLP64 Windows, ILP32 AAPCS and RISC-V): integer widths, plain char signedness, bool storage, and long double format (x87 extended, binary128, or binary64), checked for coherence with the target pointer width"
+      - "Sema registers all fifteen C:: fundamental scalars from the active model as distinct types: no implicit initialization between C:: types and Sec scalars or between different C:: types (C::bool included), explicit conversions in both directions, and representable integer, floating, and boolean literal shaping with per-target range checks (MD-022)"
+      - "an unknown C:: name uses S1076 ffi.unknown-c-fundamental-type, a target or analyzer without a C ABI model uses S1077 ffi.c-abi-model-unavailable, and c:: names use S1078 ffi.unresolved-c-binding-type until a binding environment exists (MD-021)"
+      - "a parser-confirmed CST role keeps foreign-qualified names contiguous in the formatter"
     remaining:
-      - "parse and resolve compiler-known C fundamental types under C:: and target binding namespaces under c::"
-      - resolve C scalar widths, signedness, conversions, literal shaping, and checked narrowing from the active ABI model
+      - "resolve c:: binding types through the target/library binding environment once it is defined (MD-021); C:: fundamentals and c:: parsing are implemented"
+      - "make possibly-narrowing C/Sec scalar conversions fallible (try) together with the general checked-conversion contract (MD-012); give the LSP the project CompilationPlan target so C:: types resolve in the editor instead of reporting S1077"
       - add target-specific calling-convention and per-position ABI legality validation before backend lowering
       - implement unsafe-only null sentinel parsing, contextual typing, is null refinement, and equality rejection without giving null a standalone type
       - parse and validate complete and incomplete extern C structs with ABI layout and no implicit Defaultable construction
@@ -104,3 +122,9 @@ integrations:
         result: passed; LSP publishes the shared S1041 diagnostic at the generic parameter
       - command: go test ./...
         result: passed after the FFI frontend change and governance migration
+      - command: "go test ./internal/parser ./internal/sema ./internal/layout ./internal/formatter -run 'Foreign|TestCFundamental|TestUnresolvedForeign|CABI' -count=1"
+        result: passed on 2026-10-02 with parsing, malformed and unsupported forms, per-model widths and signedness, distinct-type initialization, literal shaping, explicit conversions, owning diagnostics, model coherence, and formatter contiguity
+      - command: "go test ./cmd/compiler -run 'TestTargetsCarryCoherentCABIModels' -count=1"
+        result: "passed on 2026-10-02; every registered target plan validates, and C::long := 3000000000 is accepted for linux-amd64 but rejected for windows-amd64 through sec analyse --target"
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-02

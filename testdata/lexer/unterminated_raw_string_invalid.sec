@@ -1,5 +1,9 @@
 module unterminated_raw_string_invalid
 
+/* Expected error: lexer.unterminated-raw-string over the candidate through end of file.
+ * Reason: rules/foundations/lexical_structure.md §14.2 lets raw strings span lines, so a missing closing backtick extends to end of file.
+ */
+
 let broken := `first raw line
 second raw line
 still open

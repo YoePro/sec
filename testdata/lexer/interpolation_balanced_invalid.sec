@@ -4,3 +4,7 @@ $"{value /* unterminated }"
 $"{value // }"
 $"single } brace"
 $"{Format($"inner {value}")"
+
+/* Expected error: one lexer diagnostic per malformed interpolated string line, with recovery on the next line.
+ * Reason: rules/foundations/lexical_structure.md §14.3 requires balanced interpolation expressions, doubled literal braces, and termination before the physical line ending.
+ */

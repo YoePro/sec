@@ -2,3 +2,7 @@ module unterminated_interpolated_string_invalid
 
 let broken := $"value {item}
 let recoveredValue := 7
+
+/* Expected error: lexer.unterminated-interpolated-string, then recovery on the following line.
+ * Reason: rules/foundations/lexical_structure.md §14.3 ends the candidate before the physical line ending.
+ */

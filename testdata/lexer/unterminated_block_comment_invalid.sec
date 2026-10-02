@@ -1,5 +1,9 @@
 module unterminated_block_comment_invalid
 
+/* Expected error: lexer.unterminated-block-comment for the outer comment, whose candidate extends through end of file; the nested inner comment adds no diagnostic.
+ * Reason: rules/foundations/lexical_structure.md §5.3 makes block comments nest and reports one error at the unmatched outer opening.
+ */
+
 let before := 7
 /* outer comment
    /* nested comment */

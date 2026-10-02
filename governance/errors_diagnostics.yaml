@@ -68,7 +68,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: 2026-10-01
+    revised: 2026-10-02
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-30
     replaces:
@@ -194,7 +194,44 @@ integrations:
       - internal/diagnostics/diagnostics_test.go
       - cmd/compiler/diagnostic_catalog.go
       - cmd/compiler/diagnostic_catalog_test.go
+      - cmd/compiler/diagnostic_output.go
+      - cmd/compiler/diagnostic_output_test.go
+      - cmd/compiler/main.go
+      - cmd/compiler/module_sources.go
+      - testdata/diagnostics/emitted_occurrences_invalid.sec
     implemented:
+      - id: diagnostics.emitted-occurrence-json
+        description: >-
+          Every diagnostic-producing CLI command (lex, token, parse, ast, sema,
+          emit-ir, emit-llvm, emit-sec-mlir, emit-mlir, build) accepts
+          `--diagnostic-format <human|json>` anywhere in its arguments. JSON
+          mode writes exactly one `sec.diagnostic-occurrences` version-1
+          document to the diagnostic stream (stderr), so command products on
+          stdout stay unchanged. Each occurrence carries id, registered name,
+          effective severity, structured arguments, a primary span with
+          one-based start and exclusive end, ordered related locations (for
+          example the earlier declaration of S1004), notes, help with display
+          text, fixes, a message key with display text, and the producing
+          stage derived from the ID namespace. Lexer and parser occurrences
+          come from the structured lexer and parser diagnostics rather than
+          message strings; single-file commands fill span files. Occurrences
+          are ordered by file, line, column, and stable ID; successful commands
+          emit an empty list; human output is byte-for-byte unchanged and
+          logically equivalent to the JSON occurrences. The catalog exports
+          the matching `emitted_occurrence_fields` schema.
+      - id: diagnostics.emitted-occurrence-migration-fallback
+        description: >-
+          Temporary fallback under rules/tooling/diagnostics.md § 32(2): an
+          unmigrated semantic or parser diagnostic without a registered ID, a
+          parser warning, an ILLEGAL token without a structured cause, and a
+          project/build/target/tool error (for example `semantic IR error`) are
+          emitted as occurrences with null id and name and `unregistered: true`
+          instead of an invented identity; tool errors carry no primary span
+          (§ 9(6)). Message and help keys are `<name>.message`/`<name>.help`
+          (or `unregistered.*`) until localization catalogs exist. Arguments
+          are empty until definitions declare argument schemas
+          (diagnostics.registry-definition-v2) and fixes are empty until the
+          fix schema exists (diagnostics.complete-fix-schema).
       - id: diagnostics.registry-core
         description: >-
           A central registry exists in internal/diagnostics with stable ID,
@@ -206,12 +243,12 @@ integrations:
           establish the L namespace.
       - id: diagnostics.parser-ids
         description: >-
-          Parser diagnostics P2001 through at least P2020 are registered;
+          Parser diagnostics P2001 through at least P2022 are registered;
           P2001 remains the compatibility fallback for unmigrated parser paths.
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1057 definitions in the reviewed registry plus mandatory S3001 and
+          S1078 definitions in the reviewed registry plus mandatory S3001 and
           S4001.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
@@ -233,8 +270,9 @@ integrations:
           range, value-addition guidance, and unchanged identity through LSP.
       - id: diagnostics.s1055-recursive-struct-layout
         description: >-
-          Direct, forward mutual, and fixed-array-mediated by-value struct
-          cycles use mandatory S1055/struct.recursive-by-value-layout, focus the
+          Direct, forward mutual, fixed-array-mediated, Option/Result-mediated,
+          and generic-instantiation by-value struct cycles use mandatory
+          S1055/struct.recursive-by-value-layout, focus the
           field closing the cycle, show the complete resolved field path, and
           suggest a canonical indirection or dynamic-storage boundary.
       - id: diagnostics.s1056-switch-pattern-binding
@@ -249,6 +287,62 @@ integrations:
           type, or free function use mandatory
           S1057/names.local-shadows-declaration with the hidden declaration as
           related evidence.
+      - id: diagnostics.s1058-regex-contract-unavailable
+        description: >-
+          A regex contract on a string named type uses mandatory
+          S1058/types.regex-contract-unavailable with removal help, because
+          the regular-expression syntax and engine are not yet defined
+          (MD-010); the contract is never silently dropped.
+      - id: diagnostics.s1059-s1069-defaults-and-contracts
+        description: >-
+          Default and contract failures use mandatory registered identities:
+          S1059 types.default-violates-contract, S1060
+          types.default-not-representable, S1061
+          types.ambiguous-implicit-default, S1062 types.no-default-value,
+          S1063 struct.invalid-defaulted-field, S1064
+          types.inapplicable-contract, S1065 types.unsatisfiable-contract-set,
+          S1066 types.invalid-contract-argument, S1067
+          types.incompatible-in-contract-value, S1068
+          types.value-violates-contract, and S1069
+          types.constrained-assignment-requires-try. Names S1059-S1063 come
+          from rules/types/default_values.md "Diagnostics"; status detail is
+          owned by frontend.default-values and frontend.type-contracts-v2.
+      - id: diagnostics.s1070-authoritative-member-replacement
+        description: >-
+          A user impl member that would replace an authoritative compiler-known
+          property such as SizeOf uses mandatory
+          S1070/members.authoritative-compiler-property with help; status
+          detail is owned by compiler.compile-time-evaluation.
+      - id: diagnostics.s1071-recursive-union-layout
+        description: >-
+          By-value layout cycles through unions only (variant payloads and
+          payload fields, including Option/Result and generic instantiation
+          carriers) use mandatory S1071/union.recursive-by-value-layout with the
+          variant path and indirection help; status detail is owned by
+          analysis.layout and frontend.unions.
+      - id: diagnostics.s1072-s1074-arena-typed-allocation
+        description: >-
+          Safe Arena.New[T] and Arena.Alloc[T] type requirements use mandatory
+          S1072/arena.unsized-allocation-type,
+          S1073/arena.allocation-missing-default, and
+          S1074/arena.non-trivially-destructible-allocation with help, matching
+          the distinct arena.md § 120 error families; status detail is owned by
+          analysis.arena-allocation.
+      - id: diagnostics.s1075-structural-mutation-during-iteration
+        description: >-
+          Structural mutation or replacement of a collection while an enclosing
+          for loop iterates it uses mandatory
+          S1075/for.structural-mutation-during-iteration with both Places, help,
+          and the loop as related location; status detail is owned by
+          frontend.for-loops-v2.
+      - id: diagnostics.ffi-c-fundamental-types
+        description: >-
+          Foreign-qualified names use P2021/parser.malformed-foreign-qualification
+          and P2022/parser.unsupported-foreign-form in the parser, and
+          S1076/ffi.unknown-c-fundamental-type,
+          S1077/ffi.c-abi-model-unavailable, and
+          S1078/ffi.unresolved-c-binding-type in Sema, each with help; status
+          detail is owned by frontend.ffi-v2.
       - id: diagnostics.s4001-use-after-discard
         description: >-
           Reads and borrows after explicit discard use mandatory
@@ -337,10 +431,6 @@ integrations:
         description: >-
           Complete rule/category/preset policy with project, target,
           target-variant and CLI precedence is not implemented.
-      - id: diagnostics.emitted-occurrence-json
-        description: >-
-          Machine-readable structured output for emitted diagnostic occurrences
-          is incomplete; catalog JSON is a separate already-implemented surface.
       - id: diagnostics.complete-dead-analysis
         description: >-
           S3002-S3005 and the full proof-aware unreachable/dead-store/pure-result
@@ -381,8 +471,12 @@ integrations:
       - CLI and LSP expose the same diagnostic ID for the same occurrence.
       - S1052 identifies invalid union-payload extraction storage and provides actionable owning-local and ref/ref-mut alternatives.
       - S1055 identifies recursive by-value struct layout, includes the concrete field cycle, and does not reject reference or dynamic-storage recursion.
+      - S1071 identifies recursive by-value union layout with the variant path, and a direct union self-recursion keeps a single diagnostic.
+      - S1072, S1073, and S1074 identify unsized, default-less, and destruction-requiring Arena allocation types separately for New and Alloc.
+      - S1075 identifies the structural operation or replacement, the iterated collection, and the active loop.
       - S1056 identifies switch payload-binding and wildcard patterns with match or default help and suppresses undefined-name cascades.
       - S1057 identifies the shadowing local and the hidden declaration.
+      - S1058 identifies a regex contract that cannot be validated until the regex syntax is decided.
       - S3001 identifies the unreachable statement and explains the terminator.
       - S4001 identifies reads and borrows after discard, keeps the discard source location, and remains mandatory Error.
       - Parser recovery does not generate unrelated cascades.
@@ -391,6 +485,8 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test ./cmd/compiler -run 'Test(ExtractDiagnosticFormat|SemaEmitsStructuredOccurrenceDocument|ParseAndLexEmitStructuredOccurrences|OccurrenceDocumentForSuccessAndToolErrors|DiagnosticCatalog)' -count=1
+        result: passed on 2026-10-02 with option parsing, one deterministic document per invocation, registered and unregistered occurrences, related locations, lexer/parser stage identity, span files, empty success documents, tool errors without spans, catalog schema reflection, and human/JSON logical equivalence
       - command: go test ./internal/diagnostics ./internal/sema ./cmd/compiler -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|SwitchPatternBindingDiagnosticIsRegistered|SwitchPattern|DiagnosticCatalog)' -count=1
         result: passed on 2026-10-01 with registered mandatory S1056 identity, match/default help, and catalog exposure; go run ./cmd/compiler diagnostics S1056 emits the active definition
       - command: go test ./internal/sema ./internal/diagnostics -run 'TestUseAfterDiscardHasStableMandatoryDiagnostic|TestRegistryIsValid|TestKnownDiagnosticSeverities|TestDiscardOwnedFieldConsumesItsPlace' -count=1

@@ -2,3 +2,7 @@ module unterminated_character_literal_invalid
 
 let broken := 'x
 let recoveredValue := 7
+
+/* Expected error: lexer.unterminated-character-literal, then recovery on the following line.
+ * Reason: rules/foundations/lexical_structure.md §13 and §20 end the candidate before the physical line ending.
+ */

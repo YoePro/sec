@@ -40,3 +40,41 @@ fn Add(left: int, right: int) int {
 		}
 	}
 }
+
+// Open error narrowing in try and match needs concrete error identity that
+// Semantic IR does not represent yet, so it is rejected explicitly.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §27.2 "Matching Result[T, error]", §35
+func TestOpenErrorNarrowingIsRejected(t *testing.T) {
+	sources := map[string]string{
+		"match": `module main
+enum IOError error { NotFound, }
+fn Read() Result[int, error] { return Ok(1) }
+fn F() int {
+  return match Read() {
+    Ok(value) => value
+    Err(IOError.NotFound) => 0
+    Err(_) => 1
+  }
+}
+`,
+		"try": `module main
+enum IOError error { NotFound, }
+fn Read() Result[int, error] { return Ok(1) }
+fn F() int {
+  return try Read() {
+    Err(IOError.NotFound) => 0
+    Err(_) => 1
+  }
+}
+`,
+	}
+	for name, source := range sources {
+		_, err := analyzedModule(t, source, 13)
+		var unsupported *UnsupportedFeatureError
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("%s: lowering error = %v, want an explicit unsupported feature", name, err)
+		}
+	}
+}

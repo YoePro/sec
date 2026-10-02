@@ -8,10 +8,98 @@ impl date {
     // int32
 
     enum Format {
-        YYYYMMDD,           // 2006-01-02
-        DDMMYYYY,           // 02-01-2006
-        MMDDYYYY,           // 01-02-2006
-        YYYYMMDDCompact,    // 20060102
+        YYYYMMDD,                                    // 2006-01-02
+        DDMMYYYY,                                    // 02-01-2006
+        MMDDYYYY,                                    // 01-02-2006
+        YYYYMMDDCompact,                             // 20060102
+        DDMMYYYYCompact,                             // 02012006
+        MMDDYYYYCompact,                             // 01022006
+        YYYYMMDDSlash,                               // 2006/01/02
+        DDMMYYYYSlash,                               // 02/01/2006
+        MMDDYYYYSlash,                               // 01/02/2006
+        YYYYMMDDDot,                                 // 2006.01.02
+        DDMMYYYYDot,                                 // 02.01.2006
+        MMDDYYYYDot,                                 // 01.02.2006
+        YYYYMMDDSpace,                               // 2006 01 02
+        DDMMYYYYSpace,                               // 02 01 2006
+        MMDDYYYYSpace,                               // 01 02 2006
+        YYYYMMDDHyphen,                              // 2006-01-02
+        DDMMYYYYHyphen,                              // 02-01-2006
+        MMDDYYYYHyphen,                              // 01-02-2006
+        YYYYMMDDUnderscore,                          // 2006_01_02
+        DDMMYYYYUnderscore,                          // 02_01_2006
+        MMDDYYYYUnderscore,                          // 01_02_2006
+        YYYYMonthDD,                                 // 2006-Jan-02
+        DDMonthYYYY,                                 // 02-Jan-2006
+        MonthDDYYYY,                                 // Jan-02-2006
+        YYYYMonthDDCompact,                          // 2006Jan02
+        DDMonthYYYYCompact,                          // 02Jan2006
+        MonthDDYYYYCompact,                          // Jan022006
+        YYYYMonthDDSlash,                            // 2006/Jan/02
+        DDMonthYYYYSlash,                            // 02/Jan/2006
+        MonthDDYYYYSlash,                            // Jan/02/2006
+        YYYYMonthDDDot,                              // 2006.Jan.02
+        DDMonthYYYYDot,                              // 02.Jan.2006
+        MonthDDYYYYDot,                              // Jan.02.2006
+        YYYYMonthDDSpace,                            // 2006 Jan 02
+        DDMonthYYYYSpace,                            // 02 Jan 2006
+        DDMonthYYYYLongSpace,                        // 02 January 2006
+        DDMonthYYYYLongHyphen,                       // 02-January-2006
+        DDMonthYYYYLongSlash,                        // 02/January/2006
+        DDMonthYYYYLongDot,                          // 02.January.2006
+        MonthDDYYYYSpace,                            // Jan 02 2006
+        YYYYMonthDDHyphen,                           // 2006-Jan-02
+        DDMonthYYYYHyphen,                           // 02-Jan-2006
+        MonthDDYYYYHyphen,                           // Jan-02-2006
+        YYYYMonthHyphen,                             // 2006-Jan
+        MonthYYYYHyphen,                             // Jan-2006
+        YYYYMONTHHyphen,                             // 2006-01
+        MONTHYYYYHyphen,                             // 01-2006
+        YYYYMONTHCompact,                            // 200601
+        MONTHYYYYCompact,                            // 012006
+        YYYY,                                        // 2006
+        MM,                                          // 01
+        DD,                                          // 02
+        Month,                                       // Jan
+        MONTH,                                       // 01
+        MonthLong,                                   // January
+        Week,                                        // 1
+        WeekdayShort,                                // Mon
+        WeekdayLong,                                 // Monday
+        WeekdayNumeric,                              // 1 (Monday)
+        WeekdayNumericSundayFirst,                   // 0 (Sunday)
+        WeekdayNumericISO,                           // 1 (Monday)
+        WeekdayNumericISOZeroBased,                  // 0 (Monday)
+        WeekdayNumericISOOneBased,                   // 1 (Monday)
+        WeekdayNumericISOZeroBasedSundayFirst,       // 0 (Sunday)
+        WeekdayNumericISOOneBasedSundayFirst,        // 1 (Sunday)
+        WeekdayNumericISOZeroBasedMondayFirst,       // 0 (Monday)
+        WeekdayNumericISOOneBasedMondayFirst,        // 1 (Monday)
+        WeekdayNumericISOZeroBasedTuesdayFirst,      // 0 (Tuesday)
+        WeekdayNumericISOOneBasedTuesdayFirst,       // 1 (Tuesday)
+        WeekdayNumericISOZeroBasedWednesdayFirst,    // 0 (Wednesday)
+        WeekdayNumericISOOneBasedWednesdayFirst,     // 1 (Wednesday)
+        WeekdayNumericISOZeroBasedThursdayFirst,     // 0 (Thursday)
+        WeekdayNumericISOOneBasedThursdayFirst,      // 1 (Thursday)
+        WeekdayNumericISOZeroBasedFridayFirst,       // 0 (Friday)
+        WeekdayNumericISOOneBasedFridayFirst,        // 1 (Friday)
+        WeekdayNumericISOZeroBasedSaturdayFirst,     // 0 (Saturday)
+        WeekdayNumericISOOneBasedSaturdayFirst,      // 1 (Saturday)
+        ISOWeek,                                     // 2006-W01
+        ISOWeekCompact,                              // 2006W01
+        ISOWeekHyphen,                               // 2006-W01
+        ISOWeekSlash,                                // 2006/W01
+        ISOWeekDot,                                  // 2006.W01
+        ISOWeekSpace,                                // 2006 W01
+        Quarter,                                     // Q1
+        YYQuarter,                                   // 06Q1
+        YYYYQuarter,                                 // 2006Q1
+        QuarterYY,                                   // Q106
+        QuarterYYYY,                                 // Q12006
+        QuarterHyphen,                               // Q1-2006
+        QuarterSlash,                                // Q1/2006
+        QuarterDot,                                  // Q1.2006
+        QuarterSpace,                                // Q1 2006
     }
 
     enum Weekdays {

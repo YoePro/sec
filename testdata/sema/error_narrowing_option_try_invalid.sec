@@ -1,0 +1,74 @@
+module main
+
+// Wrong carrier patterns, unpropagatable None, and invalid error narrowing.
+
+enum IOError error {
+    NotFound,
+    Busy,
+}
+
+fn Read() Result[int, error] {
+    return Ok(1)
+}
+
+fn ReadIO() Result[int, IOError] {
+    return Ok(1)
+}
+
+fn Find() Option[int] {
+    return None
+}
+
+fn Use(value: int) void {
+}
+
+fn ErrOnOption() int {
+    let value := try Find() {
+        Err(_) => 0
+    }
+    return value
+}
+
+fn GuardedNone(flag: bool) int {
+    let value := try Find() {
+        None where flag => 0
+    }
+    return value
+}
+
+fn ResultPatternsOnOption() int {
+    return match Find() {
+        Ok(value) => value
+        Err(_) => 0
+    }
+}
+
+fn OptionPatternsOnResult() int {
+    return match ReadIO() {
+        Some(value) => value
+        None => 0
+    }
+}
+
+fn OpenWithoutFallback() int {
+    return match Read() {
+        Ok(value) => value
+        Err(IOError.NotFound) => 0
+    }
+}
+
+fn ConcreteChannelNarrowing() int {
+    return match ReadIO() {
+        Ok(value) => value
+        Err(IOError.NotFound) => 0
+        Err(_) => 1
+    }
+}
+
+fn NarrowingAfterFallback() int {
+    return match Read() {
+        Ok(value) => value
+        Err(_) => 1
+        Err(IOError.NotFound) => 0
+    }
+}

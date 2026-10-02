@@ -1,0 +1,8 @@
+module main
+
+// rules/types/default_values.md — "in [...] tests".
+type Role string in ["admin", "user", "guest"]
+type Retry int in [3, 1, 5]
+type Flag bool in [true]
+type Override string in ["a", "b"] default "b"
+type EvenMembers int in [4, 2, 6] even

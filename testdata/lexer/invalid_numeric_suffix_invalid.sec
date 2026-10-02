@@ -7,3 +7,7 @@ let fractionalIntegerFamily := 1.5t
 let leadingFractionRuneFamily := .5r
 let exponentRuneFamily := 1e3r
 let following := 7
+
+/* Expected error: lexer.invalid-numeric-suffix for every non-canonical numeric suffix.
+ * Reason: rules/foundations/lexical_structure.md §12.7 and §18 allow only canonical family letters and forbid silently splitting tails such as 10meters.
+ */

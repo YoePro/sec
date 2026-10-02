@@ -297,7 +297,7 @@ fn ForwardUnionValue() int {
 type List[T] union {
     Node {
         value: T,
-        next: Box[List[T]]
+        next: List[T][]
     }
 
     End

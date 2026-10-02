@@ -1,9 +1,14 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
+
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 type CompilerKnownMemberKind string
@@ -27,6 +32,56 @@ type CompilerKnownMember struct {
 	// StructuralMutation is an operation-contract fact consumed by parameter
 	// usage analysis; it is not inferred from the source-level member name.
 	StructuralMutation bool
+	// Category is the semantic-authority classification that determines
+	// replacement and conflict policy.
+	Category CompilerKnownMemberCategory
+}
+
+// CompilerKnownMemberCategory classifies a compiler-known member by semantic
+// authority. The labels are compiler registry categories, not Sec enums.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — § 6 "Compiler-known fundamental categories", § 22 "Registry synchronization"
+type CompilerKnownMemberCategory string
+
+const (
+	CompilerProvidedFallbackMember        CompilerKnownMemberCategory = "CompilerProvidedFallbackMember"
+	AuthoritativeCompilerSemanticProperty CompilerKnownMemberCategory = "AuthoritativeCompilerSemanticProperty"
+	CompilerKnownOperation                CompilerKnownMemberCategory = "CompilerKnownOperation"
+	PrivilegedCoreMember                  CompilerKnownMemberCategory = "PrivilegedCoreMember"
+	OrdinaryUserMember                    CompilerKnownMemberCategory = "OrdinaryUserMember"
+)
+
+// UserReplacementPermitted reports whether an exact user-owned member may
+// replace this compiler-known member on an eligible user-owned type.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 7, 9, 11, 22, 23
+func (category CompilerKnownMemberCategory) UserReplacementPermitted() bool {
+	return category == CompilerProvidedFallbackMember || category == OrdinaryUserMember
+}
+
+// classifyCompilerKnownMember assigns the § 6 category: the universal
+// ToString() is the compiler-provided fallback, compiler-known properties
+// expose authoritative semantic facts (layout, length, emptiness, shaped and
+// numeric facts), and compiler-known methods and associated functions are
+// compiler-known operations.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 6–8, 11, 22
+func classifyCompilerKnownMember(member CompilerKnownMember) CompilerKnownMember {
+	if member.Category != "" {
+		return member
+	}
+	switch {
+	case member.Name == "ToString" && member.Kind == CompilerKnownMethod && strings.HasPrefix(member.ID, "CKM-TOSTRING"):
+		member.Category = CompilerProvidedFallbackMember
+	case member.Kind == CompilerKnownProperty:
+		member.Category = AuthoritativeCompilerSemanticProperty
+	default:
+		member.Category = CompilerKnownOperation
+	}
+	return member
 }
 
 type CompilerKnownFunction struct {
@@ -130,10 +185,14 @@ func compilerKnownFunction(name string) (CompilerKnownFunction, bool) {
 }
 
 func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
+	members := compilerKnownValueMembers(typ)
 	if static {
-		return compilerKnownStaticMembers(typ)
+		members = compilerKnownStaticMembers(typ)
 	}
-	return compilerKnownValueMembers(typ)
+	for index := range members {
+		members[index] = classifyCompilerKnownMember(members[index])
+	}
+	return members
 }
 
 // compilerKnownValueMembers builds the canonical registry view for value
@@ -757,4 +816,66 @@ func compilerKnownMutableReference(value Type) Type {
 
 func compilerKnownResult(value Type, err Type) Type {
 	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{value, err}}
+}
+
+// rejectAuthoritativeMemberReplacement rejects a user impl member that would
+// replace an authoritative compiler-known semantic property applicable to the
+// impl target, such as `SizeOf`, the layout truth of the active
+// CompilationPlan. Fallback members such as `ToString()` remain replaceable,
+// and loader-proven trusted core keeps its privileged implementing members.
+//
+// Rules:
+//   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 22, 23(3), 25(1)–(2), 26
+//   - rules/compiler/compile_time_evaluation.md — § 16 "SizeOf"
+//   - rules/compiler/compiler_known_members.md — authoritative semantic properties
+func (a *Analyzer) rejectAuthoritativeMemberReplacement(targetName string, target Type, member ast.ImplMember) bool {
+	name, token, ok := implMemberIdentity(member)
+	if !ok {
+		return false
+	}
+	// § 20: loader-proven trusted core may provide the privileged core
+	// declaration that implements a compiler-known surface.
+	if a.isTrustedCoreSourceToken(token) {
+		return false
+	}
+	for _, static := range []bool{false, true} {
+		known, found := compilerKnownMember(target, name, static)
+		if !found || known.Category != AuthoritativeCompilerSemanticProperty {
+			continue
+		}
+		a.addErrorAtTokenWithMetadata(
+			token,
+			diagnostics.AuthoritativeMemberReplacement,
+			fmt.Sprintf("remove the member; %s.%s is provided by the compiler for this type", targetName, known.Name),
+			"%s is an authoritative compiler-known property for %s and cannot be replaced by a user-defined member",
+			known.Name,
+			targetName,
+		)
+		return true
+	}
+	return false
+}
+
+// implMemberIdentity returns the declared name and name token of an impl
+// member that introduces a named member.
+func implMemberIdentity(member ast.ImplMember) (string, lexer.Token, bool) {
+	switch member := member.(type) {
+	case *ast.FunctionDeclaration:
+		if member.Name != nil {
+			return member.Name.Value, member.Name.Token, true
+		}
+	case *ast.PropertyDeclaration:
+		if member.Name != nil {
+			return member.Name.Value, member.Name.Token, true
+		}
+	case *ast.LetStatement:
+		if member.Name != nil {
+			return member.Name.Value, member.Name.Token, true
+		}
+	case *ast.EventDeclaration:
+		if member.Name != nil {
+			return member.Name.Value, member.Name.Token, true
+		}
+	}
+	return "", lexer.Token{}, false
 }

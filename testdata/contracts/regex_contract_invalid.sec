@@ -1,0 +1,14 @@
+module main
+
+// rules/types/contracts.md — "String and collection contracts": the regex
+// syntax and engine are not yet fixed, so every regex contract is rejected
+// with S1058 types.regex-contract-unavailable (MD-010).
+type Email string regex "^[a-z]+@[a-z]+$" minLen 3
+
+// regex applies only to string-like named types.
+type Count int regex "[0-9]+"
+
+// The pattern must be a compile-time string.
+type Code string regex 42
+
+fn main() void {}

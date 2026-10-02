@@ -460,6 +460,10 @@ func (ie *InterfaceEvent) TokenLiteral() string {
 type Identifier struct {
 	Token lexer.Token
 	Value string
+	// ForeignSeparators holds the two adjacent ':' tokens of every `::` in a
+	// foreign-qualified name such as C::int or c::stddef::size_t, so the CST
+	// can keep the qualification contiguous. Token spans the complete name.
+	ForeignSeparators []lexer.Token
 }
 
 func (i *Identifier) expressionNode() {}
@@ -481,6 +485,9 @@ func (i *Identifier) String() string {
 //	ref byte[]
 type TypeReference struct {
 	Token lexer.Token
+	// ForeignSeparators holds the ':' tokens of every `::` in a C:: or c::
+	// foreign-qualified type name (rules/platform/ffi.md §5-6).
+	ForeignSeparators []lexer.Token
 	// Invalid marks a recovered type reference that must resolve to ErrorType
 	// without producing dependent semantic diagnostics.
 	Invalid  bool
@@ -659,6 +666,24 @@ func (mc *MarkerContract) contractNode() {}
 
 func (mc *MarkerContract) TokenLiteral() string {
 	return mc.Token.Lexeme
+}
+
+// RegexContract represents the pattern contract `regex Pattern`. Pattern is
+// retained as the parsed constant expression; Sema owns the compile-time
+// string requirement and applicability.
+//
+// Rules:
+//   - rules/types/contracts.md — "Applicability" and "String and collection contracts"
+//   - rules/foundations/grammar.md — "Type contracts"
+type RegexContract struct {
+	Token   lexer.Token
+	Pattern Expression
+}
+
+func (rc *RegexContract) contractNode() {}
+
+func (rc *RegexContract) TokenLiteral() string {
+	return rc.Token.Lexeme
 }
 
 // --------------------------------------------------------------------
@@ -1915,9 +1940,13 @@ type MatchPattern struct {
 	Name      string
 	NameToken lexer.Token
 	Binding   *MatchPatternBinding
-	Fields    []*MatchFieldPattern
-	Invalid   bool
-	Recovery  *RecoveryInfo
+	// ErrorVariant holds the qualified concrete error variant of an
+	// `Err(ErrorType.Variant)` narrowing pattern
+	// (rules/control-flow/flowcontrol_match.md "Open error narrowing").
+	ErrorVariant *MemberExpression
+	Fields       []*MatchFieldPattern
+	Invalid      bool
+	Recovery     *RecoveryInfo
 }
 
 type MatchPatternBinding struct {
@@ -2001,6 +2030,9 @@ func (mp *MatchPattern) Expression() Expression {
 		return &Identifier{Token: mp.Token, Value: value}
 	case MatchPatternVariant:
 		base := matchPatternNameExpression(mp.Token, mp.NameToken, mp.Name)
+		if mp.Name == "Err" && mp.ErrorVariant != nil {
+			return &ErrExpression{Token: mp.Token, Value: mp.ErrorVariant, Arguments: []Expression{mp.ErrorVariant}}
+		}
 		if mp.Binding == nil {
 			return base
 		}
@@ -2339,6 +2371,35 @@ func (sl *StructLiteral) TokenLiteral() string {
 
 func (sl *StructLiteral) String() string {
 	return sl.Type.Name + "{...}"
+}
+
+// CollectionLiteral is the compiler-known empty collection literal
+// `list[T] {}` or `list[T, Capacity] {}`. It is a collection literal, not a
+// struct literal; the brace pair carries no elements. Invalid records a
+// recovered literal whose braces contained unsupported elements.
+//
+// Rules:
+//   - rules/collections/collections.md — §13.3 canonical explicit empty forms
+//   - rules/types/default_values.md — "List defaults"
+type CollectionLiteral struct {
+	Token   lexer.Token
+	Type    *TypeReference
+	Open    lexer.Token
+	Close   lexer.Token
+	Invalid bool
+}
+
+func (cl *CollectionLiteral) expressionNode() {}
+
+func (cl *CollectionLiteral) TokenLiteral() string {
+	return cl.Token.Lexeme
+}
+
+func (cl *CollectionLiteral) String() string {
+	if cl.Type == nil {
+		return "list {}"
+	}
+	return cl.Type.Name + "[...] {}"
 }
 
 type StructLiteralField struct {

@@ -1,0 +1,14 @@
+module main
+
+// rules/types/default_values.md — "Range tests" failure cases.
+type NonZeroOdd int range -9..9 odd
+type InvalidExplicit int range 1..100 default 0
+type Unrepresentable uint8 range 1..10 default 300
+type GeneralFloat float range 1.5..9.0
+
+fn Use() void {
+    let mut ambiguous: NonZeroOdd
+    let mut general: GeneralFloat
+    discard ambiguous
+    discard general
+}

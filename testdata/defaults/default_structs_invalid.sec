@@ -1,0 +1,27 @@
+module main
+
+// rules/types/default_values.md — "Struct tests" failure cases.
+type NonZeroOdd int range -9..9 odd
+type Port int range 1..65535 default 0
+
+type Holder struct {
+    candidate: NonZeroOdd,
+}
+
+type Server struct {
+    port: Port,
+}
+
+type Owner struct {
+    value: ref int,
+}
+
+fn Build(value: ref int) void {
+    let holder := Holder {}
+    let server := Server {}
+    let owner := Owner {}
+    discard holder
+    discard server
+    discard owner
+    discard value
+}

@@ -1,0 +1,16 @@
+module main
+
+// rules/types/default_values.md — "Range tests".
+type ZeroValid int range -5..5
+type PositiveOnly int range 3..10
+type NegativeOnly int range -10..-4
+type PositiveEven int range 3..10 even
+type PositiveOdd int range 4..10 odd
+type FloatRange float range 1.5..9.0
+type DecimalRange decimal range 0.01..100.00
+type ExplicitOverride int range 1..100 default 42
+type ExclusiveUpper int range -9..<-2
+type BinaryLower float64 range 1.5..9.0
+type InexactLower32 float32 range 0.1..9.0
+type ExclusiveNegative float64 range -9.0..<-2.5
+type NamedOverFloat BinaryLower

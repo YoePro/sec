@@ -285,6 +285,7 @@ integrations:
       - the formatter keeps the body brace separated from a trailing state word in if and while conditions
       - match over a possibly-empty local union binding reads the subject without a value read, accepts the compiler-known empty pattern, requires an unguarded empty arm or _ for exhaustiveness, proves the binding initialized inside every variant arm, rejects duplicate empty arms, and rejects an empty arm on a known-initialized subject as unreachable
       - ResolvedMatchPlan records EmptyStateReachable and an empty-state arm so termination and return analysis include the empty arm; Semantic IR and both legacy backends reject the empty state explicitly instead of treating it as a catch-all
+      - direct, mutual, Option/Result-mediated, and generic-instantiation recursive union storage is rejected through the shared by-value layout dependency graph with mandatory S1071 union.recursive-by-value-layout (or S1055 when the cycle passes through a struct) and the full variant path
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
       - record active-variant refinement (beyond initialization) for later member and payload analyses
@@ -292,7 +293,7 @@ integrations:
       - warn when an unguarded _ absorbs a reachable empty state without an explicit empty arm (optional tooling policy in §10.4)
       - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
       - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
-      - complete layout-aware recursive-storage validation across every finite and infinite indirection form
+      - classify the finite indirection carrier used by unions.md §18 (`Box[List[T]]`), which no rulebook defines yet (missing-decisions.yaml MD-018)
       - support explicit generic constructor qualification such as Option[int].Some(10)
       - require explicit `<-` when a reusable source is consumed into a union payload and reject legacy word-form move syntax
       - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
@@ -307,6 +308,8 @@ integrations:
         result: passed on 2026-10-01; empty arms, catch-all coverage, per-arm initialization refinement, termination, and missing, impossible, duplicate, and still-empty diagnostics are covered
       - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'Test(ConditionStateTestsParse|UnionState|FormatUnionStateTests)' -count=1
         result: passed on 2026-10-01; state tests parse, type, refine definite assignment, diagnose impossible and invalid tests, and format canonically
+      - command: "go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1"
+        result: passed on 2026-10-02 with Option/Result payload, instantiation-only, nested-generic parameter, mutual generic, mutual union, and union-payload-field-through-struct cycles, valid slice/ref/dynamic boundaries inside tagged and generic carriers, and a single diagnostic for direct union self-recursion
   - id: frontend.properties
     area: frontend-analysis
     status: partial

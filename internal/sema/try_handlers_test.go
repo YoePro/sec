@@ -92,3 +92,82 @@ func TestTryHandlerGuardMustNotConsumeBinding(t *testing.T) {
 		t.Fatalf("errors = %+v, want one guard-consumption diagnostic", errors)
 	}
 }
+
+// Option try handlers recover absence with None, open error channels allow
+// concrete narrowing in try and match while keeping an error fallback, and the
+// resolved plans mark the Option and narrowing forms explicitly.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §10.2 "Option[T]", §15 "Local try handlers", §16, §27.2 "Matching Result[T, error]"
+//   - rules/control-flow/flowcontrol_match.md — "Open error narrowing"
+func TestOptionTryHandlersAndOpenErrorNarrowing(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/sema/error_narrowing_option_try_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, string(input))
+	if len(errors) != 0 {
+		t.Fatalf("errors = %+v, want none", errors)
+	}
+	var optionPlans, optionResidual, narrowedTry int
+	for _, plan := range analyzer.resolvedTryPlans {
+		for _, handler := range plan.Handlers {
+			if handler.PatternKind == TryHandlerOptionNone {
+				optionPlans++
+				if plan.ResidualPropagates {
+					optionResidual++
+				}
+			}
+			if handler.OpenErrorNarrowing && handler.Variant == "IOError.NotFound" {
+				narrowedTry++
+			}
+		}
+	}
+	narrowedMatch := 0
+	for _, plan := range analyzer.resolvedMatchPlans {
+		for _, arm := range plan.Arms {
+			if arm.PatternKind == MatchPatternResultErrNarrowed && arm.UnionVariantName == "IOError.NotFound" {
+				narrowedMatch++
+			}
+		}
+	}
+	if optionPlans != 3 || optionResidual != 1 || narrowedTry != 1 || narrowedMatch != 1 {
+		t.Fatalf("option handlers = %d, residual = %d, narrowed try = %d, narrowed match = %d; want 3, 1, 1, 1", optionPlans, optionResidual, narrowedTry, narrowedMatch)
+	}
+}
+
+// Wrong-carrier patterns, unpropagatable None, open matches without an error
+// fallback, concrete-channel narrowing, and narrowing after a fallback are
+// rejected with mentor diagnostics.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §12.2, §12.3, §16, §27.1, §27.2, §30
+func TestOptionTryAndNarrowingDiagnostics(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/sema/error_narrowing_option_try_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errors := analyzeSourceRaw(t, string(input))
+	wants := []struct {
+		line    int
+		message string
+	}{
+		{27, "try on Option[int] handles absence with None => ...; Err(_) is not an Option state"},
+		{33, "try handlers leave None unhandled; it propagates only through an Option return, but this function returns int"},
+		{41, "Ok and Err patterns match Result values; Option[int] uses Some(value) and None"},
+		{42, "Ok and Err patterns match Result values"},
+		{48, "Some and None patterns match Option values; Result[int, IOError] uses Ok(value) and Err(error)"},
+		{49, "Some and None patterns match Option values"},
+		{54, "concrete error arms cannot cover the open error domain; add Err(errorValue) or Err(_)"},
+		{63, "Err(IOError.NotFound) narrows only an open Result[T, error] channel"},
+		{72, "unreachable match arm; an earlier Err fallback already handles every error"},
+	}
+	if len(errors) != len(wants) {
+		t.Fatalf("errors = %+v, want %d", errors, len(wants))
+	}
+	for i, want := range wants {
+		if errors[i].Line != want.line || !strings.Contains(errors[i].Message, want.message) {
+			t.Fatalf("error %d = %+v, want %q at line %d", i, errors[i], want.message, want.line)
+		}
+	}
+}

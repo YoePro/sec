@@ -21,6 +21,9 @@ type ResolvedScalarPlan struct {
 	Profile          string
 	PointerWidthBits uint16
 	Endianness       Endianness
+	// CABI is the target's resolved C ABI data model. It is empty for targets
+	// that supply no C ABI, in which case C:: types cannot be resolved.
+	CABI CABIModel
 }
 
 func (p ResolvedScalarPlan) Validate() error {
@@ -32,6 +35,12 @@ func (p ResolvedScalarPlan) Validate() error {
 	}
 	if p.Endianness != LittleEndian && p.Endianness != BigEndian {
 		return fmt.Errorf("scalar plan endianness must be little or big, got %q", p.Endianness)
+	}
+	if err := p.CABI.Validate(); err != nil {
+		return err
+	}
+	if p.CABI.Defined() && p.CABI.PointerWidthBits != p.PointerWidthBits {
+		return fmt.Errorf("C ABI model %s pointer width %d does not match target pointer width %d", p.CABI.Name, p.CABI.PointerWidthBits, p.PointerWidthBits)
 	}
 	return nil
 }

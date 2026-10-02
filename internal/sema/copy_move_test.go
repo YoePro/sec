@@ -2965,3 +2965,53 @@ func TestReferenceOriginJoinCapsPathExplosionAsUnknown(t *testing.T) {
 		t.Fatal("over-limit provenance must remain conservatively non-reborrowable")
 	}
 }
+
+// Arena ownership is move-only and non-trivially destructible, and both
+// traits propagate through containing aggregates by composition; implicit
+// copies are rejected while the canonical move remains valid.
+//
+// Rules:
+//   - rules/memory/arena.md — § 7(1)-(3) "Arena ownership"
+//   - rules/memory/arena.md — § 8(1)-(3) "Arena composition"
+func TestArenaOwnershipTraitsPropagateThroughAggregates(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+type WorkerStorage struct {
+    arena: Arena
+}
+type Pool struct {
+    workers: WorkerStorage[2]
+}
+fn main() void {}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("declaration errors = %v", errors)
+	}
+	for _, name := range []string{"Arena", "WorkerStorage", "Pool"} {
+		typ := analyzer.types[name]
+		if !MoveOnly(typ) || TriviallyDestructible(typ) {
+			t.Fatalf("%s traits = copy %q, trivial destruction %v; want move-only and non-trivial destruction", name, CopyClassificationOf(typ), TriviallyDestructible(typ))
+		}
+	}
+
+	for _, test := range []struct {
+		name    string
+		binding string
+		wantErr bool
+	}{
+		{name: "arena copy", binding: "let second := first", wantErr: true},
+		{name: "arena move", binding: "let second :<- first"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			errors := analyzeSourceRaw(t, `module main
+fn Use() void {
+    let first: Arena := Arena {}
+    `+test.binding+`
+    discard second
+}
+`)
+			if test.wantErr && (len(errors) != 1 || !strings.Contains(errors[0].Message, "move-only")) || !test.wantErr && len(errors) != 0 {
+				t.Fatalf("errors = %v, want error %v", errors, test.wantErr)
+			}
+		})
+	}
+}

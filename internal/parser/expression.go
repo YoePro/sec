@@ -614,6 +614,22 @@ func (p *Parser) parseMatchPattern() *ast.MatchPattern {
 			)
 			return nil
 		}
+		// Open error narrowing: `Err(ErrorType.Variant)` names a concrete error
+		// variant; Sema decides whether the subject's error channel permits it.
+		if pattern.Name == "Err" && p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.DOT {
+			owner := &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
+			p.nextToken()
+			if !p.expectPeek(lexer.IDENT) {
+				p.skipRejectedMatchPayload()
+				return nil
+			}
+			pattern.ErrorVariant = &ast.MemberExpression{Token: owner.Token, Object: owner, Property: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}}
+			if !p.expectPeek(lexer.RPAREN) {
+				p.skipRejectedMatchPayload()
+				return nil
+			}
+			return pattern
+		}
 		pattern.Binding = p.parseMatchPatternBinding()
 		if pattern.Binding == nil {
 			p.skipRejectedMatchPayload()
@@ -860,6 +876,9 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Expression {
 	bracketToken := p.curToken
+	if identifier, ok := left.(*ast.Identifier); ok && identifier.Value == "list" {
+		return p.parseListCollectionLiteral(identifier, bracketToken)
+	}
 	typeArgs := p.parseTypeArgs()
 	if p.curToken.Type != lexer.RBRACKET {
 		// A bracket expression is parsed speculatively because an ordinary
@@ -1610,6 +1629,15 @@ func (p *Parser) parseRefExpression() ast.Expression {
 }
 
 func (p *Parser) parseIdentifierExpression() ast.Expression {
+	// rules/platform/ffi.md §8: C::int(value) is an explicit conversion whose
+	// callee is the foreign-qualified type name.
+	if p.atForeignQualifier() {
+		foreign := p.parseForeignQualifiedName()
+		if !foreign.Valid {
+			return &ast.InvalidExpression{Token: foreign.Token}
+		}
+		return &ast.Identifier{Token: foreign.Token, Value: foreign.Name, ForeignSeparators: foreign.Separators}
+	}
 	return &ast.Identifier{
 		Token: p.curToken,
 		Value: p.curToken.Lexeme,
@@ -2000,4 +2028,59 @@ func (p *Parser) curPrecedence() precedence {
 	}
 
 	return LOWEST
+}
+
+// parseListCollectionLiteral parses the compiler-known empty list literals
+// `list[T] {}` and `list[T, Capacity] {}` with the canonical collection type
+// argument grammar, so a capacity constant is accepted in expression position.
+// It returns nil when the bracket is not followed by a literal body, letting
+// the caller roll back to ordinary indexing. Elements inside the braces are
+// not defined syntax: they are reported once and skipped to the matching
+// closing brace, retaining an invalid literal for tooling.
+//
+// Rules:
+//   - rules/collections/collections.md — §13.3 canonical explicit empty forms
+//   - rules/types/default_values.md — "List defaults"
+//   - rules/foundations/grammar.md — "Collection and shaped types"
+//   - rules/compiler/parser_recovery.md — "Bounded damage"
+func (p *Parser) parseListCollectionLiteral(identifier *ast.Identifier, bracketToken lexer.Token) ast.Expression {
+	ref := &ast.TypeReference{Token: identifier.Token, Name: identifier.Value}
+	ref = p.parseCollectionShapedTypeReferenceArgs(ref, bracketToken)
+	if ref == nil || ref.Invalid || p.curToken.Type != lexer.RBRACKET || p.peekToken.Type != lexer.LBRACE {
+		return nil
+	}
+	p.nextToken()
+	literal := &ast.CollectionLiteral{Token: identifier.Token, Type: ref, Open: p.curToken}
+	if p.peekToken.Type == lexer.RBRACE {
+		p.nextToken()
+		literal.Close = p.curToken
+		return literal
+	}
+	unexpected := p.peekToken
+	p.addDiagnostic(
+		compilerdiagnostics.ParserInvalidExpression,
+		unexpected,
+		nil,
+		&unexpected,
+		"list literal must be empty: only list[T] {} and list[T, Capacity] {} are defined, got %q at %d:%d",
+		unexpected.Lexeme,
+		unexpected.Line,
+		unexpected.Column,
+	)
+	literal.Invalid = true
+	depth := 0
+	for p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		switch p.curToken.Type {
+		case lexer.LBRACE:
+			depth++
+		case lexer.RBRACE:
+			if depth == 0 {
+				literal.Close = p.curToken
+				return literal
+			}
+			depth--
+		}
+	}
+	return literal
 }

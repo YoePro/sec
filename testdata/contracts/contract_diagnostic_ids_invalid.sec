@@ -1,0 +1,22 @@
+module main
+
+// rules/types/contracts.md — "Diagnostics": every contract failure family has a
+// stable registered identity (rules/tooling/diagnostics.md § 2(6)).
+
+type Flag bool range 0..1
+type OddEven int odd even
+type Zero int multipleOf 0
+type Mixed string in ["a", 1]
+
+type Percent int range 0..100
+type Name string notEmpty
+
+fn main() void {
+    let percent: Percent := 101
+    let name: Name := ""
+    let mut current: Percent := 1
+    current = 2
+    discard percent
+    discard name
+    discard current
+}

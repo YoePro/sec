@@ -944,6 +944,7 @@ integrations:
       - internal/codegen/mlir/generator.go
       - internal/codegen/llvm/statements.go
       - sec/core/string.sec
+      - internal/sema/analyzer_for.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -960,6 +961,7 @@ integrations:
       - testdata/parser/for_binding_modes_invalid.sec
       - testdata/sema/for_binding_modes_valid.sec
       - testdata/sema/for_binding_modes_invalid.sec
+      - internal/sema/for_structural_mutation_test.go
     implemented:
       - infinite for block syntax
       - iterable for binding in expression block syntax
@@ -997,6 +999,7 @@ integrations:
       - float and decimal range iteration requires an explicit step, and an unsigned range rejects a compile-time negative step
       - the legacy MLIR generator rejects reference loop bindings explicitly instead of lowering them as copies
       - for statement analysis lives in internal/sema/analyzer_for.go with per-function rulebook traceability
+      - while a loop iterates reusable dynamic-array, list, map, or set storage, a compiler-known structural operation (selected by the registry StructuralMutation contract, never by name) or an assignment on the iterated collection or any storage enclosing it is rejected with mandatory S1075 for.structural-mutation-during-iteration, the operation, both Places, help, and the loop location; element assignment, mutation inside one element or through a ref mut binding, sibling storage, ranges, and code after the loop remain valid
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
@@ -1009,7 +1012,7 @@ integrations:
       - require explicit compatible negative steps for descending iteration without synthesizing signed conversion for unsigned ranges
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and maintained backends
-      - reject structural operations that invalidate active iteration state or element references while preserving legal mutation through iterator-provided ref mut
+      - extend structural-stability checking to user-defined operations and calls that receive mutable authority over the iterated collection (requires interprocedural structural-mutation summaries) and to collections reached through Iterator[T] sources
       - lower compiler-known Iterator[T] loops through Semantic IR and maintained backends as repeated statically resolved Next calls with Some/None control flow and cleanup
       - expose Iterator[T], resolved element type, and selected Next operation in dedicated LSP hover and completion contexts beyond ordinary shared Sema diagnostics
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
@@ -1087,6 +1090,10 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/sema ./internal/codegen/mlir -run 'Test(ForBindingModesAndConsumingForms|ForBindingModesAccepted|ForBindingModeDiagnostics|ForRangeStepRequirements|LegacyGeneratorRejectsReferenceLoopBindings)' -count=1
         result: passed on 2026-10-01; binding modes, consuming-form rejection, category and authority validation, plain-binding copyability, float/decimal and unsigned step rules, and the legacy MLIR guard are covered
+      - command: "go test ./internal/sema -run 'StructuralMutation|NonStructuralMutation' -count=1"
+        result: passed on 2026-10-02 with Append/Clear/RemoveAt/Remove/Add, whole and enclosing replacement, field and reference-parameter sources, and outer-loop sources from inner loops rejected, and eight structurally safe forms accepted
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-02 after the structural-stability check
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow
     status: implemented

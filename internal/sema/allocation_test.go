@@ -1,6 +1,10 @@
 package sema
 
-import "testing"
+import (
+	"testing"
+
+	"sec/internal/diagnostics"
+)
 
 func TestAllocationMetadataDefaultsToNoAllocation(t *testing.T) {
 	input := `
@@ -169,5 +173,76 @@ fn main() void {
 	}
 	if summary := graph.ArenaSummary(mainID); summary.MayAllocate || len(summary.AllocationPath) != 0 {
 		t.Fatalf("spawned body allocation leaked into spawner summary: %+v", summary)
+	}
+}
+
+// Arena.New[T] and Arena.Alloc[T] share the safe typed-allocation type
+// requirements, and each violation is its own registered error family.
+//
+// Rules:
+//   - rules/memory/arena.md — § 19(1)-(4) "Type requirements"
+//   - rules/memory/arena.md — § 120(1) required error categories
+func TestArenaTypedAllocationRequirementsUseDistinctDiagnostics(t *testing.T) {
+	declarations := `module main
+interface Drawable {
+    fn Area() int
+}
+type Holder struct {
+    target: ref int
+}
+`
+	tests := []struct {
+		name    string
+		element string
+		wantID  string
+	}{
+		{name: "sized defaultable trivial", element: "int"},
+		{name: "fixed array", element: "int[4]"},
+		{name: "interface is unsized", element: "Drawable", wantID: diagnostics.ArenaUnsizedAllocationType},
+		{name: "void is unsized", element: "void", wantID: diagnostics.ArenaUnsizedAllocationType},
+		{name: "reference field has no default", element: "Holder", wantID: diagnostics.ArenaAllocationMissingDefault},
+		{name: "owning dynamic array needs destruction", element: "int[]", wantID: diagnostics.ArenaNonTrivialDestructionType},
+	}
+	for _, test := range tests {
+		for _, call := range []string{"New[" + test.element + "]()", "Alloc[" + test.element + "](4u)"} {
+			t.Run(test.name+"/"+call, func(t *testing.T) {
+				errors := analyzeSourceRaw(t, declarations+`
+fn Use(buffer: ref mut byte[]) Result[void, AllocationError] {
+    let mut arena := Arena.FromBuffer(buffer)
+    let value := try arena.`+call+`
+    discard value
+    return Ok()
+}
+`)
+				if test.wantID == "" {
+					if len(errors) != 0 {
+						t.Fatalf("errors = %v, want none", errors)
+					}
+					return
+				}
+				if len(errors) != 1 || errors[0].ID != test.wantID || errors[0].Help == "" {
+					t.Fatalf("errors = %+v, want exactly one %s with help", errors, test.wantID)
+				}
+			})
+		}
+	}
+}
+
+// A generic parameter keeps its layout, default, and destruction facts until
+// instantiation, so the generic body is not rejected eagerly.
+func TestArenaTypedAllocationDefersGenericParameters(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+fn Make[T](buffer: ref mut byte[]) Result[void, AllocationError] {
+    let mut arena := Arena.FromBuffer(buffer)
+    let value := try arena.New[T]()
+    discard value
+    return Ok()
+}
+`)
+	for _, err := range errors {
+		switch err.ID {
+		case diagnostics.ArenaUnsizedAllocationType, diagnostics.ArenaAllocationMissingDefault, diagnostics.ArenaNonTrivialDestructionType:
+			t.Fatalf("generic parameter rejected eagerly: %v", err)
+		}
 	}
 }

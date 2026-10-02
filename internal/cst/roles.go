@@ -59,11 +59,30 @@ const (
 	// PrefixOperator marks the operator token of a parsed unary prefix
 	// expression, including the <- consuming call-site marker.
 	PrefixOperator Role = "prefix-operator"
+	// ForeignQualifierSeparator marks each ':' of a parser-confirmed `::` in
+	// a C:: or c:: foreign-qualified name. The qualification is one contiguous
+	// name: no space separates the family, separators, and segments.
+	//
+	// Rules: rules/platform/ffi.md §5-6; rules/foundations/grammar.md ForeignTypeReference.
+	ForeignQualifierSeparator Role = "foreign-qualifier-separator"
 	// DeclarationColon marks the type-annotation colon of a let declaration.
 	DeclarationColon Role = "declaration-colon"
 	// SpacedKeyword marks a statement or control-flow keyword that is followed
 	// by exactly one space when its operand continues on the same line.
 	SpacedKeyword Role = "spaced-keyword"
+	// NamedTypeBaseStart marks the first base-type token of a simple named-type
+	// declaration such as `type Port int range 1..65535`.
+	NamedTypeBaseStart Role = "named-type-base-start"
+	// NamedTypeContractStart marks the first contract or default-clause token
+	// of a simple named-type declaration.
+	NamedTypeContractStart Role = "named-type-contract-start"
+	// EmptyCollectionLiteralClose marks the closing brace of an empty
+	// compiler-known collection literal, written directly after its opener.
+	EmptyCollectionLiteralClose Role = "empty-collection-literal-close"
+	// SpacedBefore marks a parser-confirmed token preceded by exactly one space
+	// when it continues the same line, such as a named-type contract start or
+	// default clause.
+	SpacedBefore Role = "spaced-before"
 	// ControlBodyOpen marks the real opening brace of a switch or match body,
 	// which is not an executable BlockStatement.
 	ControlBodyOpen Role = "control-body-open"
@@ -277,6 +296,102 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			d.Elements[index].Roles = appendUniqueRole(d.Elements[index].Roles, role)
 		}
 	}
+	// markDeclarationHeader gives a word-structured declaration header one
+	// canonical space between its words, from the declaration keyword up to the
+	// opening body brace or the end of the line. Bracketed, parenthesized, and
+	// angle-bracketed parts stay attached to the word on their left, member dots
+	// and commas keep their own spacing, an enum-underlying colon binds left, and
+	// the body brace follows one space.
+	//
+	// Rules:
+	//   - rules/tooling/formatter.md — §3 canonical model, §6(4) declaration colon, §8(1) same-line braces
+	//   - rules/foundations/grammar.md — EnumDeclaration, UnitDeclaration, InterfaceDeclaration, ImplDeclaration, SingleImport
+	markDeclarationHeader := func(start lexer.Token) {
+		startIndex, ok := indexes[keyForToken(start)]
+		if !ok {
+			return
+		}
+		line := start.Line
+		depth := 0
+		previous := -1
+		for index := startIndex; index < len(d.Elements); index++ {
+			element := d.Elements[index]
+			if element.Kind != Token {
+				if element.Kind == Comment {
+					return
+				}
+				continue
+			}
+			if element.Token.Line != line {
+				return
+			}
+			typ := element.Token.Type
+			if depth == 0 && previous >= 0 {
+				left := d.Elements[previous].Token.Type
+				switch {
+				case typ == lexer.LBRACE:
+					markIndex(index, SpacedBefore)
+					return
+				case typ == lexer.COLON:
+					markIndex(index, DeclarationColon)
+				case left == lexer.COLON:
+				case typ == lexer.LBRACKET || typ == lexer.LPAREN || typ == lexer.LT || typ == lexer.DOT || typ == lexer.COMMA ||
+					left == lexer.DOT:
+				case left == lexer.COMMA:
+					markIndex(index, SpacedBefore)
+				default:
+					markIndex(previous, SpacedKeyword)
+				}
+			}
+			switch typ {
+			case lexer.LBRACKET, lexer.LPAREN, lexer.LT:
+				depth++
+			case lexer.RBRACKET, lexer.RPAREN, lexer.GT:
+				if depth > 0 {
+					depth--
+				}
+			}
+			if depth == 0 {
+				previous = index
+			}
+		}
+	}
+	// markTypeFirstDeclarator assigns spacing roles to `T mut: name`,
+	// `T: name := value`, and the parenthesized group `T (name := value, ...)`.
+	// The declarator's own name is the anchor; the colon binds to the type or
+	// `mut` on its left, `mut` follows the type after one space, and a group's
+	// opening parenthesis follows the type after one space.
+	//
+	// Rules:
+	//   - rules/types/types.md — "Type-first declarations", "Parenthesized immutable type-first groups"
+	//   - rules/tooling/formatter.md — §6(4) declaration colon, §3 canonical spacing
+	markTypeFirstDeclarator := func(node *ast.LetStatement) {
+		nameIndex, ok := indexes[keyForToken(node.Name.Token)]
+		if !ok {
+			return
+		}
+		previous := func(index int) int {
+			for index--; index >= 0; index-- {
+				if d.Elements[index].Kind == Token {
+					return index
+				}
+			}
+			return -1
+		}
+		before := previous(nameIndex)
+		if before < 0 {
+			return
+		}
+		switch d.Elements[before].Token.Type {
+		case lexer.COLON:
+			markIndex(before, DeclarationColon)
+			if mutIndex := previous(before); mutIndex >= 0 && d.Elements[mutIndex].Token.Type == lexer.MUT {
+				markIndex(mutIndex, SpacedBefore)
+			}
+		case lexer.LPAREN:
+			markIndex(before, SpacedBefore)
+		}
+	}
 	markAttachedAttributes := func(attributes []*ast.Attribute, declaration lexer.Token) {
 		if len(attributes) == 0 || declaration.Type == lexer.EOF {
 			return
@@ -378,8 +493,11 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			if node.Token.Type == lexer.LET {
 				mark(node.Token, SpacedKeyword)
 			}
-			if node.Mutable {
+			if node.Mutable && node.Token.Type == lexer.LET {
 				markIndex(nextTokenAtDepth(node.Token, func(typ lexer.TokenType) bool { return typ == lexer.MUT }), SpacedKeyword)
+			}
+			if node.Token.Type != lexer.LET {
+				markTypeFirstDeclarator(node)
 			}
 			if node.Type != nil && !node.Type.Invalid {
 				colon := nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool { return true })
@@ -391,6 +509,81 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				markIndex(nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool {
 					return typ == lexer.DECLARE || typ == lexer.MOVE_DECLARE
 				}), AssignmentOperator)
+			}
+		case *ast.TypeDeclStatement:
+			// rules/tooling/formatter.md §3 and §6: one canonical space separates
+			// the words of a named-type header, its sequential contracts, and its
+			// default clause (rules/foundations/grammar.md "Type contracts",
+			// "Default clause"). Gaps inside contract operands keep their roles.
+			if node.Name == nil {
+				break
+			}
+			mark(node.Token, SpacedKeyword)
+			if len(node.GenericParameters) == 0 {
+				mark(node.Name.Token, SpacedKeyword)
+			} else {
+				// After a generic parameter list the following header word
+				// carries the space instead of the declared name.
+				markIndex(nextTokenAtDepth(node.Name.Token, func(typ lexer.TokenType) bool { return typ != lexer.LBRACKET }), SpacedBefore)
+			}
+			if node.ErrorType {
+				mark(node.ErrorToken, SpacedBefore)
+			}
+			// rules/tooling/formatter.md §7(6) and §9(2): simple named-type
+			// declarations expose their base-type and first contract/default
+			// anchors for homogeneous group alignment.
+			if isSimpleNamedTypeDeclaration(node) {
+				markIndex(nextTokenAtDepth(node.Name.Token, func(lexer.TokenType) bool { return true }), NamedTypeBaseStart)
+				if contracts := typeDeclarationContracts(node.Contract); len(contracts) > 0 {
+					token, _ := contractSpacingToken(contracts[0])
+					mark(token, NamedTypeContractStart)
+				} else if node.Default != nil {
+					mark(node.DefaultToken, NamedTypeContractStart)
+				}
+			}
+			for _, contract := range typeDeclarationContracts(node.Contract) {
+				token, hasOperand := contractSpacingToken(contract)
+				mark(token, SpacedBefore)
+				if hasOperand {
+					mark(token, SpacedKeyword)
+				}
+			}
+			if node.Default != nil {
+				mark(node.DefaultToken, SpacedBefore)
+				mark(node.DefaultToken, SpacedKeyword)
+			}
+		case *ast.EnumDeclaration:
+			if node.Name != nil {
+				markDeclarationHeader(node.Token)
+			}
+		case *ast.UnitDeclStatement:
+			markDeclarationHeader(node.Token)
+		case *ast.InterfaceDeclaration:
+			if node.Name != nil {
+				markDeclarationHeader(node.Token)
+			}
+		case *ast.ImplStatement:
+			markDeclarationHeader(node.Token)
+		case *ast.ImportStatement:
+			if node.PathToken.Type != lexer.EOF && node.Token.Type == lexer.IMPORT && node.Token.Line == node.PathToken.Line {
+				markDeclarationHeader(node.Token)
+			}
+		case *ast.RegisterField:
+			// rules/tooling/formatter.md §6(4): the register field colon binds
+			// left and is followed by one space. Column alignment of register
+			// fields is undecided (MD-013) and therefore not applied.
+			if node.Name != nil {
+				colon := nextTokenAtDepth(node.Name.Token, func(lexer.TokenType) bool { return true })
+				if colon >= 0 && d.Elements[colon].Token.Type == lexer.COLON {
+					markIndex(colon, DeclarationColon)
+				}
+			}
+		case *ast.CollectionLiteral:
+			// rules/collections/collections.md §13.3 writes the canonical
+			// empty literal as `list[T] {}`: one space before an empty brace pair.
+			if node.Type != nil && !node.Invalid && node.Open.Type == lexer.LBRACE && node.Close.Type == lexer.RBRACE {
+				mark(node.Open, SpacedBefore)
+				mark(node.Close, EmptyCollectionLiteralClose)
 			}
 		case *ast.ReturnStatement:
 			if node.Value != nil {
@@ -463,7 +656,26 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				}
 				mark(operator, GenericConstraintConjunction)
 			}
+		case *ast.Identifier:
+			for _, separator := range node.ForeignSeparators {
+				mark(separator, ForeignQualifierSeparator)
+			}
 		case *ast.TypeReference:
+			for _, separator := range node.ForeignSeparators {
+				mark(separator, ForeignQualifierSeparator)
+			}
+			// rules/types/types.md "Safe references" and "Function types";
+			// rules/tooling/formatter.md §3 and §16(13): `ref T`, `ref mut T`,
+			// and `fn(Params) Return` use one space between their words.
+			if !node.Invalid && node.Ref && node.Token.Type == lexer.REF {
+				mark(node.Token, SpacedKeyword)
+				if node.MutableRef {
+					markIndex(nextTokenAtDepth(node.Token, func(typ lexer.TokenType) bool { return true }), SpacedKeyword)
+				}
+			}
+			if !node.Invalid && node.FunctionReturnType != nil && !node.FunctionReturnType.Invalid {
+				mark(typeReferenceFirstToken(node.FunctionReturnType), SpacedBefore)
+			}
 			if !node.Invalid && (len(node.TypeArgs) > 0 || len(node.ConstArgs) > 0) &&
 				node.TypeArgumentOpen.Type == lexer.LBRACKET && node.TypeArgumentClose.Type == lexer.RBRACKET {
 				mark(node.TypeArgumentOpen, TypeArgumentListOpen)
@@ -498,6 +710,27 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				markGroup(node.Token, UnitExpressionCompactToken)
 			}
 		case *ast.FunctionDeclaration:
+			// rules/tooling/formatter.md §16(1) and §16(4): `fn Name(...) Return`
+			// keeps one space after `fn` and before the return type.
+			if node.Name != nil && node.Token.Type == lexer.FN {
+				mark(node.Token, SpacedKeyword)
+			}
+			// `extern "ABI" fn name(...)`: the extern keyword, ABI string, and
+			// fn keyword are each followed by one space.
+			if node.Name != nil && node.Token.Type == lexer.EXTERN {
+				any := func(lexer.TokenType) bool { return true }
+				mark(node.Token, SpacedKeyword)
+				abi := nextTokenAtDepth(node.Token, any)
+				if abi >= 0 && d.Elements[abi].Token.Type == lexer.STRING {
+					markIndex(abi, SpacedKeyword)
+					if fnIndex := nextTokenAtDepth(d.Elements[abi].Token, any); fnIndex >= 0 && d.Elements[fnIndex].Token.Type == lexer.FN {
+						markIndex(fnIndex, SpacedKeyword)
+					}
+				}
+			}
+			if node.ReturnType != nil && !node.ReturnType.Invalid {
+				mark(typeReferenceFirstToken(node.ReturnType), SpacedBefore)
+			}
 			markCallableParameters(node.ParameterOpen, node.Parameters)
 			markAttachedAttributes(node.Attributes, node.Token)
 		case *ast.TypeDeclStatement:
@@ -697,4 +930,65 @@ func isAssignmentOperatorToken(typ lexer.TokenType) bool {
 		return true
 	}
 	return false
+}
+
+// typeDeclarationContracts flattens a parsed sequential contract conjunction
+// in source order.
+//
+// Rule: rules/foundations/grammar.md — "Type contracts" (sequential contracts).
+func typeDeclarationContracts(contract ast.Contract) []ast.Contract {
+	if contract == nil {
+		return nil
+	}
+	if list, ok := contract.(*ast.ContractList); ok {
+		return list.Contracts
+	}
+	return []ast.Contract{contract}
+}
+
+// contractSpacingToken returns the contract's leading word and whether an
+// operand follows it on the contract's own grammar.
+//
+// Rule: rules/foundations/grammar.md — "Type contracts".
+func contractSpacingToken(contract ast.Contract) (lexer.Token, bool) {
+	switch contract := contract.(type) {
+	case *ast.RangeContract:
+		return contract.Token, contract.Min != nil
+	case *ast.MembershipContract:
+		return contract.Token, true
+	case *ast.MarkerContract:
+		return contract.Token, contract.Value != nil
+	case *ast.RegexContract:
+		return contract.Token, contract.Pattern != nil
+	default:
+		return lexer.Token{}, false
+	}
+}
+
+// isSimpleNamedTypeDeclaration reports whether a type declaration is a single
+// line named type over an existing type, without generics, aggregate bodies,
+// variants, or implements clauses.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §7(6) "Adjacent simple named-type declarations"
+//   - rules/types/types.md — named type declarations
+func isSimpleNamedTypeDeclaration(node *ast.TypeDeclStatement) bool {
+	return node.Name != nil && len(node.GenericParameters) == 0 && node.BaseType != nil && !node.BaseType.Invalid &&
+		node.StructType == nil && node.RegisterType == nil && !node.Union && len(node.Variants) == 0 &&
+		len(node.UnionVariants) == 0 && len(node.Implements) == 0 && node.AssignedType == nil
+}
+
+// typeReferenceFirstToken returns the first source token of a type reference.
+// Postfix sequence types (`int[2]`, `byte[]`) retain their bracket as Token, so
+// the first token is that of their element type.
+//
+// Rule: rules/foundations/grammar.md — TypeReference and TypeSuffixes.
+func typeReferenceFirstToken(typ *ast.TypeReference) lexer.Token {
+	for typ != nil && !typ.Ref && typ.Token.Type == lexer.LBRACKET && typ.ElementType != nil {
+		typ = typ.ElementType
+	}
+	if typ == nil {
+		return lexer.Token{}
+	}
+	return typ.Token
 }

@@ -205,7 +205,7 @@ integrations:
     - complete int/uint target-width consistency
     - complete enum/union/descriptor/reference resolved representations
     - complete representation-validity analysis
-    - complete explicit layout contract parsing via owning syntax rulebooks
+    - complete explicit layout contract parsing via owning syntax rulebooks (no rulebook defines the syntax yet; missing-decisions.yaml MD-019)
   - id: semantic-ir.layout
     status: planned
     remaining:

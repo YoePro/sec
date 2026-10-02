@@ -5,3 +5,7 @@ fn main() int {
     let café := 2
     return 0
 }
+
+/* Expected error: lexer.non-nfc-identifier for each identifier that is not in Unicode NFC.
+ * Reason: rules/foundations/lexical_structure.md §6.2 requires NFC identifier spelling.
+ */

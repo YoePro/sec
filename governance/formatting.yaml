@@ -581,7 +581,10 @@ integrations:
         the required trailing comma under §15(7), while single-line generic
         lists, sequence types, expression indexing, and recovered incomplete
         syntax remain outside this rewrite.
+      - "line endings: well-formed CRLF, bare-CR, and mixed input is written with LF in the shared formatter core, so CLI file, stdin, and LSP formatting agree (rules/foundations/lexical_structure.md §2; detail in frontend.lexical-structure)"
     remaining:
+      - formatter-known-nonidempotence: testdata/switch_valid.sec (return indentation inside a switch case) changes on a second format pass; the former sec/platform/linux/arm64/syscall_numbers.sec trailing-comment case is fixed since 2026-10-02 by realigning trailing comments after the role-alignment pass.
+      - formatter-header-token-spacing: header spacing is normalized since 2026-10-02 for named types, contracts, function and extern headers, function-type returns, ref/ref mut, type-first declarations, enum, unit, interface, impl, and single imports (frontend.types-core); discard statements and other statement keywords without a spacing role still keep source spacing.
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
         trimmed-line transformation pipeline with internal/cst as the primary

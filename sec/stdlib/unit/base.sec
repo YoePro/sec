@@ -1,93 +1,5 @@
 module units
 
-// =============================================================================
-// The Seven SI Base Units
-// =============================================================================
-
-/** Metre or meter */
-unit m physical
-impl m {
-    LongName: "Meter"
-    Symbol: "m"
-    BaseUnit: true
-    Status: active
-    Dimension: [length^1]
-    Scale: 1
-    System: SI
-}
-
-/** Kilogram */
-unit kg physical
-impl kg {
-    LongName: "Kilogram"
-    Symbol: "kg"
-    BaseUnit: true
-    Status: active
-    Dimension: [mass^1]
-    Scale: 1
-    System: SI
-}
-
-/** Second */
-unit s physical
-impl s {
-    LongName: "Second"
-    Symbol: "s"
-    BaseUnit: true
-    Status: active
-    Dimension: [time^1]
-    Scale: 1
-    System: SI
-}
-
-/** Ampere */
-unit A physical
-impl A {
-    LongName: "Ampere"
-    Symbol: "A"
-    BaseUnit: true
-    Status: active
-    Dimension: [electric_current^1]
-    Scale: 1
-    System: SI
-}
-
-/** Kelvin */
-unit K physical
-impl K {
-    LongName: "Kelvin"
-    Symbol: "K"
-    BaseUnit: true
-    Status: active
-    Dimension: [thermodynamic_temperature^1]
-    Scale: 1
-    System: SI
-}
-
-/** Mol */
-unit mol physical
-impl mol {
-    LongName: "Mole"
-    Symbol: "mol"
-    BaseUnit: true
-    Status: active
-    Dimension: [amount_of_substance^1]
-    Scale: 1
-    System: SI
-}
-
-/** Candela */
-unit cd physical
-impl cd {
-    LongName: "Candela"
-    Symbol: "cd"
-    BaseUnit: true
-    Status: active
-    Dimension: [luminous_intensity^1]
-    Scale: 1
-    System: SI
-}
-
 // Scales
 
 /** Nanometer */
@@ -188,7 +100,6 @@ impl g {
     Dimension: [mass^1]
     Scale: 1 / 1000
     System: SI
-
 }
 
 /** Milligram */
@@ -201,7 +112,6 @@ impl mg {
     Dimension: [mass^1]
     Scale: 1 / 1000000
     System: SI
-
 }
 
 // =============================================================================

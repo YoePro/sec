@@ -111,6 +111,16 @@ func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpr
 			"Propagation target: `"+lspTypeName(resolved.EnclosingOptionType)+"`",
 			"None consumed by: `enclosing function return`",
 		)
+	case sema.ResolvedTryHandledOption:
+		// rules/errors/errorhandling.md — §15, §16: None is the only
+		// alternate state of an Option try.
+		lines = append(lines,
+			"Success state: `Some("+lspTypeName(resolved.SuccessType)+")`",
+			"Absence handling: `local None handler`",
+		)
+		if plan, ok := analyzer.ResolvedTryPlanOf(expression); ok && plan.ResidualPropagates {
+			lines = append(lines, "Unhandled None: `propagated to "+lspTypeName(plan.EnclosingResultType)+"`")
+		}
 	case sema.ResolvedTryHandledResult, sema.ResolvedTryHandledArithmetic, sema.ResolvedTryHandledBounds:
 		lines = append(lines,
 			"Failure handling: `local try handlers`",

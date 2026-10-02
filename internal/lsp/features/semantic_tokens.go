@@ -10,7 +10,7 @@ import (
 )
 
 var SemanticTokenTypes = []string{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "keyword", "modifier", "comment", "string", "number", "operator", "decorator"}
-var SemanticTokenModifiers = []string{"declaration", "static", "readonly", "documentation"}
+var SemanticTokenModifiers = []string{"declaration", "static", "readonly", "documentation", "defaultLibrary", "modulePrivate", "ownerPrivate"}
 
 var compilerKnownAttributes = map[string]bool{
 	"address":       true,
@@ -59,6 +59,7 @@ func SemanticTokens(text, file string, classification map[string]string) []int {
 			break
 		}
 		kind, modifiers := tokenKind(token, classification)
+		modifiers |= lexicalSpellingModifiers(token, kind)
 		if token.Type == lexer.IDENT && previousToken.Type == lexer.AT {
 			kind, modifiers = "decorator", 0
 			if compilerKnownAttributes[token.Lexeme] {
@@ -210,4 +211,37 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// lexicalSpellingModifiers adds the spelling-derived distinctions required by
+// the lexical tooling rule: compiler-known lowercase types (including the
+// collection spelling `set` in type position) carry the standard
+// defaultLibrary modifier, and identifiers with a visibility prefix carry
+// modulePrivate (`_name`) or ownerPrivate (`__name`).
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §23 "LSP and syntax-highlighting requirements"
+//   - rules/foundations/lexical_structure.md — §6.3 and §8
+//   - rules/foundations/names_scopes_visibility.md — underscore visibility prefixes
+//   - rules/tooling/lsp.md — "Semantic tokens" (custom modifiers with standard fallback)
+func lexicalSpellingModifiers(token lexer.Token, kind string) uint32 {
+	var modifiers uint32
+	if kind == "type" && (token.Lexeme == "set" ||
+		lexer.ReservedDeclarationNameKindOf(token.Lexeme) == lexer.CompilerKnownTypeDeclarationName) {
+		modifiers |= tokenModifierIndex["defaultLibrary"]
+	}
+	if token.Type != lexer.IDENT {
+		return modifiers
+	}
+	switch kind {
+	case "keyword", "modifier", "operator", "decorator", "comment", "string", "number":
+		return modifiers
+	}
+	switch {
+	case len(token.Lexeme) > 2 && strings.HasPrefix(token.Lexeme, "__"):
+		modifiers |= tokenModifierIndex["ownerPrivate"]
+	case len(token.Lexeme) > 1 && strings.HasPrefix(token.Lexeme, "_") && !strings.HasPrefix(token.Lexeme, "__"):
+		modifiers |= tokenModifierIndex["modulePrivate"]
+	}
+	return modifiers
 }

@@ -1,0 +1,10 @@
+module main
+
+// RangeContract bounds are SignedNumericConstant (grammar.md "Type contracts").
+let Max: int := 100
+
+type Lower int range Max..100
+type Upper int range 0..Max
+type Grouped int range 0..(50 + 50)
+
+fn main() void {}

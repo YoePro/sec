@@ -25,11 +25,24 @@ import (
 )
 
 func main() {
+	runCLI()
+	cliDiagnostics.finish()
+}
+
+// runCLI dispatches one compiler command.
+func runCLI() {
+	args, format, err := extractDiagnosticFormat(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "usage error: %v\n", err)
+		exitCLI(1)
+	}
+	cliDiagnostics.format = format
+	os.Args = append([]string{os.Args[0]}, args...)
 	flag.Parse()
 
 	if flag.NArg() < 1 {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 
 	command := flag.Arg(0)
@@ -37,7 +50,7 @@ func main() {
 	if command == "diagnostics" {
 		if err := runDiagnosticCatalogCommand(flag.Args()[1:], os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "diagnostics error: %v\n", err)
-			os.Exit(1)
+			exitCLI(1)
 		}
 		return
 	}
@@ -72,6 +85,11 @@ func main() {
 		return
 	}
 
+	if command == "analyse" {
+		runAnalyseCommand(flag.Args()[1:], os.Stdout)
+		return
+	}
+
 	if command == "fmt" {
 		if err := runFmtCommand(flag.Args()[1:]); err != nil {
 			if _, ok := err.(*formatCheckError); ok {
@@ -79,7 +97,7 @@ func main() {
 			} else {
 				fmt.Fprintf(os.Stderr, "fmt error: %v\n", err)
 			}
-			os.Exit(1)
+			exitCLI(1)
 		}
 		return
 	}
@@ -87,7 +105,7 @@ func main() {
 	if command == "parse" || command == "ast" || command == "sema" {
 		if flag.NArg() < 2 {
 			printUsage()
-			os.Exit(1)
+			exitCLI(1)
 		}
 		inputs := flag.Args()[1:]
 		switch command {
@@ -103,15 +121,16 @@ func main() {
 
 	if flag.NArg() != 2 {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 
 	file := flag.Arg(1)
+	cliDiagnostics.file = file
 
 	data, err := os.ReadFile(file)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 
 	switch command {
@@ -134,7 +153,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", command)
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 }
 
@@ -143,6 +162,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec diagnostics [--json|<ID>]")
 	fmt.Fprintln(os.Stderr, "       sec init [path] [--name <name>] [--target <os-arch>] [--profile <profile>]")
 	fmt.Fprintln(os.Stderr, "       sec <parse|ast|sema> <file.sec|dir|glob>...")
+	fmt.Fprintln(os.Stderr, "       sec analyse [--all] [--target <os-arch>] <file.sec|dir|glob>...")
 	fmt.Fprintln(os.Stderr, "       sec fmt [--check] <file.sec>...")
 	fmt.Fprintln(os.Stderr, "       sec fmt --stdin")
 	fmt.Fprintln(os.Stderr, "       sec emit-llvm <file.sec> -o <file.ll|-> [--target <os-arch>]")
@@ -150,6 +170,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "       sec emit-sec-mlir <file.sec> [-o <file.mlir|->] [--target <os-arch>] [--mlir-bin <path>]")
 	fmt.Fprintln(os.Stderr, "       sec emit-mlir <file.sec> -o <file.mlir|-> [--target <os-arch>] [--mlir-bin <path>] [--verify]")
 	fmt.Fprintln(os.Stderr, "       sec build <file.sec> [-o <program>] [--target <os-arch>] [--pipeline <llvm|mlir>] [--keep-mlir] [--keep-llvm] [--mlir-bin <path>] [--clang <path>]")
+	fmt.Fprintln(os.Stderr, "       diagnostic-producing commands accept --diagnostic-format <human|json>")
 }
 
 // formatCheckError reports every selected file that the shared formatter would
@@ -249,7 +270,7 @@ func runFmtCommand(args []string) error {
 // formatStdin formats a stream through the shared formatter with LF line endings
 // and propagates read/write failures to the CLI.
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt --stdin`;
-// Line endings; Shared implementation.
+// Shared implementation; rules/foundations/lexical_structure.md — §2 "Line endings".
 func formatStdin(input io.Reader, output io.Writer) error {
 	source, err := io.ReadAll(input)
 	if err != nil {
@@ -331,7 +352,7 @@ func runLex(input string) {
 	summary := reportLexerCLIDiagnostics(os.Stderr, l.Diagnostics(), illegalTokens)
 	printDiagnosticSummary(summary)
 	if summary.Errors > 0 {
-		os.Exit(2)
+		exitCLI(2)
 	}
 }
 
@@ -368,7 +389,7 @@ func runTokens(input string) {
 	summary := reportLexerCLIDiagnostics(os.Stderr, l.Diagnostics(), illegalTokens)
 	printDiagnosticSummary(summary)
 	if summary.Errors > 0 {
-		os.Exit(2)
+		exitCLI(2)
 	}
 }
 
@@ -380,17 +401,15 @@ func runTokens(input string) {
 //   - rules/foundations/lexical_structure.md — "20. Lexical errors"
 //   - rules/foundations/lexical_structure.md — "21. Lexer and parser boundary"
 func reportLexerCLIDiagnostics(output io.Writer, structured []lexer.Diagnostic, illegalTokens []lexer.Token) diagnosticSummary {
+	reporter := reporterFor(output)
 	for _, diagnostic := range structured {
-		location := fmt.Sprintf("%d:%d", diagnostic.Primary.Line, diagnostic.Primary.Column)
-		if diagnostic.Primary.File != "" {
-			location = fmt.Sprintf("%s:%s", diagnostic.Primary.File, location)
-		}
-		fmt.Fprintf(output, "lex error: %s at %s: %s\n", diagnostic.ID, location, diagnostic.Message)
+		reporter.lexerDiagnostic(diagnostic)
 	}
 
 	summary := diagnosticSummary{Errors: len(structured)}
 	for _, token := range illegalTokens {
 		if !lexerDiagnosticFallsWithinToken(structured, token) {
+			reporter.illegalToken(token)
 			summary.Errors++
 		}
 	}
@@ -450,12 +469,10 @@ func runParse(input string) {
 	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
 	if result.HasErrors {
-		for _, err := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
-		}
+		cliDiagnostics.parserDiagnostics("", p.Diagnostics(), p.Errors())
 		summary.Errors = len(p.Errors())
 		printDiagnosticSummary(summary)
-		os.Exit(2)
+		exitCLI(2)
 	}
 
 	printProgram(program)
@@ -479,12 +496,10 @@ func runAST(input string) {
 	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
 	if result.HasErrors {
-		for _, err := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
-		}
+		cliDiagnostics.parserDiagnostics("", p.Diagnostics(), p.Errors())
 		summary.Errors = len(p.Errors())
 		printDiagnosticSummary(summary)
-		os.Exit(2)
+		exitCLI(2)
 	}
 
 	printAST(program)
@@ -512,25 +527,25 @@ func runEmitLLVMCommand(args []string) {
 	inputFile, outputFile, target, ok := parseEmitLLVMCommandArgs(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 
 	targetDefinition, err := requireTargetCanEmitLLVM(target)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
-		os.Exit(1)
+		reportToolError("target", "%s", err)
+		exitCLI(1)
 	}
 
 	program := parseAndAnalyzeFileForTarget(inputFile, target)
 	ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
-		os.Exit(4)
+		reportToolError("codegen", "%v", err)
+		exitCLI(4)
 	}
 
 	if err := writeCompilerOutput(outputFile, []byte(ir)); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-		os.Exit(1)
+		reportToolError("write", "%v", err)
+		exitCLI(1)
 	}
 }
 
@@ -538,26 +553,26 @@ func runEmitIRCommand(args []string) {
 	inputFile, outputFile, target, ok := parseEmitIRCommandArgs(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 	input, err := os.ReadFile(inputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), inputFile, target, false)
 	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "semantic IR error: %v\n", err)
-		os.Exit(4)
+		reportToolError("semantic IR", "%v", err)
+		exitCLI(4)
 	}
 	if err := semantic.Verify(module); err != nil {
-		fmt.Fprintf(os.Stderr, "semantic IR verification error: %v\n", err)
-		os.Exit(4)
+		reportToolError("semantic IR verification", "%v", err)
+		exitCLI(4)
 	}
 	if err := writeCompilerOutput(outputFile, []byte(semantic.Format(module))); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-		os.Exit(1)
+		reportToolError("write", "%v", err)
+		exitCLI(1)
 	}
 }
 
@@ -603,53 +618,53 @@ func runEmitSecMLIRCommand(args []string) {
 	options, ok := parseEmitSecMLIRCommandArgs(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 	input, err := os.ReadFile(options.InputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), options.InputFile, options.Target, false)
 	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{options.InputFile}, MaxPackage: 12})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "semantic IR error: %v\n", err)
-		os.Exit(4)
+		reportToolError("semantic IR", "%v", err)
+		exitCLI(4)
 	}
 	targetDefinition, ok := findTargetDefinition(options.Target)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "target error: unsupported target %s\n", options.Target.String())
-		os.Exit(1)
+		reportToolError("target", "unsupported target %s", options.Target.String())
+		exitCLI(1)
 	}
 	scalarPlan, err := targetDefinition.scalarPlan()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "target error: %v\n", err)
-		os.Exit(1)
+		reportToolError("target", "%v", err)
+		exitCLI(1)
 	}
 	mlirText, err := secmlirlowering.Emit(module, scalarPlan)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Sec MLIR lowering error: %v\n", err)
-		os.Exit(4)
+		reportToolError("Sec MLIR lowering", "%v", err)
+		exitCLI(4)
 	}
 	verifyPath, removeVerifyPath, err := createTempOutputPath(".sec.mlir")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-		os.Exit(1)
+		reportToolError("temp file", "%v", err)
+		exitCLI(1)
 	}
 	if removeVerifyPath {
 		defer os.Remove(verifyPath)
 	}
 	if err := os.WriteFile(verifyPath, mlirText, 0600); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-		os.Exit(1)
+		reportToolError("write", "%v", err)
+		exitCLI(1)
 	}
 	if err := mlirtoolchain.NewToolchain(options.MLIRBin).VerifySec(verifyPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Sec MLIR verification error: %v\n", err)
-		os.Exit(4)
+		reportToolError("Sec MLIR verification", "%v", err)
+		exitCLI(4)
 	}
 	if err := writeCompilerOutput(options.OutputFile, mlirText); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-		os.Exit(1)
+		reportToolError("write", "%v", err)
+		exitCLI(1)
 	}
 }
 
@@ -699,32 +714,32 @@ func runEmitMLIRCommand(args []string) {
 	options, ok := parseEmitMLIRCommandArgs(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 
 	input, err := os.ReadFile(options.InputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 
 	targetDefinition, err := requireTargetCanEmitLLVM(options.Target)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
-		os.Exit(1)
+		reportToolError("target", "%s", err)
+		exitCLI(1)
 	}
 
 	program := parseAndAnalyzeSourceForTarget(string(input), options.InputFile, options.Target)
 	mlirText, err := mlircodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
-		os.Exit(4)
+		reportToolError("codegen", "%v", err)
+		exitCLI(4)
 	}
 
 	if options.OutputFile != "-" {
 		if err := writeCompilerOutput(options.OutputFile, []byte(mlirText)); err != nil {
-			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-			os.Exit(1)
+			reportToolError("write", "%v", err)
+			exitCLI(1)
 		}
 	}
 
@@ -734,28 +749,28 @@ func runEmitMLIRCommand(args []string) {
 		if options.OutputFile == "-" {
 			tmpPath, removeTmp, err := createTempOutputPath(".mlir")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-				os.Exit(1)
+				reportToolError("temp file", "%v", err)
+				exitCLI(1)
 			}
 			verifyPath = tmpPath
 			if removeTmp {
 				defer os.Remove(tmpPath)
 			}
 			if err := os.WriteFile(verifyPath, []byte(mlirText), 0644); err != nil {
-				fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-				os.Exit(1)
+				reportToolError("write", "%v", err)
+				exitCLI(1)
 			}
 		}
 		if err := toolchain.Verify(verifyPath); err != nil {
-			fmt.Fprintf(os.Stderr, "mlir error: %v\n", err)
-			os.Exit(4)
+			reportToolError("mlir", "%v", err)
+			exitCLI(4)
 		}
 	}
 
 	if options.OutputFile == "-" {
 		if err := writeCompilerOutput(options.OutputFile, []byte(mlirText)); err != nil {
-			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-			os.Exit(1)
+			reportToolError("write", "%v", err)
+			exitCLI(1)
 		}
 	}
 }
@@ -772,19 +787,19 @@ func runBuildCommand(args []string) {
 	options, ok := parseBuildCommandOptions(args, hostCompilerTarget())
 	if !ok {
 		printUsage()
-		os.Exit(1)
+		exitCLI(1)
 	}
 
 	input, err := os.ReadFile(options.InputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 
 	targetDefinition, err := requireTargetCanLink(options.Target)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
-		os.Exit(1)
+		reportToolError("target", "%s", err)
+		exitCLI(1)
 	}
 
 	program := parseAndAnalyzeSourceForTarget(string(input), options.InputFile, options.Target)
@@ -793,32 +808,32 @@ func runBuildCommand(args []string) {
 	case "llvm":
 		ir, err := llvmcodegen.GenerateWithTriple(program, targetDefinition.LLVMTriple)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
-			os.Exit(4)
+			reportToolError("codegen", "%v", err)
+			exitCLI(4)
 		}
 		llvmPath = options.LLVMOutputFile
 		removeLLVM := false
 		if llvmPath == "" {
 			llvmPath, removeLLVM, err = createTempOutputPath(".ll")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-				os.Exit(1)
+				reportToolError("temp file", "%v", err)
+				exitCLI(1)
 			}
 		}
 		if removeLLVM {
 			defer os.Remove(llvmPath)
 		}
 		if err := os.WriteFile(llvmPath, []byte(ir), 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-			os.Exit(1)
+			reportToolError("write", "%v", err)
+			exitCLI(1)
 		}
 	case "mlir":
 		var cleanup func()
 		llvmPath, cleanup = runMLIRBuildPipeline(program, targetDefinition.LLVMTriple, options)
 		defer cleanup()
 	default:
-		fmt.Fprintf(os.Stderr, "build error: unknown pipeline %q\n", options.Pipeline)
-		os.Exit(1)
+		reportToolError("build", "unknown pipeline %q", options.Pipeline)
+		exitCLI(1)
 	}
 
 	// rules/compiler/linking.md sections 8, 29, and 37: this is the legacy
@@ -826,8 +841,8 @@ func runBuildCommand(args []string) {
 	// LinkEnvironment/LinkPlan and must eventually be materialized from one.
 	clangPath, err := exec.LookPath(options.Clang)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "build error: clang not found: %v\n", err)
-		os.Exit(1)
+		reportToolError("build", "clang not found: %v", err)
+		exitCLI(1)
 	}
 
 	clangArgs := []string{"-target", targetDefinition.LLVMTriple, llvmPath, "-o", options.OutputFile}
@@ -835,8 +850,8 @@ func runBuildCommand(args []string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "build error: %v\n", err)
-		os.Exit(5)
+		reportToolError("build", "%v", err)
+		exitCLI(5)
 	}
 }
 
@@ -850,8 +865,8 @@ func runMLIRBuildPipeline(program *ast.Program, triple string, options buildComm
 
 	mlirText, err := mlircodegen.GenerateWithTriple(program, triple)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "codegen error: %v\n", err)
-		os.Exit(4)
+		reportToolError("codegen", "%v", err)
+		exitCLI(4)
 	}
 
 	mlirPath := options.MLIROutputFile
@@ -859,16 +874,16 @@ func runMLIRBuildPipeline(program *ast.Program, triple string, options buildComm
 	if mlirPath == "" {
 		mlirPath, removeMLIR, err = createTempOutputPath(".mlir")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-			os.Exit(1)
+			reportToolError("temp file", "%v", err)
+			exitCLI(1)
 		}
 	}
 	if removeMLIR {
 		cleanupPaths = append(cleanupPaths, mlirPath)
 	}
 	if err := os.WriteFile(mlirPath, []byte(mlirText), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
-		os.Exit(1)
+		reportToolError("write", "%v", err)
+		exitCLI(1)
 	}
 
 	llvmPath := options.LLVMOutputFile
@@ -876,8 +891,8 @@ func runMLIRBuildPipeline(program *ast.Program, triple string, options buildComm
 	if llvmPath == "" {
 		llvmPath, removeLLVM, err = createTempOutputPath(".ll")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "temp file error: %v\n", err)
-			os.Exit(1)
+			reportToolError("temp file", "%v", err)
+			exitCLI(1)
 		}
 	}
 	if removeLLVM {
@@ -886,12 +901,12 @@ func runMLIRBuildPipeline(program *ast.Program, triple string, options buildComm
 
 	toolchain := mlirtoolchain.NewToolchain(options.MLIRBin)
 	if err := toolchain.Verify(mlirPath); err != nil {
-		fmt.Fprintf(os.Stderr, "mlir error: %v\n", err)
-		os.Exit(4)
+		reportToolError("mlir", "%v", err)
+		exitCLI(4)
 	}
 	if err := toolchain.TranslateToLLVMIR(mlirPath, llvmPath); err != nil {
-		fmt.Fprintf(os.Stderr, "mlir error: %v\n", err)
-		os.Exit(4)
+		reportToolError("mlir", "%v", err)
+		exitCLI(4)
 	}
 	return llvmPath, cleanup
 }
@@ -1147,8 +1162,8 @@ func parseAndAnalyzeForTarget(input string, target CompilerTarget) *ast.Program 
 func parseAndAnalyzeFileForTarget(path string, target CompilerTarget) *ast.Program {
 	input, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 	return parseAndAnalyzeSourceForTarget(string(input), path, target)
 }
@@ -1177,12 +1192,10 @@ func parseAndAnalyzeSourceForTargetWithAnalyzerMode(input string, sourceFile str
 	summary := diagnosticSummary{Warnings: len(p.Warnings())}
 
 	if result.HasErrors {
-		for _, err := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "parse error: %s\n", err)
-		}
+		cliDiagnostics.parserDiagnostics("", p.Diagnostics(), p.Errors())
 		summary.Errors = len(p.Errors())
 		printDiagnosticSummary(summary)
-		os.Exit(2)
+		exitCLI(2)
 	}
 
 	analyzer := analyzeProgramWithSourcesRetained(program, target, []string{sourceFile}, summary, printSuccessSummary)
@@ -1199,18 +1212,22 @@ func analyzeProgramWithSources(program *ast.Program, target CompilerTarget, sour
 }
 
 func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool) *sema.Analyzer {
+	return analyzeProgramWithSourcesAtDepth(program, target, sourceFiles, summary, printSuccessSummary, sema.AnalysisStandard)
+}
+
+func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool, depth sema.AnalysisDepth) *sema.Analyzer {
 	siblings := assembleCLIModuleSources(program, target)
 	summary.Errors += siblings.Errors
 	summary.Warnings += siblings.Warnings
 	if siblings.Errors > 0 {
 		printDiagnosticSummary(summary)
-		os.Exit(2)
+		exitCLI(2)
 	}
 	if err := validateProgramTarget(program, target); err != nil {
-		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		reportToolError("target", "%s", err)
 		summary.Errors++
 		printDiagnosticSummary(summary)
-		os.Exit(1)
+		exitCLI(1)
 	}
 
 	resolveCoreLibraryWithSources(program, sourceFiles)
@@ -1218,19 +1235,19 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 
 	targetDefinition, ok := findTargetDefinition(target)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "target error: unsupported target %s\n", target.String())
+		reportToolError("target", "unsupported target %s", target.String())
 		summary.Errors++
 		printDiagnosticSummary(summary)
-		os.Exit(1)
+		exitCLI(1)
 	}
 	scalarPlan, err := targetDefinition.scalarPlan()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "target error: %s\n", err)
+		reportToolError("target", "%s", err)
 		summary.Errors++
 		printDiagnosticSummary(summary)
-		os.Exit(1)
+		exitCLI(1)
 	}
-	analyzer := sema.NewAnalyzerWithScalarPlan(scalarPlan)
+	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
 	errors := analyzer.Analyze(program)
 	printSemaWarnings(analyzer)
 	for _, warning := range analyzer.Warnings() {
@@ -1246,7 +1263,7 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 		}
 		summary.Errors += len(errors)
 		printDiagnosticSummary(summary)
-		os.Exit(3)
+		exitCLI(3)
 	}
 	if printSuccessSummary {
 		printDiagnosticSummary(summary)
@@ -1260,14 +1277,14 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 // Rules: rules/tooling/diagnostics.md — §5 "Stable diagnostic IDs" and
 // §17 "Short messages and extended explanations".
 func printSemaError(output io.Writer, diagnostic sema.Error) {
+	human := fmt.Sprintf("sema error: %s\n", diagnostic)
 	if diagnostic.ID != "" {
-		fmt.Fprintf(output, "sema error[%s]: %s\n", diagnostic.ID, diagnostic)
-	} else {
-		fmt.Fprintf(output, "sema error: %s\n", diagnostic)
+		human = fmt.Sprintf("sema error[%s]: %s\n", diagnostic.ID, diagnostic)
 	}
 	if diagnostic.Help != "" {
-		fmt.Fprintf(output, "  help: %s\n", diagnostic.Help)
+		human += fmt.Sprintf("  help: %s\n", diagnostic.Help)
 	}
+	reporterFor(output).semaDiagnostic(diagnostic, human)
 }
 
 func resolveCoreLibrary(program *ast.Program) {
@@ -1392,12 +1409,12 @@ func parseCoreLibrary(sourceFiles []string) *ast.Program {
 func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool) (*ast.Program, diagnosticSummary) {
 	files, err := collectSourceFiles(inputs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "source error: %v\n", err)
-		os.Exit(1)
+		reportToolError("source", "%v", err)
+		exitCLI(1)
 	}
 	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "source error: no .sec files found")
-		os.Exit(1)
+		reportToolError("source", "no .sec files found")
+		exitCLI(1)
 	}
 
 	combined := &ast.Program{}
@@ -1412,9 +1429,7 @@ func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool
 		summary.Warnings += fileSummary.Warnings
 		printParserWarningsForFile(file, program.Warnings)
 		if fileSummary.Errors > 0 {
-			for _, err := range program.Errors {
-				fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", file, err)
-			}
+			cliDiagnostics.parserDiagnostics(file, program.Diagnostics, program.Errors)
 			continue
 		}
 		if filterTarget {
@@ -1428,14 +1443,14 @@ func parseSourceInputs(inputs []string, target CompilerTarget, filterTarget bool
 	if included == 0 {
 		if summary.Errors > 0 {
 			printDiagnosticSummary(summary)
-			os.Exit(2)
+			exitCLI(2)
 		}
-		fmt.Fprintf(os.Stderr, "source error: no .sec files match target %s\n", target.String())
-		os.Exit(1)
+		reportToolError("source", "no .sec files match target %s", target.String())
+		exitCLI(1)
 	}
 	if summary.Errors > 0 {
 		printDiagnosticSummary(summary)
-		os.Exit(2)
+		exitCLI(2)
 	}
 	return combined, summary
 }
@@ -1539,45 +1554,40 @@ func parseSourceFile(path string) *ast.Program {
 	program, summary := parseSourceFileWithDiagnostics(path)
 	printParserWarningsForFile(path, program.Warnings)
 	if summary.Errors > 0 {
-		for _, err := range program.Errors {
-			fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", path, err)
-		}
+		cliDiagnostics.parserDiagnostics(path, program.Diagnostics, program.Errors)
 		printDiagnosticSummary(summary)
-		os.Exit(2)
+		exitCLI(2)
 	}
 	return program.Program
 }
 
 type parsedSourceFile struct {
-	Program  *ast.Program
-	Errors   []string
-	Warnings []string
+	Program     *ast.Program
+	Errors      []string
+	Diagnostics []parser.Diagnostic
+	Warnings    []string
 }
 
 func parseSourceFileWithDiagnostics(path string) (parsedSourceFile, diagnosticSummary) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
-		os.Exit(1)
+		reportToolError("read", "%v", err)
+		exitCLI(1)
 	}
 
 	l := lexer.NewWithFile(string(data), path)
 	p := parser.New(l)
 	result := p.Parse()
 	program := result.Program
-	return parsedSourceFile{Program: program, Errors: p.Errors(), Warnings: p.Warnings()}, diagnosticSummary{Errors: len(p.Errors()), Warnings: len(p.Warnings())}
+	return parsedSourceFile{Program: program, Errors: p.Errors(), Diagnostics: p.Diagnostics(), Warnings: p.Warnings()}, diagnosticSummary{Errors: len(p.Errors()), Warnings: len(p.Warnings())}
 }
 
 func printParserWarnings(p *parser.Parser) {
-	for _, warning := range p.Warnings() {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
-	}
+	cliDiagnostics.parserWarnings("", p.Warnings())
 }
 
 func printParserWarningsForFile(path string, warnings []string) {
-	for _, warning := range warnings {
-		fmt.Fprintf(os.Stderr, "%s: Warning: %s\n", path, warning)
-	}
+	cliDiagnostics.parserWarnings(path, warnings)
 }
 
 // printSemaWarnings preserves the registered information/warning distinction
@@ -1593,22 +1603,21 @@ func printSemaWarnings(analyzer *sema.Analyzer) {
 		if warning.Severity == diagnostics.SeverityInformation {
 			label = "Info"
 		}
-		fmt.Fprintf(os.Stderr, "%s: %s\n", label, warning)
+		if warning.Severity == "" {
+			warning.Severity = diagnostics.SeverityWarning
+		}
+		cliDiagnostics.semaDiagnostic(warning, fmt.Sprintf("%s: %s\n", label, warning))
 	}
 }
 
 type diagnosticSummary struct {
-	Errors      int
-	Warnings    int
-	Information int
+	Errors      int `json:"errors"`
+	Warnings    int `json:"warnings"`
+	Information int `json:"information"`
 }
 
 func printDiagnosticSummary(summary diagnosticSummary) {
-	fmt.Fprintf(os.Stderr, "summary: %s, %s", diagnosticCountLabel(summary.Errors, "error"), diagnosticCountLabel(summary.Warnings, "warning"))
-	if summary.Information > 0 {
-		fmt.Fprintf(os.Stderr, ", %s", diagnosticCountLabel(summary.Information, "information diagnostic"))
-	}
-	fmt.Fprintln(os.Stderr)
+	cliDiagnostics.summary(summary)
 }
 
 func diagnosticCountLabel(count int, singular string) string {
@@ -1938,8 +1947,8 @@ func importQualifier(stmt *ast.ImportStatement) string {
 func parseSourceInclude(path string, target CompilerTarget) *ast.Program {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "source import error: %v\n", err)
-		os.Exit(1)
+		reportToolError("source import", "%v", err)
+		exitCLI(1)
 	}
 
 	l := lexer.NewWithFile(string(data), path)
@@ -1948,13 +1957,13 @@ func parseSourceInclude(path string, target CompilerTarget) *ast.Program {
 	printParserWarnings(p)
 	if len(p.Errors()) > 0 {
 		for _, err := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "stdlib parse error: %s\n", err)
+			reportToolError("stdlib parse", "%s", err)
 		}
-		os.Exit(2)
+		exitCLI(2)
 	}
 	if err := validateProgramTarget(program, target); err != nil {
-		fmt.Fprintf(os.Stderr, "stdlib target error: %s\n", err)
-		os.Exit(1)
+		reportToolError("stdlib target", "%s", err)
+		exitCLI(1)
 	}
 
 	return program
@@ -2452,6 +2461,12 @@ func qualifyLocalTypesInExpression(expr ast.Expression, module string, localType
 		qualifyLocalTypeReference(expr.Type, module, localTypes)
 		for _, field := range expr.Fields {
 			qualifyLocalTypesInExpression(field.Value, module, localTypes)
+		}
+	case *ast.CollectionLiteral:
+		// rules/collections/collections.md §13.3: the list element type of an
+		// empty collection literal is resolved in the declaring module.
+		if expr.Type != nil {
+			qualifyLocalTypeReference(expr.Type, module, localTypes)
 		}
 	case *ast.ArrayLiteral:
 		for _, element := range expr.Elements {
@@ -3399,6 +3414,8 @@ func formatASTContract(contract ast.Contract) string {
 		return "In: " + formatMembershipContract(contract)
 	case *ast.MarkerContract:
 		return "Contract: " + formatMarkerContract(contract)
+	case *ast.RegexContract:
+		return "Regex: " + formatRegexPattern(contract)
 	default:
 		return fmt.Sprintf("Contract: %T", contract)
 	}
@@ -3442,6 +3459,11 @@ func formatASTExpression(expr ast.Expression) string {
 		return "Range(" + expr.String() + ")"
 	case *ast.StructLiteral:
 		return "StructLiteral(" + formatTypeRef(expr.Type) + ")"
+	case *ast.CollectionLiteral:
+		if expr.Type == nil {
+			return "CollectionLiteral(synthesized)"
+		}
+		return "CollectionLiteral(" + formatTypeRef(expr.Type) + ")"
 	case *ast.LambdaExpression:
 		return "Lambda(" + formatParameters(expr.Parameters) + ") " + formatTypeRef(expr.ReturnType)
 	default:
@@ -4009,6 +4031,8 @@ func formatContract(contract ast.Contract) string {
 		return "in " + formatMembershipContract(contract)
 	case *ast.MarkerContract:
 		return formatMarkerContract(contract)
+	case *ast.RegexContract:
+		return "regex " + formatRegexPattern(contract)
 	default:
 		return fmt.Sprintf("%T", contract)
 	}
@@ -4027,6 +4051,17 @@ func formatMarkerContract(contract *ast.MarkerContract) string {
 		return contract.Name + " " + contract.Value.String()
 	}
 	return contract.Name
+}
+
+// formatRegexPattern presents the retained pattern expression of a regex
+// contract in source spelling.
+//
+// Rule: rules/types/contracts.md — "String and collection contracts".
+func formatRegexPattern(contract *ast.RegexContract) string {
+	if contract.Pattern == nil {
+		return "<missing>"
+	}
+	return contract.Pattern.String()
 }
 
 func formatRangeContract(contract *ast.RangeContract) string {

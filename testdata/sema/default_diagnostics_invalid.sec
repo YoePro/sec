@@ -1,0 +1,37 @@
+module main
+
+// rules/types/default_values.md — "Diagnostics": each default failure keeps
+// its own stable identity.
+
+// types.default-not-representable (S1060)
+type Small uint8 default 300
+type Word int default "text"
+
+// types.default-violates-contract (S1059)
+type Port int range 1..65535 default 0
+
+// A legal type whose implicit default is an ambiguous nearest-to-zero tie.
+type NonZeroOdd int range -9..9 odd
+
+type Holder struct {
+    port: Port,
+    candidate: NonZeroOdd,
+}
+
+type Figure union {
+    Point {
+        candidate: NonZeroOdd,
+    },
+}
+
+fn main() void {
+    // types.ambiguous-implicit-default (S1061)
+    let mut value: NonZeroOdd
+    // struct.invalid-defaulted-field (S1063) and S1061 for the omitted fields
+    let holder := Holder {}
+    // S1061 for the omitted payload field
+    let figure := Figure.Point {}
+    discard value
+    discard holder
+    discard figure
+}

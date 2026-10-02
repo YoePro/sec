@@ -1,0 +1,308 @@
+module core
+
+/**
+ * Base units known to the system. These are the fundamental types used throughout the system for representing time, date, and other base units.
+ */
+
+// =============================================================================
+// The Seven SI Base Units
+// =============================================================================
+
+/** Metre or meter */
+unit m physical
+impl m {
+    LongName: "Meter"
+    Symbol: "m"
+    BaseUnit: true
+    Status: active
+    Dimension: [length^1]
+    Scale: 1
+    System: SI
+}
+
+/** Kilogram */
+unit kg physical
+impl kg {
+    LongName: "Kilogram"
+    Symbol: "kg"
+    BaseUnit: true
+    Status: active
+    Dimension: [mass^1]
+    Scale: 1
+    System: SI
+}
+
+/** Second */
+unit s physical
+impl s {
+    LongName: "Second"
+    Symbol: "s"
+    BaseUnit: true
+    Status: active
+    Dimension: [time^1]
+    Scale: 1
+    System: SI
+}
+
+/** Ampere */
+unit A physical
+impl A {
+    LongName: "Ampere"
+    Symbol: "A"
+    BaseUnit: true
+    Status: active
+    Dimension: [electric_current^1]
+    Scale: 1
+    System: SI
+}
+
+/** Kelvin */
+unit K physical
+impl K {
+    LongName: "Kelvin"
+    Symbol: "K"
+    BaseUnit: true
+    Status: active
+    Dimension: [thermodynamic_temperature^1]
+    Scale: 1
+    System: SI
+}
+
+/** Mol */
+unit mol physical
+impl mol {
+    LongName: "Mole"
+    Symbol: "mol"
+    BaseUnit: true
+    Status: active
+    Dimension: [amount_of_substance^1]
+    Scale: 1
+    System: SI
+}
+
+/** Candela */
+unit cd physical
+impl cd {
+    LongName: "Candela"
+    Symbol: "cd"
+    BaseUnit: true
+    Status: active
+    Dimension: [luminous_intensity^1]
+    Scale: 1
+    System: SI
+}
+
+// =============================================================================
+// Time units used in the core library
+// =============================================================================
+
+/** Minute */
+unit min physical
+impl min {
+    LongName: "Minute"
+    Symbol: "min"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 60
+    System: SI
+}
+
+/** Hour */
+unit h physical
+impl h {
+    LongName: "Hour"
+    Symbol: "h"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 3600
+    System: SI
+}
+
+/** Day */
+unit day physical
+impl day {
+    LongName: "Day"
+    Symbol: "day"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 86400
+    System: SI
+}
+
+/** Week */
+unit week physical
+impl week {
+    LongName: "Week"
+    Symbol: "week"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 604800
+    System: SI
+}
+
+/** Millisecond */
+unit ms physical
+impl ms {
+    LongName: "Millisecond"
+    Symbol: "ms"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000
+    System: SI
+}
+
+/** Microsecond */
+unit us physical
+impl us {
+    LongName: "Microsecond"
+    Symbol: "us"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000
+    System: SI
+}
+
+/** Nanosecond */
+unit ns physical
+impl ns {
+    LongName: "Nanosecond"
+    Symbol: "ns"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000
+    System: SI
+}
+
+// These should be defined in the stdlib/unit/base.sec file, but are included here for completeness - for now.
+// TODO: Move these to stdlib/unit/base.sec and remove from here.
+
+/** Picosecond */
+unit ps physical
+impl ps {
+    LongName: "Picosecond"
+    Symbol: "ps"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000
+    System: SI
+}
+
+/** Femtosecond */
+unit fs physical
+impl fs {
+    LongName: "Femtosecond"
+    Symbol: "fs"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000000
+    System: SI
+}
+
+/** Attosecond */
+unit as physical
+impl as {
+    LongName: "Attosecond"
+    Symbol: "as"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000000000
+    System: SI
+}
+
+/** Zeptosecond */
+unit zs physical
+impl zs {
+    LongName: "Zeptosecond"
+    Symbol: "zs"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000000000000
+    System: SI
+}
+
+/** Yoctosecond */
+unit ys physical
+impl ys {
+    LongName: "Yoctosecond"
+    Symbol: "ys"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 1 / 1000000000000000000000000
+    System: SI
+}
+
+/**
+ * Month
+ * Note: The month is not a standard SI unit, but is included here for convenience.
+ * The scale is based on the average length of a month in seconds (30.44 days).
+ */
+unit mo physical
+impl mo {
+    LongName: "Month"
+    Symbol: "mo"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 2.628e6
+    System: Other
+}
+
+/** Year */
+unit yr physical
+impl yr {
+    LongName: "Year"
+    Symbol: "yr"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 3.154e7
+    System: Other
+}
+
+/** Decade */
+unit decade physical
+impl decade {
+    LongName: "Decade"
+    Symbol: "decade"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 3.154e8
+    System: Other
+}
+
+/** Century */
+unit century physical
+impl century {
+    LongName: "Century"
+    Symbol: "century"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 3.154e9
+    System: Other
+}
+
+/** Millennia */
+unit millennia physical
+impl millennia {
+    LongName: "Millennia"
+    Symbol: "millennia"
+    BaseUnit: false
+    Status: active
+    Dimension: [time^1]
+    Scale: 3.154e10
+    System: Other
+}

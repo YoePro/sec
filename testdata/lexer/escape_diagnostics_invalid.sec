@@ -7,3 +7,7 @@ fn main() void {
     let nested := $"{F("\q")}"
     let following := 1
 }
+
+/* Expected error: lexer.unknown-escape, lexer.malformed-escape, and lexer.invalid-unicode-escape, including inside a nested interpolation expression.
+ * Reason: rules/foundations/lexical_structure.md §15 fixes the escape inventory and the three escape diagnostics.
+ */

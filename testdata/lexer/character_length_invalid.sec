@@ -7,3 +7,7 @@ fn main() void {
     let combining := 'é'
     let following := 1
 }
+
+/* Expected error: lexer.character-literal-length on every character literal that does not contain exactly one Unicode scalar value.
+ * Reason: rules/foundations/lexical_structure.md §13 requires exactly one scalar; empty, multi-scalar, multi-escape and combining-sequence literals violate it, and lexing recovers after each literal.
+ */

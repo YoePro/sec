@@ -1,0 +1,34 @@
+module main
+
+// rules/types/default_values.md — "Primitive tests": every numeric type
+// defaults to zero, bool to false, string to "", char to 0t, rune to 0r.
+type DefaultInt8 int8
+type DefaultInt int
+type DefaultUint64 uint64
+type DefaultFloat float64
+type DefaultDecimal decimal
+type DefaultBool bool
+type DefaultString string
+type DefaultChar char
+type DefaultRune rune
+
+fn Mutable() void {
+    let mut a: int
+    let mut b: uint8
+    let mut c: float32
+    let mut d: decimal
+    let mut e: bool
+    let mut f: string
+    let mut g: char
+    let mut h: rune
+    let mut i: int[]
+    discard a
+    discard b
+    discard c
+    discard d
+    discard e
+    discard f
+    discard g
+    discard h
+    discard i
+}

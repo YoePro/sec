@@ -74,10 +74,9 @@ type branch struct {
 
 func format(text string, options Options) string {
 	text = strings.TrimPrefix(text, "\uFEFF")
-	eol := "\n"
-	if strings.Contains(text, "\r\n") {
-		eol = "\r\n"
-	}
+	// rules/foundations/lexical_structure.md §2 "Line endings": the formatter
+	// writes LF line endings; no formatter configuration currently selects
+	// another convention, so CRLF and bare CR input are normalized to LF.
 	normal := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(text)
 	if options.Fix {
 		normal = fixRedundantNestedParentheses(normal)
@@ -197,13 +196,14 @@ func format(text string, options Options) string {
 	result := strings.Join(out, "\n")
 	result = formatExecutableBlocks(result)
 	result = formatCSTRoles(result)
+	// The role pass may widen field, register, and named-type columns; align
+	// trailing comments again against those final columns so a second
+	// formatting pass is a fixed point (rules/tooling/formatter.md §29).
+	result = strings.Join(alignDeclarationTrailingComments(strings.Split(result, "\n")), "\n")
 	result = formatCSTBlockComments(result)
 	result = formatCSTLineComments(result)
 	if hadFinal || result != "" {
 		result += "\n"
-	}
-	if eol != "\n" {
-		result = strings.ReplaceAll(result, "\n", eol)
 	}
 	return result
 }

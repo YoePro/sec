@@ -18,6 +18,7 @@ import (
 // Rules:
 //   - rules/tooling/formatter.md — §6(4) declaration colon, §6(5) binary operators, §6(6) unary operators
 //   - rules/tooling/formatter.md — §6(7) assignment and initialization operators
+//   - rules/tooling/formatter.md — §15 named-type headers, contracts, and default clauses
 //   - rules/tooling/formatter.md — §8(1)–(3) same-line opening braces and "} else {"
 //   - rules/tooling/formatter.md — §18(1) control-flow braces, §18(12) canonical loop forms
 //   - rules/tooling/formatter.md — §21(5) consuming call-site marker attachment
@@ -66,14 +67,16 @@ func formatCSTTokenSpacing(text string) string {
 // tokens, or false when neither token's role determines it.
 func canonicalTokenGap(left, right cst.Element) (string, bool) {
 	switch {
-	case left.HasRole(cst.PrefixOperator):
+	case left.HasRole(cst.ForeignQualifierSeparator) || right.HasRole(cst.ForeignQualifierSeparator):
+		return "", true
+	case left.HasRole(cst.PrefixOperator), right.HasRole(cst.EmptyCollectionLiteralClose):
 		return "", true
 	case right.HasRole(cst.DeclarationColon):
 		return "", true
 	case left.HasRole(cst.BinaryOperator) || right.HasRole(cst.BinaryOperator) ||
 		left.HasRole(cst.AssignmentOperator) || right.HasRole(cst.AssignmentOperator):
 		return " ", true
-	case left.HasRole(cst.DeclarationColon) || left.HasRole(cst.SpacedKeyword):
+	case left.HasRole(cst.DeclarationColon) || left.HasRole(cst.SpacedKeyword) || right.HasRole(cst.SpacedBefore):
 		return " ", true
 	case right.HasRole(cst.ExecutableBlockOpen) || right.HasRole(cst.ControlBodyOpen) || right.HasRole(cst.AvailabilityBlockOpen):
 		return " ", true

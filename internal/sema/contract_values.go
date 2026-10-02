@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 )
 
 // checkCompileTimeContractExpression validates source values whose complete
@@ -17,15 +18,27 @@ func (a *Analyzer) checkCompileTimeContractExpression(typ Type, expr ast.Express
 	if a.checkIntegerExpressionRange(typ, expr) {
 		return true
 	}
+	if a.checkEnumMembershipValue(typ, expr) {
+		return true
+	}
 	return a.checkStringLiteralContracts(typ, expr)
 }
 
-// checkDeclaredContractExpression excludes plain representation checks at new
-// call and return boundaries. In particular, an ordinary typed integer
+// checkDeclaredContractExpression excludes plain representation checks of
+// typed operations at call and return boundaries: an ordinary typed integer
 // operation retains its S1023 warning and checked runtime semantics when the
-// destination has no named contracts.
+// destination has no named contracts. An untyped integer literal or literal
+// constant expression is instead shaped by the destination and must be
+// representable by it, including the target-sized int and uint bounds.
+//
+// Rules:
+//   - rules/types/types.md — "Unsuffixed literal inference", "Context shaping"
+//   - rules/types/types.md — "int and uint" (target-selected width)
 func (a *Analyzer) checkDeclaredContractExpression(typ Type, expr ast.Expression) bool {
 	if !hasContracts(typ) {
+		if isUntypedNumericExpression(expr) {
+			return a.checkIntegerExpressionRange(typ, expr)
+		}
 		return false
 	}
 	return a.checkCompileTimeContractExpression(typ, expr)
@@ -52,17 +65,17 @@ func (a *Analyzer) checkStringLiteralContracts(typ Type, expr ast.Expression) bo
 				}
 			}
 			if !member {
-				a.addErrorAtToken(expressionToken(expr), "string value %q violates in contract %s", literal.Value, typ.Name)
+				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates in contract %s", literal.Value, typ.Name)
 				return true
 			}
 		case LengthContract:
 			if !stringLengthSatisfiesContract(literal.Value, contract) {
-				a.addErrorAtToken(expressionToken(expr), "string value %q violates %s contract %s %s", literal.Value, contract.Name, typ.Name, contract.Value.String())
+				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates %s contract %s %s", literal.Value, contract.Name, typ.Name, contract.Value.String())
 				return true
 			}
 		case MarkerContract:
 			if contract.Name == "notEmpty" && literal.Value == "" {
-				a.addErrorAtToken(expressionToken(expr), "string value %q violates notEmpty contract %s", literal.Value, typ.Name)
+				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "string value %q violates notEmpty contract %s", literal.Value, typ.Name)
 				return true
 			}
 		}
@@ -108,20 +121,20 @@ func (a *Analyzer) checkArrayLiteralContracts(typ Type, literal *ast.ArrayLitera
 		switch contract := contract.(type) {
 		case LengthContract:
 			if !knownLengthSatisfiesContract(length, contract) {
-				a.addErrorAtToken(literal.Token, "array literal length %s violates %s contract %s %s", length.String(), contract.Name, typeName, contract.Value.String())
+				a.addErrorAtTokenWithMetadata(literal.Token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal length %s violates %s contract %s %s", length.String(), contract.Name, typeName, contract.Value.String())
 				return true
 			}
 		case MarkerContract:
 			switch contract.Name {
 			case "notEmpty":
 				if length.Sign() == 0 {
-					a.addErrorAtToken(literal.Token, "array literal length 0 violates notEmpty contract %s", typeName)
+					a.addErrorAtTokenWithMetadata(literal.Token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal length 0 violates notEmpty contract %s", typeName)
 					return true
 				}
 			case "unique":
 				duplicate, original, ok := duplicateArrayLiteralConstant(literal)
 				if ok {
-					a.addErrorAtToken(expressionToken(literal.Elements[duplicate]), "array literal element %d duplicates element %d under unique contract %s", duplicate+1, original+1, typeName)
+					a.addErrorAtTokenWithMetadata(expressionToken(literal.Elements[duplicate]), diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "array literal element %d duplicates element %d under unique contract %s", duplicate+1, original+1, typeName)
 					return true
 				}
 			}

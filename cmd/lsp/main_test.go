@@ -1393,8 +1393,8 @@ func TestAnalyzePublishesUnterminatedBlockCommentDiagnostic(t *testing.T) {
 		t.Fatalf("LSP unterminated block comment diagnostics = %+v", items)
 	}
 	want := lspRange{
-		Start: position{Line: 3, Character: 0},
-		End:   position{Line: 6, Character: 0},
+		Start: position{Line: 7, Character: 0},
+		End:   position{Line: 10, Character: 0},
 	}
 	if items[0].Range != want {
 		t.Fatalf("LSP unterminated block comment range = %+v, want %+v", items[0].Range, want)
@@ -1429,8 +1429,8 @@ func TestAnalyzePublishesUnterminatedRawStringDiagnostic(t *testing.T) {
 		t.Fatalf("LSP unterminated raw string diagnostics = %+v", items)
 	}
 	want := lspRange{
-		Start: position{Line: 2, Character: 14},
-		End:   position{Line: 5, Character: 0},
+		Start: position{Line: 6, Character: 14},
+		End:   position{Line: 9, Character: 0},
 	}
 	if items[0].Range != want {
 		t.Fatalf("LSP unterminated raw string range = %+v, want %+v", items[0].Range, want)
@@ -3181,6 +3181,44 @@ fn use(reader: Reader) int {
 	}
 }
 
+// A for loop over Iterator[T] statically calls the resolved concrete Next, so
+// the editor shows the same compiler-owned call edge without rediscovering the
+// protocol from the spelling Next.
+//
+// Rules:
+//   - rules/compiler/compiler_analysis.md — § 18(6) compiler and LSP share Next resolution
+//   - rules/tooling/lsp.md — "Navigation", compiler-owned call hierarchy
+func TestCallHierarchyIncludesResolvedIteratorNext(t *testing.T) {
+	source := `module main
+
+type Counter struct {
+	current: int,
+}
+
+impl Counter implements Iterator[int] {
+	fn Next() Option[int] {
+		return None
+	}
+}
+
+fn Drain() void {
+	let mut counter := Counter { current: 0 }
+	for value in counter {
+		discard value
+	}
+}
+`
+	uri := "file:///tmp/sec-lsp-call-hierarchy-iterator/main.sec"
+	items := callHierarchyItemsForSource(uri, source, offsetPosition(source, strings.Index(source, "Drain()")))
+	if len(items) != 1 {
+		t.Fatalf("prepare items = %+v, want Drain", items)
+	}
+	outgoing := callHierarchyOutgoingCallsForSource(uri, source, items[0].Data.NodeID)
+	if len(outgoing) != 1 || outgoing[0].To.Name != "Next" || outgoing[0].To.Kind != 6 {
+		t.Fatalf("iterator outgoing calls = %+v, want the resolved Counter.Next method", outgoing)
+	}
+}
+
 func TestCallHierarchyAndHoverPreserveSpawnExecutionRelations(t *testing.T) {
 	source := `module main
 
@@ -3811,7 +3849,7 @@ func TestCompletionIncludesContractModifiers(t *testing.T) {
 }
 
 func TestContractCompletionUsesCanonicalLexerInventory(t *testing.T) {
-	want := append([]string{"range", "in"}, lexer.ContractWords()...)
+	want := append([]string{"range", "in"}, lexer.ContractStartWords()...)
 	if !reflect.DeepEqual(contractCompletionWords, want) {
 		t.Fatalf("contractCompletionWords = %v, want %v", contractCompletionWords, want)
 	}
@@ -4630,6 +4668,91 @@ func TestCompletionNestedMembersFromSibling(t *testing.T) {
 				// A separate bodyless declaration must not disable recovered completion.
 				assertCompletionLabels(t, completeSource(uriFromPath(path), source+"\nfn Pending() void\n", offset, snapshots), tc.labels)
 			})
+		}
+	}
+}
+
+// The contextual `regex` pattern contract is classified from its parser role;
+// the same spelling used as a function name stays an ordinary declaration.
+//
+// Rules:
+//   - rules/types/contracts.md — "Applicability"
+//   - rules/foundations/lexical_structure.md — §23 tooling classification
+func TestSemanticTokensClassifyRegexContractOnlyInContractPosition(t *testing.T) {
+	source := "type Email string regex \"^[a-z]+$\"\nfn regex() void {}\n"
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	assertSemanticToken(t, tokens, 0, 18, len("regex"), "modifier")
+	for _, token := range tokens {
+		if token.Line == 1 && token.Start == 3 && token.TokenType == "modifier" {
+			t.Fatalf("function name regex classified as contract modifier: %+v", token)
+		}
+	}
+}
+
+// Hover on a contracted named type presents its resolved contracts, including
+// inherited ones, in source order.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover" (contracts)
+//   - rules/types/contracts.md — "Composition"
+func TestHoverShowsResolvedContracts(t *testing.T) {
+	source := "module main\n\ntype Percent int range 0..100 even default 2\ntype Half Percent multipleOf 4\ntype Role string in [\"a\", \"b\"] minLen 1\n"
+	cases := []struct {
+		pos  position
+		want string
+	}{
+		{position{Line: 2, Character: 6}, "Contracts: `range 0..100` `even`"},
+		{position{Line: 3, Character: 6}, "Contracts: `range 0..100` `even` `multipleOf 4`"},
+		{position{Line: 4, Character: 6}, "Contracts: `in [\"a\", \"b\"]` `minLen 1`"},
+	}
+	for _, tc := range cases {
+		hover, ok := hoverForSource("file:///contracts.sec", source, tc.pos)
+		if !ok || !strings.Contains(hover.Contents.Value, tc.want) {
+			t.Fatalf("hover at %v = %q, want %q", tc.pos, hover.Contents.Value, tc.want)
+		}
+	}
+}
+
+// Semantic tokens distinguish built-in lowercase types from nominal types and
+// mark visibility-prefixed identifiers, as the lexical tooling rule requires.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §23 "LSP and syntax-highlighting requirements"
+//   - rules/foundations/names_scopes_visibility.md — underscore visibility prefixes
+//   - rules/tooling/lsp.md — "Semantic tokens"
+func TestSemanticTokensDistinguishBuiltinTypesAndVisibilityPrefixes(t *testing.T) {
+	source := "module main\n\ntype Point struct {\n    x: int,\n}\n\nfn Work(_hidden: int, __secret: int, plain: set[int], point: Point) void {}\n"
+	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
+	line := 6
+	text := strings.Split(source, "\n")[line]
+	at := func(word string) int { return strings.Index(text, word) }
+	assertSemanticTokenWithModifier(t, tokens, line, at("int,"), 3, "type", "defaultLibrary")
+	assertSemanticTokenWithModifier(t, tokens, line, at("set"), 3, "type", "defaultLibrary")
+	assertSemanticTokenWithoutModifier(t, tokens, line, at("Point)"), 5, "type", "defaultLibrary")
+	assertSemanticTokenWithModifier(t, tokens, line, at("_hidden"), len("_hidden"), "variable", "modulePrivate")
+	assertSemanticTokenWithModifier(t, tokens, line, at("__secret"), len("__secret"), "variable", "ownerPrivate")
+	assertSemanticTokenWithoutModifier(t, tokens, line, at("plain"), len("plain"), "variable", "modulePrivate")
+}
+
+// Hover identifies whether a compiler-known member is a replaceable fallback
+// or an authoritative property.
+//
+// Rule: rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — § 24(2), § 24(4).
+func TestHoverShowsCompilerKnownMemberCategory(t *testing.T) {
+	source := "module main\n\nfn Use(values: int[]) uint {\n    let text := values.ToString()\n    discard text\n    return values.SizeOf\n}\n"
+	lines := strings.Split(source, "\n")
+	for _, test := range []struct {
+		line int
+		word string
+		want string
+	}{
+		{3, "ToString", "Compiler-provided fallback"},
+		{5, "SizeOf", "Authoritative compiler property"},
+	} {
+		character := strings.Index(lines[test.line], test.word) + 1
+		hover, ok := hoverForSource("file:///category.sec", source, position{Line: test.line, Character: character})
+		if !ok || !strings.Contains(hover.Contents.Value, test.want) {
+			t.Fatalf("hover on %s = %q, want %q", test.word, hover.Contents.Value, test.want)
 		}
 	}
 }

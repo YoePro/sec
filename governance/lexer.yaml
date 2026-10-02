@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-09-30"
+    revised: "2026-10-02"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -23,6 +23,9 @@ integrations:
       - rules/tooling/diagnostics.md
       - rules/compiler/parser_recovery.md
     code:
+      - internal/lsp/features/semantic_tokens.go
+      - internal/formatter/formatter.go
+      - vscode/package.json
       - internal/lexer/escapes.go
       - internal/lexer/contract_words.go
       - internal/lexer/contextual_type_names.go
@@ -47,6 +50,8 @@ integrations:
       - cmd/lsp
       - vscode/syntaxes/sec.tmLanguage.json
     tests:
+      - internal/lexer/documentation_comment_test.go
+      - internal/formatter/declaration_forms_test.go
       - internal/lexer/character_length_test.go
       - testdata/lexer/character_length_valid.sec
       - testdata/lexer/character_length_invalid.sec
@@ -206,7 +211,12 @@ integrations:
       - Sema applies stable mandatory S1028 names.reserved-declaration-name diagnostics across module names, explicit import aliases, variables/constants, functions/methods, parameters, generic parameters, fields, properties, events, enum members, loop/select bindings, assembly output bindings, setter parameters, and match payload bindings; parser-owned underscore discard/register roles and trusted core module provenance are exempt
       - compiler-known type, enum, interface, and unit redeclarations retain their focused messages while sharing S1028 ownership
       - LSP source-position integration uses one scalar-to-UTF-16 token-range mapping for diagnostics, hover, navigation, references, highlights, call hierarchy, document symbols, semantic tokens, and edits; incoming protocol positions map UTF-16 back to byte offsets without corrupting lexer scalar columns, multiline tokens remain addressable on continuation lines, and LF, CRLF, and bare CR share physical-line semantics
-      - the Go lexer retains identifier-like candidates containing non-ASCII decimal digits as one ILLEGAL token and emits focused L1005 over the complete original spelling; leading digits, underscore-prefixed candidates, following-token recovery, and scalar columns are covered without changing valid Unicode-letter identifiers
+      - the Go lexer retains identifier-like candidates containing non-ASCII decimal digits as one ILLEGAL token and emits focused L1005 over the complete original spelling; leading digits, underscore-prefixed candidates, following-token recovery, and scalar columns are covered without changing valid Unicode-letter identifiers      - "audit on 2026-10-02 against lexical_structure.md §§1-23: every required lexical error category (§20) reports its stable ID with one-token recovery; encoding, BOM, line endings, whitespace, comments, identifiers, reserved words, compiler-known type names, contextual set and x, literals, escapes, operators, longest match, and token boundaries match the rulebook"
+      - an unterminated interpolated string whose open interpolation expression reaches a physical line ending (or end of input) now ends before that line ending instead of consuming the next line's first token, including for CRLF, bare CR, and a block comment that would cross the line
+      - "the formatter writes LF line endings for well-formed CRLF, bare-CR, and mixed input as §2 requires (no formatter configuration selects another convention), so `sec fmt <file>`, `sec fmt --stdin`, and the LSP agree; malformed source still keeps its original bytes under formatter.md §25"
+      - documentation comments are covered as ordinary comment tokens with exact lexeme, line, column, and byte ranges; `///` stays an ordinary line comment, and comments split multi-character tokens as §5.5 requires
+      - every invalid lexer integration fixture documents its Expected error and Reason as §25 requires
+      - semantic tokens add the standard defaultLibrary modifier to compiler-known lowercase types (including collection `set`) and custom modulePrivate/ownerPrivate modifiers to `_name`/`__name` identifiers, declared in the VS Code extension, completing the §23 distinctions between built-in and nominal types and for visibility-prefixed identifiers
     partial:
       - interpolation allocation/failure policy, Semantic IR plan consumption, and maintained-backend lowering remain incomplete; AST/parser expression parts, source ranges, text escape materialization, semantic traversal, formatting-contract selection, maximal frontend concat planning, ownership checks, and effect propagation are implemented
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
@@ -216,6 +226,8 @@ integrations:
       - resolve concat allocation/failure policy and consume the canonical frontend StringConcatPlan in Semantic IR and maintained backends; frontend formatting-contract selection, maximal planning, doubled-brace handling, and text-escape decoding are implemented
       - port interpolation AST parts and expression parsing to the bootstrap parser; blocked on the bootstrap AST and ordinary expression-parser infrastructure, which do not yet exist
     verification:
+      - command: go test ./internal/lexer ./internal/formatter ./cmd/lsp ./cmd/compiler -count=1
+        result: passed on 2026-10-02 with interpolation line-end recovery, documentation comments, LF formatting, documented invalid fixtures, and semantic-token modifiers
       - command: go test ./...
         result: passed; scalar-count fixtures, escape diagnostics, snapshot rollback and retained-AST Sema validation
       - command: parse character_length_valid.sec and character_length_invalid.sec

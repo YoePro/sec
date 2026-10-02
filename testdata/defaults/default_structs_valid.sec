@@ -1,0 +1,33 @@
+module main
+
+// rules/types/default_values.md — "Struct tests".
+type Percent int range 1..100
+
+type Empty struct {}
+
+type Inner struct {
+    count: int,
+    name: string,
+}
+
+type Outer struct {
+    inner: Inner,
+    percent: Percent,
+    port: Port,
+    flag: bool,
+}
+
+type Port int range 1..65535 default 8080
+
+fn Build() void {
+    let empty := Empty {}
+    let one := Inner { count: 1 }
+    let omitted := Outer {}
+    let nested := Outer { flag: true }
+    let spread := Inner { one..., name: "x" }
+    discard empty
+    discard one
+    discard omitted
+    discard nested
+    discard spread
+}

@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 
 	"sec/internal/ast"
@@ -44,9 +45,16 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 		if !ok {
 			typ.InvalidExplicitDefault = true
 			a.addErrorAtTokenWithMetadata(stmt.DefaultToken, diagnostics.InvalidExplicitDefault, "use an allocation-free compile-time constant", "default for %s must be a compile-time primitive constant", name)
-		} else if !defaultConstantSatisfies(typ, constant) || !defaultConstantCompatible(typ, constant) {
+		} else if !defaultRepresentable(typ, constant) {
+			// rules/types/default_values.md, "Explicit type defaults" and
+			// "Diagnostics": representability is checked before contracts.
 			typ.InvalidExplicitDefault = true
-			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.InvalidExplicitDefault, "choose a value satisfying every type contract", "default value %s is invalid for %s", stmt.Default.String(), name)
+			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.DefaultNotRepresentable, "choose a value representable by "+contractApplicabilityTypeName(typ), "default value %s is not representable by %s", stmt.Default.String(), name)
+		} else if violated, ok := firstViolatedContract(typ, constant); ok {
+			// rules/types/contracts.md, "Explicit defaults" and "Diagnostics":
+			// name the first violated contract in source order.
+			typ.InvalidExplicitDefault = true
+			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.DefaultViolatesContract, fmt.Sprintf("%s requires %s; choose a value satisfying every type contract", name, describeContract(violated)), "default value %s is invalid for %s", stmt.Default.String(), name)
 		} else {
 			typ.ExplicitDefault = &constant
 		}
@@ -100,6 +108,8 @@ func astContractToken(contract ast.Contract) lexer.Token {
 	case *ast.MembershipContract:
 		return contract.Token
 	case *ast.MarkerContract:
+		return contract.Token
+	case *ast.RegexContract:
 		return contract.Token
 	default:
 		return lexer.Token{}
@@ -158,13 +168,13 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 	switch contract := contractNode.(type) {
 	case *ast.RangeContract:
 		if !a.contractAppliesToType("range", typ) {
-			a.addErrorAtToken(contract.Token, "range contract does not apply to %s", contractApplicabilityTypeName(typ))
+			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "range contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
 		return applyRangeContract(typ, contract)
 	case *ast.MembershipContract:
 		if !a.contractAppliesToType("in", typ) {
-			a.addErrorAtToken(contract.Token, "in contract does not apply to %s", contractApplicabilityTypeName(typ))
+			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "in contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
 		membership := MembershipContract{}
@@ -183,11 +193,14 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		for _, value := range contract.Values {
 			constant, ok := defaultConstantFromExpression(value)
 			if !ok {
-				a.addErrorAtToken(expressionToken(value), "membership values must be compile-time primitive constants")
+				constant, ok = enumMemberConstant(typ, value)
+			}
+			if !ok {
+				a.addErrorAtTokenWithMetadata(expressionToken(value), diagnostics.InvalidContractArgument, "use a compile-time literal or, for an enum-based type, one of its declared members", "membership value %s is not a compile-time constant of %s", value.String(), typeDisplayName(typ))
 				continue
 			}
 			if !defaultConstantCompatible(typ, constant) {
-				a.addErrorAtToken(expressionToken(value), "membership value %s is incompatible with %s", value.String(), typeDisplayName(typ))
+				a.addErrorAtTokenWithMetadata(expressionToken(value), diagnostics.IncompatibleMembershipValue, "use a value of the named type's base type", "membership value %s is incompatible with %s", value.String(), typeDisplayName(typ))
 				continue
 			}
 			duplicateIndex := -1
@@ -215,28 +228,34 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		return typ
 	case *ast.MarkerContract:
 		if !a.contractAppliesToType(contract.Name, typ) {
-			a.addErrorAtToken(contract.Token, "%s contract does not apply to %s", contract.Name, contractApplicabilityTypeName(typ))
+			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "%s contract does not apply to %s", contract.Name, contractApplicabilityTypeName(typ))
 			return typ
 		}
 		if contract.Name == "multipleOf" {
-			multiple := MultipleOfContract{}
-			if value, ok := constantIntegerValue(contract.Value); ok {
-				multiple.Value = new(big.Int).Set(value)
-				if value.Sign() == 0 {
-					a.addErrorAtToken(expressionToken(contract.Value), "multipleOf contract divisor must not be zero")
+			// rules/types/contracts.md, "Integer contracts": multipleOf requires
+			// a nonzero compile-time integer divisor; a divisor that cannot be
+			// established is rejected instead of silently dropping the contract.
+			value, ok := constantIntegerValue(contract.Value)
+			if !ok {
+				if _, invalid := contract.Value.(*ast.InvalidExpression); !invalid && contract.Value != nil {
+					a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "multipleOf contract divisor must be a compile-time integer")
 				}
+				return typ
 			}
-			typ.Contracts = append(typ.Contracts, multiple)
+			if value.Sign() == 0 {
+				a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "multipleOf contract divisor must not be zero")
+			}
+			typ.Contracts = append(typ.Contracts, MultipleOfContract{Value: new(big.Int).Set(value)})
 			return typ
 		}
 		if isLengthContractName(contract.Name) {
 			value, ok := constantIntegerValue(contract.Value)
 			if !ok {
-				a.addErrorAtToken(expressionToken(contract.Value), "%s contract value must be a compile-time integer", contract.Name)
+				a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "%s contract value must be a compile-time integer", contract.Name)
 				return typ
 			}
 			if value.Sign() < 0 {
-				a.addErrorAtToken(expressionToken(contract.Value), "%s contract value must not be negative", contract.Name)
+				a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "%s contract value must not be negative", contract.Name)
 				return typ
 			}
 			typ.Contracts = append(typ.Contracts, LengthContract{
@@ -247,9 +266,47 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		}
 		typ.Contracts = append(typ.Contracts, MarkerContract{Name: contract.Name})
 		return typ
+	case *ast.RegexContract:
+		return a.applyRegexContract(typ, contract)
 	default:
 		return typ
 	}
+}
+
+// applyRegexContract validates the source-checkable parts of a `regex`
+// contract: it applies only to string-like named types and requires a
+// compile-time string pattern. Because the concrete regular-expression syntax
+// and engine are not yet fixed, no value can be proven to satisfy the
+// contract; the declaration is rejected with a focused diagnostic instead of
+// silently dropping the contract.
+//
+// Rules:
+//   - rules/types/contracts.md — "Applicability" (`regex` on string-like named types)
+//   - rules/types/contracts.md — "String and collection contracts" (compile-time pattern; engine must be fixed before validation)
+//   - missing-decisions.yaml — MD-010
+func (a *Analyzer) applyRegexContract(typ Type, contract *ast.RegexContract) Type {
+	if !a.contractAppliesToType("regex", typ) {
+		a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "regex contract does not apply to %s", contractApplicabilityTypeName(typ))
+		return typ
+	}
+	if _, invalid := contract.Pattern.(*ast.InvalidExpression); invalid || contract.Pattern == nil {
+		// The parser already reported the missing or malformed pattern.
+		return typ
+	}
+	pattern, ok := defaultConstantFromExpression(contract.Pattern)
+	if !ok || pattern.Kind != StringType {
+		a.addErrorAtTokenWithMetadata(expressionToken(contract.Pattern), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "regex contract pattern must be a compile-time string")
+		return typ
+	}
+	typ.Contracts = append(typ.Contracts, RegexContract{Pattern: pattern.String})
+	a.addErrorAtTokenWithMetadata(
+		contract.Token,
+		diagnostics.RegexContractUnavailable,
+		"remove the regex contract until the Sec regular-expression syntax is defined",
+		"regex contract on %s cannot be validated: the Sec regular-expression syntax and engine are not yet defined",
+		typeDisplayName(typ),
+	)
+	return typ
 }
 
 func contractApplicabilityTypeName(typ Type) string {
@@ -338,18 +395,18 @@ func (a *Analyzer) checkContractSetConsistency(typ Type, contractNode ast.Contra
 	}
 
 	if hasOdd && hasEven {
-		a.addErrorAtToken(token, "contracts odd and even cannot be combined")
+		a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "contracts odd and even cannot be combined")
 		return
 	}
 	if hasOdd && multiple != nil && new(big.Int).Mod(multiple, big.NewInt(2)).Sign() == 0 {
-		a.addErrorAtToken(token, "contracts multipleOf %s and odd cannot be combined because every multiple is even", multiple.String())
+		a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "contracts multipleOf %s and odd cannot be combined because every multiple is even", multiple.String())
 		return
 	}
 	if effectiveRange == nil {
 		return
 	}
 	if !integerRangeHasSatisfyingValue(effectiveRange, multiple, hasOdd, hasEven) {
-		a.addErrorAtToken(token, "contracts cannot be satisfied together for %s", typeDisplayName(typ))
+		a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "contracts cannot be satisfied together for %s", typeDisplayName(typ))
 	}
 }
 
@@ -455,6 +512,8 @@ func (a *Analyzer) contractAppliesToType(name string, typ Type) bool {
 		return a.isCollectionContractType(typ)
 	case "finite":
 		return typ.Kind == FloatType || typ.Kind == DecimalType
+	case "regex":
+		return typ.Kind == StringType
 	default:
 		return false
 	}
@@ -602,8 +661,10 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 				}
 			}
 			if violatesMin || violatesMax {
-				a.addErrorAtToken(
+				a.addErrorAtTokenWithMetadata(
 					token,
+					diagnostics.ValueViolatesContract,
+					"use a value satisfying every contract of the named type",
 					"value %s violates range contract %s %s",
 					value.String(),
 					typ.Name,
@@ -616,19 +677,19 @@ func (a *Analyzer) checkIntegerValueRange(typ Type, value *big.Int, token lexer.
 				continue
 			}
 			if new(big.Int).Mod(value, contract.Value).Sign() != 0 {
-				a.addErrorAtToken(token, "value %s violates multipleOf contract %s %s", value.String(), typ.Name, contract.Value.String())
+				a.addErrorAtTokenWithMetadata(token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates multipleOf contract %s %s", value.String(), typ.Name, contract.Value.String())
 				return true
 			}
 		case MarkerContract:
 			switch contract.Name {
 			case "odd":
 				if new(big.Int).Mod(value, big.NewInt(2)).Sign() == 0 {
-					a.addErrorAtToken(token, "value %s violates odd contract %s", value.String(), typ.Name)
+					a.addErrorAtTokenWithMetadata(token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates odd contract %s", value.String(), typ.Name)
 					return true
 				}
 			case "even":
 				if new(big.Int).Mod(value, big.NewInt(2)).Sign() != 0 {
-					a.addErrorAtToken(token, "value %s violates even contract %s", value.String(), typ.Name)
+					a.addErrorAtTokenWithMetadata(token, diagnostics.ValueViolatesContract, "use a value satisfying every contract of the named type", "value %s violates even contract %s", value.String(), typ.Name)
 					return true
 				}
 			}

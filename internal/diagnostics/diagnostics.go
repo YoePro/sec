@@ -63,6 +63,8 @@ const (
 	ParserCompatibilitySyntax           = "P2018"
 	ParserUnimplementedFunction         = "P2019"
 	ParserInvalidTestDeclaration        = "P2020"
+	ParserMalformedForeignQualification = "P2021"
+	ParserUnsupportedForeignForm        = "P2022"
 	MissingModuleDeclaration            = "S1001"
 	DuplicateModuleDeclaration          = "S1002"
 	ModuleDeclarationConflict           = "S1003"
@@ -120,6 +122,27 @@ const (
 	RecursiveStructLayout               = "S1055"
 	SwitchPatternBinding                = "S1056"
 	LocalShadowsDeclaration             = "S1057"
+	RegexContractUnavailable            = "S1058"
+	DefaultViolatesContract             = "S1059"
+	DefaultNotRepresentable             = "S1060"
+	AmbiguousImplicitDefault            = "S1061"
+	TypeNoDefaultValue                  = "S1062"
+	InvalidDefaultedField               = "S1063"
+	InapplicableContract                = "S1064"
+	UnsatisfiableContractSet            = "S1065"
+	InvalidContractArgument             = "S1066"
+	IncompatibleMembershipValue         = "S1067"
+	ValueViolatesContract               = "S1068"
+	ConstrainedAssignmentRequiresTry    = "S1069"
+	AuthoritativeMemberReplacement      = "S1070"
+	RecursiveUnionLayout                = "S1071"
+	ArenaUnsizedAllocationType          = "S1072"
+	ArenaAllocationMissingDefault       = "S1073"
+	ArenaNonTrivialDestructionType      = "S1074"
+	StructuralMutationDuringIteration   = "S1075"
+	ForeignUnknownCFundamentalType      = "S1076"
+	ForeignCABIModelUnavailable         = "S1077"
+	ForeignUnresolvedCBindingType       = "S1078"
 	UnreachableStatement                = "S3001"
 	UseAfterDiscard                     = "S4001"
 	LargeValueParameter                 = "A2001"
@@ -143,6 +166,27 @@ var registry = map[string]Definition{
 	RecursiveStructLayout:               {ID: RecursiveStructLayout, Name: "struct.recursive-by-value-layout", Family: "struct", DefaultSeverity: SeverityError, Mandatory: true},
 	SwitchPatternBinding:                {ID: SwitchPatternBinding, Name: "switch.pattern-binding", Family: "flow-control", DefaultSeverity: SeverityError, Mandatory: true},
 	LocalShadowsDeclaration:             {ID: LocalShadowsDeclaration, Name: "names.local-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	RegexContractUnavailable:            {ID: RegexContractUnavailable, Name: "types.regex-contract-unavailable", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	DefaultViolatesContract:             {ID: DefaultViolatesContract, Name: "types.default-violates-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	DefaultNotRepresentable:             {ID: DefaultNotRepresentable, Name: "types.default-not-representable", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	AmbiguousImplicitDefault:            {ID: AmbiguousImplicitDefault, Name: "types.ambiguous-implicit-default", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	TypeNoDefaultValue:                  {ID: TypeNoDefaultValue, Name: "types.no-default-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidDefaultedField:               {ID: InvalidDefaultedField, Name: "struct.invalid-defaulted-field", Family: "struct", DefaultSeverity: SeverityError, Mandatory: true},
+	InapplicableContract:                {ID: InapplicableContract, Name: "types.inapplicable-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	UnsatisfiableContractSet:            {ID: UnsatisfiableContractSet, Name: "types.unsatisfiable-contract-set", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidContractArgument:             {ID: InvalidContractArgument, Name: "types.invalid-contract-argument", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	IncompatibleMembershipValue:         {ID: IncompatibleMembershipValue, Name: "types.incompatible-in-contract-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	ValueViolatesContract:               {ID: ValueViolatesContract, Name: "types.value-violates-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	ConstrainedAssignmentRequiresTry:    {ID: ConstrainedAssignmentRequiresTry, Name: "types.constrained-assignment-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	AuthoritativeMemberReplacement:      {ID: AuthoritativeMemberReplacement, Name: "members.authoritative-compiler-property", Family: "members", DefaultSeverity: SeverityError, Mandatory: true},
+	RecursiveUnionLayout:                {ID: RecursiveUnionLayout, Name: "union.recursive-by-value-layout", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
+	ArenaUnsizedAllocationType:          {ID: ArenaUnsizedAllocationType, Name: "arena.unsized-allocation-type", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
+	ArenaAllocationMissingDefault:       {ID: ArenaAllocationMissingDefault, Name: "arena.allocation-missing-default", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
+	ArenaNonTrivialDestructionType:      {ID: ArenaNonTrivialDestructionType, Name: "arena.non-trivially-destructible-allocation", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
+	StructuralMutationDuringIteration:   {ID: StructuralMutationDuringIteration, Name: "for.structural-mutation-during-iteration", Family: "flow-control", DefaultSeverity: SeverityError, Mandatory: true},
+	ForeignUnknownCFundamentalType:      {ID: ForeignUnknownCFundamentalType, Name: "ffi.unknown-c-fundamental-type", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	ForeignCABIModelUnavailable:         {ID: ForeignCABIModelUnavailable, Name: "ffi.c-abi-model-unavailable", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	ForeignUnresolvedCBindingType:       {ID: ForeignUnresolvedCBindingType, Name: "ffi.unresolved-c-binding-type", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
 	UseAfterDiscard:                     {ID: UseAfterDiscard, Name: "ownership.use-after-discard", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
@@ -198,12 +242,14 @@ var registry = map[string]Definition{
 		ParserInvalidAssignmentExpr,
 		"parser.invalid-assignment-expression",
 	),
-	ParserChainedComparison:      parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
-	ParserRecoveryLimit:          parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
-	ParserUnexpectedEndOfFile:    parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
-	ParserInvalidBlockMember:     parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
-	ParserUnimplementedFunction:  parserDefinition(ParserUnimplementedFunction, "parser.unimplemented-function"),
-	ParserInvalidTestDeclaration: parserDefinition(ParserInvalidTestDeclaration, "parser.invalid-test-declaration"),
+	ParserChainedComparison:             parserDefinition(ParserChainedComparison, "parser.chained-comparison"),
+	ParserRecoveryLimit:                 parserDefinition(ParserRecoveryLimit, "parser.recovery-limit"),
+	ParserUnexpectedEndOfFile:           parserDefinition(ParserUnexpectedEndOfFile, "parser.unexpected-end-of-file"),
+	ParserInvalidBlockMember:            parserDefinition(ParserInvalidBlockMember, "parser.invalid-block-member"),
+	ParserUnimplementedFunction:         parserDefinition(ParserUnimplementedFunction, "parser.unimplemented-function"),
+	ParserInvalidTestDeclaration:        parserDefinition(ParserInvalidTestDeclaration, "parser.invalid-test-declaration"),
+	ParserMalformedForeignQualification: parserDefinition(ParserMalformedForeignQualification, "parser.malformed-foreign-qualification"),
+	ParserUnsupportedForeignForm:        parserDefinition(ParserUnsupportedForeignForm, "parser.unsupported-foreign-form"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",

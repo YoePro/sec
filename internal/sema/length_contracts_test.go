@@ -240,7 +240,7 @@ fn Test() void {
 	let mut pair: UniquePair
 }
 `)
-	if len(errors) != 2 || !errorsContainMessage(errors, "variable required of type int[] requires an initializer because the type has no default value") || !errorsContainMessage(errors, "variable pair of type int[2] requires an initializer because the type has no default value") {
+	if len(errors) != 2 || !errorsContainMessage(errors, "variable required of type RequiredValues requires an initializer because the type has no default value") || !errorsContainMessage(errors, "variable pair of type UniquePair requires an initializer because the type has no default value") {
 		t.Fatalf("contracted array default diagnostics = %v", errors)
 	}
 }

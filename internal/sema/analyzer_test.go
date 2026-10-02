@@ -8644,9 +8644,10 @@ func TestMatchAnalysisRejectsNilRecoveredArmWithoutPanic(t *testing.T) {
 	}}
 
 	errors := NewAnalyzer().Analyze(program)
+	// An invalid arm already reports the pattern error; the dependent
+	// "must produce a value" diagnostic is suppressed to avoid a cascade.
 	assertSemaErrors(t, errors, []string{
 		"invalid match arm at 9:9",
-		"match expression must produce a value at 9:9",
 	})
 }
 

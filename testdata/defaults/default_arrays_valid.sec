@@ -1,0 +1,22 @@
+module main
+
+// rules/types/default_values.md — "Collection and array tests".
+type Point struct {
+    x: int,
+    y: int,
+}
+
+type Percent int range 1..100
+
+fn Build() void {
+    let mut numbers: int[4]
+    let mut points: Point[2]
+    let mut percents: Percent[3]
+    let mut empty: int[0]
+    let mut owning: Point[]
+    discard numbers
+    discard points
+    discard percents
+    discard empty
+    discard owning
+}

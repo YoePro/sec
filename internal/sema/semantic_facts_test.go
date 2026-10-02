@@ -1511,3 +1511,73 @@ fn Render(packet: Packet, bytes: byte[2]) string {
 		}
 	}
 }
+
+// The resolved Iterator[T] plan records conformance, the Next call-graph
+// identity, the source state kind, the binding kind, and temporary cleanup,
+// and every loop statically calls Next so its effects reach the caller.
+//
+// Rules:
+//   - rules/compiler/compiler_analysis.md — § 18(2) Iterator[T] analysis facts; § 18(6)
+//   - rules/control-flow/flowcontrol_for.md — §37 "Compiler-known `Iterator[T]`"
+//   - rules/compiler/compiler_pipeline.md — § 38(1) Next target resolved before Semantic IR
+func TestResolvedIteratorPlanRecordsSourceBindingCleanupAndNextEffects(t *testing.T) {
+	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+  fn Next() Option[int] {
+    if self.current > 2 {
+      panic "exhausted"
+    }
+    self.current += 1
+    return Some(self.current)
+  }
+}
+type Buffered struct { pending: int[] }
+impl Buffered implements Iterator[int] {
+  fn Next() Option[int] {
+    return None
+  }
+}
+fn MakeBuffered() Buffered {
+  return Buffered {}
+}
+fn Reusable() void {
+  let mut counter := Counter { current: 0 }
+  for value in counter {
+    discard value
+  }
+}
+fn Temporary() void {
+  for _ in MakeBuffered() {
+  }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("sema: %v", errors)
+	}
+	plans := map[string]ResolvedForIteration{}
+	for statement, plan := range analyzer.resolvedForIterations {
+		plans[typeDisplayName(plan.SourceType)] = plan
+		_ = statement
+	}
+	reusable, ok := plans["Counter"]
+	if !ok || typeDisplayName(reusable.Conformance) != "Iterator[int]" || reusable.Source != ForIteratorReusableStorage || reusable.SourcePlace.Root != "counter" ||
+		reusable.Binding != ForIteratorOwnedValueBinding || reusable.DestroysTemporary || reusable.NextCallable == "" {
+		t.Fatalf("reusable plan = %#v", reusable)
+	}
+	temporary, ok := plans["Buffered"]
+	if !ok || temporary.Source != ForIteratorFreshTemporary || temporary.Binding != ForIteratorDiscardBinding || !temporary.DestroysTemporary {
+		t.Fatalf("temporary plan = %#v", temporary)
+	}
+
+	graph := analyzer.CallGraph()
+	caller := callGraphNodeIDByName(t, graph, "Reusable")
+	outgoing := graph.Outgoing(caller)
+	if len(outgoing) != 1 || len(outgoing[0].Targets) != 1 || outgoing[0].Targets[0] != reusable.NextCallable || outgoing[0].Dispatch != CallDispatchStaticMethod {
+		t.Fatalf("Reusable call sites = %+v, want the static Next call", outgoing)
+	}
+	effects := graph.EffectSummary(caller)
+	if !effects.MayPanic || len(effects.PanicPath) != 2 || effects.PanicPath[1] != reusable.NextCallable {
+		t.Fatalf("Reusable effects = %+v, want the panic path through Counter.Next", effects)
+	}
+}

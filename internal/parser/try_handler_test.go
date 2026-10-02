@@ -71,3 +71,29 @@ func TestParseFallibleSetterErrorContracts(t *testing.T) {
 		t.Fatalf("setter = %+v", setter)
 	}
 }
+
+// A match Err arm may name a qualified concrete error variant for open error
+// narrowing; other nested payload patterns remain invalid.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — "Open error narrowing"
+func TestParseMatchErrorVariantNarrowing(t *testing.T) {
+	input := "module main\nfn F() int {\n    return match Read() {\n        Ok(value) => value\n        Err(IOError.NotFound) => 0\n        Err(error) => 1\n    }\n}\n"
+	result := New(lexer.New(input)).Parse()
+	if result.HasErrors {
+		t.Fatalf("unexpected diagnostics: %+v", result.Diagnostics)
+	}
+	match := result.Program.Statements[1].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.MatchExpression)
+	narrowed := match.Arms[1].Pattern
+	if narrowed.ErrorVariant == nil || narrowed.ErrorVariant.String() != "IOError.NotFound" || narrowed.Binding != nil {
+		t.Fatalf("narrowing pattern = %+v", narrowed)
+	}
+	if err, ok := narrowed.Expression().(*ast.ErrExpression); !ok || err.Value.String() != "IOError.NotFound" {
+		t.Fatalf("pattern expression = %#v", narrowed.Expression())
+	}
+	nested := "module main\nfn F() int {\n    return match Read() {\n        Some(Point.x) => 0\n    }\n}\n"
+	result = New(lexer.New(nested)).Parse()
+	if !result.HasErrors || !strings.Contains(result.Diagnostics[0].Message, "nested match patterns are not part of Sec 0.1") {
+		t.Fatalf("non-Err nested pattern must stay invalid: %+v", result.Diagnostics)
+	}
+}

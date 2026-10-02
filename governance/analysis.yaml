@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-09-30"
+    updated: "2026-10-02"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
@@ -35,9 +35,11 @@ integrations:
       - internal/sema/pitfall_final_element.go
       - internal/sema/pitfall_neighbor_bounds.go
       - internal/sema/pitfall_skipped_first.go
+      - cmd/compiler/analyse.go
     tests:
       - internal/sema/pitfall_analysis_test.go
       - internal/sema/pitfall_skipped_first_test.go
+      - cmd/compiler/analyse_test.go
     implemented:
       - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
       - canonical defensive rule registry with required semantic facts, minimum Interactive/Standard/Deep analysis depth, and default confidence
@@ -62,6 +64,7 @@ integrations:
       - upper i+1 and lower i-1 neighbor checks cover the canonical zero-based half-open 0..<Len domain using resolved loop-binding and collection identity, compiler-known Len, normalized 1+i, and Sema constant facts; shortened upper domains, predecessor traversal starting at one, guarded access, and identity mismatches are excluded
       - final-element Len - 1 access is correlated through compiler-known Len and resolved collection identity; adjacent Len == 0 or compiler-known IsEmpty exits and direct Len > 0, 0 < Len, Len != 0, negated IsEmpty, or complementary equality/IsEmpty branch facts supply explicit non-empty suppression evidence, while missing, expired, non-exiting, and wrong-collection proofs remain findings
       - high-confidence skipped-first-element analysis recognizes canonical uint(1)..<collection.Len traversal with direct induction-variable indexing of that same resolved collection; predecessor access and dominating same-block handling of collection[0] produce structured suppressed results, while conditional or wrong-collection handling does not suppress
+      - "`sec analyse` and `sec analyse --all` run pitfall analysis by default at Deep depth and present the structured findings, suppressed findings with reasons, evidence, proven-fix versus suggested-edit actions, and not-evaluated rules; ProvenInvalid findings remain errors (exit code 3) and are never downgraded, while LikelyMistake and SuspiciousIntent findings are advisory"
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
@@ -87,7 +90,7 @@ integrations:
       - add dependency-driven pitfall cache invalidation and reuse for unaffected semantic bodies
       - integrate Interactive, Standard, and Deep pitfall budgets without changing source-language semantics
       - expose configurable LSP diagnostics/code actions and refresh affected findings when project analysis configuration changes
-      - integrate pitfall analysis into default `sec analyse --all` behavior and support explicit pitfall-only analysis selection
+      - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
       - add false-positive regression corpus for neighbor traversal, sentinels, separately handled endpoints, equal-length parallel collections, ring buffers, capacity-level storage manipulation, protocol ranges, and byte-buffer FFI APIs
     verification:
@@ -125,11 +128,15 @@ integrations:
         result: passed on 2026-09-30 with Len and compiler-known IsEmpty exit, negation, true/false branch, reversed comparison, wrong-collection, non-exiting guard, and deliberately expiring first-statement proof coverage
       - command: go test ./internal/sema -run 'TestPitfallAnalysisFindsAndSuppressesSkippedFirstElement|TestPitfallRuleRegistryIsStableAndDefensive' -count=1
         result: passed on 2026-09-30 with direct start-at-one detection, predecessor and dominating element-zero suppression, conditional and wrong-collection counterexamples, zero-based and different-collection near misses, and stable registry coverage
+      - command: "go test ./cmd/compiler -run 'TestAnalyseCLI$' -count=1"
+        result: passed on 2026-10-02 with default and explicit --all all-analysis runs, selected-source-only reports, proven-invalid pitfalls kept as errors with exit code 3, advisory classification, explicit target, and usage-error coverage
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-02 after adding sec analyse
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-09-30"
+    revised: "2026-10-02"
     summary: >-
       Implements immutable post-Sema ParameterDemand summaries from resolved
       bindings, canonical Places, calls, escape facts, and interprocedural fixed
@@ -159,9 +166,11 @@ integrations:
       - internal/sema/parameter_usage_flow.go
       - internal/sema/escape_analysis.go
       - internal/sema/semantic_snapshot.go
+      - cmd/compiler/analyse.go
     tests:
       - internal/sema/parameter_usage_test.go
       - internal/sema/copy_move_test.go
+      - cmd/compiler/analyse_test.go
     implemented:
       - canonical access, mutation, ownership, lifetime, identity, shape, storage, representation, and precision dimensions
       - deterministic per-callable summaries for explicit parameters and implicit impl receivers
@@ -186,6 +195,7 @@ integrations:
       - compiler-owned if continuation facts suppress following-block demand when every semantically reachable branch terminates
       - direct by-value parameter uses contribute WholeValue shape demand, while projected field/index access and direct reference flow retain their narrower independent shape and identity facts
       - compiler-known dynamic-array, list, map, and set operations that add, remove, or clear elements consume canonical member-operation contracts and produce exact StructuralMutation demand on the resolved receiver Place, distinct from ordinary element or field writes
+      - "`sec analyse` and `sec analyse --all` run parameter usage analysis by default at Deep depth and report the declared capability and the access, mutation, ownership, lifetime, identity, shape, and precision demand of every receiver and parameter in the selected sources"
     remaining:
       - complete explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
       - consume closure/callable target summaries and open callable contracts for function-value calls
@@ -198,7 +208,7 @@ integrations:
       - add versioned persisted demand summaries for separate compilation
       - extend the current Interactive summary-iteration budget to depth-specific Standard and Deep recommendation and persistence work
       - expose configurable LSP hover/advisory information without making optional insight mandatory
-      - integrate parameter usage into default sec analyse --all behavior and support explicit parameter-usage-only analysis selection
+      - support explicit parameter-usage-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add narrowing, projection-widening recursion, FFI, recommendation-policy, shadowing, and false-positive regression tests
     verification:
       - command: go test ./internal/sema -run TestParameterUsageExcludesSemaProvenUnreachableIfPaths -count=1
@@ -215,6 +225,10 @@ integrations:
         result: passed on 2026-09-28 with direct by-value WholeValue demand, projected random-access separation, and returned-reference exclusion
       - command: go test ./internal/sema -run 'TestParameterUsage|TestLarge(ValueAdvisory|ByValue)|TestCompilerKnown(CollectionPropertiesAndMethods|LibraryCollectionMethods)' -count=1
         result: passed on 2026-09-30 with exact structural-mutation demand for compiler-known dynamic arrays, lists, maps, and sets, plus element-mutation separation
+      - command: "go test ./cmd/compiler -run 'TestAnalyseCLI$' -count=1"
+        result: passed on 2026-10-02 with default and explicit --all all-analysis runs, selected-source-only reports, proven-invalid pitfalls kept as errors with exit code 3, advisory classification, explicit target, and usage-error coverage
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-02 after adding sec analyse
 
   - id: analysis.call-graph
     area: frontend-analysis-and-tooling
@@ -307,6 +321,8 @@ integrations:
       - internal/sema/allocation_test.go
       - internal/sema/lifetime_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/copy_move_test.go
+      - internal/sema/allocation_test.go
     implemented:
       - compiler-known Arena type and AllocationError enum
       - compiler-known Arena.New, Arena.FromBuffer, Arena.WithCapacity, Arena.Growable, Arena.Alloc, Arena.Reset, and Arena.Release member recognition in the represented frontend subset
@@ -318,18 +334,26 @@ integrations:
       - initial conservative generation-state merging with known defer, switch-fallthrough, and loop-backedge limitations
       - initial allocation context, symbol storage-origin metadata, and allocation-effect facts
       - source-ordered direct Arena events and synchronous MayAllocate summaries in the compiler call graph
+      - Arena is classified move-only and non-trivially destructible through the canonical copy/destruction trait engine, and both traits derive by composition through containing structs and fixed arrays; implicit Arena copies are rejected while the canonical `:<-` move stays valid
+      - Arena.New[T] and Arena.Alloc[T] share one safe typed-allocation validator: unsized or incomplete T (void, never, interfaces, packs) uses S1072 arena.unsized-allocation-type, T without a canonical infallible default uses S1073 arena.allocation-missing-default, and T requiring destruction uses S1074 arena.non-trivially-destructible-allocation, each with help; Alloc previously validated no type requirement at all, and unresolved generic parameters are deferred to instantiation
     verification:
       - command: go test ./internal/sema
         result: passed
       - command: validate implementation-status.yaml
         result: passed
+      - command: "go test ./internal/sema -run 'TestArenaOwnershipTraitsPropagateThroughAggregates|TestOwningDynamicArrayAndArenaTraits' -count=1"
+        result: passed on 2026-10-02 with move-only and non-trivial-destruction traits for Arena, a containing struct, and a fixed array of that struct, plus copy rejection and move acceptance
+      - command: "go test ./internal/sema -run 'TestArenaTypedAllocation' -count=1"
+        result: passed on 2026-10-02 for New and Alloc with sized/defaultable/trivial acceptance, interface and void rejection, missing default, owning dynamic array destruction, and deferred generic parameters
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-02; `sec sema sec` reports no new Arena allocation diagnostics in library sources
     remaining:
       - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
-      - classify Arena itself as move-only and non-trivially destructible and derive those traits through containing aggregates
       - replace lexical Arena binding-name identity with stable compiler-owned ArenaDomain identity
       - retain Arena.FromBuffer backing identity as an exclusive mutable borrow for the complete Arena lifetime and transfer that responsibility with the Arena owner
       - allocation-context propagation and complete allocation-effect inference through function bodies
-      - sized, trivially-destructible, default-value, overflow, and alignment checks required by the safe allocation contract
+      - validate Arena.New[T] and Arena.Alloc[T] type requirements per generic instantiation instead of deferring unresolved generic parameters
+      - statically impossible alignment (blocked on explicit alignment syntax, missing-decisions.yaml MD-019), count-overflow, and allocation diagnostics (arena.md § 17(5), § 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering
       - allocation failure handling beyond ordinary Result syntax
       - complete ownership, move-state, and storage-origin propagation through references, slices, and Semantic IR
       - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
@@ -420,10 +444,22 @@ integrations:
   - id: analysis.layout
     status: partial
     remaining:
-    - build by-value dependency graph and recursive-cycle diagnostics
     - cache generic layout by type identity plus CompilationPlan
     - track native/target/contract stability
     - complete padding-leak and zero-init validity analysis
+    implemented:
+    - one module-level by-value layout dependency graph covers structs, tagged unions (variant payloads and payload fields), named wrappers, fixed arrays, compiler-known tagged Option/Result payloads, and generic declarations; a monotone fixed point derives which generic parameters each declaration stores by value, so cycles that only generic instantiation introduces are rejected; references, slices, dynamic arrays, owning collections, raw pointers, function values, and non-source-declared layouts are boundaries; struct cycles use S1055, union-only cycles use S1071, the message shows the field/variant/instantiation path, and a storage position already rejected by the direct self-recursion checks is not reported twice
+    code:
+    - internal/sema/analyzer_struct_layout.go
+    - internal/diagnostics/diagnostics.go
+    tests:
+    - internal/sema/struct_layout_cycle_test.go
+    - testdata/union_valid.sec
+    verification:
+    - command: "go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1"
+      result: passed on 2026-10-02 with Option/Result payload, instantiation-only, nested-generic parameter, mutual generic, mutual union, and union-payload-field-through-struct cycles, valid slice/ref/dynamic boundaries inside tagged and generic carriers, and a single diagnostic for direct union self-recursion
+    - command: go test ./... -count=1
+      result: passed across all packages on 2026-10-02 after the by-value layout dependency graph; `sec sema sec` reports no layout cycles in the library sources
   - id: analysis.memory-model
     status: partial
     remaining:
@@ -530,11 +566,27 @@ integrations:
     status: partial
     repository_baseline: 998d8d1
     remaining:
-    - expose compiler-known Iterator[T] through the canonical interface/conformance engine
-    - produce one resolved iteration plan with concrete conformance, Next target, yield type, binding modes, effects
-      and cleanup
+    - record structural-mutation dependencies of the iterated source and the iterator lifetime relative to borrows taken by the loop body (compiler_analysis.md § 18(2))
     - remove/reject legacy closed-whitelist or naming-convention iterator discovery where present
-    - share exact Iterator resolution with Semantic IR and LSP
+    - consume ResolvedForIteration in Semantic IR instead of AST rediscovery (LSP already shares it through the call graph)
+    implemented:
+    - compiler-known Iterator[T] is an ordinary generic InterfaceType whose conformance comes only from explicit implements Iterator[T]; Next is never discovered by name
+    - ResolvedForIteration is one immutable plan carrying the concrete Iterator[T] conformance, yielded T, resolved Next target and its call-graph CallableID, reusable-storage versus fresh-temporary source state with the source Place, owned-value versus discard binding, and DestroysTemporary cleanup for a non-trivially destructible fresh iterator
+    - every Iterator[T] loop records a static-method call edge to the concrete Next, so Next effects, panic and allocation cause paths, @noPanic verification, reachability, and LSP call hierarchy consume the same compiler-owned resolution
+    code:
+    - internal/sema/analyzer_for.go
+    - internal/sema/semantic_facts.go
+    - cmd/compiler/analyse.go
+    tests:
+    - internal/sema/semantic_facts_test.go
+    - cmd/lsp/main_test.go
+    verification:
+    - command: "go test ./internal/sema -run 'TestResolvedIteratorPlan|TestResolvedForIteration' -count=1"
+      result: passed on 2026-10-02 with conformance, Next identity, reusable and fresh-temporary sources, discard binding, temporary cleanup, the static Next call edge, and the panic path through Next
+    - command: "go test ./cmd/lsp -run 'TestCallHierarchy' -count=1"
+      result: passed on 2026-10-02 with the resolved Counter.Next in outgoing call hierarchy of an iterator loop
+    - command: go test ./... -count=1
+      result: passed across all packages on 2026-10-02
   - id: analysis.interprocedural-coordination
     area: call-effect-escape-closure-resource-coordination
     status: partial

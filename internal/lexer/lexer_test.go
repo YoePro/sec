@@ -120,7 +120,10 @@ func TestUnbalancedInterpolationLexing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range strings.Split(strings.TrimSpace(string(input)), "\n") {
+	// rules/foundations/lexical_structure.md §25: the fixture ends with its
+	// Expected error / Reason documentation block, which is not a test case.
+	cases, _, _ := strings.Cut(string(input), "\n/* Expected error:")
+	for _, source := range strings.Split(strings.TrimSpace(cases), "\n") {
 		t.Run(source, func(t *testing.T) {
 			if token := New(source).NextToken(); token.Type != ILLEGAL {
 				t.Fatalf("malformed interpolation accepted: %+v", token)
@@ -1412,6 +1415,10 @@ func TestUnterminatedInterpolatedStringIsSingleDiagnosedToken(t *testing.T) {
 		{name: "LF recovery", input: "$\"value {item}\nlet", lexeme: `$"value {item}`, nextType: LET, nextValue: "let"},
 		{name: "CRLF recovery", input: "$\"value {item}\r\nlet", lexeme: `$"value {item}`, nextType: LET, nextValue: "let"},
 		{name: "bare CR recovery", input: "$\"value {item}\rlet", lexeme: `$"value {item}`, nextType: LET, nextValue: "let"},
+		{name: "LF inside open expression", input: "$\"value {item\nlet", lexeme: `$"value {item`, nextType: LET, nextValue: "let"},
+		{name: "CRLF inside open expression", input: "$\"value {item +\r\nlet", lexeme: `$"value {item +`, nextType: LET, nextValue: "let"},
+		{name: "bare CR inside open expression", input: "$\"value {(item\rlet", lexeme: `$"value {(item`, nextType: LET, nextValue: "let"},
+		{name: "multiline block comment in expression", input: "$\"value {item /* note\n */", lexeme: `$"value {item /* note`, nextType: ASTERISK, nextValue: "*"},
 	}
 
 	for _, test := range tests {
@@ -1456,5 +1463,32 @@ func assertTokens(t *testing.T, input string, tests []struct {
 		if tok.Lexeme != expected.lexeme {
 			t.Fatalf("test %d: wrong lexeme. got=%q want=%q", i, tok.Lexeme, expected.lexeme)
 		}
+	}
+}
+
+// `regex` is the contextual pattern contract from contracts.md. It begins a
+// contract in contract position but is not part of the §7.3 reserved
+// inventory, so it is neither a reserved declaration name nor a keyword
+// (MD-009).
+//
+// Rules:
+//   - rules/types/contracts.md — "Applicability"
+//   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
+func TestRegexIsContextualPatternContractWithoutReservation(t *testing.T) {
+	if role := ContractWordRoleOf("regex"); role != PatternContractWord {
+		t.Fatalf("regex role = %v, want PatternContractWord", role)
+	}
+	if !IsContractStartWord("regex") || IsContractWord("regex") {
+		t.Fatal("regex must start a contract without joining the reserved inventory")
+	}
+	if IsReservedDeclarationName("regex") {
+		t.Fatal("regex must not be a reserved declaration name before MD-009 is decided")
+	}
+	if tokenType := lookupIdent("regex"); tokenType != IDENT {
+		t.Fatalf("lookupIdent(regex) = %s, want IDENT", tokenType)
+	}
+	want := append(ContractWords(), "regex")
+	if got := ContractStartWords(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ContractStartWords() = %v, want %v", got, want)
 	}
 }

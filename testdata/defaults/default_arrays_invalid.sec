@@ -1,0 +1,12 @@
+module main
+
+// rules/types/default_values.md — "Collection and array tests" failure cases.
+type NonZeroOdd int range -9..9 odd
+type UniqueTriple int[3] unique
+
+fn Build() void {
+    let mut ambiguous: NonZeroOdd[2]
+    let mut triple: UniqueTriple
+    discard ambiguous
+    discard triple
+}

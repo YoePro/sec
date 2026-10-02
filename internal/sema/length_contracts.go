@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -73,7 +74,7 @@ func (a *Analyzer) checkLengthContractSetConsistency(typ Type, contractNode ast.
 				}
 			case "exactLen":
 				if exact != nil && contract.Value.Cmp(exact) != 0 {
-					a.addErrorAtToken(token, "length contracts cannot be satisfied together for %s", typeName)
+					a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "length contracts cannot be satisfied together for %s", typeName)
 					return
 				}
 				exact = new(big.Int).Set(contract.Value)
@@ -86,14 +87,14 @@ func (a *Analyzer) checkLengthContractSetConsistency(typ Type, contractNode ast.
 		belowMinimum := fixedLength.Cmp(lower) < 0
 		aboveMaximum := upper != nil && fixedLength.Cmp(upper) > 0
 		if exactConflict || belowMinimum || aboveMaximum {
-			a.addErrorAtToken(token, "length contracts cannot be satisfied together for %s", typeName)
+			a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "length contracts cannot be satisfied together for %s", typeName)
 		}
 		return
 	}
 	exactOutsideBounds := exact != nil && (exact.Cmp(lower) < 0 || upper != nil && exact.Cmp(upper) > 0)
 	emptyBounds := upper != nil && lower.Cmp(upper) > 0
 	if exactOutsideBounds || emptyBounds {
-		a.addErrorAtToken(token, "length contracts cannot be satisfied together for %s", typeName)
+		a.addErrorAtTokenWithMetadata(token, diagnostics.UnsatisfiableContractSet, "remove or relax one of the conflicting contracts", "length contracts cannot be satisfied together for %s", typeName)
 	}
 }
 

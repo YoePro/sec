@@ -1,0 +1,11 @@
+module main
+
+// rules/types/default_values.md — immutable declarations require an
+// initializer; references and safe slices are non-defaultable.
+fn Use(value: ref int, items: ref int[]) void {
+    let a: int
+    let mut r: ref int
+    let mut s: ref int[]
+    discard value
+    discard items
+}

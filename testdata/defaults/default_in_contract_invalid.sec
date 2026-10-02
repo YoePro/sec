@@ -1,0 +1,7 @@
+module main
+
+// rules/types/default_values.md — "in [...] tests" failure cases.
+type Empty string in []
+type Duplicate string in ["a", "a"]
+type InvalidDefault string in ["a", "b"] default "c"
+type ViolatingMember int in [1, 2, 3] even

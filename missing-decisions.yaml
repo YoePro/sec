@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-01"
+updated: "2026-10-02"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -119,3 +119,316 @@ decisions:
     classification: constraining
     status: open
 
+  - id: MD-008
+    area: errors-and-match
+    rulebooks:
+      - rules/errors/errorhandling.md
+      - rules/control-flow/flowcontrol_match.md
+      - rules/corrections/applied/match-errorhandling-correction-20260824.md
+    description: >-
+      flowcontrol_match.md and the applied match correction allow the
+      concrete-variant pattern Err(IOError.NotFound) only as open-error
+      narrowing of Result[T, error]; otherwise match forbids nested patterns.
+      try handlers, however, accept Err(IOError.NotFound) on a concrete
+      Result[T, IOError] channel. Decide whether match on a concrete error
+      channel may also use Err(ConcreteError.Variant) (with ordinary closed
+      enum exhaustiveness) or must bind the payload and use a guard. The
+      compiler currently rejects it in match with a focused diagnostic.
+    classification: localized
+    status: open
+
+
+  - id: MD-009
+    area: lexer-parser-and-contracts
+    rulebooks:
+      - rules/types/contracts.md
+      - rules/foundations/grammar.md
+      - rules/foundations/lexical_structure.md
+    description: >-
+      contracts.md makes `regex pattern` a normative string contract
+      ("Applicability" and "String and collection contracts"), but the
+      grammar.md TypeContract production has no regex alternative and
+      lexical_structure.md §7.3 omits `regex` from the reserved contract-word
+      inventory, although §7.3 states that compiler-known contract spellings
+      are reserved and must be added there when they become canonical. Decide
+      (1) the grammar production, e.g. Contextual("regex") ConstantExpression,
+      and (2) whether `regex` becomes a reserved declaration name like the
+      other contract words or stays contextual. The parser currently follows
+      the contracts.md shape `regex ConstantExpression`, recognizes `regex`
+      only on the same line as the preceding type or contract, and does not
+      reserve the spelling.
+    classification: constraining
+    status: open
+
+  - id: MD-010
+    area: types-and-contracts
+    rulebooks:
+      - rules/types/contracts.md
+    description: >-
+      contracts.md requires the concrete regular-expression syntax and engine
+      to be fixed before runtime validation is implemented. Decide the pattern
+      syntax (dialect, escapes over the escape-decoded string, anchoring
+      semantics: whole-value match or search), matching unit (UTF-8 bytes or
+      Unicode scalars), complexity guarantees (e.g. linear-time, no
+      backreferences), compile-time validation of invalid patterns and of
+      literal initializers/defaults, and how implicit defaults (the empty
+      string) interact with a regex contract. Also decide what "string-like
+      named types" covers beyond string (char, rune, string slices). Until
+      decided, Sema checks applicability (string only) and a compile-time
+      string pattern, retains the decoded pattern, and rejects every regex
+      contract with S1058 types.regex-contract-unavailable instead of
+      dropping it.
+    classification: blocking
+    status: open
+
+  - id: MD-011
+    area: types-contracts-and-compile-time-evaluation
+    rulebooks:
+      - rules/types/contracts.md
+      - rules/types/default_values.md
+      - rules/compiler/compile_time_evaluation.md
+      - rules/foundations/grammar.md
+    description: >-
+      contracts.md states that a position requiring a contract bound, member,
+      divisor, or other value before runtime lowering "must classify that
+      source position explicitly" under compile_time_evaluation.md, and CTE
+      § 8(2) requires the owning rulebook to specify the construct, evaluator
+      class (plan-time or semantic), result type, legal domain,
+      materialization, and permitted compiler-known inputs. contracts.md and
+      default_values.md never provide that classification for multipleOf,
+      minLen/maxLen/exactLen, in [...] members, regex patterns, or default
+      clauses, and grammar.md restricts range bounds to SignedNumericConstant
+      while the other positions use ConstantExpression. Decide whether these
+      positions are SemanticCompileTimeRequiredContexts, whether named static
+      initializers (module-level `let Max := 100`) and calls are permitted, and
+      whether range bounds stay literal-only. The compiler currently accepts
+      only literal and literal-operator constants, rejects named statics with
+      S1066/S1008, and rejects non-numeric range bounds with a parser
+      diagnostic.
+    classification: constraining
+    status: open
+
+  - id: MD-012
+    area: types-contracts-and-errors
+    rulebooks:
+      - rules/types/contracts.md
+      - rules/types/types.md
+      - rules/errors/errorhandling.md
+    description: >-
+      contracts.md makes runtime conversion into a constrained named type
+      fallible (`try percentage = Percentage(value) { Err(error) => ... }`)
+      and types.md has runtime-checked scalar conversions such as
+      `try rune(codePoint)`, but no rulebook names the Result error type of a
+      failed contract validation or checked conversion, its variants (e.g.
+      which contract failed, out-of-range versus invalid code point), or
+      whether it is a core library union. Decide the canonical error type and
+      its payload. Until decided, the fallible conversion and constrained
+      try-assignment paths cannot get their complete typed frontend contract
+      or runtime validation.
+    classification: blocking
+    status: open
+
+  - id: MD-013
+    area: formatter
+    rulebooks:
+      - rules/tooling/formatter.md
+    description: >-
+      formatter.md § 9(5) and § 15(3) require structural alignment of struct
+      fields, but do not say whether register fields (`Name: bit[N]`, a
+      structural declaration block under § 15(1)) align the same way; the
+      existing formatter and tests keep register fields unaligned. Separately,
+      § 9(8) says "comments and blank lines terminate an alignment group"
+      while § 7(9) speaks of standalone comments; decide whether a trailing
+      comment on a field ends that field's alignment group (current behavior
+      and tests) or only standalone comments do.
+    classification: localized
+    status: open
+
+  - id: MD-014
+    area: types-floating-point
+    rulebooks:
+      - rules/types/types.md
+      - rules/types/default_values.md
+      - rules/memory/layout.md
+    description: >-
+      types.md calls plain `float` "the general target/compiler-known binary
+      floating-point type" without fixing its width or naming the target fact
+      that selects it, and no layout or CompilationPlan rule supplies it.
+      default_values.md requires a range-derived float default to be the
+      nearest exactly representable valid value, which depends on that width.
+      Decide whether `float` is always binary64, target-selected (and through
+      which ResolvedScalarPlan fact), or otherwise defined. Until decided,
+      float32 and float64 range defaults are computed exactly while a
+      range-constrained plain `float` whose range excludes zero has no implicit
+      default and needs an explicit default.
+    classification: constraining
+    status: open
+
+  - id: MD-015
+    area: types-units-and-temporal
+    rulebooks:
+      - rules/types/units.md
+      - rules/types/temporal.md
+      - rules/foundations/grammar.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/select.md
+      - rules/concurrency/cancellation.md
+    description: >-
+      mutex.md § 12, channels.md § 28(7), select.md § 30(3) and
+      cancellation.md let a time-unit expression such as `5<s>` or
+      `250<ms>` materialize as `duration` "through the canonical
+      temporal/unit conversion rules", but units.md and grammar.md define only
+      unit-annotated types (`decimal<s>`, `<m>`) and no `5<s>` quantity
+      literal, and neither units.md nor temporal.md defines a conversion from a
+      time-dimension quantity to `duration` (scale resolution, carrier,
+      rounding to nanoseconds, overflow, negative values). Decide the
+      quantity-literal syntax and the conversion contract before
+      frontend.temporal-duration can be implemented.
+    classification: blocking
+    status: open
+
+  - id: MD-016
+    area: compiler-known-declarations
+    rulebooks:
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/collections/shaped-types.md
+      - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
+    description: >-
+      Correction § 21 requires every rulebook that names a compiler-known Sec
+      type or member only by name, prose shape, or partial pseudodeclaration
+      to choose exactly one: (A) a real Sec declaration with its complete
+      canonical declaration and owning module, or (B) compiler-semantic only
+      with a complete structural contract. § 21(4) explicitly does not invent
+      the missing declarations. Each affected rulebook (shaped, storage, and
+      compiler-known metadata in particular) needs that A/B decision; the
+      implementation registry already classifies member authority (§ 6) but
+      cannot choose a declaration form on the rulebooks' behalf.
+    classification: constraining
+    status: open
+  - id: MD-017
+    area: analysis-cli
+    rulebooks:
+      - rules/compiler/compiler_analysis.md
+      - rules/analysis/pitfall_analysis.md
+      - rules/analysis/parameter_usage_analysis.md
+      - rules/analysis/isr_analysis.md
+      - rules/analysis/data_races.md
+      - rules/analysis/deadlock_analysis.md
+    description: >-
+      `sec analyse` and `sec analyse --all` are implemented and run every
+      available analysis at Deep depth. Every analysis rulebook requires that
+      one analysis can also be selected individually, but says that "the exact
+      CLI spelling is owned by CLI/tooling rules", and no such CLI rulebook
+      exists. The conceptual examples are inconsistent: `sec analyse isr` and
+      `sec analyse deadlocks` use positional words, while pitfall and
+      parameter-usage selection have no spelling at all. Decisions needed:
+      (1) the spelling for selecting individual analyses (positional words,
+      flags, or both) and the canonical name of each analysis; (2) whether
+      `--depth interactive|standard|deep` or another option may lower the
+      budget of `sec analyse`; (3) whether a versioned machine-readable report
+      (as with `sec.diagnostic-occurrences`) is required and what its schema
+      is.
+    classification: constraining
+    status: open
+  - id: MD-018
+    area: union-recursion-indirection
+    rulebooks:
+      - rules/declarations/unions.md
+      - rules/memory/layout.md
+      - rules/memory/destruction.md
+    description: >-
+      unions.md §18 shows `next: Box[List[T]]` as recursion "through a valid
+      finite indirection", but no rulebook defines `Box`. The only `Box`
+      elsewhere (destruction.md § 28) is an ordinary user struct
+      `Box[T] struct { value: T }`, which stores T by value; under layout.md
+      § 25(5) that makes `List[T]` infinite. The implementation therefore
+      treats a source-declared `Box` as by-value and rejects the example, and
+      the test fixture testdata/union_valid.sec was changed to the dynamic
+      storage boundary `List[T][]`. Decisions needed: whether Sec has a
+      compiler-known or library owning heap indirection (`Box[T]` or another
+      name), what it is called, which module owns it, and whether the
+      unions.md example should use it or an existing boundary.
+    classification: constraining
+    status: open
+  - id: MD-019
+    area: explicit-layout-syntax
+    rulebooks:
+      - rules/memory/layout.md
+      - rules/memory/arena.md
+      - rules/platform/ffi.md
+    description: >-
+      layout.md § 4.3 defines explicit layout contracts, § 8(5) rejects
+      alignment requests stricter than the target supports, and arena.md
+      § 17(5) makes statically impossible alignment a compile-time error. But
+      layout.md § 1(12) explicitly does not introduce syntax for packing,
+      alignment, offsets, endianness, or explicit representation, and no other
+      rulebook defines it. As a result, no source program can request a
+      non-native alignment, and the § 8(5), § 4.3(3), and arena § 17(5)
+      diagnostics cannot be implemented. Decisions needed: the syntax (an
+      attribute, a type contract, or something else) for explicit alignment,
+      packing, field offsets, endianness, and representation, and which
+      rulebook owns it.
+    classification: blocking
+    status: open
+  - id: MD-020
+    area: lexer-foreign-qualification
+    rulebooks:
+      - rules/foundations/lexical_structure.md
+      - rules/foundations/grammar.md
+      - rules/platform/ffi.md
+    description: >-
+      grammar.md ForeignTypeReference uses "::" as a terminal (`"C" "::"
+      Identifier`, `"c" "::" Identifier { "::" Identifier }`), but the
+      operator and punctuation list in lexical_structure.md § 16 and the
+      longest-match list in § 17 do not contain `::`. The lexer therefore
+      produces two ':' tokens. Without touching the lexer, the parser
+      currently accepts exactly two adjacent ':' tokens, with no whitespace
+      and directly attached to the surrounding names, as the "::" terminal.
+      Decisions needed: whether `::` is a lexical token (and its place in
+      § 16/§ 17 longest match relative to `:`, `:=`, and `:<-`), and whether
+      whitespace may appear around or inside `::`.
+    classification: localized
+    status: open
+  - id: MD-021
+    area: c-binding-environment
+    rulebooks:
+      - rules/platform/ffi.md
+      - rules/platform/abi.md
+      - rules/platform/target_profiles.md
+    description: >-
+      ffi.md § 6 says c:: binding types (c::stddef::size_t,
+      c::time::time_t, c::stdarg::va_list, c::posix::socklen_t) are
+      "supplied by the selected target/library binding environment", and
+      § 52 requires Sema to resolve them through that environment. No
+      rulebook defines what the environment is, where its declarations live
+      (Sec source under sec/platform, compiler-known tables, or package
+      metadata), which namespaces and names exist per target, or how a
+      library selects or extends them. The parser accepts
+      c::namespace::name, and Sema reports S1078
+      ffi.unresolved-c-binding-type for every c:: name. Decisions needed:
+      the binding environment's form, ownership, per-target contents, and
+      selection mechanism.
+    classification: blocking
+    status: open
+  - id: MD-022
+    area: c-scalar-literal-shaping
+    rulebooks:
+      - rules/platform/ffi.md
+      - rules/types/types.md
+    description: >-
+      ffi.md § 8 permits literal shaping such as `let count: C::int := 10`
+      "when the literal is representable", but it shows only integer
+      literals. The implementation shapes integer and floating literals into
+      C:: numeric types and, by analogy, the boolean literals true and false
+      into C::bool. It does not shape character literals into C::char,
+      C::schar, or C::uchar, because those are C integer types. Decisions
+      needed: whether boolean literals shape into C::bool, whether character
+      literals shape into the C character types (and with what encoding),
+      and whether a C:: type may initialize another C:: type of a different
+      name implicitly. The implementation currently rejects this, matching
+      the general Sec rule that distinct scalar types need explicit
+      conversion.
+    classification: localized
+    status: open

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,9 +56,7 @@ func assembleCLIModuleSources(program *ast.Program, target CompilerTarget) diagn
 			summary.Errors += counts.Errors
 			summary.Warnings += counts.Warnings
 			printParserWarningsForFile(file, source.Warnings)
-			for _, message := range source.Errors {
-				fmt.Fprintf(os.Stderr, "%s: parse error: %s\n", file, message)
-			}
+			cliDiagnostics.parserDiagnostics(file, source.Diagnostics, source.Errors)
 			program.Statements = append(program.Statements, source.Program.Statements...)
 		}
 	}

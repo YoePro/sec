@@ -1,0 +1,18 @@
+module main
+
+type Port int range 1..65535 default 0
+
+fn F() void {
+    let small: int8 := 300
+    let value := 1
+    let value := 2
+    discard small
+    discard value
+}
+
+/* Expected error: S1059 types.default-violates-contract, an unregistered
+ *   int8 overflow, and S1004 names.duplicate-local-variable with the earlier
+ *   declaration as a related location.
+ * Reason: rules/tooling/diagnostics.md §§ 8-9 and 14 require structured
+ *   occurrences with identity, severity, spans, related locations and help.
+ */

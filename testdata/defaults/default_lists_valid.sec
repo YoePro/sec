@@ -1,0 +1,23 @@
+module main
+
+// rules/types/default_values.md — "List defaults" and "Collection and array tests".
+type Handle struct {
+    raw: RawPtr[byte],
+}
+
+type Buffers struct {
+    dynamic: list[int],
+    bounded: list[string, 16],
+    handles: list[Handle],
+}
+
+fn Build() void {
+    let explicitDynamic := list[int] {}
+    let explicitBounded := list[Handle, 4] {}
+    let mut omitted: list[Handle]
+    let buffers := Buffers {}
+    discard explicitDynamic
+    discard explicitBounded
+    discard omitted
+    discard buffers
+}

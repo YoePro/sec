@@ -94,13 +94,17 @@ type Type struct {
 	EnumConsts                 map[string]EnumValue
 	EnumDefault                string
 	BitWidth                   int64
-	UnionVariants              []UnionVariant
-	UnionDefault               string
-	TypeArgs                   []Type
-	ConstArgs                  []int64
-	StaticElementCount         *big.Int
-	Element                    *Type
-	ArrayShape                 ArrayShapeKind
+	// FloatBits is the explicit IEEE binary width (32 or 64) of float32 and
+	// float64 and of named types over them. Plain float has no fixed width
+	// (rules/types/types.md "Binary floating-point types"; MD-014) and keeps 0.
+	FloatBits          int
+	UnionVariants      []UnionVariant
+	UnionDefault       string
+	TypeArgs           []Type
+	ConstArgs          []int64
+	StaticElementCount *big.Int
+	Element            *Type
+	ArrayShape         ArrayShapeKind
 	// ArrayLengthDecimal is the immutable, exact semantic length of a fixed
 	// array. Canonical values contain unsigned base-10 digits with no leading
 	// zeroes (except "0"). Dynamic arrays leave it empty.
@@ -730,6 +734,17 @@ type MarkerContract struct {
 
 func (MarkerContract) contractNode() {}
 
+// RegexContract retains the escape-decoded compile-time pattern of a `regex`
+// contract on a named string type. The pattern is not interpreted: the
+// regular-expression syntax and engine are not yet normatively fixed (MD-010).
+//
+// Rule: rules/types/contracts.md — "String and collection contracts".
+type RegexContract struct {
+	Pattern string
+}
+
+func (RegexContract) contractNode() {}
+
 type DecimalValue struct {
 	Int64 int64
 	Scale uint8
@@ -982,8 +997,8 @@ func builtinTypes() map[string]Type {
 		"datetime": {Name: "datetime", Kind: StructType},
 		"duration": {Name: "duration", Kind: StructType},
 		"float":    {Name: "float", Kind: FloatType},
-		"float32":  {Name: "float32", Kind: FloatType},
-		"float64":  {Name: "float64", Kind: FloatType},
+		"float32":  {Name: "float32", Kind: FloatType, FloatBits: 32},
+		"float64":  {Name: "float64", Kind: FloatType, FloatBits: 64},
 		"int":      signedType("int", -1<<63, 1<<63-1),
 		"int8":     signedType("int8", -1<<7, 1<<7-1),
 		"int16":    signedType("int16", -1<<15, 1<<15-1),

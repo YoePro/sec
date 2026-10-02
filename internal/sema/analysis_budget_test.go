@@ -1,6 +1,10 @@
 package sema
 
-import "testing"
+import (
+	"testing"
+
+	"sec/internal/layout"
+)
 
 func TestParseAnalysisDepth(t *testing.T) {
 	for input, want := range map[string]AnalysisDepth{
@@ -31,5 +35,21 @@ func TestAnalyzerAnalysisDepthDefaultsAndBudgets(t *testing.T) {
 	}
 	if got := NewAnalyzerWithDepth(AnalysisDeep).AnalysisBudget().MaxSummaryIterations; got != 0 {
 		t.Fatalf("deep fixed-point override = %d, want lattice-derived finite bound", got)
+	}
+}
+
+// Analysis-only tooling combines the target scalar plan with a depth budget
+// without changing target-sized types.
+// Rule: rules/compiler/compiler_pipeline.md — § 65(2) same plan/Sema facts.
+func TestScalarPlanAnalyzerKeepsDepthAndTargetWidth(t *testing.T) {
+	analyzer := NewAnalyzerWithScalarPlanAndDepth(layout.ResolvedScalarPlan{PointerWidthBits: 32}, AnalysisDeep)
+	if analyzer.AnalysisDepth() != AnalysisDeep || analyzer.AnalysisBudget() != analysisBudget(AnalysisDeep) {
+		t.Fatalf("depth = %q budget = %+v", analyzer.AnalysisDepth(), analyzer.AnalysisBudget())
+	}
+	if analyzer.targetUintWidthBits != 32 {
+		t.Fatalf("target width = %d, want 32", analyzer.targetUintWidthBits)
+	}
+	if standard := NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: 64}); standard.AnalysisDepth() != AnalysisStandard {
+		t.Fatalf("default scalar-plan depth = %q", standard.AnalysisDepth())
 	}
 }

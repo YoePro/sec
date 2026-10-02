@@ -23,6 +23,7 @@ func TestDiagnosticCatalogSchemasContainEveryStructField(t *testing.T) {
 		{name: "semantic occurrence", typ: reflect.TypeOf(sema.Error{}), fields: semanticOccurrenceFields},
 		{name: "parser occurrence", typ: reflect.TypeOf(parser.Diagnostic{}), fields: parserOccurrenceFields},
 		{name: "token", typ: reflect.TypeOf(lexer.Token{}), fields: diagnosticTokenFields},
+		{name: "emitted occurrence", typ: reflect.TypeOf(emittedOccurrence{}), fields: emittedOccurrenceFields},
 	}
 
 	for _, test := range tests {

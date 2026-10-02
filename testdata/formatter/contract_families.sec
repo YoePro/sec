@@ -1,0 +1,14 @@
+module main
+
+type   Percent int   range 0..100
+type Port int range 1..<65536   default 8080
+type Open int range   1..
+type Role string in [ "admin","user" ,"guest" ] default "user"
+type PageOffset int multipleOf   4096
+type PositiveEven int range 1..100   even
+type OddValue int odd
+type Name string minLen 1 maxLen   64
+type Code string exactLen 4
+type Tags string[] notEmpty   unique
+type Finite float finite
+type Email string regex   "^[a-z]+@[a-z]+$"  minLen 3

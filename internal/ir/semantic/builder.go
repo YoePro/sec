@@ -1933,6 +1933,13 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 	if plan.EmptyStateReachable {
 		return builtValue{}, fb.unsupported("match over a possibly empty union binding", expr.Token)
 	}
+	// rules/errors/errorhandling.md — §27.2: open error narrowing needs
+	// concrete error identity that Semantic IR does not represent yet.
+	for _, arm := range plan.Arms {
+		if arm.PatternKind == sema.MatchPatternResultErrNarrowed {
+			return builtValue{}, fb.unsupported("open error narrowing match arm", expr.Token)
+		}
+	}
 	switch plan.SubjectKind {
 	case sema.MatchSubjectEnum, sema.MatchSubjectUnion, sema.MatchSubjectResult, sema.MatchSubjectOption:
 	default:
@@ -2493,7 +2500,7 @@ func lowerableTryPlan(plan sema.ResolvedTryPlan) bool {
 		return false
 	}
 	for _, handler := range plan.Handlers {
-		if handler.Guarded || handler.BlockValue {
+		if handler.Guarded || handler.BlockValue || handler.OpenErrorNarrowing {
 			return false
 		}
 	}

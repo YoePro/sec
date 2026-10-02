@@ -1,0 +1,62 @@
+module main
+
+import   alias   "core/x"
+import (
+    "a"
+    b "c"
+)
+
+type   Celsius   float<C>
+type Count   int   range 0..10   default 1
+type   Callback   fn(int,   int)   int
+type   Pair[T]   struct {
+    left:   T,
+    right:   T,
+}
+type   Control   register[8] {
+    Enabled:   bit
+    Mode:   bit[3]
+}
+type Failure   union   error {
+    Broken,
+}
+enum   Color   {
+    Red,
+}
+enum   Clock:   bit[2] {
+    A,
+}
+unit   Deg   float   physical
+interface   Shape   {
+    fn   Area()   float
+}
+impl   Pair[int]   {
+    fn   Sum()   int {
+        return self.left + self.right
+    }
+}
+extern   "C"   fn   puts(text: RawPtr[byte])   int
+let   Limit := 5
+
+fn   Work(  values: ref   int[],  table: map[ string,int ],  out: ref  mut  int[4] )   int[2] {
+    let   a := 9
+    let   mut   b := 9
+    let c:   int := 9
+    let   mut d:   int
+    let e := 9,   f := "hello",   g := true
+    int   mut: j
+    int   mut: k,   l,   m
+    int:   n := 1
+    int: o := 1,   p := 2
+    int   (
+        q := 1,
+        r   := 2,
+    )
+    let s: list[ int ] := list[int] {}
+    let t: RawPtr[ byte ]
+    let u: vector[float,   3]
+    let v: Option[ int ] := None
+    let w: Result[int,   error] := Ok(1)
+    let x: fn(int)   bool
+    return [1,   2]
+}

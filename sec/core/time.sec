@@ -4,25 +4,28 @@ type time struct {
     _nanosecondsSinceMidnight: uint64,
 }
 
-unit h uint physical
-unit min uint physical
-unit s uint physical
-unit ns uint physical
+type HourOfDay          uint<h>   range 0..23
+type MinuteOfHour       uint<min> range 0..59
+type SecondOfMinute     uint<s>   range 0..59
+type NanosecondOfSecond uint<ns>  range 0..999999999
 
-type HourOfDay     uint<h>   range 0..23
-type MinuteOfHour  uint<min> range 0..59
-type SecondOfMinute uint<s>  range 0..59
-type NanosecondOfSecond uint<ns> range 0..999999999
-
-type MonthOfYear   uint range 1..12
-type DayOfMonth    uint range 1..31
+type MonthOfYear uint range 1..12
+type DayOfMonth  uint range 1..31
 
 impl time {
-
     enum Format {
-        HHMM,          // 15:04
-        HHMMSS,        // 15:04:05
-        HHMMSSNano,    // 15:04:05.999999999
+        HHMM,                 // 15:04
+        HHMMSS,               // 15:04:05
+        HHMMSSNano,           // 15:04:05.999999999
+        HHMMSSMilli,          // 15:04:05.999
+        HHMMSSTenth,          // 15:04:05.9
+        HHMMSSTwentieth,      // 15:04:05.99
+        hhmm12,               // 03:04 PM
+        hhmmss12,             // 03:04:05 PM
+        hhmmss12Tenth,        // 03:04:05.9 PM
+        hhmmss12Twentieth,    // 03:04:05.99 PM
+        hhmmss12Nano,         // 03:04:05.999999999 PM
+        hhmmss12Milli,        // 03:04:05.999 PM
     }
 
     // Internt / lågnivå
@@ -39,7 +42,7 @@ impl time {
             return Err(TimeError.OutOfRange)
         }
 
-        let ns := uint64(hour) * 3600000000000 +  uint64(minute) * 60000000000 + uint64(second) * 1000000000
+        let ns := uint64(hour) * 3600000000000 + uint64(minute) * 60000000000 + uint64(second) * 1000000000
         self._nanosecondsSinceMidnight = ns
     }
 
@@ -48,7 +51,7 @@ impl time {
             return Err(TimeError.OutOfRange)
         }
 
-        let ns := uint64(hour) * 3600000000000 +  uint64(minute) * 60000000000 + uint64(second) * 1000000000 + uint64(nanosecond)
+        let ns := uint64(hour) * 3600000000000 + uint64(minute) * 60000000000 + uint64(second) * 1000000000 + uint64(nanosecond)
         self._nanosecondsSinceMidnight = ns
     }
 
@@ -96,5 +99,4 @@ impl time {
     fn ToString(layout: string) string {
         return ""
     }
-
 }

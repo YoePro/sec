@@ -264,8 +264,8 @@ The following are not yet implemented completely:
 - materialization of accepted compile-time string concatenation as one folded
   constant before Semantic IR/lowering;
 - active allocation-context resolution for runtime concatenation;
-- panic-or-`AllocationError` selection from source `try` context;
-- `@noPanic` validation for runtime concatenation;
+- rejection of runtime concatenation and interpolation without `try`
+  (`AllocationError` flow only; the former implicit-panic form is removed);
 - Semantic IR and lowering consumption of the canonical frontend
   `StringConcatPlan`;
 - transactional fallible `string +=` semantics;
@@ -1530,37 +1530,45 @@ no StringBuilder recommendation
 
 ## Runtime allocation and failure policy
 
-Runtime concatenation uses the active allocation context. Missing usable
-allocation context is a compile-time error.
+Runtime string concatenation and runtime string interpolation are fallible
+materialization operations. A concatenation or interpolation expression is
+semantically one materialization that produces one resulting `string`; the
+language requires no observable intermediate `string` value for an individual
+concatenation step.
 
-Without `try`, runtime concatenation produces `string` on success and accepts a
-deterministic allocation panic:
-
-```sec
-s = "Hello " + name
-```
-
-With `try`, allocation failure is propagated or locally handled as
-`AllocationError`, while the successful value remains `string`:
+Runtime materialization failure propagates through Sec's ordinary
+fallible-operation mechanism. A runtime concatenation that may fail therefore
+requires the normal `try` handling of a fallible expression; allocation failure
+is propagated or locally handled as `AllocationError`, while the successful
+value remains `string`:
 
 ```sec
 let result := try ("Hello " + name)
 ```
 
-| Form | May allocate | May panic from result allocation |
+A runtime concatenation without `try` is a compile-time error. There is no
+implicit allocation-panic form.
+
+Runtime concatenation uses the active allocation context. Missing usable
+allocation context is a compile-time error. Which allocator or allocation
+context is active for runtime string materialization is not yet specified
+(MD-004); lowering must not invent that selection.
+
+| Form | May allocate | Requires `try` |
 |---|---:|---:|
 | Fully compile-time-folded concatenation | No | No |
-| Runtime concatenation without `try` | Yes | Yes |
-| Runtime concatenation with `try` | Yes | No |
+| Runtime concatenation | Yes | Yes |
 | Runtime concatenation without allocation context | Compile-time error | Not applicable |
 
-Optimization may eliminate allocation or prove success, but must not change the
-source-selected failure policy.
+Optimization and backends may remove temporaries or allocations only when the
+specified success, failure, ownership, and destruction behavior is preserved
+(`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 5).
 
 ## `@noPanic` and `try` scope
 
-Runtime concatenation without `try` is incompatible with `@noPanic`. A valid
-`try` form may be used when its `AllocationError` flow is handled or propagated.
+Because runtime concatenation always uses `try`, materialization failure is an
+ordinary error flow and never a panic. A runtime concatenation in a `@noPanic`
+function is valid when its `AllocationError` flow is handled or propagated.
 
 `try` covers the concatenation's explicit fallible flow and nested operations
 whose error flow is explicitly part of the expression. It does not catch an
@@ -1588,9 +1596,9 @@ only an optimization after ownership, lifetime, and effect proof.
 
 Every segment evaluates left to right and exactly once. The plan may then
 measure segment lengths, calculate the total with checked arithmetic, allocate
-canonical result storage once, and write segments in source order. Static
-impossibility is a compile-time error; dynamic length failure follows the
-selected try-or-panic policy and never wraps silently.
+or otherwise prepare final storage once, and write segments in source order.
+Static impossibility is a compile-time error; dynamic length failure is part of
+the plan's ordinary `try` error flow and never wraps silently.
 
 The canonical result is allocated at most once. User-defined `ToString()` calls
 may allocate separate temporary strings; compiler-known formatting may be fused

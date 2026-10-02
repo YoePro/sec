@@ -239,3 +239,36 @@ integrations:
         result: passed
       - command: go test ./cmd/lsp -count=1
         result: passed
+  - id: tooling.lsp-responsiveness
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-02"
+    summary: >-
+      Tracks LSP latency. Every request re-runs parsing and Sema over core and
+      the open module, so per-request cost dominates editor responsiveness and
+      format-on-save, which VS Code aborts after 750 ms when queued behind
+      other requests.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.md
+    code:
+      - internal/sema/types.go
+      - internal/sema/compiler_known_members.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/contextual_arguments_test.go
+      - cmd/lsp/main_test.go
+    implemented:
+      - "the builtin type table is built once and shared read-only for lookups (builtinType), while each Analyzer still receives its own mutable copy; compiler-known member lookup previously rebuilt the whole table for every member expression, which dominated CPU and garbage collection"
+      - "hover and semantic-token requests on sec/stdlib/net/url/url.sec dropped from about 0.6 s to about 0.12 s each, and module diagnostics from about 1.2 s to about 0.72 s including the 600 ms debounce"
+      - "LSP diagnostic messages no longer repeat the primary location; a related location stays in the text and is attached as relatedInformation"
+    remaining:
+      - "reuse parsed core and unchanged module sources across requests instead of re-parsing and re-analyzing them for every hover, semantic-token, and completion request"
+      - "serve formatting independently of queued analysis requests so format-on-save cannot be delayed by them"
+      - "convert related-location columns to UTF-16 using the related file's text"
+    verification:
+      - command: scripted stdio LSP session on sec/stdlib/net/url/url.sec (initialize, didOpen, semanticTokens, documentSymbol, formatting, hover x3, willSaveWaitUntil, didSave)
+        result: measured on 2026-10-02 after the change; per-request latency about 0.12 s, formatting 0.004 s
+      - command: go test ./internal/sema ./cmd/lsp -count=1
+        result: passed on 2026-10-02
+

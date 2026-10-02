@@ -1554,6 +1554,7 @@ func verifyTryHandlers(fn *Function) error {
 		highestVariantIndex int
 		variants            map[string]bool
 		exhaustive          bool
+		residual            bool
 	}
 	groups := map[BlockID]*handlerGroup{}
 	for _, block := range fn.Blocks {
@@ -1565,7 +1566,7 @@ func verifyTryHandlers(fn *Function) error {
 				return fmt.Errorf("try handler index must be >= -1")
 			}
 			switch op.TryHandlerKind {
-			case TryHandlerOK, TryHandlerErrVariant, TryHandlerErrCatchAll, TryHandlerMerge:
+			case TryHandlerOK, TryHandlerErrVariant, TryHandlerErrCatchAll, TryHandlerMerge, TryHandlerResidual:
 			default:
 				return fmt.Errorf("invalid try handler kind %q", op.TryHandlerKind)
 			}
@@ -1579,6 +1580,13 @@ func verifyTryHandlers(fn *Function) error {
 			if group == nil {
 				group = &handlerGroup{highestVariantIndex: -1, catchAllIndex: -1, variants: map[string]bool{}}
 				groups[op.Successors[0].Block] = group
+			}
+			group.residual = group.residual || op.TryResidualPropagates
+			if op.TryHandlerGuarded {
+				// A guarded handler never covers its pattern, so it neither
+				// counts as the catch-all nor claims its variant.
+				group.exhaustive = group.exhaustive || op.TryHandlerExhaustive
+				continue
 			}
 			switch op.TryHandlerKind {
 			case TryHandlerOK:
@@ -1603,13 +1611,13 @@ func verifyTryHandlers(fn *Function) error {
 		}
 	}
 	for merge, group := range groups {
-		if len(group.variants) == 0 && !group.catchAll {
+		if len(group.variants) == 0 && !group.catchAll && !group.residual && !group.exhaustive {
 			continue
 		}
 		if group.okCount != 1 {
 			return fmt.Errorf("try merge ^%d must have exactly one implicit or explicit Ok edge", merge)
 		}
-		if !group.exhaustive {
+		if !group.exhaustive && !group.residual {
 			return fmt.Errorf("try merge ^%d is missing exhaustive handler provenance", merge)
 		}
 		if group.catchAll {

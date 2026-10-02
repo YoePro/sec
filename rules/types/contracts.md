@@ -69,7 +69,10 @@ type User struct {
 }
 ```
 
-Inline field contracts are not Sec 0.1 syntax.
+Inline field contracts are not Sec 0.1 syntax. They are recognized legacy
+syntax and receive a focused migration diagnostic; because a correction would
+have to choose a new named type, no automatic rewrite applies
+(`rules/foundations/grammar.md`; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 4).
 
 ## Composition
 

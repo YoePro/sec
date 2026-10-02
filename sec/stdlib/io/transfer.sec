@@ -1,0 +1,158 @@
+module io
+
+/*
+ * Sec Standard Library - io - Generic streaming transfer helpers
+ *
+ * File:        stdlib/io/transfer.sec
+ * Module:      io
+ * Revision:    1
+ * Updated:     2026-10-02
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ *   Generic byte transfer and exact-completion helpers operating through
+ *   the root I/O capability interfaces.
+ *
+ * Rulebook:
+ *   stdlib/io/std-io.md
+ */
+
+// Number of consecutive zero-progress Write results WriteAll tolerates for
+// non-empty remaining input before reporting IOError.NoProgress. std-io.md
+// § 8.6 requires detecting repeated zero progress but fixes no count (MD-026).
+static let _maxZeroProgressWrites: uint := 2
+
+/** Reads until at least minimum bytes fill the start of buffer (std-io.md § 8.3). */
+fn ReadAtLeast(
+    reader: ref mut Reader,
+    buffer: ref mut byte[],
+    minimum: uint,
+) Result[uint, IOError] {
+    if minimum > buffer.Len {
+        return Err(IOError.InvalidInput)
+    }
+
+    let mut total := 0u
+    while total < minimum {
+        let count := try reader.Read(ref mut buffer[int(total)..])
+        if count == 0u {
+            return Err(IOError.UnexpectedEnd)
+        }
+        total += count
+    }
+    return Ok(total)
+}
+
+/** Fills the whole buffer without allocating (std-io.md § 8.4). */
+fn ReadExactly(
+    reader: ref mut Reader,
+    buffer: ref mut byte[],
+) Result[void, IOError] {
+    let mut total := 0u
+    while total < buffer.Len {
+        let count := try reader.Read(ref mut buffer[int(total)..])
+        if count == 0u {
+            return Err(IOError.UnexpectedEnd)
+        }
+        total += count
+    }
+    return Ok()
+}
+
+/** Reads to EOF into a new array of at most limit bytes (std-io.md § 8.5). */
+fn ReadAll(
+    reader: ref mut Reader,
+    limit: uint64,
+) Result[byte[], IOError] {
+    let mut result: byte[]
+    let mut chunk: byte[4096]
+    let mut total: uint64 := 0
+
+    while true {
+        let count := try reader.Read(ref mut chunk[..])
+        if count == 0u {
+            return Ok(result)
+        }
+        if total + uint64(count) > limit {
+            return Err(IOError.InvalidInput)
+        }
+
+        let mut index := 0u
+        while index < count {
+            // std-io.md § 8.5 leaves the IOError identity of allocation
+            // failure open (MD-026); it is reported as NativeFailure.
+            try result.Append(chunk[int(index)]) {
+                Err(error) => {
+                    discard error
+                    return Err(IOError.NativeFailure)
+                }
+            }
+            index += 1
+        }
+        total += uint64(count)
+    }
+}
+
+/** Writes every byte of data or reports why it could not (std-io.md § 8.6). */
+fn WriteAll(
+    writer: ref mut Writer,
+    data: ref byte[],
+) Result[void, IOError] {
+    let mut written := 0u
+    let mut idle := 0u
+    while written < data.Len {
+        let count := try writer.Write(ref data[int(written)..])
+        if count == 0u {
+            idle += 1
+            if idle >= _maxZeroProgressWrites {
+                return Err(IOError.NoProgress)
+            }
+        } else {
+            idle = 0
+            written += count
+        }
+    }
+    return Ok()
+}
+
+/** Streams source to destination until EOF with bounded storage (std-io.md § 8.7). */
+fn Copy(
+    destination: ref mut Writer,
+    source: ref mut Reader,
+) Result[uint64, IOError] {
+    let mut chunk: byte[4096]
+    let mut copied: uint64 := 0
+
+    while true {
+        let count := try source.Read(ref mut chunk[..])
+        if count == 0u {
+            return Ok(copied)
+        }
+        try WriteAll(destination, ref chunk[..<int(count)])
+        copied += uint64(count)
+    }
+}
+
+/** Streams exactly count bytes or reports UnexpectedEnd (std-io.md § 8.8). */
+fn CopyN(
+    destination: ref mut Writer,
+    source: ref mut Reader,
+    count: uint64,
+) Result[uint64, IOError] {
+    let mut chunk: byte[4096]
+    let mut copied: uint64 := 0
+
+    while copied < count {
+        let mut want := chunk.Len
+        if count - copied < uint64(want) {
+            want = uint(count - copied)
+        }
+        let received := try source.Read(ref mut chunk[..<int(want)])
+        if received == 0u {
+            return Err(IOError.UnexpectedEnd)
+        }
+        try WriteAll(destination, ref chunk[..<int(received)])
+        copied += uint64(received)
+    }
+    return Ok(count)
+}

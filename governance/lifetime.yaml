@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-26"
     document_revision: "2.0"
-    revised: "2026-09-25"
+    revised: "2026-10-02"
     repository_baseline: "b3315f6"
     replaces: pre-v2 rules/memory/ownership.md
     summary: >-
@@ -92,11 +92,12 @@ integrations:
       - consuming -> parameters require explicit <- for reusable local and projected Places regardless of copyability, accept fresh temporaries marker-free, and commit successful transfers through the shared Place ownership path
       - explicit reusable-source moves into an outer call remain uncommitted until every argument is valid; failure of a later argument preserves earlier local and projected caller ownership
       - closure capture AST and parser distinguish plain copy capture from explicit <- move capture, reject legacy -> capture syntax, reject implicit move-only copy capture, consume copyable and move-only outer Places explicitly, and analyze the resulting environment binding with independent availability
+      - "unavailable-use diagnostics separate availability from UnavailableReason provenance: control-flow joins retain every distinct reason of the continuing paths, a Place unavailable on only some paths (including nested conditional joins and conditionally partial aggregates) reports S1089/ownership.conditionally-unavailable-use with `is available` help instead of a definite use-after-move, definite moves report S1088/ownership.use-after-move with § 33.2 help, mixed-reason joins name every reason, partial aggregates report S1090/ownership.partially-unavailable-use, and every case keeps the earlier ownership operation as related location for reads and borrows"
+      - "custom-free types forbid partial moves (ownership.md § 19): every ownership transfer out of a field of a custom-free value is rejected with S1085 before availability changes, while whole-value moves remain valid; implementation detail is owned by frontend.destruction"
     remaining:
-      - availability-reason-separation
+      - "availability-reason-separation: replace the internal conditional prefix on reason strings with an explicit Availability dimension in Place state; joins and diagnostics already keep availability and the retained reason set separate"
       - closure-capture-reference-modes-and-lifetimes
       - partial-availability-v2
-      - custom-free-partial-move-ban
       - conditional-availability
       - ownership-is-available-dynamic-state-and-complete-recursive-refinement
       - negative-availability-refinement-preserves-recursive-mask
@@ -117,7 +118,7 @@ integrations:
       - ownership-errorhandling-sync
       - ownership-semantic-ir-v2
       - ownership-lsp-v2
-      - ownership-mentor-diagnostics
+      - "ownership-mentor-diagnostics: extend registered IDs and mentor help beyond the implemented use-after-move, conditional, and partial availability diagnostics to missing move markers (§ 33.1), move while borrowed, invalid overlap, and static-ownership policy (§ 33.4)"
       - ownership-formatter-v2
     semantic_ir_remaining:
       - represent copy versus consume explicitly
@@ -242,6 +243,8 @@ integrations:
         result: passed on 2026-09-22 with later-argument failure preserving earlier explicit local and projected source ownership
       - command: go test ./internal/parser ./internal/sema -run 'TestParseExplicitMoveLambdaCapture|TestLambdaCaptureCopyAndExplicitMoveOwnership' -count=1
         result: passed on 2026-09-22 with capture-mode AST preservation, legacy syntax rejection, copy-only plain capture, explicit outer-source consumption, and independent environment availability
+      - command: go test ./internal/sema -run 'UnavailablePlaceDiagnostics|AvailabilityReasonsDoNotBlock|BorrowCreationRejectsUnavailable|PlaceBranchMerge|MoveInOneBranch' -count=1
+        result: passed on 2026-10-02 with conditional, nested-conditional, mixed-reason, definite, partial, and conditionally partial reads and borrows plus refinement, discard convergence, reinitialization, and repair after joins
   - id: frontend.copy-move
     area: frontend-copy-move
     status: partial
@@ -341,7 +344,7 @@ integrations:
     status: partial
     integrated: "2026-09-04"
     document_revision: "2.0"
-    revised: "2026-09-24"
+    revised: "2026-10-02"
     repository_baseline: 069c111
     rules:
       - rules/memory/destruction.md
@@ -364,8 +367,18 @@ integrations:
       - internal/sema/types.go
       - internal/ast/ast.go
       - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/custom_free.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/analyzer_defer.go
+      - internal/ir/semantic/builder.go
+      - cmd/lsp/main.go
     tests:
       - internal/sema/destruction_test.go
+      - internal/sema/custom_free_test.go
+      - internal/formatter/declaration_forms_test.go
+      - internal/ir/semantic/package13_test.go
+      - cmd/lsp/custom_free_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/lifetime_test.go
       - internal/sema/analyzer_test.go
@@ -380,6 +393,11 @@ integrations:
       - Current frontend distinguishes several moved, returned, discarded, detached, released, and consuming-projection reasons for related diagnostics.
       - Discard of an already unavailable discardable local or tracked field Place is accepted as a frontend no-op without a second read or destruction action; later ordinary use remains unavailable.
       - Supported discard, move, and replacement paths reject invalidation while an overlapping borrow or deferred use requires the Place to remain valid.
+      - "Custom free parses as the parameterless impl lifecycle member `free { ... }` with a dedicated AST node, document symbol, keyword highlighting, and canonical formatting; `free()` and other malformed forms recover as invalid members, top-level free is rejected as impl-only, and `value.free` is rejected as a non-callable lifecycle member."
+      - "Sema registers at most one free per type across its primary and extending impl blocks before type resolution (S1084, also rejecting interface targets), marks the type CustomFree so it and every aggregate or concrete generic instance containing it are non-trivially destructible, and analyzes the body as a void lifecycle member keyed outside the method namespace with exclusive mutable authority over self."
+      - "Inside free, defer is rejected (S1086), a return value is rejected by the void body contract, and consuming, transferring, or discarding complete self is rejected (S1087)."
+      - "Ownership transfer out of any field of a custom-free value is rejected with S1085 naming the custom-free type and pointing at its free declaration: explicit moves, implicit transfers, Result consuming projections, and union payload moves, for ordinary locals, nested holders, ordinary methods, and self inside free; moving the complete value remains valid."
+      - "Semantic IR rejects any program declaring custom free as unsupported custom free lifecycle destruction instead of silently dropping the destructor."
     remaining:
       - 'destruction-classification-completion: derive custom-free, imported/foreign owner, concrete interface, generic-instantiation, and every remaining compiler-known lifecycle classification from canonical resolved facts'
       - 'general-cleanup-responsibility: replace narrow File/Directory must-closed tracking with general exact-once destruction responsibility for every non-trivial owned value'
@@ -388,8 +406,8 @@ integrations:
       - 'conditional-destruction: preserve branch/path-specific ownership and statically eliminate conditional cleanup whenever possible'
       - 'discard-convergence: implement explicit conditional availability/destruction plans, backend no-double-destruction, and new cleanup registration after reinitialization'
       - 'replacement-reinitialization: distinguish Available replacement from Unavailable reinitialization and ConditionallyAvailable mixed replacement/reinitialization with pre-commit semantic validation'
-      - 'custom-free-frontend: implement free AST/parser/member registration/Sema body rules, non-callability, no Result/value return, no defer, no self escape/resurrection, no whole-self transfer, and no owned-field move-out in Sec 0.1'
-      - 'custom-free-partial-move-ban: reject partial field moves for types defining custom free and identify the free declaration in diagnostics'
+      - 'custom-free-open-decisions: copy classification of custom-free types, field discard on custom-free types, legal free targets, the § 15.4(4) manual double-release criterion, and bare return in free await MD-025'
+      - 'custom-free-escape: reject storing or returning references to self or its fields beyond the free body once reference-escape summaries cover lifecycle members'
       - 'free-field-cleanup: model free body followed by remaining initialized owned-field destruction without duplicate release'
       - 'construction-failure-cleanup: track staged init field/resource acquisition and clean only successfully initialized obligations without invoking completed-value free'
       - 'defer-unified-order: model automatic destruction and defer registration in one source-ordered LIFO cleanup plan while preserving earliest legal destruction'
@@ -448,6 +466,8 @@ integrations:
         result: passed on 2026-09-24 after the destruction-classification increment
       - command: go vet ./...
         result: passed on 2026-09-24 after the destruction-classification increment
+      - command: go test ./internal/parser ./internal/sema ./internal/formatter ./internal/ir/semantic ./cmd/lsp -run 'Free|CustomFree|Package13' -count=1
+        result: passed on 2026-10-02 with free parsing and recovery, duplicate and interface targets, body restrictions, partial-move rejection across locals, holders, methods, and free, non-trivial destruction propagation, formatting, LSP outline and diagnostics, and the Semantic IR guard
   - id: sema.place-analysis
     area: frontend-analysis
     status: partial

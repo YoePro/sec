@@ -22,3 +22,106 @@ module url
  * Rulebook:
  * stdlib/net/url/std-net-url.md
  */
+
+type Query string
+
+impl Query {
+    /** Parses and validates one encoded RFC 3986 query component without `?`. */
+    static fn Parse(value: string) Result[Query, ParseError]
+
+    /** Percent-encodes decoded UTF-8 query text using the generic query context. */
+    static fn FromDecoded(value: string) Query
+
+    /** Decodes generic query percent escapes as UTF-8. `+` remains `+`. */
+    fn Decode() Result[string, PercentError]
+
+    /** Returns a query with canonical RFC 3986 percent spelling. */
+    fn Normalize() Query
+}
+
+type Fragment string
+
+impl Fragment {
+    /** Parses and validates one encoded RFC 3986 fragment without `#`. */
+    static fn Parse(value: string) Result[Fragment, ParseError]
+
+    /** Percent-encodes decoded UTF-8 fragment text. */
+    static fn FromDecoded(value: string) Fragment
+
+    /** Decodes fragment percent escapes as UTF-8. */
+    fn Decode() Result[string, PercentError]
+
+    /** Returns a fragment with canonical RFC 3986 percent spelling. */
+    fn Normalize() Fragment
+}
+
+type QueryParameter struct {
+    Name:  string,
+    Value: string,
+}
+
+impl QueryParams {
+    init(->items: QueryParameter[])
+
+    /**
+     * Parses UTF-8 application/x-www-form-urlencoded query data.
+     *
+     * Parameters:
+     * - value: Form-encoded data without the leading `?`.
+     *
+     * Returns:
+     * Parameters in source order, retaining duplicate names.
+     *
+     * Errors:
+     * - QueryParamsError.InvalidEscape: A percent escape is malformed.
+     * - QueryParamsError.InvalidUtf8: Decoded bytes are not valid UTF-8.
+     *
+     * Standards:
+     * - WHATWG URL Standard, application/x-www-form-urlencoded parser.
+     */
+    static fn Parse(value: string) Result[QueryParams, QueryParamsError]
+
+    /** Returns the number of parameter pairs, including duplicate names. */
+    property Count: usize { get }
+
+    /** Returns true when there are no parameter pairs. */
+    property IsEmpty: bool { get }
+
+    /** Appends one decoded name/value pair without removing duplicates. */
+    fn Add(name: string, value: string) void
+
+    /**
+     * Replaces every pair with the given name by one pair.
+     *
+     * Description:
+     * If the name already exists, the replacement occupies the position of the
+     * first removed pair. If it does not exist, the new pair is appended.
+     */
+    fn Set(name: string, value: string) void
+
+    /** Returns the first value for `name`, or None when absent. */
+    fn Get(name: string) Option[string]
+
+    /** Returns all values for `name` in source order as a new owning array. */
+    fn GetAll(name: string) string[]
+
+    /** Returns true when at least one pair has the given name. */
+    fn Has(name: string) bool
+
+    /** Removes every pair with `name` and returns the number removed. */
+    fn Remove(name: string) usize
+
+    /** Removes all pairs. */
+    fn Clear() void
+
+    /**
+     * Encodes the ordered parameter list as UTF-8 application/x-www-form-urlencoded.
+     *
+     * Returns:
+     * Newly allocated encoded data without a leading `?`.
+     */
+    fn Encode() string
+
+    /** Returns a new owning array containing all pairs in order. */
+    fn ToArray() QueryParameter[]
+}

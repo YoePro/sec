@@ -265,7 +265,10 @@ impl Body {
                 let mut position := state.Position
 
                 while position < state.Data.Len {
-                    try result.Append(state.Data[position]) {
+                    // Read the byte outside the try so the handler binds
+                    // only the Append failure (errorhandling.md §11.1).
+                    let next := state.Data[position]
+                    try result.Append(next) {
                         Err(error) => {
                             return Err(BodyError.Allocation(error))
                         }

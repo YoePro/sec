@@ -185,7 +185,7 @@ func TestCompilerLoadsIOReadFileIntoAPI(t *testing.T) {
 
 import "io"
 
-fn Load(path: string) Result[uint, io.IOError] {
+fn Load(path: string) Result[uint, IOErrorLegacy] {
 	let mut buffer: byte[16] := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	let count := try io.ReadFileInto(path, ref mut buffer[..])
 
@@ -214,7 +214,7 @@ func TestCompilerLoadsIOWriteSeekAndDirectoryAPIs(t *testing.T) {
 
 import "io"
 
-fn Update(path: string, text: string) Result[uint, io.IOError] {
+fn Update(path: string, text: string) Result[uint, IOErrorLegacy] {
 	let mut file := try io.OpenReadWrite(path, true)
 	let written := try file.WriteString(text)
 	let position := try file.Seek(0, io.SeekOrigin.Start)
@@ -224,24 +224,24 @@ fn Update(path: string, text: string) Result[uint, io.IOError] {
 	return Ok(written + position)
 }
 
-fn Save(path: string, text: string) Result[void, io.IOError] {
+fn Save(path: string, text: string) Result[void, IOErrorLegacy] {
 	try io.WriteStringFile(path, text)
 	return Ok()
 }
 
-fn SaveBytes(path: string, data: ref byte[]) Result[void, io.IOError] {
+fn SaveBytes(path: string, data: ref byte[]) Result[void, IOErrorLegacy] {
 	try io.WriteFile(path, ref data[..])
 	return Ok()
 }
 
-fn Append(path: string, text: string) Result[uint, io.IOError] {
+fn Append(path: string, text: string) Result[uint, IOErrorLegacy] {
 	let mut file := try io.OpenAppend(path)
 	let written := try file.WriteString(text)
 	try file.Close()
 	return Ok(written)
 }
 
-fn FirstEntry(path: string) Result[Option[io.DirectoryEntry], io.IOError] {
+fn FirstEntry(path: string) Result[Option[io.DirectoryEntry], IOErrorLegacy] {
 	let mut directory := try io.OpenDirectory(path)
 	let entry := try directory.Next()
 	try directory.Close()
@@ -249,7 +249,7 @@ fn FirstEntry(path: string) Result[Option[io.DirectoryEntry], io.IOError] {
 	return Ok(entry)
 }
 
-fn ListEntries(path: string, entries: ref mut io.DirectoryEntry[]) Result[uint, io.IOError] {
+fn ListEntries(path: string, entries: ref mut io.DirectoryEntry[]) Result[uint, IOErrorLegacy] {
 	let count := try io.ReadDirectoryInto(path, ref mut entries[..])
 	return Ok(count)
 }
@@ -262,20 +262,20 @@ fn EntryType(entry: io.DirectoryEntry) io.DirectoryEntryType {
 	return entry.Type
 }
 
-fn CheckAndRename(oldPath: string, newPath: string) Result[bool, io.IOError] {
+fn CheckAndRename(oldPath: string, newPath: string) Result[bool, IOErrorLegacy] {
 	let exists := try io.Exists(oldPath)
 	try io.Access(oldPath, io.AccessMode.Read)
 	try io.Rename(oldPath, newPath)
 	return Ok(exists)
 }
 
-fn DirectoryLifecycle(path: string) Result[void, io.IOError] {
+fn DirectoryLifecycle(path: string) Result[void, IOErrorLegacy] {
 	try io.CreateDirectory(path)
 	try io.RemoveDirectory(path)
 	return Ok()
 }
 
-fn Remove(path: string) Result[void, io.IOError] {
+fn Remove(path: string) Result[void, IOErrorLegacy] {
 	try io.RemoveFile(path)
 	return Ok()
 }
@@ -284,12 +284,12 @@ fn CopyHandles(
 	source: ref mut io.File,
 	destination: ref mut io.File,
 	buffer: ref mut byte[],
-) Result[uint, io.IOError] {
+) Result[uint, IOErrorLegacy] {
 	let copied := try io.Copy(source, destination, ref mut buffer[..])
 	return Ok(copied)
 }
 
-fn ReadFixed(file: ref mut io.File, buffer: ref mut byte[]) Result[uint, io.IOError] {
+fn ReadFixed(file: ref mut io.File, buffer: ref mut byte[]) Result[uint, IOErrorLegacy] {
 	let count := try file.ReadExact(ref mut buffer[..])
 	try file.Truncate(count)
 	return Ok(count)

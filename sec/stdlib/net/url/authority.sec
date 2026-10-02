@@ -19,3 +19,83 @@ module url
  * Rulebook:
  * stdlib/net/url/std-net-url.md
  */
+
+type UserInfo string
+
+impl UserInfo {
+    /** Parses and validates encoded RFC 3986 userinfo. */
+    static fn Parse(value: string) Result[UserInfo, ParseError]
+
+    /** Percent-encodes decoded UTF-8 userinfo text. */
+    static fn FromDecoded(value: string) UserInfo
+
+    /** Decodes percent escapes and validates UTF-8. */
+    fn Decode() Result[string, PercentError]
+}
+
+type Port string
+
+impl Port {
+    /** Parses RFC 3986 generic port syntax, including the empty port spelling. */
+    static fn Parse(value: string) Result[Port, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
+
+    /** Creates a decimal port spelling from a network-compatible 16-bit port. */
+    static fn FromNumber(value: uint16) Port {
+        // Todo: Implement net/url/authority.sec/Port.FromNumber
+        return ""
+    }
+
+    /** Returns true when an explicit colon was followed by no port digits. */
+    property IsEmpty: bool {
+        get {
+            // Todo: Implement net/url/authority.sec/Port.IsEmpty
+            return string(self) == ""
+        }
+    }
+
+    /**
+     * Converts a non-empty generic port to a 16-bit network port.
+     *
+     * Returns:
+     * The numeric port when it fits uint16.
+     *
+     * Errors:
+     * - PortError.InvalidDigit: The value contains a non-decimal digit.
+     * - PortError.OutOfRange: The value is empty or exceeds 65535.
+     */
+    fn Number() Result[uint16, PortError] {
+        // Todo: Implement net/url/authority.sec/Port.Number
+        return Err(PortError.OutOfRange(1))
+    }
+}
+
+type Authority struct {
+    UserInfo: Option[UserInfo],
+    Host:     Host,
+    Port:     Option[Port],
+}
+
+impl Authority {
+    init(host: Host)
+
+    init(host: Host, port: Port)
+
+    init(userInfo: UserInfo, host: Host, port: Option[Port])
+
+    /** Parses an authority without the leading `//`. */
+    static fn Parse(value: string) Result[Authority, ParseError]
+
+    /** Serializes userinfo, host, and optional port without leading `//`. */
+    fn String() string
+
+    /**
+     * Serializes an authority for diagnostics without exposing userinfo content.
+     *
+     * Description:
+     * When UserInfo is present, the serialized userinfo is replaced by the
+     * literal `REDACTED` before the `@` delimiter.
+     */
+    fn Redacted() string
+}

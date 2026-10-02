@@ -293,7 +293,7 @@ fn MatchInsideIf(result: Result[int, IOError],enabled: bool) int {
     return -1
 }
 
-fn MatchInsideFor(results: []Result[int, IOError]) int {
+fn MatchInsideFor(results: Result[int, IOError][]) int {
     let mut total: int := 0
 
 

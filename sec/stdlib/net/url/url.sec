@@ -21,6 +21,136 @@ module url
  * stdlib/net/url/std-net-url.md
  */
 
+type URL struct {
+    _scheme:    Scheme,
+    _authority: Option[Authority],
+    _path:      Path,
+    _query:     Option[Query],
+    _fragment:  Option[Fragment],
+}
+
+impl URL {
+    init(scheme: Scheme, authority: Option[Authority], path: Path, query: Option[Query], fragment: Option[Fragment]) BuildError {
+    }
+
+    /** Returns the required canonical lowercase scheme. */
+    property Scheme: Scheme {
+        get {
+            return new Scheme()
+        }
+    }
+
+    /** Returns the optional authority, preserving absent versus empty authority. */
+    property Authority: Option[Authority] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns the encoded path. */
+    property Path: Path {
+        get {
+            return new Path()
+        }
+    }
+
+    /** Returns the optional query, preserving a present-empty query. */
+    property Query: Option[Query] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns the optional fragment, preserving a present-empty fragment. */
+    property Fragment: Option[Fragment] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns true when an authority component is present. */
+    property HasAuthority: bool {
+        get {
+            return false
+        }
+    }
+
+    /** Returns true when a query delimiter is present. */
+    property HasQuery: bool {
+        get {
+            return false
+        }
+    }
+
+    /** Returns true when a fragment delimiter is present. */
+    property HasFragment: bool {
+        get {
+            return false
+        }
+    }
+
+    /** Serializes the URL using RFC 3986 component recomposition. */
+    fn ToString() string {
+        // TODO: Implement stdlib/net/URL.ToString()
+        return ""
+    }
+
+    /** Serializes the URL while replacing authority userinfo with `REDACTED`. */
+    fn Redacted() string {
+        // TODO: Implement stdlib/net/URL.Redacted()
+        return ""
+    }
+
+    /** Converts this URL to the equivalent absolute Reference. */
+    fn AsReference() Option[Reference] {
+        // TODO     : Implement stdlib/net/URL.AsReference
+        let r := try new Reference(None, None, new Path(), None, None) {
+            Err(_) => return None
+        }
+        return Some(r)
+    }
+
+    /**
+     * Resolves a URI-reference against this URL.
+     *
+     * Parameters:
+     * - reference: Borrowed absolute or relative reference.
+     *
+     * Returns:
+     * A new absolute URL produced by RFC 3986 section 5.2.
+     *
+     * Standards:
+     * - RFC 3986 section 5.2.
+     */
+    fn Resolve(reference: ref Reference) URL {
+        return new URL(None, None, None, None, None)
+    }
+
+    /**
+     * Applies RFC 3986 syntax-based normalization only.
+     *
+     * Description:
+     * Lowercases scheme and registered-name host, canonicalizes IPv6 text,
+     * canonicalizes percent escapes, decodes escapes for unreserved characters,
+     * and removes path dot-segments. It does not remove scheme-specific default
+     * ports or perform application-specific equivalence transformations.
+     */
+    fn Normalize() URL {
+        return new URL(self._scheme, <-self._authority, self._path, self._query, self._fragment)
+    }
+
+    /**
+     * Compares two URLs after `Normalize()`.
+     *
+     * Description:
+     * This is RFC generic syntax equivalence only. It does not claim that two
+     * scheme-specific resources are globally identical.
+     */
+    fn Equivalent(other: ref URL) bool {
+        return false
+    }
+}
+
 fn URLEncode(raw: string) string {
     return ""
 }
@@ -28,5 +158,3 @@ fn URLEncode(raw: string) string {
 fn URLDecode(raw: string) string {
     return ""
 }
-
-type URL string

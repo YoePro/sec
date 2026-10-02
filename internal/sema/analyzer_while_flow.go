@@ -17,7 +17,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-			a.addErrorAtToken(expressionToken(stmt.Condition), "while condition must be bool, got %s", typeDisplayName(conditionType))
+			a.addErrorAtToken(expressionToken(stmt.Condition), "%s", nonBoolConditionMessage(stmt.Condition, "while", conditionType))
 		}
 		if conditionType.Kind == BoolType {
 			constantCondition, constantConditionKnown = a.constantBooleanValue(stmt.Condition)
@@ -247,4 +247,18 @@ func (a *Analyzer) whileConditionStateTest(stmt *ast.WhileStatement) (ResolvedSt
 	}
 	fact, ok := a.resolvedStateTests[test]
 	return fact, ok
+}
+
+// nonBoolConditionMessage reports a non-bool if or while condition. A
+// bodyless try condition uses the rulebooks' focused wording,
+// "try expression in if condition must produce bool, got T".
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §11 "`try` in a condition", diagnostics
+//   - rules/control-flow/flowcontrol_while.md — §7 "`try` in a condition", diagnostics
+func nonBoolConditionMessage(condition ast.Expression, construct string, got Type) string {
+	if try, ok := condition.(*ast.TryExpression); ok && len(try.Handlers) == 0 {
+		return "try expression in " + construct + " condition must produce bool, got " + typeDisplayName(got)
+	}
+	return construct + " condition must be bool, got " + typeDisplayName(got)
 }

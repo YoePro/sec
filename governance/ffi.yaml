@@ -45,6 +45,9 @@ integrations:
       - cmd/compiler/target.go
       - internal/cst/roles.go
       - internal/formatter/token_spacing.go
+      - internal/sema/ffi_legality.go
+      - internal/sema/null_sentinel.go
+      - internal/ast/ast.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -59,6 +62,8 @@ integrations:
       - internal/layout/c_abi_test.go
       - internal/formatter/declaration_forms_test.go
       - cmd/compiler/analyse_test.go
+      - internal/sema/ffi_legality_test.go
+      - internal/sema/null_sentinel_test.go
     implemented:
       - bodyless extern C, system, and Sec function declaration parsing and AST retention
       - parser and defensive Sema rejection of body-bearing extern declarations
@@ -79,11 +84,13 @@ integrations:
       - "Sema registers all fifteen C:: fundamental scalars from the active model as distinct types: no implicit initialization between C:: types and Sec scalars or between different C:: types (C::bool included), explicit conversions in both directions, and representable integer, floating, and boolean literal shaping with per-target range checks (MD-022)"
       - "an unknown C:: name uses S1076 ffi.unknown-c-fundamental-type, a target or analyzer without a C ABI model uses S1077 ffi.c-abi-model-unavailable, and c:: names use S1078 ffi.unresolved-c-binding-type until a binding environment exists (MD-021)"
       - "a parser-confirmed CST role keeps foreign-qualified names contiguous in the formatter"
+      - "extern \"C\" and extern \"system\" signatures are validated per position through one legality classifier: C:: scalars (now including C::bool), fixed-width Sec scalars, RawPtr[T], integer-backed enums, void returns, and ref/ref mut parameters with foreign-representable referents (including fixed arrays) are legal; Sec bool/char/rune, string, decimal, owning dynamic arrays, slices, fixed arrays by value, Option, Result, native collections, ordinary structs and tagged unions, callable values, interfaces, any, string-backed enums, and reference returns are rejected with S1079 ffi.illegal-foreign-type naming the declaration, position, type, ABI, reason, and corrective help; return-type errors point at the written return type; the Sec ABI keeps its ordinary gate. Target-sized int/uint, 128/256-bit integers, and integer-backed Sec enums keep their earlier acceptance pending MD-023"
+      - "the null sentinel is unsafe-only and has no standalone type: inside unsafe it takes its RawPtr[T] type from an annotation, assignment, return, or an argument position on which every candidate callable agrees, and otherwise reports S1081 ffi.null-without-raw-pointer-context; outside unsafe it reports S1080 ffi.null-outside-unsafe; `== null` and `!= null` report S1082 ffi.null-equality in every context; `raw is null` parses as a dedicated NullTestExpression in if/while conditions, requires unsafe and a RawPtr[T] subject (S1083 ffi.null-test-requires-raw-pointer), and yields bool; `is not null` is rejected; a visible binding named null shadows the contextual sentinel (MD-024); Semantic IR and LLVM reject the node explicitly until lowering"
     remaining:
       - "resolve c:: binding types through the target/library binding environment once it is defined (MD-021); C:: fundamentals and c:: parsing are implemented"
       - "make possibly-narrowing C/Sec scalar conversions fallible (try) together with the general checked-conversion contract (MD-012); give the LSP the project CompilationPlan target so C:: types resolve in the editor instead of reporting S1077"
-      - add target-specific calling-convention and per-position ABI legality validation before backend lowering
-      - implement unsafe-only null sentinel parsing, contextual typing, is null refinement, and equality rejection without giving null a standalone type
+      - "add target-specific calling-convention availability and ABI-model-dependent classification (aggregate, variadic, and function-pointer forms) before backend lowering; per-position type legality is implemented (S1079) apart from the MD-023 scalar and enum questions"
+      - "record is null branch refinement as a non-null proof fact for raw-to-safe conversion once that conversion exists; resolve the null lexical status, safe null-test spelling, and negated form (MD-024)"
       - parse and validate complete and incomplete extern C structs with ABI layout and no implicit Defaultable construction
       - implement untagged extern C unions with ABI layout and foreign-unsafe member-access facts
       - implement open extern C enums with ABI-selected representation and unknown-value handling
@@ -128,3 +135,7 @@ integrations:
         result: "passed on 2026-10-02; every registered target plan validates, and C::long := 3000000000 is accepted for linux-amd64 but rejected for windows-amd64 through sec analyse --target"
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-02
+      - command: "go test ./internal/sema -run 'TestForeignSignatures|TestExternFunctionValidation' -count=1"
+        result: passed on 2026-10-02 with six legal multi-type signatures and nineteen rejected forms across parameter, referent, and return positions for C and system
+      - command: "go test ./internal/parser ./internal/sema -run 'TestParseNullTestCondition|TestNullSentinel' -count=1"
+        result: passed on 2026-10-02 with if/while is null, annotation/assignment/return/argument contexts, shadowing, missing unsafe, missing context, equality in both operand orders, non-pointer subjects, and the rejected negated form

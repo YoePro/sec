@@ -2,506 +2,529 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-09-29
-- **Document revision:** 1.0
+- **Last updated:** 2026-10-02
+- **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/language_philosophy.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
-- **Repository baseline reviewed:** `main-reviewed-2026-09-29`
-- **Implementation governance:** `governance/governance.yaml`
-- **Related rulebooks:** `rules/README.md`, `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/foundations/names_scopes_visibility.md`, `rules/foundations/operators.md`, `rules/foundations/attributes.md`
+- **Repository baseline reviewed:** `main-reviewed-2026-10-02`
+- **Implementation governance:** Not applicable; this rulebook defines design principles rather than implementation-status work items.
+- **Related rulebooks:** `rules/README.md`, `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/foundations/names_scopes_visibility.md`, `rules/foundations/operators.md`, `rules/foundations/attributes.md`, `rules/types/types.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/errors/errorhandling.md`, `rules/errors/runtime_checks.md`, `rules/errors/panic.md`, `rules/tooling/diagnostics.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/semantic_ir.md`, `rules/platform/platform_model.md`
 
 ---
 
-## Purpose
+## § 1. Purpose and authority
 
-Sec is designed to be simple to read, simple to write and predictable to reason about.
+§ 1(1) This rulebook defines the design principles used to evaluate Sec language, compiler, core-library, standard-library, tooling, and platform-model decisions.
 
-The language is intended to support both ordinary application development and low-level systems programming without requiring the programmer to adopt unnecessary complexity for either.
+§ 1(2) Sec is designed to be simple to read, simple to write, and predictable to reason about.
 
-Complexity should exist where it provides value.
+§ 1(3) Sec is intended to support both ordinary application development and low-level systems programming without forcing unnecessary complexity on either.
 
-When complexity can be handled reliably by the compiler, it should normally remain in the compiler rather than being exposed as source-level ceremony.
+§ 1(4) Complexity should exist where it provides value.
 
-The programmer should express intent.
+§ 1(5) When complexity can be handled reliably by the compiler, it should normally remain in the compiler rather than being exposed as source-level ceremony.
 
-The compiler should prove the consequences.
+§ 1(6) The programmer should express intent. The compiler should prove the consequences.
 
+§ 1(7) This rulebook does not override a more specific normative rulebook. Where a concrete language rule has been deliberately specified, that concrete rule is authoritative for that subject.
 
-## Independent design
+§ 1(8) These principles guide new decisions, interpretation of genuinely unspecified areas, and review of proposed revisions. They must not be used to silently invent semantics that another owning rulebook has not defined.
 
-Sec is influenced by many existing programming languages and programming traditions.
+---
 
-These include but are not limited to:
+## § 2. Independent design
 
-* C
-* C++
-* C#
-* F#
-* Go
-* Rust
-* Zig
-* Ada
-* Vale
-* Odin
+§ 2(1) Sec is influenced by many existing programming languages and programming traditions.
 
-Sec is not designed as a derivative or replacement syntax for any one of them.
+§ 2(2) These include, but are not limited to:
 
-A concept may be adopted when it serves Sec's goals.
+```text
+C
+C++
+C#
+F#
+Go
+Rust
+Zig
+Ada
+Vale
+Odin
+```
 
-A concept may be modified when Sec can make it simpler, safer or more consistent.
+§ 2(3) Sec is not designed as a derivative or replacement syntax for any one of them.
 
-A concept may be rejected even when it is established practice in another language.
+§ 2(4) A concept may be adopted when it serves Sec's goals.
 
-Similar syntax does not imply identical semantics.
+§ 2(5) A concept may be modified when Sec can make it simpler, safer, clearer, or more consistent.
 
-Familiarity is useful, but consistency within Sec has higher priority than compatibility with the expectations created by another language.
+§ 2(6) A concept may be rejected even when it is established practice in another language.
 
-Language decisions must therefore be justified by the needs and design principles of Sec itself, not by statements such as:
+§ 2(7) Similar syntax does not imply identical semantics.
 
-C does this
-Rust requires this
-Go does not allow this
-C# calls this ...
-F# represents this ...
+§ 2(8) Familiarity is useful, but consistency within Sec has higher priority than compatibility with expectations created by another language.
 
-Other languages are valuable sources of experience.
+§ 2(9) Language decisions must be justified by Sec's own requirements and design principles, not merely because another language does or does not use a particular design.
 
-They are not normative sources for Sec.
+§ 2(10) Other languages are valuable sources of experience. They are not normative sources for Sec.
 
+---
 
-## Practical simplicity
+## § 3. Practical simplicity
 
-Sec should be understandable by competent programmers without requiring specialist academic knowledge.
+§ 3(1) Sec should be understandable by competent programmers without requiring specialist academic knowledge for ordinary programming.
 
-A programmer should not need a PhD in programming-language theory to understand ordinary Sec code, compiler diagnostics or the language manual.
+§ 3(2) Technical concepts are not avoided merely because they are sophisticated.
 
-Technical concepts are not avoided merely because they are sophisticated.
+§ 3(3) Unnecessary intellectual or terminological complexity should be avoided.
 
-Unnecessary intellectual or terminological complexity is avoided.
+§ 3(4) When a concept can be described accurately using ordinary programming terminology, programmer-facing documentation and diagnostics should prefer that terminology over specialist terminology that adds no practical value.
 
-When a concept can be accurately described using ordinary programming terminology, Sec should prefer that terminology over specialist terminology that provides no practical benefit to the programmer.
+§ 3(5) The compiler implementation may use advanced algorithms, formal models, and specialized terminology internally.
 
-The compiler implementation may use advanced algorithms, formal models and specialized terminology internally.
+§ 3(6) Internal complexity should not leak into source syntax merely because the compiler uses it internally.
 
-Those implementation details should not leak into the source language unless the programmer needs them to make a meaningful programming decision.
+§ 3(7) The goal is not to make the compiler simple. The goal is to make correct programming comprehensible.
 
-The goal is not to make the compiler simple.
+---
 
-The goal is to make correct programming comprehensible.
+## § 4. Explicit intent, implicit bookkeeping
 
+§ 4(1) Sec should not require syntax whose only purpose is to repeat information the compiler can already determine safely and unambiguously.
 
-## Avoid semantic bureaucracy
+§ 4(2) Explicit syntax is valuable when it expresses a real semantic choice.
 
-Sec should not require syntax whose only purpose is to repeat information the compiler can already determine safely.
+§ 4(3) Such choices include, where defined by their owning rulebooks:
 
-Explicit syntax is valuable when it expresses a real semantic choice.
+```text
+mutability
+fallibility
+unsafe operations
+borrowing authority
+ownership transfer
+external storage
+hardware semantics
+units
+contracts
+target-sensitive operations
+```
 
-Examples include:
+§ 4(4) Explicit syntax is not valuable merely because it makes compiler implementation easier.
 
-* mutability
-* fallible operations
-* unsafe operations
-* borrowing mode
-* ownership-sensitive operations where intent cannot otherwise be determined
-* external storage or hardware semantics
-* units and contracts that express domain meaning
+§ 4(5) Sec should avoid semantic bureaucracy: annotations, qualifiers, declarations, or ceremony that force the programmer to maintain information already known or safely provable by the compiler.
 
-Explicit syntax is not valuable merely because it makes compiler implementation easier.
+§ 4(6) The preferred rule is:
 
-The language should avoid semantic bureaucracy: annotations, qualifiers, declarations or ceremony that force the programmer to maintain information already known or provable by the compiler.
-
-The preferred rule is:
-
+```text
 explicit intent
 implicit bookkeeping
+```
 
-The programmer describes what is meant.
+§ 4(7) The programmer describes what is meant. The compiler performs the bookkeeping needed to prove that it is valid.
 
-The compiler performs the bookkeeping needed to prove that it is valid.
+§ 4(8) When an operation represents a semantic choice that cannot be derived safely, the language should require that choice to be explicit rather than guess.
 
+---
 
-## Compiler responsibility
+## § 5. Compiler responsibility
 
-The compiler is expected to perform substantial analysis.
+§ 5(1) The Sec compiler is expected to perform substantial semantic analysis.
 
-This includes, but is not limited to:
+§ 5(2) This includes, where applicable:
 
-* type analysis
-* ownership analysis
-* borrowing analysis
-* lifetime and reference validation
-* escape analysis
-* effect analysis
-* control-flow analysis
-* definite-assignment analysis
-* copy and move analysis
-* destruction and cleanup planning
-* stack analysis
-* recursion analysis
-* ISR analysis
-* concurrency analysis
-* compile-time evaluation
-* contract validation
-* unit analysis
-* platform validation
-* ABI and FFI validation
-* optimization legality analysis
+```text
+type analysis
+ownership analysis
+borrowing analysis
+lifetime and reference validation
+escape analysis
+effect analysis
+control-flow analysis
+definite-assignment analysis
+copy and move analysis
+destruction and cleanup planning
+stack analysis
+recursion analysis
+ISR analysis
+concurrency analysis
+compile-time evaluation
+contract validation
+unit analysis
+platform validation
+ABI and FFI validation
+optimization-legality analysis
+```
 
-These analyses are compiler responsibilities.
+§ 5(3) These analyses are compiler responsibilities.
 
-They should influence source syntax only where the programmer must provide information that cannot be derived safely or where an explicit choice is semantically important.
+§ 5(4) They should influence source syntax only where the programmer must provide information that cannot be derived safely or where an explicit choice is semantically important.
 
-The existence of sophisticated compiler analysis is not justification for sophisticated source syntax.
+§ 5(5) Sophisticated compiler analysis is not, by itself, justification for sophisticated source syntax.
 
+§ 5(6) Compiler implementation difficulty is not sufficient reason to weaken a language guarantee.
 
-## Diagnostics are part of the language experience
+---
 
-Rejecting an incorrect program is not sufficient.
+## § 6. Compiler as mentor
 
-The compiler should explain why the program is incorrect whenever practical.
+§ 6(1) Rejecting an incorrect program is not sufficient when the compiler can reasonably explain the problem.
 
-Diagnostics should help the programmer understand:
+§ 6(2) Diagnostics should help the programmer understand:
 
-* what rule was violated
-* where the relevant values or declarations originated
-* why the compiler reached its conclusion
-* what operation caused the conflict
-* what change may resolve the problem when a useful suggestion exists
+```text
+what rule was violated
+where relevant values or declarations originated
+why the compiler reached its conclusion
+what operation caused the conflict
+what change may resolve the problem when a valid suggestion exists
+```
 
-Compiler analysis should therefore be designed not only to answer:
+§ 6(3) Compiler analysis should therefore be designed to answer both whether the program is valid and, when practical, why and how the programmer can resolve the problem.
 
-is this program valid?
+§ 6(4) Diagnostics must not claim certainty beyond the analysis that was actually performed.
 
-but also:
+§ 6(5) Advanced analysis that cannot support useful explanation should be treated with caution when a simpler model can provide comparable safety with clearer diagnostics.
 
-how can the compiler explain the result to the programmer?
+§ 6(6) Exact diagnostic identity, structure, severity, localization, and tooling behavior are owned by `rules/tooling/diagnostics.md`.
 
-Advanced analysis that cannot provide useful diagnostics should be treated with caution when a simpler and more understandable model can provide comparable safety.
+---
 
+## § 7. Prove, check, or reject
 
-## Static proof and checked semantics
+§ 7(1) Sec prefers static proof.
 
-Sec prefers static proof.
+§ 7(2) When the compiler proves that an operation is valid, it should not emit runtime validation merely for defensive purposes unless another normative rule requires an observable check.
 
-When the compiler can prove that an operation is valid, no runtime validation should be emitted merely for defensive purposes.
+§ 7(3) When a language safety condition depends on runtime data and static proof is insufficient, the language may define runtime validation.
 
-When a language safety rule cannot be proven statically, Sec may use compiler-defined runtime validation where the language semantics require the condition to be checked.
+§ 7(4) Examples include, where defined by owning rulebooks:
 
-Examples may include:
+```text
+dynamic bounds validation
+runtime contract validation
+arithmetic checks
+reference-generation validation
+representation validation
+```
 
-* dynamic bounds validation
-* runtime contract validation
-* arithmetic checks
-* reference generation validation
-* other safety conditions whose truth depends on runtime values
+§ 7(5) Runtime validation does not imply garbage collection or a mandatory general-purpose runtime.
 
-Runtime validation does not imply garbage collection or a mandatory general-purpose runtime.
+§ 7(6) A runtime check may lower directly to ordinary machine instructions or target-specific support.
 
-A check may lower directly to ordinary machine instructions or target-specific support.
+§ 7(7) The general principle is:
 
-The general principle is:
-
+```text
 prove when possible
-check when necessary
-reject when neither can provide the required guarantee
+check when required by defined semantics
+reject when the required guarantee cannot otherwise be established
+```
 
-The compiler must not silently weaken a language guarantee merely because proving it statically is difficult.
+§ 7(8) The compiler must not silently weaken a language guarantee merely because proving it statically is difficult.
 
+§ 7(9) Concrete runtime-check and panic-free semantics are owned by `rules/errors/runtime_checks.md` and `rules/errors/panic.md`.
 
-## Safety without removing low-level control
+---
 
-Sec is intended to support low-level programming.
+## § 8. Safety without removing low-level control
 
-This includes areas such as:
+§ 8(1) Sec is intended to support low-level programming.
 
-* operating-system interfaces
-* FFI
-* memory-mapped hardware
-* embedded systems
-* bare-metal systems
-* allocators
-* device drivers
-* platform runtimes
-* systems software
+§ 8(2) Relevant domains include operating-system interfaces, FFI, memory-mapped hardware, embedded systems, bare-metal systems, allocators, device drivers, platform runtimes, and systems software.
 
-Low-level capability must not require the entire language to adopt unsafe semantics.
+§ 8(3) Low-level capability must not require the entire language to adopt unsafe semantics.
 
-Safe code should retain the strongest guarantees the compiler can provide.
+§ 8(4) Safe code should retain the strongest guarantees the compiler can provide.
 
-Operations whose correctness cannot generally be verified must cross an explicit unsafe boundary or use another explicitly defined low-level mechanism.
+§ 8(5) Operations whose correctness cannot generally be verified must cross an explicit unsafe boundary or another explicitly defined low-level mechanism.
 
-Unsafe code does not disable the language.
+§ 8(6) Unsafe code does not disable the language.
 
-Inside unsafe code, ordinary rules for types, ownership, control flow, visibility, error handling and other validatable semantics continue to apply.
+§ 8(7) Inside unsafe code, ordinary rules remain in force except for the specific proof obligation explicitly transferred to the programmer by the unsafe operation.
 
-Unsafe means that a specific operation contains assumptions the compiler cannot prove.
+§ 8(8) Unsafe therefore means that a specific operation contains assumptions the compiler cannot prove. It does not mean that the compiler stops checking the program.
 
-It does not mean that the compiler stops checking the program.
+---
 
+## § 9. Deterministic semantics
 
-## Determinism
+§ 9(1) Sec favors deterministic language semantics.
 
-Sec favors deterministic semantics.
+§ 9(2) When behavior can affect program correctness, resource lifetime, ownership state, or observable execution, the language should define it rather than leave it accidentally dependent on implementation details.
 
-When behavior can affect program correctness, resource lifetime or observable execution, the language should define it rather than leave it accidentally dependent on the compiler backend.
+§ 9(3) This includes ownership transfer, copy and move behavior, destruction, cleanup, defer execution, expression evaluation order, control flow, initialization, and error propagation.
 
-This includes areas such as:
+§ 9(4) Optimization may remove, combine, or rearrange operations only when observable Sec semantics remain unchanged.
 
-* ownership transfer
-* copy and move behavior
-* destruction
-* cleanup
-* defer execution
-* expression evaluation order
-* control-flow behavior
-* initialization
-* error propagation
+§ 9(5) Backend convenience must not define source-language behavior.
 
-Optimization may remove, combine or rearrange operations only when the observable Sec semantics remain unchanged.
+§ 9(6) Deliberately unspecified behavior, implementation-defined behavior, and target-defined behavior must be explicitly classified as such by the owning rulebook rather than arising accidentally.
 
-Backend convenience must not define source-language behavior.
+---
 
+## § 10. No hidden semantic surprises
 
-## No hidden semantic surprises
+§ 10(1) Source code should communicate operations that have important semantic or performance consequences.
 
-Source code should communicate operations that have important semantic or performance consequences.
+§ 10(2) Sec should avoid hidden behavior such as unexpected heap allocation, unexpected ownership transfer, hidden garbage collection, hidden reference counting, implicit expensive copying, implicit resource acquisition, implicit exception mechanisms, unexpected dynamic dispatch, and backend-dependent safety behavior.
 
-Sec should avoid hidden behavior such as:
+§ 10(3) This does not mean that every machine instruction must be visible in source.
 
-* unexpected heap allocation
-* unexpected ownership transfer
-* hidden garbage collection
-* hidden reference counting
-* implicit expensive copying
-* implicit resource acquisition
-* implicit exception mechanisms
-* unexpected dynamic dispatch
-* backend-dependent safety behavior
+§ 10(4) The compiler is expected to generate substantial implementation machinery.
 
-This does not mean every machine instruction must be visible in source code.
+§ 10(5) The distinction is between hidden implementation and hidden semantics.
 
-The compiler is expected to generate substantial implementation machinery.
+§ 10(6) Compiler-generated implementation is desirable when it faithfully implements clear source semantics.
 
-The distinction is between hidden implementation and hidden semantics.
+§ 10(7) Compiler-generated semantic surprises are not.
 
-Compiler-generated implementation is desirable when it faithfully implements clear source semantics.
+---
 
-Compiler-generated semantic surprises are not.
+## § 11. Cost awareness
 
+§ 11(1) Sec should make it possible for programmers to reason about important costs.
 
-## Cost awareness
+§ 11(2) The language need not expose every machine-level cost explicitly.
 
-Sec should make it possible for programmers to reason about important costs.
+§ 11(3) Operations with substantially different ownership, allocation, copying, synchronization, or dispatch behavior should not be made indistinguishable when the distinction matters to program design.
 
-The language should not require every low-level cost to be written explicitly, but operations with substantially different ownership, allocation or dispatch behavior should not be made indistinguishable when that difference matters.
+§ 11(4) Zero-cost abstractions are desirable when practical.
 
-Zero-cost abstractions are desirable when practical.
+§ 11(5) Correctness and comprehensibility take priority over slogans about zero cost.
 
-However, the language must not sacrifice correctness or comprehensibility merely to satisfy a slogan about zero cost.
+§ 11(6) A predictable and explicit cost is preferable to an invisible and surprising one.
 
-A predictable and explicit cost is preferable to an invisible and surprising one.
+---
 
+## § 12. Ownership and memory
 
-## Ownership and memory
+§ 12(1) Sec uses deterministic ownership and compile-time analysis as central tools for memory and resource safety.
 
-Sec uses deterministic ownership and compile-time analysis as central tools for memory and resource safety.
+§ 12(2) The ownership model should remain understandable without requiring programmers to manually describe compiler-internal lifetime relationships.
 
-The ownership model should remain understandable without requiring programmers to manually describe compiler-internal lifetime relationships.
+§ 12(3) Programmers should not normally need explicit lifetime annotations.
 
-The programmer should not normally need explicit lifetime annotations.
+§ 12(4) Borrowing and reference rules should prevent invalid programs while avoiding unnecessary source-level bookkeeping.
 
-Borrowing and reference rules should prevent invalid programs while avoiding unnecessary source-level bookkeeping.
+§ 12(5) When the compiler cannot prove that an ownership, borrowing, or lifetime relationship is safe, Sec should prefer a clear diagnostic over exposing increasingly complex compiler-internal annotations merely to make the program accepted.
 
-When the compiler cannot prove that an ownership, borrowing or lifetime relationship is safe, Sec should prefer a clear diagnostic over introducing increasingly complex annotation systems merely to make the program accepted.
+§ 12(6) Compiler-internal concepts such as regions, data-flow states, and lifetime models are implementation techniques unless a separate normative rule deliberately exposes them.
 
-Compiler-internal concepts such as regions, data-flow states and lifetime models are implementation techniques.
+§ 12(7) Internal analysis concepts are not automatically source-language concepts.
 
-They are not automatically language concepts.
+---
 
+## § 13. Abstraction without loss of control
 
-## Abstraction without loss of control
+§ 13(1) High-level abstractions and low-level control are not opposing goals.
 
-High-level abstractions and low-level control are not opposing goals.
+§ 13(2) A feature may provide a high-level source representation while lowering to direct and predictable machine behavior.
 
-A language feature may provide a high-level source representation while lowering to direct and predictable machine behavior.
+§ 13(3) Examples include register fields instead of repeated manual masks and shifts, units instead of unchecked numeric conventions, typed `Result` values instead of hidden error channels, properties instead of manually repeated access logic, safe references instead of ordinary raw pointers, and compiler-generated cleanup instead of manually repeated release logic.
 
-Examples include:
+§ 13(4) An abstraction is useful when it reduces programmer error without hiding semantically important behavior.
 
-* register fields instead of manual masks and shifts
-* units instead of unchecked numeric conventions
-* typed Result values instead of hidden error channels
-* properties instead of manually repeated validation logic
-* safe references instead of ordinary raw pointers
-* compiler-generated cleanup instead of manually repeated resource release
+§ 13(5) Sec must not equate low-level programming with low-level syntax.
 
-An abstraction is useful when it reduces programmer error without hiding semantically important behavior.
+---
 
-Sec should therefore avoid equating low-level programming with low-level syntax.
+## § 14. One language across targets
 
+§ 14(1) Sec targets both hosted and freestanding environments.
 
-## One language across targets
+§ 14(2) These include desktop and server operating systems, embedded operating systems, microcontrollers, and bare-metal targets.
 
-Sec targets both hosted and freestanding environments.
+§ 14(3) Core language semantics remain the same across targets.
 
-These include:
+§ 14(4) Targets and target profiles may differ in available capabilities.
 
-* desktop and server operating systems
-* embedded operating systems
-* microcontrollers
-* bare-metal targets
+§ 14(5) A target may lack heap allocation, threads, operating-system services, particular ABI capabilities, or specific runtime facilities.
 
-The core language semantics should remain the same across targets.
+§ 14(6) Such differences may restrict which programs or library facilities are available.
 
-Target profiles may differ in available facilities.
+§ 14(7) Target differences must not silently redefine the meaning of core Sec constructs.
 
-For example, a target may lack:
+§ 14(8) Capability resolution and `CompilationPlan` behavior are owned by the platform rulebooks.
 
-* heap allocation
-* threads
-* operating-system services
-* particular ABI capabilities
-* specific runtime support
+§ 14(9) The language should avoid requiring a general runtime whenever practical.
 
-Such differences may restrict which programs or library facilities are available.
+---
 
-They must not silently redefine the meaning of core Sec language constructs.
+## § 15. Language, core, stdlib, platform, and compiler-known behavior
 
-The language should avoid requiring a runtime whenever practical.
+§ 15(1) A feature should not become compiler magic merely because implementing it as source code is inconvenient.
 
+§ 15(2) Conversely, behavior fundamental to the semantic model need not be forced into an ordinary library abstraction when that would weaken static analysis, type identity, target integration, or runtime independence.
 
-## Libraries and language
+§ 15(3) The boundary between language semantics, compiler-known identities and operations, core, standard library, and platform library must be chosen according to semantic responsibility.
 
-A feature should not become compiler magic merely because implementing it as ordinary source code is inconvenient.
+§ 15(4) Compiler-known behavior may connect trusted core declarations to language semantics without making the corresponding intrinsic part of the public source API.
 
-Conversely, behavior that is fundamental to the semantic model does not need to be forced into an ordinary library abstraction when doing so would weaken analysis or require artificial runtime machinery.
+§ 15(5) The programmer-facing model should remain coherent regardless of whether a feature is implemented by source, compiler-known support, target lowering, or a combination of them.
 
-The boundary between:
+§ 15(6) Public behavior and private implementation hooks must not be conflated.
 
-* language semantics
-* compiler-known operations
-* core library
-* standard library
-* platform library
+---
 
-should be chosen according to semantic responsibility.
+## § 16. Infer, do not guess
 
-The programmer-facing model should remain coherent regardless of where a feature is implemented.
+§ 16(1) The compiler should infer information aggressively when the result is unambiguous and safe.
 
+§ 16(2) Inference must not become guessing.
 
-## Reject ambiguity rather than disguise it
+§ 16(3) When several interpretations are semantically possible and the compiler cannot establish which one the programmer intended, Sec should require enough information to make the choice explicit.
 
-The compiler should infer information aggressively when the result is unambiguous and safe.
+§ 16(4) This principle applies particularly to ownership, borrowing, overload resolution, generic inference, conversions, FFI ownership, unsafe operations, and target-sensitive behavior.
 
-Inference must not become guessing.
+§ 16(5) The language must not silently select a convenient interpretation when another valid interpretation would change program meaning.
 
-When several interpretations are semantically possible and the compiler cannot establish which one the programmer intended, Sec should require enough information to make the choice explicit.
+---
 
-This principle applies particularly to areas such as:
+## § 17. Readability and locality
 
-* ownership
-* borrowing
-* overload resolution
-* generic inference
-* conversions
-* FFI ownership
-* unsafe operations
+§ 17(1) Code should normally be understandable from the visible code together with the contracts of the named abstractions it uses.
 
-The language should not silently choose a convenient interpretation that may change program meaning.
+§ 17(2) Important behavior should not depend unnecessarily on distant declarations or hidden global state.
 
+§ 17(3) Sec should favor local reasoning, explicit type identity, clear ownership behavior, visible fallibility, predictable name resolution, and limited hidden global state.
 
-## Readability and locality
+§ 17(4) This principle does not prohibit abstraction.
 
-Code should normally be understandable from the code that is visible.
+§ 17(5) Abstraction should preserve the programmer's ability to understand relevant semantics without reconstructing the entire program mentally.
 
-Important behavior should not depend unnecessarily on declarations far away from the operation being read.
+---
 
-Sec should favor:
+## § 18. Consistency and composition
 
-* local reasoning
-* explicit type identity
-* clear ownership behavior
-* visible fallibility
-* predictable name resolution
-* limited hidden global state
+§ 18(1) Language features should compose.
 
-This principle does not prohibit abstraction.
+§ 18(2) A new feature should use existing language concepts when those concepts already express the required semantics correctly.
 
-It means abstraction should preserve the programmer's ability to understand the relevant semantics without reconstructing the entire program mentally.
+§ 18(3) Special syntax or special semantic exceptions require a clear benefit.
 
+§ 18(4) When several designs are technically possible, the preferred solution normally reduces cognitive load, improves readability and maintainability, increases useful compile-time verification, avoids semantic bureaucracy and hidden runtime costs, keeps generated behavior predictable, preserves deterministic semantics, composes with existing rules, and produces understandable diagnostics.
 
-## Consistency over special cases
+§ 18(5) A locally convenient feature should be rejected when it creates disproportionate complexity elsewhere in the language.
 
-Language features should compose.
+§ 18(6) Consistency is not an absolute requirement to preserve a bad abstraction. A deliberate special rule may be preferable when the underlying semantics are genuinely different and the distinction is explicit.
 
-A new feature should use existing language concepts when those concepts already express the required semantics correctly.
+---
 
-Special syntax or special semantic exceptions should require a clear benefit.
+## § 19. Evolution
 
-When several designs are technically possible, the preferred solution normally:
+§ 19(1) Sec is expected to evolve.
 
-* reduces cognitive load
-* improves readability
-* improves maintainability
-* increases useful compile-time verification
-* avoids semantic bureaucracy
-* avoids hidden runtime costs
-* keeps generated behavior predictable
-* preserves deterministic semantics
-* composes with existing language rules
-* produces understandable diagnostics
+§ 19(2) Language evolution should prefer extending a coherent semantic model over accumulating unrelated special cases.
 
-A locally convenient feature should be rejected when it creates disproportionate complexity elsewhere in the language.
+§ 19(3) Existing decisions may be revised when implementation experience, language use, or later design work demonstrates a better solution.
 
+§ 19(4) Revisions should be judged by the same design principles as new features.
 
-## Evolution
+§ 19(5) Compatibility with an earlier design is valuable, but preserving a known design mistake is not.
 
-Sec is expected to evolve.
+§ 19(6) A later normative decision supersedes an earlier conflicting provisional decision when the later decision deliberately revises that subject.
 
-Language evolution should prefer extending a coherent semantic model over accumulating unrelated special cases.
+§ 19(7) Rulebooks must be kept synchronized so that historical design remnants do not become accidental competing semantics.
 
-Existing decisions may be revised when experience demonstrates a better solution.
+§ 19(8) Stable public contracts, diagnostic identities, paragraph references, and other deliberately versioned interfaces should not be changed casually merely because implementation work is ongoing.
 
-Such changes should be judged by the same design principles as new features.
+---
 
-Compatibility with an earlier design is valuable, but preserving a known design mistake is not.
+## § 20. Backend independence
 
-Newer design decisions normally supersede older provisional decisions when they represent a deliberate refinement of the language model.
+§ 20(1) LLVM, MLIR, Semantic IR, and other compiler technologies are implementation mechanisms.
 
-The rulebooks must be kept synchronized so that historical design remnants do not become accidental competing semantics.
+§ 20(2) They do not define Sec source semantics.
 
+§ 20(3) The compiler may change its internal representation, analysis pipeline, or backend without changing the meaning of valid Sec programs.
 
-## Backend independence
+§ 20(4) A language feature must not be specified merely in terms of what a particular backend happens to support.
 
-LLVM, MLIR, Semantic IR and other compiler technologies are implementation mechanisms.
+§ 20(5) Backend limitations may temporarily limit implementation coverage.
 
-They do not define Sec source semantics.
+§ 20(6) Temporary implementation limitations must be distinguished from language-level restrictions.
 
-The compiler may change its internal representation, analysis pipeline or backend without changing the meaning of valid Sec programs.
+§ 20(7) Semantic IR may be normative as a compiler correctness boundary where an owning compiler rulebook explicitly defines obligations on it; that still does not make a particular internal data structure part of Sec source syntax.
 
-A language feature must not be specified merely in terms of what a particular backend happens to support.
+---
 
-Backend limitations may temporarily limit implementation coverage.
+## § 21. Decision discipline
 
-They must be distinguished from language-level restrictions.
+§ 21(1) A language-design discussion should distinguish between a genuinely new semantic choice, a conflict between existing rules, an implementation consequence of an already decided rule, and a temporary implementation limitation.
 
+§ 21(2) Consequences that follow unambiguously from existing normative decisions should be applied rather than repeatedly reopened as design decisions.
 
-## Design test
+§ 21(3) A new decision is required when:
+- a new semantic area has not previously been specified;
+- two existing normative rules conflict;
+- an earlier rule produces an evidently invalid or incoherent consequence;
+- several materially different semantics remain possible.
 
-When evaluating a language proposal, the following questions should be asked:
+§ 21(4) Implementation details that do not change programmer-visible semantics do not, by themselves, require a language decision.
 
-* Does the programmer need to express this information, or can the compiler derive it safely?
-* Does the feature make correct code easier to write and understand?
-* Does it introduce semantic bureaucracy?
-* Does it require specialist terminology without providing corresponding value?
-* Is important behavior visible and predictable?
-* Can the compiler explain failures clearly?
-* Does it compose with ownership, error handling, generics and other existing rules?
-* Does it preserve deterministic semantics?
-* Does it work without assuming a garbage collector or mandatory runtime?
-* Does it remain meaningful on both hosted and freestanding targets?
-* Is the rule part of Sec because it serves Sec, or merely because another language does it?
+§ 21(5) This discipline prevents both accidental redesign and accidental invention by implementation work.
 
-The preferred design is not necessarily the design with the fewest compiler rules.
+---
 
-It is the design that gives the programmer the clearest useful model while allowing the compiler to carry as much mechanical complexity as practical.
+## § 22. Design test
+
+§ 22(1) When evaluating a language proposal, ask:
+
+```text
+Does the programmer need to express this information, or can the compiler derive it safely?
+
+Does the feature make correct code easier to write and understand?
+
+Does it introduce semantic bureaucracy?
+
+Does it require specialist terminology without corresponding value?
+
+Is important behavior visible and predictable?
+
+Can the compiler explain failures clearly?
+
+Does it compose with ownership, error handling, generics, concurrency,
+platform capabilities, and other existing rules?
+
+Does it preserve deterministic semantics?
+
+Does it work without assuming garbage collection or a mandatory general runtime?
+
+Does it remain meaningful across hosted and freestanding targets?
+
+Does it preserve the boundary between public semantics and private implementation?
+
+Is the rule part of Sec because it serves Sec, rather than merely because
+another language uses it?
+```
+
+§ 22(2) The preferred design is not necessarily the design with the fewest compiler rules.
+
+§ 22(3) The preferred design gives the programmer the clearest useful model while allowing the compiler to carry as much mechanical complexity as practical.
+
+---
+
+## § 23. Normative summary
+
+§ 23(1) The programmer expresses intent; the compiler proves and implements the consequences.
+
+§ 23(2) Sec prefers practical simplicity over source-level ceremony and compiler convenience.
+
+§ 23(3) Static proof is preferred; defined runtime validation is used when necessary; guarantees are not silently weakened.
+
+§ 23(4) Unsafe transfers specific proof obligations. It does not disable ordinary language validation.
+
+§ 23(5) Language semantics are deterministic except where another rulebook explicitly classifies behavior otherwise.
+
+§ 23(6) Important semantic and performance consequences should not be hidden from the programmer.
+
+§ 23(7) Compiler-internal complexity, regions, analyses, IR forms, and backend machinery are not automatically source-language concepts.
+
+§ 23(8) The same core language semantics apply across targets; target capabilities restrict availability rather than silently redefining meaning.
+
+§ 23(9) Inference is encouraged where safe and unambiguous. Guessing is not.
+
+§ 23(10) New features should compose with existing concepts and should not create disproportionate special-case complexity.
+
+§ 23(11) Later deliberate normative revisions may supersede earlier provisional designs, but stable public contracts should not be changed casually.
+
+§ 23(12) Specific owning rulebooks remain authoritative for concrete language semantics. This philosophy rulebook guides design; it does not invent missing rules.

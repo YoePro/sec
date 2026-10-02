@@ -52,6 +52,10 @@ func (a *Analyzer) validateGenericParameterTypeShadowing(parameters []*ast.Gener
 			continue
 		}
 		name := parameter.Name.Value
+		if a.isUnitSymbol(name) {
+			// Unit symbols occupy a separate namespace (MD-001 decision).
+			continue
+		}
 		typ, exists := a.types[name]
 		if !exists || typ.Module != module {
 			continue

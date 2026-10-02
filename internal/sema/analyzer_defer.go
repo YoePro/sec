@@ -20,6 +20,9 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 		a.addErrorAtToken(stmt.Token, "defer is only valid inside functions")
 		return
 	}
+	if a.rejectDeferInsideFree(stmt.Token) {
+		return
+	}
 	if a.inDeferBlock {
 		a.addErrorAtToken(stmt.Token, "defer is not allowed inside defer")
 		return

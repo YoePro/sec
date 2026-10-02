@@ -10,12 +10,15 @@ import (
 // name hides a source-defined type in the same module. Type declarations are
 // collected before callable signatures, so this also catches forward types.
 // Other visible namespaces remain part of the broader shadowing integration.
+// Unit symbols live in their own namespace and are never shadowed by a
+// parameter.
 //
 // Rules:
 //   - rules/foundations/names_scopes_visibility.md — §3 module declaration surface
 //   - rules/foundations/names_scopes_visibility.md — §8 Shadowing
+//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
 func (a *Analyzer) validateParameterTypeShadowing(parameter *ast.Identifier) {
-	if parameter == nil {
+	if parameter == nil || a.isUnitSymbol(parameter.Value) {
 		return
 	}
 	typ, exists := a.types[parameter.Value]
@@ -33,21 +36,20 @@ func (a *Analyzer) validateParameterTypeShadowing(parameter *ast.Identifier) {
 // reportLocalShadowsDeclaration rejects a local binding (variable, loop
 // binding, pattern binding, or lambda parameter) that hides a visible
 // generic parameter, same-module source type, or accessible free function.
-// The binding is still declared so later uses do not cascade. Unit names are
-// exempt until the unit namespace decision is recorded.
+// The binding is still declared so later uses do not cascade. Unit symbols
+// occupy a separate namespace, so a local never shadows a unit.
 //
 // Rules:
 //   - rules/foundations/names_scopes_visibility.md — §2 "One declaration namespace per scope", §8 "Shadowing"
 //   - rules/foundations/names_scopes_visibility.md — §20 "Diagnostics": "local declaration count shadows visible declaration count"
+//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
 func (a *Analyzer) reportLocalShadowsDeclaration(name string, token lexer.Token) {
 	if previous, exists := a.genericTypeDefinitions[name]; exists && validDefinitionToken(previous) {
 		a.addErrorAtTokenWithPreviousID(token, previous, diagnostics.LocalShadowsDeclaration,
 			"local declaration %s shadows visible generic parameter %s", name, name)
 		return
 	}
-	// Whether unit declarations occupy the shared declaration namespace is not
-	// yet decided (missing-decisions.yaml MD-007), so unit names are exempt.
-	if _, isUnit := a.units[name]; isUnit {
+	if a.isUnitSymbol(name) {
 		return
 	}
 	if typ, exists := a.types[name]; exists && typ.Module == a.currentModule {
@@ -65,4 +67,16 @@ func (a *Analyzer) reportLocalShadowsDeclaration(name string, token lexer.Token)
 			"local declaration %s shadows visible function %s", name, name)
 		return
 	}
+}
+
+// isUnitSymbol reports a declared unit symbol. Unit symbols occupy their own
+// namespace and never conflict with, or are shadowed by, ordinary identifiers.
+//
+// Rules:
+//   - rules/foundations/names_scopes_visibility.md — §2 "One declaration namespace per scope"
+//   - rules/types/units.md — "Unit names and compiler-known names"
+//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
+func (a *Analyzer) isUnitSymbol(name string) bool {
+	_, ok := a.units[name]
+	return ok
 }

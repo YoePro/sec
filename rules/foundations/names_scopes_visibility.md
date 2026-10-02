@@ -73,8 +73,16 @@ variables
 imports
 module aliases
 interfaces
-units where their rule exposes a declaration name
 ```
+
+Unit symbols are not part of this shared declaration namespace. They occupy a
+separate unit-symbol namespace, so a unit symbol does not conflict by name with
+an ordinary identifier: unit symbol `<s>` and an ordinary variable named `s` may
+coexist in the same scope, and the shadowing and duplicate-declaration rules of
+this rulebook do not compare one namespace against the other. Visually
+confusable comparison keeps the two namespaces separate as well
+(`rules/foundations/lexical_structure.md`, "Visually confusable identifiers";
+`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 2.7–2.9).
 
 Invalid:
 
@@ -1147,8 +1155,11 @@ is possible.
 Existing compiler rules already describe or partially implement:
 
 - duplicate member checks across fields, properties, methods, and nested types;
-- top-level module declaration namespace conflicts across types, units, enums,
-  interfaces, function overload groups and module-level variables;
+- top-level module declaration namespace conflicts across types, enums,
+  interfaces, function overload groups and module-level variables; unit
+  symbols are excluded from parameter, generic-parameter, local, function, and
+  variable conflicts, while a unit and a nominal type of the same spelling still
+  conflict through the compiler's shared type table;
 - method and property registration before body analysis;
 - qualified nested type lookup;
 - one module namespace across module source files in the project model;

@@ -51,3 +51,47 @@ integrations:
     verification:
       - command: go run ./cmd/compiler sema sec/stdlib/net/url/percent.sec
         result: passed with 0 errors and 0 warnings on 2026-09-25
+  - id: stdlib.io-root
+    area: standard-library
+    status: partial
+    integrated: "2026-10-02"
+    document_revision: "0.2"
+    summary: >-
+      Tracks the root io package from stdlib/io/std-io.md: the common IOError
+      family (owned by core/error.sec), capability interfaces, and streaming
+      transfer helpers. The root files type-check together with the existing
+      Linux file API, which now uses IOErrorLegacy until the two error
+      families are merged. The transfer helpers cannot yet be called with
+      concrete types because conversion to borrowed interface references is
+      undecided (MD-026).
+    rules:
+      - sec/stdlib/io/std-io.md
+      - rules/library/stdlib.md
+      - rules/declarations/interfaces.md
+      - rules/errors/errorhandling.md
+      - rules/memory/copy_move.md
+    code:
+      - sec/core/error.sec
+      - sec/stdlib/io/interfaces.sec
+      - sec/stdlib/io/transfer.sec
+      - sec/stdlib/io/file.linux.amd64.sec
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/analyzer_test.go
+    implemented:
+      - "IOError with the std-io § 6.2 variants is declared in core/error.sec with the error marker, so Result channels and every package can use it without importing io; results.sec is dropped from the root manifest"
+      - "IOErrorLegacy keeps the 27-variant errno-oriented family of the existing file and directory API beside IOError in core/error.sec, each variant documenting its inferred meaning and closest IOError variant for the planned merge"
+      - "interfaces.sec declares Reader, Writer, ReaderAt, WriterAt, SeekOrigin, Seeker, Flusher, Closer, and the seven composite interfaces exactly as std-io.md § 7 specifies, with mut fn receivers for sequential operations"
+      - "transfer.sec implements ReadAtLeast, ReadExactly, bounded ReadAll, WriteAll with zero-progress detection, streaming Copy, and CopyN through the root interfaces with bounded 4096-byte working storage"
+      - "file.linux.amd64.sec stays in module io, uses IOErrorLegacy, and maps the shared io.SeekOrigin to Linux whence values instead of declaring its own SeekOrigin"
+      - "Sema registers the error marker on enum and union type headers, so interface requirements analyzed before type bodies accept declared error types in Result channels"
+    remaining:
+      - "merge IOErrorLegacy into IOError, or define the concrete-resource error family the file API keeps (std-io.md § 27), and make File and Directory implement the root interfaces"
+      - "decide and implement conversion of borrowed concrete references to borrowed interface references so the transfer helpers can be called with concrete readers and writers (MD-026)"
+      - "write the io sub-books and packages listed in std-io.md § 29 (reader, writer, seek, buffer, buffered, text, memory, pipe, limit, multi, section, tee, stdio)"
+      - "add the std-io.md § 28 behavior tests, including deliberately short reads and writes, once interface dispatch can execute"
+    verification:
+      - command: go run ./cmd/compiler sema sec/stdlib/io
+        result: passed on 2026-10-02 with no io diagnostics; only the known S1040 core date/duration parameter shadowing remains
+      - command: go test ./internal/sema -run TestInterfaceRequirementsAcceptDeclaredErrorTypes -count=1
+        result: passed on 2026-10-02

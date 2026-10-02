@@ -28,6 +28,12 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	if identity == "" {
 		identity = requestedModule(program, options.SourceFiles)
 	}
+	if free, ok := firstCustomFreeDeclaration(program); ok {
+		// rules/memory/destruction.md §§15.5, 30–31: custom free must run
+		// exactly once before field destruction. Semantic IR has no
+		// destruction plan yet, so it must not silently drop the destructor.
+		return nil, &UnsupportedFeatureError{Feature: "custom free lifecycle destruction", Package: options.MaxPackage, Location: location(free.Token)}
+	}
 	module := &Module{Version: Version, Identity: identity, Types: NewTypeTable(), SourceFiles: uniqueSorted(options.SourceFiles)}
 	b := &builder{module: module, analyzer: analyzer, maxPackage: options.MaxPackage, definedEnums: map[TypeID]bool{}, definedUnions: map[TypeID]bool{}, definedStructs: map[TypeID]bool{}}
 	currentModule := ""
@@ -45,6 +51,21 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		}
 	}
 	return module, nil
+}
+
+func firstCustomFreeDeclaration(program *ast.Program) (*ast.FreeDeclaration, bool) {
+	for _, statement := range program.Statements {
+		impl, ok := statement.(*ast.ImplStatement)
+		if !ok || impl == nil {
+			continue
+		}
+		for _, member := range impl.Members {
+			if free, ok := member.(*ast.FreeDeclaration); ok && free != nil {
+				return free, true
+			}
+		}
+	}
+	return nil, false
 }
 
 type builder struct {
@@ -2409,6 +2430,11 @@ func (fb *functionBuilder) buildTryExpression(expr *ast.TryExpression) (builtVal
 		return fb.buildResolvedOperatorWithFailure(expr.Expression, nil, expr)
 	case sema.ResolvedTryBoundsPropagation, sema.ResolvedTryHandledBounds:
 		return fb.buildBoundsTryExpression(expr, resolved)
+	case sema.ResolvedTryFailureSetPropagation, sema.ResolvedTryHandledFailureSet:
+		// rules/errors/errorhandling.md §11: the failure set must be lowered
+		// as ordered first-failure control flow; until then it is rejected
+		// rather than reduced to a single failure source.
+		return builtValue{}, fb.unsupported("try over a failure set of several fallible points", expr.Token)
 	default:
 		return builtValue{}, fb.unsupported("handled try expression", expr.Token)
 	}
@@ -2495,12 +2521,19 @@ func (fb *functionBuilder) buildBoundsTryExpression(expr *ast.TryExpression, res
 //
 // Rules:
 //   - rules/errors/errorhandling.md — §16, §19, §21.1, §35 "Semantic IR and lowering requirements"
+//
+// lowerableTryPlan accepts exhaustive plans and partial plans whose
+// unmatched failures propagate; guards and block-final recovery values are
+// lowered, while open error narrowing still needs concrete error identity.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §16, §19, §21.1, §35
 func lowerableTryPlan(plan sema.ResolvedTryPlan) bool {
-	if !plan.Exhaustive {
+	if !plan.Exhaustive && !plan.ResidualPropagates {
 		return false
 	}
 	for _, handler := range plan.Handlers {
-		if handler.Guarded || handler.BlockValue || handler.OpenErrorNarrowing {
+		if handler.OpenErrorNarrowing {
 			return false
 		}
 	}
@@ -2564,10 +2597,28 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 	fb.branchToTryMerge(merge, successValue, Operation{TryHandlerKind: TryHandlerOK, TryHandlerIndex: -1, Location: location(expr.Token)})
 
 	fb.current = errorBlock
+	residual := plan.ResidualPropagates && !plan.Exhaustive
 	for index, handler := range plan.Handlers {
 		last := index == len(plan.Handlers)-1
-		if handler.PatternKind == sema.TryHandlerErrCatchAll || (last && plan.Exhaustive) {
-			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive); err != nil {
+		unconditional := !handler.Guarded && (handler.PatternKind == sema.TryHandlerErrCatchAll || (last && plan.Exhaustive))
+		if handler.PatternKind == sema.TryHandlerErrCatchAll {
+			// A guarded catch-all tests only its guard; failing it continues
+			// with the next handler (errorhandling.md §19).
+			var nextTest *Block
+			if !unconditional {
+				nextTest = fb.newBlock()
+			}
+			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive, residual, nextTest); err != nil {
+				return builtValue{}, err
+			}
+			if unconditional {
+				break
+			}
+			fb.current = nextTest
+			continue
+		}
+		if unconditional {
+			if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive, residual, nil); err != nil {
 				return builtValue{}, err
 			}
 			break
@@ -2592,21 +2643,50 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 			condition = fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(expr.Handlers[handler.SourceIndex].Token)}, boolType)
 		}
 		handlerBlock, nextTest := fb.newBlock(), fb.newBlock()
-		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, Location: location(expr.Handlers[handler.SourceIndex].Token)})
+		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: handlerBlock.ID}, {Block: nextTest.ID}}, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Variant: handler.Variant, TryHandlerGuarded: handler.Guarded, Location: location(expr.Handlers[handler.SourceIndex].Token)})
 		fb.current = handlerBlock
-		if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive); err != nil {
+		var guardFalse *Block
+		if handler.Guarded {
+			guardFalse = nextTest
+		}
+		if err := fb.buildTryHandler(expr, handler, errorValue, merge, plan.Exhaustive, residual, guardFalse); err != nil {
 			return builtValue{}, err
 		}
 		fb.current = nextTest
 	}
 	if fb.current != nil && fb.current != merge && len(fb.current.Operations) == 0 {
-		return builtValue{}, fb.unsupported("non-exhaustive local try handler dispatch", expr.Token)
+		if !residual {
+			return builtValue{}, fb.unsupported("non-exhaustive local try handler dispatch", expr.Token)
+		}
+		// rules/errors/errorhandling.md §16: failures no handler matched leave
+		// the function through the enclosing Result channel.
+		if err := fb.buildTryResidualPropagation(expr, plan, errorValue); err != nil {
+			return builtValue{}, err
+		}
 	}
 	fb.current = merge
 	return merged, nil
 }
 
-func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, merge *Block, exhaustive bool) error {
+// buildTryResidualPropagation returns the unmatched error through the
+// enclosing Result. Widening into a different error channel needs concrete
+// error identity in Semantic IR and is rejected explicitly.
+func (fb *functionBuilder) buildTryResidualPropagation(expr *ast.TryExpression, plan sema.ResolvedTryPlan, errorValue builtValue) error {
+	enclosing, err := fb.owner.internType(plan.EnclosingResultType)
+	if err != nil {
+		return err
+	}
+	enclosingType, ok := fb.owner.module.Types.Lookup(enclosing)
+	if !ok || enclosingType.Kind != TypeResult || enclosingType.Error != errorValue.typ {
+		return fb.unsupported("residual try propagation with error widening", expr.Token)
+	}
+	propagated := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{errorValue.id}, Location: location(expr.Token)}, enclosing)
+	fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{propagated.id}, TryHandlerKind: TryHandlerResidual, TryHandlerIndex: -1, TryResidualPropagates: true, Location: location(expr.Token)})
+	fb.current = nil
+	return nil
+}
+
+func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.ResolvedTryHandler, input builtValue, merge *Block, exhaustive bool, residual bool, guardFalse *Block) error {
 	if plan.SourceIndex < 0 || plan.SourceIndex >= len(expr.Handlers) {
 		return fb.unsupported("invalid resolved try handler source index", expr.Token)
 	}
@@ -2631,12 +2711,52 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 		}()
 	}
 
-	metadata := Operation{TryHandlerKind: kind, TryHandlerIndex: plan.SourceIndex, TryHandlerExhaustive: exhaustive, Variant: plan.Variant, Location: location(handler.Token)}
+	metadata := Operation{TryHandlerKind: kind, TryHandlerIndex: plan.SourceIndex, TryHandlerExhaustive: exhaustive, TryHandlerGuarded: plan.Guarded, TryResidualPropagates: residual, Variant: plan.Variant, Location: location(handler.Token)}
+	// rules/errors/errorhandling.md §19: the guard runs after the pattern
+	// matched, with the binding in scope; false continues with the next
+	// handler.
+	if plan.Guarded {
+		if handler.Guard == nil || guardFalse == nil {
+			return fb.unsupported("guarded try handler without a continuation", handler.Token)
+		}
+		boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
+		if err != nil {
+			return err
+		}
+		guard, err := fb.buildExpr(handler.Guard, boolType)
+		if err != nil {
+			return err
+		}
+		body := fb.newBlock()
+		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{guard.id}, Successors: []BranchTarget{{Block: body.ID}, {Block: guardFalse.ID}}, Location: location(handler.Token)})
+		fb.current = body
+	}
 	if handler.ReturnBody != nil {
 		return fb.buildTryHandlerReturn(handler.ReturnBody, metadata)
 	}
 	if handler.BlockBody != nil {
-		if err := fb.buildStatements(handler.BlockBody.Statements); err != nil {
+		statements := handler.BlockBody.Statements
+		// rules/errors/errorhandling.md §21.1: a value-producing handler
+		// block yields its final expression as the recovery value.
+		if plan.BlockValue && len(statements) > 0 {
+			final, ok := statements[len(statements)-1].(*ast.ExpressionStatement)
+			if !ok || final.Expression == nil {
+				return fb.unsupported("block recovery value without a final expression", handler.Token)
+			}
+			if err := fb.buildStatements(statements[:len(statements)-1]); err != nil {
+				return err
+			}
+			if fb.current == nil {
+				return nil
+			}
+			value, err := fb.buildExpr(final.Expression, mergeParameterType(merge, input.typ))
+			if err != nil {
+				return err
+			}
+			fb.branchToTryMerge(merge, value, metadata)
+			return nil
+		}
+		if err := fb.buildStatements(statements); err != nil {
 			return err
 		}
 		if fb.current != nil {

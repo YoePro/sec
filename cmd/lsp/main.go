@@ -258,10 +258,16 @@ type codeAction struct {
 }
 
 type diagnostic struct {
-	Range    lspRange `json:"range"`
-	Severity int      `json:"severity"`
-	Code     string   `json:"code,omitempty"`
-	Source   string   `json:"source"`
+	Range              lspRange                       `json:"range"`
+	Severity           int                            `json:"severity"`
+	Code               string                         `json:"code,omitempty"`
+	Source             string                         `json:"source"`
+	Message            string                         `json:"message"`
+	RelatedInformation []diagnosticRelatedInformation `json:"relatedInformation,omitempty"`
+}
+
+type diagnosticRelatedInformation struct {
+	Location location `json:"location"`
 	Message  string   `json:"message"`
 }
 
@@ -640,7 +646,7 @@ func callHierarchyItemsForSource(uri string, text string, pos position, overlays
 	}
 	overlay := firstSourceOverlay(overlays)
 	for _, node := range analyzer.CallGraph().NodesForDeclaration(definitions[0]) {
-		items = append(items, callHierarchyItemForNode(uri, text, overlay, node))
+		items = append(items, withPanicDetail(callHierarchyItemForNode(uri, text, overlay, node), analyzer.CallGraph(), node.ID))
 	}
 	return items
 }
@@ -671,7 +677,7 @@ func callHierarchyIncomingCallsForSource(uri string, text string, nodeID sema.Ca
 		}
 		grouped[key] = len(calls)
 		calls = append(calls, callHierarchyIncomingCall{
-			From:       callHierarchyItemForRelationship(uri, text, overlay, caller, site.Dispatch, site.Execution),
+			From:       withPanicDetail(callHierarchyItemForRelationship(uri, text, overlay, caller, site.Dispatch, site.Execution), graph, caller.ID),
 			FromRanges: []lspRange{rng},
 		})
 	}
@@ -705,12 +711,28 @@ func callHierarchyOutgoingCallsForSource(uri string, text string, nodeID sema.Ca
 			}
 			grouped[key] = len(calls)
 			calls = append(calls, callHierarchyOutgoingCall{
-				To:         callHierarchyItemForRelationship(uri, text, overlay, target, site.Dispatch, site.Execution),
+				To:         withPanicDetail(callHierarchyItemForRelationship(uri, text, overlay, target, site.Dispatch, site.Execution), graph, target.ID),
 				FromRanges: []lspRange{rng},
 			})
 		}
 	}
 	return calls
+}
+
+// withPanicDetail marks call hierarchy items whose callable may panic, so
+// transitive panic-capable paths are visible while navigating the hierarchy.
+//
+// Rules:
+//   - rules/errors/panic.md — § 28 "Diagnostics and tooling"
+//   - rules/tooling/lsp.md — call hierarchy effect facts
+func withPanicDetail(item callHierarchyItem, graph *sema.CallGraph, id sema.CallableID) callHierarchyItem {
+	if graph != nil && graph.EffectSummary(id).MayPanic {
+		if item.Detail != "" {
+			item.Detail += " · "
+		}
+		item.Detail += "may panic"
+	}
+	return item
 }
 
 func callHierarchyRelationshipKey(node sema.CallableID, dispatch sema.CallDispatchKind, execution sema.CallExecutionRelation) string {
@@ -1259,6 +1281,11 @@ func documentSymbolForImplMember(text string, member ast.ImplMember) (documentSy
 			detail += "; error " + typeReferenceName(member.ErrorType)
 		}
 		return namedDocumentSymbol(text, "init", detail, 9, member.Token, member.Token), true
+	case *ast.FreeDeclaration:
+		if member == nil {
+			return documentSymbol{}, false
+		}
+		return namedDocumentSymbol(text, "free", "custom destruction", 9, member.Token, member.Token), true
 	case *ast.PropertyDeclaration:
 		if member == nil || member.Name == nil {
 			return documentSymbol{}, false
@@ -1751,6 +1778,12 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 		if hover, ok := tryExpressionHover(text, program, analyzer, token); ok {
 			return hover, true
 		}
+		if hover, ok := tryAssignmentHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
+		if hover, ok := assertionHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := contextualOperatorHover(text, program, analyzer, sourceTokens(uri, text), token); ok {
 			return hover, true
 		}
@@ -1812,7 +1845,7 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 		return typedHover(nameRange, symbol.Name, symbol.Type), true
 	}
 	if typ, ok := analyzer.Types()[name]; ok {
-		return typedHover(nameRange, "type "+name, typ), true
+		return typedHover(nameRange, "type "+name+genericHeaderDisplay(typ.GenericParameters, typ.GenericConstraints), typ), true
 	}
 
 	return hoverResult{}, false
@@ -2201,6 +2234,9 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 }
 
 func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.Token) (string, bool) {
+	if fact, ok := analyzer.GenericParameterFactAt(definition); ok {
+		return genericParameterHover(fact), true
+	}
 	if metadata, ok := analyzer.ResolvedStructFieldAt(definition); ok {
 		return structFieldHover(metadata.Field), true
 	}
@@ -2324,7 +2360,49 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 			lines = append(lines, "Allocation path: `"+strings.Join(path, "` -> `")+"`")
 		}
 	}
+	lines = append(lines, panicHoverLines(graph, node.ID)...)
 	return "\n\n" + strings.Join(lines, "\n\n")
+}
+
+// panicHoverLines presents the compiler-owned panic summary of a callable:
+// whether a synchronous path can panic, its direct panic sources with their
+// registered reasons, and the cause path to the introducing callable.
+//
+// Rules:
+//   - rules/errors/panic.md — § 21 "@noPanic", registered panic reasons
+//   - rules/tooling/lsp.md — "Hover": effect and panic paths
+func panicHoverLines(graph *sema.CallGraph, id sema.CallableID) []string {
+	summary := graph.EffectSummary(id)
+	if !summary.MayPanic {
+		return []string{"May panic: `no` (no reachable panic source in the current analysis)"}
+	}
+	lines := []string{"May panic: `yes`"}
+	for _, effect := range summary.DirectEffects {
+		if !sema.IsPanicEffectKind(effect.Kind) {
+			continue
+		}
+		reasons := make([]string, 0, len(effect.PanicReasonIDs))
+		for _, reason := range effect.PanicReasonIDs {
+			if definition, ok := diagnostics.PanicReasonByID(reason); ok {
+				reasons = append(reasons, definition.Name)
+			}
+		}
+		line := fmt.Sprintf("Panic source: `%s` at %d:%d", effect.Kind, effect.Source.Line, effect.Source.Column)
+		if len(reasons) > 0 {
+			line += " (" + strings.Join(reasons, ", ") + ")"
+		}
+		lines = append(lines, line)
+	}
+	if len(summary.PanicPath) > 1 {
+		path := make([]string, 0, len(summary.PanicPath))
+		for _, step := range summary.PanicPath {
+			if node, ok := graph.Node(step); ok {
+				path = append(path, node.Name)
+			}
+		}
+		lines = append(lines, "Panic path: `"+strings.Join(path, "` -> `")+"`")
+	}
+	return lines
 }
 
 // callGraphComponentHoverLine presents one compiler-owned SCC without
@@ -2486,15 +2564,75 @@ func functionHoverContents(functions []sema.Function, program *ast.Program, sour
 		for _, parameter := range function.Parameters {
 			params = append(params, initializerParameterLabel(parameter))
 		}
-		lines = append(lines, fmt.Sprintf("fn %s(%s) %s", function.Name, strings.Join(params, ", "), lspTypeName(function.ReturnType)))
+		lines = append(lines, fmt.Sprintf("fn %s%s(%s) %s", function.Name, genericHeaderDisplay(function.GenericParameters, function.GenericConstraints), strings.Join(params, ", "), lspTypeName(function.ReturnType)))
 	}
 	contents := "```sec\n" + strings.Join(lines, "\n") + "\n```"
+	// rules/platform/ffi.md §42: an extern @noPanic is a trusted foreign
+	// contract, not a compiler-verified guarantee; hover keeps that provenance.
+	if len(functions) == 1 && functions[0].TrustedNoPanic {
+		contents += "\n\nTrusted foreign contract: `@noPanic` (declared, not verified by the compiler)"
+	}
 	if len(functions) == 1 && functionSourceMatches(functions[0], sourcePath) {
 		if doc := functionDocumentation(program, functions[0].Token); doc != "" {
 			contents += "\n\n" + doc
 		}
 	}
 	return contents
+}
+
+// genericHeaderDisplay renders a template's ordered generic parameters and
+// constraint conjunctions from resolved Sema facts, or nothing for a
+// non-generic declaration.
+//
+// Rules:
+//   - rules/declarations/generics.md — §12 "Multiple constraints"
+//   - rules/tooling/lsp.md — "Hover"
+func genericHeaderDisplay(parameters []string, constraints []sema.GenericConstraint) string {
+	if len(parameters) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(sema.GenericParameterDisplays(parameters, constraints), ", ") + "]"
+}
+
+// genericParameterHover presents one generic parameter's ordered constraint
+// conjunction and the instance methods it guarantees in the generic body.
+// Both lists come from the compiler fact; equivalent requirements shared by
+// several constraints were already composed once by Sema.
+//
+// Rules:
+//   - rules/declarations/generics.md — §12 "Multiple constraints", §14 "Constraint satisfaction"
+//   - rules/declarations/generics.md — §15 "Operations available on generic parameters"
+//   - rules/tooling/lsp.md — "Hover"
+func genericParameterHover(fact sema.GenericParameterFact) string {
+	conjuncts := sema.GenericConstraintDisplays(fact.Name, fact.Constraints)
+	declaration := "generic " + fact.Name
+	if len(conjuncts) > 0 {
+		declaration += ": " + strings.Join(conjuncts, " & ")
+	}
+	contents := "```sec\n" + declaration + "\n```"
+	if fact.ImplTarget != "" {
+		contents += "\n\nImpl target parameter of `" + fact.ImplTarget + "`; its constraints come from that declaration."
+	}
+	if len(conjuncts) == 0 {
+		return contents + "\n\nConstraints: _none_; no interface members are guaranteed."
+	}
+	contents += "\n\nConstraints (all required, in source order): `" + strings.Join(conjuncts, "` & `") + "`"
+	if len(fact.GuaranteedMethods) == 0 {
+		return contents + "\n\nGuaranteed instance methods: _none_"
+	}
+	methods := make([]string, 0, len(fact.GuaranteedMethods))
+	for _, method := range fact.GuaranteedMethods {
+		params := make([]string, 0, len(method.Parameters))
+		for _, parameter := range method.Parameters {
+			params = append(params, initializerParameterLabel(parameter))
+		}
+		receiver := ""
+		if method.ReceiverMutable {
+			receiver = "mut "
+		}
+		methods = append(methods, fmt.Sprintf("%sfn %s(%s) %s", receiver, method.Name, strings.Join(params, ", "), lspTypeName(method.ReturnType)))
+	}
+	return contents + "\n\nGuaranteed instance methods:\n\n```sec\n" + strings.Join(methods, "\n") + "\n```"
 }
 
 func functionSourceMatches(function sema.Function, sourcePath string) bool {
@@ -4900,6 +5038,10 @@ func rewriteImportQualifier(program *ast.Program, from string, to string) {
 					if member != nil {
 						rewriteQualifierInBlock(member.Body, from, to)
 					}
+				case *ast.FreeDeclaration:
+					if member != nil {
+						rewriteQualifierInBlock(member.Body, from, to)
+					}
 				}
 			}
 		default:
@@ -5232,6 +5374,10 @@ func qualifyLocalTypeReferencesInImplMember(member ast.ImplMember, module string
 		}
 		qualifyLocalTypeReference(member.ErrorType, module, localTypes)
 		qualifyLocalTypeReferencesInBlock(member.Body, module, localTypes)
+	case *ast.FreeDeclaration:
+		if member != nil {
+			qualifyLocalTypeReferencesInBlock(member.Body, module, localTypes)
+		}
 	case *ast.PropertyDeclaration:
 		if member == nil {
 			return
@@ -5378,6 +5524,8 @@ func qualifyLocalCallsInImplMembers(members []ast.ImplMember, module string, loc
 			qualifyLocalCalls(member.Body, module, localFunctions)
 		case *ast.InitDeclaration:
 			qualifyLocalCalls(member.Body, module, localFunctions)
+		case *ast.FreeDeclaration:
+			qualifyLocalCalls(member.Body, module, localFunctions)
 		case *ast.PropertyDeclaration:
 			if member == nil {
 				continue
@@ -5515,7 +5663,25 @@ func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
 	if err.EndLine > 0 && err.EndColumn > 0 {
 		end = diagnosticTokenStart(text, lexer.Token{Line: err.EndLine, Column: err.EndColumn})
 	}
-	message := err.Error()
+	// The editor already places the diagnostic at its range, so the message
+	// carries only the related location rather than repeating the primary
+	// one; the related location is also attached as a navigable link.
+	message := err.Message
+	var related []diagnosticRelatedInformation
+	if err.PreviousLine > 0 && err.PreviousColumn > 0 {
+		previous := fmt.Sprintf("%d:%d", err.PreviousLine, err.PreviousColumn)
+		if err.PreviousFile != "" {
+			previous = err.PreviousFile + ":" + previous
+		}
+		message += "\n\nprevious declaration at " + previous
+		if err.PreviousFile != "" {
+			point := position{Line: err.PreviousLine - 1, Character: err.PreviousColumn - 1}
+			related = append(related, diagnosticRelatedInformation{
+				Location: location{URI: uriFromPath(err.PreviousFile), Range: lspRange{Start: point, End: point}},
+				Message:  "related declaration or earlier operation",
+			})
+		}
+	}
 	if err.Help != "" {
 		message += "\n\nhelp: " + err.Help
 	}
@@ -5524,10 +5690,11 @@ func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
 			Start: start,
 			End:   end,
 		},
-		Severity: lspSeverity(err.Severity, severity),
-		Code:     err.ID,
-		Source:   "sec",
-		Message:  message,
+		Severity:           lspSeverity(err.Severity, severity),
+		Code:               err.ID,
+		Source:             "sec",
+		Message:            message,
+		RelatedInformation: related,
 	}
 }
 

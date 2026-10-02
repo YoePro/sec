@@ -397,6 +397,11 @@ const (
 	// ResolvedTryHandledOption is a try over Option[T] with local None
 	// handlers (rules/errors/errorhandling.md §15, §16).
 	ResolvedTryHandledOption ResolvedTryKind = "handled-option"
+	// ResolvedTryFailureSetPropagation and ResolvedTryHandledFailureSet
+	// protect an expression whose fallible points are recorded in Failures
+	// (rules/errors/errorhandling.md §11).
+	ResolvedTryFailureSetPropagation ResolvedTryKind = "failure-set-propagation"
+	ResolvedTryHandledFailureSet     ResolvedTryKind = "handled-failure-set"
 )
 
 // ResolvedTry records the exact success/alternate contract selected by Sema,
@@ -408,6 +413,9 @@ type ResolvedTry struct {
 	ErrorType           Type
 	EnclosingResultType Type
 	EnclosingOptionType Type
+	// Failures is the ordered compiler-internal failure set of a failure-set
+	// try; it is empty for the dedicated single-source kinds.
+	Failures []TryFailurePoint
 }
 
 type ResolvedTryAssignmentKind string
@@ -465,6 +473,10 @@ type ResolvedTryHandler struct {
 	// qualified Type.Variant) selected from an open `error` channel
 	// (rules/errors/errorhandling.md §27.2).
 	OpenErrorNarrowing bool
+	// BindingCopies records that a named payload binding copies the error
+	// payload; otherwise the binding takes ownership of it by move
+	// (rules/errors/errorhandling.md §20 "Handler ownership and guards").
+	BindingCopies bool
 }
 
 // ResolvedTryPlan is the source-ordered local handler decision of one try.
@@ -482,6 +494,8 @@ type ResolvedTryPlan struct {
 	ResidualPropagates  bool
 	EnclosingResultType Type
 	Handlers            []ResolvedTryHandler
+	// Failures is the ordered failure set protected by a failure-set try.
+	Failures []TryFailurePoint
 }
 
 type ResolvedMatchSubjectKind string

@@ -3,6 +3,7 @@ package sema
 import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 // analyzePanicStatement records canonical explicit-panic metadata and, on a
@@ -108,4 +109,63 @@ func (a *Analyzer) resolveArithmeticFailureEffect(expr ast.Expression) {
 		return
 	}
 	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicArithmetic, expressionToken(expr))
+}
+
+// recordSequenceIndexEffect publishes the ordinary bounds check of a
+// dynamic-array or slice index, whose length is run-time state, as a
+// may-panic effect. A try that converts the check removes it again.
+//
+// Rules:
+//   - rules/errors/runtime_checks.md — "Index checks"
+//   - rules/errors/panic.md — BoundsFailure, § 21 "@noPanic"
+func (a *Analyzer) recordSequenceIndexEffect(expr *ast.IndexExpression) {
+	if a.summaryPass || expr == nil {
+		return
+	}
+	source := expressionToken(expr)
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicBounds, source)
+	if !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicBounds, Source: source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonBoundsFailure}})
+}
+
+// recordContractConversionEffect publishes an ordinary run-time conversion
+// into a constrained named type as a may-panic contract effect.
+//
+// Rules:
+//   - rules/types/contracts.md — "Runtime conversion into a constrained named type is fallible"
+//   - rules/errors/panic.md — ContractFailure, § 21 "@noPanic"
+func (a *Analyzer) recordContractConversionEffect(call *ast.CallExpression) {
+	if a.summaryPass || call == nil {
+		return
+	}
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicContract, call.Token)
+	if !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicContract, Source: call.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonContractFailure}})
+}
+
+// resolveContractFailureEffect removes the contract panic of a conversion
+// whose failure a try or fallible assignment converts into ContractError.
+func (a *Analyzer) resolveContractFailureEffect(call *ast.CallExpression) {
+	if a.summaryPass || call == nil {
+		return
+	}
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicContract, call.Token)
+}
+
+// recordForeignAbortEffect treats a call to an extern function as possibly
+// aborting unless its declaration carries a trusted @noPanic foreign
+// contract; unknown foreign behavior is never positive noPanic proof.
+//
+// Rules:
+//   - rules/errors/panic.md — § 19(2)–(3) "Foreign code and unsafe boundaries", ForeignAbort
+//   - rules/platform/ffi.md — §42 "Foreign effects"
+func (a *Analyzer) recordForeignAbortEffect(callee Function, source lexer.Token) {
+	if !callee.Extern || callee.TrustedNoPanic || a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicForeign, Source: source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonForeignAbort}})
 }

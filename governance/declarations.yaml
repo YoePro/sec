@@ -778,7 +778,8 @@ integrations:
     - S1027 names.invalid-generic-type-parameter is a mandatory compiler diagnostic with a source range and naming guidance; LSP publishes the same Sema result
     - S1038 names.invalid-nominal-type is a mandatory compiler diagnostic with a source range and naming guidance
     - S1040 names.parameter-shadows-type is a mandatory compiler diagnostic with the previous type declaration location
-    - local variables, loop bindings, pattern bindings, and lambda parameters that hide a visible generic parameter, a same-module source type, or an accessible free function report mandatory S1057 names.local-shadows-declaration with the hidden declaration's location; the binding is still declared to avoid cascades, and unit names are exempt pending MD-007
+    - "unit symbols occupy a separate unit-symbol namespace (rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md §§ 2.7-2.9): parameters (S1040), generic parameters, and locals (S1057) never shadow a unit, and module functions and variables may share a unit's spelling; unit-vs-unit duplicates are still rejected. This clears the former S1040 errors for parameters day/ms/us in sec/core/date.sec and sec/core/duration.sec"
+    - local variables, loop bindings, pattern bindings, and lambda parameters that hide a visible generic parameter, a same-module source type, or an accessible free function report mandatory S1057 names.local-shadows-declaration with the hidden declaration's location; the binding is still declared to avoid cascades, and unit names are exempt because unit symbols occupy their own namespace
     partial:
     - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters,
       members, types, generics, imports, aliases, and compiler-provided contextual bindings
@@ -790,7 +791,7 @@ integrations:
     - enforce the no-shadowing rule for parameters, generic parameters, nested declarations, imports, aliases, imported
       types, visible values, and directly visible members (locals, loop bindings, and pattern bindings now cover visible
       generic parameters, same-module types, free functions, and enclosing locals)
-    - decide whether unit symbols share the declaration namespace (MD-007) and apply shadowing accordingly
+    - "unit-vs-type separation: a unit and a nominal type with the same spelling still share the internal type table, so a user `type A int` or `type K int` fails against the core units A (ampere) and K (kelvin) with \"ordinary impl for A must be declared in defining module main, not module core\"; stdlib/unit has 38 more uppercase units. Unit impls currently also carry methods (Hz, N, Pa, C); whether units keep ordinary methods or only init()-based conversions is deferred to the Sec 0.2 design, so the full separation waits for that decision"
     - extend parameter shadowing checks beyond same-module source types to all other visible declarations, and prevent compiler-provided contextual bindings such as self and property-setter value parameters from silently replacing them
     - reject generic parameters that shadow imported visible types, visible values, or directly visible members
     - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific

@@ -909,9 +909,10 @@ func visitProgramNodes(program *ast.Program, visitNode func(any)) {
 //   - rules/tooling/formatter.md — § 8(1) braces on the construct header line, § 18 "Control flow"
 //   - rules/declarations/unions.md — §8 "`is` tests for union state and active variant"
 //   - rules/memory/ownership.md — §21 "is available and is not available"
+//   - rules/platform/ffi.md — §11 "is null"
 func isStateQueryCondition(condition ast.Expression) bool {
 	switch condition.(type) {
-	case *ast.AvailabilityExpression, *ast.StateTestExpression:
+	case *ast.AvailabilityExpression, *ast.StateTestExpression, *ast.NullTestExpression:
 		return true
 	}
 	return false

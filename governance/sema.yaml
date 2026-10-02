@@ -210,7 +210,7 @@ integrations:
       maintained backend
     - complete compile-time string concatenation materialization as one folded constant
     - implement active allocation-context selection and one maximal StringConcatPlan for runtime concatenation
-    - implement panic or AllocationError selection from source try context and enforce noPanic
+    - "reject runtime string concatenation and interpolation without try (MD-004 decided by rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md § 5; the former implicit allocation-panic form is removed) and keep fully compile-time-folded forms try-free"
     - integrate interpolation formatting contracts and string.Concat with the same concat plan
     - implement transactional fallible string += and only apply in-place reuse after proof
     - complete derived aggregate equality lowering and identity/resource exclusion metadata

@@ -440,8 +440,32 @@ value
 
 are different identifiers.
 
-The compiler may warn about visually confusable identifiers, but confusable
-detection does not alter symbol identity.
+### Visually confusable identifiers
+
+Identifier identity remains the exact NFC-normalized spelling. Confusable
+detection never changes identifier identity.
+
+Visually confusable identifiers are detected with Unicode Technical Standard
+#39 (UTS #39), using the confusable skeleton data from `confusables.txt`. The
+normative confusable-data version is the same Unicode version the compiler uses
+for its other Unicode tables.
+
+Two declarations whose spellings are different but visually confusable are a
+compile-time error when they occupy the same namespace and scope in which the
+declarations would otherwise conflict. The error is not a warning and is not
+suppressible.
+
+Identifiers in distinct scopes that do not otherwise conflict remain legal. For
+example, locals in two separate functions may have visually confusable
+spellings.
+
+Unit symbols occupy a separate unit-symbol namespace
+(`rules/foundations/names_scopes_visibility.md`). Confusable comparison does not
+treat the unit-symbol namespace and the ordinary identifier namespace as one
+shared namespace, so unit symbol `<s>` and an ordinary variable `s` never
+collide, by spelling or by confusability.
+
+These rules record decision MD-001 (`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 2).
 
 Mixed scripts are allowed because Sec units and scientific code may validly use
 names such as:
@@ -1477,6 +1501,18 @@ scope. Name resolution, type facts, ownership checks, and effects therefore
 apply at the embedded expression's own source range. The complete interpolated
 literal has type `string`; the later conversion and materialization of embedded
 values does not suppress frontend analysis.
+
+Runtime interpolation is a fallible materialization operation. One interpolated
+string, together with any concatenation it forms a chain with, is semantically
+one materialization that produces one resulting `string`; the language requires
+no observable intermediate `string` values. Because runtime materialization may
+fail, a runtime interpolation requires the ordinary `try` handling of a fallible
+expression. An interpolation that is fully resolved at compile time may fold to
+static string data and is not a runtime fallible operation. The direct
+concatenation operator follows the same rule
+(`rules/foundations/operators.md`, "String concatenation"). The allocator or
+allocation context used by runtime materialization is not selected by this rule
+(MD-004; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 5).
 
 ---
 

@@ -95,6 +95,13 @@ type Analyzer struct {
 	typeDefinitionTokens        map[string]lexer.Token
 	invalidTypeDeclarations     map[sourceTokenKey]bool
 	genericTypeDefinitions      map[string]lexer.Token
+	genericParameterFacts       map[sourceTokenKey]GenericParameterFact
+	implGenericParameterTargets map[*ast.GenericParameter]string
+	customFreeDeclarations      map[string]lexer.Token
+	tryFailureSet               *tryFailureSetContext
+	tryHandlerDepth             int
+	openErrorObligationsReady   bool
+	openErrorObligationList     []Type
 	invalidInterfaceInheritance map[string]bool
 	registerDeclarations        map[string]*ast.TypeDeclStatement
 	registerResolutionState     map[string]uint8
@@ -346,6 +353,11 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.typeDefinitionTokens = map[string]lexer.Token{}
 	a.invalidTypeDeclarations = map[sourceTokenKey]bool{}
 	a.genericTypeDefinitions = nil
+	a.genericParameterFacts = map[sourceTokenKey]GenericParameterFact{}
+	a.openErrorObligationsReady = false
+	a.openErrorObligationList = nil
+	a.implGenericParameterTargets = map[*ast.GenericParameter]string{}
+	a.customFreeDeclarations = map[string]lexer.Token{}
 	a.invalidInterfaceInheritance = map[string]bool{}
 	a.registerDeclarations = map[string]*ast.TypeDeclStatement{}
 	a.registerResolutionState = map[string]uint8{}
@@ -396,6 +408,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateModuleDeclarationNamespace(program)
 	a.validateTestDeclarations(program)
 	a.registerTypeDeclarations(program)
+	a.registerCustomFreeDeclarations(program)
 	a.collectCompileTimeIntegerBindings(program)
 	a.registerImplTypeDeclarations(program)
 	a.analyzeInterfaceDeclarations(program)
@@ -404,6 +417,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeEnumDeclarations(program)
 	a.analyzeImplTypeDeclarations(program)
 	a.refreshTypesResolvedThroughNestedImplDeclarations(program)
+	a.applyCustomFreeDeclarations()
 	a.validateStructLayoutCycles(program)
 	a.analyzeUnitMetadata(program)
 	a.predeclareModuleStaticStorage(program)
@@ -580,7 +594,43 @@ func (a *Analyzer) validateFunctionNoPanicGuarantee(fn *ast.FunctionDeclaration,
 	if source.Line > 0 && source.Column > 0 {
 		message += fmt.Sprintf("; effect introduced at %s", formatLocation(source.File, source.Line, source.Column))
 	}
-	a.addErrorAtToken(attribute.Token, "%s", message)
+	help := noPanicEffectHelp(kind)
+	if len(chain) > 1 {
+		help = "The panic comes from " + chain[len(chain)-1] + ", which " + name + " calls. " + help
+	}
+	if source.Line > 0 && source.Column > 0 {
+		a.addErrorAtTokenWithMetadataAndPrevious(attribute.Token, source, diagnostics.NoPanicViolation, help, "%s", message)
+		return
+	}
+	a.addErrorAtTokenWithMetadata(attribute.Token, diagnostics.NoPanicViolation, help, "%s", message)
+}
+
+// noPanicEffectHelp explains, in programmer terms, why an effect kind may
+// panic and how the program can avoid it.
+//
+// Rules:
+//   - rules/errors/panic.md — § 21 "@noPanic"
+//   - rules/errors/errorhandling.md — §30 "Diagnostics must act as a mentor"
+func noPanicEffectHelp(kind EffectKind) string {
+	switch kind {
+	case EffectMayPanicArithmetic:
+		return "Checked arithmetic can overflow, divide by zero, or shift out of range. Prove the operand ranges, or use try to turn the failure into ArithmeticError."
+	case EffectMayPanicBounds:
+		return "Indexing panics when the index is out of range. Prove the index (for example with a range-constrained index type or a dominating assert), or use try to handle IndexError."
+	case EffectMayPanicContract:
+		return "Converting a run-time value into a constrained type panics when the value breaks the type's contract. Use try to handle ContractError."
+	case EffectMayPanicExplicit:
+		return "An explicit panic always panics when reached. Return an error instead, or remove @noPanic."
+	case EffectMayPanicAssertion:
+		return "An assert whose condition the compiler cannot prove may fail. Return an error for the failing case, or establish the condition so the assertion is provable."
+	case EffectMayPanicUnreachable:
+		return "checked unreachable panics if control reaches it. Make the path statically impossible, or handle the case explicitly."
+	case EffectMayPanicUnknownCallee:
+		return "This call's target is not known here (a function value, an interface method, or a generic constraint method), so whether it can panic cannot be proven. Call a known function or concrete method directly, or remove @noPanic."
+	case EffectMayPanicForeign:
+		return "A call to an extern function has unknown foreign behavior and may abort. When the foreign documentation guarantees it cannot abort or unwind, mark the extern declaration @noPanic as a trusted foreign contract."
+	}
+	return "Remove the panic-capable operation from every path reachable from this function, or remove @noPanic."
 }
 
 // refreshTypesResolvedThroughNestedImplDeclarations closes the forward
@@ -1032,9 +1082,23 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 				a.addErrorAtTokenWithPreviousID(decl.Token, previous.Token, diagnostics.ModuleDeclarationConflict, "duplicate declaration %s in module %s", decl.Name, moduleDisplayName(a.currentModule))
 				continue
 			}
+			// Unit symbols occupy a separate unit-symbol namespace, so they do
+			// not conflict with functions or variables of the same spelling.
+			// Units and nominal types still share the type table and conflict.
+			// Rules: rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md §§ 2.7–2.9.
+			if unitAndValueDeclaration(previous.Kind, decl.Kind) {
+				continue
+			}
 			a.addErrorAtTokenWithPreviousID(decl.Token, previous.Token, diagnostics.ModuleDeclarationConflict, "%s %s conflicts with %s %s declared here", decl.Kind, decl.Name, previous.Kind, previous.Name)
 		}
 	})
+}
+
+func unitAndValueDeclaration(first, second moduleDeclarationKind) bool {
+	isValue := func(kind moduleDeclarationKind) bool {
+		return kind == moduleDeclarationFunction || kind == moduleDeclarationVariable
+	}
+	return first == moduleDeclarationUnit && isValue(second) || second == moduleDeclarationUnit && isValue(first)
 }
 
 func moduleDeclarationsFromStatement(stmt ast.Statement) []moduleDeclaration {
@@ -1128,7 +1192,10 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if noCopy {
 				origin = stmt.Name.Value
 			}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, Intrinsic: a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token), GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
+			// rules/errors/errorhandling.md §3: the error marker is declaration
+			// identity, known before any signature (including interface
+			// requirements analyzed ahead of type bodies) names the type.
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, Intrinsic: a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token), GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin, ErrorAssignable: stmt.ErrorType}
 			if stmt.RegisterType != nil {
 				a.registerDeclarations[stmt.Name.Value] = stmt
 			}
@@ -1180,7 +1247,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				origin = stmt.Name.Value
 			}
 			params := a.genericParameterNames(stmt.GenericParameters)
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin}
+			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType, GenericParameters: params, ExplicitlyNonCopyable: noCopy, NoCopyPolicyOrigin: origin, ErrorAssignable: stmt.ErrorType}
 		case *ast.InterfaceDeclaration:
 			if stmt.Name == nil {
 				return
@@ -1383,6 +1450,7 @@ func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter,
 			continue
 		}
 		a.genericTypes[param.Name.Value] = a.constrainedGenericParameterType(param)
+		a.recordGenericParameterFact(a.genericTypes[param.Name.Value], param.Name.Token, a.implGenericParameterTargets[param])
 	}
 	defer func() {
 		a.genericTypes = previous
@@ -1624,7 +1692,14 @@ func (a *Analyzer) validateImplGenericTarget(stmt *ast.ImplStatement, target Typ
 	return ok
 }
 
-func implGenericParametersForTarget(stmt *ast.ImplStatement, target Type) []*ast.GenericParameter {
+// implGenericParametersForTarget creates the impl-scope parameters named by
+// the impl target. They are the target declaration's own parameters, not new
+// implicit ones, so each keeps the target's declared constraint conjunction.
+//
+// Rules:
+//   - rules/declarations/generics.md — §8 "Generic impl blocks"
+//   - rules/declarations/generics.md — §15 "Operations available on generic parameters"
+func (a *Analyzer) implGenericParametersForTarget(stmt *ast.ImplStatement, target Type) []*ast.GenericParameter {
 	if len(target.GenericParameters) == 0 || len(stmt.Target.TypeArgs) != len(target.GenericParameters) {
 		return nil
 	}
@@ -1633,10 +1708,12 @@ func implGenericParametersForTarget(stmt *ast.ImplStatement, target Type) []*ast
 		if arg == nil || arg.Name == "" || len(arg.TypeArgs) > 0 || arg.ElementType != nil {
 			return nil
 		}
-		params = append(params, &ast.GenericParameter{
+		param := &ast.GenericParameter{
 			Token: arg.Token,
 			Name:  &ast.Identifier{Token: arg.Token, Value: arg.Name},
-		})
+		}
+		a.implGenericParameterTargets[param] = stmt.Target.Name
+		params = append(params, param)
 	}
 	return params
 }
@@ -1791,7 +1868,7 @@ func (a *Analyzer) analyzeImplTypeDeclarations(program *ast.Program) {
 		if !ok {
 			continue
 		}
-		genericParams := implGenericParametersForTarget(impl, target)
+		genericParams := a.implGenericParametersForTarget(impl, target)
 
 		for _, member := range impl.Members {
 			switch member := member.(type) {
@@ -2595,7 +2672,9 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 		return
 	}
 	if conditionType.Kind == BoolType {
-		proven := isBoolLiteral(stmt.Condition, true)
+		// rules/errors/panic.md §15.8: proof is decided before this assertion
+		// adds its own condition fact, so it never proves itself.
+		proven := isBoolLiteral(stmt.Condition, true) || a.proveCondition(stmt.Condition)
 		refinement := a.recordConditionFact(stmt.Condition, ConditionFactAssertionSuccess, stmt.Token)
 		message := ""
 		hasMessage := stmt.Message != nil
@@ -2700,7 +2779,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	} else if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-			a.addErrorAtToken(expressionToken(stmt.Condition), "if condition must be bool, got %s", typeDisplayName(conditionType))
+			a.addErrorAtToken(expressionToken(stmt.Condition), "%s", nonBoolConditionMessage(stmt.Condition, "if", conditionType))
 		}
 		if conditionType.Kind == BoolType {
 			constantCondition, constantConditionKnown = a.constantBooleanValue(stmt.Condition)
@@ -3120,6 +3199,8 @@ func mergeContinuingMoveState(beforeMoved map[string]lexer.Token, beforeReasons 
 	mergedMoved := map[string]lexer.Token{}
 	mergedReasons := map[string]string{}
 	presentOnPaths := map[string]int{}
+	pathReasons := map[string][]string{}
+	conditionalOnPath := map[string]bool{}
 	foundContinuing := false
 	continuingPaths := 0
 	for _, branch := range branches {
@@ -3130,22 +3211,31 @@ func mergeContinuingMoveState(beforeMoved map[string]lexer.Token, beforeReasons 
 		continuingPaths++
 		for place, token := range branch.moved {
 			presentOnPaths[place]++
+			if reason := branch.moveReasons[place]; reason != "" {
+				pathReasons[place] = append(pathReasons[place], reason)
+				conditionalOnPath[place] = conditionalOnPath[place] || isConditionalAvailabilityReason(reason)
+			}
 			if _, exists := mergedMoved[place]; exists {
 				continue
 			}
 			mergedMoved[place] = token
-			if reason := branch.moveReasons[place]; reason != "" {
-				mergedReasons[place] = reason
-			}
 		}
 	}
 	if !foundContinuing {
 		return copyMoved(beforeMoved), copyMoveReasons(beforeReasons)
 	}
+	// rules/memory/ownership.md §6: a join retains every possible
+	// UnavailableReason as provenance; §5: a Place unavailable on only some
+	// continuing paths is ConditionallyAvailable.
 	for place := range mergedMoved {
-		if presentOnPaths[place] < continuingPaths && !isConditionalAvailabilityReason(mergedReasons[place]) {
-			mergedReasons[place] = conditionalAvailabilityReason(mergedReasons[place])
+		if len(pathReasons[place]) == 0 {
+			continue
 		}
+		reason := joinAvailabilityReasons(pathReasons[place])
+		if presentOnPaths[place] < continuingPaths || conditionalOnPath[place] {
+			reason = conditionalAvailabilityReason(reason)
+		}
+		mergedReasons[place] = reason
 	}
 	return mergedMoved, mergedReasons
 }
@@ -3712,6 +3802,9 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 	if fn.Extern && !isSupportedExternABI(fn.ABI) {
 		a.addErrorAtToken(fn.Token, "unknown extern ABI %q", fn.ABI)
 	}
+	if fn.Extern && hasAttribute(fn.Attributes, "noPanic") {
+		function.TrustedNoPanic = true
+	}
 
 	seenParams := map[string]lexer.Token{}
 	seenVariadic := false
@@ -3971,17 +4064,6 @@ func numericTypeSizeBytes(typ Type) int64 {
 	}
 }
 
-func (a *Analyzer) validateExternFunction(function Function) {
-	for i, param := range function.Parameters {
-		if !isFFICompatibleParameterType(param.Type) {
-			a.addErrorAtToken(param.Token, "extern %s parameter %d %s has non-ABI-compatible type %s", function.ABI, i+1, param.Name, typeDisplayName(param.Type))
-		}
-	}
-	if function.ReturnType.Kind != VoidType && !isFFICompatibleType(function.ReturnType) {
-		a.addErrorAtToken(function.Token, "extern %s function %s has non-ABI-compatible return type %s", function.ABI, function.Name, typeDisplayName(function.ReturnType))
-	}
-}
-
 func isFFICompatibleParameterType(typ Type) bool {
 	// Safe references are legal only in this parameter-specific position. They
 	// express a non-null, call-bounded, non-retained foreign borrow and remain
@@ -4210,7 +4292,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 		return
 	}
 	if function.Extern {
-		a.validateExternFunction(function)
+		a.validateExternFunction(function, fn)
 		if fn.Body == nil {
 			return
 		}
@@ -5322,7 +5404,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 			a.addErrorAtToken(expressionToken(stmt.Value), "lambda must return %s, got %s", typeDisplayName(returnType), typeDisplayName(valueType))
 			return
 		}
-		a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
+		a.addTypeMismatchError(expressionToken(stmt.Value), returnType, valueType, stmt.Value, "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
 		return
 	}
 	if a.checkDeclaredContractExpression(returnType, stmt.Value) {
@@ -6558,7 +6640,7 @@ func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType 
 		//   - rules/memory/copy_move.md — §9 "Return boundaries"
 		if valueType.Kind == ResultType {
 			if !canInitialize(returnType, valueType, stmt.Value) {
-				a.addErrorAtToken(expressionToken(stmt.Value), "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
+				a.addTypeMismatchError(expressionToken(stmt.Value), returnType, valueType, stmt.Value, "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
 				return
 			}
 
@@ -8704,7 +8786,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	if !a.validateImplGenericTarget(stmt, target) {
 		return
 	}
-	genericParams := implGenericParametersForTarget(stmt, target)
+	genericParams := a.implGenericParametersForTarget(stmt, target)
 
 	fields := map[string]lexer.Token{}
 	for _, field := range target.Fields {
@@ -8760,6 +8842,14 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			a.withImplTarget(stmt.Target.Name, func() {
 				a.withGenericTypeParameters(genericParams, func() {
 					a.registerInitDeclaration(stmt.Target.Name, target, initializer)
+				})
+			})
+			continue
+		}
+		if free, ok := member.(*ast.FreeDeclaration); ok {
+			a.withImplTarget(stmt.Target.Name, func() {
+				a.withGenericTypeParameters(genericParams, func() {
+					a.registerFreeDeclaration(stmt.Target.Name, free)
 				})
 			})
 			continue
@@ -8964,7 +9054,7 @@ func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStat
 	if stmt.Value != nil && stmt.Type != nil {
 		valueType, _ := a.inferExpressionWithExpected(stmt.Value, declaredType)
 		if valueType.Kind != InvalidType && !canInitialize(declaredType, valueType, stmt.Value) {
-			a.addErrorAtToken(expressionToken(stmt.Value), "cannot initialize %s with %s", typeDisplayName(declaredType), typeDisplayName(valueType))
+			a.addTypeMismatchError(expressionToken(stmt.Value), declaredType, valueType, stmt.Value, "cannot initialize %s with %s", typeDisplayName(declaredType), typeDisplayName(valueType))
 			return
 		}
 	}
@@ -9300,7 +9390,7 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 	if !ok || (!target.Named && !a.isAllowedCoreBuiltinImpl(stmt.Target.Name, stmt.Target.Token)) {
 		return
 	}
-	genericParams := implGenericParametersForTarget(stmt, target)
+	genericParams := a.implGenericParametersForTarget(stmt, target)
 
 	for _, member := range stmt.Members {
 		switch member := member.(type) {
@@ -9314,6 +9404,12 @@ func (a *Analyzer) analyzeImplBody(stmt *ast.ImplStatement) {
 			a.withImplTarget(stmt.Target.Name, func() {
 				a.withGenericTypeParameters(genericParams, func() {
 					a.analyzeInitBody(stmt.Target.Name, member)
+				})
+			})
+		case *ast.FreeDeclaration:
+			a.withImplTarget(stmt.Target.Name, func() {
+				a.withGenericTypeParameters(genericParams, func() {
+					a.analyzeFreeBody(stmt.Target.Name, member)
 				})
 			})
 		case *ast.PropertyDeclaration:
@@ -10029,7 +10125,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		return true
 	case *ast.MemberExpression:
 		place, ok := a.resolvePlace(expr)
-		if !ok || !requiresOwnershipTransfer(place.Type) || a.checkBorrowedMovePlace(place, expr.Property.Token) {
+		if !ok || !requiresOwnershipTransfer(place.Type) || a.rejectCustomFreePartialMove(place, expr.Property.Token) || a.checkBorrowedMovePlace(place, expr.Property.Token) {
 			return false
 		}
 		a.markPlaceUnavailable(place, expr.Property.Token, "moved")
@@ -10816,6 +10912,14 @@ func (a *Analyzer) isZeroOrOneIntegerConstant(expr ast.Expression) bool {
 }
 
 func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
+	typ, ok := a.resolveTypeReference(ref)
+	if ok {
+		typ = a.withCustomFree(typ)
+	}
+	return typ, ok
+}
+
+func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 	if ref == nil || ref.Invalid {
 		return Type{Kind: InvalidType}, false
 	}
@@ -10853,6 +10957,9 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		innerRef := *ref
 		innerRef.Ref = false
 		innerRef.MutableRef = false
+		if innerRef.ReferentToken.Line > 0 {
+			innerRef.Token = innerRef.ReferentToken
+		}
 		inner, ok := a.resolveType(&innerRef)
 		if !ok {
 			return Type{Kind: InvalidType}, false
@@ -11595,6 +11702,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		if typ, value, handled := a.inferCompilerKnownValue(expr); handled {
 			return typ, value
 		}
+		if a.isNullSentinel(expr) {
+			return a.inferNullSentinel(expr)
+		}
 		symbol, ok := a.symbols[expr.Value]
 		if !ok {
 			if functions := a.accessibleFunctions(a.functions[expr.Value]); len(functions) > 0 {
@@ -11664,6 +11774,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return a.inferAvailabilityExpression(expr)
 	case *ast.StateTestExpression:
 		return a.inferStateTestExpression(expr)
+	case *ast.NullTestExpression:
+		return a.inferNullTestExpression(expr)
 	case *ast.InfixExpression:
 		return a.inferInfixExpression(expr)
 	case *ast.ConversionExpression:
@@ -12571,6 +12683,8 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	a.currentFunctionName = "lambda"
 	a.currentFunctionReturn = returnType
 	a.inFunctionBody = true
+	previousTryHandlerDepth := a.tryHandlerDepth
+	a.tryHandlerDepth = 0
 	a.inLambda = true
 	a.lambdaOuterSymbols = captureCandidates
 	a.loopDepth = 0
@@ -12587,6 +12701,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.currentCallable = previousCallable
 		a.currentFunctionReturn = previousFunctionReturn
 		a.inFunctionBody = previousInFunctionBody
+		a.tryHandlerDepth = previousTryHandlerDepth
 		a.inLambda = previousInLambda
 		a.lambdaOuterSymbols = previousLambdaOuterSymbols
 		a.loopDepth = previousLoopDepth
@@ -13071,6 +13186,8 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		elementType := *leftType.Element
 		if leftType.Kind == ArrayType && arrayShapeOf(leftType) == ArrayShapeFixed {
 			a.recordFixedArrayIndexPlan(expr, leftType, elementType, indexType, ArrayIndexRead)
+		} else if leftType.Kind == SliceType || arrayShapeOf(leftType) == ArrayShapeDynamic {
+			a.recordSequenceIndexEffect(expr)
 		}
 		if elementType.Kind == ReferenceType {
 			elementType = a.referenceTypeWithOriginFromExpression(elementType, expr.Left)
@@ -14754,7 +14871,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 	a.bindDefinitions(callCalleeDefinitionToken(expr), functionDeclarationTokens(functions))
 
+	releaseNullContexts := a.bindNullArgumentContexts(functions, expr.Arguments)
 	sourceArgTypes, sourceArgs, preparedSpreadValues, runtimeSpreadValues, ok := a.callArgumentTypes(expr.Arguments, anyFunctionIsVariadic(functions))
+	releaseNullContexts()
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -14889,6 +15008,13 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		execution, recordCall := a.callGraphExecutionForCall(expr)
 		if !a.summaryPass && a.callGraphPathReachable && recordCall {
 			a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
+			a.recordForeignAbortEffect(best[0].Function, callCalleeDefinitionToken(expr))
+			// rules/errors/panic.md § 21(3)–(4): a method called through an
+			// interface reference or a constrained generic parameter has no
+			// concrete body here, so its panic behavior is unknown.
+			if isMethodCall && (dereferenceType(methodReceiver.Type).Kind == InterfaceType || dereferenceType(methodReceiver.Type).Kind == GenericType) {
+				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: callCalleeDefinitionToken(expr)})
+			}
 		}
 		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
 		a.markMovedCallArguments(best[0].Function, sourceArgs, preparedSpreadValues, isMethodCall)
@@ -14979,7 +15105,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			}
 			argType := a.contextualCallArgumentType(arg, argTypes[i], param.Type)
 			if !canInitialize(param.Type, argType, arg) {
-				a.addErrorAtToken(expressionToken(arg), "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
+				a.addTypeMismatchError(expressionToken(arg), param.Type, argType, arg, "argument %d to %s must be %s, got %s", i+1, displayName, typeDisplayName(param.Type), typeDisplayName(argType))
 			}
 		}
 		break
@@ -17488,6 +17614,10 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if a.checkStringLiteralContracts(targetType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	a.expressionTypes[expr] = targetType
+	if a.runtimeContractConversion(expr) {
+		a.recordContractConversionEffect(expr)
+	}
 
 	return targetType, expressionValue{Display: expr.String()}
 }
@@ -17659,6 +17789,28 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
+	// rules/errors/errorhandling.md §11 and runtime_checks.md "What try
+	// converts": every language-defined check in the protected subtree is a
+	// failure point. Sets the dedicated paths below represent exactly keep
+	// them; any other set uses the failure-set path.
+	rootIsResult := valueType.Kind == ResultType && len(valueType.TypeArgs) == 2
+	isOption := valueType.Kind == UnionType && valueType.Name == "Option" && len(valueType.TypeArgs) == 1
+	points := a.collectTryFailurePoints(expr.Expression)
+	if isOption && len(points) > 0 {
+		a.addErrorAtTokenWithPrevious(expr.Token, points[0].Token,
+			"try over an Option cannot also protect the %s from %s, because absence and errors use different channels; protect that operation with its own try",
+			typeDisplayName(points[0].ErrorType), points[0].Expression.String())
+		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
+	}
+	if !isOption && !a.usesExistingTryPath(expr.Expression, rootIsResult, points) {
+		successType := valueType
+		if rootIsResult {
+			successType = valueType.TypeArgs[0]
+			points = append(points, TryFailurePoint{Kind: TryFailureCarrier, ErrorType: valueType.TypeArgs[1], Expression: expr.Expression, Token: expressionToken(expr.Expression)})
+		}
+		return a.inferFailureSetTryExpression(expr, successType, points)
+	}
+
 	if operator, ok := a.ResolvedOperatorOf(expr.Expression); ok && operator.RuntimeCheck {
 		return a.inferArithmeticTryExpression(expr, operator)
 	}
@@ -17678,12 +17830,12 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
-		a.addErrorAtToken(expr.Token, "try requires Result expression")
+		a.addErrorAtToken(expr.Token, "try requires Result expression, Option expression, or a language-defined runtime check such as checked arithmetic, indexing, or a constrained conversion; %s contains none", expr.Expression.String())
 		return valueType, expressionValue{Display: expr.String()}
 	}
 
 	if a.inDeferBlock && len(expr.Handlers) == 0 {
-		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
+		a.addBodylessTryError(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
@@ -17699,12 +17851,12 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	if !a.inFunctionBody {
-		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate outside a function; add a local try handler")
+		a.addBodylessTryError(expr.Token, "bodyless try cannot propagate outside a function; add a local try handler")
 		return valueType.TypeArgs[0], expressionValue{Display: expr.String()}
 	}
 
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
-		a.addErrorAtToken(
+		a.addBodylessTryError(
 			expr.Token,
 			"bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or change the function return type to Result[%s, %s]",
 			typeDisplayName(valueType.TypeArgs[1]),
@@ -17718,7 +17870,7 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	valueErrorType := valueType.TypeArgs[1]
 	functionErrorType := a.currentFunctionReturn.TypeArgs[1]
 	if !canInitialize(functionErrorType, valueErrorType, expr.Expression) {
-		a.addErrorAtToken(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(valueErrorType), typeDisplayName(functionErrorType))
+		a.addBodylessTryError(expr.Token, "bodyless try propagates %s with return Err, but this function returns %s; add a local try handler or map %s to %s", typeDisplayName(valueErrorType), typeDisplayName(a.currentFunctionReturn), typeDisplayName(valueErrorType), typeDisplayName(functionErrorType))
 	}
 	a.resolvedTries[expr] = ResolvedTry{
 		Kind: ResolvedTryResultPropagation, SuccessType: valueType.TypeArgs[0], ErrorType: valueErrorType,
@@ -17749,20 +17901,20 @@ func (a *Analyzer) inferBoundsTryExpression(expr *ast.TryExpression, index *ast.
 		return plan.ElementType, result
 	}
 	if a.inDeferBlock {
-		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
+		a.addBodylessTryError(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
 		return plan.ElementType, result
 	}
 	if !a.inFunctionBody {
-		a.addErrorAtToken(expr.Token, "bodyless bounds try cannot propagate outside a function; add a local try handler")
+		a.addBodylessTryError(expr.Token, "bodyless bounds try cannot propagate outside a function; add a local try handler")
 		return plan.ElementType, result
 	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
-		a.addErrorAtToken(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
+		a.addBodylessTryError(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
 		return plan.ElementType, result
 	}
 	functionError := a.currentFunctionReturn.TypeArgs[1]
 	if !canInitialize(functionError, errorType, expr.Expression) {
-		a.addErrorAtToken(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
+		a.addBodylessTryError(expr.Token, "bodyless bounds try propagates IndexError with return Err, but this function returns %s", typeDisplayName(a.currentFunctionReturn))
 		return plan.ElementType, result
 	}
 	a.resolvedTries[expr] = ResolvedTry{Kind: ResolvedTryBoundsPropagation, SuccessType: plan.ElementType, ErrorType: errorType, EnclosingResultType: a.currentFunctionReturn}
@@ -17798,20 +17950,20 @@ func (a *Analyzer) inferArithmeticTryExpression(expr *ast.TryExpression, operato
 		return operator.ResultType, result
 	}
 	if a.inDeferBlock {
-		a.addErrorAtToken(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
+		a.addBodylessTryError(expr.Token, "bodyless try cannot propagate from inside defer; add a local try handler")
 		return operator.ResultType, result
 	}
 	if !a.inFunctionBody {
-		a.addErrorAtToken(expr.Token, "bodyless arithmetic try cannot propagate outside a function; add a local try handler")
+		a.addBodylessTryError(expr.Token, "bodyless arithmetic try cannot propagate outside a function; add a local try handler")
 		return operator.ResultType, result
 	}
 	if a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2 {
-		a.addErrorAtToken(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or change the function return type to Result[%s, ArithmeticError]", typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn))
+		a.addBodylessTryError(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or change the function return type to Result[%s, ArithmeticError]", typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn))
 		return operator.ResultType, result
 	}
 	functionError := a.currentFunctionReturn.TypeArgs[1]
 	if !canInitialize(functionError, arithmeticError, expr.Expression) {
-		a.addErrorAtToken(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or map ArithmeticError to %s", typeDisplayName(a.currentFunctionReturn), typeDisplayName(functionError))
+		a.addBodylessTryError(expr.Token, "bodyless arithmetic try propagates ArithmeticError with return Err, but this function returns %s; add a local try handler or map ArithmeticError to %s", typeDisplayName(a.currentFunctionReturn), typeDisplayName(functionError))
 		return operator.ResultType, result
 	}
 	a.resolvedTries[expr] = ResolvedTry{
@@ -17900,7 +18052,9 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 		flow := a.analyzeTryHandlerBody(handler, successType, bindingType, resolvedBindingName)
 		blockValue := handler.BlockBody != nil && flow == TryHandlerProducesValue && successType.Kind != VoidType
 		narrowed := errorType.Kind == ErrorRootType && variantName != ""
-		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue, OpenErrorNarrowing: narrowed})
+		classification := CopyClassificationOf(bindingType)
+		bindingCopies := resolvedBindingName != "" && (classification == CopyTrivial || classification == CopySemantic)
+		plan.Handlers = append(plan.Handlers, ResolvedTryHandler{PatternKind: patternKind, Variant: variantName, BindingName: resolvedBindingName, BindingType: bindingType, PayloadDiscard: payloadDiscard, Flow: flow, ResultType: successType, SourceIndex: sourceIndex, Guarded: guarded, BlockValue: blockValue, OpenErrorNarrowing: narrowed, BindingCopies: bindingCopies})
 	}
 
 	if errorCatchAllSeen {
@@ -17909,6 +18063,15 @@ func (a *Analyzer) analyzeTryHandlers(expr *ast.TryExpression, resultType Type) 
 	}
 	if errorType.Kind == EnumType && len(errorType.EnumValues) > 0 && len(matchedVariants) >= len(errorType.EnumValues) {
 		plan.Exhaustive = true
+		return plan, len(a.errors) == errorsBefore
+	}
+	if a.tryFailureSet != nil {
+		// rules/errors/errorhandling.md §16 with §11: each failure-set member
+		// left unhandled propagates on its own and must fit the channel.
+		if a.failureSetResidualPropagates(expr, matchedVariants) {
+			plan.ResidualPropagates = true
+			plan.EnclosingResultType = a.currentFunctionReturn
+		}
 		return plan, len(a.errors) == errorsBefore
 	}
 
@@ -17950,17 +18113,17 @@ func (a *Analyzer) checkTryResidualPropagation(expr *ast.TryExpression, errorTyp
 	}
 	switch {
 	case a.inDeferBlock:
-		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled, and they cannot propagate from inside defer; add Err(_) => ... to handle the remaining errors", unhandled)
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled, and they cannot propagate from inside defer; add Err(_) => ... to handle the remaining errors", unhandled)
 		return false
 	case !a.inFunctionBody:
-		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled, and they cannot propagate outside a function; add Err(_) => ... to handle the remaining errors", unhandled)
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled, and they cannot propagate outside a function; add Err(_) => ... to handle the remaining errors", unhandled)
 		return false
 	case a.currentFunctionReturn.Kind != ResultType || len(a.currentFunctionReturn.TypeArgs) != 2:
-		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... to handle the remaining errors locally or return Result[%s, %s]",
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... to handle the remaining errors locally or return Result[%s, %s]",
 			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType))
 		return false
 	case !canInitialize(a.currentFunctionReturn.TypeArgs[1], errorType, expr.Expression):
-		a.addErrorAtToken(expr.Token, "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... or map %s to %s",
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled; they would propagate with return Err, but this function returns %s; add Err(_) => ... or map %s to %s",
 			unhandled, typeDisplayName(a.currentFunctionReturn), typeDisplayName(errorType), typeDisplayName(a.currentFunctionReturn.TypeArgs[1]))
 		return false
 	}
@@ -17984,7 +18147,9 @@ func (a *Analyzer) analyzeTryHandlerPattern(handler *ast.TryHandler, errorType T
 	case *ast.ErrExpression:
 		return a.analyzeTryErrHandlerPattern(pattern, errorType)
 	default:
-		a.addErrorAtToken(expressionToken(handler.Pattern), "Result try handlers must use Err(...); success is implicit, so use match to handle both Ok and Err explicitly")
+		a.addErrorAtTokenWithMetadata(expressionToken(handler.Pattern), diagnostics.InvalidTryHandlerPattern,
+			"Write Err(_), Err(name), or Err(ErrorType.Variant) for the failures you want to handle.",
+			"Result try handlers must use Err(...); success is implicit, so use match to handle both Ok and Err explicitly")
 		return "", "", "", Type{}, false
 	}
 }
@@ -18059,16 +18224,29 @@ func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, er
 	switch pattern := errPattern.Value.(type) {
 	case *ast.Identifier:
 		if pattern.Value == "_" {
-			if !isDiscardableType(errorType) {
+			if a.tryFailureSet != nil {
+				for _, member := range a.tryFailureSet.members {
+					if !isDiscardableType(member) {
+						a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
+							"Bind the error and resolve its task or thread obligation instead of using Err(_).",
+							"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(member))
+					}
+				}
+				return "Err", "_", "", errorType, true
+			}
+			if !a.isDiscardable(errorType) {
 				a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
 					"Bind the error and resolve its task or thread obligation instead of using Err(_).",
-					"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(errorType))
+					"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", a.nonDiscardableSubject(errorType))
 			}
 			return "Err", "_", "", errorType, true
 		}
 		if enumHasValue(errorType, pattern.Value) {
 			return "Err", "", pattern.Value, errorType, true
 		}
+		// A rejected heterogeneous binding still acts as the catch-all it was
+		// written as, so the residual and body analysis report no cascades.
+		a.rejectHeterogeneousErrorBinding(pattern.Token, pattern.Value)
 		return "Err", pattern.Value, "", errorType, true
 	case *ast.MemberExpression:
 		patternType, ok := a.inferMemberExpression(pattern)
@@ -18079,15 +18257,26 @@ func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, er
 		// concrete identity, so a concrete error variant narrows it. The key
 		// is qualified because the open domain spans several error types.
 		if errorType.Kind == ErrorRootType && patternType.ErrorAssignable {
+			if a.tryFailureSet != nil && a.tryFailureSet.commonChannel == nil {
+				if _, member := a.tryFailureSet.member(patternType); !member {
+					a.addErrorAtToken(expressionToken(pattern),
+						"this try cannot produce %s; its failures are %s", typeDisplayName(patternType), tryFailureSetDisplay(a.tryFailureSet.members))
+					return "", "", "", Type{}, false
+				}
+			}
 			return "Err", "", typeDisplayName(patternType) + "." + pattern.Property.Value, errorType, true
 		}
 		if !sameConcreteType(patternType, errorType) {
-			a.addErrorAtToken(expressionToken(pattern), "try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
+			a.addErrorAtTokenWithMetadata(expressionToken(pattern), diagnostics.InvalidTryHandlerPattern,
+				fmt.Sprintf("This try can only fail with %s; name one of its variants, or use Err(_) or Err(name).", typeDisplayName(errorType)),
+				"try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
 			return "", "", "", Type{}, false
 		}
 		return "Err", "", pattern.Property.Value, errorType, true
 	default:
-		a.addErrorAtToken(expressionToken(errPattern.Value), "try handler pattern must be enum variant or identifier")
+		a.addErrorAtTokenWithMetadata(expressionToken(errPattern.Value), diagnostics.InvalidTryHandlerPattern,
+			"Inside Err(...) write _, a binding name, or a qualified error variant such as ErrorType.Variant.",
+			"try handler pattern must be enum variant or identifier")
 		return "", "", "", Type{}, false
 	}
 }
@@ -18101,6 +18290,10 @@ func enumHasValue(typ Type, name string) bool {
 }
 
 func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
+	// rules/errors/errorhandling.md §22: guards and handler bodies are
+	// outside the protected set of this try.
+	a.tryHandlerDepth++
+	defer func() { a.tryHandlerDepth-- }()
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	// rules/errors/errorhandling.md section 15: handler bindings are local to
@@ -18812,10 +19005,10 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 		return matchPatternInfo{}, false
 	}
 	if binding.Value == "_" {
-		if kind == "Err" && !isDiscardableType(payloadType) {
+		if kind == "Err" && !a.isDiscardable(payloadType) {
 			a.addErrorAtTokenWithMetadata(binding.Token, diagnostics.NonDiscardableValue,
 				"Bind the error and resolve its task or thread obligation instead of using Err(_).",
-				"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(payloadType))
+				"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", a.nonDiscardableSubject(payloadType))
 			return matchPatternInfo{}, false
 		}
 		info.PayloadDiscard = true
@@ -18870,10 +19063,14 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		a.assigned[info.InitializesSubject] = true
 	}
 	if info.PayloadMoves && info.PayloadPlace.Root != "" {
-		if !info.PayloadPlace.PartialMoveSafe {
+		switch {
+		case a.rejectCustomFreePartialMove(info.PayloadPlace, info.PayloadToken):
+		case !info.PayloadPlace.PartialMoveSafe:
 			a.reportUnionPayloadMoveStorage(info)
-		} else if _, _, _, unavailable := a.unavailablePlace(info.PayloadPlace); !unavailable && !a.checkBorrowedMovePlace(info.PayloadPlace, info.PayloadToken) {
-			a.markPlaceUnavailable(info.PayloadPlace, info.PayloadToken, "moved")
+		default:
+			if _, _, _, unavailable := a.unavailablePlace(info.PayloadPlace); !unavailable && !a.checkBorrowedMovePlace(info.PayloadPlace, info.PayloadToken) {
+				a.markPlaceUnavailable(info.PayloadPlace, info.PayloadToken, "moved")
+			}
 		}
 	}
 	if info.BindingName != "" {
@@ -19223,6 +19420,9 @@ func (a *Analyzer) applyBranchAnalysisState(state branchAnalysis) {
 }
 
 func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expressionValue) {
+	if a.rejectNullEquality(expr) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if isComparisonOperator(expr.Operator) && containsComparisonExpression(expr.Left) {
 		a.addErrorAtToken(expr.Token, "comparison chaining is not supported")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -19374,6 +19574,10 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 	}
 
 	if !isNumericType(leftType) || !isNumericType(rightType) {
+		if help := numericCarrierOperandHelp(leftType, rightType, expr.Left, expr.Right); help != "" {
+			a.addErrorAtTokenWithMetadata(expr.Token, "", help, "operator %s requires numeric operands", expr.Operator)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		a.addErrorAtToken(expr.Token, "operator %s requires numeric operands", expr.Operator)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -20552,8 +20756,11 @@ func (a *Analyzer) checkInitializerType(target Type, value Type, expr ast.Expres
 		return true
 	}
 
-	a.addErrorAtToken(
+	a.addTypeMismatchError(
 		expressionToken(expr),
+		target,
+		value,
+		expr,
 		"cannot initialize %s with %s",
 		typeDisplayName(target),
 		typeDisplayName(value),
@@ -21414,6 +21621,8 @@ func expressionToken(expr ast.Expression) lexer.Token {
 	case *ast.AvailabilityExpression:
 		return expr.Token
 	case *ast.StateTestExpression:
+		return expr.Token
+	case *ast.NullTestExpression:
 		return expr.Token
 	case *ast.ConversionExpression:
 		return expr.Token

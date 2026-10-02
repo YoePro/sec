@@ -82,7 +82,11 @@ func (a *Analyzer) resolvedGenericParameterConstraints(parameters []*ast.Generic
 //   - rules/declarations/generics.md — §15 "Operations available on generic parameters"
 func (a *Analyzer) constrainedGenericParameterType(parameter *ast.GenericParameter) Type {
 	typ := Type{Name: parameter.Name.Value, Kind: GenericType}
-	typ.GenericConstraints = a.resolvedGenericParameterConstraints([]*ast.GenericParameter{parameter})
+	if target, ok := a.implGenericParameterTargets[parameter]; ok {
+		typ.GenericConstraints = implTargetParameterConstraints(a.types[target], parameter.Name.Value)
+	} else {
+		typ.GenericConstraints = a.resolvedGenericParameterConstraints([]*ast.GenericParameter{parameter})
+	}
 	for _, constraint := range typ.GenericConstraints {
 		for _, method := range constraint.Interface.InterfaceMethods {
 			if method.Static || containsEquivalentConstraintMethod(typ.InterfaceMethods, method) {
@@ -92,6 +96,24 @@ func (a *Analyzer) constrainedGenericParameterType(parameter *ast.GenericParamet
 		}
 	}
 	return typ
+}
+
+// implTargetParameterConstraints returns the resolved conjunction the impl
+// target's declaration retained for one of its parameters, in source order.
+// An impl target names the declared parameters, so the impl scope gains the
+// same guarantees without re-resolving constraint syntax.
+//
+// Rules:
+//   - rules/declarations/generics.md — §8 "Generic impl blocks"
+//   - rules/declarations/generics.md — §12 "Multiple constraints"
+func implTargetParameterConstraints(target Type, parameter string) []GenericConstraint {
+	constraints := []GenericConstraint{}
+	for _, constraint := range target.GenericConstraints {
+		if constraint.Parameter == parameter {
+			constraints = append(constraints, constraint)
+		}
+	}
+	return constraints
 }
 
 func containsEquivalentConstraintMethod(methods []Function, candidate Function) bool {

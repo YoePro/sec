@@ -468,6 +468,12 @@ lifetime/storage dependency
 
 § 17(5) Conversion to foreign strings remains an explicit FFI operation.
 
+§ 17(6) A runtime string concatenation or interpolation is one fallible materialization operation producing one `string`, represented from the frontend `StringConcatPlan`. Semantic IR must not introduce observable intermediate strings for individual concatenation steps, and it must represent the materialization's failure as the ordinary error flow selected by the source `try`.
+
+§ 17(7) A concatenation or interpolation fully resolved at compile time is represented as static string data and carries no runtime failure.
+
+§ 17(8) The allocator or allocation context used by runtime string materialization is not yet specified (MD-004). Semantic IR must not invent an allocator selection; until it is specified, runtime materialization that requires one is an explicit unsupported-lowering case (`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 5).
+
 ---
 
 ## § 18 Collections

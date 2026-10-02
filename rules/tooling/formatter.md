@@ -1635,6 +1635,22 @@ type Point struct {
 
 § 27(32) The correction engine does not automatically translate `null`, `nil`, `nullptr`, foreign `new`, foreign ownership wrappers, Rust `?`, foreign exception handling, C-style pointer/borrow syntax, or another construct whose Sec meaning is not uniquely determined.
 
+§ 27(33) The legacy Sec assigned named-type form is corrected because it has the same nominal meaning as the canonical form:
+
+```sec
+type UserID = uint64
+```
+
+becomes:
+
+```sec
+type UserID uint64
+```
+
+§ 27(34) The legacy compact variant form `type Name = First Second ...` is not corrected, because its Sec 0.1 replacement (`enum` or `union`, with or without the `error` marker) is not uniquely determined. It receives only the focused migration diagnostic required by `rules/foundations/grammar.md`.
+
+§ 27(35) Invalid legacy Sec syntax is never converted by ordinary formatting while `language_corrections = false`; §§ 27(33)–27(34) apply only when Language Corrections are enabled (MD-002 and MD-003; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 3–4).
+
 ---
 
 ## § 28. CLI, LSP, and diagnostics

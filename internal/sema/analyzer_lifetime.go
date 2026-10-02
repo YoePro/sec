@@ -36,6 +36,9 @@ func isSelfMemberProjection(expression ast.Expression) bool {
 //   - rules/memory/copy_move.md — §18 "Methods and self"
 //   - rules/declarations/functions.md — §22 "Instance methods"
 func (a *Analyzer) rejectOrdinaryMethodWholeSelfConsumption(place Place, token lexer.Token) bool {
+	if a.rejectFreeWholeSelfConsumption(place, token) {
+		return true
+	}
 	if a.currentFunctionMetadata.ImplTarget == "" || a.currentFunctionMetadata.Static || a.currentFunctionMetadata.Initializer ||
 		place.Root != "self" || len(place.Projections) != 0 {
 		return false
@@ -85,6 +88,9 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 		}
 		if _, isIndex := value.(*ast.IndexExpression); isIndex {
 			a.addErrorAtToken(token, "explicit indexed extraction is not implemented; move the containing value")
+			return false
+		}
+		if a.rejectCustomFreePartialMove(place, expressionToken(value)) {
 			return false
 		}
 		if len(place.Projections) > 0 && !place.PartialMoveSafe {
@@ -274,32 +280,40 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 	if !unavailable {
 		return false
 	}
-	if partial {
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow partially available place %s; sub-place %s is unavailable", place.String(), movedKey)
+	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+		a.reportConditionallyUnavailablePlace(place, movedKey, token, movedAt, true)
 		return true
 	}
-	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow conditionally available place %s; refine it with `%s is available` first", place.String(), place.String())
+	if partial {
+		a.reportPartiallyUnavailablePlace(place, movedKey, token, movedAt, true)
 		return true
 	}
 	if a.loopBackedgePlaces[movedKey] {
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow place %s because it may be unavailable on a later loop iteration", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.ConditionallyUnavailableUse,
+			"reinitialize "+movedKey+" before the next iteration, or move it out only after the loop",
+			"cannot borrow place %s because it may be unavailable on a later loop iteration", place.String())
 		return true
 	}
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
+	help := "borrow " + place.String() + " before that operation, or reinitialize a mutable binding before borrowing it again"
+	if isMultipleAvailabilityReason(reason) {
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help,
+			"cannot borrow unavailable place %s; on every possible execution path it was %s", place.String(), availabilityReasonPhrase(reason))
+		return true
+	}
 	switch reason {
 	case "discarded":
 		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterDiscard,
 			"reinitialize a mutable Place before borrowing it, or keep the value until the borrow",
 			"cannot borrow unavailable place %s; it was discarded here", place.String())
 	case "detached":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was detached here", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was detached here", place.String())
 	case "released":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was released here", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was released here", place.String())
 	case "consumed by call":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was consumed by call here", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was consumed by call here", place.String())
 	default:
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot borrow unavailable place %s; it was moved here", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterMove, help, "cannot borrow unavailable place %s; it was moved here", place.String())
 	}
 	return true
 }
@@ -312,7 +326,7 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 //   - rules/memory/borrowing.md — move/borrow exclusion
 func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 	place, ok := a.resolvePlace(expr)
-	if !ok || a.rejectOrdinaryMethodWholeSelfConsumption(place, expressionToken(expr)) {
+	if !ok || a.rejectOrdinaryMethodWholeSelfConsumption(place, expressionToken(expr)) || a.rejectCustomFreePartialMove(place, expressionToken(expr)) {
 		return false
 	}
 	if a.checkBorrowedMovePlace(place, expressionToken(expr)) {
@@ -335,6 +349,9 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 func (a *Analyzer) inferCallArgumentExpression(arg ast.Expression) (Type, expressionValue) {
 	move, explicit := explicitMoveArgument(arg)
 	if !explicit {
+		if expected, ok := a.expectedExpressionTypes[arg]; ok && a.isBareNoneArgument(arg) {
+			return a.inferExpressionWithExpected(arg, expected)
+		}
 		return a.inferExpression(arg)
 	}
 	typ, value := a.inferExpression(move.Right)

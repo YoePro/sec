@@ -57,10 +57,19 @@ Not implemented
     Canonical syntax has no complete parser and semantic path, or the spelling
     is only reserved.
 
-Compatibility or recovery syntax
-    The parser accepts the form to improve migration or diagnostics, but the
-    form is not canonical Sec source.
+Legacy or recovery syntax
+    The parser recognizes the form only to issue a focused diagnostic or to
+    recover. The form is invalid Sec 0.1 source.
 ```
+
+Sec 0.1 accepts only the canonical syntax defined by the active rulebooks.
+Recognizable legacy Sec syntax is invalid and receives a focused migration
+diagnostic when the intended migration can be determined reliably. Default
+formatting never converts invalid legacy syntax into canonical syntax; an
+explicitly enabled Language Correction (`rules/tooling/formatter.md` §§ 26–27)
+may rewrite a recognized legacy form only when the rewrite is unambiguous and
+semantics-preserving, and otherwise reports a focused migration diagnostic
+instead of guessing (MD-003; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 4).
 
 Grammar implementation status does not imply complete target lowering.
 
@@ -584,59 +593,55 @@ Type[N]
 Type[]
 ```
 
-Prefix sequence syntax is an implemented compatibility form, not canonical
-Sec 0.1 syntax.
-
-The formatter should normalize it or diagnostics should direct users to the
-postfix form.
+Prefix sequence spelling such as `[]byte` was never normative Sec syntax and is
+therefore not a legacy Sec form. It is invalid Sec 0.1 syntax; the canonical
+spelling is `byte[]`. Current parser acceptance of the prefix forms is
+non-conforming and must be replaced by rejection.
 
 ## Standalone `struct Name`
 
-The parser accepts:
+The form:
 
 ```sec
 struct Name {
 }
 ```
 
-Canonical Sec syntax is:
+is the planned Sec 0.2 spelling. It is future canonical syntax, not a Sec 0.1
+legacy form, and it is not valid Sec 0.1 source. Sec 0.1 declarations,
+including structs, use the `type` introducer:
 
 ```sec
 type Name struct {
 }
 ```
 
-The standalone form is compatibility syntax.
-
-It must not be the primary grammar form.
+Current parser acceptance of the standalone form is non-conforming
+(`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 4.7–4.8).
 
 ## Assigned type syntax
 
-The parser and Sema accept:
+The forms:
 
 ```sec
 type Name = ExistingType
-```
-
-and the old compact variant form:
-
-```sec
 type IOError = FileNotFound AccessDenied InvalidValue
 ```
 
-The ordinary canonical named-type syntax is:
+are legacy syntax and are not valid Sec 0.1 source. The canonical named-type
+declaration is:
 
 ```sec
 type Name ExistingType
 ```
 
-Tagged alternatives should normally use `enum` or `union`.
-
-The exact continuing role of the compact `=` variant declaration is not defined
-by a dedicated modern rulebook.
-
-It is therefore documented as implemented compatibility syntax rather than a
-preferred Sec 0.1 form.
+with exactly one underlying type. When the parser recognizes a legacy `=` form
+unambiguously, it emits a focused migration diagnostic rather than an unrelated
+generic parser error. `type Name = ExistingType` has the same nominal meaning as
+`type Name ExistingType`, so an enabled Language Correction may rewrite it. The
+compact form names several alternatives; its Sec 0.1 replacement (`enum` or
+`union`, with or without the `error` marker) is not uniquely determined, so it
+receives only the migration diagnostic (MD-002; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 3).
 
 ## Field contracts
 
@@ -668,8 +673,10 @@ type User struct {
 let mut value: Percent
 ```
 
-Parser support for inline field or variable contracts is legacy and must be
-removed or converted to focused diagnostics.
+Inline field or variable contracts are legacy syntax and invalid Sec 0.1
+source. The parser must reject them with a focused migration diagnostic.
+Rewriting them requires choosing a new named type, which is not uniquely
+determined, so no Language Correction rewrites them (MD-003).
 
 ## Struct and list literal ambiguity
 
@@ -1395,7 +1402,6 @@ TopLevelDeclaration
       | TypedDeclarationGroup
       | AddressedLetDeclaration
       | TestDeclaration
-      | CompatibilityStructDeclaration
       | Comment
 ```
 
@@ -1517,58 +1523,62 @@ This creates a nominal type.
 
 It is not a transparent alias.
 
----
-
-# Assigned named type compatibility form
-
-Implemented compatibility syntax:
-
-```text
-AssignedNamedTypeDeclaration
-    ::= "type" Identifier [ GenericParameterList ] "=" TypeReference
-        { TypeContract }
-        [ DefaultClause ]
-```
-
-Example:
+A named type declaration has exactly one underlying type. The named type is
+distinct from its underlying type, and chained named types remain distinct
+identities:
 
 ```sec
-type UserID = uint64
+type B int
+type A B
 ```
 
-Canonical new source should prefer:
+declares three distinct types: `int`, `B`, and `A`.
+
+A declaration naming more than one underlying type is invalid:
 
 ```sec
-type UserID uint64
+type A int string
+type A B int
 ```
 
-unless a future alias rule explicitly gives `=` a distinct meaning.
+A declaration names exactly one type. Several names in one declaration are
+invalid; each type is declared separately:
+
+```sec
+type A, B int        // invalid
+type A int
+type B int
+```
+
+`type A B` is valid only when `B` resolves to a type; otherwise `B` is an
+unknown type.
+
+(MD-002; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 3.)
 
 ---
 
-# Compact variant compatibility form
+# Legacy assigned and compact variant forms
 
-Implemented compatibility syntax:
+The following legacy forms are not Sec 0.1 grammar. The parser recognizes them
+only to issue a focused migration diagnostic:
 
 ```text
-CompactVariantDeclaration
+LegacyAssignedNamedType
+    ::= "type" Identifier [ GenericParameterList ] "=" TypeReference ...
+
+LegacyCompactVariantDeclaration
     ::= "type" Identifier "=" Identifier Identifier { Identifier }
 ```
 
-Example:
+Examples:
 
 ```sec
+type UserID = uint64
 type IOError = FileNotFound AccessDenied InvalidValue
 ```
 
-New closed alternatives should normally use:
-
-```text
-enum
-union
-```
-
-This compact form must not be expanded without a dedicated modern rule.
+The canonical replacement for the first is `type UserID uint64`. Closed
+alternatives use `enum` or `union`.
 
 ---
 
@@ -1728,16 +1738,10 @@ Contracts are expressed through named field types.
 
 ---
 
-# Compatibility struct declaration
+# Standalone struct declaration (Sec 0.2)
 
-Implemented compatibility syntax:
-
-```text
-CompatibilityStructDeclaration
-    ::= "struct" Identifier StructBody
-```
-
-Canonical source uses `type Name struct`.
+`struct Identifier StructBody` is planned Sec 0.2 syntax and is not part of the
+Sec 0.1 grammar. Sec 0.1 source uses `type Name struct`.
 
 ---
 
@@ -4245,19 +4249,11 @@ ref mut rune[]
 
 ---
 
-# Prefix sequence compatibility types
+# Prefix sequence types are invalid
 
-Accepted compatibility forms:
-
-```text
-PrefixFixedArrayType
-    ::= "[" IntegerConstant "]" TypeReference
-
-PrefixDynamicSequenceType
-    ::= "[" "]" TypeReference
-```
-
-Canonical formatter output uses postfix syntax.
+The prefix spellings `[N]Type` and `[]Type` were never normative Sec syntax.
+They are not Sec 0.1 grammar and not legacy forms; the canonical spellings are
+`Type[N]` and `Type[]`.
 
 ---
 
@@ -4554,26 +4550,28 @@ value = other = third
 
 ---
 
-# Compatibility and recovery syntax
+# Legacy, future, and recovery syntax
 
-The parser may accept the following noncanonical forms only for migration,
-formatting, or diagnostics:
+The parser may recognize the following invalid Sec 0.1 forms only to issue a
+focused diagnostic or to recover; none of them is accepted Sec 0.1 source:
 
 ```text
-struct Name { ... }
-type Name = ExistingType
-type Error = First Second Third
-prefix array syntax [N]Type
-prefix sequence syntax []Type
-enum value initializer Value: 1
-explicit ref self parameter
-explicit nested try match wrapper
-body-bearing extern declaration solely for focused rejection and recovery
+type Name = ExistingType          legacy; migration diagnostic
+type Error = First Second Third   legacy; migration diagnostic
+inline field/variable contracts   legacy; migration diagnostic
+enum value initializer Value: 1   legacy; migration diagnostic
+explicit ref self parameter       legacy; migration diagnostic
+explicit nested try match wrapper legacy; migration diagnostic
+struct Name { ... }               Sec 0.2 syntax; not valid in Sec 0.1
+prefix array syntax [N]Type       never normative; invalid
+prefix sequence syntax []Type     never normative; invalid
+body-bearing extern declaration   focused rejection and recovery
 ```
 
-Compatibility syntax must be marked in AST or diagnostics where needed.
-
-The formatter must not silently assign new semantics.
+Recognized forms must be marked in AST or diagnostics where needed. Default
+formatting does not convert any of them; an enabled Language Correction may
+rewrite a legacy form only under the policy in "Grammar implementation status"
+above (MD-003).
 
 ---
 
@@ -4673,17 +4671,16 @@ Sema must not depend on backend accidents such as undefined aggregate fields.
 
 The formatter must print canonical syntax.
 
-It may normalize parser-confirmed compatibility forms where the transformation
-is semantics-preserving.
-
-Examples:
+Default formatting does not convert legacy, future, or otherwise invalid syntax
+into canonical syntax. Such rewrites belong to explicitly enabled Language
+Corrections (`rules/tooling/formatter.md` §§ 26–27), which apply only when the
+rewrite is unambiguous and semantics-preserving, for example:
 
 ```text
 func -> fn
 Value: 1 -> Value = 1 inside enum declaration
+type Name = ExistingType -> type Name ExistingType
 prefix array type -> postfix array type
-x++ -> x += 1 when parser support exists
-x-- -> x -= 1 when parser support exists
 ```
 
 It must preserve:
@@ -4710,7 +4707,7 @@ The formatter must not infer language semantics.
 | named types | Implemented | Implemented | Implemented | Implemented |
 | explicit defaults | Implemented | Implemented | Implemented | Implemented |
 | contracts on named types | Implemented | Implemented | Implemented | Implemented |
-| contracts on fields/variables | Accepted | Accepted | Legacy paths | Noncanonical; remove |
+| contracts on fields/variables | Accepted | Accepted | Legacy paths | Invalid legacy syntax; must be rejected with a migration diagnostic |
 | structs | Implemented | Implemented | Implemented | Implemented |
 | omitted struct fields | N/A | Omission represented | Defaults materialized | Implemented; backend audit |
 | enums | Implemented | Implemented | Implemented | Implemented |
@@ -4735,7 +4732,7 @@ The formatter must not infer language semantics.
 | unsafe | Implemented | Implemented | Basic context checks | Partly implemented |
 | asm | Implemented | Implemented | Basic checks | Partly implemented |
 | postfix arrays/slices | Implemented | Implemented | Implemented | Implemented |
-| prefix arrays/slices | Implemented | Implemented | Implemented | Compatibility only |
+| prefix arrays/slices | Implemented | Implemented | Implemented | Invalid (never normative); must be rejected |
 | array literals | Implemented | Implemented | Implemented | Implemented |
 | empty list literal | Tokens available | Parsed as typed braces | Not resolved as list literal | Not implemented |
 | contextual `x` | Identifier | Implemented as contextual infix | Fixed matrix/matrix and matrix/vector validation | Partly implemented; lowering and tooling pending |
@@ -5056,7 +5053,7 @@ Implement empty, allocation-free Sema defaults.
 
 ---
 
-## A.10 Mark compatibility declarations
+## A.10 Mark recognized legacy and future declarations
 
 Preserve source information for:
 
@@ -5205,7 +5202,7 @@ or lowering.
 4. Add ++/-- recovery and formatter normalization.
 5. Remove inline variable and field contracts.
 6. Resolve empty list literals.
-7. Normalize prefix array compatibility syntax.
+7. Reject prefix array syntax, legacy `type Name =` forms, and standalone `struct` with focused diagnostics.
 8. Add dedicated pattern AST.
 9. Make set and event contextual.
 10. Close extern declaration distinctions.

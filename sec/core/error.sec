@@ -60,3 +60,130 @@ type StringError union error {
     AllocationFailed,
     OutOfBounds,
 }
+
+// Common error family of the root io capability interfaces and helpers.
+// Rulebook: stdlib/io/std-io.md § 6.2; owned by core so every I/O-capable
+// package can map its failures to it without importing io.
+enum IOError error {
+    // The operation was attempted after the relevant I/O endpoint was closed.
+    Closed,
+
+    // One or more arguments are invalid for the requested operation.
+    InvalidInput,
+
+    // The concrete resource does not support the requested operation.
+    Unsupported,
+
+    // The operation was interrupted before it could complete normally.
+    Interrupted,
+
+    // The operation reached its configured or externally imposed timeout.
+    TimedOut,
+
+    // Cancellation was requested through Sec's execution context.
+    Cancelled,
+
+    // An exact-length operation reached end-of-stream before completing.
+    UnexpectedEnd,
+
+    // Repeated operations made no progress where progress was required.
+    NoProgress,
+
+    // A platform, runtime, driver, or concrete-resource failure occurred and
+    // is not represented by another IOError variant.
+    NativeFailure,
+}
+
+// Detailed error family of the pre-std-io file and directory API in
+// stdlib/io/file.linux.amd64.sec, kept beside IOError until the two are
+// merged. Meanings are inferred from the Linux errno mapping in that file;
+// "≈ IOError.X" names the closest std-io variant.
+enum IOErrorLegacy error {
+    // EPERM or EACCES: the caller lacks permission for the path or operation.
+    PermissionDenied,
+
+    // ENOENT: the path, or a component of it, does not exist.
+    NotFound,
+
+    // EINTR: interrupted by a signal before completion. Same meaning as
+    // IOError.Interrupted.
+    Interrupted,
+
+    // EAGAIN: a non-blocking operation would have to block.
+    WouldBlock,
+
+    // ENOMEM: the kernel could not allocate memory for the operation.
+    OutOfMemory,
+
+    // EIO: a low-level device or storage I/O error. ≈ IOError.NativeFailure.
+    InputOutput,
+
+    // EINVAL, or an invalid caller argument such as an empty copy buffer.
+    // ≈ IOError.InvalidInput.
+    InvalidArgument,
+
+    // EBADF, also used for operations on an already closed File or
+    // Directory. ≈ IOError.Closed for the closed-handle case.
+    BadFileDescriptor,
+
+    // EISDIR: a file operation was applied to a directory.
+    IsDirectory,
+
+    // ENOTDIR: a path component or directory operand is not a directory.
+    NotDirectory,
+
+    // ENOTEMPTY: the directory to remove still has entries.
+    DirectoryNotEmpty,
+
+    // EBUSY: the resource is in use.
+    Busy,
+
+    // EXDEV: a rename or link crossed filesystem boundaries.
+    CrossDevice,
+
+    // EEXIST: the path already exists.
+    AlreadyExists,
+
+    // EMFILE or ENFILE: the process or system open-file limit was reached.
+    TooManyOpenFiles,
+
+    // EFBIG or EOVERFLOW, and also a caller-supplied buffer or entry array
+    // too small for the complete file or directory. The second use is
+    // ≈ IOError.InvalidInput in std-io terms.
+    TooLarge,
+
+    // ENAMETOOLONG: a path or path component is too long.
+    NameTooLong,
+
+    // ELOOP: too many symbolic links while resolving the path.
+    TooManySymbolicLinks,
+
+    // ENOSPC: no space left on the device.
+    NoSpace,
+
+    // EROFS: the filesystem is mounted read-only.
+    ReadOnlyFileSystem,
+
+    // EPIPE: writing to a pipe or socket whose reader has closed.
+    BrokenPipe,
+
+    // ESPIPE: seeking on a pipe, socket, or other non-seekable resource.
+    IllegalSeek,
+
+    // An exact read reached end-of-file early. ≈ IOError.UnexpectedEnd.
+    UnexpectedEndOfFile,
+
+    // A write call made no progress. ≈ IOError.NoProgress.
+    WriteZero,
+
+    // Data returned by the platform was malformed, such as a directory
+    // record that does not fit its buffer.
+    InvalidData,
+
+    // EOPNOTSUPP or ENOSYS, or an API shape not yet implemented. Same
+    // meaning as IOError.Unsupported.
+    Unsupported,
+
+    // Any errno without a dedicated variant. ≈ IOError.NativeFailure.
+    Unknown,
+}

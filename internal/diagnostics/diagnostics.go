@@ -65,6 +65,13 @@ const (
 	ParserInvalidTestDeclaration        = "P2020"
 	ParserMalformedForeignQualification = "P2021"
 	ParserUnsupportedForeignForm        = "P2022"
+	ParserLegacyAssignedType            = "P2023"
+	ParserMultipleUnderlyingTypes       = "P2024"
+	ParserLegacyInlineContract          = "P2025"
+	ParserPrefixSequenceType            = "P2026"
+	ParserFutureStructDeclaration       = "P2027"
+	ParserLegacyEnumColonInitializer    = "P2028"
+	ParserMultipleTypeDeclarationNames  = "P2029"
 	MissingModuleDeclaration            = "S1001"
 	DuplicateModuleDeclaration          = "S1002"
 	ModuleDeclarationConflict           = "S1003"
@@ -143,6 +150,24 @@ const (
 	ForeignUnknownCFundamentalType      = "S1076"
 	ForeignCABIModelUnavailable         = "S1077"
 	ForeignUnresolvedCBindingType       = "S1078"
+	IllegalForeignType                  = "S1079"
+	NullOutsideUnsafe                   = "S1080"
+	NullWithoutRawPointerContext        = "S1081"
+	NullEquality                        = "S1082"
+	NullTestRequiresRawPointer          = "S1083"
+	InvalidCustomFreeDeclaration        = "S1084"
+	CustomFreePartialMove               = "S1085"
+	DeferInsideFree                     = "S1086"
+	FreeConsumesSelf                    = "S1087"
+	UseAfterMove                        = "S1088"
+	ConditionallyUnavailableUse         = "S1089"
+	PartiallyUnavailableUse             = "S1090"
+	HeterogeneousTryErrorBinding        = "S1091"
+	NoPanicViolation                    = "S1092"
+	TryPropagationIncompatible          = "S1093"
+	TryResidualUnpropagatable           = "S1094"
+	InvalidTryHandlerPattern            = "S1095"
+	TryAssignmentWithoutFallibleTarget  = "S1096"
 	UnreachableStatement                = "S3001"
 	UseAfterDiscard                     = "S4001"
 	LargeValueParameter                 = "A2001"
@@ -187,6 +212,24 @@ var registry = map[string]Definition{
 	ForeignUnknownCFundamentalType:      {ID: ForeignUnknownCFundamentalType, Name: "ffi.unknown-c-fundamental-type", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
 	ForeignCABIModelUnavailable:         {ID: ForeignCABIModelUnavailable, Name: "ffi.c-abi-model-unavailable", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
 	ForeignUnresolvedCBindingType:       {ID: ForeignUnresolvedCBindingType, Name: "ffi.unresolved-c-binding-type", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	IllegalForeignType:                  {ID: IllegalForeignType, Name: "ffi.illegal-foreign-type", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	NullOutsideUnsafe:                   {ID: NullOutsideUnsafe, Name: "ffi.null-outside-unsafe", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	NullWithoutRawPointerContext:        {ID: NullWithoutRawPointerContext, Name: "ffi.null-without-raw-pointer-context", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	NullEquality:                        {ID: NullEquality, Name: "ffi.null-equality", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	NullTestRequiresRawPointer:          {ID: NullTestRequiresRawPointer, Name: "ffi.null-test-requires-raw-pointer", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidCustomFreeDeclaration:        {ID: InvalidCustomFreeDeclaration, Name: "destruction.invalid-custom-free", Family: "destruction", DefaultSeverity: SeverityError, Mandatory: true},
+	CustomFreePartialMove:               {ID: CustomFreePartialMove, Name: "ownership.custom-free-partial-move", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
+	DeferInsideFree:                     {ID: DeferInsideFree, Name: "destruction.defer-inside-free", Family: "destruction", DefaultSeverity: SeverityError, Mandatory: true},
+	FreeConsumesSelf:                    {ID: FreeConsumesSelf, Name: "destruction.free-consumes-self", Family: "destruction", DefaultSeverity: SeverityError, Mandatory: true},
+	UseAfterMove:                        {ID: UseAfterMove, Name: "ownership.use-after-move", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
+	ConditionallyUnavailableUse:         {ID: ConditionallyUnavailableUse, Name: "ownership.conditionally-unavailable-use", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
+	PartiallyUnavailableUse:             {ID: PartiallyUnavailableUse, Name: "ownership.partially-unavailable-use", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
+	HeterogeneousTryErrorBinding:        {ID: HeterogeneousTryErrorBinding, Name: "errors.heterogeneous-try-error-binding", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	NoPanicViolation:                    {ID: NoPanicViolation, Name: "panic.no-panic-violation", Family: "panic", DefaultSeverity: SeverityError, Mandatory: true},
+	TryPropagationIncompatible:          {ID: TryPropagationIncompatible, Name: "errors.try-propagation-incompatible", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	TryResidualUnpropagatable:           {ID: TryResidualUnpropagatable, Name: "errors.try-residual-unpropagatable", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidTryHandlerPattern:            {ID: InvalidTryHandlerPattern, Name: "errors.invalid-try-handler-pattern", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	TryAssignmentWithoutFallibleTarget:  {ID: TryAssignmentWithoutFallibleTarget, Name: "errors.try-assignment-without-fallible-target", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
 	UseAfterDiscard:                     {ID: UseAfterDiscard, Name: "ownership.use-after-discard", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:             {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
@@ -250,6 +293,13 @@ var registry = map[string]Definition{
 	ParserInvalidTestDeclaration:        parserDefinition(ParserInvalidTestDeclaration, "parser.invalid-test-declaration"),
 	ParserMalformedForeignQualification: parserDefinition(ParserMalformedForeignQualification, "parser.malformed-foreign-qualification"),
 	ParserUnsupportedForeignForm:        parserDefinition(ParserUnsupportedForeignForm, "parser.unsupported-foreign-form"),
+	ParserLegacyAssignedType:            parserDefinition(ParserLegacyAssignedType, "parser.legacy-assigned-type"),
+	ParserMultipleUnderlyingTypes:       parserDefinition(ParserMultipleUnderlyingTypes, "parser.multiple-underlying-types"),
+	ParserLegacyInlineContract:          parserDefinition(ParserLegacyInlineContract, "parser.legacy-inline-contract"),
+	ParserPrefixSequenceType:            parserDefinition(ParserPrefixSequenceType, "parser.prefix-sequence-type"),
+	ParserFutureStructDeclaration:       parserDefinition(ParserFutureStructDeclaration, "parser.future-struct-declaration"),
+	ParserLegacyEnumColonInitializer:    parserDefinition(ParserLegacyEnumColonInitializer, "parser.legacy-enum-colon-initializer"),
+	ParserMultipleTypeDeclarationNames:  parserDefinition(ParserMultipleTypeDeclarationNames, "parser.multiple-type-declaration-names"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",

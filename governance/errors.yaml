@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-10-01"
+    revised: "2026-10-03"
     document_revision: "2.1"
     repository_baseline: "b3315f6"
     semantic_source_parent: "45e5cd4"
@@ -41,6 +41,10 @@ integrations:
       - internal/sema/analyzer_try_option.go
       - internal/sema/analyzer_try_handlers.go
       - internal/sema/analyzer_fallible_setters.go
+      - internal/sema/try_failure_set.go
+      - internal/sema/open_error_discard.go
+      - internal/sema/result_state_proof.go
+      - internal/sema/mentor_try.go
       - internal/cst/roles.go
       - cmd/lsp/hover_try.go
       - internal/sema/compiler_known_members.go
@@ -66,6 +70,10 @@ integrations:
       - internal/ir/semantic/return_try_result_test.go
       - internal/ir/semantic/option_if_binding_test.go
       - internal/formatter/formatter_test.go
+      - internal/formatter/declaration_forms_test.go
+      - testdata/formatter/errorhandling_forms.sec
+      - testdata/formatter/errorhandling_forms.expected.sec
+      - cmd/lsp/hover_try_test.go
       - internal/parser/option_if_binding_test.go
       - internal/diagnostics/diagnostics_test.go
       - cmd/lsp/main_test.go
@@ -89,7 +97,31 @@ integrations:
       - testdata/sema/error_narrowing_option_try_invalid.sec
       - testdata/sema/try_err_discard_non_discardable_invalid.sec
       - testdata/sema/match_err_discard_non_discardable_invalid.sec
+      - testdata/try_expression_positions_valid.sec
+      - internal/sema/try_positions_test.go
+      - internal/sema/try_failure_set_test.go
+      - internal/sema/open_error_discard_test.go
+      - internal/sema/result_state_proof_test.go
+      - internal/sema/mentor_try_test.go
+      - testdata/sema/missing_try_invalid.sec
+      - internal/sema/assertion_proof_test.go
+      - internal/sema/panic_sources_test.go
+      - internal/sema/effect_analysis_test.go
     implemented:
+      - "a try assignment without a fallible target uses S1096 errors.try-assignment-without-fallible-target with help naming the fallible target forms"
+      - "invalid try handler patterns use S1095 errors.invalid-try-handler-pattern with help naming the valid Err forms or the variants of the protected error type"
+      - "resolved try handlers record BindingCopies (§20): a named payload binding copies a copyable error payload and otherwise takes ownership by move; try hover shows copies or moves payload per handler"
+      - "stable try propagation diagnostics: every bodyless try that cannot propagate (Result, Option, arithmetic, bounds, and failure-set forms) uses S1093 errors.try-propagation-incompatible, and partial handlers that leave unpropagatable failures use S1094 errors.try-residual-unpropagatable, both with mentor help"
+      - "missing-try mentor diagnostics: when a Result or Option carrier is used as an initializer, return value, call argument, or arithmetic operand where its success type fits, the diagnostic explains that try is missing, shows `try expr` for the exact expression, and names how the error or None is propagated or handled"
+      - "result-projection-discardability: Result.Ok()/Err() may forget a non-discardable alternate payload when a dominating, unmutated condition on an immutable Result binding proves that state unreachable (result.ErrRef is None or result.OkRef is not None for Ok(), and the mirrored tests for Err()); otherwise the conservative S1006 rejection remains"
+      - "errorhandling-lsp-v2 hover: try hover consumes ResolvedTry and ResolvedTryPlan facts for Result, Option, arithmetic, bounds, and failure-set try; it lists every failure source with its kind and error, the failure-set members without inventing a common type, each handler in source order with pattern, guard, binding type, and flow, coverage and residual propagation target, and states when a concrete error widens into the open error root while keeping its identity"
+      - "errorhandling-formatter-v2: a golden formatter test covers error enum and union markers, representation enums, fallible setter contracts, direct try handlers with where guards and block recovery values, Option None handlers, borrowed and consuming projections, fallible assignment with and without handlers, and return try; output is canonical, idempotent, and never inserts or removes a semantic try or match"
+      - "§22 handler failure boundary: a try in a handler body or guard is outside the outer try's protected set and propagates or fails on its own; every bodyless propagation diagnostic raised inside a handler or guard explains that the outer handlers do not catch it, and lambdas inside handlers reset that context"
+      - "open-error discardability: Err(_) in try and match, explicit discard, and consuming Result projections treat the open error root as non-discardable when any declared error type of the analyzed program carries a non-discardable obligation, naming those types (\"error, which may carry LaunchFailure\"); programs without such types keep discarding error freely"
+      - "§9/§11 failure sets: try converts every language-defined check in its protected subtree (runtime_checks.md \"What try converts\"), including checks in arguments of a protected call, stopping at nested try, lambdas, and match. Checked arithmetic (ArithmeticError), runtime-checked indexing of fixed arrays, dynamic arrays, slices, and lists (IndexError), and runtime conversion into a constrained named type (ContractError) are failure points; the ordered set is published as ResolvedTry.Failures and ResolvedTryPlan.Failures with kinds failure-set-propagation and handled-failure-set, and no public error union is inferred"
+      - "§12.1/§16 failure-set propagation: naked try requires every member to fit the enclosing Result channel and names the source operation of each member that does not; partial handlers propagate each unhandled member separately with the existing mentor residual diagnostic"
+      - "§11.1 heterogeneous handlers: Err(_) handles every member and checks each member's discardability; Err(name) is rejected with S1091 errors.heterogeneous-try-error-binding unless the set already shares an explicitly declared channel (a Result[T, error] carrier); narrowing patterns must name a member of the set; a try over Option that also protects an error-producing check is rejected because absence and errors use different channels"
+      - "try is accepted in every frontend expression position where its success type is valid: multiple call arguments, if/while/switch headers, aggregate field initializers, array elements, nested and parenthesized operands, logical operands, and unary operands. A try in a control header is bodyless because the following brace belongs to the control construct, while a handled try inside a header call argument keeps its handlers; a non-bool bodyless try condition reports \"try expression in if/while condition must produce bool, got T\" (flowcontrol_if.md § 11, flowcontrol_while.md § 7)"
       - "Result[T, E], Ok(...), Err(...), ordinary Result propagation, and local Result handlers have substantial frontend and Semantic IR support."
       - "checked arithmetic already participates in language-defined try semantics and binds try to the complete following arithmetic expression."
       - "current Sema exposes immutable resolved try facts for ordinary Result propagation, handled Result, and checked arithmetic propagation."
@@ -147,23 +179,18 @@ integrations:
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and maintained backends after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing-lowering: Preserve concrete error identity so open error narrowing in try and match can be lowered; resolve MD-008 for concrete channels. (Frontend narrowing with open-domain exhaustiveness is implemented.) Previously: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
-      - "open-error-discardability: Resolve discardability of the open error root from compiler-owned concrete payload/provenance facts; current try and match Err(_) checks cover concrete error types only."
+      - "open-error-discardability-separate-compilation: the open-error rule uses the declared error types of the analyzed program; separately compiled modules need exported error-obligation summaries before the same proof holds across module boundaries."
       - "result-projection-semantic-ir-lowering: Add explicit consuming and borrowed Result projection facts/operations to Semantic IR and maintained lowering, including retained-payload transfer, exactly-once destruction of an active forgotten payload, and borrowed projection provenance."
-      - "result-projection-discardability: Extend the current conservative non-discardable alternate-payload rejection with path-sensitive proof that the forgotten state is unreachable."
-      - "try-language-defined-short-circuit: Generalize try from a surface Result-only rule to compiler-known short-circuit/fallible expressions with a resolved success type and alternate/failure state, including Result, Option, checked arithmetic, indexing, constrained conversions, fallible new, and fallible assignment where defined by their owning rulebooks."
+      - "result-projection-discardability: extend the state proof beyond dominating borrowed-projection tests on immutable bindings, e.g. to match-refined mutable Results and Results known from their construction."
+      - "try-language-defined-short-circuit: remaining try operands are slicing (its error type is not named by runtime_checks.md) and checked scalar narrowing conversions such as try int32(wide) and try rune(codePoint), whose error type and payload await MD-012."
       - "try-option-local-handlers-lowering: Lower try over Option[T] with local None handlers, partial-handler propagation, and recovery values through Semantic IR and maintained backends. (Frontend None handlers, guards, recovery values, and propagation are implemented.) Naked compatible None propagation and Option/Result cross-channel rejection are implemented in the frontend."
-      - "try-failure-set: Represent multiple possible failures of one protected expression as compiler-internal failure facts without creating an anonymous source error union or automatic domain-error wrapper. Err(_) may handle a heterogeneous failure set."
-      - "try-heterogeneous-binding: Allow Err(name) catch-all binding only when the protected construct already provides one compiler-resolved binding type, such as one concrete error type or an explicitly declared error channel. Do not infer error solely to make an otherwise heterogeneous local binding possible."
-      - "try-partial-handlers-lowering: Lower partial handler plans with implicit residual propagation, including Option None partial handling, through Semantic IR and maintained backends. (Frontend partial Result handling is implemented.) Previously: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
-      - "try-handler-order-reachability: Extend the implemented duplicate-variant, catch-all, complete-enum, and guarded-handler checks to other provable pattern subsumption, such as payload patterns of union errors; retain top-to-bottom first-match semantics in resolved plans."
-      - "try-handler-where-guards-lowering: Lower guarded handlers with guard-false continuation and guarded ownership commit through Semantic IR. (Frontend guards and guard-consumption rejection are implemented.) Previously: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
-      - "try-recovery-values-lowering: Lower block-final recovery values and their merges through Semantic IR. (Frontend block-final values are implemented.) Previously: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
-      - "try-handler-failure-boundary: The attached handler set covers only failures from the protected expression. Failures originating in guards or handler bodies are outside that try and must use ordinary propagation or an explicit nested try."
-      - "try-expression-positions: Ensure try is usable anywhere its resolved success type is valid, including call arguments, boolean conditions, aggregate field initializers, nested/parenthesized expressions, and multiple argument positions. Assignment remains a statement and is not made into an expression."
-      - "mentor-error-diagnostics: Error-handling diagnostics must use programmer-facing mentor language. Explain Result versus Option pattern mismatches, incompatible propagation, missing try, ownership consumption, and likely fixes without requiring compiler-theory terminology."
+      - "try-failure-set-lowering: Semantic IR rejects failure-set try kinds explicitly; lowering must evaluate the ordered failure points with first-failure control flow and per-member propagation or handler dispatch."
+      - "try-partial-handlers-lowering: Lower partial handler plans through maintained backends and Option None partial handling through Semantic IR. (Frontend partial Result handling is implemented; Semantic IR lowers partial Result plans with residual propagation via the residual handler kind and residual-propagates marker, rejecting error widening; Sec MLIR emission rejects them pending MD-031.) Previously: Change local try handlers from the old exhaustive-handler model to partial handling: locally unmatched Result failures propagate implicitly when assignable, and unmatched Option None propagates only through a compatible Option return. match remains exhaustive."
+      - "try-handler-order-reachability: reachability for payload patterns of union errors is blocked on MD-029 (the ErrPattern production and whether Err(Union.Variant(binding)) is a try/match pattern); the parser and Sema accept only Err(_), Err(name), and Err(Enum.Variant) today."
+      - "try-handler-where-guards-lowering: Lower guarded handlers through maintained backends. (Frontend guards and guard-consumption rejection are implemented; Semantic IR lowers guarded handlers with guard evaluation and guard-false continuation, marked guarded; Sec MLIR emission rejects them pending MD-031.) Previously: Support where guards on try handlers using the same pattern/guard ownership discipline as match. Guard false continues to later handlers; prospective move-only payload ownership must not commit until pattern and guard select the arm."
+      - "try-recovery-values-lowering: Lower block-final recovery values through maintained backends. (Frontend block-final values are implemented; Semantic IR lowers block-final handler values into the merge.) Previously: In value position, every handled path that continues must produce a value assignable to the try success type. Handler block final expressions are contextual result-position values; terminating paths need no recovery value and void success handlers may complete normally."
+      - "try-expression-positions-lowering: Semantic IR and backends must lower try in every frontend-accepted position (call arguments, if/while/switch headers, field initializers, array elements, nested, logical, and unary operands); handlers in control headers are not defined by the rulebooks and are not parsed there."
       - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, and nested failure boundaries. Backends must not reconstruct these semantics from syntax or unused SSA. Direct Result return-try forwarding already has a dedicated resolved fact and canonical Semantic IR lowering."
-      - "errorhandling-lsp-v2: Replace the Result-only try-hover plan with compiler-resolved Result/Option/fallible-operation facts. Show success type, handled and propagated alternate states, concrete versus widened error identity, consuming versus borrowed projections, ownership consequences, and mentor diagnostics without reimplementing Sema in the LSP."
-      - "errorhandling-formatter-v2: Format direct try handlers canonically, preserve where guards and contextual handler block values, format new error declarations/setter error types/projections, and do not recreate the removed nested match wrapper or insert/remove semantic try operations."
     required_tests:
       - "error is compiler-known and import-free"
       - "enum ErrorType error declaration"
@@ -263,7 +290,7 @@ integrations:
     area: frontend-analysis
     status: partial
     integrated: "2026-08-11"
-    revised: "2026-09-23"
+    revised: "2026-10-03"
     summary: >-
       Accepts handlerless fallible assignment as ordinary implicit Result
       failure propagation. Sema resolves the target error contract, applies
@@ -289,6 +316,7 @@ integrations:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_try_assignment_test.go
       - internal/sema/analyzer_test.go
+      - cmd/lsp/hover_try_test.go
     implemented:
       - parser accepts try Assignment with or without an attached handler block and retains the following statement boundary
       - naked assignment requires a compiler-resolved fallible target error type
@@ -298,11 +326,12 @@ integrations:
       - no Option/Result conversion is introduced by naked assignment
       - Sema publishes immutable ResolvedTryAssignment facts for propagation and local-handler plans
       - statement-specific analysis was extracted from the oversized analyzer.go into analyzer_try_assignment.go
+      - "LSP hover on the try keyword of a fallible assignment consumes ResolvedTryAssignment: error channel, propagation target, or local handler coverage, each handler, and residual propagation"
     remaining:
       - consume ResolvedTryAssignment in Semantic IR and model the failure edge as an early Err return
       - carry cleanup and defer execution over the propagation edge
       - verify borrow-state and definite-initialization joins consume the resolved success/failure edges without reconstructing syntax
-      - extend LSP hover and control-flow presentation to consume the resolved assignment fact
+      - extend LSP control-flow presentation (call hierarchy, flow views) to consume the resolved assignment fact
     verification:
       - command: go test ./internal/parser ./internal/sema -run 'TryAssignment' -count=1
         result: passed; parser, compatible propagation, concrete-to-open error widening, invalid channels, local handlers, and immutable fact queries are covered
@@ -375,12 +404,13 @@ integrations:
       - checked integer effect sites carry canonical possible-reason sets derived from ResolvedOperator, including overflow, division by zero, and invalid shift without reparsing operator syntax
       - signed division and remainder retain both DivisionByZero and ArithmeticOverflow, while unsigned division retains only DivisionByZero
       - signed left shift retains InvalidShift and ArithmeticOverflow; other checked shifts retain InvalidShift
+      - "dynamic-array and slice indexing record may-panic-bounds effects with BoundsFailure, and run-time conversion into a constrained named type records may-panic-contract with ContractFailure; try (via the failure set) and fallible assignment remove exactly the converted effects, and compile-time constant conversions record none"
     remaining:
-      - attach stable registry IDs to contracts, invalid-reference generation, foreign abort, and every later canonical panic source
+      - attach stable registry IDs to invalid-reference generation and every later canonical panic source (contracts carry ContractFailure and foreign calls carry ForeignAbort)
       - implement allocation-free canonical PanicInfo construction from registered reason and static source metadata
       - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
-      - extend assertion panic-freedom proof beyond literal true through canonical semantic facts without suppressing condition-evaluation effects
-      - extend the existing function/method @noPanic slice to every callable form, cleanup path, foreign boundary, and canonical panic source
+      - extend assertion proof to symbolic relations between variables and arithmetic on refined values (current proof covers constants, type and range-contract intervals, logical composition, and identical dominating conditions)
+      - extend @noPanic to init, property accessors, lambdas, and free once their attribute placement is decided (MD-030); extern declarations now accept @noPanic as a trusted foreign contract
       - lower explicit panic through canonical Semantic IR, PanicInfo construction, and the selected non-returning endpoint
     required_tests:
       - assert condition parses
@@ -429,6 +459,8 @@ integrations:
       - rules/analysis/effect_analysis.md
       - rules/platform/interrupts.md
     implemented:
+      - "unknown callees are never positive @noPanic proof (panic.md § 21(3)–(4)): calls through a function value without a known target set, through an interface reference, or through a constrained generic parameter record may-panic-unknown-callee, while function values with a closed known target set are checked through those targets; defer bodies count toward the enclosing function"
+      - "extern calls without a trusted @noPanic foreign contract record may-panic-foreign (ForeignAbort); contract conversions and dynamic-array/slice indexing record their own panic effects"
       - compiler-owned callable effect summaries record direct checked-arithmetic and fixed-array-bounds MayPanic sites
       - deterministic transitive synchronous cause paths exist for the implemented checked-arithmetic and fixed-array-bounds verticals
       - handled or propagated arithmetic and fixed-array bounds try removes only its own resolved panic path while preserving nested operand-call panic effects
@@ -439,9 +471,12 @@ integrations:
       - effect sites for assertion failure, explicit panic, checked unreachable, and ordinary bounds failure retain exact diagnostics-registry PanicIDs alongside their effect kinds and source provenance
       - checked integer effect sites retain immutable ordered possible-reason sets from resolved operation kind and signedness; call-graph snapshots defensively copy those sets
       - arithmetic panic-effect recording and try-based removal are isolated in analyzer_panic_effects.go rather than extending analyzer.go
+      - "assertion proof beyond literal true (panic.md § 15.8): constants, integer type ranges narrowed by range contracts, && and ||, and an identical dominating assertion or true-branch condition not invalidated by mutation prove an assertion; proven assertions are recorded as Proven and contribute no MayPanic, while condition evaluation keeps its own effects"
+      - "foreign abort (panic.md § 19(3), ffi.md § 42): every call to an extern function without a trusted foreign contract records may-panic-foreign with the ForeignAbort reason; the parser accepts @noPanic on extern declarations, Sema records it as Function.TrustedNoPanic provenance rather than a verified guarantee, and hover shows the trusted contract"
+      - "contract conversions and dynamic-array/slice bounds participate in transitive @noPanic verification; violations use S1092 panic.no-panic-violation with the panic source as related location and mentor help per effect kind, naming the called function when the panic is transitive"
     remaining:
-      - extend assertion proof beyond literal true and integrate contracts, invalid-reference generation, and foreign abort into the existing canonical panic-effect model
-      - complete transitive @noPanic verification across direct and indirect calls, interfaces, generics, recursion, callbacks, FFI, compiler helpers, defer, destruction, and cleanup
+      - integrate invalid-reference generation into the canonical panic-effect model (assertion proof, contracts, and foreign abort are now integrated)
+      - complete transitive @noPanic verification for generic specializations (template calls through constraints are conservatively unknown), compiler helpers, destruction, and cleanup; closed function-value target sets, unknown targets, interface and constraint dispatch, FFI, and defer bodies are covered
       - version and validate separate-compilation panic summaries
       - preserve detailed panic causes and source provenance
       - distinguish child-domain contained panic from synchronous parent panic effect according to concurrency rules
@@ -554,15 +589,15 @@ integrations:
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
     implemented:
+      - "assert hover shows the resolved proof state (proven with no runtime check, or not proven with the registered AssertionFailed reason), the static message, and the refinement the assertion provides to following code"
+      - "call hierarchy prepare, incoming, and outgoing items mark callables whose compiler-owned effect summary may panic, making transitive panic-capable paths visible"
       - formatter preserves both assertion forms and canonicalizes one space after the optional message comma without confusing nested or quoted commas
       - formatter assertion coverage verifies canonical output and idempotence
       - formatter preserves canonical payload-free checked unreachable with ordinary statement indentation and idempotent output
       - LSP member completion projects the five canonical PanicInfo fields directly from the compiler-known Sema type
+      - "function and method hover presents the compiler-owned panic summary: May panic no/yes, each direct panic source with its registered reason names, and the synchronous panic path to a transitive source"
     remaining:
-      - LSP exposes noPanic or may-panic and cause paths from canonical analysis
-      - hover exposes assertion refinement and panic causes where useful
-      - call hierarchy reveals transitive panic-capable paths
-      - mentor diagnostics explain assertion type and syntax errors, noPanic violations, ISR panic paths, unknown foreign effects, and invalid cleanup
+      - mentor diagnostics explain assertion type and syntax errors, ISR panic paths, unknown foreign effects, and invalid cleanup (noPanic violations now explain cause and fix)
       - incrementally invalidate panic summaries when relevant dependencies change
     required_tests:
       - formatter round-trip for both assertion forms

@@ -1,0 +1,75 @@
+module main
+
+enum IOError error {
+    NotFound,
+    PermissionDenied,
+}
+
+enum ProtocolError uint16 error {
+    InvalidFrame       = 1,
+    UnsupportedVersion = 2,
+}
+
+type DetailedError union error {
+    Open(int),
+    Read(int),
+}
+
+type Counter struct {
+    value: int,
+}
+
+impl Counter {
+    property Value: int {
+        get {
+            return self.value
+        }
+        try set next IOError {
+            self.value = next
+        }
+    }
+}
+
+fn Read() Result[int, IOError] {
+    return Ok(1)
+}
+
+fn Find() Option[int] {
+    return None
+}
+
+fn Handle() int {
+    let a := try Read() {
+        Err(IOError.NotFound) => 0
+        Err(failure) where failure == IOError.PermissionDenied => 1
+        Err(_) => {
+            let fallback := 2
+            fallback
+        }
+    }
+    let b := try Find() {
+        None => 3
+    }
+    return a + b
+}
+
+fn Projections(result: Result[int, IOError]) int {
+    let borrowed := result.OkRef
+    discard borrowed
+    let value := result.Ok()
+    discard value
+    return 0
+}
+
+fn Assign(counter: ref mut Counter) Result[void, IOError] {
+    try counter.Value = 3
+    try counter.Value = 4 {
+        Err(_) => {
+        }
+    }
+    return Ok()
+}
+
+fn ReturnTry() Result[int, IOError] {
+    return try Read()
+}

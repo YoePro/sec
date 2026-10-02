@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,5 +94,72 @@ fn Forward(value: int) Result[int, ArithmeticError] {
 		"--sec-verify-try-handlers", "-o", os.DevNull)
 	if combined, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("sec-mlir-opt: %v\n%s\nGenerated:\n%s", err, combined, output)
+	}
+}
+
+// The Sec MLIR handler metadata has only the ok, err-variant, err-catch-all,
+// and merge kinds and requires catch-all finality and complete coverage, so
+// guarded handlers and partial plans are rejected explicitly, while block
+// recovery values emit as ordinary branches.
+//
+// Rules:
+//   - rules/mlir/dialect-versions/sec_mlir_dialect_v6.md — §12, §20
+func TestSecMLIRRejectsGuardedAndPartialTryHandlers(t *testing.T) {
+	sources := map[string]string{
+		"guarded": `module main
+fn Add(left: int, right: int) int {
+  return try left + right {
+    Err(error) where left > 0 => 1
+    Err(_) => 0
+  }
+}
+`,
+		"partial": `module main
+fn Divide(left: int, right: int) Result[int, ArithmeticError] {
+  let value := try left / right {
+    Err(ArithmeticError.DivisionByZero) => 0
+  }
+  return Ok(value)
+}
+`,
+		"block value": `module main
+fn Add(left: int, right: int) int {
+  return try left + right {
+    Err(_) => {
+      let fallback := 7
+      fallback
+    }
+  }
+}
+`,
+	}
+	target, _ := findTargetDefinition(CompilerTarget{OS: "linux", Arch: "amd64"})
+	plan, err := target.scalarPlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, source := range sources {
+		p := parser.New(lexer.NewWithFile(source, name+".sec"))
+		parsed := p.Parse()
+		a := sema.NewAnalyzer()
+		if diagnostics := a.Analyze(parsed.Program); len(diagnostics) != 0 {
+			t.Fatalf("%s sema: %v", name, diagnostics)
+		}
+		module, err := semantic.Build(parsed.Program, a, semantic.BuildOptions{RequestedModule: "main", SourceFiles: []string{name + ".sec"}, MaxPackage: 10})
+		if err != nil {
+			t.Fatalf("%s build: %v", name, err)
+		}
+		_, err = secmlirlowering.Emit(module, plan)
+		var unsupported *secmlirlowering.UnsupportedLoweringError
+		rejected := errors.As(err, &unsupported)
+		if name == "block value" {
+			if err != nil {
+				t.Fatalf("block value emit: %v", err)
+			}
+			continue
+		}
+		if !rejected {
+			t.Fatalf("%s emit error = %v, want an explicit unsupported lowering", name, err)
+		}
 	}
 }

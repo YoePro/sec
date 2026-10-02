@@ -500,7 +500,13 @@ type ClockConfig register[32] {
 	}
 }
 
-func TestParseEnumColonInitializersWarnForFormatterRecovery(t *testing.T) {
+// Legacy `Member: value` enum initializers are rejected with P2028 while the
+// initializers are retained for recovery; formatting never rewrites them.
+//
+// Rules:
+//   - rules/declarations/enums.md — explicit initializers use `=`
+//   - rules/foundations/grammar.md — "Legacy, future, and recovery syntax"
+func TestParseEnumColonInitializersAreRejectedLegacySyntax(t *testing.T) {
 	input := `
 enum ClockSource bit[2] {
 	Internal: 0b00,
@@ -511,7 +517,6 @@ enum ClockSource bit[2] {
 	l := lexer.New(input)
 	p := New(l)
 	program := p.ParseProgram()
-	checkParserErrors(t, p)
 
 	enumDecl, ok := program.Statements[0].(*ast.EnumDeclaration)
 	if !ok {
@@ -520,17 +525,18 @@ enum ClockSource bit[2] {
 	if len(enumDecl.Values) != 2 || enumDecl.Values[0].Initializer == nil || enumDecl.Values[1].Initializer == nil {
 		t.Fatalf("colon initializers should be parsed for formatter recovery: %+v", enumDecl.Values)
 	}
-	expected := []string{
-		"enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at 3:10",
-		"enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at 4:10",
+	found := p.Diagnostics()
+	if len(found) != 2 {
+		t.Fatalf("diagnostics = %+v, want two P2028", found)
 	}
-	if len(p.Warnings()) != len(expected) {
-		t.Fatalf("wrong parser warning count. got=%d want=%d warnings=%v", len(p.Warnings()), len(expected), p.Warnings())
-	}
-	for i, want := range expected {
-		if p.Warnings()[i] != want {
-			t.Fatalf("wrong parser warning %d. got=%q want=%q", i, p.Warnings()[i], want)
+	for index, member := range []string{"Internal", "External"} {
+		if found[index].ID != diagnostics.ParserLegacyEnumColonInitializer || found[index].Primary.Line != index+3 ||
+			!strings.Contains(found[index].Message, "write `"+member+" = ...`") {
+			t.Fatalf("diagnostic %d = %+v", index, found[index])
 		}
+	}
+	if len(p.Warnings()) != 0 {
+		t.Fatalf("legacy enum colon still reported as warning: %v", p.Warnings())
 	}
 }
 
@@ -1181,6 +1187,16 @@ func assertLiteralValue(t *testing.T, expr ast.Expression, expected any) {
 
 	default:
 		t.Fatalf("unsupported expected literal type %T", expected)
+	}
+}
+
+// expectSingleParserDiagnostic asserts that parsing produced exactly one
+// structured diagnostic with the given ID and message fragment.
+func expectSingleParserDiagnostic(t *testing.T, p *Parser, id string, fragment string) {
+	t.Helper()
+	found := p.Diagnostics()
+	if len(found) != 1 || found[0].ID != id || !strings.Contains(found[0].Message, fragment) {
+		t.Fatalf("diagnostics = %+v, want one %s containing %q", found, id, fragment)
 	}
 }
 
@@ -1838,8 +1854,8 @@ func TestParseSliceTypeReferences(t *testing.T) {
 	input := `
 ref byte[] mut: data
 Vec[byte[]] mut: chunks
-struct Packet { payload: ref byte[] }
-type ByteSlice = ref byte[]
+type Packet struct { payload: ref byte[] }
+type ByteSlice ref byte[]
 `
 
 	l := lexer.New(input)
@@ -1873,20 +1889,20 @@ type ByteSlice = ref byte[]
 	}
 	assertSliceType(t, letStmt.Type.TypeArgs[0], "byte")
 
-	structStmt, ok := program.Statements[2].(*ast.StructStatement)
-	if !ok {
-		t.Fatalf("statement 2 is not StructStatement. got=%T", program.Statements[2])
+	structDecl, ok := program.Statements[2].(*ast.TypeDeclStatement)
+	if !ok || structDecl.StructType == nil {
+		t.Fatalf("statement 2 is not a struct TypeDeclStatement. got=%T", program.Statements[2])
 	}
-	if len(structStmt.Fields) != 1 {
-		t.Fatalf("wrong field count. got=%d want=1", len(structStmt.Fields))
+	if len(structDecl.StructType.Fields) != 1 {
+		t.Fatalf("wrong field count. got=%d want=1", len(structDecl.StructType.Fields))
 	}
-	assertSliceType(t, structStmt.Fields[0].Type, "byte")
+	assertSliceType(t, structDecl.StructType.Fields[0].Type, "byte")
 
 	typeDecl, ok := program.Statements[3].(*ast.TypeDeclStatement)
 	if !ok {
 		t.Fatalf("statement 3 is not TypeDeclStatement. got=%T", program.Statements[3])
 	}
-	assertSliceType(t, typeDecl.AssignedType, "byte")
+	assertSliceType(t, typeDecl.BaseType, "byte")
 }
 
 func TestParseFixedArrayTypeReference(t *testing.T) {
@@ -2062,13 +2078,19 @@ func flattenParserTestContracts(contract ast.Contract) []ast.Contract {
 	return []ast.Contract{contract}
 }
 
-func TestParseLetVariableContract(t *testing.T) {
+// Inline variable contracts are legacy syntax: rejected with P2025 while the
+// contract is retained for recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Field contracts"
+//   - rules/types/contracts.md — inline field contracts
+func TestParseLetVariableContractIsRejectedLegacySyntax(t *testing.T) {
 	input := `let mut percentage: int range 0..100 := 50`
 
 	l := lexer.New(input)
 	p := New(l)
 	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	expectSingleParserDiagnostic(t, p, diagnostics.ParserLegacyInlineContract, "inline contract on variable percentage")
 
 	letStmt, ok := program.Statements[0].(*ast.LetStatement)
 	if !ok {
@@ -2196,14 +2218,19 @@ func assertSliceType(t *testing.T, ref *ast.TypeReference, elementName string) {
 	}
 }
 
-func TestParseStructStatement(t *testing.T) {
+// Standalone `struct Name` is planned Sec 0.2 syntax: rejected with P2027
+// while the declaration is retained for recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Standalone `struct Name`"
+func TestParseStructStatementIsRejectedFutureSyntax(t *testing.T) {
 	input := `struct Vehicle { _speed: Speed }`
 
 	l := lexer.New(input)
 	p := New(l)
 
 	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	expectSingleParserDiagnostic(t, p, diagnostics.ParserFutureStructDeclaration, "type Vehicle struct")
 
 	if len(program.Statements) != 1 {
 		t.Fatalf("wrong statement count. got=%d want=1", len(program.Statements))
@@ -2292,7 +2319,12 @@ type Bad struct {
 	}
 }
 
-func TestParseStructFieldRangeContract(t *testing.T) {
+// Inline field contracts are legacy syntax: rejected with P2025 while the
+// contract is retained for recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Field contracts"
+func TestParseStructFieldRangeContractIsRejectedLegacySyntax(t *testing.T) {
 	input := `
 type User struct {
 	Active: bool,
@@ -2304,7 +2336,7 @@ type User struct {
 	l := lexer.New(input)
 	p := New(l)
 	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	expectSingleParserDiagnostic(t, p, diagnostics.ParserLegacyInlineContract, "inline contract on field Age")
 
 	typeDecl := program.Statements[0].(*ast.TypeDeclStatement)
 	age := typeDecl.StructType.Fields[2]
@@ -3558,7 +3590,14 @@ impl Vehicle {
 	}
 }
 
-func TestParseImplReservesFreeOperation(t *testing.T) {
+// `free` is a parameterless lifecycle member of an impl. Malformed forms,
+// top-level free, and member access `value.free` keep focused recovery.
+//
+// Rules:
+//   - rules/declarations/impl.md — §19 "`free`"
+//   - rules/foundations/grammar.md — FreeDeclaration
+//   - rules/memory/destruction.md — §15.2 "Lifecycle status"
+func TestParseImplFreeDeclaration(t *testing.T) {
 	input := `
 impl File {
 	free {
@@ -3582,15 +3621,44 @@ impl File {
 	if len(impl.Members) != 2 {
 		t.Fatalf("wrong impl member count. got=%d want=2", len(impl.Members))
 	}
-	invalid, ok := impl.Members[0].(*ast.InvalidMember)
-	if !ok {
-		t.Fatalf("impl member 0 is not InvalidMember. got=%T", impl.Members[0])
-	}
-	if invalid.Message != "free operations are reserved for destruction but are not implemented yet" {
-		t.Fatalf("wrong invalid message. got=%q", invalid.Message)
+	free, ok := impl.Members[0].(*ast.FreeDeclaration)
+	if !ok || free.Body == nil || len(free.Body.Statements) != 1 {
+		t.Fatalf("impl member 0 is not a FreeDeclaration with its body. got=%#v", impl.Members[0])
 	}
 	if _, ok := impl.Members[1].(*ast.FunctionDeclaration); !ok {
-		t.Fatalf("impl member 1 should recover to function declaration. got=%T", impl.Members[1])
+		t.Fatalf("impl member 1 should be a function declaration. got=%T", impl.Members[1])
+	}
+
+	for _, test := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "parameters", input: "impl File {\n\tfree() {\n\t}\n\n\tfn Done() void {\n\t}\n}\n", want: "free declarations take no parameters or return type; write free { ... }"},
+		{name: "top level", input: "free {\n}\n", want: "free is a lifecycle member and is only valid inside an impl block"},
+		{name: "member access", input: "fn Use(file: File) void {\n\tfile.free()\n}\n", want: "free is a lifecycle member and cannot be called or accessed at 2:7"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := New(lexer.New(test.input))
+			program := p.ParseProgram()
+			message := strings.Join(p.Errors(), "\n")
+			switch statement := program.Statements[0].(type) {
+			case *ast.InvalidStatement:
+				message = statement.Message
+			case *ast.ImplStatement:
+				invalid, ok := statement.Members[0].(*ast.InvalidMember)
+				if !ok {
+					t.Fatalf("malformed free is not retained as InvalidMember: %T", statement.Members[0])
+				}
+				if _, ok := statement.Members[1].(*ast.FunctionDeclaration); !ok {
+					t.Fatalf("recovery lost the following method: %T", statement.Members[1])
+				}
+				message = invalid.Message
+			}
+			if !strings.Contains(message, test.want) {
+				t.Fatalf("message = %q, want %q", message, test.want)
+			}
+		})
 	}
 }
 
@@ -3962,7 +4030,12 @@ fn AppendDiagnostic(diagnostics: Diagnostic[]) Result[void, CollectionError] {
 	}
 }
 
-func TestParseTypeDeclWithStructAndVariants(t *testing.T) {
+// The legacy compact variant form is rejected with P2023 while its variants
+// are retained for recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Legacy assigned and compact variant forms"
+func TestParseTypeDeclWithStructAndLegacyVariants(t *testing.T) {
 	input := `
 type FileReader struct { handle: void }
 type IOError = FileNotFound AccessDenied InvalidValue
@@ -3972,7 +4045,7 @@ type IOError = FileNotFound AccessDenied InvalidValue
 	p := New(l)
 
 	program := p.ParseProgram()
-	checkParserErrors(t, p)
+	expectSingleParserDiagnostic(t, p, diagnostics.ParserLegacyAssignedType, "declare the alternatives with enum or union")
 
 	if len(program.Statements) != 2 {
 		t.Fatalf("wrong statement count. got=%d want=2", len(program.Statements))
@@ -6562,5 +6635,68 @@ func TestParseEnumDefaultMemberMarker(t *testing.T) {
 	value := declaration.Values[2]
 	if !value.Default || value.DefaultToken.Lexeme != "default" || value.Initializer == nil {
 		t.Fatalf("default enum value = %#v", value)
+	}
+}
+
+// A type declaration declares exactly one name. `type A, B int` is rejected
+// with P2029 without follow-on errors, and the first declaration is retained.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Named type declaration"
+//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — § 3.1
+func TestParseTypeDeclarationWithSeveralNamesIsRejected(t *testing.T) {
+	p := New(lexer.New("type Left, Right, Up int range 0..3\ntype Next int\n"))
+	program := p.ParseProgram()
+	expectSingleParserDiagnostic(t, p, diagnostics.ParserMultipleTypeDeclarationNames,
+		"declare `type Left <Type>` and `type Right <Type>` and `type Up <Type>` separately")
+	if len(program.Statements) != 2 {
+		t.Fatalf("statements = %d, want the retained declaration and the next one", len(program.Statements))
+	}
+	first, ok := program.Statements[0].(*ast.TypeDeclStatement)
+	if !ok || first.Name.Value != "Left" || first.BaseType == nil || first.BaseType.Name != "int" || first.Contract == nil {
+		t.Fatalf("retained declaration = %#v", program.Statements[0])
+	}
+}
+
+// A try in an if, while, or switch header is bodyless: the following brace
+// belongs to the control construct. A handled try inside a call argument of
+// the header keeps its handler block.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §11 "`try` in a condition"
+//   - rules/control-flow/flowcontrol_while.md — §7 "`try` in a condition"
+//   - rules/errors/errorhandling.md — try handlers
+func TestParseTryInControlHeaderIsBodyless(t *testing.T) {
+	input := `fn Use() Result[int, E] {
+	if try Check("x") {
+		return Ok(1)
+	}
+	while try Check("") {
+		break
+	}
+	if Accept(try Parse("x") {
+		Err(_) => 0
+	}) {
+		return Ok(2)
+	}
+	return Ok(0)
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	body := program.Statements[0].(*ast.FunctionDeclaration).Body.Statements
+	ifStmt := body[0].(*ast.IfStatement)
+	try, ok := ifStmt.Condition.(*ast.TryExpression)
+	if !ok || len(try.Handlers) != 0 || len(ifStmt.Consequence.Statements) != 1 {
+		t.Fatalf("if try header = %#v", ifStmt)
+	}
+	whileStmt := body[1].(*ast.WhileStatement)
+	if try, ok := whileStmt.Condition.(*ast.TryExpression); !ok || len(try.Handlers) != 0 {
+		t.Fatalf("while try header = %#v", whileStmt.Condition)
+	}
+	call := body[2].(*ast.IfStatement).Condition.(*ast.CallExpression)
+	if nested, ok := call.Arguments[0].(*ast.TryExpression); !ok || len(nested.Handlers) != 1 {
+		t.Fatalf("handled try in header call argument = %#v", call.Arguments[0])
 	}
 }

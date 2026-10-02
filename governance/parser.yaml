@@ -394,28 +394,21 @@ integrations:
       - internal/parser/parser_test.go
     implemented:
       - canonical postfix fixed-array and owning-dynamic-array type syntax
+      - "MD-002/MD-003 rejection: `type Name = T` and compact `type Name = A B ...` (P2023 parser.legacy-assigned-type), additional underlying types such as `type A int string` (P2024 parser.multiple-underlying-types), inline field and variable contracts (P2025 parser.legacy-inline-contract), prefix `[N]T`/`[]T` (P2026 parser.prefix-sequence-type, with the postfix spelling in the message), standalone `struct Name` (P2027 parser.future-struct-declaration), several names in one type declaration such as `type A, B int` (P2029 parser.multiple-type-declaration-names, retaining the first declaration), and the enum `Member: value` initializer (P2028 parser.legacy-enum-colon-initializer, formerly only a warning promising a formatter rewrite that ordinary formatting must not perform) are errors with focused migration messages while the AST is retained for recovery; Sema keeps its own storage-site contract rejection behind the parser error"
+      - "former positive parser tests for these forms are now rejection-and-retention tests, and testdata/match_valid.sec and testdata/testcode.sec were migrated to canonical syntax; a scan of sec/, testdata/, and examples/ finds no remaining use"
       - rejection of dotted source module declarations according to modules.md revision 1, superseding stale grammar implementation-status text
-      - standalone 'struct Name { ... }' parsing as legacy compatibility syntax
-      - prefix '[N]Type' and '[]Type' sequence-type parsing as legacy compatibility syntax
-      - '''type Name = ExistingType'' and compact ''='' variant parsing as legacy compatibility syntax'
-      - inline field-contract parsing remains available as a legacy parser path
       - substantial parser unit coverage exists for canonical declarations, expressions, control flow, types, recovery, and several legacy forms
+    decisions:
+      - "MD-002 and MD-003 are decided by rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md §§ 3-4 and recorded in grammar.md, types.md, contracts.md, and formatter.md: Sec 0.1 accepts only canonical syntax; `type Name TypeReference` has exactly one underlying type; legacy `type Name = ...` forms, inline field/variable contracts, the enum `Value: 1` initializer, and explicit `ref self` are invalid with focused migration diagnostics; standalone `struct Name` is Sec 0.2 syntax and prefix `[N]T`/`[]T` was never normative, so both are invalid Sec 0.1 syntax; default formatting never rewrites them"
     partial:
-      - compatibility syntax is not handled through one uniform migration/recovery policy
-      - prefix sequence syntax is accepted, while canonical collections.md revision 1 defines postfix T[N] and T[] syntax
-      - standalone struct syntax is accepted, while struct.md revision 2.0 defines 'type Name struct' as the canonical declaration
-      - inline field and variable contract syntax is still accepted even though the canonical contracts rulebook restricts contracts to named types
-      - the continuing language role of compact '=' type/variant syntax is unresolved by a dedicated modern rulebook
+      - "the formatter Language Correction `type Name = T` -> `type Name T` (formatter.md § 27(33)) is not implemented; ordinary formatting already leaves every invalid legacy form unchanged"
       - grammar.md still contains a 2026-08-01 implementation-status snapshot that is partly stale relative to later rulebooks and current governance
     remaining:
       - migrate the remaining grammar implementation-status material into relevant governance-ledger (parser.yaml)
       - reconcile or remove stale grammar status statements that conflict with later rulebooks, including the old dotted-module claim
       - reconcile stale 'require' contextual-identifier text with the later lexical_structure.md rule that reserves require globally
-      - define and enforce one policy for legacy compatibility forms: reject, emit a focused migration diagnostic, or formatter-normalize where the owning rule explicitly permits normalization
-      - remove or focused-diagnose obsolete inline field and variable contracts according to contracts.md
-      - normalize or focused-diagnose prefix sequence types rather than silently treating them as ordinary canonical source
-      - provide focused migration treatment for standalone struct declarations if they remain parser recovery syntax
-      - resolve the future of 'type Name = ExistingType' and compact '=' variants against the modern named-type, enum, and union rulebooks
+      - "implement the formatter Language Correction `type Name = T` -> `type Name T` (formatter.md § 27(33)) once the Language Corrections layer exists"
+      - "give the remaining recognized legacy forms (explicit `ref self`, nested try match wrapper) registered migration-diagnostic IDs; they are already rejected as errors with older unregistered messages"
       - create the canonical grammar fixture suite required by grammar.md
       - keep parser recovery tests distinct from accepted canonical-language tests so compatibility syntax cannot silently become canonical
     required_fixtures:

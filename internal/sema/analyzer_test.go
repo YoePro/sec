@@ -1332,7 +1332,8 @@ func TestVariableLevelContractRequiresNamedType(t *testing.T) {
 let mut percentage: int range 0..100 := 50
 `
 
-	errors := analyzeSource(t, input)
+	assertLegacyInlineContractParse(t, input, 1)
+	errors := analyzeRecoveredSource(input)
 	expected := []string{
 		"contracts belong to named types; variable percentage cannot declare an inline contract at 2:25",
 	}
@@ -1348,7 +1349,8 @@ let mut bad: string unique := "tag"
 let mut values: int[3] unique := [1, 2, 3]
 `
 
-	errors := analyzeSource(t, input)
+	assertLegacyInlineContractParse(t, input, 2)
+	errors := analyzeRecoveredSource(input)
 	expected := []string{
 		"contracts belong to named types; variable bad cannot declare an inline contract at 2:21",
 		"contracts belong to named types; variable values cannot declare an inline contract at 3:24",
@@ -2529,8 +2531,8 @@ module main
 unit ticks uint physical
 
 enum ClockSource bit[2] {
-	APB_CLK: 0b00
-	PLL_CLK: 0b10
+	APB_CLK = 0b00
+	PLL_CLK = 0b10
 }
 
 type TimerConfig register[32] {
@@ -3721,7 +3723,9 @@ let ok := User{ Active: true, Name: "Ada", Age: 42 }
 let bad := User{ Active: true, Name: "Ada", Age: 131 }
 `
 
-	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
+	assertLegacyInlineContractParse(t, input, 1)
+	analyzer := NewAnalyzer()
+	errors := analyzer.Analyze(parser.New(lexer.New(ensureModuleForTest(input))).ParseProgram())
 
 	expected := []string{
 		"contracts belong to named types; field User.Age cannot declare an inline contract at 5:11",
@@ -6557,7 +6561,7 @@ unit s physical
 		"function WrongOkType must return Ok(Speed), got Ok(IOError) at 13:19",
 		"function WrongErrType must return Err(IOError), got Err(Speed) at 17:13",
 		"function PlainReturn returning Result[Speed, IOError] must return Ok(...) or Err(...) at 21:9",
-		"try requires Result expression at 25:15",
+		"try requires Result expression, Option expression, or a language-defined runtime check such as checked arithmetic, indexing, or a constrained conversion; Speed(10) contains none at 25:15",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -7455,7 +7459,7 @@ func TestGenericArrayRecursiveStorageErrors(t *testing.T) {
 module main
 
 type Node[T] struct {
-	children: [2]Node[T],
+	children: Node[T][2],
 }
 
 fn Use(value: Node[int]) void {
@@ -7474,7 +7478,7 @@ func TestGenericChangingRecursiveInstantiationErrors(t *testing.T) {
 module main
 
 type Infinite[T] struct {
-	next: Infinite[[]T],
+	next: Infinite[T[]],
 }
 
 fn Use(value: Infinite[int]) void {
@@ -9829,9 +9833,9 @@ extern "C" fn badReferenceReturn() ref int
 
 	expected := []string{
 		"unknown extern ABI \"Rust\" at 4:1",
-		"extern C parameter 1 value has non-ABI-compatible type string at 5:24",
-		"extern C function badReturn has non-ABI-compatible return type string at 6:15",
-		"extern C function badReferenceReturn has non-ABI-compatible return type ref int at 7:15",
+		"extern \"C\" fn badParam: parameter 1 value has type string, which cannot cross the C ABI boundary: Sec string has no implicit C string representation at 5:24",
+		"extern \"C\" fn badReturn: return type has type string, which cannot cross the C ABI boundary: Sec string has no implicit C string representation at 6:27",
+		"extern \"C\" fn badReferenceReturn: return type has type ref int, which cannot cross the C ABI boundary: a raw extern declaration returns foreign pointers as RawPtr[T], never as a call-bounded reference at 7:36",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -10463,7 +10467,7 @@ fn Use() void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		"use of moved value message at 19:15, previous declaration at 14:11",
+		"message may no longer be available here; it was moved on one possible execution path at 19:15, previous declaration at 14:11",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -13083,4 +13087,69 @@ func TestDynamicArrayMembershipRejectsIncompatibleElements(t *testing.T) {
 			t.Fatalf("missing membership diagnostic/help: %+v", err)
 		}
 	}
+}
+
+// Interface requirements are analyzed before enum and union bodies, so the
+// error marker must already be part of the registered type header for a
+// requirement such as `Result[int, MyError]` to name a declared error type.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §3 "Declaring concrete error types", §4
+//   - rules/declarations/interfaces.md — §2 "Interface declaration"
+func TestInterfaceRequirementsAcceptDeclaredErrorTypes(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+
+interface Source {
+    mut fn Next() Result[int, EnumFailure]
+    mut fn Detail() Result[int, UnionFailure]
+}
+
+enum EnumFailure error {
+    Bad,
+}
+
+type UnionFailure union error {
+    Broken(int),
+}
+
+enum PlainEnum {
+    Value,
+}
+
+interface Invalid {
+    fn Read() Result[int, PlainEnum]
+}
+`)
+	assertSemaErrors(t, errors, []string{
+		"Result error type PlainEnum is not an error type; use error or declare PlainEnum with the error marker at 22:27",
+	})
+}
+
+// assertLegacyInlineContractParse checks that the parser rejects inline
+// contracts as legacy syntax (P2025) while retaining them for recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — "Field contracts"
+//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — § 4
+func assertLegacyInlineContractParse(t *testing.T, input string, want int) {
+	t.Helper()
+	p := parser.New(lexer.New(input))
+	p.ParseProgram()
+	found := 0
+	for _, diagnostic := range p.Diagnostics() {
+		if diagnostic.ID != diagnostics.ParserLegacyInlineContract {
+			t.Fatalf("unexpected parser diagnostic %+v", diagnostic)
+		}
+		found++
+	}
+	if found != want {
+		t.Fatalf("legacy inline contract diagnostics = %d, want %d", found, want)
+	}
+}
+
+// analyzeRecoveredSource runs Sema over the AST retained after parser
+// recovery, so Sema's own storage-site contract rejection stays covered.
+func analyzeRecoveredSource(input string) []Error {
+	return NewAnalyzer().Analyze(parser.New(lexer.New(ensureModuleForTest(input))).ParseProgram())
 }

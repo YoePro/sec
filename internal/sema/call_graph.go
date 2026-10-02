@@ -114,11 +114,20 @@ type ArenaCallableSummary struct {
 type EffectKind string
 
 const (
-	EffectMayPanicArithmetic          EffectKind = "may-panic-arithmetic"
-	EffectMayPanicBounds              EffectKind = "may-panic-bounds"
-	EffectMayPanicExplicit            EffectKind = "may-panic-explicit"
-	EffectMayPanicAssertion           EffectKind = "may-panic-assertion"
-	EffectMayPanicUnreachable         EffectKind = "may-panic-unreachable"
+	EffectMayPanicArithmetic  EffectKind = "may-panic-arithmetic"
+	EffectMayPanicBounds      EffectKind = "may-panic-bounds"
+	EffectMayPanicExplicit    EffectKind = "may-panic-explicit"
+	EffectMayPanicAssertion   EffectKind = "may-panic-assertion"
+	EffectMayPanicUnreachable EffectKind = "may-panic-unreachable"
+	// EffectMayPanicContract is a run-time conversion into a constrained
+	// named type outside try (rules/errors/panic.md ContractFailure).
+	EffectMayPanicContract EffectKind = "may-panic-contract"
+	// EffectMayPanicForeign is a call to an extern function without a trusted
+	// @noPanic foreign contract (rules/errors/panic.md § 19(3), ForeignAbort).
+	EffectMayPanicForeign EffectKind = "may-panic-foreign"
+	// EffectMayPanicUnknownCallee is a call through a function value whose
+	// target set is not known, so its panic behavior cannot be proven.
+	EffectMayPanicUnknownCallee       EffectKind = "may-panic-unknown-callee"
 	EffectMayUseNondeterministicInput EffectKind = "may-use-nondeterministic-input"
 	EffectVolatileRead                EffectKind = "volatile-read"
 	EffectVolatileWrite               EffectKind = "volatile-write"
@@ -740,7 +749,7 @@ func (g *CallGraph) EffectSummary(id CallableID) CallableEffectSummary {
 	summary := CallableEffectSummary{DirectEffects: cloneEffectSites(g.effects[id])}
 	summary.PanicPath = g.synchronousPathTo(id, func(candidate CallableID) bool {
 		for _, effect := range g.effects[candidate] {
-			if effect.Kind == EffectMayPanicArithmetic || effect.Kind == EffectMayPanicBounds || effect.Kind == EffectMayPanicExplicit || effect.Kind == EffectMayPanicAssertion || effect.Kind == EffectMayPanicUnreachable {
+			if isPanicEffectKind(effect.Kind) {
 				return true
 			}
 		}
@@ -945,4 +954,21 @@ func sortCallSites(sites []CallSite) {
 		}
 		return left.Column < right.Column
 	})
+}
+
+// isPanicEffectKind reports the direct effect kinds that make a callable
+// panic-capable for @noPanic and transitive panic paths.
+//
+// Rules:
+//   - rules/errors/panic.md — § 21 "@noPanic", registered panic reasons
+//
+// IsPanicEffectKind exposes the panic-effect classification to tooling.
+func IsPanicEffectKind(kind EffectKind) bool { return isPanicEffectKind(kind) }
+
+func isPanicEffectKind(kind EffectKind) bool {
+	switch kind {
+	case EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee:
+		return true
+	}
+	return false
 }

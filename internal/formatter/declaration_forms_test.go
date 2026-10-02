@@ -109,3 +109,49 @@ func TestFormatKeepsForeignQualifiedNamesContiguous(t *testing.T) {
 		t.Fatalf("formatting is not idempotent:\n%s", again)
 	}
 }
+
+// A free lifecycle member formats as `free {` with an ordinary indented body
+// and is a fixed point.
+//
+// Rules:
+//   - rules/declarations/impl.md — §19 "`free`"
+//   - rules/tooling/formatter.md — §3
+func TestFormatFreeLifecycleMember(t *testing.T) {
+	input := "module main\n\nimpl Handle {\n    free   {\n  Release(self.raw)\n    }\n}\n"
+	want := "module main\n\nimpl Handle {\n    free {\n        Release(self.raw)\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("free formatted as:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("free formatting is not idempotent:\n%s", again)
+	}
+}
+
+// Error-handling syntax formats canonically from irregular spacing and the
+// result is a fixed point: error enum and union markers, representation
+// enums, fallible setter contracts, direct try handlers with where guards and
+// block values, Option None handlers, borrowed and consuming projections,
+// fallible assignment with and without handlers, and return try. No semantic
+// try or match is inserted or removed.
+//
+// Rules:
+//   - rules/tooling/formatter.md — §19(1)–(6) "try"
+//   - rules/errors/errorhandling.md — §§3, 6, 15, 19, 21.1, 23, 24, 26
+func TestFormatErrorHandlingForms(t *testing.T) {
+	input, err := os.ReadFile("../../testdata/formatter/errorhandling_forms.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../../testdata/formatter/errorhandling_forms.expected.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Format(Source{Text: string(input)}, Options{}).Text
+	if got != string(want) {
+		t.Fatalf("error-handling forms formatted as:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("error-handling formatting is not idempotent:\n%s", again)
+	}
+}

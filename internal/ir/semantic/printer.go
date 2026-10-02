@@ -280,6 +280,12 @@ func formatOperation(out *strings.Builder, op Operation) {
 		if op.Variant != "" {
 			fmt.Fprintf(out, " variant=%s", op.Variant)
 		}
+		if op.TryHandlerGuarded {
+			out.WriteString(" guarded")
+		}
+		if op.TryResidualPropagates {
+			out.WriteString(" residual-propagates")
+		}
 		out.WriteByte(']')
 	}
 	if len(op.Results) > 0 {

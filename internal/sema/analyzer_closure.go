@@ -154,6 +154,11 @@ func (a *Analyzer) recordFunctionValueCall(call *ast.CallExpression) {
 	}
 	identity, ok := a.callableIdentityForExpression(call.Callee)
 	if !ok {
+		// rules/errors/panic.md § 21(3)–(4): an unknown target's panic
+		// behavior is unknown, which is never positive @noPanic proof.
+		if a.callGraphPathReachable {
+			a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: call.Token})
+		}
 		return
 	}
 	dispatch := CallDispatchFunctionValue

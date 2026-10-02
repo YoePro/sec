@@ -342,7 +342,7 @@ fn Check(resource: Resource, consume: bool) void {
 	let borrowed := ref resource
 }
 `,
-			want: "cannot borrow conditionally available place resource; refine it with `resource is available` first",
+			want: "cannot borrow conditionally available place resource; it was moved on one possible execution path",
 		},
 	}
 
@@ -351,6 +351,9 @@ fn Check(resource: Resource, consume: bool) void {
 			errors := analyzeSource(t, test.source)
 			if len(errors) != 1 || !strings.Contains(errors[0].Message, test.want) {
 				t.Fatalf("borrow availability diagnostics = %v, want %q", errors, test.want)
+			}
+			if name == "conditionally available" && (errors[0].ID != "S1089" || !strings.Contains(errors[0].Help, "`resource is available`")) {
+				t.Fatalf("conditional borrow diagnostic = %+v, want S1089 with availability-test help", errors[0])
 			}
 		})
 	}

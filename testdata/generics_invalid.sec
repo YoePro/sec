@@ -99,7 +99,7 @@ type Node[T] struct {
 }
 
 type Infinite[T] struct {
-    next: Infinite[[]T],
+    next: Infinite[T[]],
 }
 
 impl Box[U] {

@@ -215,7 +215,7 @@ integrations:
       - canonical documentation now defines one common LIFO order for deferred cleanup and automatic destruction
     remaining:
       - isolate cleanup-time state mutations such as deferred Arena.Reset or Arena.Release from ordinary post-registration flow state
-      - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init while rejecting it in free
+      - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init; rejection inside free is implemented by frontend.destruction (S1086)
       - model defer registration and automatic destruction in one source-ordered cleanup stack across ownership and destruction analysis
       - extend only defer-referenced lifetimes while preserving earliest legal destruction for unrelated locals
       - preserve unified cleanup ordering on every normal return, propagated error, conditional branch, loop, and fallthrough edge

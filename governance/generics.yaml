@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-09-26"
+    revised: "2026-10-02"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -15,7 +15,8 @@ integrations:
       constraint declaration validation have substantial frontend support;
       ordered multi-constraint conjunctions, explicit generic function and
       concrete generic-type conformance checks, and constraint-guaranteed
-      instance method lookup in generic bodies now have frontend support;
+      instance method lookup in generic bodies now have frontend support, and
+      LSP hover presents ordered constraint sets from compiler facts;
       method-level generics, complete specialization identity, and
       concrete-only backend lowering remain incomplete.
     rules:
@@ -36,9 +37,11 @@ integrations:
       - internal/cst/roles.go
       - internal/sema/analyzer.go
       - internal/sema/generic_constraints.go
+      - internal/sema/generic_parameter_facts.go
       - internal/sema/types.go
       - internal/formatter/cst_spacing.go
       - cmd/compiler/main.go
+      - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/parser/generic_parameter_recovery_test.go
@@ -46,10 +49,12 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/generic_constraint_operations_test.go
       - internal/sema/generic_type_constraints_test.go
+      - internal/sema/generic_parameter_facts_test.go
       - internal/sema/copy_move_test.go
       - internal/formatter/formatter_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
+      - cmd/lsp/generic_constraint_hover_test.go
       - testdata/generics_valid.sec
       - testdata/generics_invalid.sec
     implemented:
@@ -80,10 +85,14 @@ integrations:
       - generic struct, named-type, union, enum, and interface templates retain every resolved constraint in source order and require valid explicit conformance for every concrete type argument before specialization; partial conjunction satisfaction and structural similarity are insufficient
       - generic function and declaration bodies may call instance methods guaranteed by one or more interface constraints; duplicate equivalent requirements are composed once, unconstrained parameters gain no structural members, and mutable receiver requirements remain enforced by ordinary call analysis
       - parser-owned concrete conjunction tokens project onto lossless CST roles, allowing canonical ` & ` formatter spacing while preserving ordinary bitwise expressions, recovered missing constraints, exact source ownership, and idempotence
+      - Sema retains a GenericParameterFact per parameter declaration with its ordered constraint conjunction and the composed guaranteed instance methods; GenericParameterDisplays renders template headers from the retained GenericConstraints without consulting syntax
+      - LSP hover shows ordered multiple-constraint headers on generic function and type templates, and hover at a generic parameter declaration or use lists every required conjunct in source order plus the guaranteed instance methods with mut receivers, composing equivalent requirements once and claiming no members for unconstrained parameters
+      - "`ref T` and `ref mut T` types retain the referent name token, so navigation and hover bind the referent to its declaration instead of the `ref` keyword"
+      - generic impl target parameters are the target declaration's own parameters and keep its ordered constraint conjunction in the impl scope, so impl method parameters and locals typed by them may call constraint-guaranteed instance methods while unconstrained parameters gain none; their facts name the owning impl target and LSP hover presents the inherited constraints at the impl target and every use
       - conservative copy/move treatment when a generic parameter lacks a proven copy capability
       - direct, array-mediated, and changing-argument recursive generic struct storage diagnostics with indirection cases retained
     remaining:
-      - add richer LSP hover presentation for ordered multiple-constraint sets without reconstructing them outside compiler facts
+      - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
       - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
       - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
       - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
@@ -124,6 +133,10 @@ integrations:
         result: passed on 2026-09-26 with ordered constraint retention and explicit-conformance enforcement for concrete generic struct, named-type, union, interface, and enum substitutions
       - command: go test ./internal/sema -run 'Generic|Generics' -count=1
         result: passed on 2026-09-26 with constraint-guaranteed instance method lookup in generic bodies, multiple-constraint composition, unconstrained-member rejection, and mutable receiver enforcement
+      - command: go test ./internal/sema ./cmd/lsp -run 'GenericParameterFacts|OrderedMultipleGenericConstraints' -count=1
+        result: passed on 2026-10-02 with ordered function and type headers, parameter hover at declaration, plain use, ref mut use, and field use, composed guaranteed methods, unconstrained parameters, and referent definition binding
+      - command: go test ./internal/sema ./cmd/lsp -run 'GenericImplParametersKeepTargetConstraints|OrderedMultipleGenericConstraints' -count=1
+        result: passed on 2026-10-02 with impl-scope constraint inheritance, guaranteed and rejected member calls on impl method parameters, impl target facts, and hover at the impl target, impl method parameter use, and unconstrained impl parameters
 
   - id: compiler.generics-lowering
     area: compiler-semantic-ir-and-mlir

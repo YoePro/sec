@@ -119,7 +119,7 @@ func (a *Analyzer) validateExplicitDiscardType(valueType Type, token lexer.Token
 		a.addErrorAtToken(token, "cannot discard unresolved %s; await, join or detach it explicitly", typeDisplayName(valueType))
 		return false
 	}
-	if isDiscardableType(valueType) {
+	if a.isDiscardable(valueType) {
 		return true
 	}
 	a.addErrorAtTokenWithMetadata(
@@ -127,7 +127,7 @@ func (a *Analyzer) validateExplicitDiscardType(valueType Type, token lexer.Token
 		diagnostics.NonDiscardableValue,
 		"handle the value and resolve every contained task or thread lifecycle",
 		"cannot discard %s because it may contain an unresolved lifecycle handle",
-		typeDisplayName(valueType),
+		a.nonDiscardableSubject(valueType),
 	)
 	return false
 }

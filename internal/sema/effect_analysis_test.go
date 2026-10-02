@@ -90,8 +90,13 @@ fn Wrap(value: int) Result[int, ArithmeticError] {
     return Ok(value)
 }
 
-fn OrdinaryTryDoesNotHandleArgument(left: int, right: int) Result[int, ArithmeticError] {
+fn TryProtectsCallArgument(left: int, right: int) Result[int, ArithmeticError] {
     return Ok(try Wrap(left + right))
+}
+
+fn SeparateArgumentStillPanics(left: int, right: int) Result[int, ArithmeticError] {
+    let sum := left + right
+    return Ok(try Wrap(sum))
 }
 `)
 	assertSemaErrors(t, errors, nil)
@@ -114,10 +119,15 @@ fn OrdinaryTryDoesNotHandleArgument(left: int, right: int) Result[int, Arithmeti
 		t.Fatalf("OperandStillPanics effects = %+v, want transitive operand-call panic", operand)
 	}
 
-	ordinaryID := callGraphNodeIDByName(t, graph, "OrdinaryTryDoesNotHandleArgument")
-	ordinary := graph.EffectSummary(ordinaryID)
-	if !ordinary.MayPanic || len(ordinary.DirectEffects) != 1 {
-		t.Fatalf("OrdinaryTryDoesNotHandleArgument effects = %+v, want argument arithmetic panic", ordinary)
+	// rules/errors/runtime_checks.md "What try converts": the checked
+	// addition inside the protected call argument is part of the try subtree.
+	protectedID := callGraphNodeIDByName(t, graph, "TryProtectsCallArgument")
+	if protected := graph.EffectSummary(protectedID); protected.MayPanic || len(protected.DirectEffects) != 0 {
+		t.Fatalf("TryProtectsCallArgument effects = %+v, want the argument arithmetic converted by try", protected)
+	}
+	separateID := callGraphNodeIDByName(t, graph, "SeparateArgumentStillPanics")
+	if separate := graph.EffectSummary(separateID); !separate.MayPanic || len(separate.DirectEffects) != 1 {
+		t.Fatalf("SeparateArgumentStillPanics effects = %+v, want arithmetic outside the try to keep its panic", separate)
 	}
 }
 

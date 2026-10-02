@@ -227,30 +227,6 @@ fn Test() void {
 	})
 }
 
-func TestFreeOperationIsReservedUntilDestructionRulesAreImplemented(t *testing.T) {
-	input := `
-module main
-
-type File struct {
-    handle: int,
-}
-
-impl File {
-    free {
-        Close(handle)
-    }
-}
-
-fn Close(handle: int) void {
-}
-`
-
-	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, []string{
-		"free operations are reserved for destruction but are not implemented yet at 9:5",
-	})
-}
-
 func TestOpenFileMustBeClosedBeforeScopeExit(t *testing.T) {
 	input := `
 module io

@@ -497,6 +497,10 @@ type TypeReference struct {
 
 	Ref        bool
 	MutableRef bool
+	// ReferentToken is the referent's own name token for a `ref T` or
+	// `ref mut T` type, whose Token is the `ref` keyword. It lets navigation
+	// and hover bind the referent name to its declaration.
+	ReferentToken lexer.Token
 
 	// ElementType is used for slice and array types such as byte[] and int[3].
 	ElementType *TypeReference
@@ -1642,6 +1646,25 @@ func (ae *AvailabilityExpression) String() string {
 	return ae.Place.String() + operator
 }
 
+// NullTestExpression is the unsafe-only `subject is null` raw-pointer test
+// from rules/platform/ffi.md §11. NullToken retains the sentinel spelling.
+type NullTestExpression struct {
+	Token     lexer.Token
+	Subject   Expression
+	NullToken lexer.Token
+}
+
+func (nt *NullTestExpression) expressionNode() {}
+
+func (nt *NullTestExpression) TokenLiteral() string { return nt.Token.Lexeme }
+
+func (nt *NullTestExpression) String() string {
+	if nt == nil || nt.Subject == nil {
+		return ""
+	}
+	return nt.Subject.String() + " is null"
+}
+
 type RangeExpression struct {
 	Token     lexer.Token
 	Start     Expression
@@ -2145,6 +2168,21 @@ type InitDeclaration struct {
 func (id *InitDeclaration) implMemberNode() {}
 
 func (id *InitDeclaration) TokenLiteral() string { return id.Token.Lexeme }
+
+// FreeDeclaration is the custom lifecycle cleanup member `free { ... }` of an
+// impl. It has no name, parameters, or return type and is never callable.
+//
+// Rules:
+//   - rules/declarations/impl.md — §19 "`free`"
+//   - rules/foundations/grammar.md — FreeDeclaration
+type FreeDeclaration struct {
+	Token lexer.Token
+	Body  *BlockStatement
+}
+
+func (fd *FreeDeclaration) implMemberNode() {}
+
+func (fd *FreeDeclaration) TokenLiteral() string { return fd.Token.Lexeme }
 
 // InvalidMember retains a malformed or disallowed impl member and the exact
 // region skipped while finding the next member boundary.

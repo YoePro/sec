@@ -1,6 +1,9 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+)
 
 // analyzeTryAssignmentStatement validates a fallible assignment and resolves
 // either its local handler plan or its enclosing Result propagation edge.
@@ -24,8 +27,16 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 
 	errorType, ok := a.tryAssignmentErrorType(stmt.Assignment)
 	if !ok {
-		a.addErrorAtToken(stmt.Token, "try assignment requires a fallible assignment target with a known error type")
+		a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.TryAssignmentWithoutFallibleTarget,
+			"try assignment is for targets that can reject a value: a property with a `try set` error contract, or a variable of a constrained named type. Remove try for an ordinary assignment.",
+			"try assignment requires a fallible assignment target with a known error type")
 		return
+	}
+	// rules/types/contracts.md: in `try p = Percent(raw)` the constrained
+	// conversion is the fallible step, so its failure is the assignment's
+	// ContractError rather than an ordinary contract panic.
+	if call, isCall := stmt.Assignment.Value.(*ast.CallExpression); isCall && errorType.Name == "ContractError" && a.runtimeContractConversion(call) {
+		a.resolveContractFailureEffect(call)
 	}
 	if len(stmt.Handlers) > 0 {
 		a.analyzeTryAssignmentHandlers(stmt, errorType)

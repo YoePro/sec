@@ -1,0 +1,68 @@
+module main
+
+enum ParseError error {
+    Bad,
+}
+
+type Pair struct {
+    left: int,
+    right: int,
+}
+
+fn Parse(text: string) Result[int, ParseError] {
+    if text == "" {
+        return Err(ParseError.Bad)
+    }
+    return Ok(1)
+}
+
+fn Check(text: string) Result[bool, ParseError] {
+    return Ok(text != "")
+}
+
+fn Add(a: int, b: int) int {
+    return a + b
+}
+
+fn Args() Result[int, ParseError] {
+    return Ok(Add(try Parse("1"), try Parse("2")))
+}
+
+fn Condition() Result[int, ParseError] {
+    if try Check("x") {
+        return Ok(1)
+    }
+    while try Check("") {
+        break
+    }
+    return Ok(0)
+}
+
+fn Field() Result[Pair, ParseError] {
+    let pair := Pair { left: try Parse("1"), right: try Parse("2") }
+    return Ok(pair)
+}
+
+fn Nested() Result[int, ParseError] {
+    let value := (try Parse("1")) + Add(1, (try Parse("2")))
+    return Ok(value)
+}
+
+fn ArrayElements() Result[int[], ParseError] {
+    let values: int[] := [try Parse("1"), try Parse("2")]
+    return Ok(values)
+}
+
+fn MethodArg(text: string) Result[int, ParseError] {
+    let length := text.Len
+    discard length
+    return Ok(try Parse(text))
+}
+
+fn LogicalShortCircuit(flag: bool) Result[bool, ParseError] {
+    return Ok(flag && try Check("x"))
+}
+
+fn Unary() Result[int, ParseError] {
+    return Ok(-(try Parse("1")))
+}

@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"sync"
 	"unicode"
 
 	"sec/internal/layout"
@@ -138,6 +139,10 @@ type Type struct {
 	InterfaceMethods        []Function
 	InterfaceProperties     []InterfaceProperty
 	InterfaceEvents         []InterfaceEvent
+	// CustomFree is set when the nominal declaration owns a custom `free`
+	// lifecycle member (rules/memory/destruction.md §15). Such a type is
+	// non-trivially destructible and forbids partial moves from its fields.
+	CustomFree bool
 }
 
 // NewVariadicPackType constructs the ephemeral compiler-known parameter pack
@@ -552,6 +557,12 @@ type Function struct {
 	ConstructionError        *Type
 	ReturnOrigin             localReferenceOrigin
 	HasReturnOrigin          bool
+	// CustomFree marks the non-callable `free` lifecycle body of a type.
+	CustomFree bool
+	// TrustedNoPanic records an extern declaration annotated @noPanic: a
+	// trusted foreign contract rather than a compiler-verified guarantee
+	// (rules/platform/ffi.md §42).
+	TrustedNoPanic bool
 }
 
 // GenericConstraint retains one resolved compile-time interface requirement
@@ -773,7 +784,35 @@ type Symbol struct {
 	HasCallableIdentity bool
 }
 
+var (
+	builtinTypeTableOnce sync.Once
+	builtinTypeTable     map[string]Type
+)
+
+// builtinTypes returns a fresh, caller-owned copy of the builtin type table
+// for an Analyzer, which extends its own table with declarations.
 func builtinTypes() map[string]Type {
+	shared := sharedBuiltinTypes()
+	types := make(map[string]Type, len(shared))
+	for name, typ := range shared {
+		types[name] = typ
+	}
+	return types
+}
+
+// builtinType looks up one builtin type without rebuilding the table. Hot
+// paths such as compiler-known member lookup call it for every member
+// expression, so the table is constructed once and treated as read-only.
+func builtinType(name string) Type {
+	return sharedBuiltinTypes()[name]
+}
+
+func sharedBuiltinTypes() map[string]Type {
+	builtinTypeTableOnce.Do(func() { builtinTypeTable = newBuiltinTypes() })
+	return builtinTypeTable
+}
+
+func newBuiltinTypes() map[string]Type {
 	types := map[string]Type{
 		"any":    {Name: "any", Kind: AnyType},
 		"bool":   {Name: "bool", Kind: BoolType},
@@ -1185,6 +1224,11 @@ func TriviallyDestructible(typ Type) bool {
 }
 
 func triviallyDestructible(typ Type, visiting map[string]bool) bool {
+	// rules/memory/destruction.md §3.3(2): a type with custom free is
+	// non-trivially destructible regardless of its fields.
+	if typ.CustomFree {
+		return false
+	}
 	switch typ.Kind {
 	case InvalidType,
 		VoidType,

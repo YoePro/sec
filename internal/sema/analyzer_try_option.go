@@ -19,17 +19,17 @@ func (a *Analyzer) inferNakedOptionTryExpression(expr *ast.TryExpression, option
 	result := expressionValue{Display: expr.String()}
 
 	if a.inDeferBlock {
-		a.addErrorAtToken(expr.Token, "bodyless Option try cannot propagate None from inside defer; add a local None handler")
+		a.addBodylessTryError(expr.Token, "bodyless Option try cannot propagate None from inside defer; add a local None handler")
 		return successType, result
 	}
 	if !a.inFunctionBody {
-		a.addErrorAtToken(expr.Token, "bodyless Option try cannot propagate None outside a function; add a local None handler")
+		a.addBodylessTryError(expr.Token, "bodyless Option try cannot propagate None outside a function; add a local None handler")
 		return successType, result
 	}
 
 	returnType := a.currentFunctionReturn
 	if returnType.Kind != UnionType || returnType.Name != "Option" || len(returnType.TypeArgs) != 1 {
-		a.addErrorAtToken(
+		a.addBodylessTryError(
 			expr.Token,
 			"bodyless Option try cannot propagate None because this function returns %s; return Option[%s] or add a local None handler",
 			typeDisplayName(returnType),
@@ -38,7 +38,7 @@ func (a *Analyzer) inferNakedOptionTryExpression(expr *ast.TryExpression, option
 		return successType, result
 	}
 	if !canInitialize(returnType, optionType, expr.Expression) {
-		a.addErrorAtToken(
+		a.addBodylessTryError(
 			expr.Token,
 			"bodyless %s try cannot propagate None through incompatible return %s; change the return type or add a local None handler",
 			typeDisplayName(optionType),

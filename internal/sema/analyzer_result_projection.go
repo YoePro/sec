@@ -68,14 +68,14 @@ func (a *Analyzer) inferConsumingResultProjection(
 	if member.Name == "Err" {
 		discardedPayload = resultType.TypeArgs[0]
 	}
-	if !isDiscardableType(discardedPayload) {
+	if !a.isDiscardable(discardedPayload) && !a.provesResultProjectionSafe(memberExpr.Object, member.Name) {
 		a.addErrorAtTokenWithMetadata(
 			memberExpr.Property.Token,
 			diagnostics.NonDiscardableValue,
 			"handle the Result with match so both payloads are handled explicitly",
 			"%s() cannot discard the alternate %s payload because it carries a non-discardable obligation",
 			member.Name,
-			typeDisplayName(discardedPayload),
+			a.nonDiscardableSubject(discardedPayload),
 		)
 		return Type{Kind: InvalidType}, value, true
 	}
@@ -87,6 +87,9 @@ func (a *Analyzer) inferConsumingResultProjection(
 		}
 		if !place.Addressable {
 			a.addErrorAtToken(memberExpr.Property.Token, "%s() requires an addressable owned Result receiver", member.Name)
+			return Type{Kind: InvalidType}, value, true
+		}
+		if a.rejectCustomFreePartialMove(place, memberExpr.Property.Token) {
 			return Type{Kind: InvalidType}, value, true
 		}
 		if len(place.Projections) > 0 && !place.PartialMoveSafe {

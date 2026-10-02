@@ -119,6 +119,11 @@ type Place struct {
 	// properties, registers, indexes, slices, or other externally observable
 	// storage.
 	PartialMoveSafe bool
+	// CustomFreeOwner names the outermost type with custom free whose field
+	// this Place projects through, and CustomFreeOwnerPlace the Place of that
+	// complete value. Ownership may not be transferred out of such a field.
+	CustomFreeOwner      string
+	CustomFreeOwnerPlace string
 }
 
 // String derives diagnostic presentation from the exact canonical Place path;
@@ -337,6 +342,10 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 		if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
 			if !a.canAccessStructField(objectType, expr.Property.Value) {
 				return Place{}, false
+			}
+			if _, customFree := a.customFreeDeclarations[objectType.Name]; customFree && base.CustomFreeOwner == "" {
+				base.CustomFreeOwner = objectType.Name
+				base.CustomFreeOwnerPlace = base.String()
 			}
 			base = appendPlaceProjection(base, PlaceProjection{Kind: PlaceField, Name: expr.Property.Value, Token: expr.Property.Token})
 			base.Type = fieldType
@@ -631,31 +640,24 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		return false
 	}
 	if a.loopBackedgePlaces[movedKey] {
-		a.addErrorAtTokenWithPrevious(token, movedAt, "place %s may be unavailable on a later loop iteration", place.String())
+		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.ConditionallyUnavailableUse,
+			"reinitialize "+movedKey+" before the next iteration, or move it out only after the loop",
+			"place %s may be unavailable on a later loop iteration", place.String())
+		return true
+	}
+	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+		a.reportConditionallyUnavailablePlace(place, movedKey, token, movedAt, false)
 		return true
 	}
 	if partial {
-		a.addErrorAtTokenWithPrevious(token, movedAt, "cannot use partially moved value %s; place %s is unavailable", place.String(), movedKey)
+		a.reportPartiallyUnavailablePlace(place, movedKey, token, movedAt, false)
 		return true
 	}
 	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
 	if a.reportConsumedResultProjectionUse(place, token, movedAt, reason) {
 		return true
 	}
-	switch reason {
-	case "discarded":
-		a.addErrorAtTokenWithPreviousMetadata(token, movedAt, diagnostics.UseAfterDiscard,
-			"reinitialize a mutable Place before using it, or keep the value until its last use",
-			"value %s was discarded here and is no longer available", place.String())
-	case "detached":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was detached here and is no longer available", place.String())
-	case "released":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "arena %s was released here and is no longer available", place.String())
-	case "consumed by call":
-		a.addErrorAtTokenWithPrevious(token, movedAt, "value %s was consumed by call here and is no longer available", place.String())
-	default:
-		a.addErrorAtTokenWithPrevious(token, movedAt, "use of moved value %s", place.String())
-	}
+	a.reportDefinitelyUnavailablePlace(place, movedKey, token, movedAt)
 	return true
 }
 

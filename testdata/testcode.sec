@@ -9,10 +9,11 @@ type Meter decimal<m>
 type Second decimal<s>
 type Speed decimal<m/s>
 
-type IOError =
-FileNotFound
-AccessDenied
-InvalidValue
+enum IOError error {
+    FileNotFound,
+    AccessDenied,
+    InvalidValue,
+}
 
 // 2. Objektmodell med egenskaper och fallible setters
 type Vehicle struct {

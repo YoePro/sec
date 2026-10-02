@@ -47,7 +47,9 @@ func TestNonStructuralMutationDuringIterationRemainsValid(t *testing.T) {
 	for _, body := range []string{
 		"for item in items {\n        items[0] = item\n    }",
 		"for ref mut row in grid {\n        try row.Append(1)\n    }",
-		"for ref row in grid {\n        try grid[0].Append(1)\n    }",
+		// grid[0] is itself a protected bounds check under try, so the handler
+		// covers both IndexError and CollectionError (errorhandling.md §11).
+		"for ref row in grid {\n        try grid[0].Append(1) {\n            Err(_) => {}\n        }\n    }",
 		"for item in store.items {\n        store.count += 1\n    }",
 		"for item in items {\n        try other.Append(item)\n    }",
 		"for item in items {\n        discard item\n    }\n    try items.Append(1)",

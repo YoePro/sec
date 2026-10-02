@@ -222,8 +222,8 @@ integrations:
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
     remaining:
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
-      - confusable-identifier warning policy remains normatively undecided and must not be implemented before that decision is recorded
-      - resolve concat allocation/failure policy and consume the canonical frontend StringConcatPlan in Semantic IR and maintained backends; frontend formatting-contract selection, maximal planning, doubled-brace handling, and text-escape decoding are implemented
+      - "implement MD-001 confusable detection (lexical_structure.md, Visually confusable identifiers): UTS #39 skeletons from confusables.txt pinned to the compiler's Unicode version, a non-suppressible compile-time error for confusable declarations that would conflict in the same namespace and scope, no diagnostic across distinct scopes, and no comparison between unit symbols and ordinary identifiers"
+      - "enforce MD-004 (operators.md, String concatenation; lexical_structure.md interpolation): runtime concatenation and interpolation without `try` are compile-time errors with AllocationError flow only, fully compile-time-resolved forms fold to static data without `try`; then consume the canonical frontend StringConcatPlan in Semantic IR and maintained backends once the allocator/allocation-context policy (MD-004, still open) is decided"
       - port interpolation AST parts and expression parsing to the bootstrap parser; blocked on the bootstrap AST and ordinary expression-parser infrastructure, which do not yet exist
     verification:
       - command: go test ./internal/lexer ./internal/formatter ./cmd/lsp ./cmd/compiler -count=1

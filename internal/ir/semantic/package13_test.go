@@ -689,7 +689,7 @@ fn Read(value: Point) int { return value.Value() }`,
 			source: `module main
 type Resource struct { Handle: int }
 impl Resource { free { discard self.Handle } }`,
-			stage: semaStage, wantDetail: "free operations are reserved for destruction",
+			stage: buildStage, wantDetail: "custom free lifecycle destruction",
 		},
 		{
 			name: "foreign struct ABI syntax",

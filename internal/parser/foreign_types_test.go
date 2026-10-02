@@ -75,3 +75,38 @@ func TestParseRejectsMalformedAndUnsupportedForeignForms(t *testing.T) {
 		}
 	}
 }
+
+// `subject is null` is a dedicated raw-pointer test in if and while
+// conditions; ffi.md §11 defines no negated form.
+//
+// Rules:
+//   - rules/platform/ffi.md — §11 "null"
+func TestParseNullTestCondition(t *testing.T) {
+	p := New(lexer.New(`module main
+fn F(raw: RawPtr[int32]) void {
+    unsafe {
+        if raw is null {
+            return
+        }
+        while raw is null {
+            return
+        }
+    }
+}`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	block := program.Statements[1].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.UnsafeStatement).Body.Statements
+	test, ok := block[0].(*ast.IfStatement).Condition.(*ast.NullTestExpression)
+	if !ok || test.Subject.String() != "raw" || test.NullToken.Lexeme != "null" || test.String() != "raw is null" {
+		t.Fatalf("if condition = %#v", block[0].(*ast.IfStatement).Condition)
+	}
+	if _, ok := block[1].(*ast.WhileStatement).Condition.(*ast.NullTestExpression); !ok {
+		t.Fatalf("while condition = %#v", block[1].(*ast.WhileStatement).Condition)
+	}
+
+	negated := New(lexer.New("module main\nfn F(raw: RawPtr[int32]) void {\n    unsafe {\n        if raw is not null {\n        }\n    }\n}\n"))
+	negated.ParseProgram()
+	if len(negated.Errors()) == 0 || !strings.Contains(strings.Join(negated.Errors(), "\n"), "is not is defined only for None and available") {
+		t.Fatalf("is not null errors = %v", negated.Errors())
+	}
+}

@@ -47,6 +47,9 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 	if err := e.validatePackage14ArrayBoundaries(); err != nil {
 		return nil, err
 	}
+	if err := validateTryHandlerSchema(module); err != nil {
+		return nil, err
+	}
 	for index, function := range module.Functions {
 		e.functions[function.ID] = fmt.Sprintf("sec_fn_%d", index)
 	}
@@ -54,6 +57,31 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 		return nil, err
 	}
 	return []byte(e.out.String()), nil
+}
+
+// validateTryHandlerSchema rejects Semantic IR handler plans the Sec MLIR
+// handler metadata cannot express: the dialect's canonical kinds are ok,
+// err-variant, err-catch-all, and merge, and its verifier requires catch-all
+// finality and complete coverage, so guarded handlers and partial plans with
+// residual propagation need a dialect revision before they can be emitted.
+//
+// Rules:
+//   - rules/mlir/dialect-versions/sec_mlir_dialect_v6.md — §12 "Handler provenance metadata", §20 "Try handler verifier"
+//   - rules/mlir/sec_mlir_dialect.md — §26 "P10 enum handlers"
+func validateTryHandlerSchema(module *semantic.Module) error {
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, op := range block.Operations {
+				switch {
+				case op.TryHandlerGuarded:
+					return &UnsupportedLoweringError{Feature: "guarded try handlers", Function: function.ID}
+				case op.TryResidualPropagates || op.TryHandlerKind == semantic.TryHandlerResidual:
+					return &UnsupportedLoweringError{Feature: "partial try handlers with residual propagation", Function: function.ID}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // validatePackage14ArrayBoundaries rejects representation requests that schema

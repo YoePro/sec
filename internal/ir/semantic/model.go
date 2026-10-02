@@ -517,6 +517,9 @@ const (
 	TryHandlerErrVariant  TryHandlerKind = "err-variant"
 	TryHandlerErrCatchAll TryHandlerKind = "err-catch-all"
 	TryHandlerMerge       TryHandlerKind = "merge"
+	// TryHandlerResidual marks the return that propagates failures a
+	// partial handler set leaves unmatched (rules/errors/errorhandling.md §16).
+	TryHandlerResidual TryHandlerKind = "residual"
 )
 
 type DecimalConstant struct {
@@ -570,13 +573,19 @@ type Operation struct {
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int
 	TryHandlerExhaustive bool
-	Operator             string
-	Synthesized          bool
-	Reason               string
-	MatchID              MatchID
-	MatchArmIndex        int
-	MatchStage           string
-	MatchPatternKind     string
+	// TryHandlerGuarded marks a handler edge selected only after its where
+	// guard held; it never covers its pattern (errorhandling.md §19).
+	TryHandlerGuarded bool
+	// TryResidualPropagates marks handler edges of a partial plan whose
+	// unmatched failures leave through a TryHandlerResidual return.
+	TryResidualPropagates bool
+	Operator              string
+	Synthesized           bool
+	Reason                string
+	MatchID               MatchID
+	MatchArmIndex         int
+	MatchStage            string
+	MatchPatternKind      string
 }
 
 func (o Operation) IsTerminator() bool {

@@ -909,7 +909,7 @@ func (p *Parser) parseUnsupportedDoWhileStatement() ast.Statement {
 func (p *Parser) parseUnsupportedFreeStatement() ast.Statement {
 	stmt := &ast.InvalidStatement{
 		Token:   p.curToken,
-		Message: "free operations are reserved for destruction but are not implemented yet",
+		Message: "free is a lifecycle member and is only valid inside an impl block",
 	}
 	if p.peekToken.Type == lexer.LBRACE {
 		p.nextToken()
@@ -1319,7 +1319,7 @@ func (p *Parser) parseContextualIfStateCondition(subject ast.Expression, context
 		negated = true
 	}
 	if p.peekToken.Type != lexer.IDENT {
-		p.addError("is test expects a union variant, empty, None, Some(binding), or available at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.addError("is test expects a union variant, empty, None, Some(binding), available, or null at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return subject, nil
 	}
 	if p.peekToken.Lexeme == "available" {
@@ -1328,6 +1328,15 @@ func (p *Parser) parseContextualIfStateCondition(subject ast.Expression, context
 	}
 
 	switch p.peekToken.Lexeme {
+	case "null":
+		// rules/platform/ffi.md §11: null testing uses `is null`; the sentinel
+		// has no negated test form.
+		p.nextToken()
+		if negated {
+			p.addError("is not is defined only for None and available; use is null in the other branch at %d:%d", p.curToken.Line, p.curToken.Column)
+			return subject, nil
+		}
+		return &ast.NullTestExpression{Token: isToken, Subject: subject, NullToken: p.curToken}, nil
 	case "None":
 		return p.finishOptionAbsenceIfCondition(subject, isToken, negated), nil
 	case "Some":
@@ -2711,8 +2720,11 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		}
 	}
 
+	p.rejectAdditionalTypeDeclarationNames(stmt.Name.Value)
+
 	if p.peekToken.Type == lexer.ASSIGN {
 		p.nextToken()
+		assignToken := p.curToken
 
 		if !p.expectPeekTypeStart() {
 			return nil
@@ -2752,6 +2764,11 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		} else {
 			stmt.AssignedType = assignedType
 		}
+		variantNames := make([]string, 0, len(stmt.Variants))
+		for _, variant := range stmt.Variants {
+			variantNames = append(variantNames, variant.Value)
+		}
+		p.reportLegacyAssignedType(assignToken, stmt.Name.Value, variantNames)
 
 		return stmt
 	}
@@ -2846,6 +2863,7 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 		}
 		stmt.Default = p.parseExpression(LOWEST)
 	}
+	p.rejectAdditionalUnderlyingTypes(stmt.Name.Value, p.curToken.Line)
 
 	return stmt
 }
@@ -3520,7 +3538,7 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 		}
 		if p.peekToken.Type == lexer.ASSIGN || p.peekToken.Type == lexer.COLON {
 			if p.peekToken.Type == lexer.COLON {
-				p.addWarning("enum initializer ':' is non-canonical; sec fmt will rewrite it to '=' at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				p.reportLegacyEnumColonInitializer(p.peekToken, value.Name.Value)
 			}
 			p.nextToken()
 			value.InitializerToken = p.curToken
@@ -4241,6 +4259,7 @@ func (p *Parser) parseStructStatement() ast.Statement {
 		Token: p.curToken,
 		Value: p.curToken.Lexeme,
 	}
+	p.reportFutureStructDeclaration(stmt.Token, stmt.Name.Value)
 
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
@@ -4744,7 +4763,13 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 
 		field.Type = p.parseTypeReference()
 		if p.isContractStart(p.peekToken) {
+			contractStart := p.peekToken
 			field.Contract = p.parseContractSequence()
+			owner := "a struct field"
+			if field.Name != nil {
+				owner = "field " + field.Name.Value
+			}
+			p.reportLegacyInlineContract(contractStart, owner)
 		}
 		p.attachDocumentation(documentation, field)
 		if p.peekToken.Type == lexer.RAW_STRING {
@@ -5052,15 +5077,19 @@ func (p *Parser) parseImplStatement() ast.Statement {
 			recovery := p.skipInvalidImplMember()
 			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.FREE:
-			start, diagnosticStart := p.curToken, len(p.diagnostics)
-			message := "free operations are reserved for destruction but are not implemented yet"
-			var recovery RecoveryEvent
+			// rules/declarations/impl.md §19 and grammar.md FreeDeclaration:
+			// `free` Block, with no parameters, return type, or name.
 			if p.peekToken.Type == lexer.LBRACE {
-				p.nextToken()
-				recovery = p.skipCurrentBlockRecovery(start)
-			} else {
-				recovery = p.skipInvalidImplMember()
+				free := &ast.FreeDeclaration{Token: p.curToken}
+				free.Body = p.parseFunctionBlockStatement()
+				if free.Body != nil {
+					p.appendImplMember(stmt, documentation, free)
+				}
+				continue
 			}
+			start, diagnosticStart := p.curToken, len(p.diagnostics)
+			message := "free declarations take no parameters or return type; write free { ... }"
+			recovery := p.skipInvalidImplMember()
 			p.appendImplMember(stmt, documentation, p.invalidMember(start, diagnosticStart, recovery, message))
 		case lexer.PROPERTY:
 			property := p.parsePropertyDeclaration()
@@ -5625,6 +5654,7 @@ func (p *Parser) parseReferenceTypeReference() *ast.TypeReference {
 	inner := p.parseTypeReference()
 	inner.Ref = true
 	inner.MutableRef = mutable
+	inner.ReferentToken = inner.Token
 	inner.Token = refToken
 	return inner
 }
@@ -5992,6 +6022,11 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 	if ref.ElementType == nil || ref.ElementType.Invalid {
 		return p.markInvalidTypeReference(ref)
 	}
+	length := ""
+	if ref.ArrayLengthExpression != nil {
+		length = ref.ArrayLengthExpression.String()
+	}
+	p.reportPrefixSequenceType(ref.Token, length, typeReferenceSpelling(ref.ElementType))
 
 	return ref
 }
@@ -7491,7 +7526,9 @@ func (p *Parser) parseNoPanicDeclaration() ast.Statement {
 		p.addError("duplicate or unsupported attribute after @noPanic at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return nil
 	}
-	if p.peekToken.Type != lexer.FN && p.peekToken.Type != lexer.UNSAFE {
+	// rules/platform/ffi.md §42: an extern function declaration may carry
+	// @noPanic as a trusted foreign contract.
+	if p.peekToken.Type != lexer.FN && p.peekToken.Type != lexer.UNSAFE && p.peekToken.Type != lexer.EXTERN {
 		p.addError("@noPanic may only annotate a function or method at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return nil
 	}
@@ -7569,10 +7606,12 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 	typ := p.parseTypeReference()
 	var contract ast.Contract
 	if p.isContractStart(p.peekToken) {
+		contractStart := p.peekToken
 		contract = p.parseContractSequence()
 		if contract == nil {
 			return nil
 		}
+		p.reportLegacyInlineContract(contractStart, "a variable declaration")
 	}
 
 	if p.peekToken.Type == lexer.LPAREN {
@@ -7798,10 +7837,16 @@ func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedTy
 
 		stmt.Type = p.parseTypeReference()
 		if p.isContractStart(p.peekToken) {
+			contractStart := p.peekToken
 			stmt.Contract = p.parseContractSequence()
 			if stmt.Contract == nil {
 				return nil
 			}
+			owner := "a variable declaration"
+			if stmt.Name != nil {
+				owner = "variable " + stmt.Name.Value
+			}
+			p.reportLegacyInlineContract(contractStart, owner)
 		}
 	}
 
@@ -8013,7 +8058,7 @@ func isDocumentableDeclaration(node ast.Node) bool {
 		*ast.InterfaceEvent, *ast.StructStatement, *ast.StructField,
 		*ast.RegisterField,
 		*ast.FunctionDeclaration, *ast.LetStatement, *ast.LetGroupStatement,
-		*ast.ImplStatement, *ast.InitDeclaration, *ast.PropertyDeclaration,
+		*ast.ImplStatement, *ast.InitDeclaration, *ast.FreeDeclaration, *ast.PropertyDeclaration,
 		*ast.EventDeclaration, *ast.UnitMetadataDeclaration:
 		return true
 	default:

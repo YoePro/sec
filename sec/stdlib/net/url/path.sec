@@ -20,3 +20,67 @@ module url
  * Rulebook:
  * stdlib/net/url/std-net-url.md
  */
+
+type Path string
+
+impl Path {
+    /** Parses and validates one encoded RFC 3986 path component. */
+    static fn Parse(value: string) Result[Path, ParseError]
+
+    /**
+     * Encodes decoded UTF-8 path text while retaining `/` as path separators.
+     */
+    static fn FromDecoded(value: string) Path
+
+    /** Returns true when the encoded path begins with `/`. */
+    property IsAbsolute: bool { get }
+
+    /** Returns true when the encoded path is empty. */
+    property IsEmpty: bool { get }
+
+    /** Returns true when a non-empty path ends with `/`. */
+    property HasTrailingSlash: bool { get }
+
+    /** Decodes the complete path after preserving its already-parsed boundaries. */
+    fn Decode() Result[string, PercentError]
+
+    /**
+     * Returns decoded path segments in source order.
+     *
+     * Description:
+     * The encoded path is split on literal `/` before each segment is percent-decoded.
+     * Therefore `%2F` remains part of a segment and never becomes a separator.
+     *
+     * Returns:
+     * A newly allocated owning array of decoded segment strings.
+     */
+    fn Segments() Result[string[], PercentError]
+
+    /**
+     * Applies the RFC 3986 remove_dot_segments algorithm.
+     *
+     * Returns:
+     * A new Path with complete literal `.` and `..` segments removed according
+     * to RFC 3986 section 5.2.4.
+     */
+    fn RemoveDotSegments() Path
+
+    /**
+     * Normalizes percent escapes and removes dot segments.
+     *
+     * Returns:
+     * A new syntactically normalized Path.
+     */
+    fn Normalize() Path
+
+    /**
+     * Appends one decoded path segment.
+     *
+     * Parameters:
+     * - segment: Decoded UTF-8 segment data. `/` in the value is encoded as `%2F`.
+     *
+     * Returns:
+     * A new Path with exactly one additional segment.
+     */
+    fn AppendSegment(segment: string) Path
+}

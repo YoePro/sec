@@ -4756,3 +4756,31 @@ func TestHoverShowsCompilerKnownMemberCategory(t *testing.T) {
 		}
 	}
 }
+
+// The editor places a diagnostic at its range, so the message must not repeat
+// the primary location; a related location stays in the text and is attached
+// as navigable related information.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — § 15(3) LSP rendering
+func TestSemaDiagnosticOmitsPrimaryLocationAndLinksRelatedLocation(t *testing.T) {
+	diagnostic := semaDiagnostic(sema.Error{
+		Message:        "value value was consumed by call here and is no longer available",
+		File:           "/tmp/main.sec",
+		Line:           5,
+		Column:         3,
+		PreviousFile:   "/tmp/main.sec",
+		PreviousLine:   4,
+		PreviousColumn: 7,
+	}, 1, "\n\n\n\n  value")
+	if strings.Contains(diagnostic.Message, "at /tmp/main.sec:5:3") {
+		t.Fatalf("message repeats the primary location: %q", diagnostic.Message)
+	}
+	if !strings.Contains(diagnostic.Message, "previous declaration at /tmp/main.sec:4:7") {
+		t.Fatalf("message lost the related location: %q", diagnostic.Message)
+	}
+	if len(diagnostic.RelatedInformation) != 1 || diagnostic.RelatedInformation[0].Location.Range.Start != (position{Line: 3, Character: 6}) ||
+		!strings.HasSuffix(diagnostic.RelatedInformation[0].Location.URI, "/tmp/main.sec") {
+		t.Fatalf("related information = %+v", diagnostic.RelatedInformation)
+	}
+}

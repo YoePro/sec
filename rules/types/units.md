@@ -155,6 +155,14 @@ unit KiB uint information
 A unit symbol stored in metadata may still be `"B"`, `"KiB"`, or another
 human-facing spelling that does not need to be the source identifier.
 
+Declared unit symbols occupy a separate unit-symbol namespace, not the shared
+declaration namespace of `rules/foundations/names_scopes_visibility.md`. A unit
+symbol therefore does not conflict with an ordinary identifier of the same
+spelling: after `unit s physical`, a local, parameter, or field named `s` is
+valid, and unit symbol `<s>` still names the unit. Shadowing, duplicate
+declaration, and visually confusable checks do not compare unit symbols with
+ordinary identifiers (`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 2.7–2.9).
+
 ---
 
 ## Unit categories

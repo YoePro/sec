@@ -116,7 +116,7 @@ func CompilerKnownValues() []CompilerKnownValue {
 		{
 			ID:                 "CKV-TEMPORAL-NOW",
 			Name:               "_now",
-			Result:             builtinTypes()["datetime"],
+			Result:             builtinType("datetime"),
 			Internal:           true,
 			Effects:            []EffectKind{EffectMayUseNondeterministicInput},
 			RequiredCapability: "UTCWallClock",
@@ -156,7 +156,7 @@ func isCompilerKnownValueName(name string) bool {
 //   - rules/compiler/compiler_known_members.md — "Global `len`", "Contextual `fill`", and "Internal core string-slice helper"
 //   - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md — §§ 12 and 22.3 remove global SizeOf(TypeName)
 func CompilerKnownFunctions() []CompilerKnownFunction {
-	types := builtinTypes()
+	types := sharedBuiltinTypes()
 	return []CompilerKnownFunction{
 		{ID: "CKF-LEN", Name: "len", Result: types["int"]},
 		{ID: "CKF-FILL", Name: "fill", Result: Type{Kind: InvalidType}},
@@ -206,9 +206,9 @@ func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 //   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations"
 func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members := []CompilerKnownMember{}
-	uintType := builtinTypes()["uint"]
-	boolType := builtinTypes()["bool"]
-	stringType := builtinTypes()["string"]
+	uintType := builtinType("uint")
+	boolType := builtinType("bool")
+	stringType := builtinType("string")
 
 	members = append(members, compilerKnownShapedFactMembers(typ, false)...)
 
@@ -273,78 +273,78 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
 	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"]), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(*sequence.Element), StructuralMutation: true},
 		)
 	}
 	if compilerKnownMutableSlice(typ) {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
-			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-FILL", Name: "Fill", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinType("void")},
+			CompilerKnownMember{ID: "CKM-MUTABLE-SLICE-FILL", Name: "Fill", Kind: CompilerKnownMethod, Result: builtinType("void")},
 		)
 	}
 	if sequence.Name == "list" && len(sequence.TypeArgs) == 1 {
 		element := sequence.TypeArgs[0]
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-LIST-CAPACITY", Name: "Capacity", Kind: CompilerKnownProperty, Result: uintType},
-			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinTypes()["void"], builtinTypes()["CollectionError"]), StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"]), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-INSERT", Name: "Insert", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinType("CollectionError")), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-REMOVEAT", Name: "RemoveAt", Kind: CompilerKnownMethod, Result: compilerKnownOption(element), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType, StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-LIST-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-LIST-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-LIST-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
 			CompilerKnownMember{ID: "CKM-LIST-INDEXOF", Name: "IndexOf", Kind: CompilerKnownMethod, Result: compilerKnownOption(uintType)},
-			CompilerKnownMember{ID: "CKM-LIST-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
-			CompilerKnownMember{ID: "CKM-LIST-SORT", Name: "Sort", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
-			CompilerKnownMember{ID: "CKM-LIST-SORTBY", Name: "SortBy", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-LIST-REVERSE", Name: "Reverse", Kind: CompilerKnownMethod, Result: builtinType("void")},
+			CompilerKnownMember{ID: "CKM-LIST-SORT", Name: "Sort", Kind: CompilerKnownMethod, Result: builtinType("void")},
+			CompilerKnownMember{ID: "CKM-LIST-SORTBY", Name: "SortBy", Kind: CompilerKnownMethod, Result: builtinType("void")},
 		)
 	}
 	if sequence.Name == "map" && len(sequence.TypeArgs) == 2 {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-MAP-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: compilerKnownOption(sequence.TypeArgs[1]), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-MAP-CONTAINSKEY", Name: "ContainsKey", Kind: CompilerKnownMethod, Result: boolType},
-			CompilerKnownMember{ID: "CKM-MAP-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-MAP-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
 		)
 	}
 	if sequence.Name == "set" && len(sequence.TypeArgs) == 1 {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-SET-ADD", Name: "Add", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinTypes()["CollectionError"]), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-SET-ADD", Name: "Add", Kind: CompilerKnownMethod, Result: compilerKnownResult(boolType, builtinType("CollectionError")), StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-SET-REMOVE", Name: "Remove", Kind: CompilerKnownMethod, Result: boolType, StructuralMutation: true},
 			CompilerKnownMember{ID: "CKM-SET-CONTAINS", Name: "Contains", Kind: CompilerKnownMethod, Result: boolType},
-			CompilerKnownMember{ID: "CKM-SET-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], StructuralMutation: true},
-			CompilerKnownMember{ID: "CKM-SET-UNION", Name: "Union", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-SET-INTERSECTION", Name: "Intersection", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-SET-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
-			CompilerKnownMember{ID: "CKM-SET-SYMMETRIC-DIFFERENCE", Name: "SymmetricDifference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinTypes()["CollectionError"])},
+			CompilerKnownMember{ID: "CKM-SET-CLEAR", Name: "Clear", Kind: CompilerKnownMethod, Result: builtinType("void"), StructuralMutation: true},
+			CompilerKnownMember{ID: "CKM-SET-UNION", Name: "Union", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinType("CollectionError"))},
+			CompilerKnownMember{ID: "CKM-SET-INTERSECTION", Name: "Intersection", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinType("CollectionError"))},
+			CompilerKnownMember{ID: "CKM-SET-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinType("CollectionError"))},
+			CompilerKnownMember{ID: "CKM-SET-SYMMETRIC-DIFFERENCE", Name: "SymmetricDifference", Kind: CompilerKnownMethod, Result: compilerKnownResult(sequence, builtinType("CollectionError"))},
 		)
 	}
 	if typ.Kind == StringType {
 		members = append(members,
-			CompilerKnownMember{ID: "CKM-STRING-TOBYTEARRAY", Name: "ToByteArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinTypes()["byte"])},
-			CompilerKnownMember{ID: "CKM-STRING-TOCHARARRAY", Name: "ToCharArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinTypes()["char"])},
-			CompilerKnownMember{ID: "CKM-STRING-TORUNEARRAY", Name: "ToRuneArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinTypes()["rune"])},
+			CompilerKnownMember{ID: "CKM-STRING-TOBYTEARRAY", Name: "ToByteArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("byte"))},
+			CompilerKnownMember{ID: "CKM-STRING-TOCHARARRAY", Name: "ToCharArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("char"))},
+			CompilerKnownMember{ID: "CKM-STRING-TORUNEARRAY", Name: "ToRuneArray", Kind: CompilerKnownMethod, Result: compilerKnownDynamicArray(builtinType("rune"))},
 		)
 	}
 	if typ.Kind == RawPtrType {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-RAWPTR-READ", Name: "Read", Kind: CompilerKnownMethod, Result: compilerKnownRawPointerElement(typ), Unsafe: true},
-			CompilerKnownMember{ID: "CKM-RAWPTR-WRITE", Name: "Write", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], Unsafe: true},
+			CompilerKnownMember{ID: "CKM-RAWPTR-WRITE", Name: "Write", Kind: CompilerKnownMethod, Result: builtinType("void"), Unsafe: true},
 			// rules/platform/volatile.md sections 9-11: volatile access is a
 			// distinct unsafe, effectful operation, not an alias for Read/Write.
 			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-READ", Name: "VolatileRead", Kind: CompilerKnownMethod, Result: compilerKnownRawPointerElement(typ), Unsafe: true, Effects: []EffectKind{EffectVolatileRead}},
-			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-WRITE", Name: "VolatileWrite", Kind: CompilerKnownMethod, Result: builtinTypes()["void"], Unsafe: true, Effects: []EffectKind{EffectVolatileWrite}},
+			CompilerKnownMember{ID: "CKM-RAWPTR-VOLATILE-WRITE", Name: "VolatileWrite", Kind: CompilerKnownMethod, Result: builtinType("void"), Unsafe: true, Effects: []EffectKind{EffectVolatileWrite}},
 			CompilerKnownMember{ID: "CKM-RAWPTR-OFFSET", Name: "Offset", Kind: CompilerKnownMethod, Result: typ, Unsafe: true},
 			CompilerKnownMember{ID: "CKM-RAWPTR-ADDBYTES", Name: "AddBytes", Kind: CompilerKnownMethod, Result: typ, Unsafe: true},
-			CompilerKnownMember{ID: "CKM-RAWPTR-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: builtinTypes()["int"], Unsafe: true},
+			CompilerKnownMember{ID: "CKM-RAWPTR-DIFFERENCE", Name: "Difference", Kind: CompilerKnownMethod, Result: builtinType("int"), Unsafe: true},
 		)
 	}
 	if typ.Name == "Arena" {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-ARENA-NEW", Name: "New", Kind: CompilerKnownMethod},
 			CompilerKnownMember{ID: "CKM-ARENA-ALLOC", Name: "Alloc", Kind: CompilerKnownMethod},
-			CompilerKnownMember{ID: "CKM-ARENA-RESET", Name: "Reset", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
-			CompilerKnownMember{ID: "CKM-ARENA-RELEASE", Name: "Release", Kind: CompilerKnownMethod, Result: builtinTypes()["void"]},
+			CompilerKnownMember{ID: "CKM-ARENA-RESET", Name: "Reset", Kind: CompilerKnownMethod, Result: builtinType("void")},
+			CompilerKnownMember{ID: "CKM-ARENA-RELEASE", Name: "Release", Kind: CompilerKnownMethod, Result: builtinType("void")},
 		)
 	}
 	members = append(members, compilerKnownCancellationMembers(sequence)...)
@@ -412,7 +412,7 @@ func compilerKnownCancellationMembers(typ Type) []CompilerKnownMember {
 		ID:            "CKM-" + identity + "-REQUEST-CANCEL",
 		Name:          "RequestCancel",
 		Kind:          CompilerKnownMethod,
-		Result:        builtinTypes()["void"],
+		Result:        builtinType("void"),
 		Signature:     "fn RequestCancel() void",
 		Documentation: "Requests cooperative cancellation without consuming the owning handle. The request is idempotent and has no effect after terminal completion.",
 	}}
@@ -421,13 +421,13 @@ func compilerKnownCancellationMembers(typ Type) []CompilerKnownMember {
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	members := compilerKnownShapedFactMembers(typ, true)
 	if compilerKnownSizedType(typ) {
-		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinTypes()["uint"]})
+		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinType("uint")})
 	}
 	if isIntegerType(typ) {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-NUMERIC-MIN", Name: "Min", Kind: CompilerKnownProperty, Result: typ},
 			CompilerKnownMember{ID: "CKM-NUMERIC-MAX", Name: "Max", Kind: CompilerKnownProperty, Result: typ},
-			CompilerKnownMember{ID: "CKM-NUMERIC-BITS", Name: "Bits", Kind: CompilerKnownProperty, Result: builtinTypes()["uint"]},
+			CompilerKnownMember{ID: "CKM-NUMERIC-BITS", Name: "Bits", Kind: CompilerKnownProperty, Result: builtinType("uint")},
 		)
 	}
 	if typ.Kind == FloatType {
@@ -436,7 +436,7 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 		}
 	}
 	if typ.Kind == DecimalType {
-		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", Kind: CompilerKnownProperty, Result: builtinTypes()["int"]})
+		members = append(members, CompilerKnownMember{ID: "CKM-DECIMAL-SCALE", Name: "Scale", Kind: CompilerKnownProperty, Result: builtinType("int")})
 	}
 	if typ.Kind == StringType {
 		members = append(members,
@@ -477,7 +477,7 @@ func compilerKnownShapedFactMembers(typ Type, static bool) []CompilerKnownMember
 		return nil
 	}
 
-	uintType := builtinTypes()["uint"]
+	uintType := builtinType("uint")
 	members := []CompilerKnownMember{{
 		ID:            "CKM-SHAPED-RANK",
 		Name:          "Rank",
@@ -487,7 +487,7 @@ func compilerKnownShapedFactMembers(typ Type, static bool) []CompilerKnownMember
 		Documentation: "Compile-time-known shaped rank: " + rank + ".",
 	}}
 	if length != "" {
-		shapeType := builtinTypes()["Shape"]
+		shapeType := builtinType("Shape")
 		shapeType.ConstArgs = []int64{int64(len(typ.ConstArgs))}
 		members = append(members, CompilerKnownMember{
 			ID:            "CKM-SHAPED-SHAPE",
@@ -498,7 +498,7 @@ func compilerKnownShapedFactMembers(typ Type, static bool) []CompilerKnownMember
 			Documentation: "Compile-time-known shaped extents: " + shapedStaticShape(typ) + ".",
 		})
 		if !static {
-			stridesType := builtinTypes()["Strides"]
+			stridesType := builtinType("Strides")
 			stridesType.ConstArgs = []int64{int64(len(typ.ConstArgs))}
 			members = append(members, CompilerKnownMember{
 				ID:            "CKM-SHAPED-STRIDES",
@@ -512,7 +512,7 @@ func compilerKnownShapedFactMembers(typ Type, static bool) []CompilerKnownMember
 				ID:            "CKM-SHAPED-IS-CONTIGUOUS",
 				Name:          "IsContiguous",
 				Kind:          CompilerKnownProperty,
-				Result:        builtinTypes()["bool"],
+				Result:        builtinType("bool"),
 				Signature:     "property IsContiguous: bool",
 				Documentation: "Compile-time-known true for a canonical dense owning shaped value.",
 			})
@@ -707,7 +707,7 @@ func compilerKnownSizedType(typ Type) bool {
 func compilerKnownRawPointerResult(typ Type) Type {
 	element := typ
 	if typ.Kind == StringType {
-		element = builtinTypes()["byte"]
+		element = builtinType("byte")
 	} else {
 		sequence := dereferenceType(typ)
 		if (sequence.Kind == ArrayType || sequence.Kind == SliceType) && sequence.Element != nil {
@@ -795,7 +795,7 @@ func compilerKnownToStringID(typ Type) string {
 }
 
 func compilerKnownOption(value Type) Type {
-	typ := builtinTypes()["Option"]
+	typ := builtinType("Option")
 	typ.TypeArgs = []Type{value}
 	return typ
 }

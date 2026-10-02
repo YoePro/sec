@@ -664,7 +664,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value first at 12:19, previous declaration at 9:24",
+		"first may no longer be available here; it was moved on one possible execution path at 12:19, previous declaration at 9:24",
 	})
 }
 
@@ -1350,8 +1350,8 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"use of moved value pair.first at 26:26, previous declaration at 20:21",
-		"use of moved value pair.second at 27:27, previous declaration at 23:21",
+		"pair.first may no longer be available here; it was moved on one possible execution path at 26:26, previous declaration at 20:21",
+		"pair.second may no longer be available here; it was moved on one possible execution path at 27:27, previous declaration at 23:21",
 	})
 }
 
@@ -1420,7 +1420,7 @@ fn Test(condition: bool) void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value pair; place pair.first is unavailable at 23:16, previous declaration at 19:20",
+		"pair may no longer be available here; sub-place pair.first was moved on one possible execution path at 23:16, previous declaration at 19:20",
 	})
 }
 
@@ -1724,7 +1724,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value choice; place choice.<Some> is unavailable at 22:16, previous declaration at 17:8",
+		"choice may no longer be available here; sub-place choice.<Some> was moved on one possible execution path at 22:16, previous declaration at 17:8",
 	})
 }
 
@@ -1781,7 +1781,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value choice; place choice.<Some> is unavailable at 20:16, previous declaration at 17:8",
+		"choice may no longer be available here; sub-place choice.<Some> was moved on one possible execution path at 20:16, previous declaration at 17:8",
 	})
 }
 
@@ -1995,7 +1995,7 @@ fn Test() void {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use partially moved value wrapper; place wrapper.choice.<Some> is unavailable at 31:16, previous declaration at 25:8",
+		"wrapper may no longer be available here; sub-place wrapper.choice.<Some> was moved on one possible execution path at 31:16, previous declaration at 25:8",
 	})
 }
 

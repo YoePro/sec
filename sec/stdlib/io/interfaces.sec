@@ -1,0 +1,91 @@
+module io
+
+/*
+ * Sec Standard Library - io - Common I/O capability interfaces
+ *
+ * File:        stdlib/io/interfaces.sec
+ * Module:      io
+ * Revision:    1
+ * Updated:     2026-10-02
+ * Author:      Jonas Engström
+ *
+ * Purpose:
+ *   Shared readable, writable, random-access, seek, flush, and close
+ *   capability contracts.
+ *
+ * Rulebook:
+ *   stdlib/io/std-io.md
+ */
+
+// Sequential byte input (std-io.md § 7.2). For a non-empty buffer, Ok(n)
+// with n > 0 fills buffer[0..<n], Ok(0) is end-of-stream, and a short read is
+// not end-of-stream. An empty buffer returns Ok(0) without establishing EOF.
+interface Reader {
+    mut fn Read(buffer: ref mut byte[]) Result[uint, IOError]
+}
+
+// Sequential byte output (std-io.md § 7.3). A short write is not an error;
+// completion helpers detect repeated zero progress.
+interface Writer {
+    mut fn Write(data: ref byte[]) Result[uint, IOError]
+}
+
+// Positioned input that never moves a sequential position (std-io.md § 7.4).
+interface ReaderAt {
+    fn ReadAt(offset: uint64, buffer: ref mut byte[]) Result[uint, IOError]
+}
+
+// Positioned output that never moves a sequential position (std-io.md § 7.5).
+interface WriterAt {
+    fn WriteAt(offset: uint64, data: ref byte[]) Result[uint, IOError]
+}
+
+enum SeekOrigin {
+    // Offset is relative to the beginning of the resource.
+    Start
+
+    // Offset is relative to the current sequential position.
+    Current
+
+    // Offset is relative to the logical end of the resource.
+    End
+}
+
+// Moves the sequential position and returns the resulting absolute position
+// (std-io.md § 7.7). A negative resulting position is IOError.InvalidInput.
+interface Seeker {
+    mut fn Seek(offset: int64, origin: SeekOrigin) Result[uint64, IOError]
+}
+
+// Forwards buffered data to the next layer; it does not imply durable
+// storage (std-io.md § 7.8).
+interface Flusher {
+    mut fn Flush() Result[void, IOError]
+}
+
+// Idempotent explicit closure; closing an already closed endpoint returns
+// Ok() (std-io.md § 7.9).
+interface Closer {
+    mut fn Close() Result[void, IOError]
+}
+
+interface ReadWriter implements Reader, Writer {
+}
+
+interface ReadSeeker implements Reader, Seeker {
+}
+
+interface WriteSeeker implements Writer, Seeker {
+}
+
+interface ReadWriteSeeker implements Reader, Writer, Seeker {
+}
+
+interface ReadCloser implements Reader, Closer {
+}
+
+interface WriteCloser implements Writer, Closer {
+}
+
+interface ReadWriteCloser implements Reader, Writer, Closer {
+}

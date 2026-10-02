@@ -243,12 +243,12 @@ integrations:
           establish the L namespace.
       - id: diagnostics.parser-ids
         description: >-
-          Parser diagnostics P2001 through at least P2022 are registered;
+          Parser diagnostics P2001 through at least P2029 are registered;
           P2001 remains the compatibility fallback for unmigrated parser paths.
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1078 definitions in the reviewed registry plus mandatory S3001 and
+          S1096 definitions in the reviewed registry plus mandatory S3001 and
           S4001.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
@@ -341,8 +341,23 @@ integrations:
           and P2022/parser.unsupported-foreign-form in the parser, and
           S1076/ffi.unknown-c-fundamental-type,
           S1077/ffi.c-abi-model-unavailable, and
-          S1078/ffi.unresolved-c-binding-type in Sema, each with help; status
+          S1078/ffi.unresolved-c-binding-type, S1079/ffi.illegal-foreign-type, and
+          the null-sentinel diagnostics S1080-S1083 in Sema, each with help; status
           detail is owned by frontend.ffi-v2.
+      - id: diagnostics.custom-free
+        description: >-
+          Custom free uses S1084/destruction.invalid-custom-free for duplicate
+          or interface free declarations, S1085/ownership.custom-free-partial-move
+          with the free declaration as related location, S1086/destruction.defer-inside-free,
+          and S1087/destruction.free-consumes-self, each with help; status detail
+          is owned by frontend.destruction.
+      - id: diagnostics.ownership-availability
+        description: >-
+          Uses and borrows of unavailable Places use S1088/ownership.use-after-move,
+          S1089/ownership.conditionally-unavailable-use, and
+          S1090/ownership.partially-unavailable-use with mentor help and the
+          earlier ownership operation as related location; discard keeps S4001.
+          Status detail is owned by frontend.ownership-v2.
       - id: diagnostics.s4001-use-after-discard
         description: >-
           Reads and borrows after explicit discard use mandatory

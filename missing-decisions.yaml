@@ -11,54 +11,23 @@ classification_scale:
   localized: The gap blocks a narrow optional feature without destabilizing adjacent language behavior.
 
 decisions:
-  - id: MD-001
-    area: lexer-and-tooling
-    rulebooks:
-      - rules/foundations/lexical_structure.md
-    description: >-
-      Define whether visually confusable identifiers produce a warning, which
-      confusable-data/version source is normative, what comparison scope is
-      used, and which diagnostic suppression rules apply. Identifier identity
-      must remain exact NFC spelling regardless of the decision.
-    classification: localized
-    status: open
-
-  - id: MD-002
-    area: parser-and-types
-    rulebooks:
-      - rules/foundations/grammar.md
-    description: >-
-      Define the continuing Sec 0.1 role of `type Name = ExistingType` and the
-      compact `type Name = First Second` variant form, including whether each
-      is canonical, compatibility-only, migration-only, or rejected syntax.
-    classification: blocking
-    status: open
-
-  - id: MD-003
-    area: parser-formatter-and-diagnostics
-    rulebooks:
-      - rules/foundations/grammar.md
-      - rules/declarations/struct.md
-      - rules/collections/collections.md
-      - rules/types/contracts.md
-    description: >-
-      Choose one observable policy for legacy compatibility forms such as
-      standalone struct declarations, prefix sequence types, and obsolete
-      inline contracts: rejection, focused migration diagnostics, or safe
-      formatter normalization on a form-by-form basis.
-    classification: constraining
-    status: open
-
   - id: MD-004
     area: strings-semantic-ir-and-lowering
     rulebooks:
+      - rules/foundations/operators.md
       - rules/foundations/lexical_structure.md
       - rules/compiler/semantic_ir.md
+      - rules/memory/allocation.md
     description: >-
-      Define allocation context, materialization strategy, and failure
-      propagation for runtime string concatenation and interpolation so the
-      existing frontend StringConcatPlan can be consumed by Semantic IR and
-      maintained backends without inventing failure semantics.
+      Partly decided by
+      rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md
+      § 5: runtime string concatenation and interpolation are one fallible
+      materialization producing one string, require ordinary `try` handling,
+      have no observable intermediate strings, and fold to static data when
+      fully resolved at compile time. Still open (§§ 5.8 and 6.4): which
+      allocator or allocation context runtime string materialization uses, so
+      Semantic IR and backends can consume the frontend StringConcatPlan
+      without inventing allocator selection.
     classification: blocking
     status: open
 
@@ -97,25 +66,6 @@ decisions:
       tighter than comparison/logical operators, whether it may appear in
       arbitrary bool expression contexts, and whether `is not Variant` and
       `!(value is Variant)` are valid.
-    classification: constraining
-    status: open
-
-  - id: MD-007
-    area: names-and-units
-    rulebooks:
-      - rules/foundations/names_scopes_visibility.md
-      - rules/types/units.md
-    description: >-
-      names_scopes_visibility.md §2 lists "units where their rule exposes a
-      declaration name" among the declarations sharing one namespace, but
-      units.md never states which unit declarations expose such a name. The
-      answer decides whether the §8 no-shadowing rule rejects a local named
-      like a unit symbol: sec/core/time.sec declares `unit s` and `unit ns`,
-      while sec/core/string.sec and sec/core/time.sec use locals named `s` and
-      `ns`. Decide whether unit symbols participate in the shared declaration
-      namespace (and therefore in shadowing and duplicate-declaration checks)
-      or live in a separate unit-symbol namespace. The local-shadowing check
-      (S1057) currently exempts unit names.
     classification: constraining
     status: open
 
@@ -430,5 +380,215 @@ decisions:
       name implicitly. The implementation currently rejects this, matching
       the general Sec rule that distinct scalar types need explicit
       conversion.
+    classification: localized
+    status: open
+  - id: MD-023
+    area: ffi-legal-sec-scalars
+    rulebooks:
+      - rules/platform/ffi.md
+      - rules/foundations/grammar.md
+      - rules/types/types.md
+    description: >-
+      ffi.md § 9 lists the fixed-width Sec scalars that may appear directly
+      in foreign signatures (byte, int8 through uint64, float32, float64)
+      "when they exactly describe the foreign ABI type", and § 45 adds
+      C:: scalars, RawPtr, call-bounded references, and extern "C" enums.
+      Three points are open. (1) The target-sized int and uint are not
+      listed, but grammar.md's extern example writes `length: uint` and
+      `int64`, and existing tests and bindings use `int`/`uint` in C
+      externs. (2) int128, uint128, int256, and uint256 are fixed-width but
+      have no C:: counterpart in the C ABI model. (3) § 45 allows
+      extern "C" enums, which are not implemented yet, while ordinary Sec
+      enums with an integer underlying type are neither listed as legal nor
+      listed as forbidden in § 46. The C/system legality check (S1079)
+      currently keeps the earlier behavior and accepts all three. Decisions
+      needed: whether int/uint, the 128/256-bit integers, and integer-backed
+      Sec enums are FFI-legal, and if so under which ABI-model conditions.
+    classification: constraining
+    status: open
+  - id: MD-024
+    area: null-sentinel-syntax
+    rulebooks:
+      - rules/platform/ffi.md
+      - rules/memory/raw_pointers.md
+      - rules/memory/unsafe.md
+      - rules/foundations/grammar.md
+      - rules/foundations/lexical_structure.md
+    description: >-
+      ffi.md § 11 defines the null sentinel by example: `null` is legal only
+      lexically inside unsafe, has no standalone type, and is tested with
+      `raw is null`, while `== null` is invalid. Four points are open.
+      (1) Neither lexical_structure.md nor grammar.md mentions `null` or
+      `is null`. The implementation treats `null` as a contextual word in
+      expressions and in the contextual if/while `is` test, so a visible
+      binding named null shadows it; whether `null` is a reserved word is
+      undecided. (2) raw_pointers.md § 5.1 and unsafe.md § 19(1) say that
+      testing a raw pointer for null is not inherently unsafe, but the only
+      defined spelling, `is null`, is unsafe-only, and unsafe.md § 12's safe
+      example uses `pointer.IsNull()`, which no rulebook defines. (3) No
+      negated form (`is not null`) is defined; the parser rejects it like
+      other undefined `is not` forms. (4) Whether `is null` is usable outside
+      if/while conditions, as an ordinary bool expression. Decisions needed:
+      the lexical status of null, the safe null-test spelling, the negated
+      form, and the expression positions of `is null`.
+    classification: constraining
+    status: open
+  - id: MD-025
+    area: custom-free-semantics
+    rulebooks:
+      - rules/memory/destruction.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/declarations/impl.md
+      - rules/foundations/grammar.md
+    description: >-
+      Custom `free` is now parsed and analyzed per impl.md § 19 and
+      destruction.md §§ 10.3 and 15, but six points are not decided by the
+      rulebooks. (1) Copy classification: copy_move.md § 3 never states whether
+      a type with custom free may be implicitly copied; an implicit copy would
+      run free twice for one resource. The implementation leaves the
+      classification derived from the fields (an int-only type with free stays
+      copyable). (2) `discard value.Field` on a custom-free type ends a field
+      and leaves the value partially available, but ownership.md § 19 and
+      destruction.md § 10.3 forbid only partial moves; discard of a field is
+      currently still accepted. (3) grammar.md "free operation syntax" still
+      says the parser creates an invalid statement, contradicting impl.md § 19
+      and grammar.md FreeDeclaration; the implementation follows impl.md.
+      (4) Which impl targets may declare free: interfaces are rejected, every
+      other impl target (enums, named scalars, unions, registers, generic
+      templates) is accepted. (5) destruction.md § 15.4(4) requires rejecting a
+      statically provable manual release of an owned field but defines no
+      proof criterion. (6) Bare `return` inside free is accepted as in any
+      void body; a return value is rejected. Decisions needed: copyability of
+      custom-free types, field discard on custom-free types, the grammar.md
+      status text, legal free targets, the § 15.4(4) criterion, and whether
+      bare return is allowed in free.
+    classification: constraining
+    status: open
+  - id: MD-026
+    area: stdlib-io-root
+    rulebooks:
+      - sec/stdlib/io/std-io.md
+      - rules/declarations/interfaces.md
+      - rules/memory/copy_move.md
+      - rules/foundations/language_philosophy.md
+    description: >-
+      Implementing the root io package from std-io.md leaves five points open.
+      (1) The transfer helpers take `ref mut Reader` and `ref mut Writer`, and
+      copy_move.md § 21(5) acknowledges borrowed interface references, but no
+      rulebook defines converting `ref mut File` (a type that explicitly
+      implements Reader) to `ref mut Reader` at a call site, nor how such a
+      call dispatches; language_philosophy.md § 10 warns against unexpected
+      dynamic dispatch and generics.md forbids runtime generic dispatch. Sema
+      rejects the call today, so the helpers type-check but cannot be called
+      with concrete types. A generic form such as
+      `fn Copy[W: Writer, R: Reader](destination: ref mut W, source: ref mut R)`
+      would be statically dispatched instead. (2) WriteAll must detect
+      "repeated" zero progress (§§ 7.3, 8.6) but no count is given; the
+      implementation reports NoProgress after two consecutive Ok(0) results.
+      (3) ReadAll returns Result[byte[], IOError], but IOError has no
+      allocation-failure variant; Append failure is currently mapped to
+      NativeFailure. (4) Whether the helpers retry on IOError.Interrupted (the
+      legacy File API does) is unspecified; they propagate it. (5) How the
+      helpers treat a Reader or Writer that violates its contract by returning
+      a count larger than the buffer is unspecified. Decisions needed:
+      interface-reference conversion and dispatch (or generic signatures), the
+      zero-progress count, ReadAll's allocation error, Interrupted retry, and
+      contract-violation handling.
+    classification: constraining
+    status: open
+  - id: MD-027
+    area: contextual-none-arguments
+    rulebooks:
+      - rules/types/types.md
+      - rules/errors/errorhandling.md
+      - rules/foundations/grammar.md
+      - rules/foundations/language_philosophy.md
+    description: >-
+      Bare `None` (and the empty literal `[]`, grammar.md "requires contextual
+      type information") needs an expected type, but no rulebook lists which
+      positions supply one. Declarations, assignments, and returns already
+      did. Call and `new` arguments did not, so stdlib code such as
+      `new Reference(None, None, new Path(), None, None)` failed with
+      "undefined variable None". The implementation now types a bare None
+      argument from the parameter in its position when every candidate that
+      accepts the argument count agrees on the same Option[T], mirroring the
+      null-sentinel rule of ffi.md § 11; disagreeing overloads still give no
+      context. Decisions needed: confirm call and initializer arguments as
+      contextual positions for None, whether overload disagreement should
+      instead pick by the other arguments first, and whether `[]` arguments
+      follow the same rule.
+    classification: clarifying
+    status: open
+
+  - id: MD-028
+    area: try-protected-subtree
+    rulebooks:
+      - rules/errors/errorhandling.md
+      - rules/errors/runtime_checks.md
+    description: >-
+      runtime_checks.md says "Within its expression subtree, try converts
+      language-defined checks into fallible control flow", and errorhandling.md
+      § 11 shows `try values[index] + amount` with two failure sources. The
+      implementation now applies this to the whole subtree, including the
+      arguments and receiver of a protected call: `try Wrap(left + right)`
+      protects the addition, and `try result.Append(data[i])` protects the
+      index as well as Append, so `Err(error)` there binds a heterogeneous set
+      and is rejected by § 11.1. An earlier implementation test assumed the
+      opposite for call arguments. Confirm that call arguments and receivers
+      belong to the protected subtree, or define a narrower boundary.
+    classification: clarifying
+    status: open
+
+  - id: MD-029
+    area: error-patterns
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/errors/errorhandling.md
+      - rules/control-flow/flowcontrol_match.md
+    description: >-
+      grammar.md uses `ErrPattern` in TryPattern but never defines it. The
+      implementation accepts Err(_), Err(name), and Err(Enum.Variant) (plus
+      Err(Concrete.Variant) narrowing on an open error channel). Union error
+      types with payload variants, such as `type DetailedError union error {
+      OpenError { Path: string } ... }`, therefore cannot be handled per
+      variant in try handlers: Err(DetailedError.OpenError(info)) is a nested
+      pattern, which match forbids outside open-error narrowing. Decide the
+      ErrPattern production, whether payload-variant patterns of union errors
+      are allowed in try handlers and match arms, and their binding forms, so
+      handler reachability for union payload patterns can be implemented.
+    classification: constraining
+    status: open
+
+  - id: MD-030
+    area: no-panic-attribute-placement
+    rulebooks:
+      - rules/foundations/attributes.md
+      - rules/errors/panic.md
+    description: >-
+      panic.md § 21 and frontend.panic ask for @noPanic on every callable form,
+      but attributes.md only says an attribute applies to the next top-level
+      statement (and impl methods by extension); it defines no placement for
+      init declarations, property get/set accessors, lambdas, or free. The
+      parser therefore accepts @noPanic only before fn, unsafe fn, and extern
+      fn. Decide where @noPanic may be written on these callable forms (for
+      example before init, before get/set inside a property, or in a lambda
+      header) so their bodies can be verified.
+    classification: localized
+    status: open
+
+
+  - id: MD-031
+    area: sec-mlir-try-handler-metadata
+    rulebooks:
+      - rules/errors/errorhandling.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v16.md
+    description: >-
+      Semantic IR now lowers guarded try handlers (guard-false continuation)
+      and partial handler plans with residual propagation, but the Sec MLIR
+      dialect schema only defines the handler kinds ok, err-variant,
+      err-catch-all, and merge. Decide how the dialect represents guarded
+      handlers and residual propagation (new handler kinds, attributes, or
+      explicit CFG), so the emitter can stop rejecting these plans.
     classification: localized
     status: open

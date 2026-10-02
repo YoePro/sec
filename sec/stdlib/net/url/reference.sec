@@ -19,3 +19,137 @@ module url
  * Rulebook:
  * stdlib/net/url/std-net-url.md
  */
+
+type Reference struct {
+    _scheme:    Option[Scheme],
+    _authority: Option[Authority],
+    _path:      Path,
+    _query:     Option[Query],
+    _fragment:  Option[Fragment],
+}
+
+impl Reference {
+    init(
+        scheme:    Option[Scheme],
+        authority: Option[Authority],
+        path:      Path,
+        query:     Option[Query],
+        fragment:  Option[Fragment],
+    ) BuildError {
+    }
+
+    /** Returns the optional scheme component. */
+    property Scheme: Option[Scheme] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns the optional authority component. */
+    property Authority: Option[Authority] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns the encoded path component. */
+    property Path: Path {
+        get {
+            return new Path()
+        }
+    }
+
+    /** Returns None for no `?`, or Some including the present-empty query. */
+    property Query: Option[Query] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns None for no `#`, or Some including the present-empty fragment. */
+    property Fragment: Option[Fragment] {
+        get {
+            return None
+        }
+    }
+
+    /** Returns true when the reference contains a scheme. */
+    property IsAbsolute: bool {
+        get {
+            return false
+        }
+    }
+
+    /** Returns true when the reference has no scheme. */
+    property IsRelative: bool {
+        get {
+            return false
+        }
+    }
+
+    /** Returns true when an authority component is present. */
+    property HasAuthority: bool {
+        get {
+            return false
+        }
+    }
+
+    /** Serializes the reference according to RFC 3986 component recomposition. */
+    fn ToString() string {
+        return ""
+    }
+
+    /** Serializes the reference while redacting any authority userinfo. */
+    fn Redacted() string {
+        return ""
+    }
+
+    /**
+     * Converts an absolute reference to URL.
+     *
+     * Errors:
+     * - ParseError.RelativeReference: The reference has no scheme.
+     */
+    fn ToURL() Result[URL, ParseError] {
+        return Err(ParseError.EmptyInput)
+    }
+
+    /** Returns a syntactically normalized reference. */
+    fn Normalize() Reference
+
+    /** Returns a copy with the supplied fragment. */
+    fn WithFragment(fragment: Option[Fragment]) Reference
+
+    /** Returns a copy with no fragment delimiter. */
+    fn WithoutFragment() Reference
+}
+
+/**
+ * Parses an RFC 3986 URI-reference, absolute or relative.
+ *
+ * Parameters:
+ * - value: Complete serialized reference.
+ *
+ * Returns:
+ * A validated Reference preserving absent versus present-empty query and fragment.
+ *
+ * Errors:
+ * - ParseError.EmptyInput: Reserved for contexts that disallow an empty reference;
+ *     generic ParseReference itself accepts the RFC-valid empty reference.
+ * - ParseError.InvalidCharacter: A forbidden raw character occurs.
+ * - ParseError.InvalidScheme: A detected scheme is malformed.
+ * - ParseError.InvalidAuthority: Authority syntax is malformed.
+ * - ParseError.InvalidUserInfo: Userinfo syntax is malformed.
+ * - ParseError.InvalidHost: Host syntax is malformed.
+ * - ParseError.InvalidPort: Port syntax is malformed.
+ * - ParseError.InvalidPath: Path syntax is malformed.
+ * - ParseError.InvalidQuery: Query syntax is malformed.
+ * - ParseError.InvalidFragment: Fragment syntax is malformed.
+ * - ParseError.InvalidPercentEncoding: A percent escape is malformed.
+ *
+ * Standards:
+ * - RFC 3986 sections 4 and 5.
+ */
+fn ParseReference(value: string) Result[Reference, ParseError] {
+    return Err(ParseError.EmptyInput)
+}

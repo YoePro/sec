@@ -1266,7 +1266,12 @@ func (p *Parser) parseTryExpression() ast.Expression {
 		return nil
 	}
 
-	if p.peekToken.Type == lexer.LBRACE {
+	// In an if, while, for, switch, or match header the enclosing construct
+	// owns the following brace, so a try there is bodyless; its handler set is
+	// empty and failures propagate (flowcontrol_if.md §11,
+	// flowcontrol_while.md §7). Call arguments reset the flag, so handled try
+	// expressions remain available inside nested calls.
+	if p.peekToken.Type == lexer.LBRACE && !previousStopBeforeBrace {
 		p.nextToken()
 		expr.Handlers = p.parseTryHandlerBlock()
 		if expr.Handlers == nil {
@@ -1594,6 +1599,11 @@ func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
 
 	if p.peekToken.Type != lexer.IDENT && p.peekToken.Type != lexer.UNDERSCORE {
 		message := fmt.Sprintf("missing member name after '.' at %d:%d", p.curToken.Line, p.curToken.Column)
+		if p.peekToken.Type == lexer.FREE {
+			// rules/declarations/impl.md §19 and destruction.md §15.2(2):
+			// free is a lifecycle member, never an addressable member.
+			message = fmt.Sprintf("free is a lifecycle member and cannot be called or accessed at %d:%d; destruction invokes it automatically", p.peekToken.Line, p.peekToken.Column)
+		}
 		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, p.curToken, nil, &p.peekToken, "%s", message)
 		invalid := p.invalidExpression(p.curToken, message, compilerdiagnostics.ParserInvalidExpression)
 		invalid.Left = left

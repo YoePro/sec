@@ -1,0 +1,39 @@
+module main
+
+enum ReadError error {
+    Failed,
+}
+
+fn Read() Result[int, ReadError] {
+    return Ok(1)
+}
+
+fn Find() Option[int] {
+    return None
+}
+
+fn Add(value: int) int {
+    return value
+}
+
+fn A() int {
+    let value: int := Read()
+    return value
+}
+
+fn B() int {
+    return Read()
+}
+
+fn C() int {
+    return Add(Read())
+}
+
+fn D() int {
+    let found: int := Find()
+    return found
+}
+
+fn E() int {
+    return Read() + 1
+}

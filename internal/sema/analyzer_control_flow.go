@@ -25,6 +25,9 @@ func (a *Analyzer) constantConditionIntegerValue(expression ast.Expression) (*bi
 
 // constantConditionReferencesMutableBinding rejects mutable local dependencies
 // before a current-value integer fact is promoted to a compile-time path fact.
+// The dependency is transitive: an immutable binding initialized from a
+// mutable binding's current value (`let r := counter % 4` inside a loop) is
+// as transient as the mutable binding itself.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
@@ -33,7 +36,7 @@ func (a *Analyzer) constantConditionReferencesMutableBinding(expression ast.Expr
 	switch expression := expression.(type) {
 	case *ast.Identifier:
 		symbol, exists := a.symbols[expression.Value]
-		return exists && symbol.Mutable
+		return exists && (symbol.Mutable || symbol.TransientConstant)
 	case *ast.ConversionExpression:
 		return a.constantConditionReferencesMutableBinding(expression.Value)
 	case *ast.CallExpression:

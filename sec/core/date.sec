@@ -164,12 +164,12 @@ impl date {
         self._epochDays = int32(epochDays)
     }
 
-    fn ToString(format: Format) string {
-        return ""
+    fn ToString(format: Format) Result[string, StringError] {
+        return Ok("")
     }
 
-    fn ToString(layout: string) string {
-        return ""
+    fn ToString(layout: string) Result[string, StringError] {
+        return Ok("")
     }
 
     fn FromEpochDays(days: int32) date {

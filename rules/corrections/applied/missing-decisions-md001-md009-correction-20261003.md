@@ -8,6 +8,7 @@
 **Sec version:** 0.1  
 **Canonical path:** `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md`  
 **Replaces:** `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md`
+**Partially superseded by:** `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 3 (contract argument grammar: ordinary `Expression` in a `SemanticCompileTimeRequiredContext` replaces `ConstantExpression`, including `RegexContract`)
 
 ## 1. Purpose and scope
 

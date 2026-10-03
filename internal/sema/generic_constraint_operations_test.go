@@ -26,7 +26,7 @@ interface Second {
 
 fn Valid[T: First & Second](value: T) string {
     let first: int := value.FirstValue()
-    return value.SecondValue(first.ToString())
+    return value.SecondValue(try first.ToString() { Err(_) => "" })
 }
 
 fn Invalid[T](value: T) int {

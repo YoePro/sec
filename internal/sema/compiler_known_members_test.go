@@ -24,11 +24,11 @@ fn Test(text: string, runes: rune[2], ptr: RawPtr[int]) void {
 	let maximum: int32 := int32.Max
 	let bits: uint := int32.Bits
 	let decimalScale: int := decimal.Scale
-	let formatted: string := true.ToString()
+	let formatted: Result[string, StringError] := true.ToString()
 	let bytes: byte[] := text.ToByteArray()
 	let chars: char[] := text.ToCharArray()
 	let decoded: rune[] := text.ToRuneArray()
-	let joined: string := runes.ToString()
+	let joined: Result[string, StringError] := runes.ToString()
 	let fromRunes: string := string.FromRuneArray(runes)
 	let fromBytes: string := string.FromByteArray(bytes)
 	unsafe {
@@ -58,47 +58,47 @@ type Plain struct { value: int }
 type Formatted struct { value: int }
 
 impl Packet {
-	fn ToString() string {
+	fn ToString() Result[string, StringError] {
 		return self.value.ToString()
 	}
 }
 
 impl Formatted {
-	fn ToString(format: string) string {
-		return format
+	fn ToString(format: string) Result[string, StringError] {
+		return Ok(format)
 	}
 }
 
-fn Bytes(high: byte, low: byte) string {
+fn Bytes(high: byte, low: byte) Result[string, StringError] {
 	let bytes: byte[] := [high, low]
 	return bytes.ToString()
 }
 
-fn Chars(chars: ref char[]) string {
+fn Chars(chars: ref char[]) Result[string, StringError] {
 	return chars.ToString()
 }
 
-fn Runes(runes: rune[]) string {
+fn Runes(runes: rune[]) Result[string, StringError] {
 	return runes.ToString()
 }
 
-fn TypeFallback(values: int[]) string {
+fn TypeFallback(values: int[]) Result[string, StringError] {
 	return values.ToString()
 }
 
-fn ObjectFallback(value: Plain) string {
+fn ObjectFallback(value: Plain) Result[string, StringError] {
 	return value.ToString()
 }
 
-fn OverloadDoesNotReplaceFallback(value: Formatted) string {
+fn OverloadDoesNotReplaceFallback(value: Formatted) Result[string, StringError] {
 	return value.ToString()
 }
 
-fn ExplicitOverloadRemainsCallable(value: Formatted) string {
+fn ExplicitOverloadRemainsCallable(value: Formatted) Result[string, StringError] {
 	return value.ToString("custom")
 }
 
-fn UserReplacement(packet: Packet) string {
+fn UserReplacement(packet: Packet) Result[string, StringError] {
 	return packet.ToString()
 }
 `
@@ -116,8 +116,8 @@ fn UserReplacement(packet: Packet) string {
 	for _, test := range sequenceIDs {
 		typ := NewDynamicArrayType(test.element)
 		member, ok := compilerKnownMember(typ, "ToString", false)
-		if !ok || member.Kind != CompilerKnownMethod || member.Result.Kind != StringType || member.ID != test.want {
-			t.Fatalf("%s[].ToString = %+v, %v; want %s returning string", test.element.Name, member, ok, test.want)
+		if !ok || member.Kind != CompilerKnownMethod || !isToStringResultType(member.Result) || member.ID != test.want {
+			t.Fatalf("%s[].ToString = %+v, %v; want %s returning Result[string, StringError]", test.element.Name, member, ok, test.want)
 		}
 	}
 }
@@ -139,20 +139,20 @@ impl byte {
 		Hexadecimal,
 	}
 
-	fn ToString(format: byte.ByteStringFormat) string {
-		return "formatted"
+	fn ToString(format: byte.ByteStringFormat) Result[string, StringError] {
+		return Ok("formatted")
 	}
 }
 
-fn Format(value: byte) string {
+fn Format(value: byte) Result[string, StringError] {
 	return value.ToString(byte.ByteStringFormat.Hexadecimal)
 }
 
-fn Default(value: byte) string {
+fn Default(value: byte) Result[string, StringError] {
 	return value.ToString()
 }
 
-fn Converted(value: char) string {
+fn Converted(value: char) Result[string, StringError] {
 	return byte(value).ToString(byte.ByteStringFormat.Decimal)
 }
 `

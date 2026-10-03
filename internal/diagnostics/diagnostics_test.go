@@ -86,6 +86,10 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		StringMaterializationRequiresTry:              SeverityError,
 		StringMaterializationWithoutAllocationContext: SeverityError,
 		ConfusableIdentifier:                          SeverityError,
+		ToStringSignature:                             SeverityError,
+		SemanticCompileTimeExecutionUnavailable:       SeverityError,
+		AssertConditionNotBool:                        SeverityError,
+		ExplicitSelfParameter:                         SeverityError,
 		UseAfterDiscard:                               SeverityError,
 		UnreachableStatement:                          SeverityError,
 		InterfaceInheritanceCycle:                     SeverityError,
@@ -180,6 +184,11 @@ func TestParserRecoveryDiagnosticsAreRegistered(t *testing.T) {
 		ParserFutureStructDeclaration,
 		ParserLegacyEnumColonInitializer,
 		ParserMultipleTypeDeclarationNames,
+		ParserFunctionLikeAssert,
+		ParserAssertMessageNotLiteral,
+		ParserAssertMessageSeparator,
+		ParserAssertMissingCondition,
+		ParserLegacyTryMatchWrapper,
 	}
 	for _, id := range ids {
 		definition, ok := Lookup(id)

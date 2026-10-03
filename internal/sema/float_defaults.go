@@ -7,14 +7,15 @@ import (
 )
 
 // binaryFloatRangeDefault selects the valid value nearest zero for a
-// range-constrained explicit-width binary float when zero is invalid. The
-// candidate from a positive lower bound is the smallest representable value at
-// or above it; the candidate from a negative upper bound is the largest
-// representable value at or below it, or strictly below it when the bound is
-// exclusive. Equal-distance candidates have no implicit default. Plain float
-// has no fixed width (MD-014) and therefore no range-derived default.
+// range-constrained binary float when zero is invalid. The candidate from a
+// positive lower bound is the smallest representable value at or above it; the
+// candidate from a negative upper bound is the largest representable value at
+// or below it, or strictly below it when the bound is exclusive. Equal-distance
+// candidates have no implicit default. Plain float uses its platform-selected
+// width (MD-014), so it resolves like float32 or float64.
 //
 // Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 6.14–6.17
 //   - rules/types/default_values.md — "Floating and decimal ranges"
 //   - rules/types/default_values.md — "Ambiguous nearest-to-zero values"
 //   - rules/types/types.md — "Binary floating-point types"

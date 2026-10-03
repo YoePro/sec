@@ -2,467 +2,59 @@ package main
 
 import (
 	"fmt"
-	"runtime"
-	"strings"
 
 	"sec/internal/layout"
+	platformtarget "sec/internal/platform/target"
 )
 
-type TargetStatus string
+type TargetStatus = platformtarget.Status
 
 const (
-	TargetImplemented  TargetStatus = "implemented"
-	TargetExperimental TargetStatus = "experimental"
-	TargetPlanned      TargetStatus = "planned"
+	TargetImplemented  = platformtarget.Implemented
+	TargetExperimental = platformtarget.Experimental
+	TargetPlanned      = platformtarget.Planned
 )
 
 type TargetDefinition struct {
-	OS               string
-	Arch             string
-	LLVMTriple       string
-	ABI              string
-	Profile          string
-	PointerWidthBits uint16
-	Endianness       layout.Endianness
-	// CABI is the target's C ABI data model (rules/platform/abi.md § 19).
-	CABI        layout.CABIModel
-	Status      TargetStatus
-	CanParse    bool
-	CanCheck    bool
-	CanEmitLLVM bool
-	CanLink     bool
-	CanRun      bool
+	platformtarget.Definition
 }
 
-// Supported platforms
-var targets = []TargetDefinition{
-	{
-		OS:               "linux",
-		Arch:             "amd64",
-		LLVMTriple:       "x86_64-pc-linux-gnu",
-		ABI:              "gnu",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelSysVX8664,
-		Status:           TargetImplemented,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      true,
-		CanLink:          true,
-		CanRun:           true,
-	},
-	{
-		OS:               "linux",
-		Arch:             "arm64",
-		LLVMTriple:       "aarch64-unknown-linux-gnu",
-		ABI:              "gnu",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCS64,
-		Status:           TargetExperimental,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      true,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "linux",
-		Arch:             "armv6",
-		LLVMTriple:       "armv6-unknown-linux-gnueabihf",
-		ABI:              "gnueabihf",
-		Profile:          "hosted",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSLinuxHF,
-		Status:           TargetExperimental,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      true,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "linux",
-		Arch:             "armv7",
-		LLVMTriple:       "armv7-unknown-linux-gnueabihf",
-		ABI:              "gnueabihf",
-		Profile:          "hosted",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSLinuxHF,
-		Status:           TargetExperimental,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      true,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "macos",
-		Arch:             "amd64",
-		LLVMTriple:       "x86_64-apple-darwin",
-		ABI:              "darwin",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelDarwinX8664,
-		Status:           TargetExperimental,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      true,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "macos",
-		Arch:             "arm64",
-		LLVMTriple:       "aarch64-apple-darwin",
-		ABI:              "darwin",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelDarwinARM64,
-		Status:           TargetExperimental,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      true,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "windows",
-		Arch:             "amd64",
-		LLVMTriple:       "x86_64-pc-windows-msvc",
-		ABI:              "msvc",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelWindowsX64,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "windows",
-		Arch:             "arm64",
-		LLVMTriple:       "aarch64-pc-windows-msvc",
-		ABI:              "msvc",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelWindowsARM64,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "freebsd",
-		Arch:             "amd64",
-		LLVMTriple:       "x86_64-unknown-freebsd",
-		ABI:              "system-v",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelSysVX8664,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "freebsd",
-		Arch:             "arm64",
-		LLVMTriple:       "aarch64-unknown-freebsd",
-		ABI:              "system-v",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCS64,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "openbsd",
-		Arch:             "amd64",
-		LLVMTriple:       "x86_64-unknown-openbsd",
-		ABI:              "system-v",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelSysVX8664,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "openbsd",
-		Arch:             "arm64",
-		LLVMTriple:       "aarch64-unknown-openbsd",
-		ABI:              "system-v",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCS64,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "netbsd",
-		Arch:             "amd64",
-		LLVMTriple:       "x86_64-unknown-netbsd",
-		ABI:              "system-v",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelSysVX8664,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "netbsd",
-		Arch:             "arm64",
-		LLVMTriple:       "aarch64-unknown-netbsd",
-		ABI:              "system-v",
-		Profile:          "hosted",
-		PointerWidthBits: 64,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCS64,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "baremetal",
-		Arch:             "cortex-m0",
-		ABI:              "aapcs",
-		Profile:          "freestanding",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSBareMetal,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "baremetal",
-		Arch:             "cortex-m3",
-		ABI:              "aapcs",
-		Profile:          "freestanding",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSBareMetal,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "baremetal",
-		Arch:             "cortex-m4",
-		ABI:              "aapcs",
-		Profile:          "freestanding",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSBareMetal,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "baremetal",
-		Arch:             "cortex-m7",
-		ABI:              "aapcs",
-		Profile:          "freestanding",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSBareMetal,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "baremetal",
-		Arch:             "riscv32",
-		ABI:              "ilp32",
-		Profile:          "freestanding",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelRISCVILP32,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "freertos",
-		Arch:             "cortex-m4",
-		ABI:              "aapcs",
-		Profile:          "rtos",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSBareMetal,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:               "freertos",
-		Arch:             "cortex-m7",
-		ABI:              "aapcs",
-		Profile:          "rtos",
-		PointerWidthBits: 32,
-		Endianness:       layout.LittleEndian,
-		CABI:             layout.CModelAAPCSBareMetal,
-		Status:           TargetPlanned,
-		CanParse:         true,
-		CanCheck:         true,
-		CanEmitLLVM:      false,
-		CanLink:          false,
-		CanRun:           false,
-	},
-	{
-		OS:          "rtems",
-		Arch:        "any",
-		Status:      TargetPlanned,
-		CanParse:    true,
-		CanCheck:    true,
-		CanEmitLLVM: false,
-		CanLink:     false,
-		CanRun:      false,
-	},
-	{
-		OS:          "zephyr",
-		Arch:        "any",
-		Status:      TargetPlanned,
-		CanParse:    true,
-		CanCheck:    true,
-		CanEmitLLVM: false,
-		CanLink:     false,
-		CanRun:      false,
-	},
-}
+var targets = compilerTargetDefinitions()
 
-type CompilerTarget struct {
-	OS   string
-	Arch string
-}
+type CompilerTarget = platformtarget.Target
 
-func (t CompilerTarget) String() string {
-	if t.OS == "" || t.Arch == "" {
-		return ""
+func compilerTargetDefinitions() []TargetDefinition {
+	definitions := platformtarget.Definitions()
+	result := make([]TargetDefinition, len(definitions))
+	for index, definition := range definitions {
+		result[index] = TargetDefinition{Definition: definition}
 	}
-	return t.OS + "-" + t.Arch
+	return result
 }
 
 func hostCompilerTarget() CompilerTarget {
-	return CompilerTarget{
-		OS:   normalizeTargetOS(runtime.GOOS),
-		Arch: normalizeTargetArch(runtime.GOARCH),
-	}
+	return platformtarget.Host()
 }
 
 func normalizeTargetOS(osName string) string {
-	switch osName {
-	case "darwin":
-		return "macos"
-	default:
-		return osName
-	}
+	return platformtarget.NormalizeOS(osName)
 }
 
 func normalizeTargetArch(arch string) string {
-	switch arch {
-	case "arm":
-		return "arm32"
-	default:
-		return arch
-	}
+	return platformtarget.NormalizeArch(arch)
 }
 
 func parseCompilerTarget(value string) (CompilerTarget, bool) {
-	separator := strings.LastIndex(value, "-")
-	if separator <= 0 || separator == len(value)-1 {
-		return CompilerTarget{}, false
-	}
-	target := CompilerTarget{
-		OS:   normalizeTargetOS(value[:separator]),
-		Arch: normalizeTargetArch(value[separator+1:]),
-	}
-	if target.OS == "" || target.Arch == "" {
-		return CompilerTarget{}, false
-	}
-	return target, true
+	return platformtarget.Parse(value)
 }
 
 func findTargetDefinition(target CompilerTarget) (TargetDefinition, bool) {
-	for _, definition := range targets {
-		if definition.OS == target.OS && definition.Arch == target.Arch {
-			return definition, true
-		}
-	}
-	return TargetDefinition{}, false
+	definition, ok := platformtarget.Find(target)
+	return TargetDefinition{Definition: definition}, ok
 }
 
 func (definition TargetDefinition) scalarPlan() (layout.ResolvedScalarPlan, error) {
-	plan := layout.ResolvedScalarPlan{
-		TargetOS:         definition.OS,
-		TargetArch:       definition.Arch,
-		LLVMTriple:       definition.LLVMTriple,
-		ABI:              definition.ABI,
-		Profile:          definition.Profile,
-		PointerWidthBits: definition.PointerWidthBits,
-		Endianness:       definition.Endianness,
-		CABI:             definition.CABI,
-	}
-	if err := plan.Validate(); err != nil {
-		return layout.ResolvedScalarPlan{}, fmt.Errorf("target %s-%s has no resolved scalar plan: %w", definition.OS, definition.Arch, err)
-	}
-	return plan, nil
+	return definition.ScalarPlan()
 }
 
 func requireTargetCanEmitLLVM(target CompilerTarget) (TargetDefinition, error) {

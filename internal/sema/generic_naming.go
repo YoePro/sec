@@ -32,40 +32,43 @@ func (a *Analyzer) validateGenericTypeParameterNames(parameters []*ast.GenericPa
 }
 
 // validateGenericParameterTypeShadowing rejects a generic parameter that hides
-// a source-defined type in the same module. The check runs when entering the
-// generic scope, after the complete module type surface has been registered.
-// Other visibility sources are left to the broader namespace audit.
+// a visible declaration: a type, enum, interface, function, or variable of the
+// declaring module, or an always-available core declaration. The check runs
+// when entering the generic scope, after the complete module surface has been
+// registered. Unit symbols live in their own namespace.
 //
-// Rules: rules/foundations/names_scopes_visibility.md — §8 Shadowing and
-// §15 Generic parameters (visible type prohibition).
+// Rules: rules/foundations/names_scopes_visibility.md — §8 Shadowing,
+// §15 Generic parameters (visible type and value prohibition), §17 Name
+// lookup order.
 func (a *Analyzer) validateGenericParameterTypeShadowing(parameters []*ast.GenericParameter) {
 	module := a.currentModule
 	if a.currentImplTarget != "" {
 		// Nested impl members are analyzed with their owner set, but without
 		// necessarily setting currentModule on this pass.
-		if target, exists := a.types[a.currentImplTarget]; exists {
+		if target, exists := a.types[a.currentImplTarget]; exists && target.Module != "" {
 			module = target.Module
 		}
 	}
+	previousModule := a.currentModule
+	a.currentModule = module
+	defer func() { a.currentModule = previousModule }()
 	for _, parameter := range parameters {
 		if parameter == nil || parameter.Name == nil {
 			continue
 		}
 		name := parameter.Name.Value
-		if a.isUnitSymbol(name) {
-			// Unit symbols occupy a separate namespace (MD-001 decision).
+		declaration, ok := a.visibleShadowedDeclaration(name, true)
+		if !ok {
 			continue
 		}
-		typ, exists := a.types[name]
-		if !exists || typ.Module != module {
+		if shadowedDeclarationIsType(declaration) {
+			a.reportShadowing(parameter.Name.Token, declaration,
+				diagnostics.GenericParameterShadowsType,
+				"generic parameter %s shadows visible %s %s", name, declaration.Kind, name)
 			continue
 		}
-		previous, exists := a.typeDefinitionTokens[name]
-		if !exists || !validDefinitionToken(previous) {
-			continue
-		}
-		a.addErrorAtTokenWithPreviousID(parameter.Name.Token, previous,
-			diagnostics.GenericParameterShadowsType,
-			"generic parameter %s shadows visible type %s", name, name)
+		a.reportShadowing(parameter.Name.Token, declaration,
+			diagnostics.GenericParameterShadowsDeclaration,
+			"generic parameter %s shadows visible %s %s", name, declaration.Kind, name)
 	}
 }

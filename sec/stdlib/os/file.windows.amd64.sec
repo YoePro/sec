@@ -1,0 +1,9 @@
+#target(os: "windows", arch: "amd64")
+module os
+
+type NativeFileHandle struct {
+}
+
+fn _CloseNativeFile(fh: NativeFileHandle) Result[void, IOError] {
+    return Err(IOError.Unsupported)
+}

@@ -54,10 +54,13 @@ enum MathError error {
     NotFinite,
 }
 
+// The one failure family of text: every ToString and every runtime string
+// concatenation or interpolation fails with StringError.
 type StringError union error {
+    Allocation(AllocationError),
+    Format(FormatError),
     InvalidUtf8(uint),
     InvalidCodePoint,
-    AllocationFailed,
     OutOfBounds,
 }
 

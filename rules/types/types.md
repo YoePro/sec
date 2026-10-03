@@ -532,9 +532,25 @@ float64
 
 `float32` and `float64` request explicit binary floating-point widths.
 
-`float` is the general target/compiler-known binary floating-point type.
+`float` is platform-sized on exactly the same principle as `int` and `uint`: its
+width comes from the selected Sec platform's canonical width fact, the same fact
+that resolves native integer width.
 
-Code that requires an exact external representation must use an explicit-width type.
+```text
+32-bit platform: int and uint are 32-bit; float has float32 width and semantics
+64-bit platform: int and uint are 64-bit; float has float64 width and semantics
+```
+
+There is no separately selectable default float width and no independent float
+width policy. Host compiler width, backend preference, LLVM defaults, or foreign
+ABI convenience never override the selected platform. Every rule that depends on
+the representable values of `float`, including range-derived defaults, uses the
+platform-selected width. This rule fixes width only; it does not change the
+conversion or type-identity rules between `float` and the explicit-width
+spellings (MD-014; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 6).
+
+Code that requires an exact external representation or a fixed width must use an
+explicit-width type, `float32` or `float64`.
 
 The numeric family suffix for binary floating point is:
 
@@ -1312,6 +1328,32 @@ let p := try Percent(raw)
 When the compiler proves a conversion valid from compile-time information, no runtime validation is emitted.
 
 The language semantics remain checked.
+
+Conversion failure has three distinct semantic layers that must never collapse
+into one undifferentiated conversion error:
+
+```text
+no conversion relation
+    compile-time type diagnostic; no runtime Result error type represents it
+
+intrinsic target-domain failure
+    the value cannot form a valid value of the target primitive/scalar type:
+    overflow or non-representability, forbidden precision loss, an invalid
+    Unicode scalar value, or another validity failure the target type defines
+
+declared contract failure
+    the value is valid for the underlying target domain but violates a
+    contract of the constrained named type
+```
+
+The intrinsic range of a primitive such as `uint8` is a property of the type,
+not an implicit `range` contract. A conversion into a constrained named type
+converts into the underlying target domain first, stops on intrinsic failure,
+and only then evaluates the declared contracts in canonical source order
+(`rules/types/contracts.md`, "Conversion failure layers"). A compile-time-known
+invalid value is diagnosed at compile time. The public runtime error type or
+types, variant names, and payloads of these failures remain undecided (MD-012;
+`rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 4).
 
 Lossy, wrapping, saturating, or otherwise intentionally non-preserving conversion semantics require separately defined explicit operations.
 

@@ -598,14 +598,19 @@ func TestFormatPreservesRegisterLayoutModifiers(t *testing.T) {
 
 func TestFormatPreservesRegisterFieldAccessModifiers(t *testing.T) {
 	input := "type Device register[4] {\nReady: bit read-only,\nCommand: bit write-only,\nPending: bit write-one-clear,\nEvent: bit read-clear,\n}\n"
-	want := "type Device register[4] {\n    Ready: bit read-only,\n    Command: bit write-only,\n    Pending: bit write-one-clear,\n    Event: bit read-clear,\n}\n"
+	want := "type Device register[4] {\n    Ready:   bit read-only,\n    Command: bit write-only,\n    Pending: bit write-one-clear,\n    Event:   bit read-clear,\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("wrong register field modifier formatting:\n%s\nwant:\n%s", got, want)
 	}
 }
 
-// rules/tooling/formatter.md, General trailing-comment alignment. Nominal
-// declaration items share one local comment column with a four-space gutter.
+// Nominal declaration items share one local comment column one standard space
+// after the widest code cell; trailing comments do not end field alignment
+// groups, and register fields align like struct fields (MD-013).
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 5.7–5.23
+//   - rules/tooling/formatter.md — § 9(2), § 12(4)–(6), § 22(1), § 22(4)
 func TestFormatAlignsTrailingCommentsInNominalDeclarations(t *testing.T) {
 	input := `enum test {
   a,   // kommentar 1
@@ -630,25 +635,25 @@ Running // running
 }
 `
 	want := `enum test {
-    a,         // kommentar 1
-    longer,    // kommentar 2
-    c,         // kommentar 3
+    a,      // kommentar 1
+    longer, // kommentar 2
+    c,      // kommentar 3
 }
 
 type Packet struct {
-    short: int,            // field
-    longerName: string,    // text
-    plain: string,
+    short:      int,    // field
+    longerName: string, // text
+    plain:      string,
 }
 
 type Device register[4] {
-    Ready: bit,      // ready
-    Mode: bit[3],    // mode
+    Ready: bit,    // ready
+    Mode:  bit[3], // mode
 }
 
 type State union {
-    Idle       // idle
-    Running    // running
+    Idle    // idle
+    Running // running
 }
 `
 	got := Format(Source{Text: input}, Options{}).Text
@@ -672,13 +677,13 @@ URL: string = "https://example.test/a//b", // URL
 }
 `
 	want := `type Config struct {
-    ID: int,         // identity
-    Name: string,    // display
+    ID:   int,    // identity
+    Name: string, // display
 
     // Network settings.
-    Endpoint: string,                             // endpoint
-    VeryLongTimeoutName: int,                     // timeout
-    URL: string = "https://example.test/a//b",    // URL
+    Endpoint: string,                          // endpoint
+    VeryLongTimeoutName: int,                  // timeout
+    URL: string = "https://example.test/a//b", // URL
 }
 `
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
@@ -717,7 +722,7 @@ func TestFixReversedTypeDeclarationOrder(t *testing.T) {
 		"type register Status[8] {\nReady: bit,\n_: bit[7],\n}\n"
 	want := "type User struct {\n    name: string,\n}\n\n" +
 		"type State union {\n    Ready\n}\n\n" +
-		"type Status register[8] {\n    Ready: bit,\n    _: bit[7],\n}\n"
+		"type Status register[8] {\n    Ready: bit,\n    _:     bit[7],\n}\n"
 
 	if got := Format(Source{Text: input}, Options{}).Text; got == want || !strings.Contains(got, "type struct User") {
 		t.Fatalf("ordinary formatting unexpectedly repaired declaration order:\n%s", got)
@@ -1127,7 +1132,7 @@ func TestTrailingCommentBoundaryUsesLexicalCST(t *testing.T) {
 func TestFormatAlignsCommentAfterInlineBlockComment(t *testing.T) {
 	input := "type Config struct {\nShort: string /* // fake */, // real\nLonger: int, // other\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
-	if !strings.Contains(got, "/* // fake */,    // real") {
+	if !strings.Contains(got, "/* // fake */, // real") {
 		t.Fatalf("real line comment was not aligned after block comment:\n%s", got)
 	}
 	if again := Format(Source{Text: got}, Options{}).Text; again != got {
@@ -1286,5 +1291,23 @@ func TestFormatSwitchValidFixtureIsIdempotent(t *testing.T) {
 	first := Format(Source{Text: string(source)}, Options{}).Text
 	if second := Format(Source{Text: first}, Options{}).Text; second != first {
 		t.Fatal("testdata/switch_valid.sec is not idempotent under formatting")
+	}
+}
+
+// A single-line parameter list has no alignment group, so every parameter gets
+// exactly one space after its colon, including ownership-prefixed types; the
+// result is a fixed point.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 6(4), § 16(2)
+func TestFormatNormalizesSingleLineParameterSpacing(t *testing.T) {
+	input := "fn Copy(destination: ref mut Writer, source:      ref mut Reader) int {\n    return 0\n}\n\nfn A(x:      int, y:   int) int {\n    return 0\n}\n"
+	want := "fn Copy(destination: ref mut Writer, source: ref mut Reader) int {\n    return 0\n}\n\nfn A(x: int, y: int) int {\n    return 0\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("single-line parameters formatted as:\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("single-line parameter spacing is not idempotent:\n%s", again)
 	}
 }

@@ -73,6 +73,7 @@ integrations:
       - "unresolved Thread[T] locals are diagnosed at scope exit"
       - "discard thread is rejected for unresolved handles"
       - "detach Thread[void] and detach Thread[T] discard have initial frontend recognition"
+      - "exact CamelCase surface (2026-10-03): the compiler-known registry exposes Thread[T].ID (ThreadID), Name (string), Status (ThreadStatus), Observe() (ThreadObserver[T]), Start() (Result[void, ThreadStartError]), and RequestCancel(), and ThreadObserver[T].ID, Name, and Status only; Value, Panic, Termination, and Platform are deliberately absent until their analyses exist; legacy lowercase spellings such as worker.status are rejected with help naming the CamelCase member; LSP completion and hover present exactly this surface from the shared registry (TestThreadV2SourceSurface, TestThreadV2SurfaceInCompletionAndHover)"
       - "threads revision 2.0 and its spawn, scheduling, runtime-model, select, cancellation, Semantic IR, platform-model, and LSP cross-rulebook corrections are synchronized"
     remaining:
       - "implement exact ThreadSetting[T] union and remove implicit plain-value preference behavior"
@@ -85,7 +86,7 @@ integrations:
       - "implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup"
       - "implement raw spawn thread Result[Thread[T], ThreadSpawnError]"
       - "freeze exact ThreadSpawnError and ThreadStartError source declarations"
-      - "replace lowercase thread members with canonical CamelCase source/LSP identities"
+      - "add the remaining CamelCase Thread[T] members Value, Panic, and Termination with terminal-availability analysis, and Platform with target-resolved ThreadPlatform"
       - "implement exact ThreadTerminationKind/ThreadTermination"
       - "implement terminal Value/Panic/Termination availability analysis"
       - "implement deferred Start state and fallible Start()"
@@ -104,7 +105,7 @@ integrations:
       - "complete thread data-race/deadlock/starvation analysis"
       - "complete thread Semantic IR facts without making the legacy opcode-name list normative"
       - "complete target-specific lowering/runtime integration"
-      - "update LSP hover/completion/navigation to exact thread-v2 source surface"
+      - "extend LSP thread presentation to Value/Panic/Termination availability, Platform, and navigation once those Sema facts exist"
     required_tests:
       - "spawn thread raw result is Result[Thread[T], ThreadSpawnError]"
       - "unsupported physical-thread target is a compile-time diagnostic"

@@ -331,20 +331,40 @@ NamedTypeDeclaration
     := "type" Identifier TypeDefinition { Contract } [ DefaultClause ]
 
 DefaultClause
-    := "default" ConstantExpression
+    := "default" Expression
+```
+
+The default expression is ordinary `Expression` syntax evaluated in a
+`SemanticCompileTimeRequiredContext` (`rules/compiler/compile_time_evaluation.md`
+§ 8(5)). It may read immutable values already established by semantic CTE and
+call ordinary functions or read property getters whose concrete execution is
+CTE-legal:
+
+```sec
+fn DefaultPort() int {
+    return 8080
+}
+
+type Port int range 1..65535 default DefaultPort()
 ```
 
 The declared default:
 
-- must be a compile-time constant expression;
+- must be established by semantic CTE;
 - must be representable by the type;
-- must satisfy every contract;
+- must satisfy every contract, including argumentless contracts such as `odd`,
+  `even`, `finite`, `notEmpty`, and `unique`;
 - must satisfy every unit rule;
-- must not allocate;
+- must be statically materializable without hidden runtime allocation; its
+  evaluation may use transient evaluator-local allocation where semantic CTE
+  permits it, because CTE evaluability and static materializability are
+  separate properties;
 - must not perform I/O;
 - must not depend on runtime state;
 - must not call a fallible runtime constructor;
 - becomes the type's canonical default value.
+
+(MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 3.6–3.10, 3.35–3.38.)
 
 Example:
 
@@ -631,6 +651,13 @@ PositiveAmount(0.01)
 ```
 
 The selected value must be exactly representable by the declared type and scale.
+
+For plain `float`, representability uses the platform-selected width
+(`rules/types/types.md`, "Binary floating-point types"): float32 on a 32-bit
+platform and float64 on a 64-bit platform. The nearest-valid default is
+therefore deterministic once the target platform is resolved, and a
+range-constrained plain `float` receives an implicit default like `float32` and
+`float64` do (MD-014; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 6.14–6.17).
 
 If there is no unique nearest representable valid value, an explicit default is
 required.

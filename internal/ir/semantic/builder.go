@@ -463,6 +463,10 @@ func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
 		if name == "float64" {
 			w = 64
 		}
+		// MD-014: plain float carries its platform-resolved width from Sema.
+		if name == "float" && (t.FloatBits == 32 || t.FloatBits == 64) {
+			w = uint16(t.FloatBits)
+		}
 		return TypeFloat, true, w, name == "float", true
 	case sema.IntType:
 		if name == "byte" {

@@ -73,9 +73,12 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	b.inspectIneffectiveUpperBoundsGuard(statement)
 	b.walkExpression(statement.Condition)
 
+	guards := b.strictIndexGuards(statement.Condition)
+	b.inspectWrongGuardSubject(statement, guards)
+
 	outerProofs := b.activeNonEmptyProofs
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, true)
-	b.walkBlock(statement.Consequence)
+	b.withIndexGuards(guards, func() { b.walkBlock(statement.Consequence) })
 	b.activeNonEmptyProofs = b.nonEmptyBranchProof(statement.Condition, false)
 	b.walkBlock(statement.Alternative)
 	b.activeNonEmptyProofs = outerProofs

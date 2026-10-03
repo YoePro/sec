@@ -15,7 +15,7 @@ type Pair[T] struct {
 }
 type Control register[8] {
     Enabled: bit
-    Mode: bit[3]
+    Mode:    bit[3]
 }
 type Failure union error {
     Broken,

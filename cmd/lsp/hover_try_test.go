@@ -126,6 +126,86 @@ fn Use() Option[int] {
 	}
 }
 
+// Local Option try hover exposes Sema's exact None-handler plan, including
+// exhaustive recovery and guarded partial recovery whose unmatched None still
+// propagates through the enclosing Option return.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Hover", locally handled and unhandled states
+//   - rules/errors/errorhandling.md — §§ 15–16 and § 37.4
+//   - rules/corrections/applied/lsp-errorhandling-correction-20260824.md — "Try hover"
+func TestTryHoverExplainsLocalOptionNoneRecovery(t *testing.T) {
+	source := `module main
+
+fn Find() Option[int] {
+    return None
+}
+
+fn Recover() int {
+    return try Find() {
+        None => 0
+    }
+}
+
+fn RecoverWhen(flag: bool) Option[int] {
+    let value := try Find() {
+        None where flag => 0
+    }
+    return Some(value)
+}
+`
+	hoverAt := func(needle string) string {
+		t.Helper()
+		offset := strings.Index(source, needle) + 1
+		hover, ok := hoverForSource("", source, offsetPosition(source, offset))
+		if !ok {
+			t.Fatalf("missing hover at %q", needle)
+		}
+		return hover.Contents.Value
+	}
+
+	exhaustive := hoverAt("try Find()")
+	exhaustiveStart := strings.Index(source, "try Find()")
+	exhaustiveOperand, ok := hoverForSource("", source, offsetPosition(source, exhaustiveStart+len("try ")))
+	if !ok || exhaustiveOperand.Contents.Value != exhaustive {
+		t.Fatalf("protected Option operand hover differs from try keyword hover: %+v, %v", exhaustiveOperand, ok)
+	}
+	for _, want := range []string{
+		"Protected carrier: `Option[int]`",
+		"Success state: `Some(int)`",
+		"Absence handling: `local None handlers`",
+		"Handler coverage: `exhaustive`",
+		"Resolved handlers: `1`",
+		"Handler 1: `None` → recovery value",
+		"None consumed by: `local handler`",
+	} {
+		if !strings.Contains(exhaustive, want) {
+			t.Fatalf("exhaustive Option hover missing %q:\n%s", want, exhaustive)
+		}
+	}
+	if strings.Contains(exhaustive, "Propagation target") || strings.Contains(exhaustive, "Unhandled None") {
+		t.Fatalf("exhaustive Option hover claims residual propagation:\n%s", exhaustive)
+	}
+
+	// The first occurrence belongs to Recover; select the guarded occurrence.
+	guardedOffset := strings.LastIndex(source, "try Find()") + 1
+	guarded, ok := hoverForSource("", source, offsetPosition(source, guardedOffset))
+	if !ok {
+		t.Fatal("missing hover for guarded Option try")
+	}
+	partial := guarded.Contents.Value
+	for _, want := range []string{
+		"Handler coverage: `partial`",
+		"Handler 1: `None where …` → recovery value",
+		"Unhandled None: `propagated`",
+		"Propagation target: `Option[int]`",
+	} {
+		if !strings.Contains(partial, want) {
+			t.Fatalf("partial Option hover missing %q:\n%s", want, partial)
+		}
+	}
+}
+
 // Try hover lists the compiler-internal failure set with each protected
 // source operation, describes every resolved handler, and states when a
 // concrete error widens into the open error root.

@@ -1,0 +1,158 @@
+package sema
+
+import (
+	"math/big"
+
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+)
+
+// compileTimeOutcome classifies an expression evaluated in a
+// SemanticCompileTimeRequiredContext.
+type compileTimeOutcome int
+
+const (
+	// compileTimeEvaluated: the value was established at compile time.
+	compileTimeEvaluated compileTimeOutcome = iota
+	// compileTimeNotConstant: the expression depends on runtime state, an
+	// unknown name, or an operation that cannot complete at compile time.
+	compileTimeNotConstant
+	// compileTimeRequiresExecution: the expression calls a function or reads a
+	// property getter. Such execution is legal semantic CTE (MD-011) but the
+	// compiler's semantic CTE executor is not implemented yet.
+	compileTimeRequiresExecution
+	// compileTimeAlreadyInvalid: the parser already reported the expression.
+	compileTimeAlreadyInvalid
+)
+
+// semanticCompileTimeConstant evaluates a contract or default expression in a
+// SemanticCompileTimeRequiredContext. Contract arguments and defaults are
+// ordinary expressions; this is the compiler's shared constant evaluation, not
+// a contract-only evaluator: literals and literal operators, the module's
+// immutable compile-time-established bindings through the shared integer
+// evaluator, and immutable bindings of other primitive constants. Calls and
+// property getters are legal semantic CTE but need the not yet implemented
+// executor; they are classified separately so the diagnostic never claims the
+// source is invalid.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 3.1–3.17, 3.22–3.29, 9.2
+//   - rules/compiler/compile_time_evaluation.md — "SemanticCompileTimeRequiredContext"
+//   - rules/types/contracts.md — contract arguments; rules/types/default_values.md — explicit defaults
+func (a *Analyzer) semanticCompileTimeConstant(expr ast.Expression) (DefaultConstant, compileTimeOutcome) {
+	return a.semanticCompileTimeConstantVisiting(expr, map[string]bool{})
+}
+
+func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visiting map[string]bool) (DefaultConstant, compileTimeOutcome) {
+	if expr == nil {
+		return DefaultConstant{}, compileTimeAlreadyInvalid
+	}
+	if _, invalid := expr.(*ast.InvalidExpression); invalid {
+		return DefaultConstant{}, compileTimeAlreadyInvalid
+	}
+	if constant, ok := defaultConstantFromExpression(expr); ok {
+		return constant, compileTimeEvaluated
+	}
+	if value, ok := a.integerConstantValueUsing(expr, a.registerWidthConstants[a.currentModule]); ok {
+		return DefaultConstant{Kind: IntType, Lexeme: value.String(), Integer: value}, compileTimeEvaluated
+	}
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		binding, ok := a.moduleImmutableBindings[a.currentModule][expr.Value]
+		if !ok || binding.Value == nil || visiting[expr.Value] {
+			return DefaultConstant{}, compileTimeNotConstant
+		}
+		visiting[expr.Value] = true
+		defer delete(visiting, expr.Value)
+		return a.semanticCompileTimeConstantVisiting(binding.Value, visiting)
+	case *ast.PrefixExpression:
+		if expr.Operator == "-" || expr.Operator == "+" {
+			inner, outcome := a.semanticCompileTimeConstantVisiting(expr.Right, visiting)
+			if outcome != compileTimeEvaluated {
+				return DefaultConstant{}, outcome
+			}
+			if inner.Kind == DecimalType && inner.Exact != nil && expr.Operator == "-" {
+				return DefaultConstant{Kind: DecimalType, Lexeme: "-" + inner.Lexeme, Exact: new(big.Rat).Neg(inner.Exact)}, compileTimeEvaluated
+			}
+			if inner.Kind == DecimalType && expr.Operator == "+" {
+				return inner, compileTimeEvaluated
+			}
+		}
+	}
+	if a.compileTimeExpressionExecutes(expr) {
+		return DefaultConstant{}, compileTimeRequiresExecution
+	}
+	return DefaultConstant{}, compileTimeNotConstant
+}
+
+// compileTimeExpressionExecutes reports whether expr contains a call or a
+// member read that is not an enum-member reference, i.e. code whose
+// compile-time result requires executing a function or a getter. A member of
+// an enum type names a value (or an unknown member), never a getter.
+func (a *Analyzer) compileTimeExpressionExecutes(expr ast.Expression) bool {
+	switch expr := expr.(type) {
+	case *ast.CallExpression:
+		return true
+	case *ast.MemberExpression:
+		if owner, ok := expr.Object.(*ast.Identifier); ok {
+			if typ, exists := a.types[owner.Value]; exists && typ.Kind == EnumType {
+				return false
+			}
+		}
+		return true
+	case *ast.PrefixExpression:
+		return a.compileTimeExpressionExecutes(expr.Right)
+	case *ast.InfixExpression:
+		return a.compileTimeExpressionExecutes(expr.Left) || a.compileTimeExpressionExecutes(expr.Right)
+	case *ast.ConversionExpression:
+		return a.compileTimeExpressionExecutes(expr.Value)
+	}
+	return false
+}
+
+// semanticCompileTimeInteger evaluates an integer-valued required position.
+func (a *Analyzer) semanticCompileTimeInteger(expr ast.Expression) (*big.Int, compileTimeOutcome) {
+	constant, outcome := a.semanticCompileTimeConstant(expr)
+	if outcome != compileTimeEvaluated {
+		return nil, outcome
+	}
+	if constant.Integer == nil {
+		return nil, compileTimeNotConstant
+	}
+	return new(big.Int).Set(constant.Integer), compileTimeEvaluated
+}
+
+// semanticCompileTimeExact evaluates an exact numeric required position, used
+// by decimal and floating-point range bounds.
+func (a *Analyzer) semanticCompileTimeExact(expr ast.Expression) (*big.Rat, string, compileTimeOutcome) {
+	if exact, lexeme, ok := exactNumericConstant(expr); ok {
+		return exact, lexeme, compileTimeEvaluated
+	}
+	constant, outcome := a.semanticCompileTimeConstant(expr)
+	if outcome != compileTimeEvaluated {
+		return nil, "", outcome
+	}
+	switch {
+	case constant.Exact != nil:
+		return new(big.Rat).Set(constant.Exact), constant.Lexeme, compileTimeEvaluated
+	case constant.Integer != nil:
+		return new(big.Rat).SetInt(constant.Integer), constant.Lexeme, compileTimeEvaluated
+	}
+	return nil, "", compileTimeNotConstant
+}
+
+// reportCompileTimeRequirement diagnoses a required position that could not
+// be established: S1101 for a call or getter awaiting the semantic CTE
+// executor, otherwise the owning invalid-argument diagnostic.
+func (a *Analyzer) reportCompileTimeRequirement(expr ast.Expression, outcome compileTimeOutcome, position string, invalidID string, help string) {
+	switch outcome {
+	case compileTimeAlreadyInvalid, compileTimeEvaluated:
+		return
+	case compileTimeRequiresExecution:
+		a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.SemanticCompileTimeExecutionUnavailable,
+			"Use a literal or an immutable compile-time binding until compile-time execution of calls and property getters is implemented.",
+			"%s %s requires compile-time execution of a call or property getter, which the compiler does not implement yet", position, expr.String())
+	default:
+		a.addErrorAtTokenWithMetadata(expressionToken(expr), invalidID, help, "%s %s cannot be evaluated at compile time", position, expr.String())
+	}
+}

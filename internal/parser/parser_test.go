@@ -3173,8 +3173,9 @@ func TestParseObsoleteTryMatchWrapperRetainsHandlers(t *testing.T) {
 	p := New(l)
 	program := p.ParseProgram()
 	diagnosticsFound := p.Diagnostics()
-	if len(diagnosticsFound) != 1 || diagnosticsFound[0].ID != diagnostics.ParserReservedSyntax ||
-		diagnosticsFound[0].Primary.Type != lexer.MATCH || !strings.Contains(diagnosticsFound[0].Message, "remove the nested match") {
+	if len(diagnosticsFound) != 1 || diagnosticsFound[0].ID != diagnostics.ParserLegacyTryMatchWrapper ||
+		diagnosticsFound[0].Primary.Type != lexer.MATCH || !strings.Contains(diagnosticsFound[0].Message, "remove the nested match") ||
+		!strings.Contains(diagnosticsFound[0].Help, "Err(error) =>") {
 		t.Fatalf("wrapper diagnostics = %+v", diagnosticsFound)
 	}
 	if len(program.Statements) != 3 {

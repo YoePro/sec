@@ -1,9 +1,9 @@
 module core
 
 impl int {
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         // TODO: Implement int.ToString()
-        return ""
+        return Ok("")
     }
 
     // Also needed: ToString(format)

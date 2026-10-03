@@ -23,7 +23,8 @@ const (
 	// type (ContractError).
 	TryFailureContract TryFailureKind = "contract"
 	// TryFailureAllocation is a runtime string concatenation or interpolation
-	// whose materialization may fail to allocate (AllocationError, MD-004).
+	// whose materialization may fail to allocate (StringError.Allocation; MD-004
+	// as amended by the 2026-10-03 StringError decision).
 	TryFailureAllocation TryFailureKind = "allocation"
 )
 
@@ -443,5 +444,5 @@ func (a *Analyzer) appendStringMaterializationPoint(points []TryFailurePoint, ex
 		return points
 	}
 	a.protectedStringMaterializations[expr] = true
-	return append(points, TryFailurePoint{Kind: TryFailureAllocation, ErrorType: a.types["AllocationError"], Expression: expr, Token: token})
+	return append(points, TryFailurePoint{Kind: TryFailureAllocation, ErrorType: a.types["StringError"], Expression: expr, Token: token})
 }

@@ -1868,6 +1868,16 @@ Declared struct fields require commas.
 When the next line clearly begins `Identifier ":"`, insert a virtual comma and
 continue.
 
+A comment after the field is trivia and is not a separator; the same proof
+applies to the first token after the comment.
+
+The same later-line repair applies to parameters (the next line begins
+`Identifier ":"`, `ref`, or `->`), call arguments, and array literal elements
+(the next line begins an expression). The repair records the token after
+which the virtual comma sits, so the formatter Language Correction
+(`rules/tooling/formatter.md` § 27(37)) and the LSP quick fix insert exactly
+that comma. Same-line adjacency is reported without a repair.
+
 ## Invalid field type
 
 Create an invalid type-reference field and synchronize at comma or `}`.

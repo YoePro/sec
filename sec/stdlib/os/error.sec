@@ -1,0 +1,179 @@
+module os
+
+/**
+ * Describes failures produced by filesystem and file-resource operations.
+ *
+ * FileError is platform-independent. Platform-specific error values are
+ * mapped to the closest semantic FileError variant.
+ */
+type FileError union error {
+    /** Memory allocation required by the operation failed. */
+    Allocation(AllocationError)
+
+    /** The caller does not have permission to perform the requested operation. */
+    PermissionDenied
+
+    /** The requested file or path does not exist. */
+    NotFound
+
+    /** The requested file or filesystem object already exists. */
+    AlreadyExists
+
+    /** File is closed */
+    FileClosed
+
+    /** The supplied path or filename is invalid for the target filesystem. */
+    InvalidPath
+
+    /** The supplied path exceeds a limit imposed by the platform or filesystem. */
+    PathTooLong
+
+    /** A path component expected to be a directory is not a directory. */
+    NotDirectory
+
+    /** A filesystem object expected to be a file is a directory. */
+    IsDirectory
+
+    /** An operation requiring an empty directory encountered a non-empty directory. */
+    DirectoryNotEmpty
+
+    /** The filesystem or storage medium is read-only. */
+    ReadOnlyFileSystem
+
+    /** The process or system limit for open file handles has been reached. */
+    TooManyOpenFiles
+
+    /** The filesystem or storage medium has no remaining space for the operation. */
+    NoSpace
+
+    /** A filesystem or user storage quota has been exceeded. */
+    QuotaExceeded
+
+    /** The requested file size exceeds a platform, filesystem, or configured limit. */
+    FileTooLarge
+
+    /** Path resolution encountered a symbolic-link loop or exceeded its link depth. */
+    TooManySymbolicLinks
+
+    /** The filesystem resource is currently busy and cannot perform the operation. */
+    Busy
+
+    /** The file is currently in executable or otherwise protected active use. */
+    ExecutableBusy
+
+    /** The operation cannot be completed across different filesystems or devices. */
+    CrossDevice
+
+    /** The filesystem limit on links to the object has been reached. */
+    TooManyLinks
+
+    /**
+     * The underlying native file handle is invalid.
+     *
+     * Operations performed through an explicitly closed File should normally
+     * report IOError.Closed where the API returns IOError.
+     */
+    BadFileDescriptor
+
+    /** The requested operation is not supported by the filesystem or platform. */
+    Unsupported
+
+    /** The operation was interrupted before it could complete normally. */
+    Interrupted
+
+    /**
+     * A platform or filesystem failure occurred that has no more specific
+     * portable FileError representation.
+     */
+    NativeFailure
+}
+
+enum IOError error {
+    // EPERM or EACCES: the caller lacks permission for the path or operation.
+    PermissionDenied,
+
+    // ENOENT: the path, or a component of it, does not exist.
+    NotFound,
+
+    // EINTR: interrupted by a signal before completion. Same meaning as
+    // IOError.Interrupted.
+    Interrupted,
+
+    // EAGAIN: a non-blocking operation would have to block.
+    WouldBlock,
+
+    // ENOMEM: the kernel could not allocate memory for the operation.
+    OutOfMemory,
+
+    // EIO: a low-level device or storage I/O error. ≈ IOError.NativeFailure.
+    InputOutput,
+
+    // EINVAL, or an invalid caller argument such as an empty copy buffer.
+    // ≈ IOError.InvalidInput.
+    InvalidArgument,
+
+    // EBADF, also used for operations on an already closed File or
+    // Directory. ≈ IOError.Closed for the closed-handle case.
+    BadFileDescriptor,
+
+    // EISDIR: a file operation was applied to a directory.
+    IsDirectory,
+
+    // ENOTDIR: a path component or directory operand is not a directory.
+    NotDirectory,
+
+    // ENOTEMPTY: the directory to remove still has entries.
+    DirectoryNotEmpty,
+
+    // EBUSY: the resource is in use.
+    Busy,
+
+    // EXDEV: a rename or link crossed filesystem boundaries.
+    CrossDevice,
+
+    // EEXIST: the path already exists.
+    AlreadyExists,
+
+    // EMFILE or ENFILE: the process or system open-file limit was reached.
+    TooManyOpenFiles,
+
+    // EFBIG or EOVERFLOW, and also a caller-supplied buffer or entry array
+    // too small for the complete file or directory. The second use is
+    // ≈ IOError.InvalidInput in std-io terms.
+    TooLarge,
+
+    // ENAMETOOLONG: a path or path component is too long.
+    NameTooLong,
+
+    // ELOOP: too many symbolic links while resolving the path.
+    TooManySymbolicLinks,
+
+    // ENOSPC: no space left on the device.
+    NoSpace,
+
+    // EROFS: the filesystem is mounted read-only.
+    ReadOnlyFileSystem,
+
+    // EPIPE: writing to a pipe or socket whose reader has closed.
+    BrokenPipe,
+
+    // ESPIPE: seeking on a pipe, socket, or other non-seekable resource.
+    IllegalSeek,
+
+    // An exact read reached end-of-file early. ≈ IOError.UnexpectedEnd.
+    UnexpectedEndOfFile,
+
+    // A write call made no progress. ≈ IOError.NoProgress.
+    WriteZero,
+
+    // Data returned by the platform was malformed, such as a directory
+    // record that does not fit its buffer.
+    InvalidData,
+
+    // EOPNOTSUPP or ENOSYS, or an API shape not yet implemented. Same
+    // meaning as IOError.Unsupported.
+    Unsupported,
+
+    // Any errno without a dedicated variant. ≈ IOError.NativeFailure.
+    Unknown,
+}

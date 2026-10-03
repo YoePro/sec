@@ -371,7 +371,21 @@ Distance (
 )
 ```
 
-§ 9(8) Comments and blank lines terminate an alignment group.
+§ 9(8) Blank lines and standalone comments terminate an alignment group. A trailing comment belongs to its source item and does not terminate the group. Documentation comments and other structural group boundaries already defined by this rulebook retain their semantics (MD-013; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 5.7–5.11).
+
+§ 9(8a) In declaration alignment the colon remains attached to the identifier; alignment never introduces whitespace between an identifier and its colon, and padding follows the complete `identifier:` cell.
+
+§ 9(8b) Trailing comments occupy the next structural column of the local declaration-table layout. Within the compatible alignment group, each following column begins after the standard spacing in effect from the widest preceding cell, the same single space that separates `identifier:` from its type in the widest row; shorter cells receive the padding needed to reach that column:
+
+```sec
+type Point struct {
+    x:        int, // horizontal
+    longName: int,
+    y:        int, // vertical
+}
+```
+
+The spacing before a trailing comment is never hard-coded independently of that standard spacing (MD-013; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 5.12–5.19).
 
 § 9(9) Primary syntax anchors take precedence over distant secondary columns. Alignment must not create large empty gaps merely to align a far-right tag or comment.
 
@@ -465,9 +479,9 @@ let ready :=
 
 § 12(3) Consecutive line comments form one comment block unless syntax or an empty line separates them.
 
-§ 12(4) Trailing line comments may align after the code columns of one contiguous homogeneous declaration group.
+§ 12(4) Trailing line comments align in the structural column after the code columns of one contiguous homogeneous declaration group (§ 9(8b)).
 
-§ 12(5) A blank line, standalone comment, or incompatible declaration terminates trailing-comment alignment.
+§ 12(5) A blank line, standalone comment, or incompatible declaration terminates trailing-comment alignment. A trailing comment itself does not terminate it.
 
 § 12(6) Trailing-comment alignment obeys the maximum alignment padding rule.
 
@@ -1139,6 +1153,18 @@ type MotorProtocol register[8] {
 
 § 22(4) Reserved `_` register fields participate in structural alignment like other register fields.
 
+§ 22(4a) Register fields are clients of the same local structural alignment engine as struct and declaration fields, not of a register-specific policy: `:` stays attached to the field identifier, the type or bit-field column aligns locally, trailing comments may occupy the aligned trailing-comment column, blank lines and standalone comments terminate the group, and trailing comments do not:
+
+```sec
+type Status register[16] {
+    Ready:     bit
+    ErrorCode: bit[4]  // error code
+    _:         bit[11]
+}
+```
+
+(MD-013; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 5.20–5.25, 9.4.)
+
 § 22(5) Address attributes follow ordinary attribute formatting. Canonical platform-aware examples use symbolic platform addresses where available:
 
 ```sec
@@ -1650,6 +1676,24 @@ type UserID uint64
 § 27(34) The legacy compact variant form `type Name = First Second ...` is not corrected, because its Sec 0.1 replacement (`enum` or `union`, with or without the `error` marker) is not uniquely determined. It receives only the focused migration diagnostic required by `rules/foundations/grammar.md`.
 
 § 27(35) Invalid legacy Sec syntax is never converted by ordinary formatting while `language_corrections = false`; §§ 27(33)–27(34) apply only when Language Corrections are enabled (MD-002 and MD-003; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 3–4).
+
+§ 27(37) A comma forgotten between two items of a comma-separated list written on separate lines — struct declaration fields, parameters, call arguments, and array literal elements — is inserted directly after the earlier item and before any trailing comment, but only where the parser proved the missing-comma repair (`rules/compiler/parser_recovery.md` "Missing comma"). Items on the same line are not repaired, and lists whose grammar accepts a line break as separator (enum values, union variants, register fields, struct literal items) are never given commas by this correction:
+
+```sec
+type Point struct {
+    x: int // horizontal
+    y: int
+}
+```
+
+becomes:
+
+```sec
+type Point struct {
+    x: int, // horizontal
+    y: int,
+}
+```
 
 § 27(36) The redundant state-test comparison `(state is Idle) == true` is corrected to `state is Idle`, and the negated state test `!(state is Idle)` is corrected to `state is not Idle`, only where the parent expression binds more loosely than the equality/state-test level so the rewrite preserves grouping. `option is not Some(value)` and `!(option is Some(value))` are never corrected by deleting the binding, and the null test has no negated correction (MD-006; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 7.9, 7.15, 7.25).
 

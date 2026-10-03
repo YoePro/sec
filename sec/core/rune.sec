@@ -4,8 +4,9 @@ module core
 
 impl rune {
     /** Returns the textual representation of this rune. */
-    fn ToString() string {
-        return string.FromRuneArray([self])
+    fn ToString() Result[string, StringError] {
+        let runes: rune[1] := [self]
+        return runes.ToString()
     }
 
     /** Reports whether this rune is an ASCII decimal digit. */

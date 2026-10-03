@@ -124,3 +124,50 @@ fn Check() void {
 		t.Fatalf("incomplete S3001 diagnostic: %+v", diagnostic)
 	}
 }
+
+// An immutable binding initialized from a mutable binding's current value is
+// not loop-invariant: `let remainder := dataLength % 4` inside a loop sees the
+// first-iteration value 0 only once. Conditions over such a binding stay
+// runtime conditions, while an immutable chain over constants still proves
+// its excluded branch unreachable.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code"
+//   - rules/tooling/diagnostics.md — §21 "Proven unreachable and dead code"
+func TestConditionsOverValuesDerivedFromMutableBindingsStayRuntime(t *testing.T) {
+	errors := analyzeSource(t, `
+fn Count(limit: int) int {
+	let mut dataLength: uint := 0
+	let mut index := 0
+	while index < limit {
+		let remainder := dataLength % 4
+		let doubled := remainder * 2
+		if remainder == 1 {
+			return 1
+		}
+		if remainder == 3 && doubled > 2 {
+			return 3
+		}
+		dataLength += 1
+		index += 1
+	}
+	return 0
+}
+`)
+	if len(errors) != 0 {
+		t.Fatalf("errors = %v, want no constant-condition diagnostics", errors)
+	}
+
+	errors = analyzeSource(t, `
+fn Check() void {
+	let base := 4
+	let remainder := base % 4
+	if remainder == 1 {
+		discard 1
+	}
+}
+`)
+	if len(errors) != 1 || errors[0].ID != diagnostics.UnreachableStatement {
+		t.Fatalf("errors = %v, want one S3001 for the constant chain", errors)
+	}
+}

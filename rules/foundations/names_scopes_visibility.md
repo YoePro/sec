@@ -1158,8 +1158,8 @@ Existing compiler rules already describe or partially implement:
 - top-level module declaration namespace conflicts across types, enums,
   interfaces, function overload groups and module-level variables; unit
   symbols are excluded from parameter, generic-parameter, local, function, and
-  variable conflicts, while a unit and a nominal type of the same spelling still
-  conflict through the compiler's shared type table;
+  variable conflicts, and a unit and a nominal type of the same spelling may
+  coexist across modules (within one module they still conflict, MD-040);
 - method and property registration before body analysis;
 - qualified nested type lookup;
 - one module namespace across module source files in the project model;
@@ -1177,7 +1177,13 @@ This rulebook is not considered fully implemented until the compiler provides:
   nested lexical scopes;
 - complete duplicate checks across module files for imports, aliases and other
   declarations not yet covered by the top-level module namespace pass;
-- no-shadowing checks;
+- no-shadowing checks for nested declarations, import bindings and aliases,
+  and directly visible members (parameters, setter value parameters, generic
+  parameters, locals, loop bindings, and pattern bindings are checked against
+  generic parameters, the current module's declarations, always-available core
+  declarations, and uppercase compiler-known types since 2026-10-04, with
+  S1104/S1105 alongside S1039/S1040/S1057; lowercase always-available type
+  spellings such as `error` remain usable as binding names);
 - reserved keyword, modifier, and built-in-name checks for every declaration
   category;
 - contextual `set` parsing without allowing `set` declarations;

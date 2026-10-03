@@ -146,6 +146,7 @@ func format(text string, options Options) string {
 	// another convention, so CRLF and bare CR input are normalized to LF.
 	normal := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(text)
 	if options.Fix {
+		normal = fixMissingListSeparators(normal)
 		normal = fixRedundantNestedParentheses(normal)
 		normal = fixRedundantControlConditionParentheses(normal)
 		normal = fixStateTestBadPractice(normal)
@@ -282,8 +283,14 @@ func format(text string, options Options) string {
 
 // alignDeclarationTrailingComments aligns local groups inside nominal
 // declaration blocks. A blank line, standalone comment, multiline item, or
-// nested block ends a group. The comment column starts four spaces after the
-// widest code item, as required by rules/tooling/formatter.md, Line comments.
+// nested block ends a group; a trailing comment does not. Trailing comments
+// occupy the next structural column, which begins one standard space after
+// the widest code cell of the group, the same spacing that separates
+// `identifier:` from its type in the widest row.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 5.12–5.19
+//   - rules/tooling/formatter.md — § 9(2), § 12(4)–(6)
 func alignDeclarationTrailingComments(lines []string) []string {
 	for opener := 0; opener < len(lines); opener++ {
 		if !isDeclarationAlignmentOpener(lines[opener]) {
@@ -345,6 +352,11 @@ func alignDeclarationBodyGroups(lines []string, start int, end int, itemIndent i
 	flush()
 }
 
+// structuralColumnSpacing is the formatter's standard spacing between
+// structural columns: the single space after `identifier:` in the widest row
+// of an aligned group (formatter.md § 9(3), § 9(5), § 22(3)).
+const structuralColumnSpacing = 1
+
 func alignTrailingCommentGroup(lines []string, group []int) {
 	maxCodeWidth := 0
 	commented := 0
@@ -365,7 +377,7 @@ func alignTrailingCommentGroup(lines []string, group []int) {
 		if !hasComment {
 			continue
 		}
-		padding := maxCodeWidth - utf8.RuneCountInString(code) + 4
+		padding := maxCodeWidth - utf8.RuneCountInString(code) + structuralColumnSpacing
 		lines[index] = code + strings.Repeat(" ", padding) + comment
 	}
 }

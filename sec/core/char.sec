@@ -66,8 +66,9 @@ enum CodePages {
 }
 
 impl char {
-    fn ToString() string {
-        return string.FromByteArray([byte(self)])
+    fn ToString() Result[string, StringError] {
+        let chars: char[1] := [self]
+        return chars.ToString()
     }
 
     property IsDigit: bool {

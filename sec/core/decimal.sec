@@ -1,8 +1,8 @@
 module core
 
 impl decimal {
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         // TODO: Implement decimal.ToString()
-        return ""
+        return Ok("")
     }
 }

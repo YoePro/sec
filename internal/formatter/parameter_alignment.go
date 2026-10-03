@@ -39,6 +39,48 @@ func parameterAlignmentReplacements(document cst.Document, maxPadding int) []for
 		group = append(group, anchor)
 	}
 	flush()
+	return append(replacements, singleLineParameterSpacingReplacements(document)...)
+}
+
+// singleLineParameterSpacingReplacements gives every parameter of a
+// single-line callable parameter list exactly one space between its colon and
+// its type: a single-line list has no alignment group, so `source:      ref
+// mut Reader` becomes `source: ref mut Reader`. Only plain horizontal
+// whitespace is rewritten; comments or line breaks keep the source unchanged.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 6(4) the declaration colon binds left and is followed by one space
+//   - rules/tooling/formatter.md — § 16(2) single-line parameter lists
+func singleLineParameterSpacingReplacements(document cst.Document) []formatterReplacement {
+	replacements := []formatterReplacement{}
+	for typeIndex, element := range document.Elements {
+		if !element.HasRole(cst.CallableParameterTypeStart) {
+			continue
+		}
+		colonIndex := typeIndex - 1
+		for colonIndex >= 0 && document.Elements[colonIndex].Kind == cst.Whitespace {
+			colonIndex--
+		}
+		if colonIndex < 0 || !document.Elements[colonIndex].HasRole(cst.CallableParameterColon) {
+			continue
+		}
+		groupOpen, groupClose := callableParameterGroup(document, colonIndex)
+		if groupOpen < 0 || document.Elements[groupOpen].Token.Line != document.Elements[groupClose].Token.Line {
+			continue
+		}
+		gap := document.Elements[colonIndex].Span.End
+		end := element.Span.Start
+		whitespace := true
+		for index := colonIndex + 1; index < typeIndex; index++ {
+			if strings.ContainsAny(document.Elements[index].Text, "\r\n") {
+				whitespace = false
+			}
+		}
+		if !whitespace || end-gap == 1 {
+			continue
+		}
+		replacements = append(replacements, formatterReplacement{start: gap, end: end, text: " "})
+	}
 	return replacements
 }
 

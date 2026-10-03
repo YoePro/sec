@@ -33,7 +33,7 @@ func TestDefaultValueFixtureSuite(t *testing.T) {
 			"ZeroValid": "0", "PositiveOnly": "3", "NegativeOnly": "-4", "PositiveEven": "4",
 			"PositiveOdd": "5", "DecimalRange": "0.01", "ExplicitOverride": "42", "ExclusiveUpper": "-3",
 			"BinaryLower": "1.5", "InexactLower32": "0.1", "ExclusiveNegative": "-2.5000000000000004",
-			"NamedOverFloat": "1.5",
+			"NamedOverFloat": "1.5", "FloatRange": "1.5",
 		},
 		"default_in_contract_valid.sec": {
 			"Role": `"admin"`, "Retry": "3", "Flag": "true", "Override": `"b"`, "EvenMembers": "4",
@@ -62,7 +62,7 @@ func TestDefaultValueFixtureSuite(t *testing.T) {
 
 	wantDiagnostics := map[string][]string{
 		"default_values_invalid.sec": {"S1047 6:9", "S1009 7:13", "S1009 8:13"},
-		"default_ranges_invalid.sec": {"S1059 5:47", "S1060 6:48", "S1061 10:13", "S1009 11:13"},
+		"default_ranges_invalid.sec": {"S1059 5:47", "S1060 6:48", "S1061 9:13"},
 		"default_in_contract_invalid.sec": {
 			"S1054 4:19", "S1053 5:32", "S1059 6:50", "S1011 7:39", "S1011 7:39",
 		},

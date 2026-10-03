@@ -73,6 +73,11 @@ const (
 	ParserFutureStructDeclaration                 = "P2027"
 	ParserLegacyEnumColonInitializer              = "P2028"
 	ParserMultipleTypeDeclarationNames            = "P2029"
+	ParserFunctionLikeAssert                      = "P2030"
+	ParserAssertMessageNotLiteral                 = "P2031"
+	ParserAssertMessageSeparator                  = "P2032"
+	ParserAssertMissingCondition                  = "P2033"
+	ParserLegacyTryMatchWrapper                   = "P2034"
 	MissingModuleDeclaration                      = "S1001"
 	DuplicateModuleDeclaration                    = "S1002"
 	ModuleDeclarationConflict                     = "S1003"
@@ -172,6 +177,12 @@ const (
 	StringMaterializationRequiresTry              = "S1097"
 	StringMaterializationWithoutAllocationContext = "S1098"
 	ConfusableIdentifier                          = "S1099"
+	ToStringSignature                             = "S1100"
+	SemanticCompileTimeExecutionUnavailable       = "S1101"
+	AssertConditionNotBool                        = "S1102"
+	ExplicitSelfParameter                         = "S1103"
+	ParameterShadowsDeclaration                   = "S1104"
+	GenericParameterShadowsDeclaration            = "S1105"
 	UnreachableStatement                          = "S3001"
 	UseAfterDiscard                               = "S4001"
 	LargeValueParameter                           = "A2001"
@@ -239,6 +250,12 @@ var registry = map[string]Definition{
 	StringMaterializationRequiresTry:              {ID: StringMaterializationRequiresTry, Name: "operators.string-materialization-requires-try", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true},
 	StringMaterializationWithoutAllocationContext: {ID: StringMaterializationWithoutAllocationContext, Name: "allocation.string-materialization-without-context", Family: "allocation", DefaultSeverity: SeverityError, Mandatory: true},
 	ConfusableIdentifier:                          {ID: ConfusableIdentifier, Name: "names.confusable-identifier", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	ToStringSignature:                             {ID: ToStringSignature, Name: "members.tostring-signature", Family: "members", DefaultSeverity: SeverityError, Mandatory: true},
+	SemanticCompileTimeExecutionUnavailable:       {ID: SemanticCompileTimeExecutionUnavailable, Name: "compile-time.execution-unavailable", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	AssertConditionNotBool:                        {ID: AssertConditionNotBool, Name: "panic.assert-condition-not-bool", Family: "panic", DefaultSeverity: SeverityError, Mandatory: true},
+	ExplicitSelfParameter:                         {ID: ExplicitSelfParameter, Name: "declarations.explicit-self-parameter", Family: "declarations", DefaultSeverity: SeverityError, Mandatory: true},
+	ParameterShadowsDeclaration:                   {ID: ParameterShadowsDeclaration, Name: "names.parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
+	GenericParameterShadowsDeclaration:            {ID: GenericParameterShadowsDeclaration, Name: "names.generic-parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	UseAfterDiscard:                               {ID: UseAfterDiscard, Name: "ownership.use-after-discard", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	UnreachableStatement:                          {ID: UnreachableStatement, Name: "control-flow.unreachable-statement", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	ReservedDeclarationName:                       {ID: ReservedDeclarationName, Name: "names.reserved-declaration-name", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
@@ -310,6 +327,11 @@ var registry = map[string]Definition{
 	ParserFutureStructDeclaration:       parserDefinition(ParserFutureStructDeclaration, "parser.future-struct-declaration"),
 	ParserLegacyEnumColonInitializer:    parserDefinition(ParserLegacyEnumColonInitializer, "parser.legacy-enum-colon-initializer"),
 	ParserMultipleTypeDeclarationNames:  parserDefinition(ParserMultipleTypeDeclarationNames, "parser.multiple-type-declaration-names"),
+	ParserFunctionLikeAssert:            parserDefinition(ParserFunctionLikeAssert, "parser.function-like-assert"),
+	ParserAssertMessageNotLiteral:       parserDefinition(ParserAssertMessageNotLiteral, "parser.assert-message-not-literal"),
+	ParserAssertMessageSeparator:        parserDefinition(ParserAssertMessageSeparator, "parser.assert-message-separator"),
+	ParserAssertMissingCondition:        parserDefinition(ParserAssertMissingCondition, "parser.assert-missing-condition"),
+	ParserLegacyTryMatchWrapper:         parserDefinition(ParserLegacyTryMatchWrapper, "parser.legacy-try-match-wrapper"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,
 		Name:            "parser.compatibility-syntax",

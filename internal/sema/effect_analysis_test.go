@@ -39,7 +39,7 @@ fn Pick(values: list[int], index: uint) int {
 // MD-004: runtime interpolation requires try; try protects the hole's own
 // checks but never a panic raised inside a called function.
 @noPanic
-fn Render(values: list[int], index: uint) Result[string, AllocationError] {
+fn Render(values: list[int], index: uint) Result[string, StringError] {
 	return Ok(try $"value={Pick(values, index)}")
 }
 `)
@@ -55,13 +55,13 @@ func TestInterpolationRecordsUserFormatterEffects(t *testing.T) {
 type Ratio struct { divisor: int, }
 
 impl Ratio {
-	fn ToString() string {
+	fn ToString() Result[string, StringError] {
 		return (100 / self.divisor).ToString()
 	}
 }
 
 @noPanic
-fn Render(value: Ratio) Result[string, AllocationError] {
+fn Render(value: Ratio) Result[string, StringError] {
 	return Ok(try $"ratio={value}")
 }
 `)

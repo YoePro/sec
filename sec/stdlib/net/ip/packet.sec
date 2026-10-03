@@ -1,0 +1,27 @@
+module ip
+
+type Ipv4Packet struct {
+    Header:  Ipv4WireHeader,
+    Options: ref byte[],
+    Payload: ref byte[],
+}
+
+type Ipv6Packet struct {
+    Header:  Ipv6WireHeader,
+    Payload: ref byte[],
+}
+
+type IpPacket union {
+    V4(Ipv4Packet),
+    V6(Ipv6Packet),
+}
+
+fn ParseIpv4Packet(buffer: ref byte[]) Result[Ipv4Packet, PacketError] {
+    return Err(PacketError.BufferTooSmall)
+}
+fn ParseIpv6Packet(buffer: ref byte[]) Result[Ipv6Packet, PacketError] {
+    return Err(PacketError.BufferTooSmall)
+}
+fn ParseIpPacket(buffer: ref byte[]) Result[IpPacket, PacketError] {
+    return Err(PacketError.BufferTooSmall)
+}

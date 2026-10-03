@@ -62,6 +62,11 @@ type RecoveryEvent struct {
 	Skipped      int
 	Context      RecoveryContext
 	Episode      int
+	// After is the last real token before a proven missing list separator;
+	// the virtual separator sits immediately after it. It is zero for every
+	// other repair. Language Corrections and LSP quick fixes insert the
+	// separator there.
+	After lexer.Token
 	// diagnosticIndex associates the repair with the parser diagnostic that
 	// caused it. It is internal bookkeeping for speculative rollback.
 	diagnosticIndex int
@@ -1047,7 +1052,9 @@ func (p *Parser) parseAssertStatement() ast.Statement {
 	stmt := &ast.AssertStatement{Token: p.curToken}
 	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF ||
 		(p.peekToken.Line > p.curToken.Line && p.isReturnTerminatorToken(p.peekToken)) {
-		p.addError("assert requires a condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.addAssertDiagnostic(compilerdiagnostics.ParserAssertMissingCondition, p.peekToken,
+			"write the bool condition that must hold, for example `assert count > 0`",
+			"assert requires a condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return stmt
 	}
 
@@ -1055,20 +1062,26 @@ func (p *Parser) parseAssertStatement() ast.Statement {
 		p.peekToken.Line == p.curToken.Line &&
 		p.peekToken.Column == p.curToken.Column+len(p.curToken.Lexeme)
 	if functionLike {
-		p.addError("function-like assert(...) is not valid; write assert condition at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.addAssertDiagnostic(compilerdiagnostics.ParserFunctionLikeAssert, p.curToken,
+			"assert is a statement, not a function: write `assert condition` or `assert condition, \"message\"` without the call parentheses",
+			"function-like assert(...) is not valid; write assert condition at %d:%d", p.curToken.Line, p.curToken.Column)
 	}
 
 	p.nextToken()
 	stmt.Condition = p.parseExpression(LOWEST)
 	if stmt.Condition == nil {
-		p.addError("assert requires a condition at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.addAssertDiagnostic(compilerdiagnostics.ParserAssertMissingCondition, p.curToken,
+			"write the bool condition that must hold, for example `assert count > 0`",
+			"assert requires a condition at %d:%d", p.curToken.Line, p.curToken.Column)
 		return stmt
 	}
 
 	if p.peekToken.Type == lexer.COMMA {
 		p.nextToken()
 		if p.peekToken.Type != lexer.STRING {
-			p.addError("assert message must be a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			p.addAssertDiagnostic(compilerdiagnostics.ParserAssertMessageNotLiteral, p.peekToken,
+				"an assertion message is static diagnostic metadata: use a string literal such as `\"count must be positive\"`; Sec 0.1 builds no dynamic assertion messages",
+				"assert message must be a string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			if p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
 				p.nextToken()
 				p.parseExpression(LOWEST)
@@ -1081,10 +1094,26 @@ func (p *Parser) parseAssertStatement() ast.Statement {
 	}
 
 	if p.peekToken.Type == lexer.STRING && p.peekToken.Line == p.curToken.Line {
-		p.addError("assert message requires ',' before the string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		p.addAssertDiagnostic(compilerdiagnostics.ParserAssertMessageSeparator, p.peekToken,
+			"separate the condition from its message with a comma: `assert condition, \"message\"`",
+			"assert message requires ',' before the string literal at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		p.nextToken()
 	}
 	return stmt
+}
+
+// addAssertDiagnostic reports an assertion syntax error with its stable
+// identity and a mentor help that names the canonical form, keeping the
+// established message text.
+//
+// Rules:
+//   - rules/errors/panic.md — § 15.1 "Canonical syntax", § 28(1)–(4) mentor diagnostics
+func (p *Parser) addAssertDiagnostic(id string, token lexer.Token, help string, format string, args ...any) {
+	before := len(p.diagnostics)
+	p.addDiagnostic(id, token, nil, &token, format, args...)
+	if len(p.diagnostics) > before {
+		p.diagnostics[len(p.diagnostics)-1].Help = help
+	}
 }
 
 // parsePanicStatement parses the canonical Sec 0.1 statement forms `panic`
@@ -4132,6 +4161,8 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			return nil
 		}
 
+		parameterEnd := p.curToken
+		p.skipPeekComments()
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
@@ -4144,6 +4175,10 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			p.nextToken()
 			return parameters
 		default:
+			if p.looksLikeNextParameter(parameterEnd) {
+				p.recoverMissingSeparator(parameterEnd, p.peekToken, ")", "parameter")
+				continue
+			}
 			p.addError("expected ',' or ')' after parameter at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return nil
 		}
@@ -4826,21 +4861,23 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 				return fields
 			}
 		case lexer.COMMENT:
+			// A comment after a field is trivia, not a separator: the next
+			// field still needs the comma (rules/compiler/parser_recovery.md —
+			// "Missing comma").
+			next, following := p.peekPastComments()
+			switch {
+			case next.Type == lexer.RBRACE || next.Type == lexer.COMMA || next.Type == lexer.EOF:
+			case next.Type == lexer.IDENT && following.Type == lexer.COLON && nextItemOnLaterLine(p.curToken, next):
+				p.recoverMissingSeparator(p.curToken, next, "}", "struct field")
+			default:
+				p.addError("expected ',' or '}' after struct field at %d:%d", next.Line, next.Column)
+			}
 			continue
 		case lexer.RBRACE:
 			return fields
 		default:
 			if p.looksLikeNextStructField() {
-				unexpected := p.peekToken
-				p.addDiagnostic(
-					compilerdiagnostics.ParserMissingToken,
-					unexpected,
-					[]lexer.TokenType{lexer.COMMA},
-					&unexpected,
-					"expected ',' or '}' after struct field at %d:%d",
-					unexpected.Line,
-					unexpected.Column,
-				)
+				p.recoverMissingSeparator(p.curToken, p.peekToken, "}", "struct field")
 				continue
 			}
 			p.addError("expected ',' or '}' after struct field at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -6426,15 +6463,34 @@ func (p *Parser) expectPeekExpressionStart() bool {
 	return false
 }
 
-// Check range contract
+// parseRangeContract parses `range [Expression] RangeOperator [Expression]`.
+// Each bound is an ordinary expression; the owning semantic rule evaluates it
+// in a SemanticCompileTimeRequiredContext. Expression parsing stops at the
+// range operator because ranges are not infix operators, so
+// `MinimumPort..MaximumPort` yields two bounds. An upper bound must start on
+// the operator's line and cannot be `default` or a following contract word,
+// which keeps an open-ended range (`range 1..`) unambiguous.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 3.11–3.14, 3.40
+//   - rules/foundations/grammar.md — "Type contracts", RangeContract
+//   - rules/compiler/parser_recovery.md — "Type-contract recovery", "Range contract"
 func (p *Parser) parseRangeContract() ast.Contract {
 	contract := &ast.RangeContract{
 		Token: p.curToken,
 	}
 
-	contract.Min = p.parseOptionalRangeBound()
-	if contract.Min == nil {
-		contract.Min = p.parseNonNumericRangeBound("lower")
+	if p.isRangeContractBoundStart(p.peekToken) {
+		p.nextToken()
+		contract.Min = p.parseExpression(LOWEST)
+		if contract.Min == nil {
+			return nil
+		}
+		// `1...` is a misspelled range operator, not a spread bound.
+		if spread, ok := contract.Min.(*ast.SpreadExpression); ok {
+			p.addError("expected range operator ('..' or '..<'), got %q at %d:%d", spread.Token.Lexeme, spread.Token.Line, spread.Token.Column)
+			return nil
+		}
 	}
 
 	if !p.expectPeekRangeOperator() {
@@ -6443,24 +6499,13 @@ func (p *Parser) parseRangeContract() ast.Contract {
 
 	contract.Exclusive = p.curToken.Type == lexer.RANGE_EXCLUSIVE
 
-	if p.isAtTypeDeclEnd() {
-		if !p.requireRangeBound(contract) {
+	if !p.isAtTypeDeclEnd() && p.peekToken.Line == p.curToken.Line && p.isRangeContractBoundStart(p.peekToken) {
+		p.nextToken()
+		contract.Max = p.parseExpression(LOWEST)
+		if contract.Max == nil {
 			return nil
 		}
-
-		return contract
 	}
-
-	if !p.isRangeBoundStart(p.peekToken.Type) {
-		contract.Max = p.parseNonNumericRangeBound("upper")
-		if !p.requireRangeBound(contract) {
-			return nil
-		}
-
-		return contract
-	}
-
-	contract.Max = p.parseOptionalRangeBound()
 
 	if !p.requireRangeBound(contract) {
 		return nil
@@ -6469,54 +6514,13 @@ func (p *Parser) parseRangeContract() ast.Contract {
 	return contract
 }
 
-func (p *Parser) parseOptionalRangeBound() ast.Expression {
-	switch p.peekToken.Type {
-	case lexer.INT, lexer.FLOAT:
-		p.nextToken()
-		return p.parseNumberLiteral()
-
-	case lexer.PLUS, lexer.MINUS:
-		p.nextToken()
-		operatorToken := p.curToken
-
-		if !p.expectPeekNumber() {
-			return nil
-		}
-
-		return &ast.PrefixExpression{
-			Token:    operatorToken,
-			Operator: operatorToken.Lexeme,
-			Right:    p.parseNumberLiteral(),
-		}
-
-	default:
-		return nil
+// isRangeContractBoundStart reports whether token starts a range bound
+// expression rather than the range operator, `default`, or another contract.
+func (p *Parser) isRangeContractBoundStart(token lexer.Token) bool {
+	if token.Type == lexer.RANGE || token.Type == lexer.RANGE_EXCLUSIVE || token.Type == lexer.DEFAULT || p.isContractStart(token) {
+		return false
 	}
-}
-
-// parseNonNumericRangeBound diagnoses a same-line range bound that is not a
-// SignedNumericConstant, consumes the offending expression, and retains it as
-// an invalid expression so the contract and following declarations survive
-// without stray module-scope code. It returns nil when no bound is present.
-//
-// Rules:
-//   - rules/foundations/grammar.md — "Type contracts", RangeContract (SignedNumericConstant bounds)
-//   - rules/compiler/parser_recovery.md — "Type-contract recovery", "Range contract"
-func (p *Parser) parseNonNumericRangeBound(position string) ast.Expression {
-	next := p.peekToken
-	if next.Line != p.curToken.Line || next.Type == lexer.DEFAULT || p.isContractStart(next) || !p.isExpressionStart(next.Type) {
-		return nil
-	}
-	message := fmt.Sprintf("range contract %s bound must be a signed numeric constant, got %q at %d:%d", position, next.Lexeme, next.Line, next.Column)
-	p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, next, nil, &next, "%s", message)
-	p.nextToken()
-	invalid := p.invalidExpression(next, message, compilerdiagnostics.ParserInvalidExpression)
-	invalid.Left = p.parseExpression(LOWEST)
-	return invalid
-}
-
-func (p *Parser) isRangeBoundStart(t lexer.TokenType) bool {
-	return t == lexer.INT || t == lexer.FLOAT || t == lexer.PLUS || t == lexer.MINUS
+	return p.isExpressionStart(token.Type)
 }
 
 func (p *Parser) parseNumberLiteral() ast.Expression {
@@ -6609,27 +6613,6 @@ func (p *Parser) expectPeek(t lexer.TokenType) bool {
 		&unexpected,
 		"expected next token to be %q, got %q at %d:%d",
 		t,
-		unexpected.Type,
-		unexpected.Line,
-		unexpected.Column,
-	)
-
-	return false
-}
-
-func (p *Parser) expectPeekNumber() bool {
-	if p.peekToken.Type == lexer.INT || p.peekToken.Type == lexer.FLOAT {
-		p.nextToken()
-		return true
-	}
-
-	unexpected := p.peekToken
-	p.addDiagnostic(
-		compilerdiagnostics.ParserMissingToken,
-		unexpected,
-		[]lexer.TokenType{lexer.INT, lexer.FLOAT},
-		&unexpected,
-		"expected next token to be number, got %q at %d:%d",
 		unexpected.Type,
 		unexpected.Line,
 		unexpected.Column,

@@ -101,6 +101,42 @@ integrations:
       - command: node manifest and asset validation plus npm pack --dry-run --json
         result: passed; both language-icon paths resolve to the packaged SVG and the dry-run package file list contains images/sec-language.svg
 
+  - id: tooling.lsp-type-definition-navigation
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-03"
+    summary: >-
+      Implements the initial textDocument/typeDefinition protocol surface as a
+      thin projection of Sema-resolved binding and expression types plus their
+      source declaration provenance, without an LSP-owned name or type resolver.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/projects/modules.md
+    code:
+      - cmd/lsp/main.go
+      - cmd/lsp/type_definition.go
+      - cmd/lsp/request_queue.go
+      - internal/sema/semantic_facts.go
+    tests:
+      - cmd/lsp/type_definition_test.go
+    implemented:
+      - initialize advertises typeDefinitionProvider and textDocument/typeDefinition returns ordinary LSP locations
+      - the request is classified as read-only analysis so formatting priority does not reorder it across document synchronization
+      - local and parameter bindings navigate through ResolvedBindingAt to their exact nominal source type declaration
+      - member expressions and callable result expressions navigate through ResolvedTypeOf rather than token spelling
+      - direct type references map their Sema-bound declaration back to the resolved semantic type
+      - same-module declarations in another source file retain the declaring URI and exact token range
+      - compiler-known scalar types without a source declaration return no fabricated location
+    remaining:
+      - navigate deliberately selected component types inside generic, Result, Option, reference, collection, and shaped compound types
+      - cover generic parameter constraints and specialized type arguments without inventing one target for an ambiguous compound type
+      - integrate generated, platform-selected, dependency, and target-variant sources through the future shared workspace symbol index
+      - implement the separately required textDocument/implementation and semantic rename surfaces
+    verification:
+      - command: go test ./cmd/lsp -run 'TestTypeDefinition' -count=1
+        result: passed on 2026-10-03 for protocol advertisement/dispatch, local bindings, parameters, members, call results, direct type references, same-module cross-file navigation, and source-less builtins
+
   - id: tooling.lsp-type-member-completion
     area: tooling
     status: implemented
@@ -206,37 +242,44 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-09-30"
+    revised: "2026-10-03"
     summary: >-
       Makes hover at try and its operand explain the callable's declared
       carrier, the value produced on success, and the exact failure-handling
-      path. This keeps ordinary absence in Option distinct from typed failure
-      in Result and makes bodyless propagation visible to the user.
+      path, and preserves the explicit error contract of fallible property
+      setters in property hover and completion. This keeps ordinary absence in
+      Option distinct from typed failure in Result and makes bodyless
+      propagation and try-required property writes visible to the user.
     rules:
       - rules/errors/errorhandling.md
       - rules/tooling/lsp.md
     code:
       - cmd/lsp/main.go
       - cmd/lsp/hover_try.go
+      - cmd/lsp/hover_property.go
     tests:
       - cmd/lsp/hover_try_test.go
+      - cmd/lsp/hover_property_test.go
     implemented:
       - hover on a resolved Result try keyword shows the exact protected Result[T, E] carrier and the T produced by the try expression
       - hover on the protected root callable shows the same compiler-owned try facts while nested argument tokens retain their ordinary hover
       - bodyless Result propagation shows the exact propagated E, enclosing Result[U, E] target, and enclosing-return consumption path
       - local Result handlers are distinguished from bodyless propagation and show the resolved error channel, exhaustive or partial handler coverage, handler count, and local consumption path
       - bodyless Option propagation shows Some(T) as the success path, None as ordinary propagated absence, the exact enclosing Option target, and enclosing-return consumption without Result error vocabulary
+      - local Option recovery consumes ResolvedTryPlanOf and shows source-ordered None handlers, guarded status, recovery flow, exhaustive or partial coverage, handler count, local consumption, and the exact Option target for any residual None propagation
+      - property hover and completion consume Sema's resolved accessor contract; fallible setters show try set, their exact declared error type, and the explicit try requirement while ordinary setters remain infallible
       - all displayed try semantics come from ResolvedTryOf, ResolvedTryPlanOf, and ResolvedTypeOf rather than an LSP-owned Result model
-      - focused hover tests cover Result and Option propagation at both the keyword and operand plus exhaustive local Result handling
+      - focused hover tests cover Result and Option propagation at both the keyword and operand, exhaustive local Result handling, and exhaustive plus guarded-partial local Option recovery
     remaining:
-      - explain local Option None recovery when Sema exposes a resolved local Option handler plan
-      - show exact locally handled and unhandled alternate states, concrete-to-error widening, and remaining panic effect when Sema exposes those presentation facts
-      - extend focused hover coverage to partial handlers, fallible operations, invalid try operands, and mismatched enclosing error types
+      - show the remaining panic effect when Sema exposes that presentation fact on resolved try operations
+      - extend focused hover coverage to additional partial Result handler combinations, fallible operations, invalid try operands, and mismatched enclosing error types
     reconciliation:
       - the migrated legacy statement that Option cannot propagate with try was superseded by errorhandling revision 2; rules/errors/errorhandling.md §§ 9 and 12.2 permit Option try
     verification:
       - command: go test ./cmd/lsp -run 'TestTryHover' -count=1
-        result: passed
+        result: passed on 2026-10-03, including local Option None recovery and guarded residual propagation
+      - command: go test ./cmd/lsp -run 'Test(FalliblePropertyHoverAndCompletionShowSetterContract|OrdinaryPropertyHoverDoesNotClaimFallibility)' -count=1
+        result: passed on 2026-10-03; declaration/use hover and member completion retain the exact fallible setter contract
       - command: go test ./cmd/lsp -count=1
         result: passed
   - id: tooling.lsp-responsiveness
@@ -263,13 +306,146 @@ integrations:
       - "hover and semantic-token requests on sec/stdlib/net/url/url.sec dropped from about 0.6 s to about 0.12 s each, and module diagnostics from about 1.2 s to about 0.72 s including the 600 ms debounce"
       - "LSP diagnostic messages no longer repeat the primary location; a related location stays in the text and is attached as relatedInformation"
       - "the diagnostic debounce after document changes is 300 ms (reduced from 600 ms on 2026-10-03), so module diagnostics on url.sec arrive after about 0.42 s"
+      - "related-location columns (fixed 2026-10-03): semaDiagnosticWithSources converts a diagnostic's related location to UTF-16 with the related file's own text through sourceTextForToken, preferring the current document, then an unsaved open document from the overlay, then disk; an unreadable related file keeps the scalar column instead of dropping the link (TestRelatedLocationUsesRelatedFileUTF16Columns)"
+      - "formatting priority (2026-10-03): a reader goroutine feeds protocol messages into a request queue (cmd/lsp/request_queue.go); textDocument/formatting and willSaveWaitUntil move ahead of read-only analysis requests still waiting in the queue but never ahead of a document-synchronization notification or any other message, so format-on-save is delayed at most by the request already running and always formats the latest edited text (TestFormattingOvertakesOnlyQueuedAnalysisRequests, TestServerRunAnswersQueuedRequestsUntilEOF; race-detector clean)"
     remaining:
       - "reuse parsed core and unchanged module sources across requests instead of re-parsing and re-analyzing them for every hover, semantic-token, and completion request"
-      - "serve formatting independently of queued analysis requests so format-on-save cannot be delayed by them"
-      - "convert related-location columns to UTF-16 using the related file's text"
     verification:
       - command: scripted stdio LSP session on sec/stdlib/net/url/url.sec (initialize, didOpen, semanticTokens, documentSymbol, formatting, hover x3, willSaveWaitUntil, didSave)
         result: measured on 2026-10-02 after the change; per-request latency about 0.12 s, formatting 0.004 s
       - command: go test ./internal/sema ./cmd/lsp -count=1
         result: passed on 2026-10-02
 
+  - id: tooling.lsp-rename
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-03"
+    summary: >-
+      Implements semantic textDocument/prepareRename and textDocument/rename
+      over the Sema-resolved reference model used by find-references, with
+      prepare-rename rejections, name validation, visibility preservation,
+      multi-file workspace edits, and re-analysis safety.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/foundations/names_scopes_visibility.md
+    code:
+      - cmd/lsp/rename.go
+      - cmd/lsp/main.go
+    tests:
+      - cmd/lsp/rename_test.go
+    implemented:
+      - initialize advertises renameProvider with prepareProvider
+      - prepare-rename resolves the exact symbol through Sema and rejects non-identifiers and keywords, positions without exactly one declaration, compiler-known members, and declarations in read-only trusted core sources other than the edited document
+      - rename edits exactly the tokens Sema binds to the declaration across every source file of the analyzed program, leaving equal spellings bound to other declarations untouched, as one multi-file workspace edit the client can preview
+      - the new name must be exactly one identifier, not reserved by the language, and keep the visibility prefix (leading underscores) of the old name
+      - the renamed program is re-analyzed and the rename is rejected when it would introduce an error such as a collision, forbidden shadowing, or a confusable name
+    remaining:
+      - update documentation-comment links where supported
+      - honor generated and dependency read-only sources once the shared workspace index exposes them
+      - rename module and import aliases and file operations
+      - share the complete canonical name resolver with compilation (declarations.yaml)
+    verification:
+      - command: go test ./cmd/lsp -run 'TestRename' -count=1
+        result: passed on 2026-10-03 for parameter and function renames with untouched equal spellings, prepare-rename rejections of keywords, compiler-known members, and non-identifiers, invalid, keyword, reserved, visibility-changing, and colliding names, and a two-file module rename
+
+  - id: tooling.lsp-workspace-symbol
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-03"
+    summary: >-
+      Implement workspace/symbol (VS Code "Go to Symbol in Workspace", Ctrl+T)
+      as a projection of Sema-resolved declarations across the workspace,
+      reusing the declaration facts behind textDocument/documentSymbol rather
+      than an LSP-owned name index.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/projects/modules.md
+    code:
+      - cmd/lsp/workspace_symbol.go
+      - cmd/lsp/main.go
+      - cmd/lsp/request_queue.go
+    tests:
+      - cmd/lsp/workspace_symbol_test.go
+    implemented:
+      - initialize advertises workspaceSymbolProvider and workspace-folder change notifications; roots come from workspaceFolders, rootUri, or rootPath and follow workspace/didChangeWorkspaceFolders
+      - workspace/symbol answers SymbolInformation at the exact declaration name for types, structs, unions, enums, interfaces, functions, units, module-scope variables, methods, properties, events, struct fields, and enum and union members of every workspace source and open document, including unopened files; impl members are contained by the implemented type, top-level declarations by their module
+      - document symbols now also list struct-type fields and enum and union members of type declarations, which workspace symbols reuse
+      - case-insensitive subsequence matching ranked exact, prefix, substring, then scattered, with deterministic name, container, file, and line ordering and a 2000-result bound
+      - module-internal (_) names are offered only while an open document belongs to their module and private (__) names only while their own file is open
+      - read-only trusted core declarations rank after workspace declarations and are marked "core (read-only)" in the container
+      - per-file summaries are cached by on-disk size and modification time or the open snapshot hash; the repository answers cold in about 190 ms and warm in about 3 ms
+      - hidden directories, testdata fixtures, and node_modules are not workspace source
+      - workspace/symbol is a deferrable read-only request that formatting may overtake
+    remaining:
+      - workspace-symbol resolve
+      - generated and dependency read-only provenance once the shared compiler workspace exposes it
+      - project-manifest source roots instead of folder traversal
+      - move the summaries into the shared compiler workspace index (rules/tooling/lsp.md "Shared compiler workspace")
+    verification:
+      - command: go test ./cmd/lsp -run 'TestWorkspaceSymbols|TestWorkspaceRoots|TestDocumentSymbols' -count=1
+        result: passed on 2026-10-03 for open and unopened files with testdata excluded and cache refresh on change, case-insensitive ranked ordering, module-internal and private visibility from open documents, core marking, and workspace-folder changes
+
+  - id: tooling.lsp-missing-comma-quick-fix
+    area: tooling-lsp
+    status: implemented
+    integrated: "2026-10-03"
+    summary: >-
+      Offers "Insert missing ','" for P2002 missing-comma diagnostics whose
+      repair the parser proved between later-line struct fields, parameters,
+      call arguments, and array elements, inserting the comma after the
+      previous item exactly as the opt-in formatter Language Correction.
+    rules:
+      - rules/tooling/lsp.md
+      - rules/compiler/parser_recovery.md
+      - rules/tooling/formatter.md
+    code:
+      - cmd/lsp/missing_separator.go
+      - internal/parser/separator_recovery.go
+      - internal/formatter/corrections.go
+    tests:
+      - cmd/lsp/missing_separator_test.go
+      - internal/parser/separator_recovery_test.go
+      - internal/formatter/missing_separator_corrections_test.go
+    implemented:
+      - parser recovery events carry the After token of a proven missing-comma repair, and P2002 carries help naming the item kind
+      - textDocument/codeAction offers one quickfix per proven repair whose diagnostic range matches, inserting ',' before any trailing comment
+      - same-line adjacency produces no quick fix
+    verification:
+      - command: go test ./cmd/lsp -run MissingSeparator -count=1
+        result: passed on 2026-10-03 for a comment-trailed struct field and a multiline array element, with re-analysis free of P2002, and no fix for same-line adjacency
+
+  - id: tooling.lsp-expected-type-member-completion
+    area: tooling-lsp
+    status: partial
+    integrated: "2026-10-03"
+    summary: >-
+      Member completion written directly as a returned value offers only
+      members whose value type matches the expected return type, including
+      property getters whose expected type is the property type (user
+      decision 2026-10-03: only, not merely ranked first).
+    rules:
+      - rules/tooling/lsp.md
+    code:
+      - cmd/lsp/main.go
+    tests:
+      - cmd/lsp/expected_type_completion_test.go
+    implemented:
+      - property getter bodies supply the property's declared Sema type as the expected return type, alongside function and method bodies
+      - "`return receiver.` member completion filters fields, properties, events, compiler-known members, static symbols, enum members, and union variants by their type, and methods by any overload's return type"
+      - the receiver of a selector chain is located over identifiers, dots, and balanced call and index groups, so `return self.inner.` is also a return-value position
+      - inside a property getter the property itself is not offered on self, since returning it would recurse
+      - member completion outside a direct return value stays unfiltered
+      - "comparison operands (2026-10-03): the right operand of == or != completes only the left operand's type, with qualified enum members, bool literals, and visible symbols and functions of that type, and `== receiver.` filters members by that type"
+      - "switch case items (2026-10-03): `case` in a subject switch offers the subject type's values and omits enum members already named by another case"
+      - "match arm patterns (2026-10-03): a new arm line offers the subject's uncovered qualified enum members, bare union and Option variants, or Ok and Err for a Result, followed by `_`; arms with guards do not count as covering"
+      - the in-progress case or arm line is blanked and a comparison gets a placeholder operand so the enclosing construct parses; identifier subjects fall back to their resolved Sema binding
+    remaining:
+      - "`is` state tests offering the subject's variants"
+      - expected types from typed let initializers, assignments, call arguments, struct literal fields, and match arm values
+      - assignability beyond nominal equality (widening, Option/Result wrapping, generic instantiation, interface satisfaction)
+    verification:
+      - command: go test ./cmd/lsp -run MemberCompletion -count=1
+        result: passed on 2026-10-03 for a FileMode getter offering only FileMode fields and methods without the getter's own property, an unfiltered non-return selector, and a string method return
+      - command: go test ./cmd/lsp -run 'Comparison|SwitchCaseCompletion|MatchArmCompletion|BlankLineOutside' -count=1
+        result: passed on 2026-10-03 for == and != self. operands, an uncovered switch case, union, Option, and Result match arms, and unchanged global completion on a blank line outside match

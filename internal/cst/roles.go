@@ -150,7 +150,8 @@ const (
 	RangeOperatorOpenEnd Role = "range-operator-open-end"
 	// RangeStepKeyword marks contextual step in a parser-confirmed for range.
 	RangeStepKeyword Role = "range-step-keyword"
-	// StructFieldColon marks the real colon in a parser-confirmed struct field.
+	// StructFieldColon marks the real colon in a parser-confirmed struct or
+	// register field; both share one structural alignment engine.
 	StructFieldColon Role = "struct-field-colon"
 	// StructFieldTypeStart marks the first real token of its declared type.
 	StructFieldTypeStart Role = "struct-field-type-start"
@@ -594,12 +595,26 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			}
 		case *ast.RegisterField:
 			// rules/tooling/formatter.md §6(4): the register field colon binds
-			// left and is followed by one space. Column alignment of register
-			// fields is undecided (MD-013) and therefore not applied.
+			// left. Register fields, including reserved `_` fields, are clients
+			// of the same structural field-alignment engine as struct fields
+			// (MD-013; md010-md014 correction §§ 5.20–5.23, 9.4; formatter.md
+			// § 22(1), § 22(4)), so they carry the same colon and type anchors.
 			if node.Name != nil {
 				colon := nextTokenAtDepth(node.Name.Token, func(lexer.TokenType) bool { return true })
 				if colon >= 0 && d.Elements[colon].Token.Type == lexer.COLON {
 					markIndex(colon, DeclarationColon)
+					// The type anchor is the first token after the colon:
+					// `bit`, `bit[N]`, or a named field type.
+					for typeStart := colon + 1; typeStart < len(d.Elements); typeStart++ {
+						if d.Elements[typeStart].Kind != Token {
+							continue
+						}
+						if d.Elements[typeStart].Token.Line == d.Elements[colon].Token.Line && d.Elements[typeStart].Token.Type != lexer.RBRACE {
+							markIndex(colon, StructFieldColon)
+							markIndex(typeStart, StructFieldTypeStart)
+						}
+						break
+					}
 				}
 			}
 		case *ast.CollectionLiteral:

@@ -19,8 +19,8 @@ type StringMaterializationAllocation struct {
 	// Context is the canonical active allocation context; Sec 0.1 defines no
 	// string-specific allocator or allocation domain.
 	Context AllocationContext
-	// FailureType is the canonical AllocationError of the ordinary failure
-	// channel.
+	// FailureType is the canonical StringError of the ordinary failure
+	// channel; an allocation failure is reported as StringError.Allocation.
 	FailureType Type
 }
 
@@ -72,7 +72,7 @@ func (a *Analyzer) storeStringConcatPlan(root ast.Expression, segments []StringC
 		}
 	}
 	if plan.Runtime {
-		plan.Allocation = StringMaterializationAllocation{Context: a.activeAllocationContext(), FailureType: a.types["AllocationError"]}
+		plan.Allocation = StringMaterializationAllocation{Context: a.activeAllocationContext(), FailureType: a.types["StringError"]}
 		a.stringMaterializationSites[root] = stringMaterializationSite{callable: a.currentCallable, reachable: a.callGraphPathReachable && !a.summaryPass, token: expressionToken(root)}
 	}
 	a.stringConcatPlans[root] = plan
@@ -80,7 +80,8 @@ func (a *Analyzer) storeStringConcatPlan(root ast.Expression, segments []StringC
 
 // constantStringConcatSegment reports a segment fully resolved at compile
 // time: constant text or a character literal. Named compile-time values are
-// not classified here (MD-011).
+// not folded here; MD-011 classifies only contract and default positions as
+// SemanticCompileTimeRequiredContexts, not string concatenation operands.
 func constantStringConcatSegment(segment StringConcatSegment) bool {
 	if segment.Kind == StringConcatConstantString {
 		return true
@@ -139,7 +140,7 @@ func (a *Analyzer) reportStringMaterializations() {
 			continue
 		}
 		a.addErrorAtTokenWithMetadata(site.token, diagnostics.StringMaterializationRequiresTry,
-			"Write `try` before the expression to propagate AllocationError, or add a handler such as `try ... { Err(_) => fallback }`.",
+			"Write `try` before the expression to propagate StringError, or add a handler such as `try ... { Err(_) => fallback }`.",
 			"runtime string concatenation or interpolation may fail to allocate and requires try")
 	}
 }

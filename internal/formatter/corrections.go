@@ -135,3 +135,41 @@ func fixLegacyAssignedNamedType(text string) string {
 	}
 	return text
 }
+
+// fixMissingListSeparators inserts the comma that the parser proved missing
+// between two items of a comma-separated list written on separate lines:
+// struct fields, parameters, call arguments, and array literal elements. The
+// parser records each such repair as an insert-missing-token recovery event
+// whose After token is the previous item's last token, so the comma lands
+// directly after the item and before any trailing comment. Same-line
+// adjacency and lists whose grammar already accepts a line break (enum,
+// union, register, struct literal) are never rewritten.
+//
+// This is an opt-in Language Correction and must never run during ordinary
+// formatting.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 27(37) missing list separators
+//   - rules/compiler/parser_recovery.md — "Missing comma"
+func fixMissingListSeparators(text string) string {
+	result := parser.New(lexer.New(text)).Parse()
+	offsets := []int{}
+	seen := map[int]bool{}
+	for _, event := range result.Recovery {
+		if event.Kind != parser.RecoveryInsertMissingToken || event.After.Type == "" ||
+			len(event.Expected) != 1 || event.Expected[0] != lexer.COMMA {
+			continue
+		}
+		offset := event.After.ByteEnd
+		if offset <= 0 || offset > len(text) || seen[offset] || text[offset-1:offset] == "," {
+			continue
+		}
+		seen[offset] = true
+		offsets = append(offsets, offset)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(offsets)))
+	for _, offset := range offsets {
+		text = text[:offset] + "," + text[offset:]
+	}
+	return text
+}

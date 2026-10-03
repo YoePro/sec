@@ -36,11 +36,36 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(client);
+  registerCompilerKnownDefinitions(context);
   client.start().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     output?.appendLine(`Failed to start SEC language server: ${message}`);
     vscode.window.showErrorMessage(`Failed to start SEC language server: ${message}`);
   });
+}
+
+// Synthetic read-only definitions of compiler-known members
+// (rules/compiler/compiler_known_members.md "Synthetic definitions"). The
+// language server renders them from its registry; a content provider keeps
+// them read-only and outside the workspace.
+const compilerKnownScheme = "sec-compiler-known";
+
+function registerCompilerKnownDefinitions(context: vscode.ExtensionContext) {
+  const provider: vscode.TextDocumentContentProvider = {
+    async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+      if (!client) {
+        return "// The SEC language server is not running.\n";
+      }
+      const result = await client.sendRequest<{ text: string }>("sec/compilerKnownDefinition", { uri: uri.toString() });
+      return result.text;
+    }
+  };
+  context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(compilerKnownScheme, provider));
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument((document) => {
+    if (document.uri.scheme === compilerKnownScheme && document.languageId !== "sec") {
+      void vscode.languages.setTextDocumentLanguage(document, "sec");
+    }
+  }));
 }
 
 export function deactivate(): Thenable<void> | undefined {

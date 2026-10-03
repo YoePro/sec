@@ -47,6 +47,13 @@ func carrierTryHelp(actual Type, success Type, family string, expr ast.Expressio
 // addTypeMismatchError reports an expected/actual mismatch and adds the
 // missing-try explanation when it applies.
 func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual Type, expr ast.Expression, format string, args ...any) {
+	if suggestion, ok := a.unitConversionSuggestion(expected, actual, expr); ok {
+		a.unitConversionSuggestions = append(a.unitConversionSuggestions, suggestion)
+		a.addErrorAtTokenWithMetadata(token, "",
+			"convert explicitly with `"+suggestion.Replacement+"`; Sec never converts between unit identities implicitly",
+			format, args...)
+		return
+	}
 	if help := missingTryHelp(expected, actual, expr); help != "" {
 		a.addErrorAtTokenWithMetadata(token, "", help, format, args...)
 		return

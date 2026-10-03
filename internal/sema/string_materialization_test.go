@@ -28,7 +28,7 @@ fn Folded() string {
     return "Hello " + "world" + '!'
 }
 
-fn Propagated(name: string) Result[string, AllocationError] {
+fn Propagated(name: string) Result[string, StringError] {
     return Ok(try "Hello " + name)
 }
 
@@ -51,7 +51,7 @@ fn Handled(name: string) string {
 func TestStringConcatPlanRecordsResolvedAllocationContext(t *testing.T) {
 	source := `module main
 
-fn Render(name: string) Result[string, AllocationError] {
+fn Render(name: string) Result[string, StringError] {
     return Ok(try "Hello " + name)
 }
 
@@ -70,8 +70,8 @@ fn Folded() string {
 		t.Fatalf("runtime plan = %#v, found=%t", plan, ok)
 	}
 	context := plan.Allocation.Context
-	if !context.Available || context.Origin != StorageOriginArena || context.Profile != "hosted" || plan.Allocation.FailureType.Name != "AllocationError" {
-		t.Fatalf("allocation = %#v, want hosted Arena context with AllocationError", plan.Allocation)
+	if !context.Available || context.Origin != StorageOriginArena || context.Profile != "hosted" || plan.Allocation.FailureType.Name != "StringError" {
+		t.Fatalf("allocation = %#v, want hosted Arena context with StringError", plan.Allocation)
 	}
 	folded := result.Program.Statements[2].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.ReturnStatement).Value
 	if plan, ok := analyzer.StringConcatPlanOf(folded); !ok || plan.Runtime {
@@ -89,7 +89,7 @@ fn Folded() string {
 func TestRuntimeStringMaterializationWithoutAllocationContext(t *testing.T) {
 	source := `module main
 
-fn Render(name: string) Result[string, AllocationError] {
+fn Render(name: string) Result[string, StringError] {
     return Ok(try "Hello " + name)
 }
 

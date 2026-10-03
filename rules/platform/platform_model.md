@@ -1127,6 +1127,12 @@ interrupt model
 
 must never be silently taken from the compiler host.
 
+The target pointer width is the canonical platform width fact for the unsized
+scalar families: it resolves `int`, `uint`, and plain `float` together (float32
+width on a 32-bit platform, float64 width on a 64-bit platform). No other
+platform, host, or backend fact selects a plain-`float` width
+(MD-014; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 6).
+
 The target binary need not execute on the host for compilation to succeed.
 
 Host-dependent discovery is permitted only as an explicit resolver input, such as a

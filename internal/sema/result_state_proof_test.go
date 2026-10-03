@@ -22,8 +22,9 @@ fn Load() Result[int, LaunchFailure] {
 `
 
 // A consuming projection may forget a non-discardable alternate payload when
-// a dominating borrowed-projection test proves that state unreachable on an
-// immutable Result; otherwise the conservative rejection remains.
+// a dominating borrowed-projection test, or construction by the matching
+// Ok(...) or Err(...), proves that state unreachable on an immutable Result;
+// otherwise the conservative rejection remains.
 //
 // Rules:
 //   - rules/errors/errorhandling.md — §6.1 "Consuming projections", §6.2, §28
@@ -70,6 +71,24 @@ fn Use() int {
     if result.ErrRef is None {
         discard result.Ok()
     }
+    return 0
+}`}, {name: "constructed ok", body: `
+fn Use() int {
+    let result: Result[int, LaunchFailure] := Ok(5)
+    discard result.Ok()
+    return 0
+}`},
+		{name: "constructed err cannot project ok", rejected: true, body: `
+fn Use() int {
+    let worker := spawn Work()
+    let result: Result[int, LaunchFailure] := Err(LaunchFailure.Abandoned(<-worker))
+    discard result.Ok()
+    return 0
+}`},
+		{name: "mutable constructed ok", rejected: true, body: `
+fn Use() int {
+    let mut result: Result[int, LaunchFailure] := Ok(5)
+    discard result.Ok()
     return 0
 }`},
 	}

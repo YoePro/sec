@@ -30,34 +30,34 @@ impl datetime {
         self._nanosecondsSinceMidnight = t._nanosecondsSinceMidnight
     }
 
-    fn ToString(format: Format) string {
+    fn ToString(format: Format) Result[string, StringError] {
         match format {
             RFC3339 => {
-                return self._format3339
+                return Ok(self._format3339)
             }
 
             RFC3339Nano => {
-                return self._format3339Nano
+                return Ok(self._format3339Nano)
             }
 
             RFC2822 => {
-                return self._format2822
+                return Ok(self._format2822)
             }
             ISO8601 => {
-                return self._formatiso8601
+                return Ok(self._formatiso8601)
             }
             RFC7231 => {
-                return self._format7231
+                return Ok(self._format7231)
             }
             HTTP => {
-                return self._format7231
+                return Ok(self._format7231)
             }
         }
     }
 
-    fn ToString(layout: string) string {
+    fn ToString(layout: string) Result[string, StringError] {
         // TODO: parse layout och bygg sträng
-        return ""
+        return Ok("")
     }
 
     property _format3339: string {

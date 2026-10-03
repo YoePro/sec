@@ -41,8 +41,14 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 
 	typ = a.applyContracts(typ, stmt.Contract)
 	if stmt.Default != nil {
-		constant, ok := defaultConstantFromExpression(stmt.Default)
-		if !ok {
+		// MD-011: the default is an ordinary expression in a
+		// SemanticCompileTimeRequiredContext.
+		constant, outcome := a.semanticCompileTimeConstant(stmt.Default)
+		ok := outcome == compileTimeEvaluated
+		if outcome == compileTimeRequiresExecution {
+			typ.InvalidExplicitDefault = true
+			a.reportCompileTimeRequirement(stmt.Default, outcome, "default", diagnostics.InvalidExplicitDefault, "")
+		} else if !ok {
 			typ.InvalidExplicitDefault = true
 			a.addErrorAtTokenWithMetadata(stmt.DefaultToken, diagnostics.InvalidExplicitDefault, "use an allocation-free compile-time constant", "default for %s must be a compile-time primitive constant", name)
 		} else if !defaultRepresentable(typ, constant) {
@@ -171,7 +177,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "range contract does not apply to %s", contractApplicabilityTypeName(typ))
 			return typ
 		}
-		return applyRangeContract(typ, contract)
+		return a.applyRangeContract(typ, contract)
 	case *ast.MembershipContract:
 		if !a.contractAppliesToType("in", typ) {
 			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "remove the contract or use a base type the contract applies to", "in contract does not apply to %s", contractApplicabilityTypeName(typ))
@@ -191,12 +197,18 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		}
 		membershipTokens := []lexer.Token{}
 		for _, value := range contract.Values {
-			constant, ok := defaultConstantFromExpression(value)
+			constant, ok := enumMemberConstant(typ, value)
 			if !ok {
-				constant, ok = enumMemberConstant(typ, value)
+				var outcome compileTimeOutcome
+				constant, outcome = a.semanticCompileTimeConstant(value)
+				ok = outcome == compileTimeEvaluated
+				if outcome == compileTimeRequiresExecution {
+					a.reportCompileTimeRequirement(value, outcome, "membership value", diagnostics.InvalidContractArgument, "")
+					continue
+				}
 			}
 			if !ok {
-				a.addErrorAtTokenWithMetadata(expressionToken(value), diagnostics.InvalidContractArgument, "use a compile-time literal or, for an enum-based type, one of its declared members", "membership value %s is not a compile-time constant of %s", value.String(), typeDisplayName(typ))
+				a.addErrorAtTokenWithMetadata(expressionToken(value), diagnostics.InvalidContractArgument, "use a compile-time value or, for an enum-based type, one of its declared members", "membership value %s is not a compile-time constant of %s", value.String(), typeDisplayName(typ))
 				continue
 			}
 			if !defaultConstantCompatible(typ, constant) {
@@ -235,9 +247,13 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			// rules/types/contracts.md, "Integer contracts": multipleOf requires
 			// a nonzero compile-time integer divisor; a divisor that cannot be
 			// established is rejected instead of silently dropping the contract.
-			value, ok := constantIntegerValue(contract.Value)
-			if !ok {
-				if _, invalid := contract.Value.(*ast.InvalidExpression); !invalid && contract.Value != nil {
+			value, outcome := a.semanticCompileTimeInteger(contract.Value)
+			if outcome == compileTimeRequiresExecution {
+				a.reportCompileTimeRequirement(contract.Value, outcome, "multipleOf divisor", diagnostics.InvalidContractArgument, "")
+				return typ
+			}
+			if outcome != compileTimeEvaluated {
+				if outcome != compileTimeAlreadyInvalid {
 					a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "multipleOf contract divisor must be a compile-time integer")
 				}
 				return typ
@@ -249,8 +265,12 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			return typ
 		}
 		if isLengthContractName(contract.Name) {
-			value, ok := constantIntegerValue(contract.Value)
-			if !ok {
+			value, outcome := a.semanticCompileTimeInteger(contract.Value)
+			if outcome == compileTimeRequiresExecution {
+				a.reportCompileTimeRequirement(contract.Value, outcome, contract.Name+" value", diagnostics.InvalidContractArgument, "")
+				return typ
+			}
+			if outcome != compileTimeEvaluated {
 				a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "%s contract value must be a compile-time integer", contract.Name)
 				return typ
 			}
@@ -293,8 +313,12 @@ func (a *Analyzer) applyRegexContract(typ Type, contract *ast.RegexContract) Typ
 		// The parser already reported the missing or malformed pattern.
 		return typ
 	}
-	pattern, ok := defaultConstantFromExpression(contract.Pattern)
-	if !ok || pattern.Kind != StringType {
+	pattern, outcome := a.semanticCompileTimeConstant(contract.Pattern)
+	if outcome == compileTimeRequiresExecution {
+		a.reportCompileTimeRequirement(contract.Pattern, outcome, "regex pattern", diagnostics.InvalidContractArgument, "")
+		return typ
+	}
+	if outcome != compileTimeEvaluated || pattern.Kind != StringType {
 		a.addErrorAtTokenWithMetadata(expressionToken(contract.Pattern), diagnostics.InvalidContractArgument, "use a valid compile-time contract argument", "regex contract pattern must be a compile-time string")
 		return typ
 	}
@@ -316,29 +340,53 @@ func contractApplicabilityTypeName(typ Type) string {
 	return typeDisplayName(typ)
 }
 
-func applyRangeContract(typ Type, contract *ast.RangeContract) Type {
+// applyRangeContract records the semantic range. Each bound is an ordinary
+// expression evaluated in a SemanticCompileTimeRequiredContext (MD-011); a
+// bound that cannot be established is diagnosed instead of being dropped.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 3.11–3.17
+//   - rules/types/contracts.md — "Range contracts"
+func (a *Analyzer) applyRangeContract(typ Type, contract *ast.RangeContract) Type {
 	rangeContract := RangeContract{Exclusive: contract.Exclusive}
-
-	if contract.Min != nil {
-		if min, ok := constantIntegerValue(contract.Min); ok {
-			rangeContract.Min = new(big.Int).Set(min)
+	exactBounds := typ.Kind == DecimalType || typ.Kind == FloatType
+	bound := func(expr ast.Expression, position string) (*big.Int, *big.Rat, string, bool) {
+		if expr == nil {
+			return nil, nil, "", false
 		}
+		if exactBounds {
+			exact, lexeme, outcome := a.semanticCompileTimeExact(expr)
+			if outcome != compileTimeEvaluated {
+				a.reportCompileTimeRequirement(expr, outcome, "range "+position+" bound", diagnostics.InvalidContractArgument, "use a value established at compile time")
+				return nil, nil, "", false
+			}
+			var integer *big.Int
+			if value, integerOutcome := a.semanticCompileTimeInteger(expr); integerOutcome == compileTimeEvaluated {
+				integer = value
+			}
+			return integer, exact, lexeme, true
+		}
+		value, outcome := a.semanticCompileTimeInteger(expr)
+		if outcome != compileTimeEvaluated {
+			if constant, constantOutcome := a.semanticCompileTimeConstant(expr); constantOutcome == compileTimeEvaluated && constant.Integer == nil {
+				// A non-integer constant bound on an integer type keeps the
+				// existing range-domain diagnostics; nothing to record.
+				return nil, nil, "", false
+			}
+			a.reportCompileTimeRequirement(expr, outcome, "range "+position+" bound", diagnostics.InvalidContractArgument, "use a value established at compile time")
+			return nil, nil, "", false
+		}
+		return value, nil, "", true
 	}
-
-	if contract.Max != nil {
-		if max, ok := constantIntegerValue(contract.Max); ok {
-			rangeContract.Max = new(big.Int).Set(max)
-		}
+	if min, exact, lexeme, ok := bound(contract.Min, "lower"); ok {
+		rangeContract.Min = min
+		rangeContract.ExactMin = exact
+		rangeContract.MinLexeme = lexeme
 	}
-	if typ.Kind == DecimalType || typ.Kind == FloatType {
-		if exact, lexeme, ok := exactNumericConstant(contract.Min); ok {
-			rangeContract.ExactMin = exact
-			rangeContract.MinLexeme = lexeme
-		}
-		if exact, lexeme, ok := exactNumericConstant(contract.Max); ok {
-			rangeContract.ExactMax = exact
-			rangeContract.MaxLexeme = lexeme
-		}
+	if max, exact, lexeme, ok := bound(contract.Max, "upper"); ok {
+		rangeContract.Max = max
+		rangeContract.ExactMax = exact
+		rangeContract.MaxLexeme = lexeme
 	}
 
 	typ.Contracts = append(typ.Contracts, rangeContract)

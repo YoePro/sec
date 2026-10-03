@@ -9,13 +9,14 @@ integrations:
     implemented:
       - textual Semantic IR printer exists
       - existing compiler/LSP paths consume several shared compiler-known and semantic facts
+      - "shaped semantic metadata (2026-10-03): sema.ShapedFactsOf exposes rank, static shape, Len, dense row-major strides, and contiguity from the same compiler-known registry functions that publish the Rank/Shape/Len/Strides/IsContiguous members, and LSP hover on a vector, matrix, tensor, or tensor_view binding presents them, stating a runtime shape for rank-only views instead of inventing extents (TestHoverPresentsShapedFactsForBindings)"
     remaining:
       - expose Iterator[T] resolution and concrete Next target
       - expose ownership/availability/Place provenance
-      - expose Arena domain/epoch/allocation context
+      - expose Arena domain/epoch/allocation context (maybe. Make this the last point to implement)
       - expose effect and panic/check cause chains
       - expose task/thread transfer provenance
-      - expose collection/shaped semantic metadata
+      - expose collection (list/set/map) semantic metadata in tooling; shaped metadata is exposed (2026-10-03)
       - ensure LSP never implements a parallel iterator/interface model
       - add stable machine-readable serialization/version validation where required
     required_tests:

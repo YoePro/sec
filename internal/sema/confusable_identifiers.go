@@ -1,6 +1,9 @@
 package sema
 
 import (
+	"sort"
+	"strings"
+
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
@@ -98,4 +101,57 @@ func (a *Analyzer) moduleConfusableIndex() map[string][]confusableDeclaration {
 	}
 	a.confusableModuleIndex[a.currentModule] = index
 	return index
+}
+
+// checkConfusableInDomains compares a new declaration with the declarations
+// already in its conflicting declaration domain: the members of one type
+// (fields, methods, properties, events), the parameters of one callable, the
+// fields of one struct, or the variants of one enum or union. Any distinct
+// spelling with the same UTS #39 skeleton is reported once, deterministically
+// against the alphabetically first collision. The declaration itself is kept
+// so later analysis does not cascade into undefined-name errors.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 2.5–2.10
+//   - rules/foundations/lexical_structure.md — "Visually confusable identifiers"
+func (a *Analyzer) checkConfusableInDomains(name string, token lexer.Token, domains ...map[string]lexer.Token) bool {
+	skeleton := a.confusableSkeleton(name)
+	collisions := []string{}
+	tokens := map[string]lexer.Token{}
+	for _, domain := range domains {
+		for other, otherToken := range domain {
+			if other == name || !validDefinitionToken(otherToken) || a.confusableSkeleton(other) != skeleton {
+				continue
+			}
+			if _, seen := tokens[other]; !seen {
+				collisions = append(collisions, other)
+				tokens[other] = otherToken
+			}
+		}
+	}
+	if len(collisions) == 0 {
+		return false
+	}
+	sort.Strings(collisions)
+	a.reportConfusableIdentifier(name, token, collisions[0], tokens[collisions[0]])
+	return true
+}
+
+// typeMethodTokens returns the methods already registered on target by
+// earlier impl blocks, keyed by method name.
+func (a *Analyzer) typeMethodTokens(target string) map[string]lexer.Token {
+	methods := map[string]lexer.Token{}
+	prefix := target + "."
+	for key, functions := range a.functions {
+		if !strings.HasPrefix(key, prefix) || strings.Contains(key[len(prefix):], ".") {
+			continue
+		}
+		for _, function := range functions {
+			if function.ImplTarget == target && validDefinitionToken(function.Token) {
+				methods[key[len(prefix):]] = function.Token
+				break
+			}
+		}
+	}
+	return methods
 }

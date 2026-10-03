@@ -80,6 +80,19 @@ func (a *Analyzer) validateReservedDeclarationNames(program *ast.Program) {
 					if node.Name != nil && node.Name.Value != "_" {
 						checkIdentifier(node.Name, "register field")
 					}
+				case *ast.ImplStatement:
+					// An explicit self parameter of an impl method is legacy
+					// receiver syntax owned by S1103 declarations.explicit-self-parameter;
+					// the generic reserved-name diagnostic would duplicate it.
+					for _, member := range node.Members {
+						if method, ok := member.(*ast.FunctionDeclaration); ok {
+							for _, parameter := range method.Parameters {
+								if parameter != nil && parameter.Name != nil && parameter.Name.Value == "self" {
+									seen[sourceTokenLocation(parameter.Name.Token)] = true
+								}
+							}
+						}
+					}
 				case *ast.FunctionDeclaration:
 					checkIdentifier(node.Name, "function")
 				case *ast.Parameter:

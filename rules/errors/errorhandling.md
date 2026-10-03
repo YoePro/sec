@@ -1092,6 +1092,17 @@ Rules:
 Assignment success is a normal success control-flow edge. It is not specified as
 an artificial source-level `Ok(())` value.
 
+A checked conversion into a constrained named type, such as
+`try percentage = Percentage(value)`, can fail in two runtime layers that the
+error model must keep distinct: an intrinsic target-domain failure of the
+underlying primitive or scalar type, and a declared contract failure checked
+afterwards in source order. A missing conversion relation is never a runtime
+failure; it is a compile-time type diagnostic (`rules/types/types.md`,
+"Explicit conversions"; `rules/types/contracts.md`, "Conversion failure
+layers"). Whether these layers use separate public error types or a common
+typed wrapper, and their names, variants, and payloads, remain undecided
+(MD-012; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 4).
+
 ---
 
 ## 24. Fallible property setters

@@ -1,0 +1,14 @@
+#target(os: "linux", arch: "amd64")
+module os
+
+/**
+ * Represents a native Linux file descriptor.
+ *
+ * This type describes the native handle representation only. Ownership belongs
+ * to FileHandle.
+ */
+type NativeFileHandle int
+
+fn _CloseNativeFile(fh: NativeFileHandle) Result[void, IOError] {
+    return Err(IOError.Unsupported)
+}

@@ -92,11 +92,11 @@ impl time {
         }
     }
 
-    fn ToString(format: datetime.Format) string {
-        return ""
+    fn ToString(format: datetime.Format) Result[string, StringError] {
+        return Ok("")
     }
 
-    fn ToString(layout: string) string {
-        return ""
+    fn ToString(layout: string) Result[string, StringError] {
+        return Ok("")
     }
 }

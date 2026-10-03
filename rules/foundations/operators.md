@@ -167,7 +167,7 @@ Sema currently implements:
 - rejection of hidden conversion for non-text concatenation operands through
   stable diagnostic `S1022`;
 - interpolation-hole formatting-contract validation with compiler-known and
-  exact user-owned `ToString() string` selection through stable diagnostic
+  exact user-owned `ToString() Result[string, StringError]` selection through stable diagnostic
   `S1029`;
 - direct `string +=` type validation for `string`, `char`, and `rune` values;
 - ordered-comparison validation for compatible numeric operands and matching
@@ -1536,9 +1536,36 @@ collections, interfaces, and all other non-text values require explicit
 conversion:
 
 ```sec
-let valid := "Count: " + count.ToString()
+let valid := try "Count: " + count.ToString()
 let invalid := "Count: " + count
 ```
+
+## Fallible text operands
+
+Decision 2026-10-03: besides `string`, `char`, and `rune`, string `+` accepts an
+operand of exactly `Result[string, StringError]`, such as a `ToString()` call.
+The whole concatenation then is one runtime materialization whose single
+`StringError` failure channel covers both the operand failures and the
+allocation of the result, so one `try` around the complete expression handles
+it:
+
+```sec
+let constant := "A" + "B"                        // compile-time text, no try
+let text := try "A" + value.ToString() + "B"     // one try for the whole plan
+let both := try left.ToString() + ":" + right.ToString()
+```
+
+A missing `try` is the ordinary runtime-materialization diagnostic (S1097).
+Each fallible operand evaluates exactly once, left to right, as one segment of
+the maximal concatenation plan, and the first failure ends the plan. The operand
+must be exactly `Result[string, StringError]`; any other `Result` or non-text
+value remains invalid with S1022. Runtime concatenation and interpolation fail
+with `StringError` (`rules/library/core-library.md` § 15.1); an allocation
+failure is `StringError.Allocation`.
+
+Compound `string +=` does not accept a fallible text operand while its failure
+policy is undecided (MD-039); `s += try value.ToString()` handles the operand
+first.
 
 The compiler must not silently insert `ToString()`.
 
@@ -1554,7 +1581,7 @@ let text := $"Count: {count}"
 An interpolation hole is valid when its value has a canonical formatting
 contract. Initially, a user-defined type normally supplies that contract through
 `ToString()`. This does not make direct `"value: " + value` valid; direct
-concatenation still requires `value.ToString()`.
+concatenation still requires the handled result of `value.ToString()`.
 
 Mixed interpolation and concatenation are valid. Interpolation formatting,
 `value.ToString()`, and a future `value.ToString(format)` must share one coherent
@@ -1640,6 +1667,7 @@ CharSegment
 RuneSegment
 BuiltinFormattedSegment
 MaterializedStringSegment
+FallibleTextSegment
 InterpolationSegment
 ```
 
@@ -3483,14 +3511,14 @@ Performance findings may be advisory.
 ```text
 error[S1022]: `int` cannot be concatenated directly with `string`
 string concatenation accepts string, char, and rune
-help: use `value.ToString()` or interpolation when a formatting contract exists
+help: use `value.ToString()` inside the concatenation with `try` before the whole expression, or interpolation when a formatting contract exists
 ```
 
 ## Invalid interpolation value
 
 ```text
 error[S1029]: `Packet` has no canonical interpolation formatting contract
-help: define an exact shared `fn ToString() string` method or interpolate a supported printable value
+help: define an exact shared `fn ToString() Result[string, StringError]` method or interpolate a supported printable value
 ```
 
 ## Invalid rune comparison
@@ -4656,7 +4684,7 @@ interpolation is an explicit formatting context.
 
 Compile-time concatenation folds without allocation. Runtime concatenation uses
 the active allocation context and selects deterministic allocation panic by
-default or `AllocationError` flow through `try`. Maximal concatenation,
+default or `StringError` flow through `try`. Maximal concatenation,
 interpolation, `string.Concat`, and transactional `string +=` share one
 `StringConcatPlan` before MLIR.
 

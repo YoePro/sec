@@ -35,6 +35,11 @@ type CompilerKnownMember struct {
 	// Category is the semantic-authority classification that determines
 	// replacement and conflict policy.
 	Category CompilerKnownMemberCategory
+	// Rule, Receiver, and TargetRestriction are presentation metadata for
+	// hover and synthetic definitions (compiler_known_synthetic.go).
+	Rule              string
+	Receiver          string
+	TargetRestriction string
 }
 
 // CompilerKnownMemberCategory classifies a compiler-known member by semantic
@@ -190,7 +195,7 @@ func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 		members = compilerKnownStaticMembers(typ)
 	}
 	for index := range members {
-		members[index] = classifyCompilerKnownMember(members[index])
+		members[index] = withSyntheticMetadata(classifyCompilerKnownMember(members[index]))
 	}
 	return members
 }
@@ -208,7 +213,6 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members := []CompilerKnownMember{}
 	uintType := builtinType("uint")
 	boolType := builtinType("bool")
-	stringType := builtinType("string")
 
 	members = append(members, compilerKnownShapedFactMembers(typ, false)...)
 
@@ -229,7 +233,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		}
 	}
 	if compilerKnownToStringReceiver(typ) {
-		members = append(members, CompilerKnownMember{ID: compilerKnownToStringID(typ), Name: "ToString", Kind: CompilerKnownMethod, Result: stringType})
+		members = append(members, CompilerKnownMember{ID: compilerKnownToStringID(typ), Name: "ToString", Kind: CompilerKnownMethod, Result: toStringResultType()})
 	}
 	sequence := dereferenceType(typ)
 	if sequence.Kind == ResultType && len(sequence.TypeArgs) == 2 {
@@ -348,6 +352,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 		)
 	}
 	members = append(members, compilerKnownCancellationMembers(sequence)...)
+	members = append(members, compilerKnownThreadMembers(sequence)...)
 	return members
 }
 
@@ -416,6 +421,58 @@ func compilerKnownCancellationMembers(typ Type) []CompilerKnownMember {
 		Signature:     "fn RequestCancel() void",
 		Documentation: "Requests cooperative cancellation without consuming the owning handle. The request is idempotent and has no effect after terminal completion.",
 	}}
+}
+
+// compilerKnownThreadMembers exposes the exact CamelCase thread-v2 surface
+// that needs no further analysis: identity, logical name, and status on the
+// owning Thread[T] and on the copyable ThreadObserver[T], plus observer
+// creation and deferred start on the owner. Value, Panic, and Termination wait
+// for terminal-availability analysis and Platform for target-resolved
+// ThreadPlatform declarations, so they are deliberately absent rather than
+// unchecked. Join and detach remain language operations.
+//
+// Rules:
+//   - rules/concurrency/threads.md — § 26 "Exact public Thread[T] surface", §§ 27–29, § 40 "ThreadObserver[T]", § 41 "Creating an observer"
+func compilerKnownThreadMembers(typ Type) []CompilerKnownMember {
+	if (typ.Name != "Thread" && typ.Name != "ThreadObserver") || len(typ.TypeArgs) != 1 {
+		return nil
+	}
+	identity := strings.ToUpper(typ.Name)
+	members := []CompilerKnownMember{
+		{
+			ID: "CKM-" + identity + "-ID", Name: "ID", Kind: CompilerKnownProperty, Result: builtinType("ThreadID"),
+			Signature:     "property ID: ThreadID",
+			Documentation: "Sec thread identity; preserved across moves and join, and never reused for a later thread.",
+		},
+		{
+			ID: "CKM-" + identity + "-NAME", Name: "Name", Kind: CompilerKnownProperty, Result: builtinType("string"),
+			Signature:     "property Name: string",
+			Documentation: "Immutable logical thread name used for observation and diagnostics.",
+		},
+		{
+			ID: "CKM-" + identity + "-STATUS", Name: "Status", Kind: CompilerKnownProperty, Result: builtinType("ThreadStatus"),
+			Signature:     "property Status: ThreadStatus",
+			Documentation: "Current lifecycle status: Created, Running, Completed, Cancelled, Panicked, or Terminated.",
+		},
+	}
+	if typ.Name == "Thread" {
+		observer := builtinType("ThreadObserver")
+		observer.TypeArgs = []Type{typ.TypeArgs[0]}
+		members = append(members,
+			CompilerKnownMember{
+				ID: "CKM-THREAD-OBSERVE", Name: "Observe", Kind: CompilerKnownMethod, Result: observer,
+				Signature:     "fn Observe() " + typeDisplayName(observer),
+				Documentation: "Creates a copyable, non-owning, metadata-only observer; infallible and does not affect lifecycle ownership.",
+			},
+			CompilerKnownMember{
+				ID: "CKM-THREAD-START", Name: "Start", Kind: CompilerKnownMethod,
+				Result:        compilerKnownResult(builtinType("void"), builtinType("ThreadStartError")),
+				Signature:     "fn Start() Result[void, ThreadStartError]",
+				Documentation: "Starts a thread created with Deferred start; a thread that is not in Created state fails with ThreadStartError.InvalidState.",
+			},
+		)
+	}
+	return members
 }
 
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
@@ -878,4 +935,42 @@ func implMemberIdentity(member ast.ImplMember) (string, lexer.Token, bool) {
 		}
 	}
 	return "", lexer.Token{}, false
+}
+
+// ShapedFacts is the tooling presentation of the shaped facts Sema resolved
+// for a type: rank, extents, total element count, whether the shape is known
+// statically, and canonical dense contiguity. Empty strings mark facts that
+// are not statically known, such as the extents of a tensor_view.
+type ShapedFacts struct {
+	Family       string
+	Rank         string
+	Shape        string
+	Len          string
+	Strides      string
+	StaticShape  bool
+	IsContiguous bool
+}
+
+// ShapedFactsOf exposes the compiler-known shaped facts of typ to tooling. It
+// derives every value from the same registry functions that publish the
+// Rank, Shape, Len, Strides, and IsContiguous members, so the LSP never keeps
+// an independent shaped table.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shaped values"
+//   - rules/collections/shaped-types.md — § 5 "Rank, Shape, and Len", § 6 "Strides", § 8 "Contiguity"
+func ShapedFactsOf(typ Type) (ShapedFacts, bool) {
+	typ = dereferenceType(typ)
+	rank, length, ok := compilerKnownStaticShapedFacts(typ)
+	if !ok {
+		return ShapedFacts{}, false
+	}
+	facts := ShapedFacts{Family: typ.Name, Rank: rank, Len: length}
+	if length != "" {
+		facts.StaticShape = true
+		facts.Shape = shapedStaticShape(typ)
+		facts.Strides = shapedStaticDenseStrides(typ)
+		facts.IsContiguous = true
+	}
+	return facts, true
 }

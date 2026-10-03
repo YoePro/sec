@@ -1547,8 +1547,11 @@ static string data and is not a runtime fallible operation. The direct
 concatenation operator follows the same rule
 (`rules/foundations/operators.md`, "String concatenation"). Runtime
 materialization uses the canonical active allocation context of
-`rules/memory/allocation.md`, resolved by the frontend, with `AllocationError`
-as its failure type (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 5).
+`rules/memory/allocation.md`, resolved by the frontend, with `StringError` as
+its failure type; an allocation failure is `StringError.Allocation` (MD-004,
+`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md`
+§ 5, amended by the 2026-10-03 `StringError` decision,
+`rules/library/core-library.md` § 15.1).
 
 ---
 

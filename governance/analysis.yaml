@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-02"
+    updated: "2026-10-03"
     summary: >-
       Adds structured high-confidence pitfall analysis that correlates canonical
       bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI
@@ -35,10 +35,14 @@ integrations:
       - internal/sema/pitfall_final_element.go
       - internal/sema/pitfall_neighbor_bounds.go
       - internal/sema/pitfall_skipped_first.go
+      - internal/sema/pitfall_intervals.go
+      - internal/sema/pitfall_guard_subject.go
       - cmd/compiler/analyse.go
     tests:
       - internal/sema/pitfall_analysis_test.go
       - internal/sema/pitfall_skipped_first_test.go
+      - internal/sema/pitfall_intervals_test.go
+      - internal/sema/pitfall_guard_subject_test.go
       - cmd/compiler/analyse_test.go
     implemented:
       - canonical structured PitfallFinding model with stable rule identity, family, classification, confidence, subject, evidence for and against, suppression, owning-rule linkage, suggested actions, and analysis state
@@ -65,6 +69,13 @@ integrations:
       - final-element Len - 1 access is correlated through compiler-known Len and resolved collection identity; adjacent Len == 0 or compiler-known IsEmpty exits and direct Len > 0, 0 < Len, Len != 0, negated IsEmpty, or complementary equality/IsEmpty branch facts supply explicit non-empty suppression evidence, while missing, expired, non-exiting, and wrong-collection proofs remain findings
       - high-confidence skipped-first-element analysis recognizes canonical uint(1)..<collection.Len traversal with direct induction-variable indexing of that same resolved collection; predecessor access and dominating same-block handling of collection[0] produce structured suppressed results, while conditional or wrong-collection handling does not suppress
       - "`sec analyse` and `sec analyse --all` run pitfall analysis by default at Deep depth and present the structured findings, suppressed findings with reasons, evidence, proven-fix versus suggested-edit actions, and not-evaluated rules; ProvenInvalid findings remain errors (exit code 3) and are never downgraded, while LikelyMistake and SuspiciousIntent findings are advisory"
+      - interval-condition rules pitfall.range.tautological-interval and pitfall.range.impossible-interval (Interactive, LikelyMistake, proven) normalize `&&`/`||` pairs of ordered comparisons of one resolved integer binding or field chain against integer literals, in either operand order, into closed half-lines and prove coverage of every integer (L <= U + 1) or emptiness (L > U); floating-point subjects are excluded because NaN breaks the total order, and only literal bounds are used so no proof depends on scope-transient binding values
+      - an inclusive tautology such as `value >= 0 || value <= 10` carries a SuggestedEdit to canonical `value in 0..10` rather than an operator swap
+      - pitfall.range.membership-idiom (Deep, SuspiciousIntent, proven) offers a ProvenFix from a non-empty literal `x >= a && x <= b` or `x >= a && x < b` to `x in a..b` or `x in a..<b`; a property subject that may run a getter is retained as a suppressed result with evidence because collapsing two evaluations into one is not proven semantics-preserving
+      - path-sensitive strict index guards (`index < X.Len` or `X.Len > index` conjuncts of if and while conditions, and the binding of a half-open `start..<X.Len` for loop) are tracked as an active guard stack through the pitfall walk
+      - pitfall.control-flow.wrong-guard-subject (Interactive, LikelyMistake, High) reports a straight-line `Y[b]` access in a strict-guarded block when no access in that block uses the guarded pair and no guard on the path covers `Y[b]`, the copy/paste shape `if leftIndex < left.Len { right[rightIndex] }`; blocks that use the guarded pair, conjunctions covering the access, enclosing if/while/loop guards, `<=` guards (owned by the ineffective-guard rule), and accesses inside nested control flow stay silent
+      - pitfall.control-flow.check-without-transfer (Interactive, LikelyMistake, High) reports `if index >= X.Len { ... }` (or a strict `>` rejection, either operand order) whose branch neither leaves the path (break, continue, return, panic, checked unreachable) nor may re-establish the index (assignment at any depth, compound or `++`/`--`, or `ref mut` passing), directly followed by `X[index]`; no control transfer is suggested because the intended one cannot be inferred
+      - "pitfall.iteration.structural-mutation-in-indexed-loop (Interactive, family iteration-and-mutation, 2026-10-03) correlates a forward `start..<X.Len` / `start..X.Len` for loop without step, whose end is evaluated once, with compiler-known StructuralMutation calls on the same resolved collection anywhere in the body; Clear() followed on the same straight-line path by `X[binding]` is ProvenInvalid (proven), RemoveAt/Remove/Clear/Insert while the loop indexes X by its binding or passes the binding to the mutation is LikelyMistake (high) with a SuggestedEdit to traverse in reverse or use an index-advancing while loop, and a mutation directly followed by return or by break of this loop (not of a nested loop), an Append beyond the once-evaluated range, or a loop that never addresses X by its binding (draining) is retained as a suppressed result with its reason. Tests: internal/sema/pitfall_indexed_mutation_test.go"
     remaining:
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - integrate direct index-at-Len and inclusive-length findings with the owning bounds diagnostic and coalescing pipeline
@@ -75,9 +86,9 @@ integrations:
       - implement omitted-last-element and count-versus-inclusive-endpoint advisory rules where semantic intent evidence is sufficient
       - implement collection bound-source correlation, equal/sufficient-length suppression, and copy/paste evidence
       - implement length-versus-capacity pitfall reasoning without conflating capacity with live element length
-      - implement structural-mutation-during-indexed-iteration reasoning with safe-pattern suppression
-      - implement wrong-guard-subject and ineffective-safety-check control-flow correlation
-      - implement tautological/impossible range-condition enrichment and canonical range-membership suggestions using `in` when semantic equivalence is proven
+      - extend structural-mutation-during-indexed-iteration reasoning to while loops with manual indexes, reverse traversal, bounds held in local bindings, mutations through aliases or callees, and user-declared structural operations
+      - correlate wrong-guard and check-without-transfer findings through nested control flow, later statements, and mutation-aware guard invalidation instead of the implemented straight-line and directly-following slices
+      - extend interval-condition proofs to named compile-time constants, constrained-type domains, enum and char/rune ordering, and conjunction or disjunction chains longer than one comparison pair
       - add canonical-idiom suggestion support without inventing a new strict compilation mode
       - add Option/Result/state-check subject-correlation support when canonical state facts are available
       - add canonical FFI buffer/extent relationship consumption without inferring pointer/length semantics from parameter names
@@ -132,6 +143,14 @@ integrations:
         result: passed on 2026-10-02 with default and explicit --all all-analysis runs, selected-source-only reports, proven-invalid pitfalls kept as errors with exit code 3, advisory classification, explicit target, and usage-error coverage
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-02 after adding sec analyse
+      - command: go test ./internal/sema -run 'TestPitfall(IntervalConditions|RangeMembership)' -count=1
+        result: passed on 2026-10-03 with inclusive, mirrored, strict, unsigned, and negative-bound tautological and impossible intervals, outside tests, mixed subjects, float subjects, and strict gaps as near misses, inclusive and half-open membership fixes on bindings and stored fields, suppressed property-getter rewrites, Standard-depth exclusion of the idiom, and validity of the suggested `in` spelling
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-03 after adding the interval-condition rules; `sec analyse sec/core` reports no interval findings
+      - command: go test ./internal/sema -run 'TestPitfall(WrongGuardSubject|CheckWithoutTransfer)' -count=1
+        result: passed on 2026-10-03 with wrong variable and wrong collection guarded, mirrored guards, correctly protecting guards, guarded pairs used beside other accesses, covering conjunctions, enclosing if/while/half-open-loop guards, `<=` guards left to the ineffective-guard rule, nested control flow, and check-without-transfer cases for log-only and mirrored checks versus return, panic, direct and nested re-establishment, `ref mut` passing, different collections, and non-adjacent accesses
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-03 after adding the control-flow guard rules; `sec analyse` over sec/core, io, unicode, net/dns, and net/websocket reports no control-flow guard findings
   - id: sema.parameter-usage-analysis
     area: frontend-analysis
     status: partial
@@ -358,6 +377,59 @@ integrations:
       - complete ownership, move-state, and storage-origin propagation through references, slices, and Semantic IR
       - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
       - allocator implementation, target-specific backing storage, capacity analysis, and runtime behavior
+  - id: analysis.tostring-result-contract
+    area: frontend-analysis
+    status: partial
+    integrated: "2026-10-03"
+    audited: "2026-10-03"
+    updated: "2026-10-03"
+    summary: >-
+      Every ToString member, the compiler-provided fallback, privileged core
+      declarations, the exact user replacement, every overload such as
+      ToString(format), and every interface requirement, returns exactly
+      Result[string, StringError] (decisions 2026-10-03, resolving MD-035 and
+      MD-038). StringError is the one text failure family, also used by runtime
+      concatenation and interpolation; its Allocation and Format variants carry
+      AllocationError and FormatError. Users may implement their own ToString,
+      so the uniform contract is enforced on each declaration rather than
+      assumed at call sites.
+    rules:
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/foundations/operators.md
+      - rules/foundations/lexical_structure.md
+      - rules/memory/allocation.md
+    code:
+      - internal/sema/tostring_signature.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/sema/string_materialization.go
+      - internal/sema/try_failure_set.go
+      - internal/diagnostics/diagnostics.go
+      - sec/core/error.sec
+    tests:
+      - internal/sema/tostring_signature_test.go
+      - internal/sema/compiler_known_members_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/sema/string_materialization_test.go
+    implemented:
+      - mandatory S1100 members.tostring-signature at the declared result of any impl or interface ToString whose resolved result is not exactly Result[string, StringError] (built-in unnamed string, compiler-known StringError); unresolved result types keep only their own diagnostic
+      - compiler-known FormatError enum and StringError union error (Allocation(AllocationError), Format(FormatError), InvalidUtf8(uint), InvalidCodePoint, OutOfBounds); trusted core supplies the source declarations and core-declared unions keep their intrinsic identity
+      - the compiler-known ToString fallback and the byte, char, and rune sequence materializations resolve to Result[string, StringError]
+      - runtime StringConcatPlan failure type and the try failure point of string concatenation and interpolation are StringError (amends MD-004), so interpolating a value and calling its ToString share one error channel
+      - exact user replacement and interpolation formatting-contract selection accept only the canonical no-argument Result[string, StringError] shape
+      - concatenation and interpolation diagnostics direct users to try value.ToString() and the canonical declaration shape
+      - trusted sec/core ToString declarations migrated to the canonical result so core loading stays diagnostic-free; stdlib declarations are left for source migration
+    verification:
+      - command: go test ./internal/sema -run 'ToString|StringError|CompilerKnown|Interpolation|StringConcat' -count=1
+        result: passed on 2026-10-03; S1100 for string-returning, foreign-error, and interface ToString declarations, canonical replacements and overloads accepted, unhandled ToString results rejected where string is expected, StringError variant payloads matched exhaustively, and interpolation failure rejected when propagated into an AllocationError-only channel
+      - command: go test ./... -count=1
+        result: passed across all packages on 2026-10-03
+    remaining:
+      - migrate sec/stdlib ToString declarations, StringError.AllocationFailed matches, and callers to Result[string, StringError] (owned by library source migration)
+      - runtime format validation for ToString(format) overloads once the format grammar exists
+      - Semantic IR and lowering of fallible compiler-known ToString materialization
   - id: analysis.arena-reset-release-dependency-legality
     area: frontend-analysis
     status: partial

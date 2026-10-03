@@ -210,6 +210,28 @@ must not substitute for an explicit required-context contract where evaluation s
 
 § 8(4) Static analysis proving a value does not by itself turn the containing expression into a `SemanticCompileTimeRequiredContext`.
 
+§ 8(5) Type-contract arguments and explicit type defaults are `SemanticCompileTimeRequiredContext`s classified by `rules/types/contracts.md` ("Compile-time-required contract positions") and `rules/types/default_values.md`:
+
+```text
+construct:          range lower/upper bound, each in [...] member, multipleOf divisor,
+                    minLen/maxLen/exactLen value, regex pattern, explicit default
+context:            SemanticCompileTimeRequiredContext
+source syntax:      ordinary Expression (no separate constant sublanguage)
+result:             the named type's base-type value (bounds, members, default),
+                    a nonzero integer (multipleOf), a nonnegative integer
+                    (length contracts), a string (regex pattern)
+legal domain:       representable by the base type and satisfying every
+                    contract, including argumentless contracts, for defaults
+materialization:    a default must be statically materializable under the
+                    default-value rules; transient evaluator-local allocation
+                    during its evaluation is permitted
+compiler-known inputs: those ordinary semantic CTE permits
+```
+
+§ 8(6) These positions may read immutable values already established by semantic CTE, execute ordinary, static, and instance functions and property getters whose concrete execution is CTE-legal, and use path-sensitive legality; ordinary mutable static state is not CTE-readable. Sec has no `const fn` or `comptime fn` category for them (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 3).
+
+§ 8(7) An implementation must evaluate these positions with the canonical semantic CTE evaluator, never a contract-only constant evaluator.
+
 ---
 
 ## § 9 Static initializers
@@ -1471,7 +1493,7 @@ reinterpret an evaluator-local pointer as a runtime pointer.
 
 § 66(4) Compiler-known fallback behavior and authoritative semantic properties are governed by `compiler/compiler_known_members.md` and the companion correction.
 
-§ 66(5) A user-defined valid `ToString() string` replacement selected by ordinary member lookup is the callable CTE executes.
+§ 66(5) A user-defined valid `ToString() Result[string, StringError]` replacement selected by ordinary member lookup is the callable CTE executes.
 
 § 66(6) Authoritative semantic properties such as canonical `SizeOf` are not user-overridable merely because they use member syntax.
 

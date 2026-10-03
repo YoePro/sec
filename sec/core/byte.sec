@@ -8,7 +8,7 @@ impl byte {
         Binary,
     }
 
-    fn ToString(fmt: byte.ByteStringFormat) string {
+    fn ToString(fmt: byte.ByteStringFormat) Result[string, StringError] {
         match fmt {
             ByteStringFormat.Decimal => {
                 return self._ToDecimal(self)
@@ -33,7 +33,7 @@ impl byte {
         return value + 55
     }
 
-    fn _ToDecimal(value: byte) string {
+    fn _ToDecimal(value: byte) Result[string, StringError] {
         if value >= 100 {
             let bytes: byte[3] := [
                 (value / 100) + 48,
@@ -60,7 +60,7 @@ impl byte {
         return bytes.ToString()
     }
 
-    fn _ToHexadecimal(value: byte) string {
+    fn _ToHexadecimal(value: byte) Result[string, StringError] {
         let high := self._ByteDigit((value >> 4) & 0x0F)
         let low  := self._ByteDigit(value & 0x0F)
 
@@ -68,7 +68,7 @@ impl byte {
         return bytes.ToString()
     }
 
-    fn _ToOctal(value: byte) string {
+    fn _ToOctal(value: byte) Result[string, StringError] {
         let bytes: byte[3] := [
             ((value >> 6) & 0x03) + 48,
             ((value >> 3) & 0x07) + 48,
@@ -78,7 +78,7 @@ impl byte {
         return bytes.ToString()
     }
 
-    fn _ToBinary(value: byte) string {
+    fn _ToBinary(value: byte) Result[string, StringError] {
         let bytes: byte[8] := [
             ((value >> 7) & 0x01) + 48,
             ((value >> 6) & 0x01) + 48,

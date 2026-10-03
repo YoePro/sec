@@ -1,44 +1,43 @@
 package parser
 
 import (
-	"strings"
 	"testing"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
 
-// Range contract bounds are SignedNumericConstant. A same-line non-numeric
-// bound gets one focused diagnostic, is consumed as an invalid expression, and
-// never leaves stray module-scope code or swallows following declarations.
+// Range contract bounds are ordinary expressions evaluated by Sema in a
+// SemanticCompileTimeRequiredContext (MD-011): named bindings, calls, and
+// parenthesized arithmetic parse as bounds, expression parsing stops at the
+// range operator, and following declarations and defaults survive.
 //
 // Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 3.11–3.14, 3.40
 //   - rules/foundations/grammar.md — "Type contracts", RangeContract
-//   - rules/compiler/parser_recovery.md — "Type-contract recovery", "Range contract"
-func TestNonNumericRangeBoundsRecoverWithFocusedDiagnostic(t *testing.T) {
-	source := "type A int range Max..100\ntype B int range 0..Max default 5\ntype C int range 0..(50 + 50)\nfn After() void {}\n"
+func TestRangeBoundsAreOrdinaryExpressions(t *testing.T) {
+	source := "type A int range Max..100\ntype B int range 0..Max default 5\ntype C int range 0..(50 + 50)\ntype D int range Min..MaxPort()\nfn After() void {}\n"
 	result := New(lexer.New(source)).Parse()
-	if len(result.Diagnostics) != 3 {
-		t.Fatalf("diagnostics = %+v, want 3", result.Diagnostics)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("diagnostics = %+v, want none", result.Diagnostics)
 	}
-	for index, want := range []string{"lower bound", "upper bound", "upper bound"} {
-		if !strings.Contains(result.Diagnostics[index].Message, want) {
-			t.Fatalf("diagnostic %d = %q, want %s", index, result.Diagnostics[index].Message, want)
-		}
-	}
-	if len(result.Program.Statements) != 4 {
-		t.Fatalf("statements = %d, want 4", len(result.Program.Statements))
+	if len(result.Program.Statements) != 5 {
+		t.Fatalf("statements = %d, want 5", len(result.Program.Statements))
 	}
 	lower := result.Program.Statements[0].(*ast.TypeDeclStatement).Contract.(*ast.RangeContract)
-	if _, invalid := lower.Min.(*ast.InvalidExpression); !invalid {
-		t.Fatalf("lower bound = %T, want invalid expression", lower.Min)
+	if identifier, ok := lower.Min.(*ast.Identifier); !ok || identifier.Value != "Max" {
+		t.Fatalf("lower bound = %#v, want identifier Max", lower.Min)
 	}
 	upper := result.Program.Statements[1].(*ast.TypeDeclStatement)
-	if _, invalid := upper.Contract.(*ast.RangeContract).Max.(*ast.InvalidExpression); !invalid || upper.Default == nil {
-		t.Fatalf("upper bound declaration = %#v, want invalid bound and retained default", upper)
+	if identifier, ok := upper.Contract.(*ast.RangeContract).Max.(*ast.Identifier); !ok || identifier.Value != "Max" || upper.Default == nil {
+		t.Fatalf("upper bound declaration = %#v, want identifier bound and retained default", upper)
 	}
-	if _, ok := result.Program.Statements[3].(*ast.FunctionDeclaration); !ok {
-		t.Fatalf("following declaration = %T, want function", result.Program.Statements[3])
+	call := result.Program.Statements[3].(*ast.TypeDeclStatement).Contract.(*ast.RangeContract)
+	if _, ok := call.Max.(*ast.CallExpression); !ok {
+		t.Fatalf("call bound = %T, want call expression", call.Max)
+	}
+	if _, ok := result.Program.Statements[4].(*ast.FunctionDeclaration); !ok {
+		t.Fatalf("following declaration = %T, want function", result.Program.Statements[4])
 	}
 }
 

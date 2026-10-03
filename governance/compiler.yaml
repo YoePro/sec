@@ -556,8 +556,10 @@ integrations:
     - module and separate-compilation infrastructure already defines canonical declaration identities and semantic artifacts that can be extended for CTE bodies/dependencies
     - effect analysis already provides canonical effect facts that CTE can consume for permitted-effect decisions
     - ownership, borrowing, destruction, layout, and Semantic IR rulebooks already define the semantic facts the CTE service must preserve
+    - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): compile_time_evaluation.md § 8(5)–(7) classifies contract arguments and explicit defaults as SemanticCompileTimeRequiredContexts; internal/sema/contract_cte.go evaluates them through the shared compile-time evaluation (literals and operators, immutable module bindings via the shared integer evaluator, immutable primitive bindings) instead of a contract-only evaluator, and classifies calls and property getters as legal semantic CTE awaiting the executor (S1101)"
     remaining:
-    - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state
+    - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state beyond the contract/default positions (MD-011 contract and default positions use Analyzer.semanticCompileTimeConstant since 2026-10-03)
+    - implement the semantic CTE executor for ordinary functions, static and instance methods, and property getters with path-sensitive legality; contract/default positions currently report S1101 compile-time.execution-unavailable for calls and getters
     - preserve the existing restricted plan-time evaluator for attributes/source selection and prevent ordinary semantic function calls from creating phase cycles
     - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
     - execute ordinary user-defined functions during semantic CTE without requiring const-fn/comptime source modifiers

@@ -114,13 +114,33 @@ func tryExpressionHoverContents(analyzer *sema.Analyzer, expression *ast.TryExpr
 		)
 	case sema.ResolvedTryHandledOption:
 		// rules/errors/errorhandling.md — §15, §16: None is the only
-		// alternate state of an Option try.
+		// alternate state of an Option try. Present the compiler-owned plan
+		// exactly as for Result handlers so guarded recovery and residual
+		// propagation remain visible instead of being collapsed into a vague
+		// "local handler" label.
 		lines = append(lines,
 			"Success state: `Some("+lspTypeName(resolved.SuccessType)+")`",
-			"Absence handling: `local None handler`",
+			"Absence handling: `local None handlers`",
 		)
-		if plan, ok := analyzer.ResolvedTryPlanOf(expression); ok && plan.ResidualPropagates {
-			lines = append(lines, "Unhandled None: `propagated to "+lspTypeName(plan.EnclosingResultType)+"`")
+		if plan, ok := analyzer.ResolvedTryPlanOf(expression); ok {
+			coverage := "partial"
+			if plan.Exhaustive {
+				coverage = "exhaustive"
+			}
+			lines = append(lines,
+				fmt.Sprintf("Handler coverage: `%s`", coverage),
+				fmt.Sprintf("Resolved handlers: `%d`", len(plan.Handlers)),
+			)
+			lines = append(lines, tryHandlerHoverLines(plan.Handlers)...)
+			if plan.Exhaustive {
+				lines = append(lines, "None consumed by: `local handler`")
+			}
+			if plan.ResidualPropagates {
+				lines = append(lines,
+					"Unhandled None: `propagated`",
+					"Propagation target: `"+lspTypeName(plan.EnclosingResultType)+"`",
+				)
+			}
 		}
 	case sema.ResolvedTryHandledResult, sema.ResolvedTryHandledArithmetic, sema.ResolvedTryHandledBounds, sema.ResolvedTryHandledFailureSet:
 		lines = append(lines, "Failure handling: `local try handlers`")

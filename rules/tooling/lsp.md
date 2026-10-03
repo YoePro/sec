@@ -458,8 +458,44 @@ Implemented:
 - impl symbols;
 - property symbols;
 - event symbols;
-- nested symbol children;
+- nested symbol children, including struct-type fields and enum and union
+  members of type declarations;
 - selection ranges contained by symbol ranges.
+
+### Workspace symbols
+
+Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
+
+- `workspaceSymbolProvider` and workspace-folder tracking from `initialize`
+  (`workspaceFolders`, falling back to `rootUri`/`rootPath`) and
+  `workspace/didChangeWorkspaceFolders`;
+- the declarations of every `.sec` source under the workspace folders and of
+  every open document, including files that are not open; hidden directories,
+  `testdata` fixtures, and `node_modules` are not workspace source;
+- the same declaration projection as document symbols: types, structs, unions,
+  enums, interfaces, functions, units, module-scope variables, and their
+  members, fields, properties, events, and enum and union members; impl
+  members appear under the implemented type; module headers, `init`, and
+  `free` are not workspace symbols;
+- `SymbolInformation` locations at the exact declaration name with the
+  container: the module path for top-level declarations and the owning type
+  for members;
+- case-insensitive subsequence matching ranked exact, prefix, substring, then
+  scattered subsequence, and ordered deterministically by name, container,
+  file, and line within a rank;
+- visibility from the editor context, because the request carries no
+  document: a module-internal (`_`) name is offered only while an open
+  document belongs to its module, and a private (`__`) name only while its
+  own source file is open;
+- read-only trusted core declarations ranked after workspace declarations and
+  marked `core (read-only)` in their container name;
+- per-file declaration summaries cached by on-disk size and modification time
+  or by the open snapshot's content hash, so only changed files are
+  re-parsed.
+
+Pending: workspace-symbol resolve, generated and dependency read-only
+provenance once the shared compiler workspace exposes it, and project-manifest
+source roots instead of folder traversal.
 
 ### Semantic tokens
 
@@ -1330,6 +1366,22 @@ add a missing comma when grammar and surrounding structure are unambiguous
 
 ---
 
+## Missing comma
+
+Implemented (2026-10-03). A P2002 missing-comma diagnostic whose repair the
+parser proved — a struct field, parameter, call argument, or array element
+that begins on a later line than the previous item — offers:
+
+```text
+Insert missing ','
+```
+
+The edit inserts `,` directly after the previous item and before any trailing
+comment, exactly as the opt-in formatter correction of
+`rules/tooling/formatter.md` § 27(37). Same-line adjacency gets no quick fix.
+
+---
+
 ## Missing parameter colon
 
 Input:
@@ -1597,6 +1649,30 @@ Prefer:
 
 Invalid or unavailable candidates should not appear as ordinary top-ranked
 completion items.
+
+Expected-type member filtering (decision 2026-10-03): when a member selector is
+written directly as a returned value — in a function or method body, or in a
+property getter, whose expected type is the property's declared type — member
+completion offers only members whose value type matches the expected type:
+fields, properties, events, and compiler-known members by their type, methods
+by any overload's return type, and enum members and union variants by their
+owning type. Members of other types are not offered there, even as
+intermediate steps of a longer selector chain. Inside a property getter, the
+property itself is not offered on `self`, because returning it would recurse.
+Outside a direct return value, member completion is unfiltered.
+
+The same expected-type rule applies to subject and operand positions
+(decision 2026-10-03):
+
+- the right operand of `==` or `!=` completes only values of the left
+  operand's type; after `if self.OpenMode == ` an enum-typed left operand
+  offers its qualified members (`FileMode.OpenExisting`) plus visible symbols
+  and functions of that type, and `== self.` offers only members of that type;
+- a `case` item of a subject `switch` offers the subject type's values, with
+  enum members already named by another case left out;
+- the pattern at the start of a `match` arm offers the subject's variants not
+  yet covered by an unguarded arm — qualified enum members, bare union and
+  Option variants, `Ok` and `Err` for a Result — followed by `_`.
 
 Within a `select` operation position, completion offers only canonical
 selectable operations valid for the resolved type and context. In Sec 0.1 it
@@ -3841,7 +3917,7 @@ work is not a source diagnostic.
 The LSP consumes the same compiler-known registry as Sema. Hover/completion
 shows `value.SizeOf` and `TypeName.SizeOf` as authoritative read-only
 `uint` properties and never advertises global `SizeOf(TypeName)`.
-`ToString() string` is shown as a compiler-provided fallback unless an
+`ToString() Result[string, StringError]` is shown as a compiler-provided fallback unless an
 eligible exact user replacement resolves first. Tooling may identify fallback,
 authoritative, privileged-core-backed, and ordinary replacement categories, but
 must not infer compiler authority or source visibility from underscore spelling.

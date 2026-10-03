@@ -95,9 +95,10 @@ type Type struct {
 	EnumConsts                 map[string]EnumValue
 	EnumDefault                string
 	BitWidth                   int64
-	// FloatBits is the explicit IEEE binary width (32 or 64) of float32 and
-	// float64 and of named types over them. Plain float has no fixed width
-	// (rules/types/types.md "Binary floating-point types"; MD-014) and keeps 0.
+	// FloatBits is the IEEE binary width (32 or 64) of float32, float64, and
+	// plain float, and of named types over them. Plain float is platform-sized
+	// like int and uint: float32 on a 32-bit platform and float64 on a 64-bit
+	// platform, from the same resolved platform width (MD-014).
 	FloatBits          int
 	UnionVariants      []UnionVariant
 	UnionDefault       string
@@ -789,6 +790,15 @@ type Symbol struct {
 	// exact callable value currently stored in this binding.
 	CallableIdentity    ResolvedCallableIdentity
 	HasCallableIdentity bool
+	// TransientConstant marks an immutable binding whose tracked integer value
+	// was derived from the current value of a mutable binding. The value is
+	// valid for bounds checks at the binding but is not loop-invariant, so it
+	// must never prove a condition constant.
+	TransientConstant bool
+	// ResultConstruction is "Ok" or "Err" when an immutable Result binding was
+	// initialized directly by that constructor, proving its state for the
+	// binding's whole lifetime; empty otherwise.
+	ResultConstruction string
 }
 
 var (
@@ -843,6 +853,30 @@ func newBuiltinTypes() map[string]Type {
 			Underlying: "uint",
 			EnumValues: []string{"Overflow", "DivisionByZero", "InvalidShift"},
 			EnumConsts: builtinEnumConsts([]string{"Overflow", "DivisionByZero", "InvalidShift"}),
+		},
+		// FormatError and StringError are the compiler-known text failure
+		// families: every ToString and every runtime string materialization
+		// (concatenation and interpolation) fails with StringError, whose
+		// Allocation and Format variants carry the underlying failure.
+		// Rules: rules/compiler/compiler_known_members.md "Uniform ToString
+		// result"; rules/foundations/operators.md string materialization.
+		"FormatError": {
+			Name:       "FormatError",
+			Kind:       EnumType,
+			Underlying: "uint",
+			EnumValues: []string{"InvalidFormat", "UnsupportedFormat", "InvalidSpecifier", "InvalidPrecision"},
+			EnumConsts: builtinEnumConsts([]string{"InvalidFormat", "UnsupportedFormat", "InvalidSpecifier", "InvalidPrecision"}),
+		},
+		"StringError": {
+			Name: "StringError",
+			Kind: UnionType,
+			UnionVariants: []UnionVariant{
+				{Name: "Allocation"},
+				{Name: "Format"},
+				{Name: "InvalidUtf8", Payload: &Type{Name: "uint", Kind: UintType}},
+				{Name: "InvalidCodePoint"},
+				{Name: "OutOfBounds"},
+			},
 		},
 		"IndexError": {
 			Name:       "IndexError",
@@ -1042,7 +1076,7 @@ func newBuiltinTypes() map[string]Type {
 		"time":     {Name: "time", Kind: StructType},
 		"datetime": {Name: "datetime", Kind: StructType},
 		"duration": {Name: "duration", Kind: StructType},
-		"float":    {Name: "float", Kind: FloatType},
+		"float":    {Name: "float", Kind: FloatType, FloatBits: 64},
 		"float32":  {Name: "float32", Kind: FloatType, FloatBits: 32},
 		"float64":  {Name: "float64", Kind: FloatType, FloatBits: 64},
 		"int":      signedType("int", -1<<63, 1<<63-1),
@@ -1067,6 +1101,7 @@ func newBuiltinTypes() map[string]Type {
 	// families as concrete inhabitants of the open error root.
 	for _, name := range []string{
 		"AllocationError", "ArithmeticError", "IndexError", "EnumValueError", "ContractError", "CollectionError",
+		"FormatError", "StringError",
 		"TaskSpawnError", "TaskError",
 		"ThreadSpawnError", "ThreadStartError", "ThreadSchedulingError", "ThreadTerminationError", "ThreadContextError",
 	} {
@@ -1081,6 +1116,7 @@ func newBuiltinTypes() map[string]Type {
 	}
 	installCompilerKnownPanicInfo(types)
 	installCompilerKnownTaskErrorPayload(types)
+	installCompilerKnownStringErrorPayloads(types)
 
 	return types
 }
@@ -1102,6 +1138,28 @@ func installCompilerKnownTaskErrorPayload(types map[string]Type) {
 		}
 	}
 	types["TaskOutcome"] = outcome
+}
+
+// installCompilerKnownStringErrorPayloads attaches the finished
+// AllocationError and FormatError identities to the StringError variants.
+func installCompilerKnownStringErrorPayloads(types map[string]Type) {
+	stringError := types["StringError"]
+	variants := append([]UnionVariant(nil), stringError.UnionVariants...)
+	for index := range variants {
+		switch variants[index].Name {
+		case "Allocation":
+			payload := types["AllocationError"]
+			variants[index].Payload = &payload
+		case "Format":
+			payload := types["FormatError"]
+			variants[index].Payload = &payload
+		case "InvalidUtf8":
+			payload := types["uint"]
+			variants[index].Payload = &payload
+		}
+	}
+	stringError.UnionVariants = variants
+	types["StringError"] = stringError
 }
 
 func builtinEnumConsts(values []string) map[string]EnumValue {

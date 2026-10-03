@@ -65,12 +65,30 @@ func formatStructuralBlockLayout(text string) string {
 			replacements = append(replacements, replacement...)
 		}
 	}
+	trailingStructComma := func(token lexer.Token) {
+		start, ok := byOffset[token.ByteStart]
+		if !ok {
+			return
+		}
+		open := structuralBlockOpen(document, start)
+		if open < 0 {
+			return
+		}
+		if close, ok := closeOf[open]; ok {
+			if replacement, ok := multilineStructTrailingComma(text, document, open, close); ok {
+				replacements = append(replacements, replacement)
+			}
+		}
+	}
 	var visitStatement func(statement ast.Statement)
 	visitStatement = func(statement ast.Statement) {
 		switch node := statement.(type) {
 		case *ast.TypeDeclStatement:
 			switch {
-			case node.StructType != nil || node.Union:
+			case node.StructType != nil:
+				expand(node.Token, true)
+				trailingStructComma(node.Token)
+			case node.Union:
 				expand(node.Token, true)
 			case node.RegisterType != nil:
 				expand(node.Token, false)
@@ -182,4 +200,32 @@ func structuralBlockReplacements(text string, document cst.Document, open, close
 		replacements = append(replacements, breakAt(document.Elements[last].Span.End, ""))
 	}
 	return replacements, true
+}
+
+// multilineStructTrailingComma adds the trailing comma after the last field of
+// an already multiline struct declaration body, placing it directly after the
+// field and before any trailing comment. Struct fields are comma-separated by
+// grammar, so the comma is never invented for a comma-free list; enum, union,
+// and register bodies, whose grammar accepts line-break separators, are not
+// handled here.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 11(2) multiline trailing comma, § 11(7), § 15(1)
+//   - rules/foundations/grammar.md — StructBody
+func multilineStructTrailingComma(text string, document cst.Document, open, close int) (formatterReplacement, bool) {
+	openSpan, closeSpan := document.Elements[open].Span, document.Elements[close].Span
+	if !strings.ContainsAny(text[openSpan.End:closeSpan.Start], "\n\r") {
+		return formatterReplacement{}, false
+	}
+	last := -1
+	for index := open + 1; index < close; index++ {
+		if document.Elements[index].Kind == cst.Token {
+			last = index
+		}
+	}
+	if last < 0 || document.Elements[last].Token.Type == lexer.COMMA {
+		return formatterReplacement{}, false
+	}
+	end := document.Elements[last].Span.End
+	return formatterReplacement{start: end, end: end, text: ","}, true
 }

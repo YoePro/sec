@@ -132,6 +132,7 @@ integrations:
       - internal/sema/analyzer_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - "synthetic definitions (2026-10-04): every compiler-known member registry entry now carries signature, documentation, normative rule section, receiver pattern, and target restriction (internal/sema/compiler_known_synthetic.go, filled only where the builder left them empty); go-to-definition on a compiler-known member without an ordinary core declaration returns `sec-compiler-known:/<ID>.sec`, whose read-only text from sec/compilerKnownDefinition states compiler-known status, rule, receiver, effects, unsafe requirement, target, legacy spellings, and structural mutation before the signature line; the VS Code extension shows it through a content provider with Sec highlighting; hover shows the generic signature with the receiver-resolved result and rule. Tests: cmd/lsp/compiler_known_definition_test.go"
       - one canonical Sema registry supplies compiler and LSP member availability
       - Len, IsEmpty, Ptr, and property-form instance and associated SizeOf resolution
       - global len validation and property-form SizeOf semantics without treating an associated type receiver as a runtime value
@@ -142,7 +143,7 @@ integrations:
       - migrate remaining bootstrap and source-corpus uses of legacy .len and .ptr spellings
       - represent stable member IDs and collection payload-byte SizeOf explicitly in Semantic IR and lowering
       - add target-layout evaluation and backend verification for instance and type SizeOf
-      - complete synthetic definitions and signature documentation for editor navigation
+      - render receiver-instantiated signatures (element and key types) in synthetic definitions instead of the generic registry signature, and generate the same text for documentation output
 
   - id: frontend.dynamic-array-public-api
     area: frontend-and-lowering

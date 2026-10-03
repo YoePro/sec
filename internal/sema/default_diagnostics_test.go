@@ -127,14 +127,34 @@ func TestContractDiagnosticsUseStableIdentities(t *testing.T) {
 	}
 }
 
-// A multipleOf divisor that is not an established compile-time integer is
-// rejected rather than silently dropping the contract.
+// A multipleOf divisor is an ordinary expression in a
+// SemanticCompileTimeRequiredContext (MD-011): an immutable compile-time
+// binding establishes it, while a mutable binding cannot, and the
+// unestablished divisor never produces an empty semantic contract.
 //
-// Rule: rules/types/contracts.md — "Integer contracts" (nonzero compile-time integer divisor).
-func TestMultipleOfRejectsNonConstantDivisor(t *testing.T) {
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 3.4, 3.15–3.17
+//   - rules/types/contracts.md — "Integer contracts"
+func TestMultipleOfDivisorUsesSemanticCompileTimeEvaluation(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, `module main
 
 let Step: int := 5
+type Stepped int multipleOf Step * 2
+`)
+	assertSemaErrors(t, errors, nil)
+	found := false
+	for _, contract := range analyzer.types["Stepped"].Contracts {
+		if multiple, ok := contract.(MultipleOfContract); ok && multiple.Value.Int64() == 10 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("contracts = %+v, want multipleOf 10", analyzer.types["Stepped"].Contracts)
+	}
+
+	analyzer, errors = analyzeSourceWithAnalyzerRaw(t, `module main
+
+let mut Step: int := 5
 type Stepped int multipleOf Step
 `)
 	if len(errors) != 1 || errors[0].ID != diagnostics.InvalidContractArgument || errors[0].Message != "multipleOf contract divisor must be a compile-time integer" {

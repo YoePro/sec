@@ -163,6 +163,15 @@ valid, and unit symbol `<s>` still names the unit. Shadowing, duplicate
 declaration, and visually confusable checks do not compare unit symbols with
 ordinary identifiers (`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 8).
 
+The same holds for ordinary type declarations of another module: a project may
+declare `type A int` or `type K struct { ... }` although trusted core declares
+the units `A` (ampere) and `K` (kelvin). The ordinary type is what `A` names in
+ordinary type and expression positions, `<A>` and `decimal<A>` still name the
+unit, and the unit's `impl A` block in its own module remains the unit's
+metadata block. A unit and an ordinary type of the same spelling within one
+module remain a declaration conflict for now, because which of them `impl Name`
+targets there is undecided (`missing-decisions.yaml` MD-040).
+
 ---
 
 ## Unit categories

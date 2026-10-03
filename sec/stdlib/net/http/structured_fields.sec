@@ -591,20 +591,15 @@ impl _StructuredFieldParser {
 
                 let remainder := dataLength % 4
 
-                if remainder == 1 {
-                    return Err(StructuredFieldError.InvalidSyntax)
-                }
-
-                if remainder == 0 && paddingLength != 0 {
-                    return Err(StructuredFieldError.InvalidSyntax)
-                }
-
-                if remainder == 2 && paddingLength > 2 {
-                    return Err(StructuredFieldError.InvalidSyntax)
-                }
-
-                if remainder == 3 && paddingLength > 1 {
-                    return Err(StructuredFieldError.InvalidSyntax)
+                switch {
+                    case remainder == 1:
+                        fallthrough
+                    case remainder == 0 && paddingLength != 0:
+                        fallthrough
+                    case remainder == 2 && paddingLength > 2:
+                        fallthrough
+                    case remainder == 3 && paddingLength > 1:
+                        return Err(StructuredFieldError.InvalidSyntax)
                 }
 
                 return Ok()

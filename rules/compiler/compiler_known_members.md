@@ -513,12 +513,12 @@ overloaded by user code.
 
 ```text
 category: CompilerProvidedFallbackMember
-canonical shape: fn ToString() string
+canonical shape: fn ToString() Result[string, StringError]
 exact user replacement: permitted on eligible user-owned nominal types
 ```
 
-An exact user-owned `ToString() string` replaces the fallback without becoming
-an ambiguous overload. A differently shaped overload does not replace it.
+An exact user-owned `ToString() Result[string, StringError]` replaces the
+fallback without becoming an ambiguous overload. A differently shaped overload does not replace it.
 `SizeOf`, by contrast, is an `AuthoritativeCompilerSemanticProperty`; user
 code cannot override it where the canonical property applies.
 
@@ -1601,8 +1601,33 @@ Internal `AlignOf` must not be exposed accidentally through LSP completion.
 type that can produce an ordinary value:
 
 ```sec
-fn ToString() string
+fn ToString() Result[string, StringError]
 ```
+
+## Uniform `ToString` result
+
+Decision 2026-10-03 (resolves MD-035): every `ToString` member returns exactly
+`Result[string, StringError]`. This covers:
+
+```text
+the compiler-provided fallback;
+privileged core declarations;
+the exact user-owned replacement;
+every user-declared or core-declared overload, such as ToString(format);
+every interface requirement named ToString.
+```
+
+Materializing text may fail to allocate, and a format overload may receive an
+invalid format; both failures use the one text failure family `StringError`
+(`rules/library/core-library.md` § 15.1) through its `Allocation` and `Format`
+variants, so every `ToString`, with or without arguments, has the same result
+type. A failure is never hidden behind fallback text. Because users may implement their own `ToString`, the contract
+is enforced on the declaration: a declared `ToString` with any other result type
+is rejected with the mandatory diagnostic `S1100`
+(`members.tostring-signature`) at its declared result. Callers handle the
+result like any other `Result`, normally with `try`. A `ToString` that cannot
+fail, such as `string.ToString()`, still returns `Ok(value)` through the same
+result type.
 
 Each concrete type family must define or cross-reference its canonical fallback
 formatting semantics before that family's support is implementation-complete.
@@ -1646,7 +1671,8 @@ Numeric formatting overloads may also include:
 value.ToString(format)
 ```
 
-The exact format grammar belongs to the formatting rulebook.
+Such an overload also returns `Result[string, StringError]`. The exact
+format grammar belongs to the formatting rulebook.
 
 ---
 
@@ -1655,10 +1681,10 @@ The exact format grammar belongs to the formatting rulebook.
 For `string`:
 
 ```sec
-let result := text.ToString()
+let result := try text.ToString()
 ```
 
-the result is the same semantic string value.
+the result is `Ok` with the same semantic string value; it never fails.
 
 It:
 
@@ -1734,8 +1760,8 @@ use the active allocation/string-storage policy;
 must preserve the exact scalar value.
 ```
 
-The canonical source surface retains the existing no-argument form returning
-`string`.
+The canonical source surface is the no-argument form returning
+`Result[string, StringError]`.
 
 A CompilationPlan that cannot provide the required materialization strategy must
 reject the operation rather than silently select an unrelated heap.
@@ -1748,7 +1774,7 @@ A user-defined nominal type may define:
 
 ```sec
 impl Customer {
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         // ...
     }
 }
@@ -2299,8 +2325,8 @@ Example:
 
 ```sec
 impl string {
-    fn ToString() string {
-        return self
+    fn ToString() Result[string, StringError] {
+        return Ok(self)
     }
 }
 ```
@@ -2748,6 +2774,17 @@ target restrictions.
 ```
 
 It must not pretend that generated text is user source.
+
+Implemented (2026-10-04): the language server answers definition on such a
+member with `sec-compiler-known:/<member ID>.sec`. Its text, served by the
+`sec/compilerKnownDefinition` request, opens with a comment block stating that
+it is a synthetic read-only definition generated from the registry and not
+source code, followed by the member and ID, category, rule section, receiver
+pattern, effects, unsafe requirement, target restriction, legacy spellings,
+structural-mutation fact, and documentation, and ends with the signature line
+where navigation places the cursor. The VS Code extension presents it through
+a read-only content provider. Signatures are the registry's generic forms;
+receiver-instantiated signatures remain pending.
 
 ---
 
@@ -3547,9 +3584,10 @@ String `Len` is encoded byte length.
 
 Array and slice `Len` is element count.
 
-`ToString() string` is a universal compiler-provided fallback on every Sec
-type that can produce an ordinary value; eligible user-owned nominal types may
-replace it with the exact canonical shape.
+`ToString() Result[string, StringError]` is a universal
+compiler-provided fallback on every Sec type that can produce an ordinary
+value; eligible user-owned nominal types may replace it with the exact
+canonical shape, and every `ToString` declaration returns that result type.
 
 `string.ToString()` is identity.
 

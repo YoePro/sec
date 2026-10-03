@@ -82,18 +82,34 @@ func structFieldAlignmentAnchors(document cst.Document) []structFieldAlignmentAn
 	return anchors
 }
 
+// structFieldAnchorsAreContiguous keeps two fields in one alignment group
+// unless a blank line, a standalone comment, or a nested block separates them.
+// A trailing comment belongs to its field and never ends the group.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 5.7–5.11
+//   - rules/tooling/formatter.md — § 9(8), § 12(5)
 func structFieldAnchorsAreContiguous(document cst.Document, previous, current structFieldAlignmentAnchor) bool {
 	if current.line != previous.line+1 {
 		return false
 	}
+	lineBreakSeen := false
 	for index := previous.typeStart + 1; index < current.colon; index++ {
 		element := document.Elements[index]
-		if element.Kind == cst.Comment || (element.Kind == cst.Token &&
-			(element.Token.Type == lexer.LBRACE || element.Token.Type == lexer.RBRACE)) {
+		if element.Kind == cst.Token && (element.Token.Type == lexer.LBRACE || element.Token.Type == lexer.RBRACE) {
 			return false
 		}
-		if element.Kind == cst.Whitespace && strings.Count(strings.ReplaceAll(element.Text, "\r\n", "\n"), "\n") > 1 {
+		if element.Kind == cst.Comment && lineBreakSeen {
 			return false
+		}
+		if element.Kind == cst.Whitespace {
+			breaks := strings.Count(strings.ReplaceAll(element.Text, "\r\n", "\n"), "\n")
+			if breaks > 1 {
+				return false
+			}
+			if breaks > 0 {
+				lineBreakSeen = true
+			}
 		}
 	}
 	return true

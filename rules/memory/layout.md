@@ -343,6 +343,8 @@ selected descriptor representation
 
 § 18(4) `bool`, rune/character types, floats, decimal types, and other scalars use their canonical type representation rules.
 
+§ 18(4a) Plain `float` uses the same canonical target/profile width fact as `int` and `uint`: float32 width on a 32-bit platform and float64 width on a 64-bit platform. The resolved scalar plan exposes that one platform width to layout and value-domain analysis so both agree; no independent float-width selector exists, and backends must not hardcode plain `float` to a host or legacy width (MD-014; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 6.8–6.9, 6.21).
+
 § 18(5) Representation-validity constraints remain distinct from size.
 
 ---

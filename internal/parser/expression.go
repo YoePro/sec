@@ -1054,6 +1054,7 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 			element = &ast.SpreadExpression{Token: p.curToken, Value: element}
 		}
 		lit.Elements = append(lit.Elements, element)
+		elementEnd := p.curToken
 		p.skipPeekComments()
 
 		switch p.peekToken.Type {
@@ -1073,6 +1074,10 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 			p.expectPeek(lexer.RBRACKET)
 			return lit
 		default:
+			if p.isExpressionStart(p.peekToken.Type) && nextItemOnLaterLine(elementEnd, p.peekToken) {
+				p.recoverMissingSeparator(elementEnd, p.peekToken, "]", "array literal element")
+				continue
+			}
 			p.addError("expected ',' or ']' after array literal element at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return nil
 		}
@@ -1249,6 +1254,7 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			arg = &ast.SpreadExpression{Token: p.curToken, Value: arg}
 		}
 		args = append(args, arg)
+		argumentEnd := p.curToken
 		p.skipPeekComments()
 
 		switch p.peekToken.Type {
@@ -1266,6 +1272,10 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			p.expectPeek(lexer.RPAREN)
 			return args, true
 		default:
+			if p.isExpressionStart(p.peekToken.Type) && nextItemOnLaterLine(argumentEnd, p.peekToken) {
+				p.recoverMissingSeparator(argumentEnd, p.peekToken, ")", "argument")
+				continue
+			}
 			p.addError("expected ',' or ')' after argument at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return nil, false
 		}
@@ -1363,8 +1373,12 @@ func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) recoverObsoleteTryMatchHandlerBlock() []*ast.TryHandler {
 	wrapper := p.curToken
-	p.addDiagnostic(compilerdiagnostics.ParserReservedSyntax, wrapper, nil, &wrapper,
+	before := len(p.diagnostics)
+	p.addDiagnostic(compilerdiagnostics.ParserLegacyTryMatchWrapper, wrapper, nil, &wrapper,
 		"try handlers use direct Err(...) arms; remove the nested match { ... } wrapper")
+	if len(p.diagnostics) > before {
+		p.diagnostics[len(p.diagnostics)-1].Help = "write the handler arms directly inside the try block: `try value { Err(error) => ... }`"
+	}
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}

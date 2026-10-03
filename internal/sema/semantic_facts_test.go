@@ -1325,12 +1325,12 @@ func TestResolvedInterpolationFormattingPlan(t *testing.T) {
 type Packet struct { value: int, }
 
 impl Packet {
-	fn ToString() string {
+	fn ToString() Result[string, StringError] {
 		return self.value.ToString()
 	}
 }
 
-fn Render(text: string, count: int, packet: Packet, chars: char[2]) Result[string, AllocationError] {
+fn Render(text: string, count: int, packet: Packet, chars: char[2]) Result[string, StringError] {
 	return Ok(try $"{text}:{count}:{packet}:{chars}")
 }
 `
@@ -1389,16 +1389,16 @@ func TestStringConcatPlanFlattensMixedChain(t *testing.T) {
 type Packet struct { value: int, }
 
 impl Packet {
-	fn ToString() string {
+	fn ToString() Result[string, StringError] {
 		return self.value.ToString()
 	}
 }
 
-fn Render(text: string, count: int, character: char, packet: Packet) Result[string, AllocationError] {
+fn Render(text: string, count: int, character: char, packet: Packet) Result[string, StringError] {
 	return Ok(try "prefix:" + text + $"-{count}-{packet}-" + character + "!")
 }
 
-fn Bound(text: string) Result[string, AllocationError] {
+fn Bound(text: string) Result[string, StringError] {
 	let prefix := try "prefix:" + text
 	return Ok(try prefix + "!")
 }
@@ -1485,8 +1485,8 @@ func TestInterpolationRejectsValuesWithoutFormattingContract(t *testing.T) {
 type Packet struct { value: int, }
 
 impl Packet {
-	fn ToString(format: string) string {
-		return format
+	fn ToString(format: string) Result[string, StringError] {
+		return Ok(format)
 	}
 }
 

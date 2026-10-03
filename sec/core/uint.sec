@@ -1,9 +1,9 @@
 module core
 
 impl uint {
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         // TODO: Implement uint.ToString()
-        return ""
+        return Ok("")
     }
 
     fn Min(other: uint) uint {

@@ -1,6 +1,6 @@
 module ip
 
-type Port uint16
+type Port uint16 range 1..65535
 
 type Ipv4Endpoint struct {
     Address: Ipv4Address,
@@ -24,8 +24,9 @@ impl Ipv4Endpoint {
         self.Port = port
     }
 
-    fn ToString() string {
-        return "" + self.Address.ToString() + ":" + self.Port.ToString()
+    fn ToString() Result[string, StringError] {
+        let rv := try "" + self.Address.ToString() + ":" + self.Port.ToString()
+        return Ok(rv)
     }
 }
 
@@ -36,8 +37,9 @@ impl Ipv6Endpoint {
         self.Zone = zone
     }
 
-    fn ToString() string {
-        return "" + self.Address.ToString() + ":" + self.Port.ToString()
+    fn ToString() Result[string, StringError] {
+        let rv := try "" + self.Address.ToString() + ":" + self.Port.ToString()
+        return Ok(rv)
     }
 }
 
@@ -79,7 +81,7 @@ impl Endpoint {
         }
     }
 
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         match self {
             V4(ref v4) => {
                 return v4.ToString()

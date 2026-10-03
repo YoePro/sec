@@ -1019,6 +1019,27 @@ proven safe structural pattern
 
 rather than warning on every mutation inside a loop.
 
+Implemented as `pitfall.iteration.structural-mutation-in-indexed-loop`
+(Interactive, family `iteration-and-mutation`, 2026-10-03) for a forward
+range loop without `step` whose end is the compiler-known `Len` of a resolved
+collection, evaluated once before the loop (`rules/control-flow/flowcontrol_for.md`):
+
+```text
+proven invalid      Clear() followed on the same straight-line path by an
+                    index of the collection with the loop binding
+likely mistake      RemoveAt, Remove, Clear, or Insert on the collection while
+                    the loop indexes it by its binding or passes the binding
+                    to the mutation
+proven safe         the mutation is directly followed by return or by break
+(suppressed)        of this loop; an Append beyond the once-evaluated range;
+                    a loop that never addresses the collection by its binding
+                    (a draining loop such as RemoveAt(0) per iteration)
+```
+
+Structural operations are the compiler-known members marked as structural
+mutations. The suggested edit is to traverse in reverse or to use a `while`
+loop that advances the index only when no element is removed.
+
 ---
 
 # Boolean representation pitfalls

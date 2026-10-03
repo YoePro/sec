@@ -245,15 +245,27 @@ integrations:
           unmatched single closing brace in interpolated-string text.
       - id: diagnostics.parser-ids
         description: >-
-          Parser diagnostics P2001 through at least P2029 are registered;
+          Parser diagnostics P2001 through at least P2034 are registered (P2030–P2033 are the assertion syntax diagnostics, P2034 the legacy try match wrapper);
           P2001 remains the compatibility fallback for unmigrated parser paths.
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1099 definitions in the reviewed registry plus mandatory S3001 and
+          S1105 definitions in the reviewed registry plus mandatory S3001 and
           S4001. S1097 operators.string-materialization-requires-try and S1098
           allocation.string-materialization-without-context implement MD-004;
-          S1099 names.confusable-identifier implements MD-001.
+          S1099 names.confusable-identifier implements MD-001; S1100
+          members.tostring-signature enforces the uniform
+          Result[string, StringError] ToString result (MD-035); S1101
+          compile-time.execution-unavailable marks a contract or default
+          position whose semantic CTE needs a call or property getter the
+          executor cannot yet run (MD-011); S1102
+          panic.assert-condition-not-bool reports a non-bool assertion
+          condition with type-specific help; S1103
+          declarations.explicit-self-parameter reports a legacy explicit
+          receiver parameter in an impl method; S1104 names.parameter-shadows-declaration and S1105
+          names.generic-parameter-shadows-declaration report a parameter or
+          generic parameter hiding a visible generic parameter, function, or
+          module variable (types keep S1040 and S1039).
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
           Invalid move-only payload extraction from union storage that cannot

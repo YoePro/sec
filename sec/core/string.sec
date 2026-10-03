@@ -343,7 +343,7 @@ impl string {
             return Err(StringError.InvalidUtf8(index))
         }
 
-        return Ok(value.ToString())
+        return value.ToString()
     }
 
     /**
@@ -736,8 +736,8 @@ impl string {
     }
 
     /** Returns a copy of self */
-    fn ToString() string {
-        return self
+    fn ToString() Result[string, StringError] {
+        return Ok(self)
     }
 
 }

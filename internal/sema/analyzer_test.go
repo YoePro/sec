@@ -199,18 +199,18 @@ func TestRuneArrayToStringMaterializesText(t *testing.T) {
 	errors := analyzeSource(t, `
 module main
 
-fn pair() string {
+fn pair() Result[string, StringError] {
 	let runes: rune[2] := ['A', 'B']
 	return runes.ToString()
 }
 
-fn sliceText() string {
+fn sliceText() Result[string, StringError] {
 	let runes: rune[3] := ['a', 'b', 'c']
 	let view := ref runes[..]
 	return view.ToString()
 }
 
-fn directSliceText() string {
+fn directSliceText() Result[string, StringError] {
 	let runes: rune[3] := ['a', 'b', 'c']
 	return runes[1..<3].ToString()
 }
@@ -1153,7 +1153,7 @@ fn Test() void {
 
 	expected := []string{
 		"cannot add int to Percent at 9:17",
-		"value 101 violates range contract Percent 0..100 at 11:16",
+		"value 101 violates range contract Percent 0..100 at 11:24",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -12566,8 +12566,8 @@ func TestStringConcatenationAcceptsCanonicalTextOperandMatrix(t *testing.T) {
 	valid := `
 module main
 
-fn Test(text: string, character: char, codepoint: rune) Result[int, AllocationError] {
-	// MD-004: runtime materialization propagates AllocationError with try;
+fn Test(text: string, character: char, codepoint: rune) Result[int, StringError] {
+	// MD-004: runtime materialization propagates StringError with try;
 	// the fully compile-time-folded form needs no try.
 	let stringString: string := try text + " suffix"
 	let stringChar: string := try text + character
@@ -12648,7 +12648,7 @@ fn Test(
 		if err.Help == "" {
 			t.Fatalf("error %d is missing help", index)
 		}
-		if !strings.Contains(err.Message, "string, char, and rune") {
+		if !strings.Contains(err.Message, "string, char, rune, and Result[string, StringError]") {
 			t.Fatalf("error %d does not name accepted operand categories: %v", index, err)
 		}
 	}

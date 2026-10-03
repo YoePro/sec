@@ -76,7 +76,7 @@ func TestRunFmtCommandUsesSharedTrailingCommentAlignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "enum Status {\n    New,           // new\n    InProgress,    // active\n}\n"
+	want := "enum Status {\n    New,        // new\n    InProgress, // active\n}\n"
 	if string(formatted) != want {
 		t.Fatalf("sec fmt output:\n%s\nwant:\n%s", formatted, want)
 	}
@@ -412,7 +412,7 @@ fn Runes(value: string) rune[] {
 	return value.ToRuneArray()
 }
 
-fn Display(value: rune) string {
+fn Display(value: rune) Result[string, StringError] {
 	return value.ToString()
 }
 

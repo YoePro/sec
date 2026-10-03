@@ -21,6 +21,9 @@ type Analyzer struct {
 	legacyDefaultAST           bool
 	types                      map[string]Type
 	units                      map[string]UnitDefinition
+	unitTypeNames              map[string]bool             // type-table entries a unit declaration owns
+	shadowedUnitTypes          map[string]Type             // unit entries hidden by a same-spelled ordinary type of another module (rules/types/units.md)
+	shadowedUnitImpls          map[*ast.ImplStatement]bool // impl blocks that target a shadowed unit
 	functions                  map[string][]Function
 	externSymbols              map[string]Function
 	implBlocks                 map[string]lexer.Token
@@ -117,19 +120,29 @@ type Analyzer struct {
 	registerDeclarations        map[string]*ast.TypeDeclStatement
 	registerResolutionState     map[string]uint8
 	registerWidthConstants      map[string]map[string]*big.Int
-	constInts                   map[string]*big.Int
-	assigned                    map[string]bool
-	moved                       map[string]lexer.Token
-	moveReasons                 map[string]string
-	closedResources             map[string]lexer.Token
-	borrows                     map[string][]borrowRecord
-	localRefContainers          map[string]localReferenceOrigin
-	expressionReferenceOrigins  map[ast.Expression]localReferenceOrigin
-	arenaGenerations            map[string]int
-	currentFunctionName         string
-	currentFunctionReturn       Type
-	currentFunctionToken        lexer.Token
-	currentFunctionMetadata     Function
+	// moduleImmutableBindings maps each module to its immutable, initialized,
+	// non-addressed module-level bindings, the compile-time-established values
+	// a SemanticCompileTimeRequiredContext may read (MD-011).
+	moduleImmutableBindings map[string]map[string]*ast.LetStatement
+	// moduleSurfaces maps each module to its first top-level declaration per
+	// name (units excluded), the unqualified module scope of shadowing checks.
+	moduleSurfaces map[string]map[string]moduleDeclaration
+	// unitConversionSuggestions are compiler-proven explicit unit conversions
+	// for rejected values, exposed to tooling code actions.
+	unitConversionSuggestions  []UnitConversionSuggestion
+	constInts                  map[string]*big.Int
+	assigned                   map[string]bool
+	moved                      map[string]lexer.Token
+	moveReasons                map[string]string
+	closedResources            map[string]lexer.Token
+	borrows                    map[string][]borrowRecord
+	localRefContainers         map[string]localReferenceOrigin
+	expressionReferenceOrigins map[ast.Expression]localReferenceOrigin
+	arenaGenerations           map[string]int
+	currentFunctionName        string
+	currentFunctionReturn      Type
+	currentFunctionToken       lexer.Token
+	currentFunctionMetadata    Function
 	// fallibleSetterBody marks analysis of a try set body, whose success is
 	// implicit (rules/errors/errorhandling.md §24).
 	fallibleSetterBody bool
@@ -250,7 +263,10 @@ func NewAnalyzerWithDepth(depth AnalysisDepth) *Analyzer {
 		types:               builtinTypes(),
 		// rules/types/units.md; correction6.md requires ordinary unit identities
 		// to enter Sema through declarations/imported catalogs, never spelling.
-		units: map[string]UnitDefinition{},
+		units:             map[string]UnitDefinition{},
+		unitTypeNames:     map[string]bool{},
+		shadowedUnitTypes: map[string]Type{},
+		shadowedUnitImpls: map[*ast.ImplStatement]bool{},
 	}
 }
 
@@ -285,6 +301,12 @@ func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth Ana
 	}
 	analyzer.types["int"] = targetSignedIntegerType("int", plan.PointerWidthBits)
 	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
+	// MD-014: plain float follows the platform width exactly like int and
+	// uint; there is no separate float-width policy.
+	// Rules: rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 6.3–6.9
+	platformFloat := analyzer.types["float"]
+	platformFloat.FloatBits = int(plan.PointerWidthBits)
+	analyzer.types["float"] = platformFloat
 	analyzer.types["ProcessID"] = processIDType(plan.PointerWidthBits)
 	analyzer.targetUintWidthBits = plan.PointerWidthBits
 	analyzer.targetProfile = plan.Profile
@@ -378,6 +400,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerDeclarations = map[string]*ast.TypeDeclStatement{}
 	a.registerResolutionState = map[string]uint8{}
 	a.registerWidthConstants = map[string]map[string]*big.Int{}
+	a.moduleImmutableBindings = map[string]map[string]*ast.LetStatement{}
+	a.moduleSurfaces = map[string]map[string]moduleDeclaration{}
+	a.unitConversionSuggestions = nil
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
 	a.moved = map[string]lexer.Token{}
@@ -710,7 +735,10 @@ func (a *Analyzer) DefinitionsAt(file string, line int, column int) []lexer.Toke
 // member-name or receiver-category rules.
 func (a *Analyzer) CompilerKnownMemberAt(file string, line int, column int) (CompilerKnownMember, bool) {
 	member, ok := a.compilerKnownMemberFacts[sourceTokenKey{File: file, Line: line, Column: column}]
-	return member, ok
+	if !ok {
+		return CompilerKnownMember{}, false
+	}
+	return withSyntheticMetadata(member), true
 }
 
 // CallGraph returns an immutable snapshot of the graph produced by the most
@@ -1086,6 +1114,16 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 			}
 			key := a.currentModule + "\x00" + decl.Name
 			previous, exists := declared[key]
+			if !exists && decl.Kind != moduleDeclarationUnit {
+				surface := a.moduleSurfaces[a.currentModule]
+				if surface == nil {
+					surface = map[string]moduleDeclaration{}
+					a.moduleSurfaces[a.currentModule] = surface
+				}
+				if _, known := surface[decl.Name]; !known {
+					surface[decl.Name] = decl
+				}
+			}
 			if !exists {
 				declared[key] = decl
 				// MD-001: a distinct spelling whose UTS #39 skeleton collides
@@ -1233,7 +1271,17 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectUnitNameCollision(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
-			a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
+			ordinary, shadowedByOrdinary := a.types[stmt.Name.Value]
+			shadowedByOrdinary = shadowedByOrdinary && !a.unitTypeNames[stmt.Name.Value]
+			if shadowedByOrdinary && ordinary.Module == a.currentModule {
+				// The module declaration-conflict pass reports S1003.
+				return
+			}
+			if shadowedByOrdinary {
+				a.recordDefinition(stmt.Name.Token)
+			} else {
+				a.registerTypeDefinition(stmt.Name.Value, stmt.Name.Token)
+			}
 			if previous, exists := seenUnits[stmt.Name.Value]; exists {
 				a.addErrorAtTokenWithPrevious(stmt.Name.Token, previous, "unit %s already declared", stmt.Name.Value)
 				return
@@ -1258,7 +1306,13 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				}
 			}
 			a.units[stmt.Name.Value] = UnitDefinition{Name: stmt.Name.Value, Category: category, Dimension: dimension, DimensionEstablished: dimensionEstablished, DefaultNumeric: defaultNumeric, Status: status, Transform: LinearUnitTransform, ScaleValue: big.NewRat(1, 1), Token: stmt.Name.Token}
-			a.types[stmt.Name.Value] = Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
+			unitEntry := Type{Name: stmt.Name.Value, Module: a.currentModule, Kind: InvalidType}
+			if shadowedByOrdinary {
+				a.shadowedUnitTypes[stmt.Name.Value] = unitEntry
+			} else {
+				a.types[stmt.Name.Value] = unitEntry
+				a.unitTypeNames[stmt.Name.Value] = true
+			}
 		case *ast.EnumDeclaration:
 			if stmt.Name == nil {
 				return
@@ -1317,6 +1371,18 @@ func (a *Analyzer) collectCompileTimeIntegerBindings(program *ast.Program) {
 		}
 	})
 
+	for _, candidate := range pending {
+		if candidate.binding.Name == nil {
+			continue
+		}
+		bindings := a.moduleImmutableBindings[candidate.module]
+		if bindings == nil {
+			bindings = map[string]*ast.LetStatement{}
+			a.moduleImmutableBindings[candidate.module] = bindings
+		}
+		bindings[candidate.binding.Name.Value] = candidate.binding
+	}
+
 	// Iterate to a fixed point so constants may refer to earlier or later
 	// allocation-free constants without making declaration order semantic.
 	for changed := true; changed; {
@@ -1344,6 +1410,9 @@ func (a *Analyzer) collectCompileTimeIntegerBindings(program *ast.Program) {
 }
 
 func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Token) bool {
+	if a.displaceUnitTypeEntry(name, token) {
+		return true
+	}
 	existing, exists := a.types[name]
 	if lexer.IsReservedDeclarationName(name) && (!exists || !existing.Intrinsic) {
 		a.addErrorAtTokenWithID(token, diagnostics.ReservedDeclarationName, "type name %s is reserved by the language and cannot be declared", name)
@@ -1370,7 +1439,7 @@ func (a *Analyzer) rejectIntrinsicTypeRedeclaration(name string, token lexer.Tok
 
 func isCoreBuiltinDeclaration(name string) bool {
 	switch name {
-	case "IndexError", "TaskOutcome", "TaskSpawnError", "TaskError",
+	case "IndexError", "FormatError", "StringError", "TaskOutcome", "TaskSpawnError", "TaskError",
 		"date", "time", "datetime", "duration":
 		return true
 	default:
@@ -1386,6 +1455,33 @@ func isCoreBuiltinDeclaration(name string) bool {
 // Rules: rules/library/core-library.md; rules/types/temporal.md §2.
 func (a *Analyzer) isTrustedCoreBuiltinDeclaration(name string, token lexer.Token) bool {
 	return isCoreBuiltinDeclaration(name) && a.isTrustedCoreSourceToken(token)
+}
+
+// displaceUnitTypeEntry lets an ordinary type declaration take a spelling
+// that a unit of another module already holds in the type table: unit
+// symbols occupy their own namespace, so the unit entry moves aside and
+// stays reachable for its own impl block and unit expressions. A unit and an
+// ordinary type of the same spelling in one module stay a module declaration
+// conflict (S1003), because which of them `impl Name` targets is undecided
+// (MD-040).
+//
+// Rules:
+//   - rules/types/units.md — "Unit names and compiler-known names" (separate unit-symbol namespace)
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 8
+func (a *Analyzer) displaceUnitTypeEntry(name string, token lexer.Token) bool {
+	if !a.unitTypeNames[name] {
+		return false
+	}
+	unitEntry := a.types[name]
+	if unitEntry.Module == a.currentModule {
+		// The module declaration-conflict pass reports S1003 for this pair.
+		a.invalidTypeDeclarations[sourceTokenLocation(token)] = true
+		return true
+	}
+	a.shadowedUnitTypes[name] = unitEntry
+	delete(a.unitTypeNames, name)
+	delete(a.types, name)
+	return false
 }
 
 func (a *Analyzer) rejectUnitNameCollision(name string, token lexer.Token) bool {
@@ -1427,6 +1523,7 @@ func (a *Analyzer) genericParameterNames(parameters []*ast.GenericParameter) []s
 			a.addErrorAtToken(param.Name.Token, "duplicate generic parameter %q", param.Name.Value)
 			continue
 		}
+		a.checkConfusableInDomains(param.Name.Value, param.Name.Token, seen)
 		seen[param.Name.Value] = param.Name.Token
 		names = append(names, param.Name.Value)
 	}
@@ -1498,12 +1595,13 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 		if _, ok := a.validateImplTarget(impl); !ok {
 			return
 		}
-		if previous, exists := a.implBlocks[impl.Target.Name]; exists {
+		key := a.implBlockKey(impl)
+		if previous, exists := a.implBlocks[key]; exists {
 			a.addErrorAtTokenWithPrevious(impl.Target.Token, previous, "duplicate impl block for %s; additional blocks must use impl extends %s", impl.Target.Name, impl.Target.Name)
 			return
 		}
-		a.implBlocks[impl.Target.Name] = impl.Target.Token
-		a.implBlockModules[impl.Target.Name] = a.currentModule
+		a.implBlocks[key] = impl.Target.Token
+		a.implBlockModules[key] = a.currentModule
 		a.validImplStatements[impl] = true
 	})
 
@@ -1517,12 +1615,12 @@ func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
 		if _, ok := a.validateImplTarget(impl); !ok {
 			return
 		}
-		primary, exists := a.implBlocks[impl.Target.Name]
+		primary, exists := a.implBlocks[a.implBlockKey(impl)]
 		if !exists {
 			a.addErrorAtToken(impl.Target.Token, "impl extends %s requires a primary impl %s block in the same module", impl.Target.Name, impl.Target.Name)
 			return
 		}
-		primaryModule := a.implBlockModules[impl.Target.Name]
+		primaryModule := a.implBlockModules[a.implBlockKey(impl)]
 		if primaryModule != a.currentModule {
 			a.addErrorAtTokenWithPrevious(impl.Target.Token, primary, "impl extension for %s must be in module %s", impl.Target.Name, moduleDisplayName(primaryModule))
 			return
@@ -1565,6 +1663,15 @@ func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
 	if impl == nil || impl.Target == nil {
 		return Type{}, false
 	}
+	// A unit whose spelling an ordinary type of another module took keeps its
+	// impl block in the unit's own module (rules/types/units.md).
+	if unitEntry, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && unitEntry.Module == a.currentModule {
+		if unit, ok := a.units[impl.Target.Name]; ok {
+			a.bindDefinition(impl.Target.Token, unit.Token)
+		}
+		a.shadowedUnitImpls[impl] = true
+		return unitEntry, true
+	}
 	target, ok := a.types[impl.Target.Name]
 	if !ok {
 		a.addErrorAtToken(impl.Target.Token, "unknown impl target %s", impl.Target.Name)
@@ -1595,6 +1702,15 @@ func (a *Analyzer) validateImplTarget(impl *ast.ImplStatement) (Type, bool) {
 		return Type{}, false
 	}
 	return target, true
+}
+
+// implBlockKey separates the impl block of a shadowed unit from the impl
+// block of the same-spelled ordinary type in another module.
+func (a *Analyzer) implBlockKey(impl *ast.ImplStatement) string {
+	if unitEntry, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && unitEntry.Module == a.currentModule {
+		return "unit " + impl.Target.Name
+	}
+	return impl.Target.Name
 }
 
 func implNestedTypeName(member ast.ImplMember) (string, lexer.Token, bool) {
@@ -1944,6 +2060,11 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 		if !ok {
 			continue
 		}
+		// An impl of the same-spelled ordinary type of another module is not
+		// unit metadata.
+		if _, shadowed := a.shadowedUnitTypes[impl.Target.Name]; shadowed && !a.shadowedUnitImpls[impl] {
+			continue
+		}
 		changed := false
 		for _, member := range impl.Members {
 			metadata, ok := member.(*ast.UnitMetadataDeclaration)
@@ -2076,14 +2197,14 @@ func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 			continue
 		}
 		a.units[impl.Target.Name] = unit
-		typ := a.types[impl.Target.Name]
+		typ := a.unitTypeEntry(impl.Target.Name)
 		if typ.Kind != InvalidType {
 			typ.Dimension = unit.Dimension
 			if semantics, dimension, err := resolveNamedUnitSemantics(impl.Target.Name, a.units); err == nil {
 				typ.UnitSemantics = semantics
 				typ.Dimension = dimension
 			}
-			a.types[impl.Target.Name] = typ
+			a.storeUnitTypeEntry(impl.Target.Name, typ)
 		}
 	}
 }
@@ -2695,7 +2816,9 @@ func (a *Analyzer) analyzeAssertStatement(stmt *ast.AssertStatement) {
 	}
 	conditionType, _ := a.inferExpression(stmt.Condition)
 	if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-		a.addErrorAtToken(expressionToken(stmt.Condition), "assert condition must be bool, got %s", typeDisplayName(conditionType))
+		a.addErrorAtTokenWithMetadata(expressionToken(stmt.Condition), diagnostics.AssertConditionNotBool,
+			assertConditionHelp(stmt.Condition, conditionType),
+			"assert condition must be bool, got %s", typeDisplayName(conditionType))
 		return
 	}
 	if conditionType.Kind == BoolType {
@@ -3844,6 +3967,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
 			continue
 		}
+		a.checkConfusableInDomains(param.Name.Value, param.Name.Token, seenParams)
 		seenParams[param.Name.Value] = param.Name.Token
 		a.recordDefinition(param.Name.Token)
 		a.validateParameterTypeShadowing(param.Name)
@@ -3910,6 +4034,9 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		function.ReturnType = returnType
 	} else {
 		function.ReturnType = Type{Kind: InvalidType}
+	}
+	if a.currentImplTarget != "" {
+		a.checkToStringSignature(fn, function.ReturnType)
 	}
 
 	for _, existing := range a.functions[name] {
@@ -4426,13 +4553,22 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	}
 }
 
+// rejectExplicitImplSelfParameter reports the legacy explicit receiver
+// parameter with its registered migration diagnostic: impl methods receive
+// self implicitly, and receiver capability is written on the method.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 3–4 (explicit `ref self` is invalid legacy syntax)
+//   - rules/declarations/impl.md — implicit receiver
 func (a *Analyzer) rejectExplicitImplSelfParameter(fn *ast.FunctionDeclaration) {
 	if a.currentImplTarget == "" || fn == nil {
 		return
 	}
 	for _, param := range fn.Parameters {
 		if param.Name != nil && param.Name.Value == "self" {
-			a.addErrorAtToken(param.Name.Token, "impl methods have implicit self; remove self from the parameter list")
+			a.addErrorAtTokenWithMetadata(param.Name.Token, diagnostics.ExplicitSelfParameter,
+				"remove the self parameter; the method receives self implicitly, and a mutating method is inferred from writes to self",
+				"impl methods have implicit self; remove self from the parameter list")
 		}
 	}
 }
@@ -7569,6 +7705,9 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 	iface.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Name.Value)
 
 	methodGroups := map[string][]Function{}
+	// MD-001: methods, properties, and events of one interface share one
+	// requirement namespace for confusable detection.
+	seenMethods := map[string]lexer.Token{}
 	for _, method := range stmt.Methods {
 		if method == nil || method.Name == nil {
 			continue
@@ -7603,6 +7742,10 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 		if conflict {
 			continue
 		}
+		if len(methodGroups[requirement.Name]) == 0 {
+			a.checkConfusableInDomains(method.Name.Value, method.Name.Token, seenMethods)
+			seenMethods[method.Name.Value] = method.Name.Token
+		}
 		methodGroups[requirement.Name] = append(methodGroups[requirement.Name], requirement)
 		iface.InterfaceMethods = append(iface.InterfaceMethods, requirement)
 	}
@@ -7617,6 +7760,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			a.addErrorAtToken(property.Name.Token, "duplicate interface property %q in %s", property.Name.Value, stmt.Name.Value)
 			continue
 		}
+		a.checkConfusableInDomains(property.Name.Value, property.Name.Token, seenMethods, seenProperties)
 		seenProperties[property.Name.Value] = property.Name.Token
 		propertyType, ok := a.resolveType(property.Type)
 		if !ok {
@@ -7647,6 +7791,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			a.addErrorAtToken(event.Name.Token, "duplicate interface event %q in %s", event.Name.Value, stmt.Name.Value)
 			continue
 		}
+		a.checkConfusableInDomains(event.Name.Value, event.Name.Token, seenMethods, seenProperties, seenEvents)
 		seenEvents[event.Name.Value] = event.Name.Token
 		payload, ok := a.resolveType(event.Payload)
 		if !ok {
@@ -7790,6 +7935,7 @@ func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.Func
 		} else {
 			function.ReturnType = Type{Kind: InvalidType}
 		}
+		a.checkToStringSignature(fn, function.ReturnType)
 	})
 	return function
 }
@@ -7878,7 +8024,26 @@ func (a *Analyzer) analyzeUnitDeclaration(stmt *ast.UnitDeclStatement) {
 		typ.UnitSemantics = semantics
 		typ.Dimension = dimension
 	}
-	a.types[unitName] = typ
+	a.storeUnitTypeEntry(unitName, typ)
+}
+
+// unitTypeEntry returns the unit's own type entry, also when an ordinary
+// type of another module holds the spelling in the type table.
+func (a *Analyzer) unitTypeEntry(name string) Type {
+	if shadowed, ok := a.shadowedUnitTypes[name]; ok {
+		return shadowed
+	}
+	return a.types[name]
+}
+
+// storeUnitTypeEntry updates the unit's own type entry without overwriting a
+// same-spelled ordinary type of another module.
+func (a *Analyzer) storeUnitTypeEntry(name string, typ Type) {
+	if _, ok := a.shadowedUnitTypes[name]; ok {
+		a.shadowedUnitTypes[name] = typ
+		return
+	}
+	a.types[name] = typ
 }
 
 func isPlainUnitNumericCarrier(typ Type, ref *ast.TypeReference) bool {
@@ -8062,6 +8227,7 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 			a.addErrorAtToken(field.Name.Token, "duplicate field %q in struct %s", field.Name.Value, name)
 			continue
 		}
+		a.checkConfusableInDomains(field.Name.Value, field.Name.Token, seen)
 		seen[field.Name.Value] = field.Name.Token
 
 		if len(stmt.GenericParameters) > 0 {
@@ -8369,6 +8535,13 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 		GenericParameters:  genericParameterNameValues(stmt.GenericParameters),
 		GenericConstraints: a.resolvedGenericParameterConstraints(stmt.GenericParameters),
 	}
+	// A trusted core declaration supplies the concrete shape of a
+	// compiler-known union identity such as StringError and keeps its
+	// intrinsic status, as for core-declared structs.
+	// Rules: rules/library/core-library.md.
+	if stmt.Name != nil && a.isTrustedCoreBuiltinDeclaration(name, stmt.Name.Token) {
+		typ.Intrinsic = true
+	}
 	if noCopy {
 		typ.NoCopyPolicyOrigin = name
 	}
@@ -8388,6 +8561,7 @@ func (a *Analyzer) typeFromUnionDeclaration(name string, stmt *ast.TypeDeclState
 			a.addErrorAtToken(variant.Name.Token, "duplicate union variant %q in %s", variant.Name.Value, name)
 			continue
 		}
+		a.checkConfusableInDomains(variant.Name.Value, variant.Name.Token, seen)
 		seen[variant.Name.Value] = variant.Name.Token
 
 		unionVariant := UnionVariant{
@@ -8621,6 +8795,7 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 			a.addErrorAtTokenWithPrevious(value.Token, previousToken, "duplicate enum value %q in enum %s", value.Name.Value, name)
 			continue
 		}
+		a.checkConfusableInDomains(value.Name.Value, value.Name.Token, seen)
 		seen[value.Name.Value] = value.Token
 
 		if value.Default {
@@ -8900,6 +9075,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with nested type %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
+			a.checkConfusableInDomains(name, fn.Name.Token, fields, properties, events, methods, a.typeMethodTokens(stmt.Target.Name))
 			methods[name] = fn.Name.Token
 			if len(fn.GenericParameters) > 0 {
 				a.validateGenericTypeParameterNames(fn.GenericParameters)
@@ -8949,6 +9125,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			a.addErrorAtToken(property.Name.Token, "property %s conflicts with nested type %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
+		a.checkConfusableInDomains(property.Name.Value, property.Name.Token, fields, properties, events, methods, a.typeMethodTokens(stmt.Target.Name))
 		properties[property.Name.Value] = property.Name.Token
 
 		var propertyType Type
@@ -9147,6 +9324,7 @@ func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type,
 		StorageBacked: true,
 	})
 	a.recordDefinition(event.Name.Token)
+	a.checkConfusableInDomains(name, event.Name.Token, fields, properties, events, methods, a.typeMethodTokens(targetName))
 	events[name] = event.Name.Token
 }
 
@@ -9562,6 +9740,9 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		a.defineInstanceSymbols(target, mutableSelf, body.Token)
 	}
 	if setterParameter != nil {
+		// rules/foundations/names_scopes_visibility.md §8: the setter value
+		// parameter must not silently replace a visible declaration.
+		a.validateParameterTypeShadowing(setterParameter)
 		a.symbols[setterParameter.Value] = Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0}
 		a.assigned[setterParameter.Value] = true
 		delete(a.constInts, setterParameter.Value)
@@ -9726,6 +9907,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 				a.localRefContainers[stmt.Name.Value] = referenceOrigin
 			}
 			a.recordBoundCallableIdentity(stmt.Name.Value, stmt.Value)
+			a.recordResultConstruction(stmt)
 			a.setConstInt(stmt.Name.Value, stmt.Value)
 		}
 		return
@@ -9777,6 +9959,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.localRefContainers[stmt.Name.Value] = referenceOrigin
 		}
 		a.recordBoundCallableIdentity(stmt.Name.Value, stmt.Value)
+		a.recordResultConstruction(stmt)
 		a.setConstInt(stmt.Name.Value, stmt.Value)
 	}
 }
@@ -11690,7 +11873,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		case "u":
 			return Type{Name: "uint", Kind: UintType}, expressionValue{Display: expr.String()}
 		case "g":
-			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
+			return a.types["float"], expressionValue{Display: expr.String()}
 		case "m":
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 		case "t":
@@ -11708,7 +11891,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 	case *ast.FloatLiteral:
 		switch expr.Suffix() {
 		case "g":
-			return Type{Name: "float", Kind: FloatType}, expressionValue{Display: expr.String()}
+			return a.types["float"], expressionValue{Display: expr.String()}
 		case "m":
 			return Type{Name: "decimal", Kind: DecimalType}, expressionValue{Display: expr.String()}
 		}
@@ -11921,7 +12104,7 @@ func (a *Analyzer) inferInterpolatedStringLiteral(expr *ast.InterpolatedStringLi
 			a.addErrorAtTokenWithMetadata(
 				expressionToken(part.Expression),
 				diagnostics.OperatorInvalidInterpolationValue,
-				"Define an exact shared fn ToString() string method or interpolate a supported printable value.",
+				"Define an exact shared fn ToString() Result[string, StringError] method or interpolate a supported printable value.",
 				"%s has no canonical interpolation formatting contract",
 				typeDisplayName(valueType),
 			)
@@ -11974,7 +12157,7 @@ func (a *Analyzer) resolveInterpolationFormatter(sourceIndex int, valueType Type
 }
 
 // exactUserToStringReplacement selects only the replaceable canonical shared
-// no-argument string-returning shape. Other overloads remain ordinary methods
+// no-argument Result[string, StringError]-returning shape. Other overloads remain ordinary methods
 // and neither replace the universal fallback nor accidentally become
 // interpolation formatting contracts.
 //
@@ -11988,7 +12171,7 @@ func (a *Analyzer) exactUserToStringReplacement(typ Type) (Function, bool) {
 	for _, function := range functions {
 		if function.ImplTarget != typ.Name || function.Static || function.ReceiverMutable || function.ReceiverConsuming ||
 			len(function.GenericParameters) != 0 || len(function.Parameters) != 0 ||
-			function.ReturnType.Kind != StringType || function.ReturnType.Named {
+			!isToStringResultType(function.ReturnType) {
 			continue
 		}
 		matches = append(matches, function)
@@ -12653,6 +12836,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
 			continue
 		}
+		a.checkConfusableInDomains(param.Name.Value, param.Name.Token, seenParams)
 		seenParams[param.Name.Value] = param.Name.Token
 
 		paramType, paramOK := a.resolveType(param.Type)
@@ -12881,8 +13065,30 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return property.Type, true
 	}
 
+	// A legacy lowercase spelling of a CamelCase compiler-known member, such as
+	// `worker.status`, is not canonical; name the member it meant.
+	// Rules: rules/concurrency/threads.md — § 26(4)–(5); rules/compiler/compiler_known_members.md — naming
+	if canonical, ok := caseInsensitiveCompilerKnownMember(objectType, expr.Property.Value); ok {
+		a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
+			"use the canonical CamelCase member `"+canonical+"`; lowercase member spellings are not Sec 0.1 syntax",
+			"unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
+		return Type{Kind: InvalidType}, false
+	}
 	a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
 	return Type{Kind: InvalidType}, false
+}
+
+// caseInsensitiveCompilerKnownMember finds a compiler-known member of typ
+// whose canonical name differs from name only by letter case.
+func caseInsensitiveCompilerKnownMember(typ Type, name string) (string, bool) {
+	for _, static := range []bool{false, true} {
+		for _, member := range CompilerKnownMembersForType(typ, static) {
+			if member.Name != name && strings.EqualFold(member.Name, name) {
+				return member.Name, true
+			}
+		}
+	}
+	return "", false
 }
 
 func (a *Analyzer) inferPointerMember(expr *ast.MemberExpression, objectType Type) (Type, bool) {
@@ -14334,6 +14540,29 @@ func (a *Analyzer) inferFactorProvidedUnitConversion(expr *ast.CallExpression, t
 // validateExplicitUnitConversion covers compiler-known fixed transformations;
 // unlike implicit conversion it may cross Kind, but currency needs the runtime
 // factor form and logarithmic conversion needs a specialized operation.
+// explicitUnitConversionProven reports, without diagnostics, that the
+// explicit conversion Target(value) between two unit quantities is valid under
+// the same rules validateExplicitUnitConversion enforces: equal normalized
+// dimension, matching point/difference role and compatible origin, no
+// cross-identity logarithmic conversion, and no currency conversion, which
+// would need an explicit factor.
+func explicitUnitConversionProven(target, source Type) bool {
+	if !hasUnitSemantics(target) || !hasUnitSemantics(source) {
+		return false
+	}
+	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(source)
+	if !target.Dimension.Equal(source.Dimension) || to.Role != from.Role || !unitOriginCompatible(to, from) {
+		return false
+	}
+	if (to.Transform == LogarithmicUnitTransform || from.Transform == LogarithmicUnitTransform) && to.Named != from.Named {
+		return false
+	}
+	if to.Categories[CurrencyUnit] || from.Categories[CurrencyUnit] {
+		return false
+	}
+	return true
+}
+
 func (a *Analyzer) validateExplicitUnitConversion(token lexer.Token, target, source Type) bool {
 	to, from := effectiveUnitSemantics(target), effectiveUnitSemantics(source)
 	// An explicit numeric value may construct a coordinate in the target unit;
@@ -15434,7 +15663,7 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 			}
 		}
 		return member.Result, expressionValue{Display: expr.String()}, true
-	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort", "RequestCancel":
+	case "ToByteArray", "ToCharArray", "ToRuneArray", "Clear", "Reverse", "Sort", "RequestCancel", "Observe", "Start":
 		if !a.checkCompilerKnownCallArity(expr, typeDisplayName(lookupType)+"."+member.Name, 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -15661,7 +15890,7 @@ func (a *Analyzer) inferRuneArrayToStringCall(expr *ast.CallExpression) (Type, e
 		a.addErrorAtToken(expr.Token, "rune array ToString expects 0 arguments, got %d", len(expr.Arguments))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	return a.types["string"], expressionValue{Display: expr.String()}, true
+	return toStringResultType(), expressionValue{Display: expr.String()}, true
 }
 
 // inferRawPointerCall validates compiler-known raw-address operations. Unsafe
@@ -17662,12 +17891,16 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	return targetType, expressionValue{Display: expr.String()}
 }
 
-// validateConstantIntegerConversion enforces the destination representation
-// for an explicitly converted compile-time integer. Runtime conversions keep
-// their existing checked-conversion planning; this frontend proof only rejects
-// constants which cannot be represented on the selected target.
+// validateConstantIntegerConversion proves an explicitly converted
+// compile-time integer in the canonical MD-012 order: first the intrinsic
+// target-domain check of the underlying representation, which stops on
+// failure, then the declared contracts of a constrained named target in
+// source order. A compile-time-known invalid value is diagnosed here instead
+// of being lowered into a runtime failure. Runtime conversions keep their
+// checked-conversion planning.
 //
 // Rules:
+//   - rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 4.9–4.24
 //   - rules/types/types.md — "Explicit conversions"
 //   - rules/types/types.md — "int and uint"
 func (a *Analyzer) validateConstantIntegerConversion(target Type, source Type, expression ast.Expression) bool {
@@ -17682,9 +17915,21 @@ func (a *Analyzer) validateConstantIntegerConversion(target Type, source Type, e
 	if !ok {
 		return true
 	}
-	representation.Name = target.Name
+	// Intrinsic representability belongs to the underlying primitive domain,
+	// not to a contract of the named type.
+	if target.Named && representation.Name != "" && representation.Name != target.Name {
+		representation.Name = representation.Name + " (the representation of " + target.Name + ")"
+	} else {
+		representation.Name = target.Name
+	}
 	representation.Contracts = nil
-	return !a.checkIntegerValueRange(representation, value, expressionToken(expression))
+	if a.checkIntegerValueRange(representation, value, expressionToken(expression)) {
+		return false
+	}
+	if len(target.Contracts) == 0 {
+		return true
+	}
+	return !a.checkIntegerValueRange(target, value, expressionToken(expression))
 }
 
 // enumToIntegerConversionResultType implements the checked narrowing rule in
@@ -19605,7 +19850,7 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		return leftType, expressionValue{Display: expr.String()}
 	}
 
-	if expr.Operator == "+" && (isTextConcatKind(leftType) || isTextConcatKind(rightType)) {
+	if expr.Operator == "+" && (isConcatTextual(leftType) || isConcatTextual(rightType)) {
 		return a.inferPlainArithmeticExpression(expr, leftType, rightType)
 	}
 
@@ -19629,8 +19874,8 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 }
 
 func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
-	if expr.Operator == "+" && (isTextConcatKind(leftType) || isTextConcatKind(rightType)) {
-		if !isDirectTextConcatOperand(leftType) || !isDirectTextConcatOperand(rightType) {
+	if expr.Operator == "+" && (isConcatTextual(leftType) || isConcatTextual(rightType)) {
+		if !isConcatOperand(leftType) || !isConcatOperand(rightType) {
 			a.addInvalidConcatOperandError(expr.Token, leftType, rightType)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -19785,10 +20030,13 @@ func (a *Analyzer) stringConcatSegments(expr ast.Expression) ([]StringConcatSegm
 		return plan.Segments, true, true
 	}
 	typ, ok := a.expressionTypes[expr]
-	if !ok || !isDirectTextConcatOperand(typ) {
+	if !ok || !isConcatOperand(typ) {
 		return nil, false, false
 	}
 	segment := StringConcatSegment{Kind: directStringConcatSegmentKind(typ), Expression: expr, ValueType: typ}
+	if isToStringResultType(typ) {
+		segment.Kind = StringConcatFallibleText
+	}
 	if literal, ok := expr.(*ast.StringLiteral); ok {
 		segment.Kind = StringConcatConstantString
 		segment.Text = literal.Value
@@ -19861,12 +20109,29 @@ func isDirectTextConcatOperand(typ Type) bool {
 	return !typ.Named && isTextConcatKind(typ)
 }
 
+// isConcatOperand accepts the direct text operands and a fallible text
+// operand of exactly Result[string, StringError], such as a ToString() call.
+// The fallible operand makes the whole concatenation one runtime plan whose
+// single StringError failure channel is handled by the try around the
+// complete expression; `"A" + "B"` stays a constant fold.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Direct operand matrix", "Fallible text operands"
+func isConcatOperand(typ Type) bool {
+	return isDirectTextConcatOperand(typ) || isToStringResultType(typ)
+}
+
+// isConcatTextual reports an operand that selects string concatenation for `+`.
+func isConcatTextual(typ Type) bool {
+	return isTextConcatKind(typ) || isToStringResultType(typ)
+}
+
 func (a *Analyzer) addInvalidConcatOperandError(token lexer.Token, left Type, right Type) {
 	a.addErrorAtTokenWithMetadata(
 		token,
 		diagnostics.OperatorInvalidConcatOperand,
-		"Convert the non-text operand explicitly with .ToString(), or use interpolation when it has a formatting contract.",
-		"cannot concatenate %s and %s directly; string concatenation accepts string, char, and rune",
+		"Convert the non-text operand explicitly with value.ToString() inside the concatenation and write try before the whole expression, or use interpolation when it has a formatting contract.",
+		"cannot concatenate %s and %s directly; string concatenation accepts string, char, rune, and Result[string, StringError]",
 		typeDisplayName(left),
 		typeDisplayName(right),
 	)
@@ -19876,6 +20141,15 @@ func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, val
 	if operator == "+=" && (isTextConcatKind(target) || isTextConcatKind(value)) {
 		if target.Kind == StringType && !target.Named && isDirectTextConcatOperand(value) {
 			return Type{Name: "string", Kind: StringType}, true
+		}
+		// The failure policy of compound `string +=` is undecided (MD-039),
+		// so a fallible text operand cannot join it; the operand's own try
+		// handles its StringError.
+		if target.Kind == StringType && !target.Named && isToStringResultType(value) {
+			a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.OperatorInvalidConcatOperand,
+				"Handle the operand's StringError first: write `target += try value.ToString()`.",
+				"string += cannot append Result[string, StringError] directly; only + concatenation joins a fallible text operand")
+			return Type{Kind: InvalidType}, false
 		}
 		a.addInvalidConcatOperandError(expressionToken(expr), target, value)
 		return Type{Kind: InvalidType}, false
@@ -20082,8 +20356,13 @@ func unitArithmeticCarrier(left, right Type, operator string) (Type, bool) {
 	if ((left.Kind == DecimalType || left.Kind == FloatType) && (right.Kind == IntType || right.Kind == UintType)) ||
 		((right.Kind == DecimalType || right.Kind == FloatType) && (left.Kind == IntType || left.Kind == UintType)) {
 		if operator == "*" || operator == "/" {
+			// The float operand already carries its resolved width (MD-014).
 			if left.Kind == FloatType || right.Kind == FloatType {
-				return Type{Name: "float", Kind: FloatType}, true
+				floatOperand := left
+				if floatOperand.Kind != FloatType {
+					floatOperand = right
+				}
+				return Type{Name: "float", Kind: FloatType, FloatBits: floatOperand.FloatBits}, true
 			}
 			return Type{Name: "decimal", Kind: DecimalType}, true
 		}

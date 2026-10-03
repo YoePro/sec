@@ -24,14 +24,22 @@ const (
 	PitfallLowerNeighborIndex         PitfallRuleID = "pitfall.bounds.lower-neighbor-index"
 	PitfallFinalElementNeedsNonEmpty  PitfallRuleID = "pitfall.bounds.final-element-needs-nonempty"
 	PitfallSkippedFirstElement        PitfallRuleID = "pitfall.bounds.skipped-zero"
+	PitfallTautologicalInterval       PitfallRuleID = "pitfall.range.tautological-interval"
+	PitfallImpossibleInterval         PitfallRuleID = "pitfall.range.impossible-interval"
+	PitfallRangeMembershipIdiom       PitfallRuleID = "pitfall.range.membership-idiom"
+	PitfallWrongGuardSubject          PitfallRuleID = "pitfall.control-flow.wrong-guard-subject"
+	PitfallCheckWithoutTransfer       PitfallRuleID = "pitfall.control-flow.check-without-transfer"
+	PitfallIndexedStructuralMutation  PitfallRuleID = "pitfall.iteration.structural-mutation-in-indexed-loop"
 )
 
 type PitfallFamily string
 
 const (
-	PitfallBoundsAndRanges PitfallFamily = "bounds-and-ranges"
-	PitfallBooleanIntent   PitfallFamily = "boolean-intent"
-	PitfallAPIUsage        PitfallFamily = "api-usage"
+	PitfallBoundsAndRanges   PitfallFamily = "bounds-and-ranges"
+	PitfallBooleanIntent     PitfallFamily = "boolean-intent"
+	PitfallAPIUsage          PitfallFamily = "api-usage"
+	PitfallControlFlow       PitfallFamily = "control-flow"
+	PitfallIterationMutation PitfallFamily = "iteration-and-mutation"
 )
 
 type PitfallClassification string
@@ -175,6 +183,36 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "constant-values", "control-flow"},
 		MinimumDepth:  AnalysisStandard, DefaultConfidence: PitfallConfidenceHigh,
 	},
+	{
+		ID: PitfallTautologicalInterval, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "expression-types", "constant-values", "operator-semantics"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallImpossibleInterval, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "expression-types", "constant-values", "operator-semantics"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallRangeMembershipIdiom, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "expression-types", "constant-values", "operator-semantics", "range-domain"},
+		MinimumDepth:  AnalysisDeep, DefaultConfidence: PitfallConfidenceProven,
+	},
+	{
+		ID: PitfallWrongGuardSubject, Family: PitfallControlFlow,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "control-flow", "bounds"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallCheckWithoutTransfer, Family: PitfallControlFlow,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "control-flow", "bounds"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
+	{
+		ID: PitfallIndexedStructuralMutation, Family: PitfallIterationMutation,
+		RequiredFacts: []string{"resolved-bindings", "compiler-known-members", "range-domain", "control-flow", "operation-contracts"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
 }
 
 // PitfallRules returns a defensive, deterministic snapshot of the canonical
@@ -253,6 +291,7 @@ type pitfallBuilder struct {
 	counts                    map[PitfallRuleID]*PitfallRuleEvaluation
 	handledBooleanComparisons map[*ast.InfixExpression]bool
 	activeNonEmptyProofs      map[string]lexer.Token
+	activeIndexGuards         []pitfallIndexGuard
 }
 
 func buildPitfallAnalysis(program *ast.Program, analyzer *Analyzer) *PitfallAnalysis {
@@ -382,12 +421,17 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 	case *ast.ForStatement:
 		b.inspectInclusiveLengthLoop(statement)
 		b.inspectNeighborIndexes(statement)
+		b.inspectIndexedStructuralMutation(statement)
 		b.walkExpression(statement.Iterable)
 		b.walkExpression(statement.Step)
-		b.walkBlock(statement.Body)
+		var guards []pitfallIndexGuard
+		if guard, ok := b.loopIndexGuard(statement); ok {
+			guards = append(guards, guard)
+		}
+		b.withIndexGuards(guards, func() { b.walkBlock(statement.Body) })
 	case *ast.WhileStatement:
 		b.walkExpression(statement.Condition)
-		b.walkBlock(statement.Body)
+		b.withIndexGuards(b.strictIndexGuards(statement.Condition), func() { b.walkBlock(statement.Body) })
 	case *ast.DeferStatement:
 		b.walkBlock(statement.Body)
 	case *ast.UnsafeStatement:
@@ -402,6 +446,7 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 		return
 	}
 	b.inspectIneffectiveRejectionGuards(block)
+	b.inspectCheckWithoutTransfer(block)
 	inheritedProofs := b.activeNonEmptyProofs
 	for index, statement := range block.Statements {
 		b.activeNonEmptyProofs = nil
@@ -469,6 +514,9 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	}
 	if comparison, ok := expression.(*ast.InfixExpression); ok && !b.handledBooleanComparisons[comparison] {
 		b.inspectBooleanLiteralComparison(comparison, comparison)
+	}
+	if condition, ok := expression.(*ast.InfixExpression); ok {
+		b.inspectIntervalCondition(condition)
 	}
 	switch expression := expression.(type) {
 	case *ast.PrefixExpression:

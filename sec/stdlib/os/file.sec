@@ -1,0 +1,406 @@
+module os
+
+/**
+ * Owns the native operating-system handle used by a File.
+ *
+ * FileHandle is an internal resource-owning type. It must never be copied.
+ * Closing consumes the operating-system resource but leaves the FileHandle
+ * value in a valid closed state.
+ */
+@noCopy
+type FileHandle struct {
+    /** The platform-specific native file handle. */
+    _native: NativeFileHandle,
+
+    /** Whether this handle currently owns an open operating-system resource. */
+    _isOpen: bool,
+}
+
+/**
+ * Represents an open or closed operating-system file resource.
+ *
+ * File owns its underlying file handle and is not copyable.
+ * Explicit Close() may be used to observe close errors, while destruction
+ * releases any still-owned native resource.
+ *
+ * The recorded file name and path describe the file as it was opened or
+ * created. They are not automatically updated if the file is later renamed
+ * or moved.
+ */
+@noCopy
+type File struct {
+    /** The owned platform-specific file handle and its current open state. */
+    _handle: FileHandle,
+
+    /** The final name component recorded when the file was opened or created. */
+    _fileName: string,
+
+    /** The absolute normalized path recorded when the file was opened or created. */
+    _filePath: string,
+
+    /** The access capabilities requested when the file was opened. */
+    _access: FileAccess,
+
+    /** The creation and existing-file behavior used when the file was opened. */
+    _mode: FileMode,
+
+    /** The write-position behavior used when writing to the file. */
+    _writeMode: FileWriteMode,
+}
+
+/**
+ * Defines which read and write operations are permitted on an opened file.
+ */
+enum FileAccess {
+    /** The file may be read but not written. */
+    ReadOnly,
+
+    /** The file may be written but not read. */
+    WriteOnly,
+
+    /** The file may be both read and written. */
+    ReadWrite,
+}
+
+/**
+ * Defines how File.Open handles the existence or absence of the target file.
+ */
+enum FileMode {
+    /** Opens an existing file and fails if the file does not exist. */
+    OpenExisting
+
+    /** Opens an existing file or creates a new file if it does not exist. */
+    OpenOrCreate
+
+    /** Creates a new file and fails if the file already exists. */
+    CreateNew
+
+    /** Creates a new file or truncates an existing file to zero length. */
+    CreateOrTruncate
+
+    /**
+     * Truncates an existing file to zero length and fails if the file
+     * does not exist.
+     */
+    TruncateExisting
+}
+
+/** Defines how sequential writes choose their destination position. */
+enum FileWriteMode {
+    /** Writes use the file's current position and advance it normally. */
+    Normal
+
+    /**
+     * Writes are performed at the logical end of the file.
+     *
+     * The platform implementation must preserve append semantics when
+     * concurrent writers or external processes modify the file.
+     */
+    Append
+}
+
+/** Defines the portable options used when opening a file. */
+type FileOpenOptions struct {
+    /** Determines whether the opened file permits reading, writing, or both. */
+    Access: FileAccess,
+
+    /**
+     * Determines how opening behaves when the target file exists or is missing.
+     */
+    Mode: FileMode,
+
+    /** Determines whether writes use normal positioning or append semantics. */
+    WriteMode: FileWriteMode,
+}
+
+/** Defines the behavior of File.Touch. */
+type FileTouchOptions struct {
+    /**
+     * Whether a new empty file is created when the target file does not exist.
+     */
+    CreateIfMissing: bool,
+
+    /**
+     * Whether the file's access timestamp is updated to the current time.
+     */
+    UpdateAccessTime: bool,
+
+    /**
+     * Whether the file's modification timestamp is updated to the current time.
+     */
+    UpdateModifiedTime: bool,
+}
+
+impl File {
+    /** Opens an existing file for reading. */
+    static fn Open(fileName: ref string) Result[File, FileError] {
+        return File.Open(
+            fileName,
+            FileOpenOptions {
+                Access: FileAccess.ReadOnly,
+                Mode: FileMode.OpenExisting,
+                WriteMode: FileWriteMode.Normal,
+            },
+        )
+    }
+
+    /** Opens an existing file with the requested access mode. */
+    static fn Open(fileName: ref string, access: FileAccess) Result[File, FileError] {
+        return File.Open(
+            fileName,
+            FileOpenOptions {
+                Access: access,
+                Mode: FileMode.OpenExisting,
+                WriteMode: FileWriteMode.Normal,
+            },
+        )
+    }
+
+    /** Opens a file with the requested access and open mode. */
+    static fn Open(fileName: ref string, access: FileAccess, mode: FileMode) Result[File, FileError] {
+        return File.Open(
+            fileName,
+            FileOpenOptions {
+                Access: access,
+                Mode: mode,
+                WriteMode: FileWriteMode.Normal,
+            },
+        )
+    }
+
+    /** Opens a file using the supplied open options. */
+    static fn Open(fileName: ref string, options: ref FileOpenOptions) Result[File, FileError] {
+        // ...
+        return Err(FileError.NotFound)
+    }
+
+    /** Creates a file if missing, otherwise truncates the existing file. */
+    static fn Create(fileName: ref string) Result[File, FileError] {
+        return File.Open(
+            fileName,
+            FileOpenOptions {
+                Access: FileAccess.ReadWrite,
+                Mode: FileMode.CreateOrTruncate,
+                WriteMode: FileWriteMode.Normal,
+            },
+        )
+    }
+
+    /** Creates a new file and fails if the file already exists. */
+    static fn CreateNew(fileName: ref string) Result[File, FileError] {
+        return File.Open(
+            fileName,
+            FileOpenOptions {
+                Access: FileAccess.ReadWrite,
+                Mode: FileMode.CreateNew,
+                WriteMode: FileWriteMode.Normal,
+            },
+        )
+    }
+
+    /** Opens a file for appending, creating it if required. */
+    static fn OpenAppend(fileName: ref string) Result[File, FileError] {
+        return File.Open(
+            fileName,
+            FileOpenOptions {
+                Access: FileAccess.WriteOnly,
+                Mode: FileMode.OpenOrCreate,
+                WriteMode: FileWriteMode.Append,
+            },
+        )
+    }
+
+    /**
+     * Updates the file's access and modification times.
+     * Creates the file if it does not already exist.
+     */
+    static fn Touch(fileName: ref string) Result[void, FileError] {
+        // Default:
+        // CreateIfMissing = true
+        // UpdateAccessTime = true
+        // UpdateModifiedTime = true
+        return Err(FileError.NotFound)
+    }
+
+    /** Updates a file according to the supplied touch options. */
+    static fn Touch(fileName: ref string, options: ref FileTouchOptions) Result[void, FileError] {
+        // Platform implementation.
+        return Err(FileError.NotFound)
+    }
+
+    /**
+     * Closes the owned native file handle.
+     *
+     * Closing an already closed handle succeeds without performing another
+     * native close operation.
+     *
+     * After this function returns, the FileHandle is closed regardless of
+     * whether the native close operation reports an error.
+     */
+    fn Close() Result[void, IOError] {
+        if !self._handle._isOpen {
+            return Ok()
+        }
+
+        // The native handle must never be closed a second time.
+        self._handle._isOpen = false
+
+        return _CloseNativeFile(self._native)
+    }
+
+    /**
+     * Reads bytes from the current file position.
+     * The file position advances by the number of bytes read.
+     */
+    fn Read(buffer: ref mut byte[]) Result[uint, IOError] {
+        if !self._handle._isOpen {
+            return Err(IOError.Unsupported)
+        }
+        return Err(IOError.Unknown)
+    }
+
+    /**
+     * Writes bytes at the current file position.
+     * The file position advances by the number of bytes written.
+     */
+    fn Write(data: ref byte[]) Result[uint, IOError] {
+        return Err(IOError.Unknown)
+    }
+
+    /**
+     * Reads bytes beginning at the specified absolute file offset.
+     * The current file position is not changed.
+     */
+    fn ReadAt(offset: uint64, buffer: ref mut byte[]) Result[uint, IOError] {
+        return Err(IOError.Unknown)
+    }
+
+    /**
+     * Writes bytes beginning at the specified absolute file offset.
+     * The current file position is not changed.
+     */
+    fn WriteAt(offset: uint64, data: ref byte[]) Result[uint, IOError] {
+        return Err(IOError.Unknown)
+    }
+
+    /**
+     * Changes the current file position and returns the resulting absolute offset.
+     */
+    fn Seek(offset: int64, origin: io.SeekOrigin) Result[uint64, IOError] {
+        return Err(IOError.Unknown)
+    }
+
+    fn SetLength(length: uint64) Result[void, FileError] {
+        return Err(FileError.NotFound)
+    }
+
+    /**
+     * Synchronizes pending file data with the underlying storage where supported.
+     */
+    fn Sync() Result[void, FileError] {
+        return Err(FileError.NotFound)
+    }
+
+    // More functions
+
+    /**
+     * Gets or changes the current file length in bytes.
+     *
+     * Reading may fail when the length cannot be determined.
+     * Writing truncates or extends the file to the requested length.
+     */
+    property Length: Result[uint64, FileError] {
+        get {
+            return Err(FileError.NotFound)
+        }
+        try set value FileError {
+            return
+        }
+    }
+
+    /** The final name component recorded when the file was opened or created. */
+    property FileName: ref string {
+        get {
+            return self._fileName
+        }
+    }
+
+    /**
+     * The absolute normalized path recorded when the file was opened or created.
+     *
+     * The value is not automatically updated if the file is later renamed or moved.
+     */
+    property FilePath: ref string {
+        get {
+            return self._filePath
+        }
+    }
+
+    /** Whether the file currently owns an open operating-system file handle. */
+    property IsOpen: bool {
+        get {
+            return self._handle._isOpen
+        }
+    }
+
+    /** Whether the file is currently closed. */
+    property IsClosed: bool {
+        get {
+            return !self._handle._isOpen
+        }
+    }
+
+    /** The access mode with which the file was opened. */
+    property Access: FileAccess {
+        get {
+            return self._access
+        }
+    }
+
+    /** The open mode used when the file was opened or created. */
+    property Mode: FileMode {
+        get {
+            return self._mode
+        }
+    }
+
+    /** The write behavior with which the file was opened. */
+    property WriteMode: FileWriteMode {
+        get {
+            return self._writeMode
+        }
+    }
+
+    /** Whether the file was opened with read capability. */
+    property CanRead: bool {
+        get {
+            match self._access {
+                ReadOnly => return true
+                WriteOnly => return false
+                ReadWrite => return true
+            }
+        }
+    }
+
+    /** Whether the file was opened with write capability. */
+    property CanWrite: bool {
+        get {
+            match self._access {
+                ReadOnly => return false
+                WriteOnly => return true
+                ReadWrite => return true
+            }
+        }
+    }
+
+    /** Whether writes are performed using append semantics. */
+    property IsAppend: bool {
+        get {
+            return self._writeMode == FileWriteMode.Append
+        }
+    }
+
+    free() {
+        self.Close()
+    }
+}

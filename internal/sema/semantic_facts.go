@@ -142,6 +142,10 @@ const (
 	StringConcatRune             StringConcatSegmentKind = "rune"
 	StringConcatBuiltinFormatted StringConcatSegmentKind = "builtin-formatted"
 	StringConcatMaterialized     StringConcatSegmentKind = "materialized-string"
+	// StringConcatFallibleText is a Result[string, StringError] operand, such
+	// as a ToString() call, whose failure joins the plan's single StringError
+	// failure channel handled by the try around the whole concatenation.
+	StringConcatFallibleText StringConcatSegmentKind = "fallible-text"
 )
 
 // StringConcatSegment preserves one exact-once expression or constant text

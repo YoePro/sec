@@ -10,24 +10,20 @@ module io
  * Author:      Jonas Engström
  *
  * Purpose:
- *   Generic byte transfer and exact-completion helpers operating through
- *   the root I/O capability interfaces.
+ * Generic byte transfer and exact-completion helpers operating through
+ * the root I/O capability interfaces.
  *
  * Rulebook:
- *   stdlib/io/std-io.md
+ * stdlib/io/std-io.md
  */
 
 // Number of consecutive zero-progress Write results WriteAll tolerates for
 // non-empty remaining input before reporting IOError.NoProgress. std-io.md
 // § 8.6 requires detecting repeated zero progress but fixes no count (MD-026).
-static let _maxZeroProgressWrites: uint := 2
+let _maxZeroProgressWrites: uint := 2
 
 /** Reads until at least minimum bytes fill the start of buffer (std-io.md § 8.3). */
-fn ReadAtLeast(
-    reader: ref mut Reader,
-    buffer: ref mut byte[],
-    minimum: uint,
-) Result[uint, IOError] {
+fn ReadAtLeast(reader: ref mut Reader, buffer: ref mut byte[], minimum: uint) Result[uint, IOError] {
     if minimum > buffer.Len {
         return Err(IOError.InvalidInput)
     }
@@ -44,10 +40,7 @@ fn ReadAtLeast(
 }
 
 /** Fills the whole buffer without allocating (std-io.md § 8.4). */
-fn ReadExactly(
-    reader: ref mut Reader,
-    buffer: ref mut byte[],
-) Result[void, IOError] {
+fn ReadExactly(reader: ref mut Reader, buffer: ref mut byte[]) Result[void, IOError] {
     let mut total := 0u
     while total < buffer.Len {
         let count := try reader.Read(ref mut buffer[int(total)..])
@@ -60,10 +53,7 @@ fn ReadExactly(
 }
 
 /** Reads to EOF into a new array of at most limit bytes (std-io.md § 8.5). */
-fn ReadAll(
-    reader: ref mut Reader,
-    limit: uint64,
-) Result[byte[], IOError] {
+fn ReadAll(reader: ref mut Reader, limit: uint64) Result[byte[], IOError] {
     let mut result: byte[]
     let mut chunk: byte[4096]
     let mut total: uint64 := 0
@@ -94,10 +84,7 @@ fn ReadAll(
 }
 
 /** Writes every byte of data or reports why it could not (std-io.md § 8.6). */
-fn WriteAll(
-    writer: ref mut Writer,
-    data: ref byte[],
-) Result[void, IOError] {
+fn WriteAll(writer: ref mut Writer, data: ref byte[]) Result[void, IOError] {
     let mut written := 0u
     let mut idle := 0u
     while written < data.Len {
@@ -116,10 +103,7 @@ fn WriteAll(
 }
 
 /** Streams source to destination until EOF with bounded storage (std-io.md § 8.7). */
-fn Copy(
-    destination: ref mut Writer,
-    source: ref mut Reader,
-) Result[uint64, IOError] {
+fn Copy(destination: ref mut Writer, source: ref mut Reader) Result[uint64, IOError] {
     let mut chunk: byte[4096]
     let mut copied: uint64 := 0
 
@@ -134,11 +118,7 @@ fn Copy(
 }
 
 /** Streams exactly count bytes or reports UnexpectedEnd (std-io.md § 8.8). */
-fn CopyN(
-    destination: ref mut Writer,
-    source: ref mut Reader,
-    count: uint64,
-) Result[uint64, IOError] {
+fn CopyN(destination: ref mut Writer, source: ref mut Reader, count: uint64) Result[uint64, IOError] {
     let mut chunk: byte[4096]
     let mut copied: uint64 := 0
 

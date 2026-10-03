@@ -3,7 +3,8 @@ package sema
 import "sec/internal/ast"
 
 // provesResultProjectionSafe reports that the alternate state forgotten by a
-// consuming projection is unreachable on the current path: a dominating
+// consuming projection is unreachable on the current path: the immutable
+// binding was constructed by the matching Ok(...) or Err(...), or a dominating
 // condition proves `result.ErrRef is None` or `result.OkRef is not None` for
 // Ok(), and the mirrored tests for Err(). The Result must be an immutable
 // binding so no later operation can change its state.
@@ -19,6 +20,11 @@ func (a *Analyzer) provesResultProjectionSafe(object ast.Expression, projection 
 	symbol, exists := a.symbols[identifier.Value]
 	if !exists || symbol.Mutable {
 		return false
+	}
+	// An immutable binding initialized by Ok(...) or Err(...) keeps that
+	// state for its whole lifetime.
+	if symbol.ResultConstruction == projection {
+		return true
 	}
 	for _, active := range a.activeConditionFacts {
 		if active.epoch != a.arrayIndexMutationEpoch {
@@ -69,4 +75,30 @@ func optionStateTest(condition ast.Expression, name string) (string, bool, bool)
 		return "", false, false
 	}
 	return subject.Property.Value, noneBody.Value, true
+}
+
+// recordResultConstruction proves the state of an immutable Result binding
+// initialized directly by Ok(...) or Err(...); any other initializer, a
+// mutable binding, or a shadowing declaration leaves the state unknown.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — § 6 "Result success/error projections"
+func (a *Analyzer) recordResultConstruction(stmt *ast.LetStatement) {
+	if stmt == nil || stmt.Name == nil {
+		return
+	}
+	symbol, exists := a.symbols[stmt.Name.Value]
+	if !exists {
+		return
+	}
+	symbol.ResultConstruction = ""
+	if !stmt.Mutable {
+		switch stmt.Value.(type) {
+		case *ast.OkExpression:
+			symbol.ResultConstruction = "Ok"
+		case *ast.ErrExpression:
+			symbol.ResultConstruction = "Err"
+		}
+	}
+	a.symbols[stmt.Name.Value] = symbol
 }

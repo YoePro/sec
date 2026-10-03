@@ -1,11 +1,11 @@
 module core
 
 impl bool {
-    fn ToString() string {
+    fn ToString() Result[string, StringError] {
         if self {
-            return "true"
+            return Ok("true")
         }
-        return "false"
+        return Ok("false")
     }
 
 }

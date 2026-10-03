@@ -1623,25 +1623,25 @@ TypeContract
       | MarkerContract
 
 RangeContract
-    ::= "range" [ SignedNumericConstant ] RangeOperator [ SignedNumericConstant ]
+    ::= "range" [ Expression ] RangeOperator [ Expression ]
 
 RangeOperator
     ::= ".."
       | "..<"
 
 MembershipContract
-    ::= "in" "[" ConstantExpression { "," ConstantExpression } [ "," ] "]"
+    ::= "in" "[" Expression { "," Expression } [ "," ] "]"
 
 MultipleOfContract
-    ::= Contextual("multipleOf") ConstantExpression
+    ::= Contextual("multipleOf") Expression
 
 LengthContract
-    ::= Contextual("minLen") ConstantExpression
-      | Contextual("maxLen") ConstantExpression
-      | Contextual("exactLen") ConstantExpression
+    ::= Contextual("minLen") Expression
+      | Contextual("maxLen") Expression
+      | Contextual("exactLen") Expression
 
 RegexContract
-    ::= Contextual("regex") ConstantExpression
+    ::= Contextual("regex") Expression
 
 MarkerContract
     ::= Contextual("notEmpty")
@@ -1655,9 +1655,21 @@ Contracts are written sequentially.
 
 Sequential contracts are logical conjunction.
 
+Every contract argument is ordinary `Expression` syntax. Contract arguments
+form no separate restricted constant sublanguage: the owning semantic rule
+(`rules/types/contracts.md`) classifies each position as a
+`SemanticCompileTimeRequiredContext` (`rules/compiler/compile_time_evaluation.md`)
+and supplies its required result type and domain. A range bound is therefore
+not limited to a signed numeric literal; `range MinimumPort..MaximumPort` and
+`range 1..MaxPort()` are grammatical, and they are valid when semantic CTE
+establishes the values. Expression parsing of a bound stops at the range
+operator, which is not an infix operator. An upper bound starts on the line of
+the range operator and is never `default` or a following contract word, which
+keeps an open-ended range unambiguous (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 3).
+
 `regex` is a reserved contract spelling (`rules/foundations/lexical_structure.md`
 § 7.3) that is lexed identifier-like and resolved in contract position; it has
-no dedicated hard-keyword token. Its `ConstantExpression` must produce the
+no dedicated hard-keyword token. Its `Expression` must produce the
 compile-time string pattern required by `rules/types/contracts.md`. A contract,
 including `regex`, has no physical same-line requirement; newline handling
 follows ordinary whitespace and expression-continuation rules, so both of the
@@ -1670,9 +1682,12 @@ type Email string
     regex "..."
 ```
 
-The regular-expression dialect and engine belong to MD-010, and the
-compile-time-expression classification of contract operands belongs to MD-011
-(MD-009; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 10).
+The regular-expression language belongs to a dedicated future regex rulebook
+(MD-010), and the regex pattern is an ordinary `Expression` evaluated in a
+`SemanticCompileTimeRequiredContext` (MD-011). The earlier
+`RegexContract ::= Contextual("regex") ConstantExpression` shape is superseded
+(MD-009; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 10;
+`rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 2, 3.39–3.44).
 
 Example:
 
@@ -1696,10 +1711,12 @@ They are not canonical on individual variables or struct fields.
 
 ```text
 DefaultClause
-    ::= "default" ConstantExpression
+    ::= "default" Expression
 ```
 
-The default clause follows every contract.
+The default clause follows every contract. Its expression is ordinary
+`Expression` syntax evaluated in a `SemanticCompileTimeRequiredContext`
+(MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 3.4, 3.35–3.38).
 
 Example:
 

@@ -3598,7 +3598,8 @@ fn Use(ptr: RawPtr[byte]) byte {
 `
 	hoverOffset := strings.Index(source, "VolatileRead") + 2
 	hover, ok := hoverForSource("", source, offsetPosition(source, hoverOffset))
-	if !ok || !strings.Contains(hover.Contents.Value, "unsafe method VolatileRead: byte") ||
+	if !ok || !strings.Contains(hover.Contents.Value, "unsafe fn VolatileRead() T") ||
+		!strings.Contains(hover.Contents.Value, "Result here: `byte`") ||
 		!strings.Contains(hover.Contents.Value, "CKM-RAWPTR-VOLATILE-READ") ||
 		!strings.Contains(hover.Contents.Value, "Effects: `volatile-read`") {
 		t.Fatalf("volatile compiler-known hover = %+v, %v", hover, ok)
@@ -4192,9 +4193,9 @@ Done,        // done
 }
 `
 	want := `enum Status {
-    New,           // new
-    InProgress,    // active
-    Done,          // done
+    New,        // new
+    InProgress, // active
+    Done,       // done
 }
 `
 	if got := formatSource(input); got != want {
@@ -4785,5 +4786,201 @@ func TestSemaDiagnosticOmitsPrimaryLocationAndLinksRelatedLocation(t *testing.T)
 	if len(diagnostic.RelatedInformation) != 1 || diagnostic.RelatedInformation[0].Location.Range.Start != (position{Line: 3, Character: 6}) ||
 		!strings.HasSuffix(diagnostic.RelatedInformation[0].Location.URI, "/tmp/main.sec") {
 		t.Fatalf("related information = %+v", diagnostic.RelatedInformation)
+	}
+}
+
+// A related location in another file is converted to UTF-16 with that file's
+// own text, preferring an unsaved open document over disk: an emoji before the
+// related column occupies two UTF-16 code units, so the character offset is
+// one more than the scalar offset.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
+func TestRelatedLocationUsesRelatedFileUTF16Columns(t *testing.T) {
+	relatedPath := filepath.Join(t.TempDir(), "other.sec")
+	relatedText := "/* \U0001F600 */ let first := 1\n"
+	overlay := sourceOverlay{normalizedSourcePath(relatedPath): relatedText}
+	diagnostic := semaDiagnosticWithSources(sema.Error{
+		Message:        "conflict",
+		Line:           1,
+		Column:         1,
+		PreviousFile:   relatedPath,
+		PreviousLine:   1,
+		PreviousColumn: 14,
+	}, 1, "file:///current.sec", "let x := 1\n", overlay)
+	if len(diagnostic.RelatedInformation) != 1 {
+		t.Fatalf("related information = %+v", diagnostic.RelatedInformation)
+	}
+	start := diagnostic.RelatedInformation[0].Location.Range.Start
+	if start.Line != 0 || start.Character != 14 {
+		t.Fatalf("related start = %+v, want line 0 character 14 (scalar column 13 plus one surrogate unit)", start)
+	}
+}
+
+// Hover on a shaped binding presents the shaped facts Sema resolved for its
+// type: rank, static shape, Len, strides, and contiguity for owning shaped
+// values, and a runtime-shape statement for a rank-only view. Non-shaped
+// bindings get no shaped section.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shaped values"
+func TestHoverPresentsShapedFactsForBindings(t *testing.T) {
+	text := "fn Use(values: vector[float32, 3], grid: matrix[int, 2, 4], view: tensor_view[float32, 2], plain: int) int {\n    return plain\n}\n"
+	tests := []struct {
+		needle string
+		want   string
+	}{
+		{needle: "values:", want: "Shaped `vector`: Rank `1` · Shape `[3]` (static) · Len `3` · Strides `[1]` · IsContiguous `true`"},
+		{needle: "grid:", want: "Shaped `matrix`: Rank `2` · Shape `[2, 4]` (static) · Len `8` · Strides `[4, 1]` · IsContiguous `true`"},
+		{needle: "view:", want: "Shaped `tensor_view`: Rank `2` · Shape known at run time"},
+		{needle: "plain:", want: ""},
+	}
+	for _, test := range tests {
+		offset := strings.Index(text, test.needle)
+		result, ok := hoverForSource("file:///shaped.sec", text, position{Line: 0, Character: offset + 1})
+		if !ok {
+			t.Fatalf("%s: no hover", test.needle)
+		}
+		if test.want == "" {
+			if strings.Contains(result.Contents.Value, "Shaped `") {
+				t.Fatalf("%s: unexpected shaped section:\n%s", test.needle, result.Contents.Value)
+			}
+			continue
+		}
+		if !strings.Contains(result.Contents.Value, test.want) {
+			t.Fatalf("%s hover:\n%s\nwant %q", test.needle, result.Contents.Value, test.want)
+		}
+	}
+}
+
+// Completion and hover present the exact thread-v2 surface from the shared
+// compiler-known registry: CamelCase owner members on Thread[T], and only the
+// metadata members on ThreadObserver[T].
+//
+// Rules:
+//   - rules/concurrency/threads.md — § 26, § 40
+//   - rules/tooling/lsp.md — compiler-known member registry
+func TestThreadV2SurfaceInCompletionAndHover(t *testing.T) {
+	prefix := "fn Work() void {\n}\n\nfn Run() void {\n    let worker := spawn thread Work()\n    let observer := worker.Observe()\n    let status := worker.Status\n    "
+	labels := func(text string) map[string]bool {
+		found := map[string]bool{}
+		for _, item := range completeSource("file:///thread.sec", text, len(text), nil) {
+			found[item.Label] = true
+		}
+		return found
+	}
+	owner := labels(prefix + "worker.")
+	for _, name := range []string{"ID", "Name", "Status", "Observe", "Start", "RequestCancel"} {
+		if !owner[name] {
+			t.Fatalf("Thread[void] completion lacks %s: %v", name, owner)
+		}
+	}
+	if owner["status"] || owner["value"] {
+		t.Fatalf("Thread[void] completion offers a legacy lowercase member: %v", owner)
+	}
+	observer := labels(prefix + "observer.")
+	for _, name := range []string{"ID", "Name", "Status"} {
+		if !observer[name] {
+			t.Fatalf("ThreadObserver[void] completion lacks %s: %v", name, observer)
+		}
+	}
+	for _, name := range []string{"Start", "RequestCancel", "Observe"} {
+		if observer[name] {
+			t.Fatalf("ThreadObserver[void] completion offers owner-only %s", name)
+		}
+	}
+
+	text := prefix + "discard status\n    detach worker\n}\n"
+	offset := strings.Index(text, "worker.Status") + len("worker.")
+	line := strings.Count(text[:offset], "\n")
+	column := offset - strings.LastIndex(text[:offset], "\n") - 1
+	result, ok := hoverForSource("file:///thread.sec", text, position{Line: line, Character: column + 1})
+	if !ok || !strings.Contains(result.Contents.Value, "property Status: ThreadStatus") {
+		t.Fatalf("hover = %+v, want the registry signature of Status", result)
+	}
+}
+
+// Hover on a quantity shows its dimension derivation from Sema's unit facts:
+// each normalized factor with its declared dimension and scale, the resulting
+// canonical dimension, and the exact combined scale.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Unit actions" (Show dimension derivation, Show exact scale and offset)
+//   - rules/types/units.md — "LSP requirements"
+func TestHoverShowsUnitDimensionDerivation(t *testing.T) {
+	source := `module main
+
+unit km physical
+impl km {
+    Dimension: [length^1]
+    Kind: length
+    Scale: 1000
+}
+
+unit s physical
+impl s {
+    Dimension: [time^1]
+    Kind: time
+    Scale: 1
+}
+
+fn Use(acceleration: decimal<km/s^2>) void {
+}
+`
+	offset := strings.LastIndex(source, "acceleration")
+	result, ok := hoverForSource("", source, offsetPosition(source, offset))
+	if !ok {
+		t.Fatal("missing hover")
+	}
+	for _, want := range []string{
+		"Dimension derivation:",
+		"- `km`: [length^1], scale `1000`",
+		"- `s^-2`: [time^1], scale `1`",
+		"= [length^1, time^-2], exact scale `1000`",
+	} {
+		if !strings.Contains(result.Contents.Value, want) {
+			t.Fatalf("hover lacks %q:\n%s", want, result.Contents.Value)
+		}
+	}
+}
+
+// A value of another unit of the same quantity gets a quick fix that applies
+// Sema's proven explicit conversion; applying it removes the diagnostic. A
+// dimension mismatch or a carrier change gets no conversion action.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Unit actions"
+//   - rules/types/units.md — "LSP requirements"
+func TestUnitConversionCodeActionAppliesProvenConversion(t *testing.T) {
+	prelude := "module main\n\nunit km physical\nimpl km {\n    Dimension: [length^1]\n    Kind: length\n    Scale: 1000\n}\n\n"
+	text := prelude + "fn Use(distance: decimal<km>) decimal<m> {\n    let converted: decimal<m> := distance\n    return converted\n}\n"
+	uri := "file:///units.sec"
+	reported := analyze(uri, text)
+	actions := unitConversionCodeActions(uri, text, reported, nil)
+	if len(actions) != 1 || actions[0].Title != "Convert explicitly to m with m(distance)" {
+		t.Fatalf("actions = %+v (diagnostics %+v)", actions, reported)
+	}
+	edits := actions[0].Edit.Changes[uri]
+	if len(edits) != 1 {
+		t.Fatalf("edits = %+v", edits)
+	}
+	start := lineCharToOffset(text, edits[0].Range.Start.Line, edits[0].Range.Start.Character)
+	end := lineCharToOffset(text, edits[0].Range.End.Line, edits[0].Range.End.Character)
+	fixed := text[:start] + edits[0].NewText + text[end:]
+	if !strings.Contains(fixed, "let converted: decimal<m> := m(distance)") {
+		t.Fatalf("fixed source:\n%s", fixed)
+	}
+	if remaining := analyze(uri, fixed); len(remaining) != 0 {
+		t.Fatalf("applied conversion still reports %+v", remaining)
+	}
+
+	for _, unsafe := range []string{
+		"fn Use(elapsed: decimal<s>) decimal<m> {\n    let converted: decimal<m> := elapsed\n    return converted\n}\n",
+		"fn Use(distance: float<km>) decimal<m> {\n    let converted: decimal<m> := distance\n    return converted\n}\n",
+	} {
+		unsafeText := prelude + unsafe
+		if actions := unitConversionCodeActions(uri, unsafeText, analyze(uri, unsafeText), nil); len(actions) != 0 {
+			t.Fatalf("unproven conversion offered: %+v", actions)
+		}
 	}
 }

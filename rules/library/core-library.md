@@ -448,7 +448,7 @@ rejected.
 
 ```sec
 impl string {
-    fn ToString() string
+    fn ToString() Result[string, StringError]
 
     fn IsEmpty() bool
 
@@ -510,8 +510,8 @@ It is included for consistency with generic formatting and type interfaces.
 
 ```sec
 impl string {
-    fn ToString() string {
-        return self
+    fn ToString() Result[string, StringError] {
+        return Ok(self)
     }
 }
 ```
@@ -551,7 +551,7 @@ unsafe property ptr: RawPtr[bool] {
 
 ```sec
 impl bool {
-    fn ToString() string
+    fn ToString() Result[string, StringError]
 }
 ```
 
@@ -615,8 +615,8 @@ unsafe property ptr: RawPtr[T] {
 
 ```sec
 impl T {
-    fn ToString() string
-    fn ToString(format: string) Result[string, FormatError]
+    fn ToString() Result[string, StringError]
+    fn ToString(format: string) Result[string, StringError]
 
     fn Abs() Result[T, OverflowError]
 
@@ -690,8 +690,8 @@ unsafe property ptr: RawPtr[T] {
 
 ```sec
 impl T {
-    fn ToString() string
-    fn ToString(format: string) Result[string, FormatError]
+    fn ToString() Result[string, StringError]
+    fn ToString(format: string) Result[string, StringError]
 
     fn Min(other: T) T
     fn Max(other: T) T
@@ -766,8 +766,8 @@ unsafe property ptr: RawPtr[T] {
 
 ```sec
 impl T {
-    fn ToString() string
-    fn ToString(format: string) Result[string, FormatError]
+    fn ToString() Result[string, StringError]
+    fn ToString(format: string) Result[string, StringError]
 
     fn Abs() T
     fn Min(other: T) T
@@ -816,8 +816,8 @@ unless the representation becomes a permanent language guarantee.
 
 ```sec
 impl decimal {
-    fn ToString() string
-    fn ToString(format: string) Result[string, FormatError]
+    fn ToString() Result[string, StringError]
+    fn ToString(format: string) Result[string, StringError]
 
     fn Abs() Result[decimal, OverflowError]
 
@@ -854,7 +854,7 @@ Both are built-in types and support `.ptr` when addressable.
 
 ```sec
 impl char {
-    fn ToString() string
+    fn ToString() Result[string, StringError]
 
     fn IsDigit() bool
     fn IsLetter() bool
@@ -868,7 +868,7 @@ impl char {
 
 ```sec
 impl rune {
-    fn ToString() string
+    fn ToString() Result[string, StringError]
 
     fn IsDigit() bool
     fn IsLetter() bool
@@ -916,7 +916,7 @@ property SizeOf: uint {
 
 ```sec
 impl T[N] {
-    fn ToString() string
+    fn ToString() Result[string, StringError]
 }
 ```
 
@@ -969,7 +969,7 @@ property SizeOf: uint {
 
 ```sec
 impl ref T[] {
-    fn ToString() string
+    fn ToString() Result[string, StringError]
 }
 ```
 
@@ -1024,19 +1024,57 @@ types.
 Required:
 
 ```sec
-fn ToString() string
+fn ToString() Result[string, StringError]
 ```
 
 Numeric types also provide:
 
 ```sec
-fn ToString(format: string) Result[string, FormatError]
+fn ToString(format: string) Result[string, StringError]
 ```
+
+Every `ToString`, including each overload, returns exactly
+`Result[string, StringError]` (decision 2026-10-03, MD-035; see
+`rules/compiler/compiler_known_members.md` "Uniform `ToString` result").
+
+## 15.1 `StringError`
+
+`StringError` is the one compiler-known failure family of text. Every
+`ToString`, every runtime string concatenation, and every runtime interpolation
+fails with it, so all text-producing operations share one error channel:
+
+```sec
+type StringError union error {
+    Allocation(AllocationError),
+    Format(FormatError),
+    InvalidUtf8(uint),
+    InvalidCodePoint,
+    OutOfBounds,
+}
+
+enum FormatError error {
+    InvalidFormat,
+    UnsupportedFormat,
+    InvalidSpecifier,
+    InvalidPrecision,
+}
+```
+
+`Allocation` carries the `AllocationError` of a failed text materialization.
+`Format` carries the `FormatError` of a format overload such as
+`ToString(format)` whose format is invalid or unsupported at run time.
+`InvalidUtf8`, `InvalidCodePoint`, and `OutOfBounds` are the text decoding
+failures of the core string conversions (`string.FromByteArray`,
+`string.FromRuneArray`, UTF-8 decoding). `StringError` and `FormatError` are
+compiler-known identities; trusted core supplies their source declarations and
+ordinary code cannot redeclare them.
 
 The format-string overload allows concise formatting rules.
 
 Format strings must be validated at compile time when the argument is a
-compile-time literal and the format grammar is known.
+compile-time literal and the format grammar is known. A format that is known
+only at run time and is invalid or unsupported fails with
+`StringError.Format`.
 
 A higher-level strongly typed formatting API may later be added.
 
@@ -1052,7 +1090,7 @@ value.ToString("E4")
 The exact format grammar is defined in a separate formatting rule.
 
 The presence of `ToString()` on `string` is intentional even though it returns
-the same value.
+`Ok` with the same value.
 
 ---
 

@@ -71,6 +71,8 @@ integrations:
       - direct named use of deprecated and obsolete units produces compiler-owned warnings
       - explicit conversion functions validate normalized dimensions and act as explicit linear cross-identity or cross-Kind boundaries
       - LSP hover presents compiler-owned identity, source expression, Kind, categories, transform, point role, origin, and exact scale facts
+      - "LSP derivation view (2026-10-03): Analyzer.UnitDerivationOf exposes each normalized unit factor with its declared dimension and scale, the canonical resulting dimension, and the exact combined scale from Sema's unit definitions, and binding/type hover presents it as a dimension derivation (TestHoverShowsUnitDimensionDerivation)"
+      - "safe unit-conversion code action (2026-10-03): when a value of another named unit of the same quantity is rejected, Sema proves the explicit conversion Target(value) (equal dimension, role, origin, non-logarithmic across identities, no currency, unchanged carrier, binding or field-chain value), adds help naming it, and records a UnitConversionSuggestion; the LSP quick fix applies exactly that replacement and never invents a factor, exchange rate, or rounding policy (TestUnitConversionCodeActionAppliesProvenConversion)"
       - formatter compacts structural unit operators while preserving named factors, grouping, and source factor order
       - formatter canonicalizes accepted legacy case and underscore variants of unit metadata names to PascalCase from parser-scoped CST roles and exact byte spans only inside parsed unit impl blocks, leaves ordinary impl members untouched, and is idempotent
       - revision-2 corrections were consumed into grammar, types, operators, Semantic IR, LSP, diagnostics, and formatter rulebooks
@@ -79,7 +81,7 @@ integrations:
       - validate affine and logarithmic Reference compatibility and implement their specialized explicit conversion plans
       - complete value-aware fixed conversion planning for bounded integer and binary-floating carriers, including overflow proofs and explicit rounding policy integration
       - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
-      - add LSP derivation views and safe unit-conversion code actions
+      - extend unit code actions to declared conversion functions, in-scope factor-provided conversions, exact carrier changes, and the import action for units not yet imported
       - complete Semantic IR, MLIR, runtime, standard-library, and end-to-end unit coverage
       - keep unit-polymorphic generic parameters reserved for a future language revision
     required_tests:
@@ -198,13 +200,15 @@ integrations:
       - named array and slice types are presented by their nominal name in diagnostics instead of their structural shape
       - inherited membership values are revalidated against every newly added derived contract and reported with S1011 instead of being filtered (TestInheritedMembershipRevalidatedAgainstDerivedContracts)
       - 'omitted owning dynamic-array fields, including inside omitted nested struct fields, receive typed empty defaults: materialized default expressions record their canonical DefaultValueOf types, and contextually typed array literals (including explicit `[]` field values) record their type, so provenance analysis no longer re-infers a context-free empty literal (previously failed with "cannot infer element type of empty array literal")'
+      - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): the explicit default is an ordinary Expression evaluated in a SemanticCompileTimeRequiredContext through Analyzer.semanticCompileTimeConstant, which reads literals and operators, immutable module bindings through the shared compile-time integer evaluator, and immutable bindings of other primitive constants; a compile-time-established default is validated against representability and every contract, including argumentless contracts"
+      - "MD-014 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 6, 2026-10-03): plain float carries the platform width (FloatBits from ResolvedScalarPlan.PointerWidthBits, 64 by default), so range-constrained plain float derives its nearest-valid default like float32/float64 and the former no-default fallback is removed (testdata/defaults fixtures moved accordingly)"
     remaining:
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
       - lower synthesized mutable, struct, fixed-array, owning dynamic-array, and list defaults through the maintained Semantic IR and Sec MLIR pipelines
       - track partial aggregate, array, and collection construction cleanup for nontrivial elements and failure paths
       - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
-      - implement exact successors for exclusive decimal upper bounds, and range-derived defaults for plain float once MD-014 fixes its width
-      - extend explicit-default constant evaluation to the complete permitted compile-time constant subset while rejecting allocation, I/O, volatile, FFI, and fallible runtime operations
+      - implement exact successors for exclusive decimal upper bounds
+      - execute calls and property getters in explicit defaults once the canonical semantic CTE executor exists (currently S1101 compile-time.execution-unavailable), while rejecting I/O, volatile, FFI, and fallible runtime operations and keeping static materializability separate from transient evaluator allocation
       - add stable diagnostic IDs for types.default-cycle (no default cycle can currently form because S1055 rejects by-value recursive layouts) and backend.default-left-undefined (lowering)
       - add related-location metadata for membership failures, range ambiguity and representability failures, explicit defaults, omitted fields, and missing initializers
       - verify formatter preservation and LSP presentation for every explicit and derived default form
@@ -286,10 +290,13 @@ integrations:
       - formatter coverage for every types.md declaration form: let (inferred, mut, typed, defaultable without initializer, multiple declarators), type-first single, mutable, multiple, and parenthesized groups, named types with units, contracts, defaults, generics, and function-type bases, struct, register, union error, enum (including colon and bit underlying), unit, interface, impl, single and grouped imports, extern and ordinary function headers, and type references using ref, ref mut, RawPtr, function types, collections, shaped types, Option, Result, and fixed/owning arrays; canonical spacing comes from parser-confirmed CST roles and the golden fixture is a fixed point
       - "the previous formatter rewrote valid `int mut: a` into `int mut : a`; type-first colons now bind left"
       - compiler Sema derives target-sized int and uint bounds from the selected ResolvedScalarPlan, and every compile-time integer consumer is audited on 32- and 64-bit plans (frontend.target-sized-integer-semantics)
+      - "MD-014 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 6, 2026-10-03): plain float is platform-sized from the same ResolvedScalarPlan.PointerWidthBits fact as int and uint (FloatBits 32 or 64; 64 without a plan), float literals and float arithmetic carriers take that width, and Semantic IR records it on TypeFloat (TestPlainFloatFollowsPlatformWidth); no independent float-width selector exists"
+      - LSP analysis resolves an unambiguous project target and variant through the shared compiler target registry, passes its ResolvedScalarPlan into Sema, and therefore reports target-correct int, uint, float, C ABI, and allocation-profile diagnostics
     remaining:
       - define and implement the runtime representation, ownership-preserving erasure, type-safe narrowing operations, and lowering model for any in its owning specialized rulebook
-      - LSP analysis still constructs Sema with the default scalar plan instead of the project's selected target plan, so editor diagnostics use 64-bit int/uint bounds on 32-bit projects (compiler analysis uses the selected plan; detail in frontend.target-sized-integer-semantics)
+      - complete LSP active-target selection, target switching, and per-target diagnostics for projects whose selected variants have distinct CompilationPlans
       - remove independent int and uint width guesses from maintained legacy LLVM and MLIR backends or reject unsupported target-sized lowering explicitly
+      - the legacy LLVM backend still maps plain float to double by name; it must use the Semantic IR platform width (float on 32-bit platforms) or reject the lowering explicitly (MD-014)
       - complete the nominal identity, assignability, and explicit conversion matrix audit against rules/types/types.md
       - define the canonical Result error type for runtime-checked scalar conversions such as try rune(codePoint) before implementing their fallible frontend contract (MD-012)
       - complete list, map, set, vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout, and MemorySpace semantics and lowering under their owning collection and layout integrations
@@ -620,6 +627,9 @@ integrations:
     - parser and AST retain obsolete storage-site contract nodes for recovery and migration tooling before Sema rejects them
     - every contract diagnostic now has a stable ID; related locations pointing at the contract declaration are not yet attached because the diagnostic model only carries a duplicate-style previous location
     - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
+    - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): range bounds parse as ordinary Expressions (parseRangeContract; the SignedNumericConstant restriction and its recovery diagnostic are removed) and every contract position (range bounds, in-members, multipleOf, minLen/maxLen/exactLen, regex pattern, default) is evaluated as a SemanticCompileTimeRequiredContext through Analyzer.semanticCompileTimeConstant; immutable module bindings are accepted, mutable or unknown values keep S1066, and calls or property getters receive mandatory S1101 compile-time.execution-unavailable instead of a claim that the source is invalid"
+    - "MD-012 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 4, 2026-10-03): a constant explicit integer conversion into a constrained named type checks the intrinsic representation of the underlying primitive first (reported against that primitive), stops on failure, then checks declared contracts in source order with S1068 (TestCheckedConversionFailureLayers)"
+    - "MD-010 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 2): the regex language moves to a dedicated future regex rulebook; the contract continues to evaluate and retain the pattern and reject the contract with S1058"
     remaining:
     - define the canonical regular-expression syntax/engine (MD-010), then replace S1058 with compile-time pattern validation, literal/default proofs, and runtime regex validation
     - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty
@@ -627,7 +637,8 @@ integrations:
     - extend compile-time length/default validation beyond implemented array literals and canonical array defaults to other supported collection literals and aggregate defaults
     - enforce unique using semantic equality on direct elements without recursive uniqueness
     - extend in-list membership to further named-value families with compile-time semantic equality beyond primitive scalars and enum members (for example unions without payload) without memory-identity comparison or hidden coercion
-    - extend contract-bound and membership constant evaluation to the complete canonical compile-time constant subset once MD-011 classifies contract argument positions under compile_time_evaluation.md § 8(2)
+    - execute calls and property getters in contract arguments once the canonical semantic CTE executor exists (currently S1101 compile-time.execution-unavailable); MD-011 already classifies every contract position as a SemanticCompileTimeRequiredContext
+    - extend semantic CTE contract evaluation to non-integer operator expressions over named bindings (floating, decimal, and string arithmetic on named constants)
     - implement runtime validation for explicit conversion into constrained named types
     - implement canonical fallible constrained assignment and compound-assignment behavior through try
     - define and use the canonical Result error type for failed contract validation (MD-012)
@@ -731,16 +742,16 @@ integrations:
     area: frontend-target-semantics-and-legacy-lowering
     status: partial
     audited: '2026-09-22'
-    revised: '2026-10-02'
+    revised: '2026-10-03'
     repository_baseline: c515862
     document_revision: inferred 2.x
     document_revision_note: rules/types/types.md has no explicit document-revision metadata. It is the canonical replacement
       for types.txt and its current structure and Sec 0.1 decisions belong to the revision-2-era rulebook set. Later
       specialized target/layout and MLIR package rulebooks take precedence where more specific.
-    summary: Compiler target selection now passes the authoritative ResolvedScalarPlan into Sema, where target-sized
-      int and uint bounds are instantiated for 32-bit and 64-bit targets. Explicit compile-time integer conversions
-      are checked against those selected bounds. Legacy AST backends still require complete scalar-plan integration
-      or explicit rejection.
+    summary: Compiler and unambiguous project-backed LSP target selection now pass the authoritative ResolvedScalarPlan
+      into Sema, where target-sized int, uint, and plain float widths are instantiated for 32-bit and 64-bit targets.
+      Explicit compile-time integer conversions are checked against those selected bounds. Legacy AST backends still
+      require complete scalar-plan integration or explicit rejection.
     rules:
     - rules/types/types.md
     - rules/memory/layout.md
@@ -754,7 +765,10 @@ integrations:
     - internal/sema/analyzer.go
     - cmd/compiler/main.go
     - cmd/compiler/target.go
+    - cmd/lsp/main.go
+    - cmd/lsp/target_plan.go
     - internal/layout/scalar_plan.go
+    - internal/platform/target/target.go
     - internal/ir/semantic
     - internal/lowering/secmlir
     - internal/codegen/llvm/types.go
@@ -770,6 +784,7 @@ integrations:
     - internal/codegen/llvm/generator_test.go
     - internal/codegen/mlir/generator_test.go
     - cmd/compiler/main_test.go
+    - cmd/lsp/target_plan_test.go
     implemented:
     - 'frontend audit on 2026-10-02: typed and inferred let, constant arithmetic, shifts, uint, enum underlying values, range, membership, multipleOf, explicit defaults, call arguments, returns, struct and generic fields, array elements, assignment, compound assignment, comparisons, and module statics all reject 3000000000 for int on a 32-bit plan and accept it on a 64-bit plan'
     - untyped integer literals and literal constant expressions are validated for representability at call-argument, return, and array-element boundaries (previously unchecked even for fixed-width destinations such as int8), and contracted array elements are proven against the element contracts
@@ -782,12 +797,15 @@ integrations:
     - verified 32-bit and 64-bit Sec MLIR target plans
     - Sema target-sized int and uint bounds derive from ResolvedScalarPlan.PointerWidthBits
     - compiler target analysis constructs Sema with the selected scalar plan
+    - compiler and LSP consume one shared target registry rather than deriving scalar widths from architecture spellings
+    - LSP project analysis resolves the logical target owning the source and uses its single unambiguous variant plan; 32-bit project diagnostics now reject int overflow and expose 32-bit int, uint, and plain float types
     - explicit compile-time integer conversions reject constants outside the selected target-sized int or uint range
       while accepting the same constants on a wider target
     partial:
     - direct LLVM independently maps int to i32 and uint to i64 regardless of selected target
     - legacy AST-to-LLVM-dialect MLIR independently maps int to i32 and uint to i64 regardless of selected target
     remaining:
+    - expose canonical active-target selection and switching to the LSP, then publish per-target diagnostics when one logical target selects distinct variant plans
     - audit runtime conversion planning for target-sized bounds (the compile-time frontend consumers are audited and covered)
     - remove independent target-sized width guesses from legacy direct LLVM
     - remove independent target-sized width guesses from legacy AST-to-LLVM-dialect MLIR
@@ -821,6 +839,8 @@ integrations:
       result: passed on 2026-10-02 for 19 consumers on 32- and 64-bit plans plus fixed-width call, return, and element boundaries
     - command: go test ./internal/sema -run 'TestTargetScalarPlan' -count=1
       result: passed on 2026-09-22 with 32-bit rejection and 64-bit acceptance for explicit int and uint constant conversions
+    - command: go test ./cmd/lsp ./cmd/compiler ./internal/platform/target -count=1
+      result: passed on 2026-10-03; the LSP uses the shared 32-bit project scalar plan and reports target-correct int overflow while ambiguous distinct plans remain unselected
   - id: frontend.units-declaration-authority
     area: frontend-unit-resolution
     status: implemented

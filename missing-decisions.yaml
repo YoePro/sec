@@ -12,50 +12,30 @@ classification_scale:
 
 decisions:
   - id: MD-010
-    area: types-and-contracts
+    area: regular-expressions
     rulebooks:
       - rules/types/contracts.md
+      - "dedicated regex rulebook (not yet written)"
     description: >-
-      contracts.md requires the concrete regular-expression syntax and engine
-      to be fixed before runtime validation is implemented. Decide the pattern
-      syntax (dialect, escapes over the escape-decoded string, anchoring
-      semantics: whole-value match or search), matching unit (UTF-8 bytes or
-      Unicode scalars), complexity guarantees (e.g. linear-time, no
-      backreferences), compile-time validation of invalid patterns and of
-      literal initializers/defaults, and how implicit defaults (the empty
-      string) interact with a regex contract. Also decide what "string-like
-      named types" covers beyond string (char, rune, string slices). Until
-      decided, Sema checks applicability (string only) and a compile-time
-      string pattern, retains the decoded pattern, and rejects every regex
-      contract with S1058 types.regex-contract-unavailable instead of
-      dropping it.
-    classification: blocking
-    status: open
-
-  - id: MD-011
-    area: types-contracts-and-compile-time-evaluation
-    rulebooks:
-      - rules/types/contracts.md
-      - rules/types/default_values.md
-      - rules/compiler/compile_time_evaluation.md
-      - rules/foundations/grammar.md
-    description: >-
-      contracts.md states that a position requiring a contract bound, member,
-      divisor, or other value before runtime lowering "must classify that
-      source position explicitly" under compile_time_evaluation.md, and CTE
-      § 8(2) requires the owning rulebook to specify the construct, evaluator
-      class (plan-time or semantic), result type, legal domain,
-      materialization, and permitted compiler-known inputs. contracts.md and
-      default_values.md never provide that classification for multipleOf,
-      minLen/maxLen/exactLen, in [...] members, regex patterns, or default
-      clauses, and grammar.md restricts range bounds to SignedNumericConstant
-      while the other positions use ConstantExpression. Decide whether these
-      positions are SemanticCompileTimeRequiredContexts, whether named static
-      initializers (module-level `let Max := 100`) and calls are permitted, and
-      whether range bounds stay literal-only. The compiler currently accepts
-      only literal and literal-operator constants, rejects named statics with
-      S1066/S1008, and rejects non-numeric range bounds with a parser
-      diagnostic.
+      Transferred to a dedicated regex rulebook (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 2). Regular
+      expressions are useful outside type contracts, so Sec needs one regex
+      language that the `regex` contract reuses; contracts.md must never define
+      a contract-private regex grammar. The dedicated rulebook must decide the
+      pattern syntax, escape interpretation over decoded Sec strings, Unicode
+      matching semantics and unit, anchoring, whole-value validation versus
+      search, character classes and Unicode properties, flags, captures,
+      unsupported constructs, complexity guarantees, compiled-pattern
+      semantics, invalid-pattern diagnostics, runtime regex APIs,
+      search/find/split/replacement behavior, and contract integration. The
+      recorded non-normative design directions (Sec-owned dialect,
+      decoded-string patterns, whole-value contract validation, Unicode
+      scalars, no implicit normalization, non-exponential complexity without
+      backreferences, compile-time pattern and default validation, string-only
+      application through a named-type chain) are referenced at
+      rules/design/regex-design-notes-20261003.md, which is not present in the
+      repository. Until the rulebook is accepted, Sema evaluates the pattern
+      in a SemanticCompileTimeRequiredContext (MD-011), retains it, and rejects
+      every regex contract with S1058.
     classification: constraining
     status: open
 
@@ -66,52 +46,21 @@ decisions:
       - rules/types/types.md
       - rules/errors/errorhandling.md
     description: >-
-      contracts.md makes runtime conversion into a constrained named type
-      fallible (`try percentage = Percentage(value) { Err(error) => ... }`)
-      and types.md has runtime-checked scalar conversions such as
-      `try rune(codePoint)`, but no rulebook names the Result error type of a
-      failed contract validation or checked conversion, its variants (e.g.
-      which contract failed, out-of-range versus invalid code point), or
-      whether it is a core library union. Decide the canonical error type and
-      its payload. Until decided, the fallible conversion and constrained
+      The semantic layering of checked-conversion failure is decided
+      (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 4): a missing conversion relation is a compile-time type
+      diagnostic, an intrinsic target-domain failure of the underlying
+      primitive stops before contracts, and declared contracts are then
+      checked in source order, with compile-time-known invalid values
+      diagnosed at compile time (implemented for constant integer
+      conversions). Still undecided: whether intrinsic checked-conversion
+      failures and contract-validation failures use separate public error
+      types or a common typed wrapper; the canonical public type name or
+      names; exact variant names; exact payloads; whether a contract failure
+      exposes the contract kind, its source identity or index, or another
+      stable identifier; and which primitive/scalar failure variants belong to
+      the public API. Until decided, the fallible conversion and constrained
       try-assignment paths cannot get their complete typed frontend contract
       or runtime validation.
-    classification: blocking
-    status: open
-
-  - id: MD-013
-    area: formatter
-    rulebooks:
-      - rules/tooling/formatter.md
-    description: >-
-      formatter.md § 9(5) and § 15(3) require structural alignment of struct
-      fields, but do not say whether register fields (`Name: bit[N]`, a
-      structural declaration block under § 15(1)) align the same way; the
-      existing formatter and tests keep register fields unaligned. Separately,
-      § 9(8) says "comments and blank lines terminate an alignment group"
-      while § 7(9) speaks of standalone comments; decide whether a trailing
-      comment on a field ends that field's alignment group (current behavior
-      and tests) or only standalone comments do.
-    classification: localized
-    status: open
-
-  - id: MD-014
-    area: types-floating-point
-    rulebooks:
-      - rules/types/types.md
-      - rules/types/default_values.md
-      - rules/memory/layout.md
-    description: >-
-      types.md calls plain `float` "the general target/compiler-known binary
-      floating-point type" without fixing its width or naming the target fact
-      that selects it, and no layout or CompilationPlan rule supplies it.
-      default_values.md requires a range-derived float default to be the
-      nearest exactly representable valid value, which depends on that width.
-      Decide whether `float` is always binary64, target-selected (and through
-      which ResolvedScalarPlan fact), or otherwise defined. Until decided,
-      float32 and float64 range defaults are computed exactly while a
-      range-constrained plain `float` whose range excludes zero has no implicit
-      default and needs an explicit default.
     classification: constraining
     status: open
 
@@ -551,27 +500,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-035
-    area: infallible-tostring-and-runtime-string-materialization
-    rulebooks:
-      - rules/compiler/compiler_known_members.md
-      - rules/library/core-library.md
-      - rules/foundations/operators.md
-    description: >-
-      The canonical formatting contract is `fn ToString() string`, which has
-      no failure channel, while runtime string concatenation and
-      interpolation are fallible materializations that require try with
-      AllocationError (MD-004). A ToString implementation that builds its
-      result at run time, such as the sec/stdlib/net/ip endpoint, prefix, and
-      Ipv4Address.ToString methods, therefore cannot propagate allocation
-      failure and is rejected with S1097; handling the failure locally would
-      have to invent fallback text. Decide whether ToString may be fallible
-      (for example Result[string, AllocationError]), whether an infallible
-      ToString may materialize through a dedicated mechanism, or how such
-      implementations must be written.
-    classification: constraining
-    status: open
-
   - id: MD-036
     area: formatter-project-configuration-location
     rulebooks:
@@ -605,3 +533,59 @@ decisions:
     classification: localized
     status: open
 
+  - id: MD-039
+    area: compound-string-append-failure-policy
+    rulebooks:
+      - rules/foundations/operators.md
+      - rules/memory/allocation.md
+    description: >-
+      MD-004 made runtime string concatenation and interpolation fallible
+      materializations that require try with StringError, and the 2026-10-03
+      decision lets a Result[string, StringError] operand join a `+`
+      concatenation under that single try. operators.md "Compound
+      concatenation assignment" still shows both `s += part` and
+      `try s += part` as an older failure-policy choice, and no correction
+      decides whether compound `string +=` must also require try (with
+      StringError and transactional rollback), may stay infallible, or may
+      accept a fallible text operand. The compiler currently accepts
+      `s += part` without try, rejects `try s += part` (S1096), and rejects a
+      Result[string, StringError] operand of `+=` with S1022 pointing to
+      `s += try value.ToString()`.
+    classification: constraining
+    status: open
+
+
+  - id: MD-040
+    area: unit-and-type-same-spelling
+    rulebooks:
+      - rules/types/units.md
+      - rules/foundations/names_scopes_visibility.md
+      - rules/declarations/impl.md
+    description: >-
+      units.md (MD-001 correction § 8) puts unit symbols in their own
+      namespace, so a unit and an ordinary declaration may share a spelling.
+      Two consequences are not decided. (1) Within one module, `unit Volt`
+      and `type Volt` together make `impl Volt` ambiguous: unit metadata and
+      unit conversion functions live in the unit's ordinary impl block, but
+      the type also needs an impl block, and no rule says which one a given
+      `impl Volt` targets or how to name the other. (2) Constructor-style unit
+      conversion is call-shaped by the bare unit name (`rpm(hz)`, `N(kg, m,
+      s)`, `EUR(sek, factor)`), so where a same-spelled ordinary type is
+      visible, `N(...)` could mean either the type's conversion or the unit
+      conversion function, and unit-impl functions share the `Name.Method`
+      call spelling with the type's static methods. The compiler (2026-10-04)
+      lets a unit and a same-spelled type of different modules coexist, with
+      the unit's impl block bound to the unit in the unit's own module and the
+      ordinary type winning in ordinary type and expression positions, and it
+      keeps reporting S1003 for the same pair in one module.
+    todo:
+      - >-
+        Proposal by the language owner (2026-10-04), not yet decided or
+        implemented: write a unit's impl block as `impl <s>` (unit-annotation
+        brackets) instead of `impl s`, so unit impls are syntactically distinct
+        from type impls; `unit s physical` followed by `impl <s> { ... }`. This
+        would resolve the same-module `impl` ambiguity; the parser, Sema,
+        formatter, LSP, core and stdlib unit sources, and units.md would then
+        need to follow.
+    classification: constraining
+    status: open

@@ -293,6 +293,8 @@ type server struct {
 	writeMu              sync.Mutex    //
 	timerMu              sync.Mutex    //
 	shutdown             bool          //
+	workspaceRoots       []string
+	workspaceSymbols     *workspaceSymbolIndex
 }
 
 type sourceOverlay = lspserver.SourceOverlay
@@ -331,15 +333,33 @@ func main() {
 	}
 }
 
+// run reads protocol messages on their own goroutine into a request queue and
+// handles them on this one, so a formatting request is not delayed behind
+// analysis requests still waiting in the queue (requestQueue).
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Responsiveness model", "Document synchronization"
 func (s *server) run() error {
 	defer s.stopDiagnosticTimers()
-	for {
-		message, err := protocol.ReadMessage(s.in)
-		if err == io.EOF {
-			return nil
+	queue := newRequestQueue()
+	go func() {
+		for {
+			message, err := protocol.ReadMessage(s.in)
+			if err == io.EOF {
+				queue.close(nil)
+				return
+			}
+			if err != nil {
+				queue.close(err)
+				return
+			}
+			queue.push(message)
 		}
-		if err != nil {
-			return err
+	}()
+	for {
+		message, ok := queue.next()
+		if !ok {
+			return queue.err()
 		}
 		if err := s.handle(message); err != nil {
 			return err
@@ -350,6 +370,10 @@ func (s *server) run() error {
 func (s *server) handle(message rpcMessage) error {
 	switch message.Method {
 	case "initialize":
+		var params initializeParams
+		if len(message.Params) > 0 && json.Unmarshal(message.Params, &params) == nil {
+			s.workspaceRoots = workspaceRootsFromInitialize(params)
+		}
 		return s.respond(message.ID, map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync": map[string]any{
@@ -363,12 +387,23 @@ func (s *server) handle(message rpcMessage) error {
 				},
 				"documentFormattingProvider": true,
 				"documentSymbolProvider":     true,
-				"hoverProvider":              true,
-				"definitionProvider":         true,
-				"referencesProvider":         true,
-				"documentHighlightProvider":  true,
-				"callHierarchyProvider":      true,
-				"codeActionProvider":         true,
+				"workspaceSymbolProvider":    true,
+				"workspace": map[string]any{
+					"workspaceFolders": map[string]any{
+						"supported":           true,
+						"changeNotifications": true,
+					},
+				},
+				"hoverProvider":             true,
+				"definitionProvider":        true,
+				"typeDefinitionProvider":    true,
+				"referencesProvider":        true,
+				"documentHighlightProvider": true,
+				"renameProvider": map[string]any{
+					"prepareProvider": true,
+				},
+				"callHierarchyProvider": true,
+				"codeActionProvider":    true,
 				"completionProvider": map[string]any{
 					"triggerCharacters": []string{"."},
 				},
@@ -392,6 +427,22 @@ func (s *server) handle(message rpcMessage) error {
 		})
 	case "initialized":
 		return nil
+	case "workspace/didChangeWorkspaceFolders":
+		var params didChangeWorkspaceFoldersParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		s.workspaceRoots = changedWorkspaceRoots(s.workspaceRoots, params)
+		return nil
+	case "workspace/symbol":
+		var params workspaceSymbolParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return s.respondError(message.ID, -32602, err.Error())
+		}
+		if s.workspaceSymbols == nil {
+			s.workspaceSymbols = newWorkspaceSymbolIndex()
+		}
+		return s.respond(message.ID, workspaceSymbolsForQuery(s.workspaceSymbols, s.workspaceRoots, params.Query, s.sourceOverlay()))
 	case "workspace/didChangeConfiguration", "workspace/didChangeWatchedFiles":
 		// Analysis configuration is read from the project manifest for each
 		// analysis. Re-publishing open documents applies a changed depth without
@@ -483,7 +534,10 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []codeAction{})
 		}
-		return s.respond(message.ID, ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics))
+		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)
+		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
+		actions = append(actions, missingSeparatorCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
+		return s.respond(message.ID, actions)
 	case "textDocument/completion":
 		var params completionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -546,6 +600,30 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, nil)
 		}
 		return s.respond(message.ID, locations)
+	case "sec/compilerKnownDefinition":
+		var params compilerKnownDefinitionParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return s.respondError(message.ID, -32602, err.Error())
+		}
+		text, ok := compilerKnownDefinitionText(params.URI)
+		if !ok {
+			return s.respondError(message.ID, -32602, "not a compiler-known definition URI")
+		}
+		return s.respond(message.ID, compilerKnownDefinitionResult{Text: text})
+	case "textDocument/typeDefinition":
+		var params definitionParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		locations := typeDefinitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		if len(locations) == 0 {
+			return s.respond(message.ID, nil)
+		}
+		return s.respond(message.ID, locations)
 	case "textDocument/signatureHelp":
 		var params signatureHelpParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -570,6 +648,34 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, []location{})
 		}
 		return s.respond(message.ID, referencesForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.Context.IncludeDeclaration, s.sourceOverlay()))
+	case "textDocument/prepareRename":
+		var params renameParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		result, err := prepareRenameForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		if err != nil {
+			return s.respondError(message.ID, -32602, err.Error())
+		}
+		return s.respond(message.ID, result)
+	case "textDocument/rename":
+		var params renameParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respondError(message.ID, -32602, "the document is not open")
+		}
+		edit, err := renameForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.NewName, s.sourceOverlay())
+		if err != nil {
+			return s.respondError(message.ID, -32602, err.Error())
+		}
+		return s.respond(message.ID, edit)
 	case "textDocument/documentHighlight":
 		var params documentHighlightParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -909,6 +1015,11 @@ func definitionsForSource(uri string, text string, pos position, overlays ...sou
 		return nil
 	}
 	definitions := analyzer.DefinitionsAt(use.File, use.Line, use.Column)
+	if len(definitions) == 0 {
+		if member, compilerKnown := analyzer.CompilerKnownMemberAt(use.File, use.Line, use.Column); compilerKnown {
+			return []location{compilerKnownDefinitionLocation(member)}
+		}
+	}
 	overlay := firstSourceOverlay(overlays)
 	seen := map[string]bool{}
 	for _, definition := range definitions {
@@ -1050,8 +1161,9 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		prepareProgramForLSP(fileAST, pathFromURI(uri), firstSourceOverlay(overlays))
 		analyzer.Analyze(fileAST)
 		analyzed = true
-		if expected, ok := expectedReturnTypeAt(fileAST, analyzer, parseText, offset); ok {
+		if expected, getter, ok := expectedReturnTypeAt(fileAST, analyzer, parseText, offset); ok {
 			context.ExpectedType = &expected
+			context.EnclosingGetter = getter
 		}
 	}
 
@@ -1062,18 +1174,45 @@ func completeSource(uri string, text string, offset int, overlays ...sourceOverl
 		if targetExpr == nil {
 			return []completionItem{}
 		}
+		// A selector written directly as the returned value completes only
+		// members of the expected return type (user decision 2026-10-03).
+		var expected *sema.Type
+		receiverStart := memberReceiverStart(text, context.DotOffset)
+		if context.ExpectedType != nil && isReturnValueContext(text[:receiverStart], receiverStart) {
+			expected = context.ExpectedType
+		} else if left := comparisonLeftOperandAt(fileAST, parseText, receiverStart); left != nil {
+			// The right operand of `==`/`!=` completes only members of the
+			// left operand's type (decision 2026-10-03).
+			if leftType, ok := analyzer.TypeOf(left); ok {
+				expected = &leftType
+			}
+		}
 		if identifier, ok := targetExpr.(*ast.Identifier); ok {
 			if staticType, exists := analyzer.Types()[identifier.Value]; exists {
-				return memberCompletionItems(staticType, analyzer, context.Prefix, true, activeModule)
+				return memberCompletionItems(staticType, analyzer, context.Prefix, true, activeModule, expected)
 			}
 		}
 		exprType, ok := analyzer.TypeOf(targetExpr)
 		if !ok {
 			return []completionItem{}
 		}
-		return memberCompletionItems(exprType, analyzer, context.Prefix, false, activeModule)
+		items := memberCompletionItems(exprType, analyzer, context.Prefix, false, activeModule, expected)
+		// Returning the property itself from its own getter would recurse.
+		if receiver, onIdentifier := targetExpr.(*ast.Identifier); expected != nil && onIdentifier && receiver.Value == "self" && context.EnclosingGetter != "" {
+			filtered := items[:0]
+			for _, item := range items {
+				if item.Label != context.EnclosingGetter {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+		}
+		return items
 	}
 
+	if items, ok := subjectCompletionItems(uri, text, offset, context, firstSourceOverlay(overlays)); ok {
+		return items
+	}
 	return globalCompletionItems(text, analyzer, context)
 }
 
@@ -1169,7 +1308,25 @@ func documentSymbolForStatement(text string, stmt ast.Statement) (documentSymbol
 			kind = 10
 			detail = "enum"
 		}
-		return namedDocumentSymbol(text, stmt.Name.Value, detail, kind, stmt.Token, stmt.Name.Token), true
+		symbol := namedDocumentSymbol(text, stmt.Name.Value, detail, kind, stmt.Token, stmt.Name.Token)
+		if stmt.StructType != nil {
+			for _, field := range stmt.StructType.Fields {
+				if field != nil && field.Name != nil {
+					symbol.Children = append(symbol.Children, namedDocumentSymbol(text, field.Name.Value, typeReferenceName(field.Type), 8, field.Token, field.Name.Token))
+				}
+			}
+		}
+		for _, variant := range stmt.Variants {
+			if variant != nil {
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, variant.Value, "enum member", 22, variant.Token, variant.Token))
+			}
+		}
+		for _, variant := range stmt.UnionVariants {
+			if variant != nil && variant.Name != nil {
+				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, variant.Name.Value, "union member", 22, variant.Token, variant.Name.Token))
+			}
+		}
+		return symbol, true
 	case *ast.UnitDeclStatement:
 		if stmt == nil || stmt.Name == nil {
 			return documentSymbol{}, false
@@ -1842,10 +1999,14 @@ func hoverForSource(uri string, text string, pos position, overlays ...sourceOve
 		return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 	}
 	if symbol, ok := analyzer.Symbols()[name]; ok {
-		return typedHover(nameRange, symbol.Name, symbol.Type), true
+		hover := typedHover(nameRange, symbol.Name, symbol.Type)
+		hover.Contents.Value += unitDerivationHoverSuffix(analyzer, symbol.Type)
+		return hover, true
 	}
 	if typ, ok := analyzer.Types()[name]; ok {
-		return typedHover(nameRange, "type "+name+genericHeaderDisplay(typ.GenericParameters, typ.GenericConstraints), typ), true
+		hover := typedHover(nameRange, "type "+name+genericHeaderDisplay(typ.GenericParameters, typ.GenericConstraints), typ)
+		hover.Contents.Value += unitDerivationHoverSuffix(analyzer, typ)
+		return hover, true
 	}
 
 	return hoverResult{}, false
@@ -2209,8 +2370,17 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 		effects = "\n\nEffects: `" + strings.Join(names, "`, `") + "`."
 	}
 	declaration := fmt.Sprintf("%s %s: %s", kind, member.Name, result)
+	resolved := ""
 	if member.Signature != "" {
 		declaration = member.Signature
+		// The registry signature is generic; show the receiver-resolved
+		// result at this use as well.
+		if result != "context-dependent" {
+			resolved = "\n\nResult here: `" + result + "`."
+		}
+	}
+	if member.Rule != "" {
+		resolved += "\n\nRule: " + member.Rule + "."
 	}
 	documentation := ""
 	if member.Documentation != "" {
@@ -2229,7 +2399,7 @@ func compilerKnownMemberHover(sourceRange lspRange, member sema.CompilerKnownMem
 	case sema.PrivilegedCoreMember:
 		category = "\n\nPrivileged core member."
 	}
-	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s%s", declaration, member.ID, category, effects, documentation)
+	contents := fmt.Sprintf("```sec\n%s\n```\n\nCompiler-known `%s`.%s%s%s%s", declaration, member.ID, resolved, category, effects, documentation)
 	return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: sourceRange}
 }
 
@@ -2249,11 +2419,7 @@ func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.
 		}
 		for _, property := range typ.Properties {
 			if sameSourceToken(property.Token, definition) {
-				modifier := ""
-				if property.Static {
-					modifier = "static "
-				}
-				return fmt.Sprintf("```sec\n%sproperty %s: %s\n```", modifier, property.Name, lspTypeName(property.Type)), true
+				return propertyHoverContents(property), true
 			}
 		}
 		for _, event := range typ.Events {
@@ -2453,6 +2619,7 @@ func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 			contents += "\n\nA successful invocation consumes the callable value."
 		}
 	}
+	contents += shapedFactsHoverSuffix(typ)
 	if value, source, ok := sema.DefaultValuePreview(typ, 8); ok {
 		contents += fmt.Sprintf("\n\nDefault: `%s`\n\nSource: `%s`", value, source)
 	} else {
@@ -2462,6 +2629,61 @@ func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 		Contents: markupContent{Kind: "markdown", Value: contents},
 		Range:    rng,
 	}
+}
+
+// shapedFactsHoverSuffix presents the shaped facts Sema resolved for a
+// binding's type: rank, shape, Len, whether the shape is static or a runtime
+// fact of the value, and canonical dense contiguity. It never invents facts
+// Sema has not resolved.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shaped values"
+func shapedFactsHoverSuffix(typ sema.Type) string {
+	facts, ok := sema.ShapedFactsOf(typ)
+	if !ok {
+		return ""
+	}
+	if !facts.StaticShape {
+		return fmt.Sprintf("\n\nShaped `%s`: Rank `%s` · Shape known at run time from the viewed storage", facts.Family, facts.Rank)
+	}
+	return fmt.Sprintf("\n\nShaped `%s`: Rank `%s` · Shape `%s` (static) · Len `%s` · Strides `%s` · IsContiguous `true`",
+		facts.Family, facts.Rank, facts.Shape, facts.Len, facts.Strides)
+}
+
+// unitDerivationHoverSuffix presents the dimension derivation Sema resolved
+// for a quantity type: each normalized unit factor with its declared
+// dimension and scale, the resulting dimension, and the exact combined scale.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Unit actions" (Show dimension derivation, Show exact scale and offset)
+//   - rules/types/units.md — "LSP requirements"
+func unitDerivationHoverSuffix(analyzer *sema.Analyzer, typ sema.Type) string {
+	derivation, ok := analyzer.UnitDerivationOf(typ)
+	if !ok {
+		return ""
+	}
+	lines := []string{"Dimension derivation:"}
+	for _, step := range derivation.Steps {
+		factor := step.Unit
+		if step.Exponent != 1 {
+			factor += "^" + strconv.Itoa(step.Exponent)
+		}
+		if !step.Known {
+			lines = append(lines, "- `"+factor+"`: declaration not available")
+			continue
+		}
+		detail := "- `" + factor + "`: " + step.Dimension
+		if step.Scale != "" {
+			detail += ", scale `" + step.Scale + "`"
+		}
+		lines = append(lines, detail)
+	}
+	result := "= " + derivation.Dimension
+	if derivation.Scale != "" {
+		result += ", exact scale `" + derivation.Scale + "`"
+	}
+	lines = append(lines, result)
+	return "\n\n" + strings.Join(lines, "\n")
 }
 
 // unitQuantityHoverSuffix exposes the compiler-owned facts required by
@@ -2522,7 +2744,7 @@ func selfMemberHoverContents(target sema.Type, name string, functions map[string
 	}
 	for _, property := range target.Properties {
 		if property.Name == name && !property.Static {
-			return fmt.Sprintf("```sec\nproperty %s: %s\n```", name, lspTypeName(property.Type)), true
+			return propertyHoverContents(property), true
 		}
 	}
 	for _, event := range target.Events {
@@ -2897,15 +3119,17 @@ func typeReferenceName(ref *ast.TypeReference) string {
 }
 
 type completionContext struct {
-	Prefix              string
-	Member              bool
-	DotOffset           int
-	TypeForm            bool
-	ContractModifier    bool
-	LifecycleMember     bool
-	ExpressionSite      bool
-	ReturnValue         bool
-	ExpectedType        *sema.Type
+	Prefix           string
+	Member           bool
+	DotOffset        int
+	TypeForm         bool
+	ContractModifier bool
+	LifecycleMember  bool
+	ExpressionSite   bool
+	ReturnValue      bool
+	ExpectedType     *sema.Type
+	// EnclosingGetter names the property whose getter body holds the cursor.
+	EnclosingGetter     string
 	CursorOffset        int
 	FunctionStartOffset int
 }
@@ -3102,7 +3326,15 @@ func isContractModifierContext(prefix string) bool {
 //   - rules/compiler/compiler_known_members.md — "Built-in type member lookup"
 //   - rules/compiler/compiler_known_members.md — "Named and related types"
 //   - rules/tooling/lsp.md — "Completion"
-func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix string, static bool, accessingModule string) []completionItem {
+//
+// When expected is non-nil the selector is the returned value, and only
+// members whose value type matches the expected type are offered: fields,
+// properties, and compiler-known members by their type, methods by any
+// overload's return type, enum members and union variants by their owner.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Completion", "Completion ranking" (expected type)
+func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix string, static bool, accessingModule string, expected *sema.Type) []completionItem {
 	types, functions, symbols := analyzer.Types(), analyzer.Functions(), analyzer.Symbols()
 	// Parameter and local facts may retain the compiler-known opaque fallback
 	// captured before trusted core declarations refine a temporal identity.
@@ -3115,9 +3347,21 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 	}
 	items := []completionItem{}
 	seen := map[string]bool{}
-	add := func(item completionItem) {
+	addTyped := func(item completionItem, valueTypes ...sema.Type) {
 		if item.Label == "" || seen[item.Label] || !completionLabelMatches(item.Label, prefix) {
 			return
+		}
+		if expected != nil {
+			matched := false
+			for _, valueType := range valueTypes {
+				if completionTypeMatches(*expected, valueType) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return
+			}
 		}
 		seen[item.Label] = true
 		items = append(items, item)
@@ -3137,7 +3381,7 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 		if len(member.Effects) > 0 {
 			detail += " (effectful)"
 		}
-		add(completionItem{Label: member.Name, Kind: kind, Detail: detail})
+		addTyped(completionItem{Label: member.Name, Kind: kind, Detail: detail}, member.Result)
 	}
 
 	// rules/declarations/enums.md section 16 and unions.md section 4 place
@@ -3151,7 +3395,7 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 				if !analyzer.CanAccessStructFieldFromModule(exprType, field.Name, accessingModule) {
 					continue
 				}
-				add(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)})
+				addTyped(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)}, field.Type)
 			}
 		}
 	case sema.RegisterType:
@@ -3161,19 +3405,19 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 				if field.Access != "" {
 					detail += " (" + string(field.Access) + ")"
 				}
-				add(completionItem{Label: field.Name, Kind: 5, Detail: detail})
+				addTyped(completionItem{Label: field.Name, Kind: 5, Detail: detail}, field.Type)
 			}
 		}
 	case sema.EnumType:
 		if static {
 			for _, variant := range exprType.EnumValues {
-				add(completionItem{Label: variant, Kind: 20, Detail: lspTypeName(exprType)})
+				addTyped(completionItem{Label: variant, Kind: 20, Detail: lspTypeName(exprType)}, exprType)
 			}
 		}
 	case sema.UnionType:
 		if static {
 			for _, variant := range exprType.UnionVariants {
-				add(completionItem{Label: variant.Name, Kind: 20, Detail: lspTypeName(exprType)})
+				addTyped(completionItem{Label: variant.Name, Kind: 20, Detail: lspTypeName(exprType)}, exprType)
 			}
 		}
 	}
@@ -3182,17 +3426,17 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 	// static and instance member namespaces on their legal receiver forms.
 	for _, property := range exprType.Properties {
 		if property.Static == static {
-			add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+			addTyped(completionItem{Label: property.Name, Kind: 10, Detail: propertyCompletionDetail(property)}, property.Type)
 		}
 	}
 	if !static {
 		for _, property := range analyzer.InheritedCoreProperties(exprType) {
-			add(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)})
+			addTyped(completionItem{Label: property.Name, Kind: 10, Detail: lspTypeName(property.Type)}, property.Type)
 		}
 	}
 	if !static {
 		for _, event := range exprType.Events {
-			add(completionItem{Label: event.Name, Kind: 24, Detail: lspTypeName(event.Type)})
+			addTyped(completionItem{Label: event.Name, Kind: 24, Detail: lspTypeName(event.Type)}, event.Type)
 		}
 	}
 
@@ -3204,13 +3448,15 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 			}
 			methodName := strings.TrimPrefix(name, methodPrefix)
 			matching := make([]sema.Function, 0, len(overloads))
+			returnTypes := make([]sema.Type, 0, len(overloads))
 			for _, overload := range overloads {
 				if overload.Static == static {
 					matching = append(matching, overload)
+					returnTypes = append(returnTypes, overload.ReturnType)
 				}
 			}
 			if len(matching) > 0 {
-				add(completionItem{Label: methodName, Kind: 2, Detail: functionCompletionDetail(matching)})
+				addTyped(completionItem{Label: methodName, Kind: 2, Detail: functionCompletionDetail(matching)}, returnTypes...)
 			}
 		}
 		if static && typeName == exprType.Name {
@@ -3220,7 +3466,7 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 					continue
 				}
 				memberName := strings.TrimPrefix(name, staticPrefix)
-				add(completionItem{Label: memberName, Kind: 6, Detail: lspTypeName(symbol.Type)})
+				addTyped(completionItem{Label: memberName, Kind: 6, Detail: lspTypeName(symbol.Type)}, symbol.Type)
 			}
 		}
 	}
@@ -3366,10 +3612,11 @@ func completionTypeMatches(expected sema.Type, actual sema.Type) bool {
 	return expected.Kind == actual.Kind
 }
 
-func expectedReturnTypeAt(program *ast.Program, analyzer *sema.Analyzer, text string, offset int) (sema.Type, bool) {
+func expectedReturnTypeAt(program *ast.Program, analyzer *sema.Analyzer, text string, offset int) (sema.Type, string, bool) {
 	if program == nil {
-		return sema.Type{}, false
+		return sema.Type{}, "", false
 	}
+	getter := ""
 	functions := analyzer.Functions()
 	var best sema.Type
 	bestStart := -1
@@ -3392,6 +3639,30 @@ func expectedReturnTypeAt(program *ast.Program, analyzer *sema.Analyzer, text st
 		}
 		best = overloads[0].ReturnType
 		bestStart = start
+		getter = ""
+	}
+	// A property getter returns the property's declared type.
+	visitGetter := func(property *ast.PropertyDeclaration, target string) {
+		if property == nil || property.Getter == nil || property.Name == nil {
+			return
+		}
+		start := textPositionOffset(text, property.Getter.Token.Line, property.Getter.Token.Column)
+		end := matchingBraceOffset(text, start)
+		if start < 0 || end < 0 || offset < start || offset > end || start < bestStart {
+			return
+		}
+		owner, ok := analyzer.Types()[target]
+		if !ok {
+			return
+		}
+		for _, declared := range owner.Properties {
+			if declared.Name == property.Name.Value {
+				best = declared.Type
+				bestStart = start
+				getter = declared.Name
+				return
+			}
+		}
 	}
 
 	for _, stmt := range program.Statements {
@@ -3406,6 +3677,10 @@ func expectedReturnTypeAt(program *ast.Program, analyzer *sema.Analyzer, text st
 				target = stmt.Target.Name
 			}
 			for _, member := range stmt.Members {
+				if property, ok := member.(*ast.PropertyDeclaration); ok {
+					visitGetter(property, target)
+					continue
+				}
 				fn, ok := member.(*ast.FunctionDeclaration)
 				if !ok || fn.Name == nil {
 					continue
@@ -3419,9 +3694,9 @@ func expectedReturnTypeAt(program *ast.Program, analyzer *sema.Analyzer, text st
 		}
 	}
 	if bestStart < 0 {
-		return sema.Type{}, false
+		return sema.Type{}, "", false
 	}
-	return best, true
+	return best, getter, true
 }
 
 func matchingBraceOffset(text string, openOffset int) int {
@@ -3718,6 +3993,51 @@ func ownershipCodeActions(uri string, text string, reported []diagnostic) []code
 				uri: {edit},
 			}},
 		})
+	}
+	return actions
+}
+
+// unitConversionCodeActions offers the compiler-proven explicit unit
+// conversion Sema recorded for a rejected value, attached to the reported
+// diagnostic at that value. The LSP never derives a conversion itself and
+// never invents a factor, exchange rate, or rounding policy.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Unit actions"
+//   - rules/types/units.md — "LSP requirements"
+func unitConversionCodeActions(uri string, text string, reported []diagnostic, overlay sourceOverlay) []codeAction {
+	if len(reported) == 0 {
+		return nil
+	}
+	program := parseProgramForLSP(uri, text)
+	if program == nil {
+		return nil
+	}
+	path := pathFromURI(uri)
+	prepareProgramForLSP(program, path, overlay)
+	analyzer := newLSPAnalyzer(uri)
+	analyzer.Analyze(program)
+	actions := []codeAction{}
+	for _, suggestion := range analyzer.UnitConversionSuggestions() {
+		if suggestion.File != "" && path != "" && normalizedSourcePath(suggestion.File) != normalizedSourcePath(path) {
+			continue
+		}
+		start := diagnosticTokenStart(text, lexer.Token{Line: suggestion.Line, Column: suggestion.Column})
+		end := diagnosticTokenStart(text, lexer.Token{Line: suggestion.EndLine, Column: suggestion.EndColumn})
+		for _, reportedDiagnostic := range reported {
+			if reportedDiagnostic.Range.Start != start {
+				continue
+			}
+			actions = append(actions, codeAction{
+				Title:       "Convert explicitly to " + suggestion.Target + " with " + suggestion.Replacement,
+				Kind:        "quickfix",
+				Diagnostics: []diagnostic{reportedDiagnostic},
+				Edit: workspaceEdit{Changes: map[string][]textEdit{
+					uri: {{Range: lspRange{Start: start, End: end}, NewText: suggestion.Replacement}},
+				}},
+			})
+			break
+		}
 	}
 	return actions
 }
@@ -4321,19 +4641,19 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	importErrors := prepareProgramForLSP(program, path, firstSourceOverlay(overlays))
 	for _, err := range importErrors {
 		if diagnosticBelongsToSource(err, path) {
-			diagnostics = append(diagnostics, semaDiagnostic(err, 1, text))
+			diagnostics = append(diagnostics, semaDiagnosticWithSources(err, 1, uri, text, firstSourceOverlay(overlays)))
 		}
 	}
 
 	analyzer := newLSPAnalyzer(uri)
 	for _, err := range analyzer.Analyze(program) {
 		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery, text) {
-			diagnostics = append(diagnostics, semaDiagnostic(err, 1, text))
+			diagnostics = append(diagnostics, semaDiagnosticWithSources(err, 1, uri, text, firstSourceOverlay(overlays)))
 		}
 	}
 	for _, warning := range analyzer.Warnings() {
 		if diagnosticBelongsToSource(warning, path) {
-			diagnostics = append(diagnostics, semaDiagnostic(warning, 2, text))
+			diagnostics = append(diagnostics, semaDiagnosticWithSources(warning, 2, uri, text, firstSourceOverlay(overlays)))
 		}
 	}
 	return diagnostics
@@ -4781,7 +5101,12 @@ func findProjectRoot(path string) string {
 }
 
 func newLSPAnalyzer(uri string) *sema.Analyzer {
-	return sema.NewAnalyzerWithDepth(lspAnalysisDepth(pathFromURI(uri)))
+	sourcePath := pathFromURI(uri)
+	depth := lspAnalysisDepth(sourcePath)
+	if plan, err := lspScalarPlan(sourcePath); err == nil {
+		return sema.NewAnalyzerWithScalarPlanAndDepth(plan, depth)
+	}
+	return sema.NewAnalyzerWithDepth(depth)
 }
 
 func lspAnalysisDepth(sourcePath string) sema.AnalysisDepth {
@@ -5653,10 +5978,24 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 
 // semaDiagnostic converts Sema's one-based Unicode-scalar span to the LSP's
 // zero-based UTF-16 range without changing diagnostic identity or severity.
+// A related location in another file is converted with that file's text read
+// from disk.
 //
 // Rules:
 //   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
 func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
+	return semaDiagnosticWithSources(err, severity, "", text, nil)
+}
+
+// semaDiagnosticWithSources is semaDiagnostic with the current document URI
+// and the open-document overlay, so a related location is converted to UTF-16
+// with the related file's own text: the current document, an unsaved open
+// document, or the file on disk. An unreadable related file keeps the scalar
+// column rather than dropping the link.
+//
+// Rules:
+//   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
+func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text string, overlay sourceOverlay) diagnostic {
 	start := diagnosticTokenStart(text, lexer.Token{Line: err.Line, Column: err.Column})
 	end := start
 	end.Character++
@@ -5675,7 +6014,11 @@ func semaDiagnostic(err sema.Error, severity int, text string) diagnostic {
 		}
 		message += "\n\nprevious declaration at " + previous
 		if err.PreviousFile != "" {
+			relatedToken := lexer.Token{File: err.PreviousFile, Line: err.PreviousLine, Column: err.PreviousColumn}
 			point := position{Line: err.PreviousLine - 1, Character: err.PreviousColumn - 1}
+			if relatedText := sourceTextForToken(uri, text, overlay, relatedToken); relatedText != "" {
+				point = diagnosticTokenStart(relatedText, relatedToken)
+			}
 			related = append(related, diagnosticRelatedInformation{
 				Location: location{URI: uriFromPath(err.PreviousFile), Range: lspRange{Start: point, End: point}},
 				Message:  "related declaration or earlier operation",
@@ -5881,4 +6224,42 @@ func uriFromPath(path string) string {
 		path = absolute
 	}
 	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+}
+
+// memberReceiverStart returns the offset where the receiver of the selector
+// whose dot is at dotOffset begins: it walks back over identifiers, dots, and
+// balanced call or index groups, so `return self.inner.` yields the offset of
+// `self`.
+func memberReceiverStart(text string, dotOffset int) int {
+	if dotOffset > len(text) {
+		dotOffset = len(text)
+	}
+	index := dotOffset
+	for index > 0 {
+		previous := text[index-1]
+		switch {
+		case isIdentifierByte(previous) || previous == '.':
+			index--
+		case previous == ')' || previous == ']':
+			open, close := byte('('), previous
+			if close == ']' {
+				open = '['
+			}
+			depth := 0
+			for index > 0 {
+				index--
+				if text[index] == close {
+					depth++
+				} else if text[index] == open {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+			}
+		default:
+			return index
+		}
+	}
+	return index
 }

@@ -761,6 +761,8 @@ integrations:
     - internal/parser/parser_test.go
     - cmd/lsp/main_test.go
     implemented:
+    - "unit and type namespaces (2026-10-04): an ordinary type, enum, struct, or interface of one module may use the spelling of a unit declared in another module (core `A`/`K`, stdlib units); the unit entry moves to a separate unit table, its impl block in its own module binds to the unit with its own impl-block key, unit metadata and representation updates go to the unit entry, and the ordinary type keeps its definition, impl, and methods, in either declaration order. Tests: internal/sema/unit_type_namespace_test.go"
+    - "visible-declaration shadowing (2026-10-04): one lookup of the unqualified visible scope (the current module's first top-level declaration per name from the module namespace pass, accessible always-available core declarations, and uppercase compiler-known types such as Event; units excluded; declarations of imported modules count only qualified, rule §17) now drives parameters, setter value parameters, generic parameters, and locals. Parameters report S1104 names.parameter-shadows-declaration for visible generic parameters, functions, and module variables and S1040 for types; generic parameters report S1105 names.generic-parameter-shadows-declaration or S1039; locals keep S1057. Every diagnostic points at the hidden declaration when it has a source location. Lowercase always-available type spellings (error, duration, ...) stay usable as bindings, as in `Err(error)`. LSP rename inherits the rules through its re-analysis safety check. Tests: internal/sema/shadowing_visible_declarations_test.go"
     - top-level module declaration conflict checks across types, units, enums, interfaces, function overload groups,
       and module variables
     - function overload groups distinguished by parameter signature with return type excluded from overload identity
@@ -788,12 +790,11 @@ integrations:
     - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed
       across feature-specific code paths
     remaining:
-    - enforce the no-shadowing rule for parameters, generic parameters, nested declarations, imports, aliases, imported
-      types, visible values, and directly visible members (locals, loop bindings, and pattern bindings now cover visible
-      generic parameters, same-module types, free functions, and enclosing locals)
-    - "unit-vs-type separation: a unit and a nominal type with the same spelling still share the internal type table, so a user `type A int` or `type K int` fails against the core units A (ampere) and K (kelvin) with \"ordinary impl for A must be declared in defining module main, not module core\"; stdlib/unit has 38 more uppercase units. Unit impls currently also carry methods (Hz, N, Pa, C); whether units keep ordinary methods or only init()-based conversions is deferred to the Sec 0.2 design, so the full separation waits for that decision"
-    - extend parameter shadowing checks beyond same-module source types to all other visible declarations, and prevent compiler-provided contextual bindings such as self and property-setter value parameters from silently replacing them
-    - reject generic parameters that shadow imported visible types, visible values, or directly visible members
+    - "enforce the no-shadowing rule for nested declarations, import bindings and aliases (needs the file-local import bindings of frontend.modules), and members made directly visible by the declaration grammar"
+    - "module-level variables live in the analyzer's shared symbol table, so a project `let value` at module scope leaks into the analysis of other modules (core locals named `value` then report S1004); module variables must be scoped to their module (found 2026-10-04)"
+    - "unit-vs-type separation, remainder (MD-040): a unit and a same-spelled type within one module are still an S1003 conflict, constructor-style bare-name unit conversion and unit-impl `Name.Method` functions are not yet disambiguated from a visible same-spelled type, and unit symbols are not yet compared only within the unit-symbol namespace by every consumer"
+    - "todo (2026-10-04, proposal, MD-040): consider `impl <s>` as the unit impl spelling (`unit s physical` then `impl <s> { ... }`) to keep unit impls syntactically apart from type impls"
+    - reject generic parameters that shadow an enclosing generic parameter (blocked on generic methods with additional type parameters) or directly visible members
     - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific
       registries and collision checks
     - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration

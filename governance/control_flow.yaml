@@ -375,6 +375,7 @@ integrations:
       - function and lambda return validation consume ResolvedIfFlow, including constant conditions whose impossible path must not create a missing-return error
       - literal-unreachable branches routed through the canonical unreachable-code error policy
       - compile-time integer comparisons, boolean equality, negation, and short-circuit conjunction/disjunction select reachable paths through the same ResolvedIfFlow and S3001 machinery while runtime-dependent conditions remain conditional
+      - mutable dependence is transitive for constant conditions; an immutable binding initialized from a mutable binding's current value (Symbol.TransientConstant) never proves a condition constant, so loop-body branches over such values stay runtime conditions
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
       - "MD-006 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 7, 2026-10-03): non-binding is state tests are ordinary bool expressions at the non-chainable equality level in every expression context (let, return, &&/||, arguments); `is not` negates variant, empty, Some, None, and available tests; ungrouped chaining with == or != is rejected; `(test) == true` (A2002) and `!(test)` (A2003) are bad-practice warnings with explicit Language Corrections; `is Some(binding)` binds only as the complete if condition, while `is not Some(value)` and `!(option is Some(value))` receive focused parser diagnostics; negated tests keep data-flow refinement"
     remaining:
@@ -410,6 +411,8 @@ integrations:
         result: passed on 2026-09-26; immutable path execution and continuation facts, implicit false paths, and constant-condition return validation are covered
       - command: go test ./internal/sema -run 'Test(FoldedBooleanConditionsReportCanonicalUnreachableStatement|ResolvedIfFlowRetainsPathExecutionAndTermination)' -count=1
         result: passed on 2026-10-01; folded integer and boolean conditions drive S3001, exact if-path facts, and non-void return validation while runtime-dependent comparisons remain conditional
+      - command: go test ./internal/sema -run 'TestConditionsOverValuesDerivedFromMutableBindingsStayRuntime' -count=1
+        result: passed on 2026-10-03; immutable values derived from mutable loop state no longer produce false S3001 branches, while immutable constant chains still do
       - command: go test ./internal/formatter -run If -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
 

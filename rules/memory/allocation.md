@@ -369,6 +369,14 @@ reference or slice
 
 § 17(5) Compile-time folded string materialization is not a runtime dynamic allocation merely because constant data is stored in the output image.
 
+§ 17(6) Runtime string concatenation and interpolation are one fallible materialization each and use the canonical active allocation context of § 5. Sec 0.1 defines no string-specific allocator and no string-specific allocation domain.
+
+§ 17(7) The frontend resolves the applicable allocation context before Semantic IR; Semantic IR preserves it with the ordinary failure channel, ownership, and lifetime facts (§ 25), and lowering consumes it without choosing an allocator independently.
+
+§ 17(8) Allocation failure of runtime string materialization uses `AllocationError` (§ 10). When the resulting string escapes a local allocation lifetime, materialization uses a context whose lifetime suffices for the result; a backend must not repair an invalid lifetime by silently reallocating into another domain (§ 7).
+
+§ 17(9) Without a valid allocation context, compilation fails (§ 22(4)). Under a profile that prohibits dynamic allocation, runtime string materialization is valid only when the compiler proves the allocation is eliminated while preserving Sec semantics (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 5).
+
 ---
 
 ## § 18 Closures and escaping execution

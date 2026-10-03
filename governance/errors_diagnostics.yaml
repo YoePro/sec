@@ -239,8 +239,10 @@ integrations:
           retired flag.
       - id: diagnostics.lexer-ids
         description: >-
-          Published lexical diagnostics L1001 through L1020 are registered and
-          establish the L namespace.
+          Published lexical diagnostics L1001 through L1021 are registered and
+          establish the L namespace; L1021
+          lexer.unescaped-interpolation-closing-brace (MD-005) reports an
+          unmatched single closing brace in interpolated-string text.
       - id: diagnostics.parser-ids
         description: >-
           Parser diagnostics P2001 through at least P2029 are registered;
@@ -248,8 +250,10 @@ integrations:
       - id: diagnostics.semantic-migration
         description: >-
           A growing registered S namespace exists, including S1001 through
-          S1096 definitions in the reviewed registry plus mandatory S3001 and
-          S4001.
+          S1099 definitions in the reviewed registry plus mandatory S3001 and
+          S4001. S1097 operators.string-materialization-requires-try and S1098
+          allocation.string-materialization-without-context implement MD-004;
+          S1099 names.confusable-identifier implements MD-001.
       - id: diagnostics.s1052-union-payload-move-storage
         description: >-
           Invalid move-only payload extraction from union storage that cannot
@@ -372,6 +376,12 @@ integrations:
         description: >-
           A2001/performance.large-value-parameter is registered as configurable
           Information.
+      - id: diagnostics.a2002-a2003
+        description: >-
+          A2002/operators.redundant-state-test-comparison and
+          A2003/operators.negated-state-test are configurable Warning
+          bad-practice diagnostics for `(test) == true` and `!(test)` (MD-006),
+          each recommending the canonical direct state test.
       - id: diagnostics.s1014
         description: >-
           S1014/switch.incomplete-enum-coverage is registered as configurable

@@ -47,7 +47,8 @@ func TestFmtCheckCLI(t *testing.T) {
 		{"option after path", []string{dirty, "--check"}, 1, []string{dirty + ": format.noncanonical-source:"}},
 		{"end of options", []string{"--check", "--", clean}, 0, nil},
 		{"no files", []string{"--check"}, 1, []string{"expected at least one source file"}},
-		{"unknown option", []string{dirty, "--fix"}, 1, []string{"unknown fmt option: --fix"}},
+		{"unknown option", []string{dirty, "--bogus"}, 1, []string{"unknown fmt option: --bogus"}},
+		{"fix check reports corrections", []string{"--check", "--fix", clean}, 0, nil},
 		{"missing file", []string{"--check", filepath.Join(dir, "missing.sec")}, 1, []string{"missing.sec"}},
 		{"directory unsupported", []string{"--check", dir}, 1, []string{"not a regular source file"}},
 	}

@@ -69,7 +69,7 @@ formatting never converts invalid legacy syntax into canonical syntax; an
 explicitly enabled Language Correction (`rules/tooling/formatter.md` §§ 26–27)
 may rewrite a recognized legacy form only when the rewrite is unambiguous and
 semantics-preserving, and otherwise reports a focused migration diagnostic
-instead of guessing (MD-003; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 4).
+instead of guessing (MD-003; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 4).
 
 Grammar implementation status does not imply complete target lowering.
 
@@ -617,7 +617,7 @@ type Name struct {
 ```
 
 Current parser acceptance of the standalone form is non-conforming
-(`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 4.7–4.8).
+(`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 4.6–4.7).
 
 ## Assigned type syntax
 
@@ -641,7 +641,7 @@ generic parser error. `type Name = ExistingType` has the same nominal meaning as
 `type Name ExistingType`, so an enabled Language Correction may rewrite it. The
 compact form names several alternatives; its Sec 0.1 replacement (`enum` or
 `union`, with or without the `error` marker) is not uniquely determined, so it
-receives only the migration diagnostic (MD-002; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 3).
+receives only the migration diagnostic (MD-002; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 3).
 
 ## Field contracts
 
@@ -1553,7 +1553,7 @@ type B int
 `type A B` is valid only when `B` resolves to a type; otherwise `B` is an
 unknown type.
 
-(MD-002; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 3.)
+(MD-002; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 3.)
 
 ---
 
@@ -1619,6 +1619,7 @@ TypeContract
       | MembershipContract
       | MultipleOfContract
       | LengthContract
+      | RegexContract
       | MarkerContract
 
 RangeContract
@@ -1639,6 +1640,9 @@ LengthContract
       | Contextual("maxLen") ConstantExpression
       | Contextual("exactLen") ConstantExpression
 
+RegexContract
+    ::= Contextual("regex") ConstantExpression
+
 MarkerContract
     ::= Contextual("notEmpty")
       | Contextual("unique")
@@ -1650,6 +1654,25 @@ MarkerContract
 Contracts are written sequentially.
 
 Sequential contracts are logical conjunction.
+
+`regex` is a reserved contract spelling (`rules/foundations/lexical_structure.md`
+§ 7.3) that is lexed identifier-like and resolved in contract position; it has
+no dedicated hard-keyword token. Its `ConstantExpression` must produce the
+compile-time string pattern required by `rules/types/contracts.md`. A contract,
+including `regex`, has no physical same-line requirement; newline handling
+follows ordinary whitespace and expression-continuation rules, so both of the
+following are grammatical before canonical formatting:
+
+```sec
+type Email string regex "..."
+
+type Email string
+    regex "..."
+```
+
+The regular-expression dialect and engine belong to MD-010, and the
+compile-time-expression classification of contract operands belongs to MD-011
+(MD-009; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 10).
 
 Example:
 

@@ -610,7 +610,7 @@ func (a *Analyzer) activeCollectionIterationFor(stmt *ast.ForStatement) (activeC
 func (a *Analyzer) invalidatedCollectionIteration(place Place) (activeCollectionIteration, bool) {
 	for index := len(a.activeCollectionIterations) - 1; index >= 0; index-- {
 		active := a.activeCollectionIterations[index]
-		if len(place.Projections) <= len(active.place.Projections) && PlacesOverlap(place, active.place) {
+		if len(place.Projections) <= len(active.place.Projections) && Relationship(place, active.place).EnclosesOrMayEnclose() {
 			return active, true
 		}
 	}

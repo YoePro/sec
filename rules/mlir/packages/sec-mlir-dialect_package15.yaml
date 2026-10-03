@@ -17,6 +17,11 @@ package:
   goal: Canonical places and direct safe references with provenance, borrowing and
     epoch dependencies, without physical pointer/reference layout.
   next_package: Slice Semantic Value Representation
+  revisions:
+  - date: '2026-10-03'
+    summary: Aligned with the v2 memory rulebooks (references, reference_model,
+      borrowing, storage); see the "Revision 2026-10-03" section of the package
+      document.
 normative_updates:
 - repository_paths:
   - rules/memory/references.md
@@ -67,6 +72,31 @@ place_model:
   - union-payload
   - dereference
   finite_origin_sets: true
+  root_kinds:
+  - local
+  - parameter
+  - receiver
+  - static
+  - deref
+  storage_origins:
+  - Automatic
+  - Static
+  - ThreadLocal
+  - Arena
+  - AllocatorBacked
+  - Unknown
+  address_stability:
+  - Movable
+  - Stable
+  - Fixed
+  - Unknown
+  memory_space_kinds:
+  - Ordinary
+  - MMIO
+  - TargetDefined
+  relocation_class: replaced by address_stability plus pin dependency
+  unknown_relationship_may_overlap: true
+  union_variant_payloads: structurally disjoint under active-variant proof
   runtime_origin_tag: false
 reference_model:
   implemented_kinds:

@@ -12566,22 +12566,25 @@ func TestStringConcatenationAcceptsCanonicalTextOperandMatrix(t *testing.T) {
 	valid := `
 module main
 
-fn Test(text: string, character: char, codepoint: rune) void {
-	let stringString: string := text + " suffix"
-	let stringChar: string := text + character
-	let charString: string := character + text
-	let stringRune: string := text + codepoint
-	let runeString: string := codepoint + text
-	let charChar: string := character + 'x'
-	let runeRune: string := codepoint + 10r
-	let charRune: string := character + codepoint
-	let runeChar: string := codepoint + character
+fn Test(text: string, character: char, codepoint: rune) Result[int, AllocationError] {
+	// MD-004: runtime materialization propagates AllocationError with try;
+	// the fully compile-time-folded form needs no try.
+	let stringString: string := try text + " suffix"
+	let stringChar: string := try text + character
+	let charString: string := try character + text
+	let stringRune: string := try text + codepoint
+	let runeString: string := try codepoint + text
+	let charChar: string := try character + 'x'
+	let runeRune: string := try codepoint + 10r
+	let charRune: string := try character + codepoint
+	let runeChar: string := try codepoint + character
 	let folded: string := "SEC " + "language" + " compiler"
 
 	let mut appended: string := stringString
 	appended += character
 	appended += codepoint
 	appended += text
+	return Ok(0)
 }
 `
 	assertSemaErrors(t, analyzeSourceRaw(t, valid), nil)
@@ -13131,7 +13134,7 @@ interface Invalid {
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Field contracts"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — § 4
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 4
 func assertLegacyInlineContractParse(t *testing.T, input string, want int) {
 	t.Helper()
 	p := parser.New(lexer.New(input))

@@ -606,7 +606,7 @@ integrations:
     - assignment to currently represented constrained storage requires try in implemented paths
     - obsolete variable-level, type-first-storage-level, and ordinary struct-field contracts are rejected by Sema with stable S1050 migration diagnostics and are never applied to storage types
     - regex pattern contracts parse as `regex ConstantExpression` inside the ordered sequential contract conjunction and are retained as a dedicated ast.RegexContract node; the AST printer, formatter round-trip, LSP contract completion, and LSP semantic-token modifier classification cover the form
-    - the lexer classifies `regex` as PatternContractWord, recognized only in same-line contract position and kept outside the reserved §7.3 contract-word inventory pending MD-009, so ordinary identifiers named regex keep parsing
+    - "MD-009 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 10, 2026-10-03): `regex` is a reserved contract spelling in the §7.3 inventory (lexed as an identifier, resolved in contract position), unavailable as a user declaration name, with the grammar production RegexContract ::= Contextual(\"regex\") ConstantExpression and no same-line requirement"
     - a missing regex pattern at a line end, EOF, following contract word, or default clause emits one parser diagnostic, retains an InvalidExpression pattern, and preserves the contract list, default clause, and following declarations
     - Sema restricts regex to string named types, requires a compile-time string pattern, retains the escape-decoded pattern as sema.RegexContract, and rejects the declaration with mandatory S1058 types.regex-contract-unavailable plus help instead of silently dropping the unvalidatable contract (MD-010)
     partial:
@@ -621,7 +621,6 @@ integrations:
     - every contract diagnostic now has a stable ID; related locations pointing at the contract declaration are not yet attached because the diagnostic model only carries a duplicate-style previous location
     - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
     remaining:
-    - canonicalize the regex grammar production and decide whether `regex` is a reserved contract word (MD-009)
     - define the canonical regular-expression syntax/engine (MD-010), then replace S1058 with compile-time pattern validation, literal/default proofs, and runtime regex validation
     - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty
     - implement runtime supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
@@ -643,7 +642,7 @@ integrations:
     - frontend.types-core remains authoritative for general nominal type, conversion, scalar, and backend type status.
     - The contracts.md embedded status correctly records obsolete variable and field contracts plus incomplete runtime
       validation as known work; those are not new bugs from this audit.
-    - regex now has parser, AST, tooling, and Sema applicability support but no validation semantics (MD-009, MD-010); the broader compile-time-equality membership domain remains incomplete; the length-contract family now
+    - regex now has parser, AST, tooling, reservation, and Sema applicability support but no validation semantics (MD-010); the broader compile-time-equality membership domain remains incomplete; the length-contract family now
       has frontend parsing, applicability, consistency, fixed-array, and explicit-string-default coverage while runtime validation remains incomplete.
     required_tests:
     - regex contract parses in sequential contract order and recovers from a missing pattern

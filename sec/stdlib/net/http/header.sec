@@ -384,7 +384,7 @@ impl Header {
         let mut result: string[]
 
         for field in self._fields {
-            if field.Name == normalized {
+            if string(field.Name) == normalized {
                 try result.Append(field.Value) {
                     Err(_) => return Err(HeaderError.AllocationFailed)
                 }
@@ -408,7 +408,7 @@ impl Header {
         let normalized := Header.NormalizeName(Name)
 
         for field in self._fields {
-            if field.Name == normalized {
+            if string(field.Name) == normalized {
                 return true
             }
         }
@@ -435,7 +435,7 @@ impl Header {
         let mut replacement := list[_HeaderField] {}
 
         for field in self._fields {
-            if field.Name != normalized {
+            if string(field.Name) != normalized {
                 try replacement.Append(field)
             }
         }

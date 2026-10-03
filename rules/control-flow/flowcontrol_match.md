@@ -889,6 +889,44 @@ Use `try` when success should continue implicitly and errors should be propagate
 
 Use `match` when both `Ok` and `Err` belong to explicit branch control flow.
 
+### Concrete error variants
+
+An ordinary `match` on `Result[T, ConcreteError]` may use
+`Err(ConcreteError.Variant)` to match one specific variant of the closed
+concrete error payload:
+
+```sec
+match result {
+    Ok(value) => Use(value)
+
+    Err(IOError.NotFound) => HandleMissing()
+    Err(IOError.AccessDenied) => HandleDenied()
+    Err(IOError.Timeout) => HandleTimeout()
+}
+```
+
+Specific `Err(ConcreteError.Variant)` arms participate in ordinary closed
+exhaustiveness. When every variant of the concrete error type is covered
+together with `Ok`, the match is exhaustive without an `Err(error)` arm. When
+one or more variants remain uncovered, the match is non-exhaustive unless
+another valid arm covers them.
+
+`Err(error)` binds the complete error payload and covers the complete `Err`
+branch, so an `Err(ConcreteError.Variant)` arm after it is unreachable, and an
+`Err(error)` arm after arms covering every variant is unreachable as well.
+Concrete-variant arms before an `Err(error)` arm are valid.
+
+The variant must belong to the subject's own error type. Enum error variants
+are compared by their underlying value class, like ordinary enum arms. A
+payload-carrying union error variant cannot be selected this way, because Sec
+0.1 has no nested payload pattern; bind the error with `Err(name)` instead.
+
+This is an explicit, deliberately narrow Sec 0.1 Result/error refinement
+exception to the restricted nested-pattern model (§ 32). It is not a general
+recursive or destructuring pattern facility and not a permanent pattern-model
+guarantee; a later Sec version may replace or generalize it. Open-error
+narrowing for `Result[T, error]` below is unchanged (MD-008; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 9).
+
 ---
 
 ## 29. `Option[T]`
@@ -999,7 +1037,8 @@ Sec 0.1 does not define:
 - direct `true` / `false` match patterns;
 - runtime type patterns;
 - ordinary struct-subject destructuring;
-- nested recursive patterns;
+- nested recursive patterns, except the narrow `Err(ConcreteError.Variant)`
+  Result/error refinement of § 28 and the open-error narrowing of § 29;
 - arbitrary user-defined pattern protocols;
 - regex patterns;
 - guard syntax other than `where`.

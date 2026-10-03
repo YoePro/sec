@@ -102,7 +102,10 @@ type Parser struct {
 	curToken  lexer.Token
 	peekToken lexer.Token
 
-	stopBeforeBrace        bool
+	stopBeforeBrace bool
+	// conditionContext names the if or while condition being parsed, for
+	// focused `is` pattern-binding diagnostics.
+	conditionContext       string
 	inRefExpression        bool
 	skipExpressionComments bool
 	documentation          []ast.DocumentationAttachment
@@ -1170,6 +1173,7 @@ func (p *Parser) parseDetachStatement() ast.Statement {
 	if p.peekToken.Type == lexer.DISCARD {
 		p.nextToken()
 		stmt.DiscardResult = true
+		stmt.DiscardToken = p.curToken
 	}
 	return stmt
 }
@@ -1234,14 +1238,20 @@ func (p *Parser) parseIfStatement() ast.Statement {
 			stmt.ConditionOpen = p.curToken
 		}
 		previousStopBeforeBrace := p.stopBeforeBrace
+		previousConditionContext := p.conditionContext
 		p.stopBeforeBrace = true
+		p.conditionContext = "if"
 		stmt.Condition = p.parseExpression(LOWEST)
 		p.stopBeforeBrace = previousStopBeforeBrace
+		p.conditionContext = previousConditionContext
 		if stmt.Condition == nil {
 			return nil
 		}
-		if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
-			stmt.Condition, stmt.OptionBinding = p.parseContextualIfStateCondition(stmt.Condition, "if")
+		// MD-006 § 7.17: the positive Option binding is valid only as the
+		// complete if condition; elsewhere Sema reports it.
+		if binding, ok := stmt.Condition.(*ast.OptionBindingTestExpression); ok && !binding.Negated && binding.Group == nil {
+			stmt.Condition = binding.Subject
+			stmt.OptionBinding = &ast.OptionIfBinding{Token: binding.SomeToken, Subject: binding.Subject, Binding: binding.Binding}
 		}
 		if parenthesized && p.curToken.Type == lexer.RPAREN {
 			stmt.ConditionClose = p.curToken
@@ -1296,22 +1306,22 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	return stmt
 }
 
-// parseContextualIfStateCondition parses the contextual `is` state tests of an
-// if or while condition without reserving is/not/available/empty globally:
-// ownership availability, Option None, non-binding union variant tests, and
-// the union empty-state test. Positive `is Some(binding)` is the sole binding
-// form and is accepted only in if conditions; every other payload pattern is
-// rejected with a focused match-only diagnostic.
+// parseIsExpression parses the contextual `is` state tests as ordinary
+// expressions at the non-chainable equality level, without reserving
+// is/not/available/empty globally: ownership availability, Option None,
+// union and Option variant tests, the union empty-state test, the raw
+// pointer null test, and the positive Option binding `is Some(binding)`.
+// `is not` negates every non-binding test except null. A union payload
+// pattern is rejected with the focused match-only diagnostic.
 //
 // Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.1–7.12, 7.17–7.24
+//   - rules/foundations/operators.md — "State tests with is"
 //   - rules/control-flow/flowcontrol_if.md — §12 "State tests" and §13 "No pattern binding in if"
 //   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests"
 //   - rules/declarations/unions.md — §8.1 "Active variant test", §8.2 "Empty-state test"
 //   - rules/memory/ownership.md — §21 "is available and is not available"
-//   - rules/corrections/applied/grammar-errorhandling-correction-20260824.md — "Option payload binding in if"
-//   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Negative binding is invalid"
-func (p *Parser) parseContextualIfStateCondition(subject ast.Expression, context string) (ast.Expression, *ast.OptionIfBinding) {
-	p.nextToken()
+func (p *Parser) parseIsExpression(subject ast.Expression) ast.Expression {
 	isToken := p.curToken
 	negated := false
 	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "not" {
@@ -1319,91 +1329,95 @@ func (p *Parser) parseContextualIfStateCondition(subject ast.Expression, context
 		negated = true
 	}
 	if p.peekToken.Type != lexer.IDENT {
-		p.addError("is test expects a union variant, empty, None, Some(binding), available, or null at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return subject, nil
+		p.addError("is test expects a union variant, empty, None, Some, available, or null at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		return subject
 	}
-	if p.peekToken.Lexeme == "available" {
-		p.nextToken()
-		return &ast.AvailabilityExpression{Token: isToken, Place: subject, Negated: negated}, nil
-	}
-
 	switch p.peekToken.Lexeme {
+	case "available":
+		p.nextToken()
+		return &ast.AvailabilityExpression{Token: isToken, Place: subject, Negated: negated}
 	case "null":
 		// rules/platform/ffi.md §11: null testing uses `is null`; the sentinel
 		// has no negated test form.
 		p.nextToken()
 		if negated {
-			p.addError("is not is defined only for None and available; use is null in the other branch at %d:%d", p.curToken.Line, p.curToken.Column)
-			return subject, nil
+			p.addError("is not null is not defined; test is null and use the other branch at %d:%d", p.curToken.Line, p.curToken.Column)
+			return subject
 		}
-		return &ast.NullTestExpression{Token: isToken, Subject: subject, NullToken: p.curToken}, nil
+		return &ast.NullTestExpression{Token: isToken, Subject: subject, NullToken: p.curToken}
 	case "None":
-		return p.finishOptionAbsenceIfCondition(subject, isToken, negated), nil
+		return p.finishOptionAbsenceIfCondition(subject, isToken, negated)
 	case "Some":
 		p.nextToken()
 		someToken := p.curToken
 		if p.peekToken.Type != lexer.LPAREN {
-			if negated {
-				p.addError("is not is defined only for None and available; use match at %d:%d", someToken.Line, someToken.Column)
-				return subject, nil
-			}
-			return &ast.StateTestExpression{Token: isToken, Subject: subject, Variant: &ast.Identifier{Token: someToken, Value: someToken.Lexeme}}, nil
-		}
-		if context != "if" {
-			p.reportConditionPatternBinding(someToken, context)
-			p.nextToken()
-			p.skipConditionPatternPayload()
-			return subject, nil
+			return &ast.StateTestExpression{Token: isToken, Subject: subject, Variant: &ast.Identifier{Token: someToken, Value: someToken.Lexeme}, Negated: negated}
 		}
 		p.nextToken()
 		if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme == "_" {
 			p.addError("Option Some test must bind an identifier at %d:%d", p.peekToken.Line, p.peekToken.Column)
-			return subject, nil
+			return subject
 		}
 		p.nextToken()
 		binding := &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 		if p.peekToken.Type != lexer.RPAREN {
 			p.addError("Option Some binding expects ')' at %d:%d", p.peekToken.Line, p.peekToken.Column)
-			return subject, nil
+			return subject
 		}
 		p.nextToken()
+		test := &ast.OptionBindingTestExpression{Token: isToken, Subject: subject, SomeToken: someToken, Binding: binding, Negated: negated}
 		if negated {
-			p.addError("negative Option binding is invalid; use match at %d:%d", someToken.Line, someToken.Column)
-			return subject, nil
+			p.reportNegatedOptionBinding(test)
 		}
-		return subject, &ast.OptionIfBinding{Token: someToken, Subject: subject, Binding: binding}
+		return test
 	case "empty":
 		p.nextToken()
-		if negated {
-			p.addError("is not is defined only for None and available; use match at %d:%d", p.curToken.Line, p.curToken.Column)
-			return subject, nil
-		}
-		return &ast.StateTestExpression{Token: isToken, Subject: subject, Empty: true}, nil
+		return &ast.StateTestExpression{Token: isToken, Subject: subject, Empty: true, Negated: negated}
 	default:
 		p.nextToken()
-		test := &ast.StateTestExpression{Token: isToken, Subject: subject, Variant: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}}
+		test := &ast.StateTestExpression{Token: isToken, Subject: subject, Variant: &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}, Negated: negated}
 		if p.peekToken.Type == lexer.DOT {
 			p.nextToken()
 			if p.peekToken.Type != lexer.IDENT {
 				p.addError("expected variant name after '.' in is test at %d:%d", p.peekToken.Line, p.peekToken.Column)
-				return subject, nil
+				return subject
 			}
 			p.nextToken()
 			test.Owner = test.Variant
 			test.Variant = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 		}
 		if p.peekToken.Type == lexer.LPAREN {
-			p.reportConditionPatternBinding(test.Variant.Token, context)
+			p.reportConditionPatternBinding(test.Variant.Token, p.stateTestContext())
 			p.nextToken()
 			p.skipConditionPatternPayload()
-			return subject, nil
+			return subject
 		}
-		if negated {
-			p.addError("is not is defined only for None and available; use match at %d:%d", test.Variant.Token.Line, test.Variant.Token.Column)
-			return subject, nil
-		}
-		return test, nil
+		return test
 	}
+}
+
+// reportNegatedOptionBinding rejects a binding on the path where the value is
+// known not to be Some: there is no payload to bind. The binding is never
+// deleted silently, because it records explicit programmer intent.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.21–7.25
+//   - rules/corrections/applied/if-errorhandling-correction-20260824.md — "Negative binding is invalid"
+func (p *Parser) reportNegatedOptionBinding(test *ast.OptionBindingTestExpression) {
+	test.Rejected = true
+	binding := test.Binding.Value
+	p.addDiagnostic(compilerdiagnostics.ParserInvalidPattern, test.SomeToken, nil, nil,
+		"negative Option binding is invalid; use match: %s cannot be bound because the value is not Some on this path and has no Some payload; write `is not Some` when no payload is needed, or test `is Some(%s)` positively at %d:%d",
+		binding, binding, test.SomeToken.Line, test.SomeToken.Column)
+}
+
+// stateTestContext names the condition whose expression is being parsed for
+// focused pattern-binding diagnostics.
+func (p *Parser) stateTestContext() string {
+	if p.conditionContext != "" {
+		return p.conditionContext
+	}
+	return "an is"
 }
 
 // recoverConditionBindingDeclaration rejects the declaration-shaped pattern
@@ -1475,8 +1489,10 @@ func (p *Parser) finishOptionAbsenceIfCondition(subject ast.Expression, isToken 
 		noneResult, fallbackResult = false, true
 	}
 	return &ast.MatchExpression{
-		Token:   isToken,
-		Subject: subject,
+		Token:                isToken,
+		Subject:              subject,
+		OptionAbsenceTest:    true,
+		OptionAbsenceNegated: negated,
 		Arms: []*ast.MatchArm{
 			{
 				Token: noneToken,
@@ -1650,14 +1666,19 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 		return stmt
 	}
 	previousStopBeforeBrace := p.stopBeforeBrace
+	previousConditionContext := p.conditionContext
 	p.stopBeforeBrace = true
+	p.conditionContext = "while"
 	stmt.Condition = p.parseExpression(LOWEST)
 	p.stopBeforeBrace = previousStopBeforeBrace
+	p.conditionContext = previousConditionContext
 	if stmt.Condition == nil {
 		return nil
 	}
-	if p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "is" {
-		stmt.Condition, _ = p.parseContextualIfStateCondition(stmt.Condition, "while")
+	// rules/control-flow/flowcontrol_while.md §8: a while condition never binds.
+	if binding, ok := stmt.Condition.(*ast.OptionBindingTestExpression); ok && !binding.Negated {
+		p.reportConditionPatternBinding(binding.SomeToken, "while")
+		stmt.Condition = binding.Subject
 	}
 	if parenthesized && p.curToken.Type == lexer.RPAREN {
 		stmt.ConditionClose = p.curToken
@@ -2725,6 +2746,7 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	if p.peekToken.Type == lexer.ASSIGN {
 		p.nextToken()
 		assignToken := p.curToken
+		stmt.AssignToken = assignToken
 
 		if !p.expectPeekTypeStart() {
 			return nil
@@ -3975,12 +3997,16 @@ func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
 func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 	parameters := []*ast.Parameter{}
 
+	// Comments between parameters are trivia owned by the lossless CST and
+	// comment attachments (rules/foundations/lexical_structure.md §5.5).
+	p.skipPeekComments()
 	if p.peekToken.Type == lexer.RPAREN {
 		p.nextToken()
 		return parameters
 	}
 
 	for {
+		p.skipPeekComments()
 		consuming := false
 		if p.peekToken.Type == lexer.CONSUME_ARROW {
 			p.nextToken()
@@ -4089,6 +4115,7 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			parameter.Type.MutableRef = mutableRef
 		}
 		parameters = append(parameters, parameter)
+		p.skipPeekComments()
 		if variadic {
 			switch p.peekToken.Type {
 			case lexer.RPAREN:
@@ -4108,6 +4135,7 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
+			p.skipPeekComments()
 			if p.peekToken.Type == lexer.RPAREN {
 				p.nextToken()
 				return parameters
@@ -6294,12 +6322,12 @@ func (p *Parser) isContractStart(token lexer.Token) bool {
 	if token.Type != lexer.IDENT {
 		return false
 	}
-	if lexer.ContractWordRoleOf(token.Lexeme) == lexer.PatternContractWord {
-		// `regex` is not a reserved spelling (MD-009), so it may also be an
-		// ordinary identifier starting the next line's statement. It begins a
-		// contract only on the same line as the preceding type or contract.
-		return token.Line == p.curToken.Line
-	}
+	// `regex` is a reserved contract spelling like the other contract words
+	// and follows ordinary whitespace and continuation rules; it has no
+	// same-line requirement (MD-009).
+	//
+	// Rules:
+	//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 10.1–10.14
 	return lexer.IsContractWord(token.Lexeme)
 }
 

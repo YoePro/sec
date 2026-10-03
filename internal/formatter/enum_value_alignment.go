@@ -21,12 +21,12 @@ type enumValueAlignmentAnchor struct {
 //   - rules/tooling/formatter.md — §9(1–2) syntactic alignment anchors
 //   - rules/tooling/formatter.md — §9(8–10) group boundaries and padding limit
 //   - rules/tooling/formatter.md — §15(4) enum explicit-value assignments
-func enumValueAlignmentReplacements(document cst.Document) []formatterReplacement {
+func enumValueAlignmentReplacements(document cst.Document, maxPadding int) []formatterReplacement {
 	anchors := enumValueAlignmentAnchors(document)
 	replacements := []formatterReplacement{}
 	group := []enumValueAlignmentAnchor{}
 	flush := func() {
-		replacements = append(replacements, alignEnumValueGroup(document, group)...)
+		replacements = append(replacements, alignEnumValueGroup(document, group, maxPadding)...)
 		group = group[:0]
 	}
 	for _, anchor := range anchors {
@@ -66,7 +66,7 @@ func enumValueAnchorsAreContiguous(document cst.Document, previous, current enum
 	return true
 }
 
-func alignEnumValueGroup(document cst.Document, group []enumValueAlignmentAnchor) []formatterReplacement {
+func alignEnumValueGroup(document cst.Document, group []enumValueAlignmentAnchor, maxPadding int) []formatterReplacement {
 	if len(group) == 0 {
 		return nil
 	}
@@ -84,7 +84,7 @@ func alignEnumValueGroup(document cst.Document, group []enumValueAlignmentAnchor
 	for _, anchor := range group {
 		previous := previousEnumValueToken(document, anchor)
 		_, endColumn := document.Elements[previous].Token.EndPosition()
-		if targetColumn-endColumn > defaultMaximumAlignmentPadding {
+		if targetColumn-endColumn > maxPadding {
 			targetColumn = 0
 			break
 		}

@@ -1,9 +1,9 @@
 module main
 
-import alias "core/x"
 import (
     "a"
     b "c"
+    alias "core/x"
 )
 
 type Celsius  float<C>

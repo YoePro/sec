@@ -1649,7 +1649,9 @@ type UserID uint64
 
 § 27(34) The legacy compact variant form `type Name = First Second ...` is not corrected, because its Sec 0.1 replacement (`enum` or `union`, with or without the `error` marker) is not uniquely determined. It receives only the focused migration diagnostic required by `rules/foundations/grammar.md`.
 
-§ 27(35) Invalid legacy Sec syntax is never converted by ordinary formatting while `language_corrections = false`; §§ 27(33)–27(34) apply only when Language Corrections are enabled (MD-002 and MD-003; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 3–4).
+§ 27(35) Invalid legacy Sec syntax is never converted by ordinary formatting while `language_corrections = false`; §§ 27(33)–27(34) apply only when Language Corrections are enabled (MD-002 and MD-003; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 3–4).
+
+§ 27(36) The redundant state-test comparison `(state is Idle) == true` is corrected to `state is Idle`, and the negated state test `!(state is Idle)` is corrected to `state is not Idle`, only where the parent expression binds more loosely than the equality/state-test level so the rewrite preserves grouping. `option is not Some(value)` and `!(option is Some(value))` are never corrected by deleting the binding, and the null test has no negated correction (MD-006; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 7.9, 7.15, 7.25).
 
 ---
 

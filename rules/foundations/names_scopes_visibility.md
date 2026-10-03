@@ -82,7 +82,7 @@ coexist in the same scope, and the shadowing and duplicate-declaration rules of
 this rulebook do not compare one namespace against the other. Visually
 confusable comparison keeps the two namespaces separate as well
 (`rules/foundations/lexical_structure.md`, "Visually confusable identifiers";
-`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 2.7–2.9).
+`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 8).
 
 Invalid:
 

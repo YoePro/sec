@@ -72,7 +72,7 @@ type User struct {
 Inline field contracts are not Sec 0.1 syntax. They are recognized legacy
 syntax and receive a focused migration diagnostic; because a correction would
 have to choose a new named type, no automatic rewrite applies
-(`rules/foundations/grammar.md`; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 4).
+(`rules/foundations/grammar.md`; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 4).
 
 ## Composition
 
@@ -179,6 +179,16 @@ resolution; checking each independently is insufficient.
 `regex pattern` requires a compile-time string pattern and applies to
 string-like named types. The concrete regular-expression syntax and engine must
 be fixed before runtime validation is implemented.
+
+The canonical production is `RegexContract ::= Contextual("regex")
+ConstantExpression` under `TypeContract` (`rules/foundations/grammar.md`).
+`regex` is a reserved contract spelling and is unavailable as a user
+declaration name (`rules/foundations/lexical_structure.md` § 7.3). It has no
+same-line requirement. The regular-expression dialect, escape semantics after
+string decoding, anchoring, matching unit, complexity guarantees, backreference
+policy, and runtime engine remain owned by MD-010; which named compile-time
+values and calls may appear in contract positions remains owned by MD-011
+(MD-009; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 10).
 
 `minLen`, `maxLen`, and `exactLen` take nonnegative compile-time integer values.
 `notEmpty` means length greater than zero. String length uses the same unit as

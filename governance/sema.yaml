@@ -154,6 +154,7 @@ integrations:
     - internal/codegen/llvm/generator_test.go
     - internal/formatter/formatter_test.go
     implemented:
+    - "MD-004 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 5, 2026-10-03): every maximal StringConcatPlan is classified as compile-time folded (constant text only, try-free) or runtime; a runtime plan records the resolved active allocation context (hosted and embedded-arena profiles provide the Arena context, noalloc and unassigned profiles none, MD-034) and AllocationError, publishes an allocation effect, is a try failure point of kind allocation, and is rejected with S1097 without try or S1098 without an allocation context"
     - lexer recognition and longest-match tokenization for the established operator inventory
     - Pratt expression parsing with canonical logical, bitwise, equality, comparison/membership, shift, additive,
       multiplicative, prefix, call/index, and member precedence
@@ -209,8 +210,8 @@ integrations:
     - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every
       maintained backend
     - complete compile-time string concatenation materialization as one folded constant
-    - implement active allocation-context selection and one maximal StringConcatPlan for runtime concatenation
-    - "reject runtime string concatenation and interpolation without try (MD-004 decided by rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md § 5; the former implicit allocation-panic form is removed) and keep fully compile-time-folded forms try-free"
+    - "MD-004 lowering: represent StringConcatPlan with its resolved allocation context, AllocationError channel, ownership, and lifetime facts in Semantic IR and maintained backends; refine the context lifetime for results that escape a local allocation lifetime, and prove allocation elimination under profiles without dynamic allocation"
+    - "MD-035: decide how an infallible ToString() string materializes runtime text; the sec/stdlib/net/ip ToString methods are rejected with S1097 until then"
     - integrate interpolation formatting contracts and string.Concat with the same concat plan
     - implement transactional fallible string += and only apply in-place reuse after proof
     - complete derived aggregate equality lowering and identity/resource exclusion metadata

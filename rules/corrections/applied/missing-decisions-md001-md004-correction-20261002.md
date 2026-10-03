@@ -1,6 +1,6 @@
 # Correction: Missing Decisions MD-001 through MD-004
 
-**Status:** Applied correction  
+**Status:** Superseded by `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` (2026-10-03); retained for history  
 **Applied:** 2026-10-02  
 **Created:** 2026-10-02  
 **Updated:** 2026-10-02  

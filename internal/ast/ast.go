@@ -124,6 +124,8 @@ type DetachStatement struct {
 	Token         lexer.Token
 	Value         Expression
 	DiscardResult bool
+	// DiscardToken is the trailing `discard` keyword when DiscardResult.
+	DiscardToken lexer.Token
 }
 
 func (ds *DetachStatement) statementNode() {}
@@ -309,10 +311,13 @@ type TypeDeclStatement struct {
 	GenericParameters []*GenericParameter
 	BaseType          *TypeReference
 	AssignedType      *TypeReference
-	Variants          []*Identifier
-	StructType        *StructType
-	RegisterType      *RegisterType
-	Union             bool
+	// AssignToken is the `=` of a legacy `type Name = T` declaration, retained
+	// for the migration diagnostic and its explicit correction.
+	AssignToken  lexer.Token
+	Variants     []*Identifier
+	StructType   *StructType
+	RegisterType *RegisterType
+	Union        bool
 	// ErrorType preserves the canonical `type Name union error` marker from
 	// rules/declarations/unions.md and rules/errors/errorhandling.md.
 	ErrorType     bool
@@ -1510,6 +1515,10 @@ type InterpolatedStringLiteral struct {
 	Token lexer.Token
 	Value string
 	Parts []InterpolatedStringPart
+	// Malformed marks a retained candidate whose text holds an unmatched
+	// single `}` (lexer L1021). Its text keeps the exact source spelling and
+	// it never denotes a valid string value (MD-005).
+	Malformed bool
 }
 
 // InterpolatedStringPart preserves a text segment or a parsed expression with
@@ -1595,6 +1604,57 @@ type StateTestExpression struct {
 	Owner   *Identifier
 	Variant *Identifier
 	Empty   bool
+	// Negated is the direct `is not` form (MD-006).
+	Negated bool
+	// Group records parentheses that directly enclose this test.
+	Group *StateTestGroup
+}
+
+// StateTestGroup records the parentheses that directly enclose an `is`
+// state test. `is` sits at the non-chainable equality level, so grouping
+// decides whether a surrounding comparison chains with the test, and the
+// tokens let explicit corrections rewrite the exact source range.
+//
+// Rules:
+//   - rules/foundations/operators.md — "Canonical precedence", "State tests with is"
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.4–7.9, 7.13–7.15
+type StateTestGroup struct {
+	Open  lexer.Token
+	Close lexer.Token
+}
+
+// OptionBindingTestExpression is the positive Option binding test
+// `value is Some(binding)`. It is valid only as a complete if condition,
+// where the parser turns it into IfStatement.OptionBinding; anywhere else,
+// and in its negated forms, it is retained for a focused diagnostic.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.17–7.25
+type OptionBindingTestExpression struct {
+	Token     lexer.Token
+	Subject   Expression
+	SomeToken lexer.Token
+	Binding   *Identifier
+	Negated   bool
+	Group     *StateTestGroup
+	// Rejected is set when the parser already reported a negated binding
+	// form (`is not Some(value)` or `!(option is Some(value))`).
+	Rejected bool
+}
+
+func (ob *OptionBindingTestExpression) expressionNode() {}
+
+func (ob *OptionBindingTestExpression) TokenLiteral() string { return ob.Token.Lexeme }
+
+func (ob *OptionBindingTestExpression) String() string {
+	if ob == nil || ob.Subject == nil || ob.Binding == nil {
+		return ""
+	}
+	operator := " is Some("
+	if ob.Negated {
+		operator = " is not Some("
+	}
+	return ob.Subject.String() + operator + ob.Binding.Value + ")"
 }
 
 func (st *StateTestExpression) expressionNode() {}
@@ -1605,8 +1665,12 @@ func (st *StateTestExpression) String() string {
 	if st == nil || st.Subject == nil {
 		return ""
 	}
+	operator := " is "
+	if st.Negated {
+		operator = " is not "
+	}
 	if st.Empty {
-		return st.Subject.String() + " is empty"
+		return st.Subject.String() + operator + "empty"
 	}
 	target := ""
 	if st.Owner != nil {
@@ -1615,7 +1679,7 @@ func (st *StateTestExpression) String() string {
 	if st.Variant != nil {
 		target += st.Variant.Value
 	}
-	return st.Subject.String() + " is " + target
+	return st.Subject.String() + operator + target
 }
 
 // AvailabilityExpression is the compiler-known ownership-state query
@@ -1629,6 +1693,7 @@ type AvailabilityExpression struct {
 	Token   lexer.Token
 	Place   Expression
 	Negated bool
+	Group   *StateTestGroup
 }
 
 func (ae *AvailabilityExpression) expressionNode() {}
@@ -1652,6 +1717,7 @@ type NullTestExpression struct {
 	Token     lexer.Token
 	Subject   Expression
 	NullToken lexer.Token
+	Group     *StateTestGroup
 }
 
 func (nt *NullTestExpression) expressionNode() {}
@@ -1725,6 +1791,9 @@ type CallExpression struct {
 	Function         *Identifier
 	GenericArguments []*TypeReference
 	Arguments        []Expression
+	// ArgumentsOpen is the real opening parenthesis of the argument list,
+	// used by formatter roles for multiline trailing commas.
+	ArgumentsOpen lexer.Token
 }
 
 // NewExpression selects lifecycle construction for Type. It is deliberately
@@ -1734,6 +1803,9 @@ type NewExpression struct {
 	Token     lexer.Token
 	Type      *TypeReference
 	Arguments []Expression
+	// ArgumentsOpen is the real opening parenthesis of the argument list,
+	// used by formatter roles for multiline trailing commas.
+	ArgumentsOpen lexer.Token
 }
 
 func (ne *NewExpression) expressionNode() {}
@@ -1846,6 +1918,9 @@ type OkExpression struct {
 	Token     lexer.Token
 	Value     Expression
 	Arguments []Expression
+	// ArgumentsOpen is the real opening parenthesis of the argument list,
+	// used by formatter roles for multiline trailing commas.
+	ArgumentsOpen lexer.Token
 }
 
 func (oe *OkExpression) expressionNode() {}
@@ -1866,6 +1941,9 @@ type ErrExpression struct {
 	Token     lexer.Token
 	Value     Expression
 	Arguments []Expression
+	// ArgumentsOpen is the real opening parenthesis of the argument list,
+	// used by formatter roles for multiline trailing commas.
+	ArgumentsOpen lexer.Token
 }
 
 func (ee *ErrExpression) expressionNode() {}
@@ -1934,6 +2012,11 @@ type MatchExpression struct {
 	Token   lexer.Token
 	Subject Expression
 	Arms    []*MatchArm
+	// OptionAbsenceTest marks the parser lowering of `value is [not] None`
+	// into a two-arm bool match; Negated and Group describe that source test.
+	OptionAbsenceTest    bool
+	OptionAbsenceNegated bool
+	Group                *StateTestGroup
 }
 
 type MatchPatternKind string
@@ -2399,6 +2482,9 @@ type StructLiteral struct {
 	Token  lexer.Token
 	Type   *TypeReference
 	Fields []*StructLiteralField
+	// Open is the real opening brace of the field list when parsed from
+	// source, used by formatter roles for multiline trailing commas.
+	Open lexer.Token
 }
 
 func (sl *StructLiteral) expressionNode() {}
@@ -2488,4 +2574,59 @@ func (ae *AwaitExpression) String() string {
 		return "await <nil>"
 	}
 	return "await " + ae.Value.String()
+}
+
+// StateTestOf reports whether expr is an `is` state test written in source:
+// a union/Option variant or empty test, an availability test, a null test,
+// the lowered Option None test, or an Option binding test. It returns the
+// `is` token, whether the test is negated, and its enclosing group.
+func StateTestOf(expr Expression) (lexer.Token, bool, *StateTestGroup, bool) {
+	switch node := expr.(type) {
+	case *StateTestExpression:
+		return node.Token, node.Negated, node.Group, true
+	case *AvailabilityExpression:
+		return node.Token, node.Negated, node.Group, true
+	case *NullTestExpression:
+		return node.Token, false, node.Group, true
+	case *OptionBindingTestExpression:
+		return node.Token, node.Negated, node.Group, true
+	case *MatchExpression:
+		if node.OptionAbsenceTest {
+			return node.Token, node.OptionAbsenceNegated, node.Group, true
+		}
+	}
+	return lexer.Token{}, false, nil, false
+}
+
+// SetStateTestGroup records the parentheses directly enclosing a state test.
+func SetStateTestGroup(expr Expression, group *StateTestGroup) {
+	switch node := expr.(type) {
+	case *StateTestExpression:
+		node.Group = group
+	case *AvailabilityExpression:
+		node.Group = group
+	case *NullTestExpression:
+		node.Group = group
+	case *OptionBindingTestExpression:
+		node.Group = group
+	case *MatchExpression:
+		if node.OptionAbsenceTest {
+			node.Group = group
+		}
+	}
+}
+
+// SetArgumentsOpen records the opening parenthesis of a call-shaped
+// expression's argument list.
+func SetArgumentsOpen(expr Expression, open lexer.Token) {
+	switch node := expr.(type) {
+	case *CallExpression:
+		node.ArgumentsOpen = open
+	case *OkExpression:
+		node.ArgumentsOpen = open
+	case *ErrExpression:
+		node.ArgumentsOpen = open
+	case *NewExpression:
+		node.ArgumentsOpen = open
+	}
 }

@@ -1283,6 +1283,27 @@ Because `error` is an open domain, a match over `Result[T, error]` must retain a
 exhaustive error fallback such as `Err(errorValue)` or `Err(_)` unless control-flow
 facts prove a narrower closed state.
 
+### 27.2a Matching a concrete error channel
+
+An ordinary `match` on `Result[T, ConcreteError]` may use
+`Err(ConcreteError.Variant)` arms. For a closed concrete error type they take
+part in closed exhaustiveness: covering every variant together with `Ok` is
+exhaustive without `Err(error)`, and an uncovered variant leaves the match
+non-exhaustive unless another arm covers it. `Err(error)` covers the complete
+`Err` branch, so a concrete-variant arm after it is unreachable:
+
+```sec
+match result {
+    Ok(value) => Use(value)
+    Err(IOError.NotFound) => HandleMissing()
+    Err(error) => Handle(error)
+}
+```
+
+This is a deliberately narrow Sec 0.1 exception, not a general nested-pattern
+model; `flowcontrol_match.md` § 28 "Concrete error variants" owns the details
+(MD-008; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 9).
+
 ### 27.3 Generic `_` may not hide `Err`
 
 A generic match catch-all must not silently absorb an otherwise unhandled Result

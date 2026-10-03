@@ -91,3 +91,29 @@ func TestFormatPreservesMultilineRawStrings(t *testing.T) {
 	want := "module main\n\nfn F() string {\n    return `{\n\n  }\n}`\n}\n\nfn G() int {\n    return 1\n}\n"
 	assertFormat(t, input, want)
 }
+
+// Rules:
+//   - rules/errors/panic.md — §15.1 assert, §17 panic statement syntax
+//   - rules/tooling/formatter.md — §23(1) assertion statements
+func TestFormatStatementKeywordSpacingForDiscardAssertAndPanic(t *testing.T) {
+	input := "fn F(value: int) void {\ndiscard    value\nassert   value > 0, \"positive\"\npanic     \"stop\"\n}\n"
+	want := "fn F(value: int) void {\n    discard value\n    assert value > 0, \"positive\"\n    panic \"stop\"\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("Format() =\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("second pass changed output:\n%s", again)
+	}
+}
+
+// Rules:
+//   - rules/concurrency/tasks.md — §22 detach and explicit result disposal
+func TestFormatDetachStatementKeywordSpacing(t *testing.T) {
+	input := "fn F(worker: task[int]) void {\ndetach    worker    discard\n}\n"
+	want := "fn F(worker: task[int]) void {\n    detach worker discard\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("Format() =\n%s\nwant:\n%s", got, want)
+	}
+}

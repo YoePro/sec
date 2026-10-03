@@ -13,7 +13,7 @@ import (
 // Rules:
 //   - rules/foundations/names_scopes_visibility.md — §2 "One declaration namespace per scope"
 //   - rules/types/units.md — "Unit names and compiler-known names"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 8
 func TestUnitSymbolsOccupySeparateNamespace(t *testing.T) {
 	errors := analyzeSourceRaw(t, `
 module main

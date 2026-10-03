@@ -46,8 +46,15 @@ type Analyzer struct {
 	resolvedTestingOperations  map[*ast.CallExpression]ResolvedTestingOperation
 	resolvedInterpolationPlans map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan
 	stringConcatPlans          map[ast.Expression]StringConcatPlan
-	resolvedForIterations      map[*ast.ForStatement]ResolvedForIteration
-	activeCollectionIterations []activeCollectionIteration
+	// targetProfile is the selected target profile from the authoritative
+	// scalar plan; empty when no target plan was supplied (hosted default).
+	targetProfile string
+	// stringMaterializationSites and protectedStringMaterializations track
+	// runtime string materializations and the try that protects each (MD-004).
+	stringMaterializationSites      map[ast.Expression]stringMaterializationSite
+	protectedStringMaterializations map[ast.Expression]bool
+	resolvedForIterations           map[*ast.ForStatement]ResolvedForIteration
+	activeCollectionIterations      []activeCollectionIteration
 	// cABIModel is the active target's C ABI data model; empty when the
 	// analyzer has no target plan or the target defines no C ABI.
 	cABIModel                  layout.CABIModel
@@ -73,28 +80,32 @@ type Analyzer struct {
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
 	// facts keyed by source syntax. Consumers will use the read-only query
 	// introduced in P14-19 instead of rebuilding the literal from the AST.
-	resolvedArrayLiteralPlans   map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
-	resolvedArrayIndexPlans     map[*ast.IndexExpression]ResolvedArrayIndexPlan
-	resolvedListIndexPlans      map[*ast.IndexExpression]ResolvedListIndexPlan
-	activeConditionFacts        []activeConditionFact
-	arrayIndexMutationEpoch     uint64
-	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
-	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
-	resolvedPropertyAccesses    map[ast.Expression]ResolvedPropertyAccess
-	nextBindingID               BindingID
-	definitionTokens            map[sourceTokenKey][]lexer.Token
-	callGraph                   *CallGraph
-	escapeAnalysis              *EscapeAnalysis
-	parameterUsageAnalysis      *ParameterUsageAnalysis
-	pitfallAnalysis             *PitfallAnalysis
-	currentCallable             CallableID
-	callGraphPathReachable      bool
-	nextArenaDomainID           uint64
-	spawnCallExpression         *ast.CallExpression
-	spawnCallExecution          CallExecutionRelation
-	typeDefinitionTokens        map[string]lexer.Token
-	invalidTypeDeclarations     map[sourceTokenKey]bool
-	genericTypeDefinitions      map[string]lexer.Token
+	resolvedArrayLiteralPlans  map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan
+	resolvedArrayIndexPlans    map[*ast.IndexExpression]ResolvedArrayIndexPlan
+	resolvedListIndexPlans     map[*ast.IndexExpression]ResolvedListIndexPlan
+	activeConditionFacts       []activeConditionFact
+	arrayIndexMutationEpoch    uint64
+	resolvedStructLiteralPlans map[*ast.StructLiteral]ResolvedStructLiteralPlan
+	resolvedStructMemberPlans  map[*ast.MemberExpression]ResolvedStructMemberPlan
+	resolvedPropertyAccesses   map[ast.Expression]ResolvedPropertyAccess
+	nextBindingID              BindingID
+	definitionTokens           map[sourceTokenKey][]lexer.Token
+	callGraph                  *CallGraph
+	escapeAnalysis             *EscapeAnalysis
+	parameterUsageAnalysis     *ParameterUsageAnalysis
+	pitfallAnalysis            *PitfallAnalysis
+	currentCallable            CallableID
+	callGraphPathReachable     bool
+	nextArenaDomainID          uint64
+	spawnCallExpression        *ast.CallExpression
+	spawnCallExecution         CallExecutionRelation
+	typeDefinitionTokens       map[string]lexer.Token
+	invalidTypeDeclarations    map[sourceTokenKey]bool
+	genericTypeDefinitions     map[string]lexer.Token
+	// confusableSkeletons caches UTS #39 skeletons and confusableModuleIndex
+	// indexes module declarations a local may not shadow (MD-001).
+	confusableSkeletons         map[string]string
+	confusableModuleIndex       map[string]map[string][]confusableDeclaration
 	genericParameterFacts       map[sourceTokenKey]GenericParameterFact
 	implGenericParameterTargets map[*ast.GenericParameter]string
 	customFreeDeclarations      map[string]lexer.Token
@@ -276,6 +287,7 @@ func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth Ana
 	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
 	analyzer.types["ProcessID"] = processIDType(plan.PointerWidthBits)
 	analyzer.targetUintWidthBits = plan.PointerWidthBits
+	analyzer.targetProfile = plan.Profile
 	analyzer.registerCFundamentalTypes(plan.CABI)
 	return analyzer
 }
@@ -311,6 +323,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTestingOperations = map[*ast.CallExpression]ResolvedTestingOperation{}
 	a.resolvedInterpolationPlans = map[*ast.InterpolatedStringLiteral]ResolvedInterpolationPlan{}
 	a.stringConcatPlans = map[ast.Expression]StringConcatPlan{}
+	a.confusableSkeletons = map[string]string{}
+	a.confusableModuleIndex = map[string]map[string][]confusableDeclaration{}
+	a.stringMaterializationSites = map[ast.Expression]stringMaterializationSite{}
+	a.protectedStringMaterializations = map[ast.Expression]bool{}
 	a.resolvedForIterations = map[*ast.ForStatement]ResolvedForIteration{}
 	a.activeCollectionIterations = nil
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
@@ -444,6 +460,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.analyzeFunctionBodies(program)
 	a.analyzeImplBodies(program)
 	a.analyzeTestBodies(program)
+	a.reportStringMaterializations()
 	a.validateNoPanicGuarantees(program)
 	a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
 	a.emitLargeValueParameterAdvisories()
@@ -1061,6 +1078,7 @@ type moduleDeclaration struct {
 
 func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 	declared := map[string]moduleDeclaration{}
+	skeletons := map[string]moduleDeclaration{}
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		for _, decl := range moduleDeclarationsFromStatement(stmt) {
 			if decl.Name == "" {
@@ -1070,6 +1088,15 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 			previous, exists := declared[key]
 			if !exists {
 				declared[key] = decl
+				// MD-001: a distinct spelling whose UTS #39 skeleton collides
+				// with an earlier declaration of the same module namespace is
+				// an error; unit symbols live in a separate namespace (§ 8.10).
+				skeletonKey := a.currentModule + "\x00" + a.confusableSkeleton(decl.Name)
+				if other, collides := skeletons[skeletonKey]; collides && other.Name != decl.Name && !unitAndValueDeclaration(other.Kind, decl.Kind) {
+					a.reportConfusableIdentifier(decl.Name, decl.Token, other.Name, other.Token)
+				} else if !collides {
+					skeletons[skeletonKey] = decl
+				}
 				continue
 			}
 			if previous.Kind == moduleDeclarationFunction && decl.Kind == moduleDeclarationFunction {
@@ -1085,7 +1112,7 @@ func (a *Analyzer) validateModuleDeclarationNamespace(program *ast.Program) {
 			// Unit symbols occupy a separate unit-symbol namespace, so they do
 			// not conflict with functions or variables of the same spelling.
 			// Units and nominal types still share the type table and conflict.
-			// Rules: rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md §§ 2.7–2.9.
+			// Rules: rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 8.
 			if unitAndValueDeclaration(previous.Kind, decl.Kind) {
 				continue
 			}
@@ -4374,7 +4401,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 			bindingType = NewVariadicPackType(param.Type)
 			mutableBinding = false
 		}
-		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0}
 		a.symbols[param.Name] = symbol
 		completionSymbol := symbol
 		completionSymbol.Local = true
@@ -4426,14 +4453,14 @@ func (a *Analyzer) defineImplicitImplInstanceSymbols(block *ast.BlockStatement, 
 }
 
 func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToken lexer.Token) {
-	a.symbols["self"] = Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+	a.symbols["self"] = Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
 	a.assigned["self"] = true
 	delete(a.constInts, "self")
 	for _, field := range target.Fields {
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -4444,7 +4471,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[field.Name]; exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0, RegisterAccess: field.Access}
+		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0, RegisterAccess: field.Access}
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -4455,7 +4482,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[property.Name]; exists {
 			continue
 		}
-		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
 		a.assigned[property.Name] = true
 		delete(a.constInts, property.Name)
 	}
@@ -4463,7 +4490,7 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if _, exists := a.symbols[event.Name]; exists {
 			continue
 		}
-		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginInline, Local: false, ScopeDepth: 0}
+		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
 		a.assigned[event.Name] = true
 		delete(a.constInts, event.Name)
 	}
@@ -9535,7 +9562,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		a.defineInstanceSymbols(target, mutableSelf, body.Token)
 	}
 	if setterParameter != nil {
-		a.symbols[setterParameter.Value] = Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginInline, Local: true, ScopeDepth: 0}
+		a.symbols[setterParameter.Value] = Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0}
 		a.assigned[setterParameter.Value] = true
 		delete(a.constInts, setterParameter.Value)
 	}
@@ -11774,6 +11801,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		return a.inferAvailabilityExpression(expr)
 	case *ast.StateTestExpression:
 		return a.inferStateTestExpression(expr)
+	case *ast.OptionBindingTestExpression:
+		return a.inferOptionBindingTestExpression(expr)
 	case *ast.NullTestExpression:
 		return a.inferNullTestExpression(expr)
 	case *ast.InfixExpression:
@@ -11867,6 +11896,17 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 func (a *Analyzer) inferInterpolatedStringLiteral(expr *ast.InterpolatedStringLiteral) (Type, expressionValue) {
 	plan := ResolvedInterpolationPlan{}
 	valid := true
+	// rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md
+	// § 6.12: a candidate retained after L1021 is not a string value; the
+	// lexer diagnostic already explains it, so no cascading error is added.
+	if expr.Malformed {
+		for _, part := range expr.Parts {
+			if part.Expression != nil {
+				a.inferExpression(part.Expression)
+			}
+		}
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	for sourceIndex, part := range expr.Parts {
 		if part.Expression == nil {
 			continue
@@ -18312,7 +18352,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			a.recordDefinition(bindingToken)
 			a.recordBinding(bindingToken, BindingLocal, bindingName, errorType, false)
 		}
-		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginInline}
+		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic}
 		delete(a.constInts, bindingName)
 	}
 	defer func() {
@@ -18551,9 +18591,16 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			info.InitializesSubject = maybeEmptySubject
 		}
 		// An earlier unguarded Err fallback already handles every error, so a
-		// later concrete narrowing arm can never be selected.
-		if strings.HasPrefix(info.Variant, openErrorNarrowingPrefix) && seenKinds["Err"] {
+		// later concrete-variant arm can never be selected; equally, an Err
+		// fallback after arms covering every variant of a closed concrete error
+		// can never be selected (MD-008, correction §§ 9.7–9.9).
+		if isErrorVariantMatchKey(info.Variant) && seenKinds["Err"] {
 			a.addErrorAtToken(arm.Token, "unreachable match arm; an earlier Err fallback already handles every error")
+			continue
+		}
+		if info.Kind == "Err" && info.Variant == "" && subjectType.Kind == ResultType && len(subjectType.TypeArgs) == 2 &&
+			concreteErrorDomainCovered(subjectType.TypeArgs[1], seenVariants) {
+			a.addErrorAtToken(arm.Token, "unreachable match arm; earlier Err arms already cover every variant of %s", typeDisplayName(subjectType.TypeArgs[1]))
 			continue
 		}
 		if info.BindingName != "" && info.PayloadVariant != "" {
@@ -18614,6 +18661,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 						a.addErrorAtToken(arm.Token, "duplicate match arm for Err(%s)", strings.TrimPrefix(info.Variant, openErrorNarrowingPrefix))
 						continue
 					}
+					if strings.HasPrefix(info.Variant, concreteErrorVariantPrefix) {
+						a.addErrorAtToken(arm.Token, "unreachable match arm; Err(%s) is already covered by an earlier arm", info.EnumCaseName)
+						continue
+					}
 					a.addErrorAtToken(arm.Token, "duplicate match arm for %s.%s", typeDisplayName(subjectType), info.Variant)
 					continue
 				}
@@ -18631,7 +18682,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		addArmResult(arm, armType)
 	}
 
-	if catchAll && subjectType.Kind == ResultType && !seenKinds["Err"] {
+	if catchAll && subjectType.Kind == ResultType && !seenKinds["Err"] &&
+		!(len(subjectType.TypeArgs) == 2 && concreteErrorDomainCovered(subjectType.TypeArgs[1], seenVariants)) {
 		a.addErrorAtToken(expr.Token, "catch-all pattern may not hide Err")
 	}
 	exhaustive := true
@@ -19235,6 +19287,10 @@ func (a *Analyzer) resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex in
 	case strings.HasPrefix(info.Variant, openErrorNarrowingPrefix):
 		resolved.PatternKind = MatchPatternResultErrNarrowed
 		resolved.UnionVariantName = strings.TrimPrefix(info.Variant, openErrorNarrowingPrefix)
+	case strings.HasPrefix(info.Variant, concreteErrorVariantPrefix):
+		resolved.PatternKind = MatchPatternResultErrVariant
+		resolved.UnionVariantName = info.EnumCaseName
+		resolved.EnumCaseName = ""
 	case info.Kind == "catchall":
 		resolved.PatternKind = MatchPatternCatchAll
 	case subjectType.Kind == EnumType:
@@ -19298,7 +19354,7 @@ func matchCoverageComplete(subjectType Type, catchAll bool, seenKinds map[string
 		return true
 	}
 	if subjectType.Kind == ResultType && len(subjectType.TypeArgs) == 2 {
-		return seenKinds["Ok"] && seenKinds["Err"]
+		return seenKinds["Ok"] && (seenKinds["Err"] || concreteErrorDomainCovered(subjectType.TypeArgs[1], seenVariants))
 	}
 	if subjectType.Kind == EnumType {
 		return enumDomainCovered(subjectType, seenEnumValues)
@@ -19349,8 +19405,11 @@ func (a *Analyzer) checkMatchExhaustive(expr *ast.MatchExpression, subjectType T
 		if !seenKinds["Ok"] {
 			a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing Ok", typeDisplayName(subjectType))
 		}
-		if !seenKinds["Err"] {
-			if len(subjectType.TypeArgs) == 2 && subjectType.TypeArgs[1].Kind == ErrorRootType {
+		if !seenKinds["Err"] && !concreteErrorDomainCovered(subjectType.TypeArgs[1], seenVariants) {
+			if missing := missingConcreteErrorVariants(subjectType.TypeArgs[1], seenVariants); len(missing) > 0 && len(missing) < concreteErrorVariantCount(subjectType.TypeArgs[1]) {
+				// rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 9.6
+				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: missing %s; cover them or add Err(errorValue)", typeDisplayName(subjectType), strings.Join(missing, ", "))
+			} else if len(subjectType.TypeArgs) == 2 && subjectType.TypeArgs[1].Kind == ErrorRootType {
 				// rules/errors/errorhandling.md — §27.2: error is an open domain.
 				a.addErrorAtToken(expr.Token, "non-exhaustive match for %s: concrete error arms cannot cover the open error domain; add Err(errorValue) or Err(_)", typeDisplayName(subjectType))
 			} else {
@@ -19427,6 +19486,12 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 		a.addErrorAtToken(expr.Token, "comparison chaining is not supported")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	// MD-006 § 7.5: an ungrouped `is` test shares the equality level.
+	if isComparisonOperator(expr.Operator) && (ungroupedStateTest(expr.Left) || ungroupedStateTest(expr.Right)) {
+		a.addErrorAtToken(expr.Token, "comparison chaining is not supported; parenthesize the is state test before comparing it")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	a.adviseRedundantStateTestComparison(expr)
 
 	leftType, _ := a.inferExpression(expr.Left)
 	if leftType.Kind == InvalidType {
@@ -19652,7 +19717,7 @@ func (a *Analyzer) recordStringConcatPlan(root *ast.InfixExpression, left ast.Ex
 	}
 	segments = appendStringConcatSegments(segments, leftSegments...)
 	segments = appendStringConcatSegments(segments, rightSegments...)
-	a.stringConcatPlans[root] = StringConcatPlan{Segments: segments}
+	a.storeStringConcatPlan(root, segments)
 }
 
 // recordInterpolationStringConcatPlan consumes the formatter decisions for an
@@ -19706,7 +19771,7 @@ func (a *Analyzer) recordInterpolationStringConcatPlan(expr *ast.InterpolatedStr
 		}
 		segments = appendStringConcatSegments(segments, segment)
 	}
-	a.stringConcatPlans[expr] = StringConcatPlan{Segments: segments}
+	a.storeStringConcatPlan(expr, segments)
 }
 
 // stringConcatSegments returns a child maximal plan when present, or one direct
@@ -20427,6 +20492,7 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 }
 
 func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expressionValue) {
+	a.adviseNegatedStateTest(expr)
 	if expr.Operator == "<-" {
 		if a.terminalReturnDepth == 0 && a.constructionOwnershipDepth == 0 {
 			a.addErrorAtToken(expr.Token, "explicit <- move requires a return, consuming argument, aggregate field, or union payload context")
@@ -20732,9 +20798,10 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 
 	if a.inFunctionBody {
 		a.reportLocalShadowsDeclaration(name, token)
+		a.checkLocalConfusableIdentifier(name, token)
 	}
 
-	storage := StorageOriginInline
+	storage := StorageOriginAutomatic
 	if !a.inFunctionBody {
 		// rules/declarations/static.md, storage duration; correction15.md makes
 		// module storage static regardless of redundant source spelling.

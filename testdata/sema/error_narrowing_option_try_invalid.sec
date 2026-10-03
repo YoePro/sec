@@ -57,11 +57,10 @@ fn OpenWithoutFallback() int {
     }
 }
 
-fn ConcreteChannelNarrowing() int {
+fn ConcreteChannelPartial() int {
     return match ReadIO() {
         Ok(value) => value
         Err(IOError.NotFound) => 0
-        Err(_) => 1
     }
 }
 

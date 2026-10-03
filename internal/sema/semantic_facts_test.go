@@ -1330,8 +1330,8 @@ impl Packet {
 	}
 }
 
-fn Render(text: string, count: int, packet: Packet, chars: char[2]) string {
-	return $"{text}:{count}:{packet}:{chars}"
+fn Render(text: string, count: int, packet: Packet, chars: char[2]) Result[string, AllocationError] {
+	return Ok(try $"{text}:{count}:{packet}:{chars}")
 }
 `
 	p := parser.New(lexer.NewWithFile(source, "interpolation-plan.sec"))
@@ -1350,7 +1350,7 @@ fn Render(text: string, count: int, packet: Packet, chars: char[2]) string {
 		if !ok || function.Name.Value != "Render" {
 			continue
 		}
-		literal = function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InterpolatedStringLiteral)
+		literal = unwrapOkTry(function.Body.Statements[0].(*ast.ReturnStatement).Value).(*ast.InterpolatedStringLiteral)
 	}
 	plan, ok := analyzer.ResolvedInterpolationPlanOf(literal)
 	if !ok || len(plan.Holes) != 4 {
@@ -1394,13 +1394,13 @@ impl Packet {
 	}
 }
 
-fn Render(text: string, count: int, character: char, packet: Packet) string {
-	return "prefix:" + text + $"-{count}-{packet}-" + character + "!"
+fn Render(text: string, count: int, character: char, packet: Packet) Result[string, AllocationError] {
+	return Ok(try "prefix:" + text + $"-{count}-{packet}-" + character + "!")
 }
 
-fn Bound(text: string) string {
-	let prefix := "prefix:" + text
-	return prefix + "!"
+fn Bound(text: string) Result[string, AllocationError] {
+	let prefix := try "prefix:" + text
+	return Ok(try prefix + "!")
 }
 `
 	p := parser.New(lexer.NewWithFile(source, "concat-plan.sec"))
@@ -1419,11 +1419,11 @@ fn Bound(text: string) string {
 	for _, statement := range result.Program.Statements {
 		function, ok := statement.(*ast.FunctionDeclaration)
 		if ok && function.Name.Value == "Render" {
-			root = function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InfixExpression)
+			root = unwrapOkTry(function.Body.Statements[0].(*ast.ReturnStatement).Value).(*ast.InfixExpression)
 		}
 		if ok && function.Name.Value == "Bound" {
-			boundPrefix = function.Body.Statements[0].(*ast.LetStatement).Value.(*ast.InfixExpression)
-			boundReturn = function.Body.Statements[1].(*ast.ReturnStatement).Value.(*ast.InfixExpression)
+			boundPrefix = unwrapOkTry(function.Body.Statements[0].(*ast.LetStatement).Value).(*ast.InfixExpression)
+			boundReturn = unwrapOkTry(function.Body.Statements[1].(*ast.ReturnStatement).Value).(*ast.InfixExpression)
 		}
 	}
 	plan, ok := analyzer.StringConcatPlanOf(root)
@@ -1580,4 +1580,16 @@ fn Temporary() void {
 	if !effects.MayPanic || len(effects.PanicPath) != 2 || effects.PanicPath[1] != reusable.NextCallable {
 		t.Fatalf("Reusable effects = %+v, want the panic path through Counter.Next", effects)
 	}
+}
+
+// unwrapOkTry removes the Ok(...) and try wrappers that MD-004 requires around
+// a runtime string materialization.
+func unwrapOkTry(expr ast.Expression) ast.Expression {
+	if ok, isOk := expr.(*ast.OkExpression); isOk {
+		expr = ok.Value
+	}
+	if try, isTry := expr.(*ast.TryExpression); isTry {
+		expr = try.Expression
+	}
+	return expr
 }

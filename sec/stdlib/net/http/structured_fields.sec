@@ -72,7 +72,7 @@ impl _StructuredFieldDictionary {
     }
 
     fn Integer(name: string) Option[int64] {
-        for member in self._members {
+        for ref member in self._members {
             if member.Name == name {
                 match member.Value {
                     _StructuredFieldValue.Integer(value) => return Some(value)
@@ -85,7 +85,7 @@ impl _StructuredFieldDictionary {
     }
 
     fn Boolean(name: string) Option[bool] {
-        for member in self._members {
+        for ref member in self._members {
             if member.Name == name {
                 match member.Value {
                     _StructuredFieldValue.Boolean(value) => return Some(value)

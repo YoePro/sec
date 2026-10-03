@@ -491,7 +491,9 @@ func TestFormatExpandsSingleLineExecutableBlocks(t *testing.T) {
 
 func TestFormatLeavesSingleLineAggregateLiteralCompact(t *testing.T) {
 	input := "type Pair struct { Left: int, Right: int }\n\nfn Build() Pair { return Pair { Left: 1, Right: 2 } }\n"
-	want := "type Pair struct { Left: int, Right: int }\n\nfn Build() Pair {\n    return Pair { Left: 1, Right: 2 }\n}\n"
+	// rules/tooling/formatter.md — §15(1) makes the structural declaration
+	// multiline, while §15(2) lets the aggregate literal stay single-line.
+	want := "type Pair struct {\n    Left:  int,\n    Right: int,\n}\n\nfn Build() Pair {\n    return Pair { Left: 1, Right: 2 }\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("aggregate literal was treated as an executable block:\n%s\nwant:\n%s", got, want)
 	}
@@ -1259,5 +1261,30 @@ func TestFormatDropsOnlyStructFieldTagColumnBeyondPaddingLimit(t *testing.T) {
 	want := "type Tagged struct {\n    Short: int `wire:\"short\"`,\n    Long:  ExtremelyLongTypeName `wire:\"long\"`,\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("excessive secondary tag alignment did not fall back locally:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// Rules:
+//   - rules/tooling/formatter.md — §18(7) switch case alternatives, §23(5) "Range operators remain compact"
+func TestFormatOpenRangeSwitchCasesKeepCaseKeywordSpacing(t *testing.T) {
+	input := "fn F(value: int) int {\nswitch value {\ncase..<0:\nreturn -1\ncase ..< 0:\nreturn -2\ncase 5..  :\nreturn 2\ncase 1 .. 3:\nreturn 1\ndefault:\nreturn 0\n}\n}\n"
+	want := "fn F(value: int) int {\n    switch value {\n        case ..<0:\n            return -1\n        case ..<0:\n            return -2\n        case 5..:\n            return 2\n        case 1..3:\n            return 1\n        default:\n            return 0\n    }\n}\n"
+	got := Format(Source{Text: input}, Options{}).Text
+	if got != want {
+		t.Fatalf("Format() =\n%s\nwant:\n%s", got, want)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("second pass changed output:\n%s", again)
+	}
+}
+
+func TestFormatSwitchValidFixtureIsIdempotent(t *testing.T) {
+	source, err := os.ReadFile("../../testdata/switch_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := Format(Source{Text: string(source)}, Options{}).Text
+	if second := Format(Source{Text: first}, Options{}).Text; second != first {
+		t.Fatal("testdata/switch_valid.sec is not idempotent under formatting")
 	}
 }

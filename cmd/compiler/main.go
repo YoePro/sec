@@ -203,7 +203,7 @@ func (e *formatCheckError) Error() string {
 // `sec fmt --check <path>` and `sec fmt --stdin`; Shared implementation; Diagnostics.
 func runFmtCommand(args []string) error {
 	var paths []string
-	check, stdin, literalPaths := false, false, false
+	check, stdin, fix, literalPaths := false, false, false, false
 	for _, arg := range args {
 		switch {
 		case literalPaths:
@@ -214,6 +214,10 @@ func runFmtCommand(args []string) error {
 			check = true
 		case arg == "--stdin":
 			stdin = true
+		case arg == "--fix":
+			// rules/tooling/lsp.md — "Shared formatter": `sec fmt --fix`
+			// applies the opt-in Language Corrections of formatter.md §§ 26–27.
+			fix = true
 		case strings.HasPrefix(arg, "-"):
 			return fmt.Errorf("unknown fmt option: %s", arg)
 		default:
@@ -224,7 +228,7 @@ func runFmtCommand(args []string) error {
 		if check || len(paths) > 0 {
 			return fmt.Errorf("--stdin cannot be combined with --check or source file paths")
 		}
-		return formatStdin(os.Stdin, os.Stdout)
+		return formatStdinWithOptions(os.Stdin, os.Stdout, secformatter.Options{Fix: fix})
 	}
 	if len(paths) == 0 {
 		return fmt.Errorf("expected at least one source file")
@@ -242,7 +246,7 @@ func runFmtCommand(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		result := secformatter.Format(secformatter.Source{Text: string(input)}, secformatter.Options{})
+		result := secformatter.Format(secformatter.Source{Text: string(input)}, secformatter.Options{Fix: fix})
 		if result.Malformed {
 			if check {
 				malformed = append(malformed, path)
@@ -272,12 +276,18 @@ func runFmtCommand(args []string) error {
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt --stdin`;
 // Shared implementation; rules/foundations/lexical_structure.md — §2 "Line endings".
 func formatStdin(input io.Reader, output io.Writer) error {
+	return formatStdinWithOptions(input, output, secformatter.Options{})
+}
+
+// formatStdinWithOptions formats a stream with the selected formatter
+// options, such as the opt-in Language Corrections of `--fix`.
+func formatStdinWithOptions(input io.Reader, output io.Writer, options secformatter.Options) error {
 	source, err := io.ReadAll(input)
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
 	}
 	text := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(string(source))
-	formatted := secformatter.Format(secformatter.Source{Text: text}, secformatter.Options{}).Text
+	formatted := secformatter.Format(secformatter.Source{Text: text}, options).Text
 	n, err := io.WriteString(output, formatted)
 	if err == nil && n != len(formatted) {
 		err = io.ErrShortWrite

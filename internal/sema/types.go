@@ -384,15 +384,22 @@ type InterfaceEvent struct {
 	Token   lexer.Token
 }
 
+// StorageOrigin is the canonical primary storage domain of one storage root.
+// Embedded substorage inherits the origin of its root; Inline, External,
+// Foreign, FixedAddress and similar concepts are other storage properties,
+// not origins.
+//
+// Rules:
+//   - rules/memory/storage.md — § 4 "Canonical storage classification", § 5 "StorageOrigin", § 11 "Unknown storage origin"
 type StorageOrigin string
 
 const (
-	StorageOriginInline   StorageOrigin = "Inline"
-	StorageOriginStatic   StorageOrigin = "Static"
-	StorageOriginArena    StorageOrigin = "Arena"
-	StorageOriginExternal StorageOrigin = "External"
-	StorageOriginForeign  StorageOrigin = "Foreign"
-	StorageOriginUnknown  StorageOrigin = "Unknown"
+	StorageOriginAutomatic       StorageOrigin = "Automatic"
+	StorageOriginStatic          StorageOrigin = "Static"
+	StorageOriginThreadLocal     StorageOrigin = "ThreadLocal"
+	StorageOriginArena           StorageOrigin = "Arena"
+	StorageOriginAllocatorBacked StorageOrigin = "AllocatorBacked"
+	StorageOriginUnknown         StorageOrigin = "Unknown"
 )
 
 type AddressStability string

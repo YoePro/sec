@@ -161,7 +161,7 @@ symbol therefore does not conflict with an ordinary identifier of the same
 spelling: after `unit s physical`, a local, parameter, or field named `s` is
 valid, and unit symbol `<s>` still names the unit. Shadowing, duplicate
 declaration, and visually confusable checks do not compare unit symbols with
-ordinary identifiers (`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` §§ 2.7–2.9).
+ordinary identifiers (`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 8).
 
 ---
 

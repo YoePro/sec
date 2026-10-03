@@ -4168,10 +4168,13 @@ sys "platform/linux/amd64"
 )
 `
 
+	// rules/tooling/formatter.md — §13(7)–(8): one empty line separates
+	// non-empty import classes; platform is the reserved import root.
 	want := `module main
 
 import (
     "fmt"
+
     sys "platform/linux/amd64"
 )
 `

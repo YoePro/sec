@@ -465,7 +465,16 @@ treat the unit-symbol namespace and the ordinary identifier namespace as one
 shared namespace, so unit symbol `<s>` and an ordinary variable `s` never
 collide, by spelling or by confusability.
 
-These rules record decision MD-001 (`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 2).
+The skeleton is the UTS #39 skeleton: the NFD form with each code point
+replaced by its `confusables.txt` prototype, normalized to NFD again. The
+compiler pins the data to its Unicode version; a compiler update must not move
+the confusable data to a different Unicode version than its other Unicode
+tables. The mandatory diagnostic `S1099` (`names.confusable-identifier`)
+identifies both declarations and explains that the identifiers are distinct
+spellings whose UTS #39 confusable forms collide in the same declaration
+domain.
+
+These rules record decision MD-001 (`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 2).
 
 Mixed scripts are allowed because Sec units and scientific code may validly use
 names such as:
@@ -696,11 +705,20 @@ minLen
 multipleOf
 notEmpty
 odd
+regex
 unique
 ```
 
 Additional contract words must be added to this rulebook when they become
 canonical.
+
+`regex` is the pattern contract of `rules/types/contracts.md`. Like the other
+contract words it is reserved without a dedicated hard-keyword token: it is
+lexed identifier-like and resolved contextually in contract position, so
+`let regex := "abc"`, `fn regex() void {}`, and `type regex string` are
+invalid user declarations. The length contracts `minLen`, `maxLen`, and
+`exactLen` are listed here as synchronization of their already normative
+contracts (MD-009; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 10.1–10.5, 10.16–10.18).
 
 A contract spelling is not available as a user declaration name merely because
 it appears only after a type.
@@ -1474,6 +1492,23 @@ which produces:
 {value}
 ```
 
+An unmatched single `}` in interpolated-string text is invalid source. The
+lexer emits mandatory `L1021` (`lexer.unescaped-interpolation-closing-brace`)
+whose primary range is exactly the offending `}`; the message states that a
+single `}` is not valid in interpolated-string text and that `}}` writes a
+literal closing brace. The malformed candidate is retained, not replaced by one
+generic `ILLEGAL` token: a frontend that tokenizes an interpolated string as one
+token keeps that token with its exact source spelling and marks it malformed,
+and a segmented frontend keeps the offending `}` in the surrounding malformed
+text segment. Recovery treats the brace as malformed text only and stays in
+interpolated-string text mode, so later valid interpolation openings and the
+closing quote are still recognized; each further unmatched single `}` reached
+during recovery receives its own `L1021`. The unterminated newline and end-of-file
+boundaries below remain the recovery boundary when no closing quote follows,
+and `L1021` does not suppress `L1019`. Recovery never makes the source valid and
+never produces a string value as though `}}` had been written (MD-005;
+`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 6).
+
 String escapes remain available in the non-expression portions.
 
 For a valid interpolated string, the frontend materializes each non-expression
@@ -1510,9 +1545,10 @@ fail, a runtime interpolation requires the ordinary `try` handling of a fallible
 expression. An interpolation that is fully resolved at compile time may fold to
 static string data and is not a runtime fallible operation. The direct
 concatenation operator follows the same rule
-(`rules/foundations/operators.md`, "String concatenation"). The allocator or
-allocation context used by runtime materialization is not selected by this rule
-(MD-004; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 5).
+(`rules/foundations/operators.md`, "String concatenation"). Runtime
+materialization uses the canonical active allocation context of
+`rules/memory/allocation.md`, resolved by the frontend, with `AllocationError`
+as its failure type (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 5).
 
 ---
 

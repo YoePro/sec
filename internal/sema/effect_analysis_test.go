@@ -32,9 +32,15 @@ func TestListIndexingRecordsBoundsEffect(t *testing.T) {
 func TestInterpolatedStringExpressionRecordsEffects(t *testing.T) {
 	_, errors := analyzeSourceWithAnalyzerRaw(t, `module main
 
+fn Pick(values: list[int], index: uint) int {
+	return values[index]
+}
+
+// MD-004: runtime interpolation requires try; try protects the hole's own
+// checks but never a panic raised inside a called function.
 @noPanic
-fn Render(values: list[int], index: uint) string {
-	return $"value={values[index]}"
+fn Render(values: list[int], index: uint) Result[string, AllocationError] {
+	return Ok(try $"value={Pick(values, index)}")
 }
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function Render does not satisfy @noPanic") ||
@@ -55,8 +61,8 @@ impl Ratio {
 }
 
 @noPanic
-fn Render(value: Ratio) string {
-	return $"ratio={value}"
+fn Render(value: Ratio) Result[string, AllocationError] {
+	return Ok(try $"ratio={value}")
 }
 `)
 	if len(errors) != 1 || !strings.Contains(errors[0].Message, "function Render does not satisfy @noPanic") ||

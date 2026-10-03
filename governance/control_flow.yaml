@@ -376,8 +376,9 @@ integrations:
       - literal-unreachable branches routed through the canonical unreachable-code error policy
       - compile-time integer comparisons, boolean equality, negation, and short-circuit conjunction/disjunction select reachable paths through the same ResolvedIfFlow and S3001 machinery while runtime-dependent conditions remain conditional
       - canonical Markdown metadata and current Len and IsEmpty property spellings in the normative rulebook
+      - "MD-006 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 7, 2026-10-03): non-binding is state tests are ordinary bool expressions at the non-chainable equality level in every expression context (let, return, &&/||, arguments); `is not` negates variant, empty, Some, None, and available tests; ungrouped chaining with == or != is rejected; `(test) == true` (A2002) and `!(test)` (A2003) are bad-practice warnings with explicit Language Corrections; `is Some(binding)` binds only as the complete if condition, while `is not Some(value)` and `!(option is Some(value))` receive focused parser diagnostics; negated tests keep data-flow refinement"
     remaining:
-      - define is state-test composition with && and || and use outside if and while conditions once the owning rulebook decides it (MD-006)
+      - "MD-006 lowering: the legacy LLVM generator and Semantic IR do not lower state tests outside the existing if/while condition forms; they reject them explicitly"
       - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
       - complete focused tests for short-circuit side effects and lazy source-order evaluation across else-if chains

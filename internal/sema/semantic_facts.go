@@ -161,6 +161,12 @@ type StringConcatSegment struct {
 // concatenation/interpolation expression. Segments are in evaluation order.
 type StringConcatPlan struct {
 	Segments []StringConcatSegment
+	// Runtime is false for a plan fully resolved at compile time, which folds
+	// to static string data and is not fallible (MD-004).
+	Runtime bool
+	// Allocation is the resolved allocation context and failure channel of a
+	// runtime plan.
+	Allocation StringMaterializationAllocation
 }
 
 type ResolvedForIterationKind string
@@ -523,6 +529,10 @@ const (
 	// MatchPatternResultErrNarrowed selects one concrete error variant from an
 	// open Result[T, error] channel (UnionVariantName holds Type.Variant).
 	MatchPatternResultErrNarrowed ResolvedMatchPatternKind = "result-err-narrowed"
+	// MatchPatternResultErrVariant selects one variant of a closed concrete
+	// error channel Result[T, ConcreteError] (UnionVariantName holds
+	// Type.Variant); such arms participate in closed exhaustiveness (MD-008).
+	MatchPatternResultErrVariant ResolvedMatchPatternKind = "result-err-variant"
 )
 
 type ResolvedMatchBindingAction string

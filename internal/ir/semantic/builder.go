@@ -1960,6 +1960,11 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if arm.PatternKind == sema.MatchPatternResultErrNarrowed {
 			return builtValue{}, fb.unsupported("open error narrowing match arm", expr.Token)
 		}
+		// MD-008: a concrete error-variant arm needs an Err payload variant
+		// test that Semantic IR match lowering does not represent yet.
+		if arm.PatternKind == sema.MatchPatternResultErrVariant {
+			return builtValue{}, fb.unsupported("concrete error variant match arm", expr.Token)
+		}
 	}
 	switch plan.SubjectKind {
 	case sema.MatchSubjectEnum, sema.MatchSubjectUnion, sema.MatchSubjectResult, sema.MatchSubjectOption:

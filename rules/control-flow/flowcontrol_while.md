@@ -122,6 +122,8 @@ A `try` expression whose successful value is not `bool` is invalid as the condit
 
 A `while` condition may use a non-binding `is` state test when another canonical rulebook defines that expression as producing `bool`.
 
+Such tests are ordinary `bool` expressions at the equality/state-test precedence level and may be combined and negated with `is not`, as in `while state is not Done && ready` (`rules/foundations/operators.md`, "State tests with `is`"; MD-006, `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 7). A `while` condition never introduces a binding, including `is Some(binding)`.
+
 The `while` statement does not introduce structural or payload-binding pattern syntax.
 
 For example, a state test may be valid where its owning rulebook defines it:

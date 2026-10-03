@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"strings"
+
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
@@ -116,19 +118,24 @@ func carrierPatternFamily(pattern ast.Expression) (string, lexer.Token) {
 // concrete error variant narrowed from an open error channel.
 const openErrorNarrowingPrefix = "error:"
 
+// concreteErrorVariantPrefix marks a match-pattern variant key that selects
+// one variant of a closed concrete error channel Result[T, ConcreteError].
+const concreteErrorVariantPrefix = "error-variant:"
+
 // analyzeMatchErrorNarrowing validates `Err(ErrorType.Variant)` in a match.
-// The concrete-variant form narrows only an open Result[T, error] channel; it
+// On an open Result[T, error] channel the concrete-variant form narrows and
 // never covers the open error domain, so an Err fallback is still required.
-// For a concrete channel the payload must be bound instead.
+// On a concrete channel it selects one variant of the closed error type and
+// participates in closed exhaustiveness (MD-008).
 //
 // Rules:
-//   - rules/control-flow/flowcontrol_match.md — "Open error narrowing"
+//   - rules/control-flow/flowcontrol_match.md — "Open error narrowing", "Concrete error variants"
 //   - rules/errors/errorhandling.md — §27.2 "Matching Result[T, error]"
 //   - rules/corrections/applied/match-errorhandling-correction-20260824.md — "Open-domain exhaustiveness"
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 9
 func (a *Analyzer) analyzeMatchErrorNarrowing(member *ast.MemberExpression, errorType Type) (matchPatternInfo, bool) {
 	if errorType.Kind != ErrorRootType {
-		a.addErrorAtToken(member.Token, "Err(%s) narrows only an open Result[T, error] channel; for %s bind the payload and use a where guard or another match", member.String(), typeDisplayName(errorType))
-		return matchPatternInfo{}, false
+		return a.analyzeMatchConcreteErrorVariant(member, errorType)
 	}
 	variantType, ok := a.inferMemberExpression(member)
 	if !ok || variantType.Kind == InvalidType {
@@ -139,4 +146,123 @@ func (a *Analyzer) analyzeMatchErrorNarrowing(member *ast.MemberExpression, erro
 		return matchPatternInfo{}, false
 	}
 	return matchPatternInfo{Variant: openErrorNarrowingPrefix + typeDisplayName(variantType) + "." + member.Property.Value}, true
+}
+
+// analyzeMatchConcreteErrorVariant resolves `Err(ConcreteError.Variant)` on a
+// Result[T, ConcreteError] subject. The variant must belong to the subject's
+// own closed error type. Enum error variants are keyed by their underlying
+// value class, as ordinary enum match arms are; payload-less union error
+// variants by name. A payload-carrying union variant would need a nested
+// payload pattern, which Sec 0.1 does not define (MD-029).
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — "Concrete error variants"
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 9.2–9.6, 9.11–9.13
+func (a *Analyzer) analyzeMatchConcreteErrorVariant(member *ast.MemberExpression, errorType Type) (matchPatternInfo, bool) {
+	if errorType.Kind != EnumType && errorType.Kind != UnionType {
+		a.addErrorAtToken(member.Token, "Err(%s) requires a closed concrete error type; %s has no variants to select, so bind the payload with Err(name)", member.String(), typeDisplayName(errorType))
+		return matchPatternInfo{}, false
+	}
+	if errorType.Kind == UnionType {
+		owner, ownerOK := typePathFromExpression(member.Object)
+		variant, variantOK := lookupUnionVariant(errorType, member.Property.Value)
+		if !ownerOK || a.resolveTypeName(owner) != errorType.Name || !variantOK {
+			a.addErrorAtToken(expressionToken(member), "Err(%s) must name a variant of %s", member.String(), typeDisplayName(errorType))
+			return matchPatternInfo{}, false
+		}
+		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
+			a.addErrorAtToken(member.Property.Token,
+				"Err(%s.%s) cannot select a payload-carrying error variant because Sec 0.1 has no nested payload pattern; bind the error with Err(name) and match it against %s.%s(...) in the arm body",
+				typeDisplayName(errorType), variant.Name, typeDisplayName(errorType), variant.Name)
+			return matchPatternInfo{}, false
+		}
+		a.bindDefinition(member.Property.Token, variant.Token)
+		return matchPatternInfo{Variant: concreteErrorVariantPrefix + variant.Name, EnumCaseName: typeDisplayName(errorType) + "." + variant.Name}, true
+	}
+	patternType, ok := a.inferMemberExpression(member)
+	if !ok || patternType.Kind == InvalidType {
+		return matchPatternInfo{}, false
+	}
+	if !sameConcreteType(patternType, errorType) {
+		a.addErrorAtToken(expressionToken(member), "Err(%s) must name a variant of %s, got %s", member.String(), typeDisplayName(errorType), typeDisplayName(patternType))
+		return matchPatternInfo{}, false
+	}
+	enumCase, exists := errorType.EnumConsts[member.Property.Value]
+	key, keyed := enumValueClassKey(enumCase)
+	if !exists || !keyed {
+		return matchPatternInfo{}, false
+	}
+	return matchPatternInfo{Variant: concreteErrorVariantPrefix + key, EnumCaseName: typeDisplayName(errorType) + "." + enumCase.Name}, true
+}
+
+// isErrorVariantMatchKey reports whether a match-pattern variant key selects
+// one concrete error variant, from an open or a concrete error channel.
+func isErrorVariantMatchKey(variant string) bool {
+	return strings.HasPrefix(variant, openErrorNarrowingPrefix) || strings.HasPrefix(variant, concreteErrorVariantPrefix)
+}
+
+// concreteErrorDomainCovered reports whether unguarded Err(ConcreteError.Variant)
+// arms cover every value of a closed concrete error type.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 9.4–9.6
+func concreteErrorDomainCovered(errorType Type, seenVariants map[string]bool) bool {
+	switch errorType.Kind {
+	case EnumType:
+		seen := map[string]string{}
+		for variant := range seenVariants {
+			if key, ok := strings.CutPrefix(variant, concreteErrorVariantPrefix); ok {
+				seen[key] = key
+			}
+		}
+		return len(seen) > 0 && enumDomainCovered(errorType, seen)
+	case UnionType:
+		if len(errorType.UnionVariants) == 0 {
+			return false
+		}
+		for _, variant := range errorType.UnionVariants {
+			if !seenVariants[concreteErrorVariantPrefix+variant.Name] {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+// missingConcreteErrorVariants lists the declared variants of a closed
+// concrete error type that no unguarded arm covers, in declaration order.
+func missingConcreteErrorVariants(errorType Type, seenVariants map[string]bool) []string {
+	missing := []string{}
+	switch errorType.Kind {
+	case EnumType:
+		for _, name := range errorType.EnumValues {
+			enumCase, ok := errorType.EnumConsts[name]
+			key, keyed := enumValueClassKey(enumCase)
+			if ok && keyed && !seenVariants[concreteErrorVariantPrefix+key] {
+				missing = append(missing, "Err("+typeDisplayName(errorType)+"."+name+")")
+			}
+		}
+	case UnionType:
+		for _, variant := range errorType.UnionVariants {
+			if !seenVariants[concreteErrorVariantPrefix+variant.Name] {
+				missing = append(missing, "Err("+typeDisplayName(errorType)+"."+variant.Name+")")
+			}
+		}
+	}
+	return missing
+}
+
+// concreteErrorVariantCount returns the number of selectable variants of a
+// closed concrete error type.
+func concreteErrorVariantCount(errorType Type) int {
+	switch errorType.Kind {
+	case EnumType:
+		return len(errorType.EnumValues)
+	case UnionType:
+		return len(errorType.UnionVariants)
+	default:
+		return 0
+	}
 }

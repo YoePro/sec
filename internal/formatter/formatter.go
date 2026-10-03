@@ -2,6 +2,7 @@
 package formatter
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,10 +14,77 @@ import (
 )
 
 type Options struct {
-	// Fix enables the opt-in Language Corrections layer. Ordinary formatting,
-	// including current CLI and LSP entry points, leaves it disabled.
+	// Fix enables the opt-in Language Corrections layer (`language_corrections`).
+	// Ordinary formatting, including current CLI and LSP entry points, leaves it
+	// disabled.
 	Fix bool
+	// IndentationWidth is `indentation_width`: 2, 4, or 6 spaces. Zero selects
+	// the default of 4.
+	IndentationWidth int
+	// VerticalStyle is `vertical_style`; empty selects structured.
+	VerticalStyle VerticalStyle
 }
+
+// VerticalStyle selects whether optional structural blank lines are emitted.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 4(6)–(7), § 7(3)–(4)
+type VerticalStyle string
+
+const (
+	VerticalStructured VerticalStyle = "structured"
+	VerticalCompact    VerticalStyle = "compact"
+)
+
+// DefaultOptions returns the default project formatting configuration of
+// format_version = 1.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 4(1)–(5)
+func DefaultOptions() Options {
+	return Options{IndentationWidth: 4, VerticalStyle: VerticalStructured}
+}
+
+// ValidateOptions rejects configuration values outside the canonical
+// format_version = 1 domains.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 4(6)–(8)
+func ValidateOptions(options Options) error {
+	switch options.IndentationWidth {
+	case 0, 2, 4, 6:
+	default:
+		return fmt.Errorf("indentation_width must be 2, 4, or 6 spaces, got %d", options.IndentationWidth)
+	}
+	switch options.VerticalStyle {
+	case "", VerticalStructured, VerticalCompact:
+	default:
+		return fmt.Errorf("vertical_style must be \"structured\" or \"compact\", got %q", options.VerticalStyle)
+	}
+	return nil
+}
+
+// indentationWidth returns the effective indentation width; values outside
+// the canonical domain fall back to the default.
+func (options Options) indentationWidth() int {
+	switch options.IndentationWidth {
+	case 2, 4, 6:
+		return options.IndentationWidth
+	default:
+		return 4
+	}
+}
+
+// maximumAlignmentPadding is four indentation widths (§ 4(14)).
+func (options Options) maximumAlignmentPadding() int {
+	return 4 * options.indentationWidth()
+}
+
+// compact reports the compact vertical style.
+func (options Options) compact() bool {
+	return options.VerticalStyle == VerticalCompact
+}
+
 type Source struct{ Text string }
 type Result struct {
 	Text      string
@@ -31,15 +99,14 @@ type Result struct {
 //   - rules/tooling/formatter.md — "Comment attachment"
 //   - rules/tooling/formatter.md — Appendix A.5 "Build lossless syntax and trivia support"
 func Format(source Source, options Options) Result {
-	if !options.Fix {
-		syntax := cst.Build(source.Text, "")
-		if hasUncertainConcreteSyntax(syntax) {
-			program := parser.New(lexer.New(source.Text)).ParseProgram()
-			return Result{
-				Text:      source.Text,
-				Comments:  append([]ast.CommentAttachment(nil), program.Comments...),
-				Malformed: true,
-			}
+	// rules/tooling/formatter.md — §25: lexically uncertain source is
+	// preserved byte-for-byte; Language Corrections never repair it either.
+	if hasUncertainConcreteSyntax(cst.Build(source.Text, "")) {
+		program := parser.New(lexer.New(source.Text)).ParseProgram()
+		return Result{
+			Text:      source.Text,
+			Comments:  append([]ast.CommentAttachment(nil), program.Comments...),
+			Malformed: true,
 		}
 	}
 	text := format(source.Text, options)
@@ -81,7 +148,11 @@ func format(text string, options Options) string {
 	if options.Fix {
 		normal = fixRedundantNestedParentheses(normal)
 		normal = fixRedundantControlConditionParentheses(normal)
+		normal = fixStateTestBadPractice(normal)
+		normal = fixLegacyAssignedNamedType(normal)
 	}
+	normal = formatImportRegion(normal, options.compact())
+	normal = formatStructuralBlockLayout(normal)
 	normal = formatPropertyAccessorLayout(normal)
 	normal = formatCSTTokenSpacing(normal)
 	normal = formatCSTBlockComments(normal)
@@ -168,7 +239,7 @@ func format(text string, options Options) string {
 			out = append(out, "")
 			blank = false
 		}
-		out = append(out, strings.Repeat(" ", (level+extra)*4)+line)
+		out = append(out, strings.Repeat(" ", (level+extra)*options.indentationWidth())+line)
 		delimiterLine := line
 		if inMultiline && multiline.start {
 			delimiterLine = strings.TrimSpace(multiline.masked)
@@ -194,8 +265,9 @@ func format(text string, options Options) string {
 	// columns and comment text never participates in structural indentation.
 	out = alignDeclarationTrailingComments(out)
 	result := strings.Join(out, "\n")
-	result = formatExecutableBlocks(result)
-	result = formatCSTRoles(result)
+	result = formatExecutableBlocks(result, options.indentationWidth())
+	result = formatCSTRoles(result, options.maximumAlignmentPadding())
+	result = formatMultilineInfixLayout(result, options.indentationWidth())
 	// The role pass may widen field, register, and named-type columns; align
 	// trailing comments again against those final columns so a second
 	// formatting pass is a fixed point (rules/tooling/formatter.md §29).
@@ -342,28 +414,13 @@ func trailingLineCommentIndex(line string) int {
 // Rules:
 //   - rules/tooling/formatter.md — "Malformed and incomplete source"
 func trailingLineCommentIndexFallback(line string) int {
-	quote := byte(0)
-	escaped := false
+	literals := literalEnds(line)
 	for index := 0; index+1 < len(line); index++ {
+		if end, ok := literals[index]; ok {
+			index = end - 1
+			continue
+		}
 		character := line[index]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-				continue
-			}
-			if character == '\\' && quote != '`' {
-				escaped = true
-				continue
-			}
-			if character == quote {
-				quote = 0
-			}
-			continue
-		}
-		if character == '"' || character == '\'' || character == '`' {
-			quote = character
-			continue
-		}
 		if character == '/' && line[index+1] == '/' {
 			return index
 		}
@@ -440,24 +497,16 @@ func normalizeSingleLineDelimiters(text string) string {
 }
 
 func nextStructuralDelimiter(text string, start int) int {
-	quote := byte(0)
-	escaped := false
-	for index := start; index < len(text); index++ {
+	literals := literalEnds(text)
+	for index := 0; index < len(text); index++ {
+		if end, ok := literals[index]; ok {
+			index = end - 1
+			continue
+		}
+		if index < start {
+			continue
+		}
 		character := text[index]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-			} else if character == '\\' && quote != '`' {
-				escaped = true
-			} else if character == quote {
-				quote = 0
-			}
-			continue
-		}
-		if character == '"' || character == '\'' || character == '`' {
-			quote = character
-			continue
-		}
 		if character == '(' || character == '[' || character == '{' {
 			return index
 		}
@@ -470,24 +519,16 @@ func matchingDelimiter(text string, open int) int {
 		return -1
 	}
 	stack := []byte{}
-	quote := byte(0)
-	escaped := false
-	for index := open; index < len(text); index++ {
+	literals := literalEnds(text)
+	for index := 0; index < len(text); index++ {
+		if end, ok := literals[index]; ok {
+			index = end - 1
+			continue
+		}
+		if index < open {
+			continue
+		}
 		character := text[index]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-			} else if character == '\\' && quote != '`' {
-				escaped = true
-			} else if character == quote {
-				quote = 0
-			}
-			continue
-		}
-		if character == '"' || character == '\'' || character == '`' {
-			quote = character
-			continue
-		}
 		if isOpeningDelimiter(character) {
 			stack = append(stack, character)
 			continue
@@ -559,24 +600,16 @@ func normalizeSingleLineCalls(text string) string {
 
 // nextStructuralParen finds an opening parenthesis outside quoted literals.
 func nextStructuralParen(text string, start int) int {
-	quote := byte(0)
-	escaped := false
-	for i := start; i < len(text); i++ {
+	literals := literalEnds(text)
+	for i := 0; i < len(text); i++ {
+		if end, ok := literals[i]; ok {
+			i = end - 1
+			continue
+		}
+		if i < start {
+			continue
+		}
 		ch := text[i]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-			} else if ch == '\\' {
-				escaped = true
-			} else if ch == quote {
-				quote = 0
-			}
-			continue
-		}
-		if ch == '\'' || ch == '"' {
-			quote = ch
-			continue
-		}
 		if ch == '(' {
 			return i
 		}
@@ -674,24 +707,15 @@ func formatAssert(line string) string {
 	}
 	code, comment, hasComment := splitTrailingLineComment(line)
 	depth := 0
-	quote := byte(0)
-	escaped := false
 	separator := -1
+	literals := literalEnds(code)
 	for i := 0; i < len(code); i++ {
-		ch := code[i]
-		if quote != 0 {
-			if escaped {
-				escaped = false
-			} else if ch == '\\' {
-				escaped = true
-			} else if ch == quote {
-				quote = 0
-			}
+		if end, ok := literals[i]; ok {
+			i = end - 1
 			continue
 		}
+		ch := code[i]
 		switch ch {
-		case '"', '\'':
-			quote = ch
 		case '(', '[', '{':
 			depth++
 		case ')', ']', '}':
@@ -733,24 +757,17 @@ func formatPanic(line string) string {
 
 func matchingParen(s string, open int) int {
 	depth, angle := 0, 0
-	quote := rune(0)
-	esc := false
-	for i, r := range s[open:] {
-		if quote != 0 {
-			if esc {
-				esc = false
-			} else if r == '\\' {
-				esc = true
-			} else if r == quote {
-				quote = 0
-			}
+	literals := literalEnds(s)
+	for index := 0; index < len(s); index++ {
+		if end, ok := literals[index]; ok {
+			index = end - 1
 			continue
 		}
-		if r == '"' || r == '\'' {
-			quote = r
+		if index < open {
 			continue
 		}
-		switch r {
+		i := index - open
+		switch s[index] {
 		case '<':
 			angle++
 		case '>':
@@ -771,24 +788,17 @@ func matchingParen(s string, open int) int {
 func split(s string) []string {
 	parts := []string{}
 	start, paren, bracket, brace, angle := 0, 0, 0, 0, 0
-	quote := rune(0)
-	esc := false
-	for i, r := range s {
-		if quote != 0 {
-			if esc {
-				esc = false
-			} else if r == '\\' {
-				esc = true
-			} else if r == quote {
-				quote = 0
+	literals := literalEnds(s)
+	unterminated := false
+	for i := 0; i < len(s); i++ {
+		if end, ok := literals[i]; ok {
+			if end >= len(s) && !literalClosed(s[i:end]) {
+				unterminated = true
 			}
+			i = end - 1
 			continue
 		}
-		if r == '"' || r == '\'' {
-			quote = r
-			continue
-		}
-		switch r {
+		switch s[i] {
 		case '(':
 			paren++
 		case ')':
@@ -816,7 +826,7 @@ func split(s string) []string {
 			}
 		}
 	}
-	if quote != 0 || paren != 0 || bracket != 0 || brace != 0 || angle != 0 {
+	if unterminated || paren != 0 || bracket != 0 || brace != 0 || angle != 0 {
 		return nil
 	}
 	if p := strings.TrimSpace(s[start:]); p != "" {
@@ -847,29 +857,19 @@ func closing(s string) int {
 }
 func delimiters(s string) int {
 	delta := 0
-	quote := rune(0)
-	esc := false
-	lastCode := rune(0)
-	for i, r := range s {
-		if quote != 0 {
-			if esc {
-				esc = false
-			} else if r == '\\' {
-				esc = true
-			} else if r == quote {
-				quote = 0
-			}
+	lastCode := byte(0)
+	literals := literalEnds(s)
+	for i := 0; i < len(s); i++ {
+		if end, ok := literals[i]; ok {
+			lastCode = s[i]
+			i = end - 1
 			continue
 		}
+		r := s[i]
 		if i+1 < len(s) && r == '/' && s[i+1] == '/' {
 			break
 		}
-		if r == '"' || r == '\'' {
-			quote = r
-			lastCode = r
-			continue
-		}
-		if !unicode.IsSpace(r) {
+		if r != ' ' && r != '\t' && r != '\n' && r != '\r' {
 			lastCode = r
 		}
 		if r == '{' || r == '(' || r == '[' {

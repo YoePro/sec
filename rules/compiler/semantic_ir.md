@@ -472,7 +472,7 @@ lifetime/storage dependency
 
 § 17(7) A concatenation or interpolation fully resolved at compile time is represented as static string data and carries no runtime failure.
 
-§ 17(8) The allocator or allocation context used by runtime string materialization is not yet specified (MD-004). Semantic IR must not invent an allocator selection; until it is specified, runtime materialization that requires one is an explicit unsupported-lowering case (`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 5).
+§ 17(8) Runtime string materialization uses the canonical active allocation context of `rules/memory/allocation.md`; Sec 0.1 defines no string-specific allocator or allocation domain. The frontend resolves that context before Semantic IR, and Semantic IR preserves the resolved allocation domain or context together with the ordinary failure channel (`AllocationError`), ownership facts, and lifetime facts required by lowering. Lowering consumes these facts and must not choose an allocator independently, and it must not repair an insufficient allocation lifetime by silently reallocating the result into another domain. Until Semantic IR represents string materialization, a runtime materialization is an explicit unsupported-lowering case (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 5.10–5.17).
 
 ---
 

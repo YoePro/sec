@@ -65,6 +65,12 @@ func (p *Parser) parseInterpolatedStringLiteral() ast.Expression {
 			continue
 		}
 		if source[i] != '{' {
+			// rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md
+			// § 6.12: the lexer reported L1021 for an unmatched `}`; the text
+			// keeps it as malformed source, never as an escaped brace.
+			if source[i] == '}' {
+				literal.Malformed = true
+			}
 			text.WriteRune(source[i])
 			i++
 			continue

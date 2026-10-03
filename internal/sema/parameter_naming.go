@@ -16,7 +16,7 @@ import (
 // Rules:
 //   - rules/foundations/names_scopes_visibility.md — §3 module declaration surface
 //   - rules/foundations/names_scopes_visibility.md — §8 Shadowing
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 8
 func (a *Analyzer) validateParameterTypeShadowing(parameter *ast.Identifier) {
 	if parameter == nil || a.isUnitSymbol(parameter.Value) {
 		return
@@ -42,7 +42,7 @@ func (a *Analyzer) validateParameterTypeShadowing(parameter *ast.Identifier) {
 // Rules:
 //   - rules/foundations/names_scopes_visibility.md — §2 "One declaration namespace per scope", §8 "Shadowing"
 //   - rules/foundations/names_scopes_visibility.md — §20 "Diagnostics": "local declaration count shadows visible declaration count"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 8
 func (a *Analyzer) reportLocalShadowsDeclaration(name string, token lexer.Token) {
 	if previous, exists := a.genericTypeDefinitions[name]; exists && validDefinitionToken(previous) {
 		a.addErrorAtTokenWithPreviousID(token, previous, diagnostics.LocalShadowsDeclaration,
@@ -75,7 +75,7 @@ func (a *Analyzer) reportLocalShadowsDeclaration(name string, token lexer.Token)
 // Rules:
 //   - rules/foundations/names_scopes_visibility.md — §2 "One declaration namespace per scope"
 //   - rules/types/units.md — "Unit names and compiler-known names"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 2.7–2.9
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 8
 func (a *Analyzer) isUnitSymbol(name string) bool {
 	_, ok := a.units[name]
 	return ok

@@ -51,6 +51,12 @@ const (
 	// LambdaCaptureListClose marks the matching real closing parenthesis of a
 	// complete parsed explicit lambda capture list.
 	LambdaCaptureListClose Role = "lambda-capture-list-close"
+	// CommaListOpen marks the real opening delimiter of a parsed
+	// comma-separated call argument list, array literal, or struct literal
+	// field list whose grammar permits a trailing comma.
+	CommaListOpen Role = "comma-list-open"
+	// CommaListClose marks the matching real closing delimiter.
+	CommaListClose Role = "comma-list-close"
 	// BinaryOperator marks the operator token of a parsed infix expression.
 	BinaryOperator Role = "binary-operator"
 	// AssignmentOperator marks the operator of an assignment statement and the
@@ -135,6 +141,13 @@ const (
 	AttributedDeclarationStart Role = "attributed-declaration-start"
 	// RangeOperator marks .. or ..< in a parser-confirmed range or slice.
 	RangeOperator Role = "range-operator"
+	// RangeOperatorOpenStart marks .. or ..< in a range without a lower bound,
+	// such as the switch case pattern `..<0`; only its upper-bound side is
+	// compact.
+	RangeOperatorOpenStart Role = "range-operator-open-start"
+	// RangeOperatorOpenEnd marks .. in a range without an upper bound; only
+	// its lower-bound side is compact.
+	RangeOperatorOpenEnd Role = "range-operator-open-end"
 	// RangeStepKeyword marks contextual step in a parser-confirmed for range.
 	RangeStepKeyword Role = "range-step-keyword"
 	// StructFieldColon marks the real colon in a parser-confirmed struct field.
@@ -396,6 +409,17 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		if len(attributes) == 0 || declaration.Type == lexer.EOF {
 			return
 		}
+		// rules/tooling/formatter.md — §16(14): attributes are written one per
+		// line, so an argument-free attribute also ends its line before the
+		// next attribute.
+		for index := 0; index+1 < len(attributes); index++ {
+			current, next := attributes[index], attributes[index+1]
+			if current == nil || current.Name == nil || len(current.Arguments) != 0 || next == nil {
+				continue
+			}
+			mark(current.Name.Token, AttachedAttributeEnd)
+			mark(next.Token, AttributedDeclarationStart)
+		}
 		last := attributes[len(attributes)-1]
 		if last == nil || last.Name == nil || len(last.Arguments) != 0 {
 			return
@@ -589,6 +613,29 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			if node.Value != nil {
 				mark(node.Token, SpacedKeyword)
 			}
+		case *ast.DiscardStatement:
+			// rules/memory/ownership.md explicit discard statement keyword.
+			if node.Token.Type == lexer.DISCARD && (node.Value != nil || node.Name != nil) {
+				mark(node.Token, SpacedKeyword)
+			}
+		case *ast.DetachStatement:
+			// rules/concurrency/tasks.md §22: contextual `detach handle [discard]`.
+			if node.Token.Lexeme == "detach" && node.Value != nil {
+				mark(node.Token, SpacedKeyword)
+				if node.DiscardResult && node.DiscardToken.Type == lexer.DISCARD {
+					mark(node.DiscardToken, SpacedBefore)
+				}
+			}
+		case *ast.AssertStatement:
+			// rules/errors/panic.md §15.1 and formatter.md §23(1) statement syntax.
+			if node.Token.Type == lexer.ASSERT && node.Condition != nil {
+				mark(node.Token, SpacedKeyword)
+			}
+		case *ast.PanicStatement:
+			// rules/errors/panic.md §17 `panic "message"`.
+			if node.Token.Type == lexer.PANIC && node.Message != nil {
+				mark(node.Token, SpacedKeyword)
+			}
 		case *ast.PropertySetter:
 			// rules/errors/errorhandling.md §24: `try set value ErrorType`.
 			if node.Parameter != nil && !node.Invalid {
@@ -780,11 +827,40 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				mark(node.GuardToken, MatchGuardKeyword)
 			}
 			mark(node.ArrowToken, HandlerArrow)
+		case *ast.CallExpression:
+			// rules/tooling/formatter.md — §11(2), §17(2) multiline argument lists.
+			if node.ArgumentsOpen.Type == lexer.LPAREN {
+				markGroupPair(node.ArgumentsOpen, CommaListOpen, CommaListClose)
+			}
+		case *ast.OkExpression:
+			if node.ArgumentsOpen.Type == lexer.LPAREN {
+				markGroupPair(node.ArgumentsOpen, CommaListOpen, CommaListClose)
+			}
+		case *ast.ErrExpression:
+			if node.ArgumentsOpen.Type == lexer.LPAREN {
+				markGroupPair(node.ArgumentsOpen, CommaListOpen, CommaListClose)
+			}
+		case *ast.NewExpression:
+			if node.ArgumentsOpen.Type == lexer.LPAREN {
+				markGroupPair(node.ArgumentsOpen, CommaListOpen, CommaListClose)
+			}
+		case *ast.ArrayLiteral:
+			// rules/tooling/formatter.md — §11(2) multiline collection elements.
+			if node.Token.Type == lexer.LBRACKET {
+				markGroupPair(node.Token, CommaListOpen, CommaListClose)
+			}
+		case *ast.StructLiteral:
+			if node.Open.Type == lexer.LBRACE {
+				markGroupPair(node.Open, CommaListOpen, CommaListClose)
+			}
 		case *ast.SwitchCase:
 			if node.Body == nil || node.ColonToken.Type != lexer.COLON {
 				break
 			}
 			mark(node.ColonToken, SwitchCaseColon)
+			if !node.Default && len(node.Items) > 0 && node.Token.Type == lexer.CASE {
+				mark(node.Token, SpacedKeyword)
+			}
 			for index := 1; index < len(node.Items); index++ {
 				markPreviousToken(switchCaseItemToken(node.Items[index]), lexer.COMMA, SwitchCaseSeparator)
 			}
@@ -803,7 +879,14 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			}
 		case *ast.RangeExpression:
 			if node.Token.Type == lexer.RANGE || node.Token.Type == lexer.RANGE_EXCLUSIVE {
-				mark(node.Token, RangeOperator)
+				switch {
+				case node.Start == nil && node.End != nil:
+					mark(node.Token, RangeOperatorOpenStart)
+				case node.End == nil && node.Start != nil:
+					mark(node.Token, RangeOperatorOpenEnd)
+				default:
+					mark(node.Token, RangeOperator)
+				}
 			}
 		case *ast.SliceExpression:
 			if node.RangeToken.Type == lexer.RANGE || node.RangeToken.Type == lexer.RANGE_EXCLUSIVE {

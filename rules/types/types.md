@@ -1132,7 +1132,7 @@ underlying type. Chained named types remain distinct: after `type B int` and
 `type A B`, the types `int`, `B`, and `A` are all distinct. Forms naming several
 underlying types, such as `type A int string`, and the legacy `=` forms
 `type Name = ExistingType` and `type Name = First Second` are invalid Sec 0.1
-syntax (`rules/foundations/grammar.md`; `rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 3).
+syntax (`rules/foundations/grammar.md`; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 3).
 
 Named types may be generic:
 

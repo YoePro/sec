@@ -1170,6 +1170,8 @@ S3201  control-flow.assignment-in-condition
 
 § 31(7) Migration must move toward the canonical registry and occurrence model without breaking published diagnostic identity.
 
+§ 31(8) `L1021` / `lexer.unescaped-interpolation-closing-brace` is a published mandatory lexer diagnostic for an unmatched single `}` in interpolated-string text. Its primary range is exactly that brace, and its message explains both the error and the `}}` repair (`rules/foundations/lexical_structure.md` § 14.3; MD-005, `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 6).
+
 ---
 
 ## § 32. Governance boundary

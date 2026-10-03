@@ -943,6 +943,7 @@ func (l *Lexer) readRawString() Token {
 //   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
 //   - rules/foundations/lexical_structure.md — §15 "Escapes"
 //   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 6
 func (l *Lexer) readPrefixedString(typ TokenType) Token {
 	line := l.line
 	column := l.column
@@ -972,9 +973,20 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 				return l.unterminatedInterpolatedStringToken(start, line, column, diagnosticStart)
 			}
 		case '}':
+			// 2026-10-03: MD-005 — an unmatched single `}` in interpolated text
+			// reports L1021 on exactly that brace and scanning stays in text
+			// mode, so later interpolations and the closing quote are still
+			// recognized; the candidate is retained as one token. Not mirrored
+			// in the bootstrap lexer.
+			braceLine, braceColumn := l.line, l.column
 			l.advance()
 			if l.peek() != '}' {
-				return l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
+				l.diagnostics = append(l.diagnostics, Diagnostic{
+					ID:      compilerdiagnostics.LexerUnescapedInterpolationClosingBrace,
+					Message: "a single `}` is not valid in interpolated-string text; write `}}` for a literal closing brace",
+					Primary: l.token(ILLEGAL, "}", braceLine, braceColumn),
+				})
+				continue
 			}
 			l.advance()
 		default:
@@ -991,7 +1003,15 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 //   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) unterminatedInterpolatedStringToken(start int, line int, column int, diagnosticStart int) Token {
 	token := l.token(ILLEGAL, string(l.input[start:l.pos]), line, column)
-	if len(l.diagnostics) == diagnosticStart {
+	// 2026-10-03: MD-005 — an L1021 brace diagnostic does not explain a
+	// missing closing quote, so it never suppresses L1019.
+	owned := false
+	for _, diagnostic := range l.diagnostics[diagnosticStart:] {
+		if diagnostic.ID != compilerdiagnostics.LexerUnescapedInterpolationClosingBrace {
+			owned = true
+		}
+	}
+	if !owned {
 		l.diagnostics = append(l.diagnostics, Diagnostic{
 			ID:      compilerdiagnostics.LexerUnterminatedInterpolatedString,
 			Message: "unterminated interpolated string; close its interpolation expression and final double quote before the end of the line",

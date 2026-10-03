@@ -123,22 +123,34 @@ func TestOptionTryHandlersAndOpenErrorNarrowing(t *testing.T) {
 			}
 		}
 	}
-	narrowedMatch := 0
+	narrowedMatch, concreteVariants, exhaustiveConcrete := 0, 0, 0
 	for _, plan := range analyzer.resolvedMatchPlans {
+		variants := 0
 		for _, arm := range plan.Arms {
 			if arm.PatternKind == MatchPatternResultErrNarrowed && arm.UnionVariantName == "IOError.NotFound" {
 				narrowedMatch++
 			}
+			// rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 9.2–9.5
+			if arm.PatternKind == MatchPatternResultErrVariant {
+				concreteVariants++
+				variants++
+			}
+		}
+		if variants == 2 && plan.Exhaustive {
+			exhaustiveConcrete++
 		}
 	}
 	if optionPlans != 3 || optionResidual != 1 || narrowedTry != 1 || narrowedMatch != 1 {
 		t.Fatalf("option handlers = %d, residual = %d, narrowed try = %d, narrowed match = %d; want 3, 1, 1, 1", optionPlans, optionResidual, narrowedTry, narrowedMatch)
 	}
+	if concreteVariants != 3 || exhaustiveConcrete != 1 {
+		t.Fatalf("concrete error variant arms = %d, exhaustive all-variant matches = %d; want 3, 1", concreteVariants, exhaustiveConcrete)
+	}
 }
 
 // Wrong-carrier patterns, unpropagatable None, open matches without an error
-// fallback, concrete-channel narrowing, and narrowing after a fallback are
-// rejected with mentor diagnostics.
+// fallback, incomplete concrete-variant coverage, and narrowing after a
+// fallback are rejected with mentor diagnostics.
 //
 // Rules:
 //   - rules/errors/errorhandling.md — §12.2, §12.3, §16, §27.1, §27.2, §30
@@ -159,8 +171,8 @@ func TestOptionTryAndNarrowingDiagnostics(t *testing.T) {
 		{48, "Some and None patterns match Option values; Result[int, IOError] uses Ok(value) and Err(error)"},
 		{49, "Some and None patterns match Option values"},
 		{54, "concrete error arms cannot cover the open error domain; add Err(errorValue) or Err(_)"},
-		{63, "Err(IOError.NotFound) narrows only an open Result[T, error] channel"},
-		{72, "unreachable match arm; an earlier Err fallback already handles every error"},
+		{61, "non-exhaustive match for Result[int, IOError]: missing Err(IOError.Busy)"},
+		{71, "unreachable match arm; an earlier Err fallback already handles every error"},
 	}
 	if len(errors) != len(wants) {
 		t.Fatalf("errors = %+v, want %d", errors, len(wants))

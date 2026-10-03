@@ -106,7 +106,7 @@ fn F(raw: RawPtr[int32]) void {
 
 	negated := New(lexer.New("module main\nfn F(raw: RawPtr[int32]) void {\n    unsafe {\n        if raw is not null {\n        }\n    }\n}\n"))
 	negated.ParseProgram()
-	if len(negated.Errors()) == 0 || !strings.Contains(strings.Join(negated.Errors(), "\n"), "is not is defined only for None and available") {
+	if len(negated.Errors()) == 0 || !strings.Contains(strings.Join(negated.Errors(), "\n"), "is not null is not defined") {
 		t.Fatalf("is not null errors = %v", negated.Errors())
 	}
 }

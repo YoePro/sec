@@ -60,3 +60,21 @@ fn MatchNarrowing() int {
         Err(error) => 1
     }
 }
+
+// MD-008: concrete error variants on a closed Result[T, IOError] channel
+// participate in closed exhaustiveness without an Err(error) fallback.
+fn ConcreteChannelVariants() int {
+    return match ReadIO() {
+        Ok(value) => value
+        Err(IOError.NotFound) => 0
+        Err(IOError.Busy) => 1
+    }
+}
+
+fn ConcreteChannelVariantThenFallback() int {
+    return match ReadIO() {
+        Ok(value) => value
+        Err(IOError.NotFound) => 0
+        Err(error) => 1
+    }
+}

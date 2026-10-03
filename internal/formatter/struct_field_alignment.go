@@ -26,12 +26,12 @@ type structFieldAlignmentAnchor struct {
 //   - rules/tooling/formatter.md — §9(1–2) syntactic alignment anchors
 //   - rules/tooling/formatter.md — §9(5–6) struct fields and tags
 //   - rules/tooling/formatter.md — §9(8–10) group boundaries and padding limit
-func structFieldAlignmentReplacements(document cst.Document) []formatterReplacement {
+func structFieldAlignmentReplacements(document cst.Document, maxPadding int) []formatterReplacement {
 	anchors := structFieldAlignmentAnchors(document)
 	replacements := []formatterReplacement{}
 	group := []structFieldAlignmentAnchor{}
 	flush := func() {
-		replacements = append(replacements, alignStructFieldGroup(document, group)...)
+		replacements = append(replacements, alignStructFieldGroup(document, group, maxPadding)...)
 		group = group[:0]
 	}
 
@@ -99,7 +99,7 @@ func structFieldAnchorsAreContiguous(document cst.Document, previous, current st
 	return true
 }
 
-func alignStructFieldGroup(document cst.Document, group []structFieldAlignmentAnchor) []formatterReplacement {
+func alignStructFieldGroup(document cst.Document, group []structFieldAlignmentAnchor, maxPadding int) []formatterReplacement {
 	if len(group) == 0 {
 		return nil
 	}
@@ -114,7 +114,7 @@ func alignStructFieldGroup(document cst.Document, group []structFieldAlignmentAn
 	for _, anchor := range group {
 		colon := document.Elements[anchor.colon]
 		padding := typeColumn - (colon.Token.Column + 1)
-		if padding > defaultMaximumAlignmentPadding {
+		if padding > maxPadding {
 			return unalignedStructFieldTagReplacements(document, group)
 		}
 	}
@@ -130,13 +130,13 @@ func alignStructFieldGroup(document cst.Document, group []structFieldAlignmentAn
 			text:  strings.Repeat(" ", padding),
 		})
 	}
-	replacements = append(replacements, alignStructFieldTags(document, group, typeColumn)...)
+	replacements = append(replacements, alignStructFieldTags(document, group, typeColumn, maxPadding)...)
 	return replacements
 }
 
 // alignStructFieldTags treats tags as the secondary §9 anchor. Failure to fit
 // the secondary column never discards the already-proven primary type column.
-func alignStructFieldTags(document cst.Document, group []structFieldAlignmentAnchor, typeColumn int) []formatterReplacement {
+func alignStructFieldTags(document cst.Document, group []structFieldAlignmentAnchor, typeColumn int, maxPadding int) []formatterReplacement {
 	tagged := make([]structFieldAlignmentAnchor, 0, len(group))
 	maximumPrefixEndColumn := 0
 	for _, anchor := range group {
@@ -155,7 +155,7 @@ func alignStructFieldTags(document cst.Document, group []structFieldAlignmentAnc
 	tagColumn := maximumPrefixEndColumn + 1
 	for _, anchor := range tagged {
 		prefixEndColumn := structFieldTagPrefixEndColumn(document, anchor, typeColumn)
-		if tagColumn-prefixEndColumn > defaultMaximumAlignmentPadding {
+		if tagColumn-prefixEndColumn > maxPadding {
 			return unalignedStructFieldTagReplacements(document, tagged)
 		}
 	}

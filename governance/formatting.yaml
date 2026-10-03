@@ -144,7 +144,7 @@ integrations:
       - the pass runs before indentation and alignment so later column alignment observes the canonical token spelling; CLI and LSP share it
     remaining:
       - continuation-line indentation for operators split across lines remains owned by formatter-canonical-layout
-      - spacing for remaining unroled positions such as struct-literal braces and ordinary comma lists stays with the existing line-oriented passes until they move to CST roles
+      - spacing for remaining unroled positions such as struct-literal braces stays with the existing line-oriented passes until it moves to CST roles
     verification:
       - command: go test ./internal/cst ./internal/formatter ./cmd/lsp -run 'Test(ApplyProgramRolesMarksSpacingRoles|FormatCanonicalTokenSpacing|FormatTokenSpacingLeaves|FormatGenericConstraintConjunctionsFromCST|FormatDeclarationGroupSeparatorsFromCST|FormatSource)' -count=1
         result: passed on 2026-10-01
@@ -200,7 +200,6 @@ integrations:
       - bodyless interface property requirements such as { get } keep their compact form, and malformed documents are left unchanged
       - "§12(8), §12(12), §12(14): block comments with an opener indented further than their body no longer repeat `*` on the following lines (see tooling.cst-lexical-foundation progress)"
     remaining:
-      - properties declared inside nested impl members beyond top-level impl blocks are not yet expanded
     verification:
       - command: go test ./internal/formatter -run 'TestFormat(ShiftedBlockCommentOpener|CompressedPropertyAccessors|PropertyRequirementStaysCompact)' -count=1
         result: passed on 2026-10-01
@@ -282,7 +281,7 @@ integrations:
       - expose identical output through LSP document formatting without editor-side alignment logic
     remaining:
       - extend the generic alignment engine to typed declaration groups, struct field/type/tag columns, and compatible non-nominal declaration groups
-      - complete sec fmt recursive project, range, on-type, minimal-edit, and fix modes; check and stdin modes are tracked by tooling.formatter-check-explicit-files and tooling.formatter-stdin
+      - complete sec fmt range, on-type, and minimal-edit modes; recursive directory and project selection is blocked on MD-037; check, stdin, and fix modes are implemented
       - migrate the remaining trimmed-line indentation and alignment decisions to the parser-owned lossless comment/trivia attachments now returned by the shared formatter
     verification:
       - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
@@ -348,7 +347,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-10-01"
+    revised: "2026-10-03"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
@@ -582,9 +581,17 @@ integrations:
         lists, sequence types, expression indexing, and recovered incomplete
         syntax remain outside this rewrite.
       - "line endings: well-formed CRLF, bare-CR, and mixed input is written with LF in the shared formatter core, so CLI file, stdin, and LSP formatting agree (rules/foundations/lexical_structure.md §2; detail in frontend.lexical-structure)"
+      - "idempotence (fixed 2026-10-03): open-start and open-end range patterns (`case ..<0:`, `case 101..:`) carry dedicated CST roles that compact only the bounded side, and a parser-confirmed `case` keyword with alternatives is a spaced keyword, so `case ..<0` no longer collapses to `case..<0` and loses its case-label indentation on the next pass; every non-invalid repository .sec file now formats idempotently"
+      - "§ 4 configuration (2026-10-03): formatter.Options carries indentation_width (2, 4, or 6; default 4), vertical_style (structured or compact), and language_corrections (Fix); ValidateOptions rejects values outside the format_version = 1 domains, DefaultOptions returns the § 4(5) defaults, indentation and executable-block expansion use the configured width, the maximum alignment padding is four indentation widths (§ 4(14)) for struct, enum, parameter, and named-type alignment, and compact style drops the optional blank line between import classes (§ 13(9)); reading the project configuration is blocked on MD-036"
+      - "§ 11(2), § 17(2) (2026-10-03): multiline call, Ok/Err/new argument lists, array literals, and comma-using struct literals gain the trailing comma when their closing delimiter stands on its own line; hugging forms such as Append(Value { ... }) and comma-free line-layout struct literals (§ 11(7)) are left unchanged; the parser now treats comments inside argument lists, array literals, and parameter lists as trivia so trailing comments no longer cause parse errors"
+      - "§ 9(13)–(15) (2026-10-03): a let or assignment value whose same-level infix chain already has one operand per line is laid out with the value on the next line, one stable operand column two spaces past the continuation indentation, and right-aligned leading operators; trailing-operator layouts become leading; values with comments, shared operand lines, or multiline operands are unchanged"
+      - "§ 17(6)–(7) (2026-10-03): a let or assignment value that is an already multiline member or call chain is laid out with the receiver on the continuation line and every segment on its own leading-dot line one level deeper; trailing dots become leading dots; chains with a multiline segment, a blank line, or comments are unchanged"
+      - "§ 15(1) (2026-10-03): non-empty single-line struct, enum, union, register, interface, and impl blocks become multiline; comma-separated blocks put each item on its own line with the trailing comma, empty blocks stay compact (§ 8(7)), and blocks with comments are unchanged"
+      - "§ 16(14) (2026-10-03): consecutive argument-free attributes receive the same line-break role as the final attribute; the parser currently accepts only one attribute per function, so the rule has no valid multi-attribute input yet"
+      - "literal preservation (fixed 2026-10-03, § 29): the line-oriented delimiter, call, split, assertion, trailing-comment, and indentation scanners skip string, raw-string, character, and interpolated-string literals by exact lexer token spans (internal/formatter/literal_spans.go) instead of a private quote toggle, so braces and quotes inside nested interpolation expressions no longer rewrite literal text (`{value}` to `{ value }`) or drop the indentation of every following line"
     remaining:
-      - formatter-known-nonidempotence: testdata/switch_valid.sec (return indentation inside a switch case) changes on a second format pass; the former sec/platform/linux/arm64/syscall_numbers.sec trailing-comment case is fixed since 2026-10-02 by realigning trailing comments after the role-alignment pass.
-      - formatter-header-token-spacing: header spacing is normalized since 2026-10-02 for named types, contracts, function and extern headers, function-type returns, ref/ref mut, type-first declarations, enum, unit, interface, impl, and single imports (frontend.types-core); discard statements and other statement keywords without a spacing role still keep source spacing.
+      - "formatter-switch-case-label-column: blocked on MD-032 — whether switch case/default labels align with `switch` as in the § 18(7) example or stay indented one level as the formatter and its tests do today."
+      - formatter-header-token-spacing: header spacing is normalized since 2026-10-02 for named types, contracts, function and extern headers, function-type returns, ref/ref mut, type-first declarations, enum, unit, interface, impl, and single imports (frontend.types-core); since 2026-10-03 the discard, assert, panic, and contextual detach statement keywords (with a trailing detach discard spaced before) are parser-confirmed spaced keywords as well; operand-free keywords such as cancel, break, and continue need no spacing role.
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
         trimmed-line transformation pipeline with internal/cst as the primary
@@ -743,7 +750,7 @@ integrations:
           - Fixed and adaptive width modes produce deterministic output for a known effective width.
 
       - id: formatter-imports-and-file-layout
-        status: planned
+        status: partial
         rules:
           - "§ 13"
           - "§ 14"
@@ -757,6 +764,16 @@ integrations:
           - Imports are never removed by ordinary formatting.
           - Attached import comments move with their import.
           - Ordinary top-level declarations retain source order.
+        implemented:
+          - "2026-10-03 (internal/formatter/import_region.go): every top-level import is gathered into one canonical region after the module declaration and before the first ordinary declaration (including its attributes and parser-attached leading comments); one import keeps single-import form, two or more form one group"
+          - imports are ordered by import class, then canonical path, never by alias; duplicates and apparently unused imports are kept
+          - parser-attached leading, documentation, and trailing line comments move with their import; a comment the pass cannot attribute to exactly one import (dangling group comments, inline block comments, group-level comments) leaves the source unchanged, as does any parse error or a line holding more than one import item
+          - the reserved platform root forms its own class, separated by one empty line in the default structured style
+          - ordinary top-level declarations keep source order
+        remaining:
+          - "standard-library versus project import classes are blocked on MD-033; until then both share the first class"
+          - compact style (§ 13(9)) depends on formatter-project-configuration
+          - import regions with group-level or detached comments are left unformatted rather than partially reordered
 
       - id: formatter-language-surface
         status: partial
@@ -810,6 +827,9 @@ integrations:
           - ordinary formatting preserves redundant nested parentheses while the explicit fix option removes only a directly nested inner pair proven by complete CST delimiter parentage
           - redundant-parenthesis correction preserves precedence-sensitive groups, comment-separated nesting, and parenthesis-like text inside literals, and remains idempotent
           - explicit fixes remove parser-confirmed whole-condition parentheses from valid if, while, and switch headers while preserving partial-expression grouping and ordinary formatter output
+          - "§ 27(33) (2026-10-03): explicit fixes rewrite `type Name = T` to `type Name T`, never the compact variant form `type Name = A B ...` (§ 27(34)); ordinary formatting keeps the invalid legacy form"
+          - "`sec fmt --fix` applies the Language Corrections from the CLI, also with --check and --stdin; lexically malformed source stays byte-for-byte unchanged in fix mode too (§ 25)"
+          - "§ 27(36), MD-006 (2026-10-03): explicit fixes rewrite `(state is Idle) == true` to `state is Idle` and `!(state is Idle)` to `state is not Idle` (including `is None` and `is available`) only where the parent binds more loosely than the equality/state-test level; Option binding tests, the null test, already negated tests, comment-bearing groups, and documents with parse errors are never rewritten, and ordinary formatting leaves every form unchanged"
 
       - id: formatter-cli-lsp-unification
         status: partial
@@ -933,3 +953,7 @@ integrations:
         result: passed on 2026-10-01 for shared CLI formatting commands and the complete LSP suite; an unfiltered cmd/compiler package run remains blocked by thirteen unrelated StringError.InvalidUtf8 payload errors in sec/core/utf8.sec
       - command: go test ./internal/... -count=1 && go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Format|Formatting' -count=1
         result: passed on 2026-10-01 with parser-retained generic delimiters, CST separation from arrays and indexing, canonical multiline trailing commas, formatter idempotence, and shared CLI/LSP formatting behavior
+      - command: go test ./internal/formatter ./internal/cst -run 'Literal|Interpolation|OpenRange|SwitchValid' -count=1
+        result: passed on 2026-10-03 with lexer-owned literal spans, nested-interpolation preservation, indentation after literal braces, open-range case spacing, and switch_valid idempotence
+      - command: format every non-invalid testdata and sec .sec file twice and compare output and ASTs
+        result: passed on 2026-10-03 for all 302 files with no idempotence differences; the only AST differences are the documented unit-metadata name canonicalization (testdata/units_advanced_valid.sec, sec/stdlib/unit/electricity.sec, sec/stdlib/unit/power_energy.sec), and the malformed testdata/formatter/check_noncanonical.sec fixture is excluded because it does not parse

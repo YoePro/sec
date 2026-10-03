@@ -72,22 +72,21 @@ func TestParseRegexContractMissingPatternRecovers(t *testing.T) {
 	}
 }
 
-// `regex` is a contextual contract spelling, not a reserved name (MD-009):
-// it remains an ordinary identifier outside same-line contract position.
+// `regex` follows ordinary whitespace and continuation rules: a contract on
+// the following physical line belongs to the declaration (MD-009).
 //
 // Rules:
-//   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 10.12–10.14
 //   - rules/foundations/grammar.md — "Type contracts"
-func TestRegexRemainsOrdinaryIdentifierOutsideContractPosition(t *testing.T) {
-	source := "fn regex(value: string) string { return value }\nfn Use() void {\n\tlet mut text: string\n\tregex(\"a\")\n\ttext = \"b\"\n}\n"
-	parser := New(lexer.New(source))
+func TestParseRegexContractOnFollowingLine(t *testing.T) {
+	parser := New(lexer.New("type Email string\n    regex \"^[a-z]+$\"\nfn After() void {}\n"))
 	program := parser.ParseProgram()
 	checkParserErrors(t, parser)
-	use := program.Statements[1].(*ast.FunctionDeclaration)
-	if len(use.Body.Statements) != 3 {
-		t.Fatalf("body statements = %d, want 3", len(use.Body.Statements))
+	declaration := program.Statements[0].(*ast.TypeDeclStatement)
+	if _, ok := declaration.Contract.(*ast.RegexContract); !ok {
+		t.Fatalf("contract = %#v, want regex contract from the continuation line", declaration.Contract)
 	}
-	if let, ok := use.Body.Statements[0].(*ast.LetStatement); !ok || let.Contract != nil {
-		t.Fatalf("typed let = %#v, want no contract from the following line", use.Body.Statements[0])
+	if len(program.Statements) != 2 {
+		t.Fatalf("statements = %d, want 2", len(program.Statements))
 	}
 }

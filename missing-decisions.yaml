@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-10-02"
+updated: "2026-10-03"
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -11,105 +11,6 @@ classification_scale:
   localized: The gap blocks a narrow optional feature without destabilizing adjacent language behavior.
 
 decisions:
-  - id: MD-004
-    area: strings-semantic-ir-and-lowering
-    rulebooks:
-      - rules/foundations/operators.md
-      - rules/foundations/lexical_structure.md
-      - rules/compiler/semantic_ir.md
-      - rules/memory/allocation.md
-    description: >-
-      Partly decided by
-      rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md
-      § 5: runtime string concatenation and interpolation are one fallible
-      materialization producing one string, require ordinary `try` handling,
-      have no observable intermediate strings, and fold to static data when
-      fully resolved at compile time. Still open (§§ 5.8 and 6.4): which
-      allocator or allocation context runtime string materialization uses, so
-      Semantic IR and backends can consume the frontend StringConcatPlan
-      without inventing allocator selection.
-    classification: blocking
-    status: open
-
-  - id: MD-005
-    area: interpolated-string-lexing-and-diagnostics
-    rulebooks:
-      - rules/foundations/lexical_structure.md
-      - rules/tooling/diagnostics.md
-    description: >-
-      Define the mandatory diagnostic identity, primary range, retained token
-      shape, and recovery boundary for an unmatched single `}` in interpolated
-      string text. The syntax requires literal closing braces to be doubled,
-      but currently does not specify whether the offending brace or the whole
-      interpolated-string candidate owns the error, and the Go lexer therefore
-      returns ILLEGAL without a structured lexer diagnostic.
-    classification: localized
-    status: open
-
-  - id: MD-006
-    area: parser-sema-and-operators
-    rulebooks:
-      - rules/foundations/operators.md
-      - rules/declarations/unions.md
-      - rules/control-flow/flowcontrol_if.md
-      - rules/control-flow/flowcontrol_while.md
-      - rules/memory/ownership.md
-    description: >-
-      Define the precedence and expression contexts of the contextual `is`
-      state tests (`is Variant`, `is empty`, `is None`, `is Some(binding)`,
-      `is available`). operators.md has no `is` entry in its precedence table,
-      and the if/while/union rulebooks only show whole-condition forms. The
-      parser therefore accepts `is` only as the trailing operator of a
-      complete if or while condition, so `ready && state is Idle` tests the
-      whole `ready && state` operand, and `let b := state is Idle` or
-      `return state is Idle` is not a state test. Decide whether `is` binds
-      tighter than comparison/logical operators, whether it may appear in
-      arbitrary bool expression contexts, and whether `is not Variant` and
-      `!(value is Variant)` are valid.
-    classification: constraining
-    status: open
-
-  - id: MD-008
-    area: errors-and-match
-    rulebooks:
-      - rules/errors/errorhandling.md
-      - rules/control-flow/flowcontrol_match.md
-      - rules/corrections/applied/match-errorhandling-correction-20260824.md
-    description: >-
-      flowcontrol_match.md and the applied match correction allow the
-      concrete-variant pattern Err(IOError.NotFound) only as open-error
-      narrowing of Result[T, error]; otherwise match forbids nested patterns.
-      try handlers, however, accept Err(IOError.NotFound) on a concrete
-      Result[T, IOError] channel. Decide whether match on a concrete error
-      channel may also use Err(ConcreteError.Variant) (with ordinary closed
-      enum exhaustiveness) or must bind the payload and use a guard. The
-      compiler currently rejects it in match with a focused diagnostic.
-    classification: localized
-    status: open
-
-
-  - id: MD-009
-    area: lexer-parser-and-contracts
-    rulebooks:
-      - rules/types/contracts.md
-      - rules/foundations/grammar.md
-      - rules/foundations/lexical_structure.md
-    description: >-
-      contracts.md makes `regex pattern` a normative string contract
-      ("Applicability" and "String and collection contracts"), but the
-      grammar.md TypeContract production has no regex alternative and
-      lexical_structure.md §7.3 omits `regex` from the reserved contract-word
-      inventory, although §7.3 states that compiler-known contract spellings
-      are reserved and must be added there when they become canonical. Decide
-      (1) the grammar production, e.g. Contextual("regex") ConstantExpression,
-      and (2) whether `regex` becomes a reserved declaration name like the
-      other contract words or stays contextual. The parser currently follows
-      the contracts.md shape `regex ConstantExpression`, recognizes `regex`
-      only on the same line as the preceding type or contract, and does not
-      reserve the spelling.
-    classification: constraining
-    status: open
-
   - id: MD-010
     area: types-and-contracts
     rulebooks:
@@ -592,3 +493,115 @@ decisions:
       explicit CFG), so the emitter can stop rejecting these plans.
     classification: localized
     status: open
+
+  - id: MD-032
+    area: formatter-switch-case-label-indentation
+    rulebooks:
+      - rules/tooling/formatter.md
+    description: >-
+      formatter.md § 18(7) shows switch case and default labels at the same
+      column as `switch`, with § 18(10) indenting each case body one level from
+      its label. The implemented formatter, its tests
+      (TestFormatSwitchCaseHeadersFromCST), and every formatted switch in the
+      repository instead indent case labels one level inside the switch body,
+      like match arms. The prose of § 18 never states the label column
+      explicitly. Decide whether case labels align with `switch` (as in the
+      § 18(7) example) or are indented one level (current output), so the
+      formatter and the rulebook example agree.
+    classification: localized
+    status: open
+
+  - id: MD-033
+    area: formatter-standard-library-import-class
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/projects/modules.md
+      - rules/library/stdlib.md
+    description: >-
+      formatter.md § 13(7) orders imports in three classes: Sec
+      standard-library modules, ordinary project and dependency modules, and
+      platform modules. Platform is identifiable from the reserved `platform`
+      import root (modules.md § 8), but standard-library paths are plain
+      logical paths such as "io" or "net/http" that the compiler resolves
+      through the standard-library namespace. The formatter is a syntactic,
+      deterministic tool and no rule says how it decides that a path is a
+      standard-library module: from the toolchain's installed sec/stdlib tree,
+      from a fixed catalogue in stdlib.md § 6 (whose list is explicitly "at
+      least" and already incomplete), from project configuration, or not at
+      all. Decide the source of truth. Until then the formatter places
+      standard-library and project imports in one class sorted by path.
+    classification: localized
+    status: open
+
+  - id: MD-034
+    area: allocation-profile-of-freestanding-targets
+    rulebooks:
+      - rules/memory/allocation.md
+      - rules/platform/platform_model.md
+    description: >-
+      allocation.md § 22 names the allocation profiles hosted, embedded-arena,
+      and noalloc, but the registered bare-metal targets use the target
+      profile "freestanding", and no rule maps it to an allocation profile or
+      says which allocation context, if any, a freestanding target provides.
+      Runtime string materialization (MD-004) and other allocating operations
+      therefore treat freestanding targets as providing no positive
+      allocation context and are rejected there. Decide the allocation
+      profile of freestanding targets, or how a freestanding project selects
+      embedded-arena or noalloc.
+    classification: constraining
+    status: open
+
+  - id: MD-035
+    area: infallible-tostring-and-runtime-string-materialization
+    rulebooks:
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/foundations/operators.md
+    description: >-
+      The canonical formatting contract is `fn ToString() string`, which has
+      no failure channel, while runtime string concatenation and
+      interpolation are fallible materializations that require try with
+      AllocationError (MD-004). A ToString implementation that builds its
+      result at run time, such as the sec/stdlib/net/ip endpoint, prefix, and
+      Ipv4Address.ToString methods, therefore cannot propagate allocation
+      failure and is rejected with S1097; handling the failure locally would
+      have to invent fallback text. Decide whether ToString may be fallible
+      (for example Result[string, AllocationError]), whether an infallible
+      ToString may materialize through a dedicated mechanism, or how such
+      implementations must be written.
+    classification: constraining
+    status: open
+
+  - id: MD-036
+    area: formatter-project-configuration-location
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/projects/projects.txt
+    description: >-
+      formatter.md § 4(5) and § 4(15) define a project-owned formatting
+      configuration (format_version, vertical_style, indentation_width,
+      width_mode, line_width, adaptive widths, language_corrections), and the
+      project manifest is .sec/sec.toml, but no rulebook says where in the
+      manifest these keys live (for example a [format] table), how
+      format_version is validated, or how the LSP and sec fmt locate the
+      manifest for a file outside a project. The formatter implements the
+      options; CLI and LSP keep the defaults until this is decided.
+    classification: localized
+    status: open
+
+  - id: MD-037
+    area: sec-fmt-directory-and-project-selection
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/tooling/lsp.md
+    description: >-
+      The governance asks for recursive and project-wide `sec fmt`, but no
+      rulebook defines the command model for directories: which files are
+      selected (all *.sec, the CompilationPlan source roots, test files,
+      internal directories), whether hidden directories, vendored or
+      generated sources are skipped, and how malformed files are reported.
+      `sec fmt` therefore accepts explicit files only. Decide the directory
+      and project selection rules.
+    classification: localized
+    status: open
+

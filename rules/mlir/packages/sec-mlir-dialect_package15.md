@@ -45,6 +45,30 @@ conversion, physical pinning, physical epoch storage, or LLVM pointer lowering.
 
 ---
 
+## Revision 2026-10-03 — alignment with the current rulebooks
+
+Package 15 was written before the v2 memory rulebooks
+(`references.md`, `reference_model.md`, `borrowing.md`, `storage.md`) were
+finalized. Where this package and those rulebooks differ, the rulebooks win
+and this package is read as amended below. The amendments are applied in the
+affected sections, marked "Revised 2026-10-03".
+
+| Section | Amendment | Authority |
+|---|---|---|
+| § 10 | Place root kind classifies the binding role of the root (local, parameter, receiver, static, deref-of-reference). The storage domain of the root is the separate canonical `StorageOrigin`; `foreign`, `addressed` and `allocation` are not root kinds. | `storage.md` § 3.4, § 4, § 5 |
+| § 11 | `StorageIdentity` is the storage-domain identity of `storage.md` § 3.6; Place also carries the canonical `StorageOrigin`. `AddressSpace` is the memory space of `storage.md` § 16 (`Ordinary`, `MMIO`, `TargetDefined`). | `storage.md` § 3.6, § 5, § 16; `reference_model.md` § 27 |
+| § 15–§ 16 | Implemented as specified. `Unknown` is conservative and may overlap. A Place with ambiguous provenance or an unresolved root degrades to `Unknown`. The legacy `PlacesOverlap` keeps its non-overlapping answer only for a Place without a resolved root, which names no tracked storage. | `borrowing.md` § 12(8), § 29(2)–(4) |
+| § 19 | Different union variant payload Places are structurally disjoint, and the whole union overlaps the active payload. A payload Place exists only under the active-variant proof of its match arm or `is` test. | `borrowing.md` § 12(5) |
+| § 28 | `RelocationClass` is replaced by the canonical `AddressStability` (`Movable`, `Stable`, `Fixed`, `Unknown`) plus a separate pin dependency. Indirect stability belongs to stable handles, which remain deferred. | `storage.md` § 14, § 24; `reference_model.md` § 25, § 26 |
+| § 29 | `AddressSpaceID` identifies a `storage.md` § 16 memory space. | `storage.md` § 16 |
+| Source examples | Safe references dereference implicitly in source (`value += 1`, `value.Id`). `.*` in Place paths such as `reference.*` is diagnostic presentation only, never source syntax. | `references.md` § 3 |
+
+The frontend `StorageOrigin` enumeration was aligned with `storage.md` § 5
+(`Automatic`, `Static`, `ThreadLocal`, `Arena`, `AllocatorBacked`,
+`Unknown`) as part of this revision.
+
+---
+
 # 1. Normative authority
 
 Implementation follows:
@@ -335,6 +359,24 @@ const (
 
 The exact set may reuse canonical storage-domain classifications.
 
+Revised 2026-10-03: the root kind classifies the binding role only:
+
+```go
+const (
+    PlaceRootLocal     PlaceRootKind = "local"
+    PlaceRootParameter PlaceRootKind = "parameter"
+    PlaceRootReceiver  PlaceRootKind = "receiver"
+    PlaceRootStatic    PlaceRootKind = "static"
+    PlaceRootDeref     PlaceRootKind = "deref"
+)
+```
+
+The storage domain of the root is the canonical `StorageOrigin` of
+`rules/memory/storage.md` § 5 (`Automatic`, `Static`, `ThreadLocal`, `Arena`,
+`AllocatorBacked`, `Unknown`). Addressed, mapped, foreign and fixed-address
+storage are expressed through `AddressStability`, `MemorySpaceKind` and
+platform contracts, not through root kinds or origins.
+
 ---
 
 # 11. Canonical Place
@@ -359,6 +401,10 @@ type Place struct {
 Presentation names/tokens remain diagnostics metadata.
 
 They are not identity.
+
+Revised 2026-10-03: `StorageIdentity` is the storage-domain identity of
+`rules/memory/storage.md` § 3.6, the Place also records the canonical
+`StorageOrigin`, and `AddressSpace` names a `storage.md` § 16 memory space.
 
 ---
 
@@ -521,6 +567,12 @@ Different union variant payload places may be treated as disjoint only under
 active-variant control-flow proof.
 
 They share representation over time.
+
+Revised 2026-10-03: per `rules/memory/borrowing.md` § 12(5), different
+active variant payload projections are structurally disjoint, and borrowing
+the whole union overlaps the active payload. The frontend creates a payload
+Place only inside the active-variant proof of a match arm or `is` test, so
+`Relationship` classifies different payload variants as `Disjoint`.
 
 P15 place facts must retain:
 
@@ -736,6 +788,12 @@ const (
 P15 direct references may not remain live across possible physical relocation
 unless correctness is otherwise preserved.
 
+Revised 2026-10-03: `RelocationClass` is not introduced. Relocation facts use
+the canonical `AddressStability` of `rules/memory/storage.md` § 14
+(`Movable`, `Stable`, `Fixed`, `Unknown`) plus a separate pin dependency
+(`storage.md` § 24, `reference_model.md` § 26). Indirect stability belongs to
+stable handles and stays deferred.
+
 ---
 
 # 29. Address space identity
@@ -750,6 +808,9 @@ Numerically equal addresses in different address spaces do not imply equivalent
 safe references.
 
 P15 does not lower target address spaces physically.
+
+Revised 2026-10-03: an `AddressSpaceID` identifies one memory space of
+`rules/memory/storage.md` § 16 (`Ordinary`, `MMIO`, `TargetDefined`).
 
 ---
 

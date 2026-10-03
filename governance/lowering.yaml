@@ -143,7 +143,7 @@ integrations:
     status: partial
     implementation_phase: canonical-place-model-migration
     integrated: "2026-09-10"
-    revised: "2026-09-11"
+    revised: "2026-10-03"
     baseline:
       repository_head: 2c67853ee31358a9a8a486aa11fba57c6b6a7270
       tree: 225922f80c0537e8c2b21e3388d6a068cbb032ee
@@ -185,6 +185,8 @@ integrations:
       - internal/sema/place.go
       - internal/sema/analyzer.go
       - internal/sema/parameter_usage.go
+      - internal/sema/analyzer_for.go
+      - internal/sema/types.go
     tests:
       - internal/testsupport/sec_mlir_test.go
       - internal/lowering/secmlir/emitter_test.go
@@ -192,6 +194,7 @@ integrations:
       - cmd/compiler/emit_sec_mlir_package11_test.go
       - internal/sema/copy_move_test.go
       - testdata/sema/place_wide_constant_indexes.sec
+      - internal/sema/place_relationship_test.go
     implemented:
       - clean persistent detached baseline with exact commit, tree, primary-worktree exclusion, and toolchain record
       - repository-shared SEC_MLIR_BIN resolver that rejects relative directories
@@ -204,9 +207,15 @@ integrations:
       - static-slice-to-element Place composition uses arbitrary-precision addition without an int64 index adapter
       - Place and projection clone boundaries defensively copy mutable big.Int storage
       - distinct mutable element borrows above MaxInt64 are proven disjoint by source-level Sema coverage
+      - canonical PlaceRelationship (same, disjoint, contains, contained-by, potentially-overlapping, unknown) and Relationship query covering fields, exact constant and dynamic indexes, slices, union payload variants, dereference paths, and properties
+      - finite alternative origins are compared pairwise and joined; unresolved roots and ambiguous provenance degrade to unknown, which is treated conservatively
+      - legacy PlacesOverlap delegates to Relationship (compatibility only); collection-iteration invalidation consumes the relationship directly
+      - package document revised 2026-10-03 to the v2 memory rulebooks (root kinds are binding roles, canonical StorageOrigin, AddressStability replaces RelocationClass, MemorySpaceKind address spaces, union payload disjointness, implicit dereference)
+      - frontend StorageOrigin aligned with rules/memory/storage.md § 5 (Automatic, Static, ThreadLocal, Arena, AllocatorBacked, Unknown); the non-origins Inline, External and Foreign were removed
     remaining:
       - synchronize the canonical reference, runtime-check, panic, Semantic IR, dialect, and lowering rulebooks
-      - establish canonical stable Place identities, normalized projections, and structured relationships
+      - establish canonical stable Place root identities (PlaceRootID and the revised binding-role PlaceRootKind), symbolic dynamic-index identity, and normalized projections
+      - migrate remaining borrow, move, defer, and lifetime overlap callers from PlacesOverlap to Relationship
       - publish immutable compiler-resolved Place, reference-creation, and reference-use plans
       - implement verified Semantic IR Place and direct-reference operations without physical representation choices
       - lower source reference behavior solely from resolved plans
@@ -229,3 +238,5 @@ integrations:
         result: passed
       - command: go run ./cmd/compiler sema testdata/sema/place_wide_constant_indexes.sec
         result: passed with zero errors and zero warnings
+      - command: go test ./internal/sema -run 'Relationship|PlacesOverlap' -count=1
+        result: passed

@@ -6643,7 +6643,7 @@ func TestParseEnumDefaultMemberMarker(t *testing.T) {
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Named type declaration"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — § 3.1
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 3.1
 func TestParseTypeDeclarationWithSeveralNamesIsRejected(t *testing.T) {
 	p := New(lexer.New("type Left, Right, Up int range 0..3\ntype Next int\n"))
 	program := p.ParseProgram()
@@ -6698,5 +6698,29 @@ func TestParseTryInControlHeaderIsBodyless(t *testing.T) {
 	call := body[2].(*ast.IfStatement).Condition.(*ast.CallExpression)
 	if nested, ok := call.Arguments[0].(*ast.TryExpression); !ok || len(nested.Handlers) != 1 {
 		t.Fatalf("handled try in header call argument = %#v", call.Arguments[0])
+	}
+}
+
+// Comments inside call arguments, array literals, and parameter lists are
+// trivia and never end the list.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.5 "Comment preservation"
+func TestParseCommentsInsideDelimitedLists(t *testing.T) {
+	source := "fn F(\n    // first\n    a: int, // a\n    b: int // b\n) int {\n    let values := [\n        1, // one\n        // lead\n        2 // two\n    ]\n    return Sum(\n        a, // a\n        b // b\n    )\n}\n"
+	p := New(lexer.New(source))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	if len(fn.Parameters) != 2 {
+		t.Fatalf("parameters = %d, want 2", len(fn.Parameters))
+	}
+	values := fn.Body.Statements[0].(*ast.LetStatement).Value.(*ast.ArrayLiteral)
+	call := fn.Body.Statements[1].(*ast.ReturnStatement).Value.(*ast.CallExpression)
+	if len(values.Elements) != 2 || len(call.Arguments) != 2 || call.ArgumentsOpen.Lexeme != "(" {
+		t.Fatalf("array = %d elements, call = %d arguments, open = %q", len(values.Elements), len(call.Arguments), call.ArgumentsOpen.Lexeme)
+	}
+	if len(program.Comments) == 0 {
+		t.Fatal("list comments were not retained as comment attachments")
 	}
 }

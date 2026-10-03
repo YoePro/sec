@@ -1,8 +1,11 @@
 package sema
 
 import (
+	"strings"
+
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 // ResolvedStateTest is the frontend fact for one non-binding `is Variant` or
@@ -20,6 +23,9 @@ type ResolvedStateTest struct {
 	MaybeEmpty      bool
 	StaticallyKnown bool
 	Value           bool
+	// Negated records the direct `is not` form; Value is already the value
+	// of the negated test (MD-006).
+	Negated bool
 }
 
 // ResolvedStateTestOf returns the fact recorded by completed semantic
@@ -47,7 +53,10 @@ func (a *Analyzer) ResolvedStateTestOf(expr *ast.StateTestExpression) (ResolvedS
 func (a *Analyzer) inferStateTestExpression(expr *ast.StateTestExpression) (Type, expressionValue) {
 	invalid := Type{Kind: InvalidType}
 	display := expressionValue{Display: expr.String()}
-	fact := ResolvedStateTest{Empty: expr.Empty}
+	fact := ResolvedStateTest{Empty: expr.Empty, Negated: expr.Negated}
+	if a.rejectChainedStateTestSubject(expr.Subject, expr.Token) {
+		return invalid, display
+	}
 
 	identifier, isIdentifier := expr.Subject.(*ast.Identifier)
 	if expr.Empty && !isIdentifier {
@@ -113,6 +122,9 @@ func (a *Analyzer) inferStateTestExpression(expr *ast.StateTestExpression) (Type
 // fact keeps the weakest knowledge so a possibly-empty observation is never
 // replaced by a later proof that holds only on some iterations.
 func (a *Analyzer) recordStateTest(expr *ast.StateTestExpression, fact ResolvedStateTest) {
+	if fact.Negated && fact.StaticallyKnown {
+		fact.Value = !fact.Value
+	}
 	if previous, exists := a.resolvedStateTests[expr]; exists && previous.MaybeEmpty && !fact.MaybeEmpty {
 		fact.MaybeEmpty = true
 		fact.StaticallyKnown, fact.Value = false, false
@@ -153,6 +165,9 @@ func (a *Analyzer) stateTestOwnerMatches(owner string, subjectType Type) bool {
 func stateTestRefinement(fact ResolvedStateTest, trueBranch bool) (string, bool) {
 	if fact.Binding == "" || !fact.MaybeEmpty {
 		return "", false
+	}
+	if fact.Negated {
+		trueBranch = !trueBranch
 	}
 	if fact.Empty == trueBranch {
 		return "", false
@@ -243,4 +258,114 @@ func (a *Analyzer) admitEmptyMatchArm(expr *ast.MatchExpression, arm *ast.MatchA
 	}
 	*seenEmpty = true
 	return true
+}
+
+// rejectChainedStateTestSubject enforces that `is` shares the non-chainable
+// equality level: a comparison or another ungrouped state test as the tested
+// subject chains two operators of that level.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.4–7.6
+//   - rules/foundations/operators.md — "Non-chainable comparisons"
+func (a *Analyzer) rejectChainedStateTestSubject(subject ast.Expression, isToken lexer.Token) bool {
+	if infix, ok := subject.(*ast.InfixExpression); ok && isComparisonOperator(infix.Operator) {
+		a.addErrorAtToken(isToken, "comparison chaining is not supported; an is state test cannot test the result of %s, parenthesize or split the comparison", infix.Operator)
+		return true
+	}
+	if _, _, group, ok := ast.StateTestOf(subject); ok && group == nil {
+		a.addErrorAtToken(isToken, "comparison chaining is not supported; is state tests cannot be chained")
+		return true
+	}
+	return false
+}
+
+// ungroupedStateTest reports an `is` state test written without enclosing
+// parentheses, which therefore chains with a surrounding comparison.
+func ungroupedStateTest(expr ast.Expression) bool {
+	_, _, group, ok := ast.StateTestOf(expr)
+	return ok && group == nil
+}
+
+// inferOptionBindingTestExpression analyzes `value is Some(binding)` outside
+// the complete if condition, where it cannot introduce a binding. Negated
+// forms were already rejected by the parser.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.17–7.20
+func (a *Analyzer) inferOptionBindingTestExpression(expr *ast.OptionBindingTestExpression) (Type, expressionValue) {
+	display := expressionValue{Display: expr.String()}
+	a.inferExpression(expr.Subject)
+	if !expr.Rejected {
+		a.addErrorAtTokenWithMetadata(expr.SomeToken, diagnostics.ParserInvalidPattern,
+			"Write `is Some` to test without binding, or bind the payload in a complete `if "+expr.Subject.String()+" is Some("+expr.Binding.Value+")` condition or a match.",
+			"`is Some(%s)` binds only as the complete if condition; it is not a general bool expression", expr.Binding.Value)
+	}
+	return Type{Name: "bool", Kind: BoolType}, display
+}
+
+// adviseRedundantStateTestComparison reports the bad-practice form
+// `(state is Idle) == true`, which is valid but redundant.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.7–7.9
+func (a *Analyzer) adviseRedundantStateTestComparison(expr *ast.InfixExpression) {
+	if expr.Operator != "==" {
+		return
+	}
+	test, literal := expr.Left, expr.Right
+	if _, _, _, isTest := ast.StateTestOf(test); !isTest {
+		test, literal = expr.Right, expr.Left
+	}
+	if _, _, group, isTest := ast.StateTestOf(test); !isTest || group == nil {
+		return
+	}
+	if boolean, ok := literal.(*ast.BooleanLiteral); !ok || !boolean.Value {
+		return
+	}
+	a.addWarningAtTokenWithMetadata(expr.Token, diagnostics.RedundantStateTestComparison,
+		"Write `"+stateTestSource(test)+"` directly; an explicit Language Correction can rewrite it.",
+		"comparing a state test with true is redundant")
+}
+
+// adviseNegatedStateTest reports the bad-practice form `!(state is Idle)`,
+// which is valid but has the direct canonical spelling `state is not Idle`.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.13–7.16
+func (a *Analyzer) adviseNegatedStateTest(expr *ast.PrefixExpression) {
+	if expr.Operator != "!" {
+		return
+	}
+	switch expr.Right.(type) {
+	case *ast.NullTestExpression, *ast.OptionBindingTestExpression:
+		return
+	}
+	_, negated, group, isTest := ast.StateTestOf(expr.Right)
+	if !isTest || group == nil || negated {
+		return
+	}
+	a.addWarningAtTokenWithMetadata(expr.Token, diagnostics.NegatedStateTest,
+		"Write `"+canonicalNegatedStateTest(expr.Right)+"`; an explicit Language Correction can rewrite it.",
+		"negating a state test with ! is bad practice; use the direct is not form")
+}
+
+// stateTestSource spells a state test for diagnostics, including the
+// parser-lowered `is None` test.
+func stateTestSource(test ast.Expression) string {
+	if match, ok := test.(*ast.MatchExpression); ok && match.OptionAbsenceTest && match.Subject != nil {
+		if match.OptionAbsenceNegated {
+			return match.Subject.String() + " is not None"
+		}
+		return match.Subject.String() + " is None"
+	}
+	return test.String()
+}
+
+// canonicalNegatedStateTest spells the direct `is not` form of a state test.
+func canonicalNegatedStateTest(test ast.Expression) string {
+	text := stateTestSource(test)
+	if index := strings.Index(text, " is "); index >= 0 {
+		return text[:index] + " is not " + text[index+len(" is "):]
+	}
+	return text
 }

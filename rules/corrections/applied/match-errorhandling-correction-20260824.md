@@ -3,7 +3,7 @@
 - **Status:** Applied normative correction
 - **Applied:** 2026-08-24
 - **Created:** 2026-08-24
-- **Last updated:** 2026-08-24
+- **Last updated:** 2026-10-03
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `b3315f6` (semantic parent `45e5cd4`)
 - **Target rulebook:** `rules/control-flow/flowcontrol_match.md`
@@ -72,3 +72,12 @@ The special narrowing exists only for the compiler-known error root relation.
 rules/errors/errorhandling.md
 rules/types/types.md
 ```
+
+---
+
+## Later extension
+
+`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 9 (MD-008, 2026-10-03) extends this correction: an ordinary `match` on
+a concrete `Result[T, ConcreteError]` may also use `Err(ConcreteError.Variant)`
+arms, which take part in closed exhaustiveness. The open-error narrowing above
+is unchanged.

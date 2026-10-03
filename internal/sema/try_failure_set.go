@@ -22,6 +22,9 @@ const (
 	// TryFailureContract is a runtime conversion into a constrained named
 	// type (ContractError).
 	TryFailureContract TryFailureKind = "contract"
+	// TryFailureAllocation is a runtime string concatenation or interpolation
+	// whose materialization may fail to allocate (AllocationError, MD-004).
+	TryFailureAllocation TryFailureKind = "allocation"
 )
 
 // TryFailurePoint is one language-defined fallible point protected by a try.
@@ -70,6 +73,7 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			if operator, ok := a.ResolvedOperatorOf(node); ok && operator.RuntimeCheck {
 				points = append(points, TryFailurePoint{Kind: TryFailureArithmetic, ErrorType: a.types["ArithmeticError"], Expression: node, Token: node.Token})
 			}
+			points = a.appendStringMaterializationPoint(points, node, node.Token)
 		case *ast.PrefixExpression:
 			visit(node.Right)
 			if operator, ok := a.ResolvedOperatorOf(node); ok && operator.RuntimeCheck {
@@ -125,6 +129,7 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			for _, part := range node.Parts {
 				visit(part.Expression)
 			}
+			points = a.appendStringMaterializationPoint(points, node, node.Token)
 		}
 	}
 	visit(expr)
@@ -425,4 +430,18 @@ func (a *Analyzer) addBodylessTryError(token lexer.Token, format string, args ..
 	a.addErrorAtTokenWithMetadata(token, diagnostics.TryPropagationIncompatible,
 		"This try is inside a handler or guard of another try. The outer try protects only its own expression, so its handlers do not catch failures raised here; handle them with this try's own handlers or let them propagate.",
 		format, args...)
+}
+
+// appendStringMaterializationPoint adds the allocation failure of a runtime
+// string materialization plan rooted at expr and marks it as protected by the
+// enclosing try.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 5.1–5.6, 5.15
+func (a *Analyzer) appendStringMaterializationPoint(points []TryFailurePoint, expr ast.Expression, token lexer.Token) []TryFailurePoint {
+	if !a.runtimeStringMaterialization(expr) {
+		return points
+	}
+	a.protectedStringMaterializations[expr] = true
+	return append(points, TryFailurePoint{Kind: TryFailureAllocation, ErrorType: a.types["AllocationError"], Expression: expr, Token: token})
 }

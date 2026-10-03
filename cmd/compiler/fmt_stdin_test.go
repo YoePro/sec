@@ -39,7 +39,10 @@ func TestFmtStdinCLI(t *testing.T) {
 		{name: "end of options", input: string(input), want: string(canonical), args: []string{"--"}},
 		{name: "check rejected", args: []string{"--check"}, wantError: "--stdin cannot be combined"},
 		{name: "file rejected", args: []string{path}, wantError: "--stdin cannot be combined"},
-		{name: "fix rejected", args: []string{"--fix"}, wantError: "unknown fmt option"},
+		// rules/tooling/lsp.md — "Shared formatter": `sec fmt --fix` applies
+		// the opt-in Language Corrections (formatter.md § 27(33)).
+		{name: "fix applies corrections", input: "module main\n\ntype UserID = uint64\n", want: "module main\n\ntype UserID uint64\n", args: []string{"--fix"}},
+		{name: "unknown option rejected", args: []string{"--bogus"}, wantError: "unknown fmt option"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

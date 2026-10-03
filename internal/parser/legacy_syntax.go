@@ -14,7 +14,7 @@ import (
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Grammar implementation status", "Legacy, future, and recovery syntax"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — §§ 3–4
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 3–4
 
 // reportLegacyAssignedType rejects `type Name = T` and the compact variant
 // `type Name = A B ...`.
@@ -50,7 +50,7 @@ func (p *Parser) rejectAdditionalUnderlyingTypes(name string, declarationLine in
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Named type declaration"
-//   - rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md — § 3.1
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — § 3.1
 func (p *Parser) rejectAdditionalTypeDeclarationNames(first string) {
 	if p.peekToken.Type != lexer.COMMA {
 		return

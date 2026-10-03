@@ -125,7 +125,10 @@ func TestUnbalancedInterpolationLexing(t *testing.T) {
 	cases, _, _ := strings.Cut(string(input), "\n/* Expected error:")
 	for _, source := range strings.Split(strings.TrimSpace(cases), "\n") {
 		t.Run(source, func(t *testing.T) {
-			if token := New(source).NextToken(); token.Type != ILLEGAL {
+			l := New(source)
+			// MD-005 retains an unmatched `}` candidate as one token with an
+			// L1021 diagnostic; every other case remains ILLEGAL.
+			if token := l.NextToken(); token.Type != ILLEGAL && len(l.Diagnostics()) == 0 {
 				t.Fatalf("malformed interpolation accepted: %+v", token)
 			}
 		})
@@ -665,7 +668,7 @@ func TestContextualKeywordSpellingsRemainIdentifiers(t *testing.T) {
 }
 
 func TestSupportedContractWordInventoryIsContextual(t *testing.T) {
-	want := []string{"multipleOf", "minLen", "maxLen", "exactLen", "notEmpty", "unique", "finite", "odd", "even"}
+	want := []string{"multipleOf", "minLen", "maxLen", "exactLen", "notEmpty", "unique", "finite", "odd", "even", "regex"}
 	got := ContractWords()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ContractWords() = %v, want %v", got, want)
@@ -684,7 +687,7 @@ func TestSupportedContractWordInventoryIsContextual(t *testing.T) {
 			t.Errorf("%s role = %v, want ValueContractWord", spelling, role)
 		}
 	}
-	for _, spelling := range want[4:] {
+	for _, spelling := range want[4:9] {
 		if role := ContractWordRoleOf(spelling); role != MarkerContractWord {
 			t.Errorf("%s role = %v, want MarkerContractWord", spelling, role)
 		}
@@ -1474,21 +1477,61 @@ func assertTokens(t *testing.T, input string, tests []struct {
 // Rules:
 //   - rules/types/contracts.md — "Applicability"
 //   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
-func TestRegexIsContextualPatternContractWithoutReservation(t *testing.T) {
+func TestRegexIsReservedPatternContractWord(t *testing.T) {
+	// rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 10.1–10.5
 	if role := ContractWordRoleOf("regex"); role != PatternContractWord {
 		t.Fatalf("regex role = %v, want PatternContractWord", role)
 	}
-	if !IsContractStartWord("regex") || IsContractWord("regex") {
-		t.Fatal("regex must start a contract without joining the reserved inventory")
+	if !IsContractStartWord("regex") || !IsContractWord("regex") {
+		t.Fatal("regex must start a contract and belong to the reserved inventory")
 	}
-	if IsReservedDeclarationName("regex") {
-		t.Fatal("regex must not be a reserved declaration name before MD-009 is decided")
+	if kind := ReservedDeclarationNameKindOf("regex"); kind != ContractDeclarationName {
+		t.Fatalf("regex reservation = %v, want ContractDeclarationName", kind)
 	}
 	if tokenType := lookupIdent("regex"); tokenType != IDENT {
-		t.Fatalf("lookupIdent(regex) = %s, want IDENT", tokenType)
+		t.Fatalf("lookupIdent(regex) = %s, want IDENT (no dedicated hard keyword)", tokenType)
 	}
-	want := append(ContractWords(), "regex")
-	if got := ContractStartWords(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("ContractStartWords() = %v, want %v", got, want)
+	if got := ContractStartWords(); !reflect.DeepEqual(got, ContractWords()) {
+		t.Fatalf("ContractStartWords() = %v, want the reserved inventory", got)
+	}
+}
+
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 6.1–6.13
+//   - rules/foundations/lexical_structure.md — §14.3 "Interpolated strings"
+func TestUnescapedInterpolationClosingBraceRecovery(t *testing.T) {
+	source := `$"a } b {value} c } d"` + "\nfollowing"
+	l := New(source)
+	token := l.NextToken()
+	if token.Type != INTERPSTRING || token.Lexeme != `$"a } b {value} c } d"` {
+		t.Fatalf("candidate = %+v, want the complete retained interpolated string", token)
+	}
+	diagnostics := l.Diagnostics()
+	if len(diagnostics) != 2 {
+		t.Fatalf("diagnostics = %+v, want one L1021 per unmatched brace", diagnostics)
+	}
+	for index, column := range []int{5, 19} {
+		diagnostic := diagnostics[index]
+		if diagnostic.ID != "L1021" || diagnostic.Primary.Column != column || diagnostic.Primary.EndColumn != column+1 || diagnostic.Primary.Lexeme != "}" {
+			t.Fatalf("diagnostic %d = %+v, want L1021 on exactly the brace at column %d", index, diagnostic, column)
+		}
+		if !strings.Contains(diagnostic.Message, "write `}}`") {
+			t.Fatalf("diagnostic %d message %q does not explain the repair", index, diagnostic.Message)
+		}
+	}
+	if next := l.NextToken(); next.Type != IDENT || next.Lexeme != "following" {
+		t.Fatalf("token after candidate = %+v, want following", next)
+	}
+
+	unterminated := New(`$"a } b` + "\n")
+	if token := unterminated.NextToken(); token.Type != ILLEGAL {
+		t.Fatalf("unterminated candidate = %+v, want ILLEGAL", token)
+	}
+	ids := []string{}
+	for _, diagnostic := range unterminated.Diagnostics() {
+		ids = append(ids, diagnostic.ID)
+	}
+	if strings.Join(ids, ",") != "L1021,L1019" {
+		t.Fatalf("unterminated diagnostics = %v, want L1021 then L1019", ids)
 	}
 }

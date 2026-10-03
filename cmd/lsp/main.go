@@ -323,7 +323,7 @@ func main() {
 		out:               os.Stdout,
 		documentSnapshots: lspserver.NewDocuments(),
 		diagnosticTimers:  map[string]*time.Timer{},
-		diagnosticDelay:   600 * time.Millisecond,
+		diagnosticDelay:   300 * time.Millisecond,
 	}
 	if err := s.run(); err != nil {
 		fmt.Fprintf(os.Stderr, "lsp error: %v\n", err)

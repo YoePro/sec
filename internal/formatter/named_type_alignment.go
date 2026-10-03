@@ -24,11 +24,11 @@ type namedTypeAlignmentAnchor struct {
 //   - rules/tooling/formatter.md — §7(6) adjacent simple named-type declarations
 //   - rules/tooling/formatter.md — §9(1–2) syntactic alignment anchors
 //   - rules/tooling/formatter.md — §9(8–10) group boundaries and padding limit
-func namedTypeAlignmentReplacements(document cst.Document) []formatterReplacement {
+func namedTypeAlignmentReplacements(document cst.Document, maxPadding int) []formatterReplacement {
 	replacements := []formatterReplacement{}
 	group := []namedTypeAlignmentAnchor{}
 	flush := func() {
-		replacements = append(replacements, alignNamedTypeGroup(document, group)...)
+		replacements = append(replacements, alignNamedTypeGroup(document, group, maxPadding)...)
 		group = group[:0]
 	}
 	for _, anchor := range namedTypeAlignmentAnchors(document) {
@@ -97,7 +97,7 @@ func elementEndColumn(element cst.Element) int {
 	return element.Token.Column + utf8.RuneCountInString(element.Text)
 }
 
-func alignNamedTypeGroup(document cst.Document, group []namedTypeAlignmentAnchor) []formatterReplacement {
+func alignNamedTypeGroup(document cst.Document, group []namedTypeAlignmentAnchor, maxPadding int) []formatterReplacement {
 	if len(group) < 2 {
 		return nil
 	}
@@ -108,7 +108,7 @@ func alignNamedTypeGroup(document cst.Document, group []namedTypeAlignmentAnchor
 		}
 	}
 	for _, anchor := range group {
-		if baseColumn-elementEndColumn(document.Elements[anchor.nameEnd]) > defaultMaximumAlignmentPadding {
+		if baseColumn-elementEndColumn(document.Elements[anchor.nameEnd]) > maxPadding {
 			return nil
 		}
 	}
@@ -121,12 +121,12 @@ func alignNamedTypeGroup(document cst.Document, group []namedTypeAlignmentAnchor
 			text:  strings.Repeat(" ", baseColumn-elementEndColumn(nameEnd)),
 		})
 	}
-	return append(replacements, alignNamedTypeContracts(document, group, baseColumn)...)
+	return append(replacements, alignNamedTypeContracts(document, group, baseColumn, maxPadding)...)
 }
 
 // alignNamedTypeContracts treats the first contract or default clause as the
 // secondary anchor. Failure to fit it never discards the base-type column.
-func alignNamedTypeContracts(document cst.Document, group []namedTypeAlignmentAnchor, baseColumn int) []formatterReplacement {
+func alignNamedTypeContracts(document cst.Document, group []namedTypeAlignmentAnchor, baseColumn int, maxPadding int) []formatterReplacement {
 	prefixEnd := func(anchor namedTypeAlignmentAnchor) int {
 		shift := baseColumn - document.Elements[anchor.baseStart].Token.Column
 		return elementEndColumn(document.Elements[anchor.contractPrefix]) + shift
@@ -146,7 +146,7 @@ func alignNamedTypeContracts(document cst.Document, group []namedTypeAlignmentAn
 		return nil
 	}
 	for _, anchor := range contracted {
-		if contractColumn-prefixEnd(anchor) > defaultMaximumAlignmentPadding {
+		if contractColumn-prefixEnd(anchor) > maxPadding {
 			return nil
 		}
 	}

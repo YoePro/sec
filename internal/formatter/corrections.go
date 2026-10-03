@@ -2,7 +2,9 @@ package formatter
 
 import (
 	"sort"
+	"strings"
 
+	"sec/internal/ast"
 	"sec/internal/cst"
 	"sec/internal/lexer"
 	"sec/internal/parser"
@@ -87,4 +89,49 @@ func onlyWhitespaceElements(elements []cst.Element) bool {
 		}
 	}
 	return true
+}
+
+// fixLegacyAssignedNamedType rewrites the legacy assigned named-type form
+// `type Name = T` to the canonical `type Name T`, which has the same nominal
+// meaning. The compact variant form `type Name = A B ...` is never rewritten
+// because its enum or union replacement is not uniquely determined, and no
+// rewrite happens when a comment sits next to the `=`.
+//
+// This is an opt-in Language Correction and must never run during ordinary
+// formatting.
+//
+// Rules:
+//   - rules/tooling/formatter.md — § 27(33)–(35)
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 3.10–3.11, 4.4–4.5
+func fixLegacyAssignedNamedType(text string) string {
+	program := parser.New(lexer.New(text)).ParseProgram()
+	if program == nil {
+		return text
+	}
+	replacements := []formatterReplacement{}
+	for _, statement := range program.Statements {
+		declaration, ok := statement.(*ast.TypeDeclStatement)
+		if !ok || declaration.AssignedType == nil || len(declaration.Variants) > 0 || declaration.AssignToken.Type != lexer.ASSIGN {
+			continue
+		}
+		start, end := declaration.AssignToken.ByteStart, declaration.AssignToken.ByteEnd
+		if start <= 0 || end > len(text) || text[start:end] != "=" {
+			continue
+		}
+		for start > 0 && (text[start-1] == ' ' || text[start-1] == '\t') {
+			start--
+		}
+		for end < len(text) && (text[end] == ' ' || text[end] == '\t') {
+			end++
+		}
+		if end >= len(text) || text[end] == '\n' || text[end] == '\r' || strings.HasPrefix(text[end:], "/") {
+			continue
+		}
+		replacements = append(replacements, formatterReplacement{start: start, end: end, text: " "})
+	}
+	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
+	for _, replacement := range replacements {
+		text = text[:replacement.start] + replacement.text + text[replacement.end:]
+	}
+	return text
 }

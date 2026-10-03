@@ -1126,6 +1126,10 @@ place is available
 place is not available
 ```
 
+They are ordinary `bool` expressions at the equality/state-test precedence
+level and may appear wherever a `bool` expression is valid
+(`rules/foundations/operators.md`, "State tests with `is`"; MD-006, `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 7).
+
 These tests answer:
 
 > Does the exact tested Place contain a complete currently owned value available

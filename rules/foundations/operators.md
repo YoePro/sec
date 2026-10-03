@@ -516,7 +516,7 @@ The following table is ordered from highest precedence to lowest precedence.
 | 5 | Additive | `+`, `-` | left |
 | 6 | Shift | `<<`, `>>` | left |
 | 7 | Ordered comparison and membership | `<`, `<=`, `>`, `>=`, `in`, `not in` | non-chainable |
-| 8 | Equality | `==`, `!=` | non-chainable |
+| 8 | Equality and state test | `==`, `!=`, `is`, `is not` | non-chainable |
 | 9 | Bitwise AND | `&` | left |
 | 10 | Bitwise XOR | `^` | left |
 | 11 | Bitwise OR | `|` | left |
@@ -695,6 +695,52 @@ a == b && b == c
 ```
 
 The compiler must provide a focused diagnostic.
+
+## State tests with `is`
+
+A non-binding `is` state test is an ordinary expression of type `bool` and may
+appear in every expression context where a `bool` expression is valid:
+
+```sec
+let idle := state is Idle
+let missing := option is None
+
+return state is Running
+
+if ready && state is Idle {
+    Use()
+}
+```
+
+`is` belongs to the equality/state-test precedence level (level 8), so
+`ready && state is Idle` groups as `ready && (state is Idle)`. Equality and
+state-test operators at that level are non-chainable: `state is Idle == true`
+is rejected, while the parenthesized `(state is Idle) == true` is valid but
+redundant and receives a bad-practice diagnostic recommending `state is Idle`.
+
+`is not` is the canonical direct negation of a non-binding state test:
+
+```sec
+state is not Idle
+state is not empty
+option is not None
+place is not available
+```
+
+The exact designators valid for a type are defined by the rulebook that owns
+that type or state operation. `!(state is Idle)` is valid but receives a
+bad-practice diagnostic recommending `state is not Idle`. Ordinary prefix
+precedence still applies: `!state is Idle` means `(!state) is Idle`.
+Explicit Language Corrections may rewrite both bad-practice forms when the
+rewrite is unambiguous and semantics-preserving.
+
+The positive Option binding `if option is Some(value)` remains a narrow Sec 0.1
+condition facility (`rules/control-flow/flowcontrol_if.md` § 12). It is not a
+general stored or returned bool expression, it does not generalize to other
+union or Result variants, and it introduces no binding scope through `&&` or
+`||`. `option is not Some(value)` and `!(option is Some(value))` are invalid
+because their true path has no `Some` payload to bind; corrections never delete
+the binding (MD-006; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 7).
 
 ---
 
@@ -1549,10 +1595,17 @@ let result := try ("Hello " + name)
 A runtime concatenation without `try` is a compile-time error. There is no
 implicit allocation-panic form.
 
-Runtime concatenation uses the active allocation context. Missing usable
-allocation context is a compile-time error. Which allocator or allocation
-context is active for runtime string materialization is not yet specified
-(MD-004); lowering must not invent that selection.
+Runtime concatenation uses the canonical active allocation context defined by
+`rules/memory/allocation.md`. Sec 0.1 defines no string-specific allocator and
+no string-specific allocation domain. The frontend resolves the applicable
+context before Semantic IR, and lowering consumes it without choosing an
+allocator. When the result escapes a local allocation lifetime, the context's
+lifetime must suffice for the result; a backend never repairs an invalid
+lifetime by reallocating into another domain. Missing usable allocation context
+is a compile-time error. On a target that prohibits dynamic allocation, a
+runtime materialization is valid only when the compiler proves the dynamic
+allocation is eliminated while preserving Sec semantics (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md`
+§§ 5.10–5.19).
 
 | Form | May allocate | Requires `try` |
 |---|---:|---:|
@@ -1562,7 +1615,7 @@ context is active for runtime string materialization is not yet specified
 
 Optimization and backends may remove temporaries or allocations only when the
 specified success, failure, ownership, and destruction behavior is preserved
-(`rules/corrections/applied/missing-decisions-md001-md004-correction-20261002.md` § 5).
+(`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 5).
 
 ## `@noPanic` and `try` scope
 

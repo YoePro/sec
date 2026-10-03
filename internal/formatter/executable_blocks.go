@@ -17,7 +17,7 @@ import (
 // Rules:
 //   - rules/tooling/formatter.md — §8(3–8) "Brace placement"
 //   - rules/tooling/formatter.md — §29(1–3) formatter invariants
-func formatExecutableBlocks(text string) string {
+func formatExecutableBlocks(text string, indentationWidth int) string {
 	for {
 		program := parser.New(lexer.New(text)).ParseProgram()
 		document := cst.Build(text, "")
@@ -38,7 +38,7 @@ func formatExecutableBlocks(text string) string {
 			content := strings.TrimSpace(text[open.Span.End:close.Span.Start])
 			replacement := "\n" + indent
 			if content != "" {
-				replacement = "\n" + indent + "    " + content + "\n" + indent
+				replacement = "\n" + indent + strings.Repeat(" ", indentationWidth) + content + "\n" + indent
 			}
 			text = text[:open.Span.End] + replacement + text[close.Span.Start:]
 		}

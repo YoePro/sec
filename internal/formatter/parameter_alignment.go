@@ -23,12 +23,12 @@ type parameterAlignmentAnchor struct {
 //   - rules/tooling/formatter.md — §9(1–2), §9(8–10)
 //   - rules/tooling/formatter.md — §16(2–3) "multiline parameter lists"
 //   - rules/tooling/formatter.md — §21(11) ownership markers as prefixes
-func parameterAlignmentReplacements(document cst.Document) []formatterReplacement {
+func parameterAlignmentReplacements(document cst.Document, maxPadding int) []formatterReplacement {
 	anchors := parameterAlignmentAnchors(document)
 	replacements := []formatterReplacement{}
 	group := []parameterAlignmentAnchor{}
 	flush := func() {
-		replacements = append(replacements, alignParameterGroup(document, group)...)
+		replacements = append(replacements, alignParameterGroup(document, group, maxPadding)...)
 		group = group[:0]
 	}
 
@@ -93,7 +93,7 @@ func parameterAnchorsAreContiguous(document cst.Document, previous, current para
 	return true
 }
 
-func alignParameterGroup(document cst.Document, group []parameterAlignmentAnchor) []formatterReplacement {
+func alignParameterGroup(document cst.Document, group []parameterAlignmentAnchor, maxPadding int) []formatterReplacement {
 	if len(group) == 0 {
 		return nil
 	}
@@ -106,7 +106,7 @@ func alignParameterGroup(document cst.Document, group []parameterAlignmentAnchor
 	typeColumn := maximumColonColumn + 2
 	for _, anchor := range group {
 		colon := document.Elements[anchor.colon]
-		if typeColumn-(colon.Token.Column+1) > defaultMaximumAlignmentPadding {
+		if typeColumn-(colon.Token.Column+1) > maxPadding {
 			return unalignedParameterReplacements(document, group)
 		}
 	}

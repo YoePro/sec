@@ -13,8 +13,8 @@ const (
 	ValueContractWord
 	MarkerContractWord
 	// PatternContractWord is the compile-time pattern contract `regex`. It is
-	// recognized only in contract position and is not part of the §7.3 reserved
-	// contract-word inventory until that rulebook records it (MD-009).
+	// a reserved contract spelling (§7.3) lexed as an identifier and resolved
+	// contextually in contract position (MD-009).
 	PatternContractWord
 )
 
@@ -32,6 +32,7 @@ var contractWords = []string{
 	"finite",
 	"odd",
 	"even",
+	"regex",
 }
 
 // ContractWords returns the frontend-supported contract-word inventory in
@@ -67,15 +68,15 @@ func ContractWordRoleOf(spelling string) ContractWordRole {
 }
 
 // IsContractWord reports whether spelling belongs to the canonical reserved
-// contextual contract-word inventory of §7.3. The pattern contract `regex` is
-// deliberately excluded: contracts.md defines the contract, but its
-// reservation is not recorded in lexical_structure.md (MD-009).
+// contextual contract-word inventory of §7.3, including the pattern contract
+// `regex`.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 10.1–10.5, 10.16
 func IsContractWord(spelling string) bool {
 	switch ContractWordRoleOf(spelling) {
-	case ValueContractWord, MarkerContractWord:
+	case ValueContractWord, MarkerContractWord, PatternContractWord:
 		return true
 	default:
 		return false
@@ -94,12 +95,12 @@ func IsContractStartWord(spelling string) bool {
 }
 
 // ContractStartWords returns every contextual contract spelling recognized in
-// contract position, including `regex`, for tooling completion. Use
-// ContractWords for the reserved inventory.
+// contract position for tooling completion. Since MD-009 reserved `regex`, it
+// equals the reserved inventory of ContractWords.
 //
 // Rules:
 //   - rules/foundations/grammar.md — "Type contracts"
 //   - rules/types/contracts.md — "Applicability"
 func ContractStartWords() []string {
-	return append(ContractWords(), regexContractWord)
+	return ContractWords()
 }

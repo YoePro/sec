@@ -356,6 +356,13 @@ The binding exists only on the positive true path and follows ordinary
 copy/move rules and path-sensitive ownership merging. Non-binding `None` and
 `is not None` tests remain valid.
 
+Non-binding `is` state tests are ordinary `bool` expressions at the
+equality/state-test precedence level (`rules/foundations/operators.md`, "State
+tests with `is`"), so they may be combined with other conditions, as in
+`if ready && state is Idle`, and negated directly with `is not`. The positive
+`is Some(binding)` form is valid only as the complete `if` condition; it does
+not bind through `&&` or `||` (MD-006; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 7.17–7.26).
+
 ## 13. No pattern binding in `if`
 
 Structural or payload-binding patterns are not part of Sec 0.1 `if` syntax.
@@ -392,7 +399,11 @@ if option is not Some(value) {
 }
 ```
 
-The true path has no payload to bind. Use `match` for general destructuring.
+The true path has no payload to bind. The diagnostic explains this and
+recommends `if option is not Some` when no payload is needed, or a positive
+`is Some(value)` condition when it is. `!(option is Some(value))` is invalid
+for the same reason. Corrections never repair either form by deleting the
+binding. Use `match` for general destructuring.
 
 ## 14. No declaration syntax in the header
 

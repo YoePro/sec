@@ -196,9 +196,16 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 		switch p.peekToken.Type {
 		case lexer.LPAREN:
 			p.nextToken()
+			argumentsOpen := p.curToken
 			left = p.parseConversionExpression(left)
+			ast.SetArgumentsOpen(left, argumentsOpen)
 
 		case lexer.IDENT:
+			if p.contextualIsAhead() {
+				p.nextToken()
+				left = p.parseIsExpression(left)
+				continue
+			}
 			if p.peekToken.Lexeme != "x" && !p.contextualNotInAhead() {
 				return left
 			}
@@ -322,6 +329,7 @@ func (p *Parser) parseNewExpression() ast.Expression {
 		p.addError("new construction requires an argument list at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		return expr
 	}
+	expr.ArgumentsOpen = p.curToken
 	arguments, ok := p.parseCallArguments()
 	if !ok {
 		return expr
@@ -938,11 +946,13 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 			return memberExpr
 		}
 		p.nextToken()
+		argumentsOpen := p.curToken
 		args, ok := p.parseCallArguments()
 		if !ok {
 			return nil
 		}
 		return &ast.CallExpression{
+			ArgumentsOpen:    argumentsOpen,
 			Token:            expressionToken(member),
 			Callee:           member,
 			GenericArguments: typeArgs,
@@ -959,6 +969,7 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 		return nil
 	}
 	p.nextToken()
+	argumentsOpen := p.curToken
 
 	args, ok := p.parseCallArguments()
 	if !ok {
@@ -968,6 +979,7 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 	switch callee := left.(type) {
 	case *ast.Identifier:
 		return &ast.CallExpression{
+			ArgumentsOpen:    argumentsOpen,
 			Token:            callee.Token,
 			Callee:           callee,
 			Function:         callee,
@@ -976,6 +988,7 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 		}
 	case *ast.MemberExpression:
 		return &ast.CallExpression{
+			ArgumentsOpen:    argumentsOpen,
 			Token:            callee.Token,
 			Callee:           callee,
 			GenericArguments: typeArgs,
@@ -1024,6 +1037,7 @@ func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
 func (p *Parser) parseArrayLiteral() ast.Expression {
 	lit := &ast.ArrayLiteral{Token: p.curToken}
 
+	p.skipPeekComments()
 	if p.peekToken.Type == lexer.RBRACKET {
 		p.nextToken()
 		return lit
@@ -1040,10 +1054,12 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 			element = &ast.SpreadExpression{Token: p.curToken, Value: element}
 		}
 		lit.Elements = append(lit.Elements, element)
+		p.skipPeekComments()
 
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
+			p.skipPeekComments()
 			if p.peekToken.Type == lexer.RBRACKET {
 				p.nextToken()
 				return lit
@@ -1187,11 +1203,13 @@ func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 	args := []ast.Expression{}
 
+	p.skipPeekComments()
 	if p.peekToken.Type == lexer.RPAREN {
 		p.nextToken()
 		return args, true
 	}
 	for {
+		p.skipPeekComments()
 		if p.peekToken.Type == lexer.EOF {
 			p.expectPeek(lexer.RPAREN)
 			return args, true
@@ -1231,10 +1249,12 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			arg = &ast.SpreadExpression{Token: p.curToken, Value: arg}
 		}
 		args = append(args, arg)
+		p.skipPeekComments()
 
 		switch p.peekToken.Type {
 		case lexer.COMMA:
 			p.nextToken()
+			p.skipPeekComments()
 			if p.peekToken.Type == lexer.RPAREN {
 				p.nextToken()
 				return args, true
@@ -1482,6 +1502,9 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 	lit := &ast.StructLiteral{
 		Token: ref.Token,
 		Type:  ref,
+	}
+	if p.curToken.Type == lexer.LBRACE {
+		lit.Open = p.curToken
 	}
 
 	for {
@@ -1733,6 +1756,10 @@ func (p *Parser) parsePrefixExpression() ast.Expression {
 	p.nextToken()
 
 	expr.Right = p.parseExpression(PREFIX)
+	// MD-006 § 7.24: `!(option is Some(value))` cannot bind on its true path.
+	if binding, ok := expr.Right.(*ast.OptionBindingTestExpression); ok && expr.Operator == "!" && !binding.Rejected {
+		p.reportNegatedOptionBinding(binding)
+	}
 
 	return expr
 }
@@ -1746,6 +1773,7 @@ func (p *Parser) parsePrefixExpression() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Grouped expression"
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseGroupedExpression() ast.Expression {
+	open := p.curToken
 	p.nextToken()
 
 	expr := p.parseExpression(LOWEST)
@@ -1758,6 +1786,11 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 			return expr
 		}
 		return nil
+	}
+	// MD-006: grouping decides chaining and enables the explicit corrections
+	// of `(test) == true` and `!(test)`.
+	if _, _, _, isTest := ast.StateTestOf(expr); isTest {
+		ast.SetStateTestGroup(expr, &ast.StateTestGroup{Open: open, Close: p.curToken})
 	}
 
 	return expr
@@ -1990,6 +2023,9 @@ func (p *Parser) peekPrecedence() precedence {
 	if p.contextualMatrixMultiplyAhead() {
 		return PRODUCT
 	}
+	if p.contextualIsAhead() {
+		return EQUALS
+	}
 	if p.contextualNotInAhead() {
 		return COMPARE
 	}
@@ -2014,6 +2050,23 @@ func (p *Parser) contextualNotInAhead() bool {
 	next := p.l.NextToken()
 	p.l.Restore(state)
 	return next.Type == lexer.IN
+}
+
+// contextualIsAhead recognizes the `is` state-test operator at the
+// equality level without reserving the identifier spelling `is`: it is an
+// operator only when a state designator, `not`, or a variant name follows.
+//
+// Rules:
+//   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 7.1–7.5
+//   - rules/foundations/operators.md — "Canonical precedence"
+func (p *Parser) contextualIsAhead() bool {
+	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != "is" {
+		return false
+	}
+	state := p.l.Snapshot()
+	next := p.l.NextToken()
+	p.l.Restore(state)
+	return next.Type == lexer.IDENT
 }
 
 func (p *Parser) contextualMatrixMultiplyAhead() bool {

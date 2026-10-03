@@ -528,6 +528,16 @@ if state is empty {
 
 `is empty` observes initialization state, not a union variant.
 
+### 8.2a Expression form and negation
+
+`is Variant` and `is empty` are ordinary `bool` expressions at the
+equality/state-test precedence level and may appear wherever a `bool`
+expression is valid (`rules/foundations/operators.md`, "State tests with
+`is`"). `is not Variant` and `is not empty` are their canonical direct
+negations; data-flow refinement applies to the negated form on the
+corresponding branch, so `state is not empty` proves the binding initialized
+on its true branch (MD-006; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 7.1–7.12).
+
 ### 8.3 Data-flow refinement
 
 The compiler must use `is` tests for definite-assignment and reachability refinement where possible.

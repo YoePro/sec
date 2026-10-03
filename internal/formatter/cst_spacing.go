@@ -37,7 +37,7 @@ type formatterReplacement struct {
 //   - rules/tooling/formatter.md — §23 "assert, ranges, and step"
 //   - rules/tooling/formatter.md — §15(4) enum assignment alignment
 //   - rules/tooling/formatter.md — §7(6) and §9(2) named-type group alignment
-func formatCSTRoles(text string) string {
+func formatCSTRoles(text string, maxPadding int) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
 	document := cst.Build(text, "")
 	document.ApplyProgramRoles(program)
@@ -101,14 +101,15 @@ func formatCSTRoles(text string) string {
 			})
 			continue
 		case element.HasRole(cst.CallableParameterListClose) || element.HasRole(cst.LambdaCaptureListClose) ||
-			element.HasRole(cst.TypeArgumentListClose):
+			element.HasRole(cst.TypeArgumentListClose) || element.HasRole(cst.CommaListClose):
 			var listGroup *cst.DelimiterGroup
 			for groupIndex := range document.Groups {
 				group := &document.Groups[groupIndex]
 				if group.Close == elementIndex &&
 					(document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) ||
 						document.Elements[group.Open].HasRole(cst.LambdaCaptureListOpen) ||
-						document.Elements[group.Open].HasRole(cst.TypeArgumentListOpen)) {
+						document.Elements[group.Open].HasRole(cst.TypeArgumentListOpen) ||
+						document.Elements[group.Open].HasRole(cst.CommaListOpen)) {
 					listGroup = group
 					break
 				}
@@ -126,6 +127,18 @@ func formatCSTRoles(text string) string {
 			}
 			if previous == listGroup.Open || document.Elements[previous].Kind != cst.Token ||
 				document.Elements[previous].Token.Type == lexer.COMMA {
+				continue
+			}
+			// §11(3): an argument, element, or field list is multiline only when
+			// its closing delimiter sits on its own line; a single argument that
+			// hugs the delimiters, such as Append(Value { ... }), is not.
+			if element.HasRole(cst.CommaListClose) && !strings.Contains(text[document.Elements[previous].Span.End:start], "\n") {
+				continue
+			}
+			// §11(7): a struct literal may separate its fields by line layout
+			// alone; only a field list that already uses commas gains one.
+			if element.HasRole(cst.CommaListClose) && document.Elements[listGroup.Open].Token.Type == lexer.LBRACE &&
+				!listUsesTopLevelComma(document, listGroup.Open, previous) {
 				continue
 			}
 			replacements = append(replacements, formatterReplacement{
@@ -304,6 +317,20 @@ func formatCSTRoles(text string) string {
 				text:  element.Text,
 			})
 			continue
+		case element.HasRole(cst.RangeOperatorOpenStart):
+			// The missing lower bound leaves the preceding gap, such as the
+			// one after `case`, to its own grammatical owner.
+			for end < len(text) && isHorizontalFormatterByte(text[end]) {
+				end++
+			}
+			replacements = append(replacements, formatterReplacement{start: start, end: end, text: element.Text})
+			continue
+		case element.HasRole(cst.RangeOperatorOpenEnd):
+			for start > 0 && isHorizontalFormatterByte(text[start-1]) {
+				start--
+			}
+			replacements = append(replacements, formatterReplacement{start: start, end: end, text: element.Text})
+			continue
 		case element.HasRole(cst.RangeStepKeyword):
 			for start > 0 && isHorizontalFormatterByte(text[start-1]) {
 				start--
@@ -350,10 +377,10 @@ func formatCSTRoles(text string) string {
 			text:  replacementText,
 		})
 	}
-	replacements = append(replacements, structFieldAlignmentReplacements(document)...)
-	replacements = append(replacements, parameterAlignmentReplacements(document)...)
-	replacements = append(replacements, enumValueAlignmentReplacements(document)...)
-	replacements = append(replacements, namedTypeAlignmentReplacements(document)...)
+	replacements = append(replacements, structFieldAlignmentReplacements(document, maxPadding)...)
+	replacements = append(replacements, parameterAlignmentReplacements(document, maxPadding)...)
+	replacements = append(replacements, enumValueAlignmentReplacements(document, maxPadding)...)
+	replacements = append(replacements, namedTypeAlignmentReplacements(document, maxPadding)...)
 
 	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
 	for _, replacement := range replacements {
@@ -382,4 +409,27 @@ func canonicalUnitMetadataName(name string) (string, bool) {
 
 func isHorizontalFormatterByte(value byte) bool {
 	return value == ' ' || value == '\t'
+}
+
+// listUsesTopLevelComma reports a comma separator directly inside the list
+// that opens at open, ignoring commas nested in inner delimiter groups.
+func listUsesTopLevelComma(document cst.Document, open, last int) bool {
+	depth := 0
+	for index := open + 1; index < last; index++ {
+		element := document.Elements[index]
+		if element.Kind != cst.Token {
+			continue
+		}
+		switch element.Token.Type {
+		case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
+			depth++
+		case lexer.RPAREN, lexer.RBRACKET, lexer.RBRACE:
+			depth--
+		case lexer.COMMA:
+			if depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }

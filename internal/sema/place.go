@@ -170,71 +170,158 @@ func (p Place) String() string {
 	return out.String()
 }
 
-// PlacesOverlap conservatively compares legacy Place paths while retaining
-// exact arbitrary-precision constant-index disjointness.
+// PlaceRelationship is the canonical structural relationship between two
+// Places. Borrowing, moves, destruction, iteration invalidation and future
+// data-race analysis consume this one classification.
 //
 // Rules:
-//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §13 "Constant index representation"
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §15 "Place relationship"
 //   - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md — §5 "Place relationships"
-func PlacesOverlap(left, right Place) bool {
+type PlaceRelationship string
+
+const (
+	PlaceSame                   PlaceRelationship = "same"
+	PlaceDisjoint               PlaceRelationship = "disjoint"
+	PlaceContains               PlaceRelationship = "contains"
+	PlaceContainedBy            PlaceRelationship = "contained-by"
+	PlacePotentiallyOverlapping PlaceRelationship = "potentially-overlapping"
+	PlaceUnknown                PlaceRelationship = "unknown"
+)
+
+// MayOverlap reports whether the relationship admits shared storage. Unknown
+// is conservative and therefore may overlap.
+func (r PlaceRelationship) MayOverlap() bool {
+	return r != PlaceDisjoint
+}
+
+// EnclosesOrMayEnclose reports whether the left Place is, contains, or may
+// be or contain the right Place.
+func (r PlaceRelationship) EnclosesOrMayEnclose() bool {
+	return r == PlaceSame || r == PlaceContains || r == PlacePotentiallyOverlapping || r == PlaceUnknown
+}
+
+// Relationship classifies left relative to right. A finite set of
+// alternative origins is compared pairwise and joined; a Place without a
+// resolved root or with ambiguous provenance degrades to Unknown.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §15 "Place relationship", §17 "Field disjointness", §18 "Array element disjointness", §19 "Union variant place relationship", §20 "Alternative origins"
+//   - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md — §5 "Place relationships"
+func Relationship(left, right Place) PlaceRelationship {
+	if left.AmbiguousProvenance || right.AmbiguousProvenance {
+		return PlaceUnknown
+	}
 	leftAlternatives := placeOriginAlternatives(left)
 	rightAlternatives := placeOriginAlternatives(right)
-	if len(leftAlternatives) > 1 || len(rightAlternatives) > 1 {
-		for _, leftAlternative := range leftAlternatives {
-			for _, rightAlternative := range rightAlternatives {
-				if PlacesOverlap(leftAlternative, rightAlternative) {
-					return true
-				}
-			}
-		}
-		return false
+	if len(leftAlternatives) == 1 && len(rightAlternatives) == 1 {
+		return singleOriginPlaceRelationship(left, right)
 	}
-	if left.Root == "" || right.Root == "" || left.Root != right.Root {
-		return false
+	joined := PlaceRelationship("")
+	for _, leftAlternative := range leftAlternatives {
+		for _, rightAlternative := range rightAlternatives {
+			joined = joinPlaceRelationships(joined, singleOriginPlaceRelationship(leftAlternative, rightAlternative))
+		}
+	}
+	return joined
+}
+
+// joinPlaceRelationships merges the relationships of alternative origins:
+// agreement is retained, Unknown dominates, and any other disagreement can
+// only be described as a potential overlap.
+func joinPlaceRelationships(joined, next PlaceRelationship) PlaceRelationship {
+	switch {
+	case joined == "" || joined == next:
+		return next
+	case joined == PlaceUnknown || next == PlaceUnknown:
+		return PlaceUnknown
+	default:
+		return PlacePotentiallyOverlapping
+	}
+}
+
+// singleOriginPlaceRelationship walks the common projection prefix of two
+// single-origin Places. Distinct stored fields, distinct exact constant
+// indexes, statically disjoint slices and different union payload variants
+// are disjoint; a union payload Place exists only under the active-variant
+// proof of its match arm or is-test. Dynamic indexes and properties defer to
+// a potential overlap, and a strict prefix contains the longer path.
+func singleOriginPlaceRelationship(left, right Place) PlaceRelationship {
+	if left.Root == "" || right.Root == "" {
+		return PlaceUnknown
+	}
+	if left.Root != right.Root {
+		return PlaceDisjoint
 	}
 	if placeIsStaticallyEmpty(left) || placeIsStaticallyEmpty(right) {
-		return false
+		return PlaceDisjoint
 	}
 	limit := len(left.Projections)
 	if len(right.Projections) < limit {
 		limit = len(right.Projections)
 	}
+	potential := false
 	for index := 0; index < limit; index++ {
 		leftProjection := left.Projections[index]
 		rightProjection := right.Projections[index]
 		if leftProjection.Kind != rightProjection.Kind {
 			if projectionsAreDisjointIndexAndSlice(leftProjection, rightProjection) {
-				return false
+				return PlaceDisjoint
 			}
-			return true
+			return PlacePotentiallyOverlapping
 		}
 		switch leftProjection.Kind {
 		case PlaceField:
 			if leftProjection.Name != rightProjection.Name {
-				return false
+				return PlaceDisjoint
 			}
 		case PlaceProperty:
 			// A setter may touch any receiver storage unless effect metadata proves
 			// otherwise, so properties conservatively overlap at their receiver.
-			return true
+			return PlacePotentiallyOverlapping
 		case PlaceIndex:
-			if !leftProjection.DynamicIndex && !rightProjection.DynamicIndex && !placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) {
-				return false
+			if leftProjection.DynamicIndex || rightProjection.DynamicIndex {
+				potential = true
+			} else if !placeConstantIndexesEqual(leftProjection.ConstantIndex, rightProjection.ConstantIndex) {
+				return PlaceDisjoint
 			}
 		case PlaceSlice:
 			if slicesAreStaticallyDisjoint(leftProjection, rightProjection) {
-				return false
+				return PlaceDisjoint
+			}
+			if !slicesAreStaticallyEqual(leftProjection, rightProjection) {
+				potential = true
 			}
 		case PlaceDereference:
 			// Equal dereference paths share provenance in this initial model.
 		case PlaceUnionPayload:
 			if leftProjection.Name != rightProjection.Name {
-				return false
+				return PlaceDisjoint
 			}
 		}
 	}
-	// Equal paths overlap, and a root/prefix place overlaps every child place.
-	return true
+	switch {
+	case potential:
+		return PlacePotentiallyOverlapping
+	case len(left.Projections) == len(right.Projections):
+		return PlaceSame
+	case len(left.Projections) < len(right.Projections):
+		return PlaceContains
+	default:
+		return PlaceContainedBy
+	}
+}
+
+// PlacesOverlap is the legacy boolean compatibility query. It delegates to
+// Relationship; a Place without a resolved root keeps its historical
+// non-overlapping answer because it names no tracked storage.
+//
+// Rules:
+//   - rules/mlir/packages/sec-mlir-dialect_package15.md — §16 "Legacy PlacesOverlap"
+func PlacesOverlap(left, right Place) bool {
+	if left.Root == "" || right.Root == "" {
+		return false
+	}
+	return Relationship(left, right).MayOverlap()
 }
 
 func placeOriginAlternatives(place Place) []Place {
@@ -268,6 +355,12 @@ func placeIsStaticallyEmpty(place Place) bool {
 func slicesAreStaticallyDisjoint(left, right PlaceProjection) bool {
 	return left.SliceEndKnown && right.SliceStartKnown && left.SliceEnd <= right.SliceStart ||
 		right.SliceEndKnown && left.SliceStartKnown && right.SliceEnd <= left.SliceStart
+}
+
+func slicesAreStaticallyEqual(left, right PlaceProjection) bool {
+	return left.SliceStartKnown == right.SliceStartKnown && left.SliceEndKnown == right.SliceEndKnown &&
+		(!left.SliceStartKnown || left.SliceStart == right.SliceStart) &&
+		(!left.SliceEndKnown || left.SliceEnd == right.SliceEnd)
 }
 
 func projectionsAreDisjointIndexAndSlice(left, right PlaceProjection) bool {
@@ -316,7 +409,7 @@ func (a *Analyzer) resolvePlace(expr ast.Expression) (Place, bool) {
 			Root: expr.Value, RootToken: symbol.Token, Type: symbol.Type,
 			Mutable:         a.canWriteThroughSymbol(symbol),
 			Addressable:     true,
-			PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginInline && expr.Value != "self",
+			PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginAutomatic && expr.Value != "self",
 		}, true
 	case *ast.MemberExpression:
 		base, ok := a.resolvePlace(expr.Object)
@@ -584,7 +677,7 @@ func (a *Analyzer) rootPlace(name string) (Place, bool) {
 		Root: name, RootToken: symbol.Token, Type: symbol.Type,
 		Mutable:         a.canWriteThroughSymbol(symbol),
 		Addressable:     true,
-		PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginInline && name != "self",
+		PartialMoveSafe: symbol.Local && !symbol.ImplicitMember && !symbol.Volatile && symbol.Storage == StorageOriginAutomatic && name != "self",
 	}, true
 }
 
